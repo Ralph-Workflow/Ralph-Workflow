@@ -269,7 +269,7 @@ def test_prepare_artifact_submission_rejects_content_path(tmp_path: Path) -> Non
 
     with pytest.raises(
         InvalidParamsError,
-        match="Use 'content' with a freshly generated JSON string",
+        match=r"artifact-formats/plan\.md",
     ):
         prepare_artifact_submission(
             {
@@ -281,7 +281,7 @@ def test_prepare_artifact_submission_rejects_content_path(tmp_path: Path) -> Non
 
 
 def test_prepare_artifact_submission_rejects_missing_content(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match="Missing 'content' parameter"):
+    with pytest.raises(InvalidParamsError, match=r"artifact-formats/plan\.md"):
         prepare_artifact_submission(
             {
                 "artifact_type": "plan",
@@ -567,7 +567,7 @@ def test_handle_submit_artifact_rejects_content_path_for_plan_submission(tmp_pat
 
     with pytest.raises(
         InvalidParamsError,
-        match="Artifact submission requires the 'content' field",
+        match=r"artifact-formats/plan\.md",
     ):
         handle_submit_artifact(
             MockSession(),
@@ -580,7 +580,7 @@ def test_handle_submit_artifact_rejects_content_path_for_plan_submission(tmp_pat
 
 
 def test_handle_submit_artifact_rejects_plan_without_required_sections(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match="verification_strategy"):
+    with pytest.raises(InvalidParamsError, match=r"artifact-formats/plan\.md"):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),

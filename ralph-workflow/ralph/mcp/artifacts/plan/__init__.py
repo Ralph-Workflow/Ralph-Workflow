@@ -15,8 +15,11 @@ from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifact
 from ralph.pydantic_compat import RalphBaseModel
 
 from .plan_schema import (
+    AcceptanceCriteria,
+    AcceptanceCriterion,
     CriticalFiles,
     CriticalPrimaryFile,
+    DesignSection,
     EditArea,
     ParallelPlanItem,
     PlanStep,
@@ -52,6 +55,7 @@ class PlanArtifact(RalphBaseModel):
     steps: list[PlanStep] = Field(..., min_length=1)
     critical_files: CriticalFiles
     risks_mitigations: list[RiskMitigation] = Field(..., min_length=1)
+    design: DesignSection | None = None
     verification_strategy: list[VerificationStep] = Field(..., min_length=1)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
     work_units: list[dict[str, object]] = Field(default_factory=list)
@@ -61,6 +65,7 @@ PLAN_SECTION_OBJECT_MODELS: dict[str, type[RalphBaseModel]] = {
     "summary": Summary,
     "skills_mcp": SkillsMcp,
     "critical_files": CriticalFiles,
+    "design": DesignSection,
 }
 
 PLAN_SECTION_LIST_ITEM_MODELS: dict[str, type[RalphBaseModel]] = {
@@ -460,6 +465,7 @@ def render_plan_markdown(content: Mapping[str, object]) -> str:
     lines.extend(_render_steps_section(plan.get("steps")))
     lines.extend(_render_critical_files_section(plan.get("critical_files")))
     lines.extend(_render_risks_section(plan.get("risks_mitigations")))
+    lines.extend(_render_design_section(plan.get("design")))
     lines.extend(_render_verification_section(plan.get("verification_strategy")))
     lines.extend(_render_parallel_plan_section(plan.get("parallel_plan")))
     lines.extend(_render_work_units_section(plan.get("work_units")))
@@ -607,6 +613,187 @@ def _render_risks_section(risks: object) -> list[str]:
     return lines
 
 
+def _render_design_section(design: object) -> list[str]:
+    if not isinstance(design, dict):
+        return []
+
+    sub_section_order: tuple[tuple[str, str, Callable[[Mapping[str, object]], list[str]]], ...] = (
+        ("constraints", "Design Constraints", _render_design_constraints_block),
+        ("non_goals", "Non-Goals", _render_design_non_goals_block),
+        ("dependency_injection", "Dependency Injection", _render_design_di_block),
+        ("drift_detection", "Drift Detection", _render_design_drift_block),
+        ("testability", "Testability", _render_design_testability_block),
+        ("refactor_strategy", "Refactor Strategy", _render_design_refactor_block),
+        ("acceptance_criteria", "Acceptance Criteria", _render_design_acceptance_block),
+    )
+
+    rendered: list[str] = []
+    for key, heading, renderer in sub_section_order:
+        sub = design.get(key)
+        if not isinstance(sub, dict):
+            continue
+        sub_lines = renderer(cast("Mapping[str, object]", sub))
+        if not sub_lines:
+            continue
+        rendered.append("")
+        rendered.append(f"### {heading}")
+        rendered.append("")
+        rendered.extend(sub_lines)
+
+    notes = design.get("notes")
+    if isinstance(notes, str) and notes.strip():
+        rendered.extend(["", "### Notes", "", notes.strip()])
+
+    if not rendered:
+        return []
+    rendered.insert(0, "")
+    rendered.insert(1, "## Design")
+    return rendered
+
+
+def _render_design_constraints_block(constraints: Mapping[str, object]) -> list[str]:
+    lines: list[str] = []
+    text = constraints.get("text")
+    if isinstance(text, str) and text.strip():
+        lines.append(f"- text: {text.strip()}")
+    invariants = constraints.get("invariants")
+    if isinstance(invariants, list):
+        lines.extend(
+            f"  - invariant: {entry.strip()}"
+            for entry in invariants
+            if isinstance(entry, str) and entry.strip()
+        )
+    style = constraints.get("architecture_style")
+    if isinstance(style, str) and style.strip():
+        lines.append(f"- architecture_style: {style.strip()}")
+    return lines
+
+
+def _render_design_non_goals_block(non_goals: Mapping[str, object]) -> list[str]:
+    items = non_goals.get("items")
+    if not isinstance(items, list):
+        return []
+    return [
+        f"- {entry.strip()}"
+        for entry in items
+        if isinstance(entry, str) and entry.strip()
+    ]
+
+
+def _render_design_di_block(di: Mapping[str, object]) -> list[str]:
+    lines: list[str] = []
+    required = di.get("required_for_testability")
+    if isinstance(required, bool):
+        lines.append(f"- required_for_testability: {'true' if required else 'false'}")
+    preferred = di.get("preferred_patterns")
+    if isinstance(preferred, list):
+        lines.extend(
+            f"  - preferred_pattern: {entry.strip()}"
+            for entry in preferred
+            if isinstance(entry, str) and entry.strip()
+        )
+    forbidden = di.get("forbidden_patterns")
+    if isinstance(forbidden, list):
+        lines.extend(
+            f"  - forbidden_pattern: {entry.strip()}"
+            for entry in forbidden
+            if isinstance(entry, str) and entry.strip()
+        )
+    notes = di.get("notes")
+    if isinstance(notes, str) and notes.strip():
+        lines.append(f"- notes: {notes.strip()}")
+    return lines
+
+
+def _render_design_drift_block(drift: Mapping[str, object]) -> list[str]:
+    lines: list[str] = []
+    commands = drift.get("guard_commands")
+    if isinstance(commands, list):
+        lines.extend(
+            f"- guard_command: `{entry.strip()}`"
+            for entry in commands
+            if isinstance(entry, str) and entry.strip()
+        )
+    expected = drift.get("expected_outputs")
+    if isinstance(expected, list):
+        lines.extend(
+            f"  - expected_output: {entry.strip()}"
+            for entry in expected
+            if isinstance(entry, str) and entry.strip()
+        )
+    sources = drift.get("sources")
+    if isinstance(sources, list):
+        lines.extend(
+            f"  - source: {entry.strip()}"
+            for entry in sources
+            if isinstance(entry, str) and entry.strip()
+        )
+    action = drift.get("on_drift_action")
+    if isinstance(action, str) and action.strip():
+        lines.append(f"- on_drift_action: {action.strip()}")
+    return lines
+
+
+def _render_design_testability_block(testability: Mapping[str, object]) -> list[str]:
+    lines: list[str] = []
+    black_box = testability.get("must_be_black_box")
+    if isinstance(black_box, bool):
+        lines.append(f"- must_be_black_box: {'true' if black_box else 'false'}")
+    forbidden = testability.get("forbidden_in_tests")
+    if isinstance(forbidden, list):
+        lines.extend(
+            f"  - forbidden_in_tests: {entry.strip()}"
+            for entry in forbidden
+            if isinstance(entry, str) and entry.strip()
+        )
+    layers = testability.get("required_test_layers")
+    if isinstance(layers, list):
+        lines.extend(
+            f"  - required_test_layer: {entry.strip()}"
+            for entry in layers
+            if isinstance(entry, str) and entry.strip()
+        )
+    clock_required = testability.get("clock_injection_required")
+    if isinstance(clock_required, bool):
+        lines.append(f"- clock_injection_required: {'true' if clock_required else 'false'}")
+    max_unit = testability.get("max_unit_test_seconds")
+    if isinstance(max_unit, (int, float)) and not isinstance(max_unit, bool):
+        lines.append(f"- max_unit_test_seconds: {float(max_unit):g}")
+    return lines
+
+
+def _render_design_refactor_block(refactor: Mapping[str, object]) -> list[str]:
+    lines: list[str] = []
+    approach = refactor.get("approach")
+    if isinstance(approach, str) and approach.strip():
+        lines.append(f"- approach: {approach.strip()}")
+    preserve = refactor.get("preserve_public_api")
+    if isinstance(preserve, bool):
+        lines.append(f"- preserve_public_api: {'true' if preserve else 'false'}")
+    policy = refactor.get("dead_code_policy")
+    if isinstance(policy, str) and policy.strip():
+        lines.append(f"- dead_code_policy: {policy.strip()}")
+    hacks = refactor.get("allow_temporary_hacks")
+    if isinstance(hacks, bool):
+        lines.append(f"- allow_temporary_hacks: {'true' if hacks else 'false'}")
+    return lines
+
+
+def _render_design_acceptance_block(acceptance: Mapping[str, object]) -> list[str]:
+    criteria = acceptance.get("criteria")
+    if not isinstance(criteria, list):
+        return []
+    lines: list[str] = []
+    for entry in criteria:
+        if not isinstance(entry, dict):
+            continue
+        cid = entry.get("id")
+        desc = entry.get("description")
+        if isinstance(cid, str) and isinstance(desc, str) and cid.strip() and desc.strip():
+            lines.append(f"- {cid.strip()} — {desc.strip()}")
+    return lines
+
+
 def _render_verification_section(verification: object) -> list[str]:
     if not isinstance(verification, list) or not verification:
         return []
@@ -682,8 +869,11 @@ __all__ = [
     "PLAN_SECTION_LIST_ITEM_MODELS",
     "PLAN_SECTION_NAMES",
     "PLAN_SECTION_OBJECT_MODELS",
+    "AcceptanceCriteria",
+    "AcceptanceCriterion",
     "CriticalFiles",
     "CriticalPrimaryFile",
+    "DesignSection",
     "EditArea",
     "ParallelPlanItem",
     "PlanArtifact",

@@ -108,6 +108,24 @@ Default submission flow:
 7. Stage optional sections like `parallel_plan` only when they add real value.
 8. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
 
+## DESIGN SECTION
+
+If the request is about Ralph Workflow internals or any multi-file task (3+ files, refactor, or new feature touching existing modules), also stage a `design` section so the executor gets the seven SE-opinionated sub-sections in one round-trip. The `design` section is OPTIONAL but strongly recommended; submit it via `{{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}` with `section='design'`, `mode='replace'` (the only supported mode).
+
+The seven typed sub-sections, with the exact labels the executor will see in the rendered plan:
+
+- **Design Constraints**: list hard invariants the design must satisfy (1-2000 chars, with optional `invariants` list and `architecture_style` enum)
+- **Non-Goals**: list what is explicitly out of scope (non-empty `items` list, each 1-500 chars)
+- **Dependency Injection**: mark `required_for_testability=true` and any `forbidden_patterns` (e.g. `global-singleton`, `module-level-mutable-state`); cross-reference `AGENTS.md` §'Non-negotiables' for the canonical list
+- **Drift Detection**: list `guard_commands` you will run to detect drift between plan and code; commands are restricted to `[A-Za-z0-9 _./\-:=+]` for safety
+- **Testability**: mark `must_be_black_box=true` and any `forbidden_in_tests` entries per `AGENTS.md` (e.g. `time.sleep`, `subprocess.run-no-timeout`); also list `required_test_layers` such as `unit` or `integration`
+- **Refactor Strategy**: choose `approach` (e.g. `incremental`, `strangler`) and `dead_code_policy` (default `delete-immediately`)
+- **Acceptance Criteria**: one entry per requirement with a stable id matching `^[A-Z]+-\d{2,}$` (e.g. `AC-01`)
+
+**Model-tier guidance for the optional `notes` field**: For high-quality models, use the optional `notes` free-form field to capture rationale, alternative designs considered, and trade-offs that do not fit the seven typed sub-models. For cheap models, leave `notes` unset and rely entirely on the seven typed sub-models for schema-driven validation. Either choice is acceptable; the section passes validation as long as the seven sub-models are well-formed (or all None).
+
+The full reference for the design sub-section, including every enum value and the JSON shape, is at `.agent/artifact-formats/plan.md` (bundled by Ralph Workflow and materialized into the workspace). Cross-reference `AGENTS.md` §'Non-negotiables' for the canonical SE opinions the sub-sections enforce.
+
 Atomic fallback for short plans:
 - If the plan is genuinely short, you may call {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" and content as a JSON string conforming to the plan schema.
 {{SUBMIT_ARTIFACT_BARE_HINT}}
@@ -168,7 +186,17 @@ Your payload must decode to an object shaped like this:
       "depends_on": []
     }
   ],
-  "work_units": []
+  "work_units": [],
+  "design": {
+    "testability": {
+      "must_be_black_box": true,
+      "forbidden_in_tests": ["time.sleep"],
+      "required_test_layers": ["unit"]
+    },
+    "acceptance_criteria": {
+      "criteria": [{"id": "AC-01", "description": "All new tests pass"}]
+    }
+  }
 }
 ```
 

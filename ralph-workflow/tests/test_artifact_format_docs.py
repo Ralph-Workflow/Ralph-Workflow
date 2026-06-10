@@ -65,9 +65,38 @@ def test_all_supported_artifact_types_have_bundled_markdown() -> None:
 
 
 def test_load_bundled_format_doc_returns_none_for_unsupported_type() -> None:
-    assert load_bundled_format_doc("plan") is None
     assert load_bundled_format_doc("bogus") is None
     assert load_bundled_format_doc("") is None
+
+
+def test_plan_format_doc_is_registered() -> None:
+    assert "plan" in FORMAT_DOC_ARTIFACT_TYPES
+    assert format_doc_workspace_path("plan") == ".agent/artifact-formats/plan.md"
+
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert doc.startswith("# plan artifact format")
+
+    for section in REQUIRED_SECTIONS:
+        assert section in doc, f"plan format doc missing section: {section}"
+    assert "## Dumb-proof checklist" in doc
+
+    backend = MemoryBackend()
+    workspace_root = Path("/virtual-ws")
+    relative_path = materialize_format_doc(workspace_root, "plan", backend=backend)
+    assert relative_path == ".agent/artifact-formats/plan.md"
+    materialized = backend.read_text(workspace_root / relative_path)
+    assert materialized == doc
+
+    inner_payload = _extract_complete_example_inner_payload(doc)
+    assert "summary" in inner_payload
+    assert "skills_mcp" in inner_payload
+    assert "steps" in inner_payload
+    assert "critical_files" in inner_payload
+    assert "risks_mitigations" in inner_payload
+    assert "verification_strategy" in inner_payload
+    scope_items = cast("list[dict[str, object]]", inner_payload["summary"]["scope_items"])
+    assert len(scope_items) >= 3
 
 
 def test_materialize_format_doc_writes_markdown_to_workspace() -> None:
@@ -106,10 +135,9 @@ def test_materialize_format_doc_returns_none_for_unsupported() -> None:
     backend = MemoryBackend()
     workspace_root = Path("/virtual-ws")
 
-    assert materialize_format_doc(workspace_root, "plan", backend=backend) is None
     assert materialize_format_doc(workspace_root, "bogus", backend=backend) is None
     assert not any(
-        str(p).endswith("plan.md") or str(p).endswith("bogus.md") for p in backend._files
+        str(p).endswith("bogus.md") for p in backend._files
     )
 
 
@@ -144,6 +172,7 @@ def test_bundled_examples_validate_through_real_normalizers(tmp_path: Path) -> N
         "development_analysis_decision",
         "planning_analysis_decision",
         "review_analysis_decision",
+        "plan",
     }
 
     for artifact_type in FORMAT_DOC_ARTIFACT_TYPES:
@@ -210,6 +239,14 @@ def test_format_doc_mentions_required_fields() -> None:
             "goals",
             "users",
             "success_criteria",
+        ],
+        "plan": [
+            "summary",
+            "skills_mcp",
+            "steps",
+            "critical_files",
+            "risks_mitigations",
+            "verification_strategy",
         ],
     }
 

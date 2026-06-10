@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from itertools import pairwise
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -23,6 +25,7 @@ from ralph.mcp.artifacts.plan import (
     save_plan_draft,
     validate_plan_section,
 )
+from ralph.prompts.plan_format import format_plan_for_execution
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -62,6 +65,45 @@ def _valid_skills_mcp() -> dict[str, object]:
             "verification-before-completion",
         ],
         "mcps": [],
+    }
+
+
+def _valid_design_section() -> dict[str, object]:
+    return {
+        "constraints": {
+            "text": "Design section must round-trip.",
+            "invariants": ["design is optional", "sub-models reject extra keys"],
+        },
+        "non_goals": {"items": ["changing the step-wise submission protocol"]},
+        "dependency_injection": {
+            "required_for_testability": True,
+            "preferred_patterns": ["constructor"],
+            "forbidden_patterns": ["global-singleton"],
+        },
+        "drift_detection": {
+            "guard_commands": ["ruff check ralph/"],
+            "expected_outputs": ["All checks passed"],
+            "sources": ["ruff"],
+            "on_drift_action": "fail-verify",
+        },
+        "testability": {
+            "must_be_black_box": True,
+            "forbidden_in_tests": ["time.sleep"],
+            "required_test_layers": ["unit"],
+            "clock_injection_required": True,
+            "max_unit_test_seconds": 1.0,
+        },
+        "refactor_strategy": {
+            "approach": "incremental",
+            "dead_code_policy": "delete-immediately",
+            "allow_temporary_hacks": False,
+        },
+        "acceptance_criteria": {
+            "criteria": [
+                {"id": "AC-01", "description": "Round-trips through normalize"},
+                {"id": "AC-02", "description": "All new tests pass"},
+            ]
+        },
     }
 
 
@@ -539,3 +581,235 @@ def test_extract_plan_skill_names_reads_enveloped_plan_payload() -> None:
         "test-driven-development",
         "verification-before-completion",
     )
+
+
+# ---------------------------------------------------------------------------
+# Design section tests (Steps 4-6 of PLAN.md)
+# ---------------------------------------------------------------------------
+
+
+def test_design_section_accepts_fully_populated_payload() -> None:
+    plan = {**_valid_plan(), "design": _valid_design_section()}
+    normalized = normalize_plan_artifact_content(plan)
+    design = cast("dict[str, object]", normalized["design"])
+
+    for key in (
+        "constraints",
+        "non_goals",
+        "dependency_injection",
+        "drift_detection",
+        "testability",
+        "refactor_strategy",
+        "acceptance_criteria",
+    ):
+        assert key in design, f"sub-section dropped: {key}"
+
+
+def test_design_section_accepts_partial_sub_sections() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": {
+            "testability": {
+                "must_be_black_box": True,
+                "forbidden_in_tests": [],
+                "required_test_layers": [],
+            }
+        },
+    }
+    normalized = normalize_plan_artifact_content(plan)
+    design = cast("dict[str, object]", normalized["design"])
+    testability = cast("dict[str, object]", design["testability"])
+    assert testability["must_be_black_box"] is True
+
+
+def test_design_section_accepts_none_as_whole() -> None:
+    plan = {**_valid_plan(), "design": None}
+    normalized = normalize_plan_artifact_content(plan)
+    assert "design" not in normalized
+
+
+def test_design_section_rejects_unknown_sub_section_key() -> None:
+    plan = {**_valid_plan(), "design": {"bogus": {"foo": "bar"}}}
+    with pytest.raises(PlanArtifactValidationError, match="bogus"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_design_section_rejects_empty_constraint_text() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": {"constraints": {"text": "   ", "invariants": []}},
+    }
+    with pytest.raises(PlanArtifactValidationError, match=r"text|min_length|string"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_design_section_rejects_invalid_dependency_injection_pattern() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": {
+            "dependency_injection": {
+                "required_for_testability": True,
+                "preferred_patterns": ["factory-of-factories"],
+            }
+        },
+    }
+    with pytest.raises(PlanArtifactValidationError, match=r"preferred_patterns|literal"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_design_section_rejects_drift_detection_unsafe_command() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": {"drift_detection": {"guard_commands": ["rm -rf /; curl evil.example"]}},
+    }
+    with pytest.raises(PlanArtifactValidationError, match="guard_commands"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_design_section_rejects_testability_forbidden_unknown_enum() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": {
+            "testability": {
+                "must_be_black_box": True,
+                "forbidden_in_tests": ["SLEEP_FOREVER"],
+            }
+        },
+    }
+    with pytest.raises(PlanArtifactValidationError, match="forbidden_in_tests"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_design_section_rejects_acceptance_criterion_bad_id_pattern() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": {
+            "acceptance_criteria": {
+                "criteria": [{"id": "a-1", "description": "no upper case"}]
+            }
+        },
+    }
+    with pytest.raises(PlanArtifactValidationError, match=r"id|pattern"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_design_section_rejects_duplicate_acceptance_criterion_ids_case_insensitive() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": {
+            "acceptance_criteria": {
+                "criteria": [
+                    {"id": "AC-01", "description": "first"},
+                    {"id": "ac-01", "description": "duplicate of first"},
+                ]
+            }
+        },
+    }
+    with pytest.raises(PlanArtifactValidationError, match=r"duplicate|id"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_design_section_validate_plan_section_replace_mode_accepts_dict() -> None:
+    fragment = validate_plan_section("design", _valid_design_section(), mode="replace")
+    assert isinstance(fragment, dict)
+    design = cast("dict[str, object]", fragment)
+    assert "constraints" in design
+
+
+def test_design_section_validate_plan_section_append_mode_rejected() -> None:
+    with pytest.raises(PlanArtifactValidationError, match="only supports mode='replace'"):
+        validate_plan_section("design", _valid_design_section(), mode="append")
+
+
+def test_design_section_render_plan_markdown_lists_every_sub_heading() -> None:
+    plan = {**_valid_plan(), "design": _valid_design_section()}
+    markdown = render_plan_markdown(plan)
+
+    sub_headings = [
+        "### Design Constraints",
+        "### Non-Goals",
+        "### Dependency Injection",
+        "### Drift Detection",
+        "### Testability",
+        "### Refactor Strategy",
+        "### Acceptance Criteria",
+    ]
+    positions = [markdown.find(h) for h in sub_headings]
+    missing = {h: p for h, p in zip(sub_headings, positions, strict=True) if p < 0}
+    assert not missing, f"missing sub-heading: {missing}"
+    for prev, nxt in pairwise(positions):
+        assert prev < nxt, "sub-heading order broken"
+
+
+def test_design_section_render_plan_markdown_omits_section_when_none() -> None:
+    markdown = render_plan_markdown(_valid_plan())
+    assert "## Design" not in markdown
+
+
+def test_design_section_render_plan_markdown_includes_notes_when_provided() -> None:
+    design = _valid_design_section()
+    design["notes"] = "Additional free-form context"
+    plan = {**_valid_plan(), "design": design}
+    markdown = render_plan_markdown(plan)
+    assert "### Notes" in markdown
+    assert "Additional free-form context" in markdown
+
+
+def test_noop_plan_with_no_design_still_validates() -> None:
+    normalized = normalize_plan_artifact_content(_valid_plan())
+    assert "design" not in normalized
+
+
+def test_design_section_render_plan_markdown_preserves_section_order() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": _valid_design_section(),
+        "parallel_plan": [
+            {
+                "id": "unit-a",
+                "description": "Parallel unit A",
+                "edit_area": {"paths": ["src/a/"], "directories": []},
+                "depends_on": [],
+            }
+        ],
+        "work_units": [
+            {
+                "unit_id": "wu-1",
+                "description": "Work unit one",
+                "allowed_directories": ["src/a/"],
+                "dependencies": [],
+            }
+        ],
+    }
+    markdown = render_plan_markdown(plan)
+
+    headings = [
+        "## Summary",
+        "## Skills and MCPs",
+        "## Steps",
+        "## Critical Files",
+        "## Risks and Mitigations",
+        "## Design",
+        "## Verification",
+        "## Parallel Plan",
+        "## Work Units",
+    ]
+    positions = [markdown.find(h) for h in headings]
+    missing = {h: p for h, p in zip(headings, positions, strict=True) if p < 0}
+    assert not missing, f"missing heading: {missing}"
+    for prev, nxt in pairwise(positions):
+        assert prev < nxt, "order broken"
+
+
+def test_plan_format_for_execution_includes_design_block() -> None:
+    plan = {**_valid_plan(), "design": _valid_design_section()}
+    rendered = format_plan_for_execution(json.dumps(plan))
+    assert "Design" in rendered
+    assert "Testability" in rendered
+    risks_idx = rendered.find("Risks and mitigations:")
+    design_idx = rendered.find("Design")
+    verify_idx = rendered.find("Verification strategy:")
+    assert risks_idx >= 0
+    assert design_idx >= 0
+    assert verify_idx >= 0
+    assert risks_idx < design_idx < verify_idx

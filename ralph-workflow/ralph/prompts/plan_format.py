@@ -18,6 +18,7 @@ def format_plan_for_execution(content: str) -> str:
         _format_steps_section(plan),
         _format_critical_files_section(plan),
         _format_risks_section(plan),
+        _format_design_section(plan),
         _format_verification_section(plan),
         _format_work_units_section(plan),
     ]
@@ -179,3 +180,145 @@ def _format_work_units_section(plan: dict[str, object]) -> str:
         if unit_id and description:
             lines.append(f"- {unit_id}: {description}")
     return "\n".join(lines)
+
+
+def _format_design_section(plan: dict[str, object]) -> str:
+    design = plan.get("design")
+    if not isinstance(design, dict):
+        return ""
+
+    lines: list[str] = ["Design:"]
+    lines.extend(_format_design_constraints(design))
+    lines.extend(_format_design_non_goals(design))
+    lines.extend(_format_design_dependency_injection(design))
+    lines.extend(_format_design_drift_detection(design))
+    lines.extend(_format_design_testability(design))
+    lines.extend(_format_design_refactor_strategy(design))
+    lines.extend(_format_design_acceptance_criteria(design))
+    lines.extend(_format_design_notes(design))
+
+    if len(lines) == 1:
+        return ""
+    return "\n".join(lines)
+
+
+def _format_design_constraints(design: dict[str, object]) -> list[str]:
+    constraints = design.get("constraints")
+    if not isinstance(constraints, dict):
+        return []
+    lines: list[str] = []
+    text = constraints.get("text")
+    if isinstance(text, str) and text.strip():
+        lines.append(f"- Design Constraints: {text.strip()}")
+    invariants = constraints.get("invariants")
+    if isinstance(invariants, list) and invariants:
+        lines.extend(
+            f"  - invariant: {entry.strip()}"
+            for entry in invariants
+            if isinstance(entry, str) and entry.strip()
+        )
+    return lines
+
+
+def _format_design_non_goals(design: dict[str, object]) -> list[str]:
+    non_goals = design.get("non_goals")
+    if not isinstance(non_goals, dict):
+        return []
+    items = non_goals.get("items")
+    if not isinstance(items, list):
+        return []
+    rendered = [item.strip() for item in items if isinstance(item, str) and item.strip()]
+    if not rendered:
+        return []
+    return [f"- Non-Goals: {', '.join(rendered)}"]
+
+
+def _format_design_dependency_injection(design: dict[str, object]) -> list[str]:
+    di = design.get("dependency_injection")
+    if not isinstance(di, dict):
+        return []
+    lines: list[str] = []
+    required = di.get("required_for_testability")
+    if isinstance(required, bool):
+        lines.append(f"- Dependency Injection: required_for_testability={required}")
+    forbidden = di.get("forbidden_patterns")
+    if isinstance(forbidden, list) and forbidden:
+        rendered = [v.strip() for v in forbidden if isinstance(v, str) and v.strip()]
+        if rendered:
+            lines.append(f"  - forbidden: {', '.join(rendered)}")
+    return lines
+
+
+def _format_design_drift_detection(design: dict[str, object]) -> list[str]:
+    drift = design.get("drift_detection")
+    if not isinstance(drift, dict):
+        return []
+    commands = drift.get("guard_commands")
+    if not isinstance(commands, list) or not commands:
+        return []
+    rendered = [c.strip() for c in commands if isinstance(c, str) and c.strip()]
+    if not rendered:
+        return []
+    return [f"- Drift Detection: {', '.join(rendered)}"]
+
+
+def _format_design_testability(design: dict[str, object]) -> list[str]:
+    testability = design.get("testability")
+    if not isinstance(testability, dict):
+        return []
+    lines: list[str] = []
+    black_box = testability.get("must_be_black_box")
+    if isinstance(black_box, bool):
+        lines.append(f"- Testability: must_be_black_box={black_box}")
+    forbidden = testability.get("forbidden_in_tests")
+    if isinstance(forbidden, list) and forbidden:
+        rendered = [v.strip() for v in forbidden if isinstance(v, str) and v.strip()]
+        if rendered:
+            lines.append(f"  - forbidden_in_tests: {', '.join(rendered)}")
+    layers = testability.get("required_test_layers")
+    if isinstance(layers, list) and layers:
+        rendered = [v.strip() for v in layers if isinstance(v, str) and v.strip()]
+        if rendered:
+            lines.append(f"  - required_test_layers: {', '.join(rendered)}")
+    return lines
+
+
+def _format_design_refactor_strategy(design: dict[str, object]) -> list[str]:
+    refactor = design.get("refactor_strategy")
+    if not isinstance(refactor, dict):
+        return []
+    lines: list[str] = []
+    approach = refactor.get("approach")
+    if isinstance(approach, str) and approach.strip():
+        lines.append(f"- Refactor Strategy: approach={approach.strip()}")
+    policy = refactor.get("dead_code_policy")
+    if isinstance(policy, str) and policy.strip():
+        lines.append(f"  - dead_code_policy: {policy.strip()}")
+    return lines
+
+
+def _format_design_acceptance_criteria(design: dict[str, object]) -> list[str]:
+    acceptance = design.get("acceptance_criteria")
+    if not isinstance(acceptance, dict):
+        return []
+    criteria = acceptance.get("criteria")
+    if not isinstance(criteria, list):
+        return []
+    rendered: list[str] = []
+    for entry in criteria:
+        if not isinstance(entry, dict):
+            continue
+        cid = entry.get("id")
+        desc = entry.get("description")
+        if isinstance(cid, str) and isinstance(desc, str) and cid.strip() and desc.strip():
+            rendered.append(f"{cid.strip()} ({desc.strip()})")
+    if not rendered:
+        return []
+    return [f"- Acceptance Criteria: {', '.join(rendered)}"]
+
+
+def _format_design_notes(design: dict[str, object]) -> list[str]:
+    notes = design.get("notes")
+    if not isinstance(notes, str) or not notes.strip():
+        return []
+    return [f"- Notes: {notes.strip()}"]

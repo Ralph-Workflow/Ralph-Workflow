@@ -613,15 +613,19 @@ def prepare_artifact_submission(
     except InvalidParamsError as exc:
         if (
             base_path is not None
-            and artifact_type != PLAN_ARTIFACT_TYPE
             and has_format_doc(artifact_type)
         ):
             _raise_format_doc_error(artifact_type, base_path, backend, exc)
         raise
 
-    return artifact_type, _normalize_artifact_payload(
-        artifact_type, parsed_content, workspace_root=base_path, backend=backend
-    )
+    try:
+        return artifact_type, _normalize_artifact_payload(
+            artifact_type, parsed_content, workspace_root=base_path, backend=backend
+        )
+    except InvalidParamsError as exc:
+        if base_path is not None and has_format_doc(artifact_type):
+            _raise_format_doc_error(artifact_type, base_path, backend, exc)
+        raise
 
 
 def _resolve_artifact_content_source(
@@ -638,7 +642,6 @@ def _resolve_artifact_content_source(
         exc = InvalidParamsError(_artifact_content_format_error(artifact_type))
         if (
             base_path is not None
-            and artifact_type != PLAN_ARTIFACT_TYPE
             and has_format_doc(artifact_type)
         ):
             _raise_format_doc_error(artifact_type, base_path, backend, exc)
@@ -648,7 +651,6 @@ def _resolve_artifact_content_source(
         exc = InvalidParamsError("Missing 'content' parameter")
         if (
             base_path is not None
-            and artifact_type != PLAN_ARTIFACT_TYPE
             and has_format_doc(artifact_type)
         ):
             _raise_format_doc_error(artifact_type, base_path, backend, exc)
@@ -752,7 +754,9 @@ def _normalize_artifact_payload(
             parsed_content, workspace_root=workspace_root, backend=backend
         )
     if artifact_type == PLAN_ARTIFACT_TYPE:
-        return _normalize_plan_payload(parsed_content)
+        return _normalize_plan_payload(
+            parsed_content, workspace_root=workspace_root, backend=backend
+        )
     if artifact_type == DEVELOPMENT_RESULT_ARTIFACT_TYPE:
         return _normalize_development_result_payload(
             parsed_content, workspace_root=workspace_root, backend=backend
@@ -823,10 +827,17 @@ def _analysis_decision_vocabulary_for_artifact_type(
     return None
 
 
-def _normalize_plan_payload(parsed_content: dict[str, object]) -> dict[str, object]:
+def _normalize_plan_payload(
+    parsed_content: dict[str, object],
+    *,
+    workspace_root: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> dict[str, object]:
     try:
         return normalize_plan_artifact_content(parsed_content)
     except PlanArtifactValidationError as exc:
+        if workspace_root is not None and has_format_doc(PLAN_ARTIFACT_TYPE):
+            _raise_format_doc_error(PLAN_ARTIFACT_TYPE, workspace_root, backend, exc)
         raise InvalidParamsError(str(exc)) from exc
 
 

@@ -1,4 +1,4 @@
-"""Bundled dumb-proof Markdown reference docs for non-plan artifact submission."""
+"""Bundled dumb-proof Markdown reference docs for artifact submission."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ FORMAT_DOC_ARTIFACT_TYPES: tuple[str, ...] = (
     "review_analysis_decision",
     "smoke_test_result",
     "product_spec",
+    "plan",
 )
 
 ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE = "artifact_formats_index"

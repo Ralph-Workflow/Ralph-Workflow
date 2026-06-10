@@ -37,6 +37,17 @@ DOCS_MCP_FALSE_BRANCH_HINTS_FALLBACK = (
     "improves documentation lookup quality",
 )
 
+DESIGN_SECTION_HINTS = (
+    "## DESIGN SECTION",
+    "Design Constraints",
+    "Non-Goals",
+    "Dependency Injection",
+    "Drift Detection",
+    "Testability",
+    "Refactor Strategy",
+    "Acceptance Criteria",
+)
+
 
 def _shared_render_planning(
     has_docs_mcp: bool,
@@ -68,6 +79,21 @@ def _shared_render_planning(
 def _assert_shipped_skills_discovery(prompt: str) -> None:
     for hint in SHIPPED_SKILLS_DISCOVERY_HINTS:
         assert hint in prompt, f"Missing shipped-skills hint: {hint}"
+
+
+def _assert_design_section_hints(prompt: str) -> None:
+    for hint in DESIGN_SECTION_HINTS:
+        assert hint in prompt, f"Missing design-section hint: {hint}"
+
+
+DESIGN_SECTION_HINTS_FALLBACK = tuple(
+    hint for hint in DESIGN_SECTION_HINTS if hint != "## DESIGN SECTION"
+)
+
+
+def _assert_design_section_hints_fallback(prompt: str) -> None:
+    for hint in DESIGN_SECTION_HINTS_FALLBACK:
+        assert hint in prompt, f"Missing design-section hint: {hint}"
 
 
 class TestPlanningTemplatesShippedSkills:
@@ -114,3 +140,13 @@ class TestPlanningTemplatesShippedSkills:
         )
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_FALLBACK:
             assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
+
+    def test_planning_jinja_has_design_section(self, tmp_path: Path) -> None:
+        prompt = _shared_render_planning(False, tmp_path=tmp_path)
+        _assert_design_section_hints(prompt)
+
+    def test_planning_fallback_jinja_has_design_section(self, tmp_path: Path) -> None:
+        prompt = _shared_render_planning(
+            False, template="planning_fallback.jinja", tmp_path=tmp_path
+        )
+        _assert_design_section_hints_fallback(prompt)

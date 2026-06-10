@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from pydantic import ConfigDict, Field
 
+from ralph.mcp.artifacts.plan._acceptance_criteria import (
+    AcceptanceCriteria,
+    AcceptanceCriterion,
+)
 from ralph.mcp.artifacts.plan._critical_files import CriticalFiles
 from ralph.mcp.artifacts.plan._critical_primary_file import CriticalPrimaryFile
+from ralph.mcp.artifacts.plan._design_section import DesignSection
 from ralph.mcp.artifacts.plan._edit_area import EditArea
 from ralph.mcp.artifacts.plan._plan_step import PlanStep
 from ralph.mcp.artifacts.plan._reference_file import ReferenceFile
@@ -30,8 +35,11 @@ class ParallelPlanItem(RalphBaseModel):
 
 
 __all__ = [
+    "AcceptanceCriteria",
+    "AcceptanceCriterion",
     "CriticalFiles",
     "CriticalPrimaryFile",
+    "DesignSection",
     "EditArea",
     "ParallelPlanItem",
     "PlanStep",
