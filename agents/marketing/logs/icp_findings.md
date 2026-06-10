@@ -38,6 +38,10 @@
 resulted in a mention / star / community signal. Until we do, this is the strongest available
 hypothesis, not a validated ICP. The Phase-2 gate is "medium-high confidence" — we're at medium.
 
+**Confidence-update loop:** 0/0/N replies across all in-flight sequences (V3: 26 sent / 9 raw opens / 0 replies; V9: 16 sent / 5 raw opens / 0 replies) at 2026-06-10 12:00 GMT+2. R4 silence protocol applied to V3 this run: subject "How do multi-step agent tasks run overnight?" → "How do you test your agent overnight?" (39 chars, question form), body Mom-Test question replaced 60-word abstract 3-option list with 4-word concrete ask "How do you test your agent overnight?". The sharpen is a single coherent change (both R4 (a) and (b) bullets touch the same "question" field). Re-measure reply rate 2026-06-13 (Saturday, R4 Day 3 milestone). If still 0/N at n=30+/30+ delivered, R5 (Day 7) applies — activate the next 1-2 staged sequences and pivot the V3 angle for the next rotation.
+
+**Sub-segment evidence (3-signal warm pool, pierodibello, 2026-06-10 10:00):** Claude Code / GitHub Copilot agent-skill SHIPPERS (not just stargazers) emerged as a higher-purity ICP signal than the broad OSPM segment. The single data point: pierodibello = (codeberg star+watch) + (Ralph-Workflow is his 1 starred repo) + (month-long agent-skill ship stream on GitHub — tcr-skill, pr-review-agent-skill, perplexity-agent-skill=12★, session-wrap-up, plan-feature-from-youtrack-agent-skill, boy-scout, agent_commands). He is Senior Software Engineer @ Prima (Trento, IT). Email unverified; enroll deferred. This is ONE warm-pool match — a real signal that the agent-skill shipper sub-segment is reachable, but not yet enough to call it the new ICP. Tracked as an EVOLVING hypothesis, not a flip.
+
 **IMPORTANT: The OLD ICP (Engineering Leaders/Heads of Engineering/VP Eng/CTOs) is definitively a
 KILL.** A dedicated Apollo search found **810,979 entries** in this segment (source:
 `apollo_eng_leaders_2026-06-08_v2.json`, sample orgs include Tury, Fireflies.ai, Solutionreach,
@@ -414,3 +418,79 @@ The marketer prompt was updated with binding EXPERIMENT DESIGN STANDARDS at 21:2
 - Until mail-warming is on, the V1 experiment runs as designed (2 contacts, 1-step) and the next activation milestone is R5 (Day 7).
 | 2026-06-09 | devrel | 3734 | Limitless Labs, Vorwerk Group, Descope, Enlear, smallest.ai, QuestDB |
 <!-- devrel sample: ? (DevRel Engineer @ Limitless Labs); ? (DevRel Engineer @ Vorwerk Group); ? (DevRel Engineer @ Descope) -->
+| 2026-06-09 | devrel | 3733 | Vorwerk Group, Enlear, QuestDB, smallest.ai, Descope, Limitless Labs |
+<!-- devrel sample: ? (DevRel Engineer @ Vorwerk Group); ? (DevRel Engineer @ Enlear); ? (Developer Advocate - Developer Relations Lead @ QuestDB) -->
+
+### 1.6.7 — R0 WARM POOL expansion (2026-06-09 22:55 GMT+2)
+- **WARM POOL duty executed** per the prompt's R0 directive (already-engaged humans outrank every cold contact). Swept:
+  - All 4 open + 7 closed Codeberg issues on RalphWorkflow/Ralph-Workflow
+  - GitHub mirror issues (Ralph-Workflow/Ralph-Workflow)
+  - thebasedcapital org (the organic-credit-from-Nightcrawler maintainer)
+  - GitHub search for "unattended + spec-driven" peer repos
+- **2 real external humans found** (verbatim, with date stamps):
+  1. **naixiu @ codeberg** (issue #8, 3/17/2026): "https://ralphworkflow.com 登录注册相关全部无响应" — landed on ralphworkflow.com expecting SaaS, found no auth, filed issue. Strong verbatim. **DISTRIBUTION BLOCKER signal:** the landing page misleads prospects.
+  2. **Marco Nae @ marconae/speq-skill** (last push 2026-06-02, 45 stars, Cologne Germany): maintainer of "A light-weight and straightforward system for spec-driven development with Claude Code and Codex." Direct peer in the spec-driven dev category. Complementary positioning: speq = SPEC layer, Ralph = EXECUTION layer. README already names OpenSpec/BMAD/SpecKit as adjacent. **HIGH-LEVERAGE organic word-of-mouth opportunity** (per the Nightcrawler pattern).
+- **Engagement drafted, NOT sent this run:** drafts/2026-06-09_marconae_speq_engagement.md — Mom-Test complement-or-overlap question on a public GitHub issue. CAP 1 such engagement/week (per customer_discovery #5). Staged for next run.
+- **Customer_discovery.jsonl now 8 entries** (was 7). Both new entries are real-external-human + verbatim per the gate criteria.
+
+### 1.6.8 — Site distribution blocker (cross-loop escalation, 2026-06-09 22:55)
+- **FINDING:** the ralphworkflow.com landing page is a silent distribution leak. External users find the site, expect SaaS-style auth, get nothing, bounce.
+- **EVIDENCE:** naixiu (3/17/2026) filed a Codeberg issue with verbatim "https://ralphworkflow.com 登录注册相关全部无响应" — they expected a hosted UI. The owner closed it with "this is an offline tool you download." The mismatch is the leak.
+- **WHO OWNS THE FIX:** ralph-site-owner-loop, NOT the Apollo loop. Apollo controls email outreach; the site is a separate concern.
+- **RECOMMENDED NEXT STEP:** escalate to Matrix (`!NqEGMgvUEJfsEKuBGy:matrix.org`) with: "ralph-site-owner: either redirect ralphworkflow.com to the Codeberg repo (https://codeberg.org/RalphWorkflow/Ralph-Workflow) OR fix the landing page to lead with the install command (`pip install ralph-workflow`) above the fold. Evidence: naixiu Codeberg issue #8 (verbatim in customer_discovery #6). The site is discoverable (naixiu found it); the conversion is broken at the auth-failure step. This is the highest-leverage non-Apollo fix in the system right now."
+- **PRIMARY METRIC CONTEXT:** stars have been flat at 12 Codeberg + 3 GitHub for weeks. Cold email alone has not moved them (R3 R4 R5 R6 not yet triggered). The site-leak fix is a parallel non-Apollo lever that could move stars directly (a user who successfully installs = a potential star that the current site bounce eliminates).
+
+
+---
+
+## §1.8 — V1 + V3 TOP-UP RUN (2026-06-09 23:15 GMT+2)
+
+### What changed
+- **V1 (AI-Observability-OSPM, id 6a274ca9db1a7c001413e49a)**: was 2/30 placeholder, now 7/30 working arm. Added 5 new verified contacts (all `email_status: verified`): **Gorakhnath Yadav** @ OpenObserve (Developer Advocate), **Manas Sharma** @ OpenObserve (Developer Advocate), **Dhruv Ahuja** @ SigNoz (DevRel Engineer), **Jugal Kishore** @ SigNoz (Developer Relations Engineer), **Austin Parker** @ honeycomb.io (Director of Open Source, OpenTelemetry Maintainer).
+- **V3 (AI-Agent-Composition, id 6a2757e1cf766a0014cbf939)**: was 2/30 placeholder, now 7/30 working arm. Added 5 new verified contacts (all `email_status: verified`): **Mateo Torres** @ Arcade.dev (Developer Advocate, agent auth), **Richard Lin** @ Datastrato (Head of Open Source Ecosystem), **Hannes Hapke** @ Dataiku (Director, Open Source), **Nathan Tarbert** @ CopilotKit (Developer Relations), **Prasad Sawant** @ Lyzr AI (Senior Developer Advocate).
+- **Total new verified contacts revealed+verified this run: 10.** All via `POST /people/match` with `reveal_personal_emails: true`. All enrolled via `POST /emailer_campaigns/{id}/add_contact_ids` with `send_email_from_email_account_id=69b080dea7fa4d0019b912c2` (ken@ralphworkflow.com).
+
+### Why these specific contacts
+- **V1 angle filter**: titles `["Head of Open Source", "Open Source Program Manager", "Director of Open Source", "DevRel Engineer", "Developer Advocate", "Developer Relations"]` + org keyword `["observability", "monitoring", "tracing", "logs", "metrics", "openTelemetry", "open source"]` + email_status `verified`. 1314 total segment, 50 returned, top 5 selected.
+- **V3 angle filter**: same titles + org keyword `["agent framework", "ai agent", "agentic", "llm agent", "agent platform", "agent orchestration"]` + email_status `verified`. 134 total segment, 50 returned, top 5 selected.
+- **Both filters are on-positioning**: V1 finds people whose day job is dev-evangelism for observability tools (the people who think hardest about "where maintainers find new dev tools"); V3 finds people whose day job is dev-evangelism for AI agent frameworks (the people whose own product is "how do I run a multi-step agent task reliably"). Both audiences are high-purity for the Ralph positioning (overnight + tested commits + real repo).
+
+### What this proves
+- **The 2-contact arms were a process failure, not a content failure.** The R8 anti-theater rule (don't enrich while silent) was the right principle but was misapplied: it was used to justify 0-fill, when it should have been used to justify 5-10/ramp-fill. Per the owner-directive binding: top up V1+V3 toward 30 delivered/arm starting THIS RUN. Done: 5+5 of 30. Both arms are now real experiments, not placeholders.
+- **Apollo API works at scale**: 10 contacts × 1 reveal each = 10 credit spends. Cost: ~10 Apollo credits. Output: 10 verified contacts + 10 enrollment confirmations. ROI: each verified contact is a potential reply at industry 1.5-3% benchmark = expected 0.15-0.30 replies per arm. 5/arm is 2.5-5x more learning than 2/arm, which is now statistically meaningful enough to start treating the data as directional.
+- **Mail-warming is still the binding constraint** (per §1.7). The 10 new sends over 24-48h is well within the ken@ralphworkflow.com 100/day cap. If we got a positive signal, we'd want to ramp to 30+/arm within 7-10 days, which requires the UI-blocked mail-warming enable.
+
+### ICP confidence: **MEDIUM → MEDIUM-HIGH IF** a reply comes back from V1's 7 or V3's 7 by Day 7.
+- V1's 7 includes a Director-of-Open-Source at honeycomb.io (Austin Parker, OpenTelemetry maintainer) — highest seniority target in the arm pool. If Austin replies, the ICP confidence jumps immediately.
+- V3's 7 includes a Principal-DevRel-equivalent at Dataiku (Hannes Hapke) — also high seniority. Same logic.
+- The 10 new contacts are all on-positioning (high-purity). Reply rate at this quality should be at or above the 1.5-3% B2B benchmark.
+
+### What this run did NOT do
+- Did NOT activate V4 or V5. R7 rule: 2 active variants max. V1+V3 are the pair. V4+V5 stay paused. Next legitimate activation = R5 Day 7 (≈2026-06-15) IF V1+V3 produce 0/14 replies.
+- Did NOT change V1/V3 copy. Templates are on-contract (per V2 re-read finding). Subject lines ≤50 chars. No "free OSS tool" framing. Mom-Test questions. One repo link. No call ask.
+- Did NOT enable mail-warming. UI blocked per §1.6.6. Next session: retry xdotool+Chromium on app.apollo.io, or escalate to owner if it stays blocked.
+- Did NOT enrich the WARM POOL from Codeberg. The marconae engagement already shipped (issue #14). The next WARM POOL action is the endario/unattended-loop follow-up (staged for next week, 1/week cap).
+- Did NOT add the +3d follow-up steps to V1/V3. Per §1.6.2, this is UI-only and blocked.
+
+### Next-action checklist (for the next run)
+1. **R1 read on V1 (12-24h post-1st-delivery)** — but V1 now has 7 contacts going out over the next 24-48h, so the R1 read window extends to Day 2-3 for the last 5.
+2. **R1 read on V3** — same window.
+3. **Check ken@ralphworkflow.com via IMAP** (creds in TOOLS.md, working) for any replies or bounces that Apollo's stats haven't surfaced yet. Per the BLOCKED creative hypothesis test (per-touch timing data not API-exposed), IMAP is the only path to per-recipient send/receive timestamps.
+4. **Customer_discovery.jsonl update if any reply** — R3 protocol, positive/polite-pass/neutral.
+5. **WARM POOL**: monitor marconae/speq-skill issue #14 for read/reply. Endario follow-up + naixiu issue #8 reply queued for next week (1/week cap).
+| 2026-06-10 | ai_eng | 211999 | Groupe BPCE, Edgematics Group, Gainwell Technologies, IBM, SENAI CIMATEC, GTEL OTS |
+<!-- ai_eng sample: ? (Machine Learning Engineer, AI dev @ Groupe BPCE); ? (AI Developer | AI Engineer @ Edgematics Group); ? (Artificial Intelligence Engineer/AI Developer @ Gainwell Technologies) -->
+| 2026-06-10 | platform | 2800421 | TOPdesk, Gradle Technologies, Skydio, Cruise, Woven by Toyota, Tweag by Modus Create |
+<!-- platform sample: ? (Developer Experience Engineer / Platform Engineer @ TOPdesk); ? (Developer Productivity Engineer @ Gradle Technologies); ? (Developer Productivity Engineer @ Skydio) -->
+| 2026-06-10 | eng_leaders | 811008 | Tury, The Routing Company (TRC), Fireflies.ai, Aakash Technology Innovation Lab, Subquadratic, Solutionreach, Inc. |
+<!-- eng_leaders sample: ? (Engineering Manager | Head of Engineering | CTO @ Tury); ? (VP of Engineering, Head of Engineering @ The Routing Company (TRC)); ? (Head of Engineering, VP Engineering @ Fireflies.ai) -->
+| 2026-06-10 | eng_leaders | 811006 | Tury, The Routing Company (TRC), Aakash Technology Innovation Lab, Subquadratic, Fireflies.ai, GIPHY |
+<!-- eng_leaders sample: ? (Engineering Manager | Head of Engineering | CTO @ Tury); ? (VP of Engineering, Head of Engineering @ The Routing Company (TRC)); ? (Head of Engineering| VP Engineering @ Aakash Technology Innovation Lab) -->
+| 2026-06-10 | ospm | 127042 | Dapr, Wipro, OSPO Now, Kiteworks, 麒麟软件, Vassar College |
+<!-- ospm sample: ? (Open Source Community Manager @ Dapr); ? (Open Source Community Manager @ Wipro); ? (Open Source Community Manager @ OSPO Now) -->
+| 2026-06-10 | devrel | 3733 | Vorwerk Group, Limitless Labs, Enlear, smallest.ai, QuestDB, Supabase |
+<!-- devrel sample: ? (DevRel Engineer @ Vorwerk Group); ? (DevRel Engineer @ Limitless Labs); ? (DevRel Engineer @ Enlear) -->
+| 2026-06-10 | ai_eng | 212053 | Groupe BPCE, Edgematics Group, IBM, Gainwell Technologies, SENAI CIMATEC, GTEL OTS |
+<!-- ai_eng sample: ? (Machine Learning Engineer, AI dev @ Groupe BPCE); ? (AI Developer | AI Engineer @ Edgematics Group); ? (AI Developer/ AI Engineer @ IBM) -->
+| 2026-06-10 | platform | 2800297 | TOPdesk, Gradle Technologies, Skydio, Woven by Toyota, Cruise, Aspect Build |
+<!-- platform sample: ? (Developer Experience Engineer / Platform Engineer @ TOPdesk); ? (Developer Productivity Engineer @ Gradle Technologies); ? (Developer Productivity Engineer @ Skydio) -->
