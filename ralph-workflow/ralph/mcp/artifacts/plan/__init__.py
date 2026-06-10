@@ -18,8 +18,9 @@ from ralph.mcp.artifacts.plan._renderers import (
 )
 from ralph.mcp.artifacts.plan._section_models import (
     AcceptanceCriteria, AcceptanceCriterion, CriticalFiles, CriticalPrimaryFile, DesignSection,
-    EditArea, ParallelPlanItem, PlanArtifactDict, PlanningProfile, ReferenceFile, RiskMitigation,
-    ScopeCategory, ScopeItem, SkillsMcp, StepTarget, Summary, VerificationStep,
+    EditArea, EvidenceRef, ExpectedEvidence, ParallelPlanItem, PlanArtifactDict, PlanConstraints,
+    PlanningProfile, ReferenceFile, RiskMitigation, ScopeCategory, ScopeItem, SkillsMcp,
+    StepTarget, Summary, VerificationStep,
 )
 from ralph.mcp.artifacts.plan._section_registry import (
     PLAN_ARTIFACT_TYPE, PLAN_DRAFT_SCHEMA_VERSION, PLAN_SECTION_LIST_ITEM_MODELS,
@@ -37,15 +38,15 @@ from ralph.mcp.artifacts.plan._validation import (
 )
 __all__ = [
     "AcceptanceCriteria", "AcceptanceCriterion", "CriticalFiles", "CriticalPrimaryFile",
-    "DesignSection", "EditArea", "ParallelPlanItem", "PLAN_ARTIFACT_PATH", "PLAN_ARTIFACT_TYPE",
-    "PLAN_DRAFT_PATH", "PLAN_DRAFT_SCHEMA_VERSION", "PLAN_MARKDOWN_PATH",
-    "PLAN_SECTION_LIST_ITEM_MODELS", "PLAN_SECTION_NAMES", "PLAN_SECTION_OBJECT_MODELS",
-    "PlanArtifact", "PlanArtifactDict", "PlanArtifactValidationError", "PlanStep",
-    "PlanningProfile", "ReferenceFile", "RiskMitigation", "ScopeCategory", "ScopeItem",
-    "SectionMode", "SkillsMcp", "StepTarget", "StepType", "Summary", "VerificationStep",
-    "delete_plan_draft", "extract_plan_payload", "extract_plan_skill_names", "finalize_plan_draft",
-    "insert_plan_step", "is_noop_plan", "load_plan_artifact_sections", "load_plan_draft",
-    "merge_plan_section", "new_plan_draft", "normalize_plan_artifact_content",
+    "DesignSection", "EditArea", "EvidenceRef", "ExpectedEvidence", "ParallelPlanItem",
+    "PLAN_ARTIFACT_PATH", "PLAN_ARTIFACT_TYPE", "PLAN_DRAFT_PATH", "PLAN_DRAFT_SCHEMA_VERSION",
+    "PLAN_MARKDOWN_PATH", "PLAN_SECTION_LIST_ITEM_MODELS", "PLAN_SECTION_NAMES",
+    "PLAN_SECTION_OBJECT_MODELS", "PlanArtifact", "PlanArtifactDict", "PlanArtifactValidationError",
+    "PlanConstraints", "PlanStep", "PlanningProfile", "ReferenceFile", "RiskMitigation",
+    "ScopeCategory", "ScopeItem", "SectionMode", "SkillsMcp", "StepTarget", "StepType", "Summary",
+    "VerificationStep", "delete_plan_draft", "extract_plan_payload", "extract_plan_skill_names",
+    "finalize_plan_draft", "insert_plan_step", "is_noop_plan", "load_plan_artifact_sections",
+    "load_plan_draft", "merge_plan_section", "new_plan_draft", "normalize_plan_artifact_content",
     "parse_plan_payload_lenient", "parse_plan_payload_strict", "remove_plan_step",
     "render_plan_markdown", "replace_plan_step", "requires_targets", "requires_verify_handle",
     "save_plan_draft", "validate_plan_section", "write_plan_markdown",

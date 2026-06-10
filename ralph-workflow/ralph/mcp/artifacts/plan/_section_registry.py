@@ -16,6 +16,7 @@ from ralph.mcp.artifacts.plan._section_models import (
     CriticalFiles,
     DesignSection,
     ParallelPlanItem,
+    PlanConstraints,
     PlanStep,
     RiskMitigation,
     SkillsMcp,
@@ -38,6 +39,7 @@ PLAN_SECTION_OBJECT_MODELS: dict[str, type[RalphBaseModel]] = {
     "summary": Summary,
     "skills_mcp": SkillsMcp,
     "critical_files": CriticalFiles,
+    "constraints": PlanConstraints,
     "design": DesignSection,
 }
 

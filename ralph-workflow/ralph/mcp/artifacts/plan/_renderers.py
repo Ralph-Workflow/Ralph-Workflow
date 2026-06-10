@@ -42,6 +42,7 @@ def render_plan_markdown(content: Mapping[str, object]) -> str:
     lines.extend(_render_skills_mcp_section(plan.get("skills_mcp")))
     lines.extend(_render_steps_section(plan.get("steps")))
     lines.extend(_render_critical_files_section(plan.get("critical_files")))
+    lines.extend(_render_constraints_section(plan.get("constraints")))
     lines.extend(_render_risks_section(plan.get("risks_mitigations")))
     lines.extend(_render_design_section(plan.get("design")))
     lines.extend(_render_verification_section(plan.get("verification_strategy")))
@@ -149,7 +150,7 @@ def _render_steps_section(steps: object) -> list[str]:
     return lines
 
 
-def _render_step_entry(step: Mapping[str, object]) -> list[str]:
+def _render_step_entry(step: Mapping[str, object]) -> list[str]:  # noqa: PLR0912 - per-step field rendering
     number = step.get("number", "?")
     title = step.get("title", "Untitled step")
     lines = ["", f"{number}. **{title}**"]
@@ -167,6 +168,104 @@ def _render_step_entry(step: Mapping[str, object]) -> list[str]:
             action = target.get("action")
             if isinstance(path, str) and isinstance(action, str):
                 lines.extend(["", f"   - `{path}` ({action})"])
+
+    step_type = step.get("step_type")
+    if isinstance(step_type, str) and step_type and step_type != "action":
+        lines.extend(["", f"   - step_type: {step_type}"])
+    priority = step.get("priority")
+    if isinstance(priority, str) and priority.strip():
+        lines.extend(["", f"   - priority: {priority.strip()}"])
+    depends_on = step.get("depends_on")
+    if isinstance(depends_on, list) and depends_on:
+        rendered = [str(d) for d in depends_on if isinstance(d, (int, str))]
+        if rendered:
+            lines.extend(["", f"   - depends_on: [{', '.join(rendered)}]"])
+    satisfies = step.get("satisfies")
+    if isinstance(satisfies, list) and satisfies:
+        rendered = [str(s) for s in satisfies if isinstance(s, str) and s.strip()]
+        if rendered:
+            lines.extend(["", f"   - satisfies: [{', '.join(rendered)}]"])
+    expected_evidence = step.get("expected_evidence")
+    if isinstance(expected_evidence, list) and expected_evidence:
+        rendered = [_format_evidence_ref(entry) for entry in expected_evidence]
+        rendered = [r for r in rendered if r]
+        if rendered:
+            lines.extend(["", "   - expected_evidence:"])
+            for entry in rendered:
+                lines.extend(["", f"     - {entry}"])
+    verify_command = step.get("verify_command")
+    if isinstance(verify_command, str) and verify_command.strip():
+        lines.extend(["", f"   - verify_command: `{verify_command.strip()}`"])
+    location = step.get("location")
+    if isinstance(location, str) and location.strip():
+        lines.extend(["", f"   - location: `{location.strip()}`"])
+    return lines
+
+
+def _format_evidence_ref(ref: object) -> str:
+    """Render an ``EvidenceRef`` (or dict/legacy string) as ``kind: ref``.
+
+    Accepts EvidenceRef instances, plain dicts with ``kind`` / ``ref``
+    keys, and bare strings (treated as ``kind='file'`` for legacy
+    compatibility). Returns an empty string for unrecognized shapes.
+    """
+    if isinstance(ref, str):
+        stripped = ref.strip()
+        if not stripped:
+            return ""
+        return f"file: {stripped}"
+    kind: object = getattr(ref, "kind", None)
+    ref_value: object = getattr(ref, "ref", None)
+    if kind is None and isinstance(ref, dict):
+        kind = ref.get("kind")
+        ref_value = ref.get("ref")
+    if not isinstance(kind, str) or not isinstance(ref_value, str):
+        return ""
+    stripped_ref = ref_value.strip()
+    if not stripped_ref:
+        return ""
+    return f"{kind}: {stripped_ref}"
+
+
+def _constraints_section_empty(payload: object) -> bool:
+    """Return True when the constraints payload carries no displayable content."""
+    if not isinstance(payload, dict):
+        return True
+    for key in ("must_not_break", "must_keep_working"):
+        value = payload.get(key)
+        if isinstance(value, list) and value:
+            return False
+    for key in ("performance_budget", "security_posture"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return False
+    return True
+
+
+def _render_constraints_section(constraints: object) -> list[str]:
+    """Render the top-level Project Constraints section, or [] when empty."""
+    if _constraints_section_empty(constraints):
+        return []
+    assert isinstance(constraints, dict)
+    lines = ["", "## Project Constraints"]
+    must_not_break = constraints.get("must_not_break")
+    if isinstance(must_not_break, list) and must_not_break:
+        lines.extend(["", "- must_not_break:"])
+        for entry in must_not_break:
+            if isinstance(entry, str) and entry.strip():
+                lines.extend(["", f"  - {entry.strip()}"])
+    must_keep_working = constraints.get("must_keep_working")
+    if isinstance(must_keep_working, list) and must_keep_working:
+        lines.extend(["", "- must_keep_working:"])
+        for entry in must_keep_working:
+            if isinstance(entry, str) and entry.strip():
+                lines.extend(["", f"  - {entry.strip()}"])
+    performance_budget = constraints.get("performance_budget")
+    if isinstance(performance_budget, str) and performance_budget.strip():
+        lines.extend(["", f"- performance_budget: {performance_budget.strip()}"])
+    security_posture = constraints.get("security_posture")
+    if isinstance(security_posture, str) and security_posture.strip():
+        lines.extend(["", f"- security_posture: {security_posture.strip()}"])
     return lines
 
 

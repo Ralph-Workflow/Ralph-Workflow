@@ -18,6 +18,7 @@ def format_plan_for_execution(content: str) -> str:
         _format_skills_mcp_section(plan),
         _format_steps_section(plan),
         _format_critical_files_section(plan),
+        _format_constraints_section(plan),
         _format_risks_section(plan),
         _format_design_section(plan),
         _format_verification_section(plan),
@@ -130,7 +131,7 @@ def _bullet_lines(items: object, text_key: str) -> list[str]:
     ]
 
 
-def _format_steps_section(plan: dict[str, object]) -> str:
+def _format_steps_section(plan: dict[str, object]) -> str:  # noqa: PLR0912 - per-step field rendering
     steps = plan.get("steps")
     if not isinstance(steps, list) or not steps:
         return ""
@@ -145,6 +146,94 @@ def _format_steps_section(plan: dict[str, object]) -> str:
         lines.append(f"{number}. {title}")
         if content_text:
             lines.append(f"   {content_text}")
+        step_type = step.get("step_type")
+        if isinstance(step_type, str) and step_type and step_type != "action":
+            lines.append(f"   - step_type: {step_type}")
+        priority = step.get("priority")
+        if isinstance(priority, str) and priority.strip():
+            lines.append(f"   - priority: {priority.strip()}")
+        depends_on = step.get("depends_on")
+        if isinstance(depends_on, list) and depends_on:
+            rendered = [str(d) for d in depends_on if isinstance(d, (int, str))]
+            if rendered:
+                lines.append(f"   - depends_on: [{', '.join(rendered)}]")
+        satisfies = step.get("satisfies")
+        if isinstance(satisfies, list) and satisfies:
+            rendered = [str(s) for s in satisfies if isinstance(s, str) and s.strip()]
+            if rendered:
+                lines.append(f"   - satisfies: [{', '.join(rendered)}]")
+        expected_evidence = step.get("expected_evidence")
+        if isinstance(expected_evidence, list) and expected_evidence:
+            rendered = [_format_evidence_ref_for_execution(entry) for entry in expected_evidence]
+            rendered = [r for r in rendered if r]
+            if rendered:
+                lines.append("   - expected_evidence:")
+                lines.extend(f"     - {entry}" for entry in rendered)
+        verify_command = step.get("verify_command")
+        if isinstance(verify_command, str) and verify_command.strip():
+            lines.append(f"   - verify_command: `{verify_command.strip()}`")
+        location = step.get("location")
+        if isinstance(location, str) and location.strip():
+            lines.append(f"   - location: `{location.strip()}`")
+    return "\n".join(lines)
+
+
+def _format_evidence_ref_for_execution(ref: object) -> str:
+    """Render an evidence entry as ``kind: ref`` for the executor-friendly formatter."""
+    if isinstance(ref, str):
+        stripped = ref.strip()
+        if not stripped:
+            return ""
+        return f"file: {stripped}"
+    kind: object = getattr(ref, "kind", None)
+    ref_value: object = getattr(ref, "ref", None)
+    if kind is None and isinstance(ref, dict):
+        kind = ref.get("kind")
+        ref_value = ref.get("ref")
+    if not isinstance(kind, str) or not isinstance(ref_value, str):
+        return ""
+    stripped_ref = ref_value.strip()
+    if not stripped_ref:
+        return ""
+    return f"{kind}: {stripped_ref}"
+
+
+def _format_constraints_section(plan: dict[str, object]) -> str:
+    constraints = plan.get("constraints")
+    if not isinstance(constraints, dict):
+        return ""
+    lines: list[str] = []
+    must_not_break = constraints.get("must_not_break")
+    if isinstance(must_not_break, list) and must_not_break:
+        rendered = [
+            entry.strip()
+            for entry in must_not_break
+            if isinstance(entry, str) and entry.strip()
+        ]
+        if rendered:
+            lines.append("Project Constraints:")
+            lines.append(f"- must_not_break: {', '.join(rendered)}")
+    must_keep_working = constraints.get("must_keep_working")
+    if isinstance(must_keep_working, list) and must_keep_working:
+        rendered = [
+            entry.strip()
+            for entry in must_keep_working
+            if isinstance(entry, str) and entry.strip()
+        ]
+        if rendered:
+            if not lines:
+                lines.append("Project Constraints:")
+            lines.append(f"- must_keep_working: {', '.join(rendered)}")
+    performance_budget = constraints.get("performance_budget")
+    if isinstance(performance_budget, str) and performance_budget.strip():
+        if not lines:
+            lines.append("Project Constraints:")
+        lines.append(f"- performance_budget: {performance_budget.strip()}")
+    security_posture = constraints.get("security_posture")
+    if isinstance(security_posture, str) and security_posture.strip():
+        if not lines:
+            lines.append("Project Constraints:")
+        lines.append(f"- security_posture: {security_posture.strip()}")
     return "\n".join(lines)
 
 

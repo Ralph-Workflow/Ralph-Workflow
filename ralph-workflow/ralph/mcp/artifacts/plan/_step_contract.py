@@ -3,8 +3,7 @@
 The four members match the previously free-form ``Literal["file_change",
 "action", "research", "verify"]`` field on ``PlanStep``. The default is
 ``StepType.ACTION`` (``"action"``) to preserve the existing serialized
-output (the format doc claims the default is ``"file_change"`` — that
-drift is intentional and is called out as ``R-PLAN-04``).
+output; drift is fixed in this commit; ``R-PLAN-04`` is closed.
 
 The two helpers ``requires_targets`` and ``requires_verify_handle`` are
 the single source of truth for which step types bind to which

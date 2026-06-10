@@ -32,8 +32,10 @@ from ralph.mcp.artifacts.plan._section_models import (
     CriticalFiles,
     DesignSection,
     PlanArtifactDict,
+    PlanConstraints,
     PlanStep,
     RiskMitigation,
+    ScopeItem,
     SkillsMcp,
     Summary,
     VerificationStep,
@@ -44,6 +46,7 @@ from ralph.mcp.artifacts.plan._section_registry import (
     PLAN_SECTION_OBJECT_MODELS,
     SectionMode,
 )
+from ralph.mcp.artifacts.plan._step_contract import StepType
 from ralph.mcp.artifacts.plan.plan_artifact_validation_error import (
     PlanArtifactValidationError,
 )
@@ -52,6 +55,65 @@ from ralph.pydantic_compat import RalphBaseModel
 
 if TYPE_CHECKING:
     from ralph.pipeline.work_unit import WorkUnit
+
+# Closed intent_verb -> allowed ScopeCategory mapping. Every (verb, category)
+# pair encountered in real engineering plans must be in the allowed set;
+# otherwise the plan is rejected at normalize_plan_artifact_content time.
+# The categories listed in each verb's allowed set are the closed ScopeCategory
+# Literal values: bugfix, feature, refactor, test, docs, infra, migration,
+# security, performance, cleanup, research, unknown, file_change, prompt,
+# other.
+_INTENT_VERB_ALLOWED_CATEGORIES: dict[str, frozenset[str]] = {
+    "fix": frozenset({"bugfix", "file_change", "other", "unknown"}),
+    "add": frozenset(
+        {
+            "feature",
+            "infra",
+            "test",
+            "security",
+            "performance",
+            "docs",
+            "migration",
+            "refactor",
+            "cleanup",
+            "other",
+            "file_change",
+            "prompt",
+            "unknown",
+        }
+    ),
+    "refactor": frozenset({"refactor", "cleanup", "file_change", "other", "unknown"}),
+    "migrate": frozenset({"migration", "refactor", "other", "file_change", "unknown"}),
+    "document": frozenset({"docs", "other", "unknown"}),
+    "investigate": frozenset({"research", "other", "unknown"}),
+    "improve": frozenset(
+        {
+            "refactor",
+            "feature",
+            "performance",
+            "test",
+            "security",
+            "docs",
+            "infra",
+            "cleanup",
+            "other",
+            "file_change",
+            "prompt",
+            "unknown",
+        }
+    ),
+    "configure": frozenset({"infra", "security", "other", "unknown"}),
+    "remove": frozenset({"cleanup", "refactor", "other", "file_change", "unknown"}),
+}
+
+# Shell-invocation denylist for VerificationStep.method. Each prefix is
+# startswith() matched; the trailing space on each entry ensures legitimate
+# commands like 'bash ./scripts/check.sh' (prefix 'bash ') are NOT blocked.
+_SHELL_INVOCATION_PREFIXES: tuple[str, ...] = (
+    "bash -c ",
+    "sh -c ",
+    "eval ",
+)
 
 
 class PlanArtifact(RalphBaseModel):
@@ -64,6 +126,8 @@ class PlanArtifact(RalphBaseModel):
     steps: list[PlanStep] = Field(..., min_length=1)
     critical_files: CriticalFiles
     risks_mitigations: list[RiskMitigation] = Field(..., min_length=1)
+    constraints: PlanConstraints | None = None
+    noop: bool | None = Field(default=None, exclude=True)
     design: DesignSection | None = None
     verification_strategy: list[VerificationStep] = Field(..., min_length=1)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
@@ -71,12 +135,29 @@ class PlanArtifact(RalphBaseModel):
 
     @model_validator(mode="after")
     def _validate_step_ac_cross_references(self) -> PlanArtifact:
-        """Cross-validate the 2-way step<->acceptance-criterion link.
+        """Cross-validate the 2-way step<->acceptance-criterion link and 3 cross-section invariants.
 
         Each step's ``satisfies`` list must reference an AC id that exists on
         the plan, and each AC's ``satisfied_by_steps`` list must reference a
         real step number. Orphan links are rejected so the executor never
         consumes a stale or broken AC<->step link.
+
+        After the cross-reference check, four additional invariants are
+        enforced (each is a hard ``PlanArtifactValidationError``):
+
+        1. ``summary.intent_verb`` -> ``scope_item.category`` compatibility.
+           Every scope item whose category is NOT in the verb's allowed set
+           is rejected with a message naming the offending text. The check
+           skips when ``intent_verb`` is empty (the field is optional).
+        2. ``parallel_plan`` and ``work_units`` are mutually exclusive. A
+           plan that declares both raises a validation error.
+        3. ``verification_strategy[*].method`` must not invoke a shell
+           interpreter directly. Three strict ``startswith()`` prefixes are
+           denied: ``bash -c ``, ``sh -c ``, ``eval `` (with trailing
+           space so legitimate invocations like ``bash ./script.sh`` pass).
+        4. ``design.acceptance_criteria`` entries must not reference a
+           ``research`` or ``verify`` step in ``satisfied_by_steps``; only
+           ``file_change`` and ``action`` steps can satisfy an AC.
         """
         criteria: list[AcceptanceCriterion] = _collect_criteria(self.design)
         ac_ids: set[str] = {c.id for c in criteria}
@@ -87,6 +168,35 @@ class PlanArtifact(RalphBaseModel):
 
         _check_satisfies_links(self.steps, criteria, ac_ids)
         _check_satisfied_by_steps_links(criteria, step_numbers)
+
+        # Cross-section invariant 1: intent_verb -> scope_item.category.
+        _check_intent_verb_category_compatibility(
+            self.summary.intent_verb, self.summary.scope_items
+        )
+
+        # Cross-section invariant 2: parallel_plan and work_units are
+        # mutually exclusive.
+        if self.parallel_plan and self.work_units:
+            msg = "plan cannot declare both parallel_plan and work_units; pick one"
+            raise PlanArtifactValidationError(msg)
+
+        # Cross-section invariant 3: shell-invocation guard on verification.
+        for step in self.verification_strategy:
+            method = step.method
+            for prefix in _SHELL_INVOCATION_PREFIXES:
+                if method.startswith(prefix):
+                    msg = (
+                        "verification method must not invoke a shell interpreter "
+                        "directly; use the executable path"
+                    )
+                    raise PlanArtifactValidationError(msg)
+
+        # Cross-section invariant 4: research/verify steps cannot satisfy an AC.
+        if criteria:
+            step_type_by_number: dict[int, str] = {
+                s.number: str(s.step_type) for s in self.steps
+            }
+            _check_research_verify_step_references(criteria, step_type_by_number)
         return self
 
     @model_validator(mode="before")
@@ -313,6 +423,62 @@ def _check_satisfied_by_steps_links(
                 msg = (
                     f"acceptance criterion {criterion.id!r} references unknown step "
                     f"number {step_ref}"
+                )
+                raise PlanArtifactValidationError(msg)
+
+
+def _check_intent_verb_category_compatibility(
+    intent_verb: str,
+    scope_items: list[ScopeItem],
+) -> None:
+    """Reject scope items whose category is NOT in the verb's allowed set.
+
+    Skips when ``intent_verb`` is empty (the field is optional; the user
+    has not committed to a closed verb). The full 9-verb x 15-category
+    mapping is documented at the top of this module.
+    """
+    if not intent_verb:
+        return
+    allowed = _INTENT_VERB_ALLOWED_CATEGORIES.get(intent_verb)
+    if allowed is None:
+        return
+    for item in scope_items:
+        category = item.category
+        if category is None:
+            continue
+        if category not in allowed:
+            msg = (
+                f"scope item {item.text!r} has category {category!r} which is "
+                f"incompatible with intent_verb={intent_verb!r}; change the verb to one "
+                f"that admits {category!r} or split into multiple plans"
+            )
+            raise PlanArtifactValidationError(msg)
+
+
+def _check_research_verify_step_references(
+    criteria: list[AcceptanceCriterion],
+    step_type_by_number: dict[int, str],
+) -> None:
+    """Reject ``satisfied_by_steps`` references to research/verify steps.
+
+    Only ``file_change`` and ``action`` steps can satisfy an AC because
+    they produce a concrete, observable change; research and verify
+    steps are exploratory or pure-check and cannot be the authoritative
+    completion signal for an AC.
+    """
+    for criterion in criteria:
+        raw_refs: object = getattr(criterion, "satisfied_by_steps", [])
+        refs: list[int] = (
+            [raw for raw in raw_refs if isinstance(raw, int)]
+            if isinstance(raw_refs, list)
+            else []
+        )
+        for step_ref in refs:
+            step_type = step_type_by_number.get(step_ref)
+            if step_type in (StepType.RESEARCH, StepType.VERIFY):
+                msg = (
+                    "satisfied_by_steps cannot reference a research or verify step; "
+                    f"step {step_ref} is {step_type!r} for criterion {criterion.id!r}"
                 )
                 raise PlanArtifactValidationError(msg)
 

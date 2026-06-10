@@ -128,9 +128,22 @@ These two rules are enforced by the per-step model validator in `ralph.mcp.artif
 
 ## MODULE FAMILY
 
-The plan artifact is implemented as a focused module family under `ralph/mcp/artifacts/plan/`. The public `ralph.mcp.artifacts.plan` package is a thin re-export surface (under 60 lines) that re-exports every public symbol from the seven submodules below. Reading order for a new contributor: `_section_models` → `_section_registry` → `_validation` → `_step_edit` → `_renderers` → `_draft_io` → `_step_contract` → `_noop`.
+The plan artifact is implemented as a focused module family under `ralph/mcp/artifacts/plan/`. The public `ralph.mcp.artifacts.plan` package is a thin re-export surface (under 60 lines) that re-exports every public symbol from the seven submodules below, with two leaf-model submodules (`_evidence_ref`, `_plan_constraints`) imported through `_section_models`. Reading order for a new contributor: `_evidence_ref` → `_plan_constraints` → `_section_models` → `_section_registry` → `_validation` → `_step_edit` → `_renderers` → `_draft_io` → `_step_contract` → `_noop`.
 
 Key new public symbols introduced by the module split (so a cheap model can locate them by name): `PlanArtifactDict` (the canonical `dict[str, object]` alias for normalized plan dicts), `StepType` (StrEnum for the per-step kind), `requires_targets` / `requires_verify_handle` (per-step contract helpers), and `parse_plan_payload_strict` / `parse_plan_payload_lenient` (the canonical envelope-aware decoders shared by `tools/artifact.py` and `plan_format.py`).
+
+## StepType reference
+
+The `steps[*].step_type` field is a closed enum. Pick exactly one:
+
+| Value         | When to use                                                            |
+|---------------|------------------------------------------------------------------------|
+| `file_change` | The step creates, modifies, or deletes one or more source files. (Note: this is NOT the default — the default is action; a file_change step must be declared explicitly and must list every file in targets.) |
+| `action`      | The step runs a non-mutating executor action (a command, a tool call). |
+| `research`    | The step is exploratory and may not produce a code change.             |
+| `verify`      | The step is a pure-verification step (e.g. `run ruff`, `run pytest`) with no file changes. |
+
+Default is action so a step that does not declare step_type is a generic non-mutating executor action; file-modifying steps must explicitly set step_type="file_change" and provide targets.
 
 ## STEP ↔ ACCEPTANCE-CRITERIA LINKING
 

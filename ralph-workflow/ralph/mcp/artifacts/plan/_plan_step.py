@@ -19,6 +19,7 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from ralph.mcp.artifacts.plan._evidence_ref import EvidenceRef
 from ralph.mcp.artifacts.plan._step_contract import (
     StepType,
     requires_targets,
@@ -45,7 +46,7 @@ class PlanStep(RalphBaseModel):
     rationale: str | None = None
     depends_on: list[int] = Field(default_factory=list)
     satisfies: list[str] = Field(default_factory=list)
-    expected_evidence: list[str] = Field(default_factory=list)
+    expected_evidence: list[EvidenceRef] = Field(default_factory=list)
     verify_command: str | None = None
 
     @field_validator("satisfies")
@@ -66,24 +67,40 @@ class PlanStep(RalphBaseModel):
             cleaned.append(stripped)
         return cleaned
 
-    @field_validator("expected_evidence")
+    @field_validator("expected_evidence", mode="before")
     @classmethod
-    def _validate_expected_evidence(cls, value: list[str]) -> list[str]:
-        cleaned: list[str] = []
-        position_by_lowered: dict[str, int] = {}
+    def _validate_expected_evidence(cls, value: object) -> list[EvidenceRef]:
+        """Validate and dedupe ``expected_evidence`` entries.
+
+        Each entry is converted to ``EvidenceRef`` (the model-level
+        before-validator handles bare strings). Dedup is case-insensitive
+        on ``(kind, ref.lower())`` with last-wins so a later
+        ``EvidenceRef`` overrides an earlier one with the same key.
+        The ``_MAX_EVIDENCE_ENTRIES=50`` cap and the per-entry
+        ``max_length=200`` (enforced by ``EvidenceRef``) together bound
+        the size of the evidence list.
+        """
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            msg = "expected_evidence must be a list of EvidenceRef entries"
+            raise ValueError(msg)
+        cleaned: list[EvidenceRef] = []
+        position_by_key: dict[tuple[str, str], int] = {}
         for entry in value:
-            stripped = entry.strip()
-            if not stripped:
+            if isinstance(entry, str) and not entry.strip():
                 continue
-            if len(stripped) > _MAX_EVIDENCE_ENTRY_LENGTH:
-                msg = f"expected_evidence entry exceeds {_MAX_EVIDENCE_ENTRY_LENGTH} chars"
-                raise ValueError(msg)
-            lowered = stripped.lower()
-            if lowered in position_by_lowered:
-                cleaned[position_by_lowered[lowered]] = stripped
+            ref = (
+                entry
+                if isinstance(entry, EvidenceRef)
+                else EvidenceRef.model_validate(entry)
+            )
+            key = (str(ref.kind), ref.ref.lower())
+            if key in position_by_key:
+                cleaned[position_by_key[key]] = ref
                 continue
-            position_by_lowered[lowered] = len(cleaned)
-            cleaned.append(stripped)
+            position_by_key[key] = len(cleaned)
+            cleaned.append(ref)
         if len(cleaned) > _MAX_EVIDENCE_ENTRIES:
             msg = f"expected_evidence has more than {_MAX_EVIDENCE_ENTRIES} entries"
             raise ValueError(msg)

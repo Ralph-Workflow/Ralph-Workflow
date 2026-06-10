@@ -13,6 +13,7 @@ from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.plan import (
     AcceptanceCriterion,
     DesignSection,
+    EvidenceRef,
     PlanArtifact,
     PlanArtifactValidationError,
     PlanStep,
@@ -770,20 +771,13 @@ def test_design_section_render_plan_markdown_preserves_section_order() -> None:
     plan = {
         **_valid_plan(),
         "design": _valid_design_section(),
+        "constraints": {"must_not_break": ["public API"]},
         "parallel_plan": [
             {
                 "id": "unit-a",
                 "description": "Parallel unit A",
                 "edit_area": {"paths": ["src/a/"], "directories": []},
                 "depends_on": [],
-            }
-        ],
-        "work_units": [
-            {
-                "unit_id": "wu-1",
-                "description": "Work unit one",
-                "allowed_directories": ["src/a/"],
-                "dependencies": [],
             }
         ],
     }
@@ -794,11 +788,11 @@ def test_design_section_render_plan_markdown_preserves_section_order() -> None:
         "## Skills and MCPs",
         "## Steps",
         "## Critical Files",
+        "## Project Constraints",
         "## Risks and Mitigations",
         "## Design",
         "## Verification",
         "## Parallel Plan",
-        "## Work Units",
     ]
     positions = [markdown.find(h) for h in headings]
     missing = {h: p for h, p in zip(headings, positions, strict=True) if p < 0}
@@ -1237,7 +1231,7 @@ def test_plan_step_satisfies_validates_regex() -> None:
 
 
 def test_plan_step_expected_evidence_passthrough() -> None:
-    """expected_evidence: blank dropped, case-insensitive dedupe with last-wins."""
+    """Blank dropped; case-insensitive dedupe with last-wins; returns EvidenceRef."""
     step = PlanStep.model_validate(
         {
             "number": 1,
@@ -1248,7 +1242,10 @@ def test_plan_step_expected_evidence_passthrough() -> None:
             "expected_evidence": ["a", "b", " ", "a", "B"],
         }
     )
-    assert step.expected_evidence == ["a", "B"]
+    assert step.expected_evidence == [
+        EvidenceRef(kind="file", ref="a"),
+        EvidenceRef(kind="file", ref="B"),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -1362,10 +1359,10 @@ def test_render_plan_markdown_surfaces_intent_block() -> None:
     """summary.intent/intent_verb render as a ## Intent block before ## Summary."""
     plan = _valid_plan()
     plan["summary"]["intent"] = "X passes"
-    plan["summary"]["intent_verb"] = "fix"
+    plan["summary"]["intent_verb"] = "add"
     markdown = render_plan_markdown(plan)
     assert "## Intent" in markdown
-    assert "verb: fix" in markdown
+    assert "verb: add" in markdown
     assert "X passes" in markdown
     assert "## Summary" in markdown
     assert "## Scope" in markdown
@@ -1532,12 +1529,7 @@ def test_format_doc_step_contract_section_present() -> None:
 
 
 def test_step_type_default_is_action() -> None:
-    """StepType default is 'action' to match the existing serialized output."""
+    """Default is action and is excluded from model_dump(exclude_defaults=True)."""
     step = PlanStep(number=1, title="t", content="c")
     assert step.step_type == "action"
-
-
-def test_step_type_strenum_preserves_default() -> None:
-    """PlanStep.model_dump preserves the 'action' default after the StrEnum refactor."""
-    step = PlanStep(number=1, title="t", content="c")
-    assert step.model_dump()["step_type"] == "action"
+    assert "step_type" not in step.model_dump(exclude_defaults=True)

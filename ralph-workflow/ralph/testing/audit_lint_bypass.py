@@ -84,6 +84,8 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),
     ("claude_interactive_transcript_parser", "PLR0912"),
+    ("_renderers", "PLR0912"),
+    ("plan_format", "PLR0912"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

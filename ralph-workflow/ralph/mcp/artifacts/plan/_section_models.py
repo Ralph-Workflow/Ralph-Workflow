@@ -24,6 +24,8 @@ from ralph.mcp.artifacts.plan._critical_files import CriticalFiles
 from ralph.mcp.artifacts.plan._critical_primary_file import CriticalPrimaryFile
 from ralph.mcp.artifacts.plan._design_section import DesignSection
 from ralph.mcp.artifacts.plan._edit_area import EditArea
+from ralph.mcp.artifacts.plan._evidence_ref import EvidenceRef, ExpectedEvidence
+from ralph.mcp.artifacts.plan._plan_constraints import PlanConstraints
 from ralph.mcp.artifacts.plan._plan_step import PlanStep
 from ralph.mcp.artifacts.plan._planning_profile import PlanningProfile
 from ralph.mcp.artifacts.plan._reference_file import ReferenceFile
@@ -45,8 +47,11 @@ __all__ = [
     "CriticalPrimaryFile",
     "DesignSection",
     "EditArea",
+    "EvidenceRef",
+    "ExpectedEvidence",
     "ParallelPlanItem",
     "PlanArtifactDict",
+    "PlanConstraints",
     "PlanStep",
     "PlanningProfile",
     "ReferenceFile",

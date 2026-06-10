@@ -35,6 +35,8 @@ This structure informs the task decomposition. Each task should produce self-con
 
 When planning changes to the plan-artifact package (`ralph/mcp/artifacts/plan/`), remember that the public surface is a thin re-export over a seven-submodule module family (`_section_models`, `_section_registry`, `_validation`, `_step_edit`, `_renderers`, `_draft_io`, `_step_contract`, `_noop`); consult the `## MODULE FAMILY` section of `planning.jinja` before deciding which submodule a new helper should live in.
 
+The plan artifact defaults step_type to "action"; for file modifications, set step_type="file_change" and provide targets.
+
 ## Bite-Sized Task Granularity
 
 **Each step is one action (2-5 minutes):**
