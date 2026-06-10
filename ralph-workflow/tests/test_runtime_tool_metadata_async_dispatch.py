@@ -6,7 +6,7 @@ single long-running tool call freezes the entire server — no SSE streaming, no
 keepalives, no concurrent requests — which the OpenCode MCP client surfaces as
 ``-32001 Request timed out``.
 
-After the FastMCP-only async tool-offload path was hard-deleted (property A),
+After the legacy async tool-offload path was hard-deleted (property A),
 this property is now enforced at the production transport layer
 (``_FallbackHttpHandler.do_POST``): every request is dispatched via the
 saturated-dispatch seam :mod:`ralph.mcp.server._saturated_dispatch`. The

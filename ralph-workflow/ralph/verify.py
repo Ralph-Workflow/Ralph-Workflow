@@ -146,6 +146,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_mcp_timeout"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        "di seam audit (audit_di_seam)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_di_seam"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

@@ -7,9 +7,9 @@ import os
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler
 from time import sleep
-from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server import _saturated_dispatch
+from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._metrics import get_default_metrics
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
@@ -21,14 +21,34 @@ from ralph.mcp.server._trust_boundary import require_trust_boundary
 from ralph.mcp.server.exec_sse_streaming import exec_sse_streaming_post
 from ralph.mcp.tools.names import EXEC_TOOL, claude_tool_name, opencode_tool_name
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
-
 _EXEC_STREAMING_TOOL_NAMES = frozenset(
     {str(EXEC_TOOL), claude_tool_name(EXEC_TOOL), opencode_tool_name(EXEC_TOOL)}
 )
+
+
+def _coerce_fallback_server(server: object) -> _FallbackHttpServer:
+    """Narrow ``self.server`` to the production ``_FallbackHttpServer`` class
+    without using ``typing.cast`` at the session factory boundary (PROMPT.md
+    proof obligation B).
+
+    The narrowing uses a runtime ``isinstance`` check instead of a static
+    ``cast()`` so the type checker does not launder the production class
+    boundary. Test-only ``SimpleNamespace`` fakes that do not subclass
+    ``_FallbackHttpServer`` are caught here with a clear error rather than
+    silently passed through a cast.
+
+    In the in-memory transport harness, the fake is wrapped via
+    ``_coerce_fallback_server(self.server)`` and must therefore match the
+    production class surface; the harness upgrades its SimpleNamespace to a
+    minimal subclass of ``_FallbackHttpServer`` so the runtime check passes.
+    """
+    server_cls: type[_FallbackHttpServer] = _FallbackHttpServer
+    if not isinstance(server, server_cls):
+        raise TypeError(
+            "_FallbackHttpHandler was not bound to a _FallbackHttpServer "
+            f"instance (got {type(server).__name__})"
+        )
+    return server
 
 #: Process-singleton transport-level repetition tracker. The same instance
 #: observes every request dispatched on this server so a doomed retry loop
@@ -58,7 +78,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"event: open\r\ndata: {}\r\n\r\n")
         self.wfile.flush()
-        server = cast("_FallbackHttpServer", self.server)
+        server = _coerce_fallback_server(self.server)
         # mcp-timeout-ok: SSE keepalive under /mcp mount; pre-existing baseline,
         # not introduced by this plan. The MCP-timeout audit only flags subprocess
         # and HTTP/socket calls; time.sleep is not in its scope. Documented here
@@ -73,7 +93,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
 
     def _handle_health_get(self) -> None:
         """Handle GET /health. Returns 200 healthy / 503 unhealthy with latency_ms."""
-        server = cast("_FallbackHttpServer", self.server)
+        server = _coerce_fallback_server(self.server)
         probe = server.health_probe_fn
         metrics = server.metrics or get_default_metrics()
         if probe is None:
@@ -139,7 +159,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         try:
             require_trust_boundary(
                 self.headers.get("Authorization"),
-                cast("Mapping[str, str]", os.environ),
+                os.environ,
             )
         except PermissionError:
             self._write_json(
@@ -160,16 +180,22 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         payload = self.rfile.read(length)
         try:
-            data_obj = cast("dict[str, object]", json.loads(payload or b"{}"))
+            decoded: object = json.loads(payload or b"{}")
         except json.JSONDecodeError as exc:
             return None, None, f"Parse error: {exc}"
-        params_value = data_obj.get("params")
+        if not isinstance(decoded, dict):
+            return None, None, "Parse error: expected object"
+        data_obj: dict[str, object] = decoded
+        params_value: object = data_obj.get("params")
+        jsonrpc_value: object = data_obj.get("jsonrpc", "2.0")
+        method_value: object = data_obj.get("method", "")
+        params_param: dict[str, object] | None = (
+            params_value if isinstance(params_value, dict) else None
+        )
         request = JsonRpcRequest(
-            jsonrpc=cast("str", data_obj.get("jsonrpc", "2.0")),
-            method=cast("str", data_obj.get("method", "")),
-            params=cast("dict[str, object] | None", params_value)
-            if isinstance(params_value, dict)
-            else None,
+            jsonrpc=jsonrpc_value if isinstance(jsonrpc_value, str) else "2.0",
+            method=method_value if isinstance(method_value, str) else "",
+            params=params_param,
             msg_id=data_obj.get("id"),
         )
         return data_obj, request, None
@@ -180,7 +206,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         data: dict[str, object],
     ) -> None:
         """Handle the SSE streaming and saturated-dispatch paths."""
-        server = cast("_FallbackHttpServer", self.server)
+        server = _coerce_fallback_server(self.server)
 
         # Exec tool calls use SSE streaming: chunk notifications before final
         # frame. Match the server-advertised aliases too — clients calling
@@ -311,7 +337,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             # session header, never destroy the already-encoded response.
             with suppress(Exception):
                 session_id = (
-                    cast("_FallbackHttpServer", self.server).mcp_server._session.session_id
+                    _coerce_fallback_server(self.server).mcp_server._session.session_id
                 )
         self._write_sse(encoded, 200, session_id=session_id)
 

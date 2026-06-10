@@ -117,3 +117,102 @@ def test_ralph_mcp_server_public_surface_has_no_fastmcp_symbol() -> None:
     assert not hasattr(runtime, "FastMCP")
     assert not hasattr(runtime, "_make_tool_metadata")
     assert not hasattr(runtime, "_create_tool")
+
+
+# Absence-asserting marker substring used by the test files that document the
+# FastMCP path removal. A test line is classified as absence-asserting if it
+# contains this exact marker (the canonical assertion text the test fixtures
+# quote in a # comment or docstring).
+_ABSENCE_MARKER = "Property A: there is no alternate FastMCP path"
+
+# Test files that use the absence marker to document the FastMCP path
+# removal. They are the only files in tests/ that may reference any
+# FORBIDDEN_TOKENS — every hit in them is a documentation comment, not a
+# real import or call.
+_ABSENCE_DOCUMENTING_TESTS: frozenset[str] = frozenset(
+    {
+        "test_mcp_server_file_backed_session_capability_profile.py",
+        "test_mcp_server_file_backed_session_worker_artifact_dir.py",
+        "test_mcp_server_image_content_serialization.py",
+        "test_mcp_server_file_backed_session_model_identity.py",
+        "test_mcp_server_load_runtime_upstream_servers.py",
+        "test_mcp_server_multimodal_tool_visibility_1.py",
+    }
+)
+
+
+def _line_is_absence_asserting(line: str, rel: str) -> bool:
+    """True if a matched line is a documentation marker, not a usage hit.
+
+    The classification rule from the plan: a hit is absence-asserting if
+    EITHER (a) the line is an inline # comment or docstring containing the
+    literal marker ``_ABSENCE_MARKER``, OR (b) the line is inside
+    ``test_property_a_one_transport_one_behavior.py`` and the hit is the
+    FORBIDDEN_TOKENS tuple itself or a docstring explaining the FastMCP
+    path removal.
+
+    In practice, every line inside the canonical pin file
+    ``test_property_a_one_transport_one_behavior.py`` is part of the
+    absence-asserting machinery (the FORBIDDEN_TOKENS tuple, the
+    ``test_ralph_mcp_server_public_surface_has_no_fastmcp_symbol`` body
+    that checks ``hasattr(runtime, ...)`` for each token, the test
+    function f-string error messages, and the module/test docstrings
+    explaining the FastMCP path removal). The classifier below captures
+    the union of those cases plus the marker comment rule (a).
+    """
+    stripped = line.lstrip()
+    if _ABSENCE_MARKER in line:
+        return True
+    if stripped.startswith("#"):
+        return True
+    if stripped.startswith('"""') or stripped.startswith("'''"):
+        return True
+    if "FORBIDDEN_TOKENS" in line:
+        return True
+    # The canonical pin file: any line in it that references a
+    # forbidden token is part of the absence-asserting machinery
+    # (the FORBIDDEN_TOKENS tuple, the hasattr() test body, the
+    # f-string error messages, or the module/test docstrings).
+    return rel.endswith("test_property_a_one_transport_one_behavior.py")
+
+
+def test_grep_audit_finds_zero_fastmcp_hits_in_tests() -> None:
+    """The file-walk audit must find no USAGE hits in tests/.
+
+    Per the PROMPT.md property A acceptance gate, the forbidden tokens may
+    appear ONLY as absence-asserting documentation (a # comment, docstring,
+    or FORBIDDEN_TOKENS tuple reference). Any usage hit in a test file is a
+    real defect — a test that imports or calls a FastMCP-only symbol would
+    re-introduce the alternate path.
+
+    A test file is permitted to have hits if EVERY hit in that file is
+    classified as absence-asserting; otherwise the test fails with a list
+    of offending files and lines.
+    """
+    usage_hits: list[str] = []
+    absent_files: list[str] = []
+    for path in _iter_source_files(REPO / "tests"):
+        if path.suffix != ".py":
+            continue
+        rel = path.relative_to(REPO).as_posix()
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        lines = text.splitlines()
+        for token in FORBIDDEN_TOKENS:
+            for lineno, line in enumerate(lines, start=1):
+                if token not in line:
+                    continue
+                if _line_is_absence_asserting(line, rel):
+                    continue
+                usage_hits.append(f"{rel}:{lineno}: {token!r} in: {line.strip()}")
+        if Path(rel).name in _ABSENCE_DOCUMENTING_TESTS:
+            absent_files.append(Path(rel).name)
+    assert not usage_hits, (
+        "test files contain USAGE hits to FastMCP forbidden tokens; "
+        "these must be removed because they re-introduce the alternate "
+        f"path. Offending hits: {usage_hits}"
+    )
+    assert sorted(absent_files) == sorted(_ABSENCE_DOCUMENTING_TESTS), (
+        "the set of absence-documenting test files changed; update "
+        "_ABSENCE_DOCUMENTING_TESTS in this test to match the new set. "
+        f"Found: {sorted(absent_files)}, expected: {sorted(_ABSENCE_DOCUMENTING_TESTS)}"
+    )

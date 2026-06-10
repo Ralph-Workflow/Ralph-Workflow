@@ -16,6 +16,7 @@ import json
 from email.message import Message
 
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
+from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
 from ralph.mcp.server._server_state import ServerState
@@ -64,10 +65,23 @@ class _RaisingMcp:
         raise RuntimeError("dispatch exploded")
 
 
-class _Server:
+class _Server(_FallbackHttpServer):
+    """In-memory subclass of the production ``_FallbackHttpServer``.
+
+    PROMPT.md proof obligation B requires the production handler to narrow
+    ``self.server`` via ``isinstance`` (no ``cast()``), so the test harness
+    must subclass the real class to pass that check.
+    """
+
     def __init__(self, mcp: _RecordingMcp | _RaisingMcp | None = None) -> None:
         self.mcp_server = mcp if mcp is not None else _RecordingMcp()
         self.state: object = ServerState.RUNNING
+
+    def server_bind(self) -> None:
+        """No-op: the in-memory harness never binds a real socket."""
+
+    def server_activate(self) -> None:
+        """No-op: the in-memory harness never activates a real listener."""
 
 
 def _run_exec_post(server: _Server) -> str:

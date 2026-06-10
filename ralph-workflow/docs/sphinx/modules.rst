@@ -3084,6 +3084,13 @@ ralph.testing.pytest_timeout_plugin
    :members:
    :show-inheritance:
 
+ralph.testing.audit_di_seam
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_di_seam
+   :members:
+   :show-inheritance:
+
 ralph.telemetry
 ~~~~~~~~~~~~~~~
 

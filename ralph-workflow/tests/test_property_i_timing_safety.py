@@ -11,6 +11,7 @@ import-time guard uses ``if``/``raise RuntimeError`` (NOT ``assert``) so
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 
 import pytest
 
@@ -152,3 +153,42 @@ def test_import_time_guard_fires_when_env_below_threshold(
     monkeypatch.setenv("RALPH_MCP_REQUEST_TIMEOUT_MS", "5000")
     with pytest.raises(RuntimeError, match="dispatch_cap exceeds client_request_timeout"):
         importlib.reload(_timing_safety)
+
+
+def test_timing_safety_guard_uses_runtimeerror_not_assert() -> None:
+    """The import-time safety guard uses ``if``/``raise RuntimeError`` (NOT ``assert``).
+
+    PROMPT.md Standing engineering invariants and the verify.py
+    import-time checks require the strip-resistant pattern: ``assert`` is
+    removed by ``python -O``, so a guard written as ``assert SERVER_WORST_CASE_MS
+    < CLIENT_REQUEST_TIMEOUT_MS`` would be silently disabled under
+    ``-O``. The static source check below pins the pattern in the source
+    text so a future maintainer cannot accidentally regress to ``assert``
+    without failing this test.
+
+    This is a fast, deterministic, no-IO static check (no subprocess, no
+    ``time.sleep``, no real file I/O outside the import-time
+    ``read_text``).
+    """
+    repo = Path("/Users/mistlight/Projects/Ralph-Workflow/wt-004-mcp-fixes/ralph-workflow")
+    text = (repo / "ralph" / "mcp" / "server" / "_timing_safety.py").read_text()
+    # The strip-resistant pattern: at least one ``raise RuntimeError`` is
+    # present in the source so a future guard regression to ``assert``
+    # would be visible by side-by-side diff with this assertion.
+    assert "raise RuntimeError" in text, (
+        "_timing_safety.py must contain ``raise RuntimeError`` so the "
+        "import-time guard survives ``python -O``"
+    )
+    # The pre-SERVER_WORST_CASE_MS block must not use ``assert`` for the
+    # safety invariant. We split on the constant declaration to inspect
+    # only the import-time guard region (the runtime timing_safety_margin_ms
+    # function lives later and may contain other patterns).
+    pre_block = text.split("SERVER_WORST_CASE_MS = ")[0]
+    assert "assert DISPATCH_CAP_MS" not in pre_block, (
+        "pre-SERVER_WORST_CASE_MS block must not use ``assert`` for the "
+        "safety invariant; ``python -O`` would strip it"
+    )
+    assert "assert (" not in pre_block, (
+        "pre-SERVER_WORST_CASE_MS block must not use ``assert`` for the "
+        "safety invariant; ``python -O`` would strip it"
+    )

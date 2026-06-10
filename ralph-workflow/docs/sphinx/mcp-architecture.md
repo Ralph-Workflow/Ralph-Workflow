@@ -175,6 +175,36 @@ before the fix.
 | `ralph.mcp.protocol.transport` | Transport type selection (stdio / SSE) |
 | `ralph.mcp.protocol.env` | Environment variable injection into MCP sessions |
 
+## Property test matrix
+
+The MCP server's target architecture (A–N) is pinned by 13 black-box
+property tests in `ralph-workflow/tests/test_property_*.py`. Each
+test exercises the production transport through the in-memory harness
+with no real time, no real sockets, and no real subprocess; the
+contract is asserted by observable behavior on the shipped path.
+
+| Property | Test file | Proof obligation (PROMPT.md Foundations) |
+|---|---|---|
+| A | `test_property_a_one_transport_one_behavior.py` | an audit/test confirms tool dispatch, streaming, session handling, concurrency control, and error framing are reachable only through the production transport; no alternate path carries them. |
+| B | `test_property_b_session_contract_conformance.py` | both session implementations are checked for conformance against the session contract, so a member added to one and not the other fails; and an audit confirms no cast() sits at the session factory boundary (the specific laundering that hid the storm), so the type checker cannot be told to look away there. |
+| C | `test_property_c_liveness_contract.py` | the documented liveness endpoint exists and responds; it reports unhealthy for an injected wedged server and healthy for a serving one; and recovery fires within the configured latency bound on an injected clock. |
+| D | `test_property_d_failure_observability.py` | an injected post-header failure produces the structured record and increments the counter; startup emits the configuration banner. |
+| E | `test_property_e_streaming_terminates.py` | the production transport, driven over in-memory buffers, terminates every committed response with a frame on every path - including injected exceptions and recovery-initiated shutdown. |
+| F | `test_property_f_retry_side_effects.py` | a stream failed after partial execution surfaces the may-have-run-outcome-unknown classification, and a retry does not silently re-execute a side-effecting command. |
+| G | `test_property_g_recovery_signal.py` | the watchdog ignores the agent own descendant processes when judging liveness, and the breaker trips on repeated identical failures fed from the transport layer - both on scripted signals with an injected clock and no real waiting. |
+| H | `test_property_h_bounded_resources.py` | spawned servers are reaped (no orphans), concurrency saturation produces backpressure rather than silent queueing, and every cleanup loop terminates under an adversarial respawn fake. |
+| I | `test_property_i_timing_safety.py` | a test asserts server worst-case resolution < client timeout by summing the real bounded constants for dispatch, drain, and kill escalation - an end-to-end ceiling computed from constants, not a measured run. |
+| K | `test_property_k_trust_boundary.py` | the exec surface rejects connections outside its defined trust boundary and accepts those inside it, asserted over the in-memory transport. |
+| L | `test_property_l_zero_progress_and_resume.py` | a pure guard, unit-tested, aborts after a fixed cap of consecutive identical failure signatures (and a fingerprint test confirms volatile tokens do not let a spiral evade the cap); a resume test confirms a retry continues rather than re-emitting the original task from scratch. |
+| M | `test_property_m_structured_cause.py` | a watchdog-SIGTERM failure is classified by its preserved fire-reason, not relabeled by a stderr substring match, asserted on a fabricated failure whose text contains a misleading timeout token. |
+| N | `test_property_n_spill_inside_workspace.py` | without an injected spill dir, oversized exec/unsafe_exec output spills to a path inside the workspace root (readable by the agent read tools), asserted over an in-memory workspace. |
+
+The full property table with cross-references to the architecture file
+lives in {doc}`../ralph/mcp/ARCHITECTURE` § "Target architecture
+properties (A–N)". A property is "done" only when the proof obligation
+above is demonstrable as a fast, deterministic, black-box test that
+asserts observable behavior on the shipped path.
+
 ## Related pages
 
 - {doc}`mcp-tools` — full tool reference

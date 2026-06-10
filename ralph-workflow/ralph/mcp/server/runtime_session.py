@@ -13,7 +13,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -92,22 +92,25 @@ class FileBackedSession:
 
     @property
     def session_id(self) -> str:
-        return cast("str", self._load().get("session_id", self._session_id_factory()))
+        value = self._load().get("session_id", self._session_id_factory())
+        return value if isinstance(value, str) else self._session_id_factory()
 
     @property
     def run_id(self) -> str:
-        return cast("str", self._load().get("run_id", self._run_id_factory()))
+        value = self._load().get("run_id", self._run_id_factory())
+        return value if isinstance(value, str) else self._run_id_factory()
 
     @property
     def drain(self) -> str:
-        return cast("str", self._load().get("drain", "standalone"))
+        value = self._load().get("drain", "standalone")
+        return value if isinstance(value, str) else "standalone"
 
     @property
     def capabilities(self) -> set[str]:
         capabilities_value: object = self._load().get("capabilities", [])
         if not isinstance(capabilities_value, list):
             return set()
-        return set(cast("list[str]", capabilities_value))
+        return {item for item in capabilities_value if isinstance(item, str)}
 
     @property
     def worker_artifact_dir(self) -> Path | None:
@@ -216,10 +219,10 @@ class FileBackedSession:
 
 
 def _load_session_payload(path: Path) -> dict[str, object]:
-    payload = cast("object", json.loads(path.read_text(encoding="utf-8")))
-    if not isinstance(payload, dict):
+    raw: object = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
         raise ValueError(f"{path} must encode an object")
-    return cast("dict[str, object]", payload)
+    return raw
 
 
 def session_from_env(
@@ -248,13 +251,14 @@ def session_from_env(
     raw = env_map.get(SESSION_ENV)
     if not raw:
         return None
-    payload = cast("object", json.loads(raw))
-    if not isinstance(payload, dict):
+    payload_obj: object = json.loads(raw)
+    if not isinstance(payload_obj, dict):
         raise ValueError(f"{SESSION_ENV} must encode an object")
+    payload: dict[str, object] = payload_obj
 
     capabilities_value: object = payload.get("capabilities", [])
     capabilities = (
-        set(cast("list[str]", capabilities_value))
+        {item for item in capabilities_value if isinstance(item, str)}
         if isinstance(capabilities_value, list)
         else set()
     )
@@ -280,36 +284,37 @@ def session_from_env(
         if isinstance(raw_allowed_roots, list)
         else ()
     )
+    session_id_value = payload.get("session_id")
+    if not isinstance(session_id_value, str):
+        session_id_value = (
+            session_id_factory()
+            if session_id_factory is not None
+            else f"standalone-{uuid.uuid4().hex[:8]}"
+        )
+    run_id_value = payload.get("run_id")
+    if not isinstance(run_id_value, str):
+        run_id_value = (
+            run_id_factory() if run_id_factory is not None else str(uuid.uuid4())
+        )
+    drain_value = payload.get("drain", "standalone")
+    if not isinstance(drain_value, str):
+        drain_value = "standalone"
+    worker_artifact_value = payload.get("worker_artifact_dir")
+    worker_artifact_dir: Path | None = (
+        Path(worker_artifact_value) if isinstance(worker_artifact_value, str) else None
+    )
+    worker_namespace_value = payload.get("worker_namespace")
+    worker_namespace: Path | None = (
+        Path(worker_namespace_value) if isinstance(worker_namespace_value, str) else None
+    )
     return AgentSession(
-        session_id=cast(
-            "str",
-            payload.get(
-                "session_id",
-                session_id_factory()
-                if session_id_factory is not None
-                else f"standalone-{uuid.uuid4().hex[:8]}",
-            ),
-        ),
-        run_id=cast(
-            "str",
-            payload.get(
-                "run_id",
-                run_id_factory() if run_id_factory is not None else str(uuid.uuid4()),
-            ),
-        ),
-        drain=cast("str", payload.get("drain", "standalone")),
+        session_id=session_id_value,
+        run_id=run_id_value,
+        drain=drain_value,
         capabilities=capabilities,
         parallel_worker=bool(payload.get("parallel_worker", False)),
-        worker_artifact_dir=(
-            Path(cast("str", payload["worker_artifact_dir"]))
-            if isinstance(payload.get("worker_artifact_dir"), str)
-            else None
-        ),
-        worker_namespace=(
-            Path(cast("str", payload["worker_namespace"]))
-            if isinstance(payload.get("worker_namespace"), str)
-            else None
-        ),
+        worker_artifact_dir=worker_artifact_dir,
+        worker_namespace=worker_namespace,
         allowed_roots=allowed_roots,
         model_identity=model_identity,
         stored_capability_profile=stored_profile,

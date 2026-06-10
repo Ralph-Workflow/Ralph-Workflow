@@ -28,16 +28,15 @@ import io
 import json
 from email.message import Message
 from threading import Event
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
+from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._server_state import ServerState
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
     from ralph.mcp.server._mcp_server import McpServer
 
     class _HandlerWithBaseAttrs(_FallbackHttpHandler):
@@ -61,19 +60,39 @@ if TYPE_CHECKING:
         close_connection: bool
 
 
+class _InMemoryFallbackServer(_FallbackHttpServer):
+    """Minimal in-memory subclass of the production ``_FallbackHttpServer``.
+
+    The production ``_FallbackHttpServer`` extends ``ThreadingHTTPServer`` and
+    would bind a real socket on construction. The in-memory transport needs
+    the same attribute surface (``mcp_server``, ``state``, ``shutdown_event``,
+    ``server_address``, ``health_probe_fn``, ``metrics``) without any real
+    network binding, so we override ``__init__`` and the network-bound
+    ``server_bind``/``server_activate`` to no-ops.
+
+    Because this subclass lives in the test harness, the production
+    ``isinstance`` narrowing in ``_coerce_fallback_server`` (PROMPT.md proof
+    obligation B) accepts it as a valid bound server.
+    """
+
+    def __init__(self, mcp_server: McpServer, state: ServerState) -> None:
+        self.mcp_server = mcp_server
+        self.state = state
+        self.shutdown_event = Event()
+        self.server_address = ("127.0.0.1", 0)
+        self.health_probe_fn = None
+        self.metrics = None
+
+    def server_bind(self) -> None:
+        """No-op: the in-memory harness never binds a real socket."""
+
+    def server_activate(self) -> None:
+        """No-op: the in-memory harness never activates a real listener."""
+
+
 def _make_fake_server(mcp_server: McpServer, state: ServerState) -> _FallbackHttpServer:
-    """Build a SimpleNamespace that satisfies the production _FallbackHttpServer surface."""
-    return cast(
-        "_FallbackHttpServer",
-        SimpleNamespace(
-            mcp_server=mcp_server,
-            state=state,
-            shutdown_event=Event(),
-            server_address=("127.0.0.1", 0),
-            health_probe_fn=None,
-            metrics=None,
-        ),
-    )
+    """Build an in-memory server that satisfies the production class surface."""
+    return _InMemoryFallbackServer(mcp_server, state)
 
 
 def _make_headers(payload: bytes, override: dict[str, str] | None) -> Message:

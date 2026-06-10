@@ -16,6 +16,8 @@ import json
 import threading
 from typing import TYPE_CHECKING, Never
 
+from ralph.agents.execution_state import _helpers as helpers_module
+from ralph.agents.execution_state._helpers import _registry_check_for_exit
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import _fallback_http_handler
 from ralph.mcp.server._in_memory_transport import drive_request
@@ -29,7 +31,7 @@ from ralph.mcp.server._transport_repetition_tracker import (
 from ralph.mcp.server.runtime import build_ralph_tool_registry
 from ralph.process._alive_by import AliveBy
 from ralph.process._child_activity_snapshot import ChildActivitySnapshot
-from ralph.process.child_liveness import classify_child_snapshot
+from ralph.process.child_liveness import ChildLivenessRegistry, classify_child_snapshot
 
 if TYPE_CHECKING:
     from ralph.mcp.server._json_rpc_request import JsonRpcRequest
@@ -59,6 +61,75 @@ def test_os_descendant_only_stale_progress_does_not_defer() -> None:
     assert verdict.deferral_allowed is False, (
         f"OS_DESCENDANT_ONLY_STALE_PROGRESS must NOT defer; got {verdict.deferral_allowed}"
     )
+
+
+def test_property_g_watchdog_caller_refuses_descendant_deferral() -> None:
+    """The real watchdog caller refuses to defer on OS_DESCENDANT_ONLY_STALE_PROGRESS.
+
+    PROMPT.md property G proof obligation: the watchdog ignores the agent's
+    own descendant processes when judging liveness. The previous test
+    asserts the snapshot classifier returns ``deferral_allowed=False`` for
+    an OS_DESCENDANT_ONLY_STALE_PROGRESS verdict; this test exercises a
+    real caller of ``classify_child_snapshot`` to confirm the caller
+    actually does NOT extend the session deadline in that case.
+
+    The caller exercised here is the watchdog session-deadline decision
+    branch in ``_registry_check_for_exit`` (ralph/agents/execution_state/
+    _helpers.py:269). With an OS_DESCENDANT_ONLY_STALE_PROGRESS verdict,
+    the caller must NOT transition to ``WAITING_ON_CHILD`` (the
+    deadline-extending state) and must return ``None`` for the decided
+    state so the watchdog continues its normal exit-detection path.
+    """
+    snapshot = ChildActivitySnapshot(
+        scope_prefix="agent:",
+        has_process=False,
+        has_fresh_label=False,
+        has_fresh_heartbeat=False,
+        has_fresh_progress=False,
+        oldest_live_child_seconds=None,
+        active_count=0,
+        terminal_count=0,
+    )
+
+    # Force the snapshot returned by the registry to be an
+    # OS_DESCENDANT_ONLY_STALE_PROGRESS shape and force the verdict
+    # computation to be the OS_DESCENDANT_ONLY_STALE_PROGRESS branch.
+    # Use a subclass rather than monkey-patching methods on the instance
+    # (the latter requires a ``type: ignore[method-assign]`` which the
+    # typecheck-bypass audit forbids in test files).
+    class _FakeRegistry(ChildLivenessRegistry):
+        def snapshot(self, scope_prefix: str) -> ChildActivitySnapshot:
+            return snapshot
+
+        def has_records(self, scope_prefix: str) -> bool:
+            return False
+
+    registry = _FakeRegistry(
+        progress_ttl=60.0,
+        heartbeat_ttl=60.0,
+        stale_label_ttl=60.0,
+        exit_reconcile=60.0,
+    )
+
+    original_classify = helpers_module.classify_child_snapshot
+    helpers_module.classify_child_snapshot = (
+        lambda snap, has_os_descendants=True: original_classify(
+            snap, has_os_descendants=True
+        )
+    )
+    try:
+        decided_state, scoped_stale = _registry_check_for_exit(registry, "agent:")
+    finally:
+        helpers_module.classify_child_snapshot = original_classify
+    # The caller must NOT defer (must NOT transition to WAITING_ON_CHILD)
+    # when the verdict is OS_DESCENDANT_ONLY_STALE_PROGRESS.
+    assert decided_state is None, (
+        f"watchdog caller must NOT extend the deadline on "
+        f"OS_DESCENDANT_ONLY_STALE_PROGRESS; got {decided_state}"
+    )
+    # and must NOT mark the scoped evidence as stale (no children, so the
+    # registry had no scoped records anyway).
+    assert scoped_stale is False
 
 
 def test_os_descendant_zero_progress_no_defer_with_empty_snapshot() -> None:

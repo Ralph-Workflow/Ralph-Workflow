@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Never, cast
 
 import ralph.mcp.server._metrics as _metrics_mod
 from ralph.mcp.server._fallback_http_handler import _FallbackHttpHandler
+from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, reset_default_metrics
 from ralph.mcp.server._runtime_constants import DEFAULT_MOUNT_PATH
@@ -44,10 +45,23 @@ class _SessionWithStreaming:
         self.tool_output_sink_entry: object = None
 
 
-class _RecordingServer:
+class _RecordingServer(_FallbackHttpServer):
+    """In-memory subclass of the production ``_FallbackHttpServer``.
+
+    PROMPT.md proof obligation B requires the production handler to narrow
+    ``self.server`` via ``isinstance`` (no ``cast()``), so the test harness
+    must subclass the real class to pass that check.
+    """
+
     def __init__(self, mcp: McpServer) -> None:
         self.mcp_server = mcp
         self.state: object = ServerState.RUNNING
+
+    def server_bind(self) -> None:
+        """No-op: the in-memory harness never binds a real socket."""
+
+    def server_activate(self) -> None:
+        """No-op: the in-memory harness never activates a real listener."""
 
 
 def _run_exec_post(server: _RecordingServer) -> str:
