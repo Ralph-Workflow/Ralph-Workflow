@@ -174,7 +174,7 @@ def _is_dry_run() -> bool:
     expansion) can be reviewed in dry-run output before turning the audit
     into a hard gate.
     """
-    raw = os.environ.get("AUDIT_DI_SEAM_DRY_RUN", "true")
+    raw = os.environ.get("AUDIT_DI_SEAM_DRY_RUN", "false")
     return raw.strip().lower() not in {"false", "0", "no", "off"}
 
 
