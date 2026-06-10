@@ -944,6 +944,12 @@ def _run_pipeline(
         return exit_code
     except KeyboardInterrupt:
         c.print(Text("\nInterrupted by user", style="theme.status.warning"))
+        try:
+            from ralph.interrupt import handle_keyboard_interrupt_at_cli
+
+            handle_keyboard_interrupt_at_cli()
+        except Exception:
+            logger.warning("Interrupt dispatcher failed during outer CLI catch", exc_info=True)
         return 130
     except Exception as e:
         logger.exception("Pipeline failed: {}")
