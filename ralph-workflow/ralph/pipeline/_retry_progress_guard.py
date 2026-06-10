@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog.repetition_tracker import RepetitionTracker
+from ralph.pipeline._restart_from_scratch import structural_restart_fingerprint
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -69,9 +70,26 @@ def retry_failure_signature(reason: str, rendered_output: Sequence[str]) -> str:
     merely prints a changing number cannot evade the bound. Only NON-numeric
     content differs between attempts, so a signature change means genuine
     word-level progress and legitimately resets the streak.
+
+    Structural-dominant composition: when the rendered output opens with a
+    known restart-from-scratch narrative pattern (see
+    :mod:`ralph.pipeline._restart_from_scratch`), the structural fingerprint
+    is the dominant signal — it collapses opening-narrative patterns across
+    attempts even when the concrete tokens (file names, paths) differ. The
+    literal fingerprint cannot collapse path tokens (e.g. ``/tmp/PROMPT.md``
+    vs ``/tmp/PROMPT_v2.md`` differ in the chars beyond the ``_NUMERIC_TOKEN``
+    vocabulary), so concatenating the two sides with a separator would let
+    the literal divergence prevent the structural-collapse-on-3rd from
+    happening. When no restart pattern is detected, fall back to the literal
+    fingerprint so existing tests that assert on signature equality across
+    non-narrative pairs still pass.
     """
     joined = "\n".join((reason, *rendered_output))
-    return _NUMERIC_TOKEN.sub("<n>", RepetitionTracker.fingerprint(joined))
+    literal = _NUMERIC_TOKEN.sub("<n>", RepetitionTracker.fingerprint(joined))
+    structural = structural_restart_fingerprint(rendered_output)
+    if structural != "restart:none":
+        return structural
+    return literal
 
 
 @dataclass

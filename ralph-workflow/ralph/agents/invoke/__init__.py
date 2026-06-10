@@ -291,6 +291,7 @@ def invoke_agent(
         clock=_clock,
         evaluate_completion_fn=evaluate_completion,
     )
+    ctx = replace(ctx, expected_session_id=opts.session_id or opts.initial_session_id)
     try:
         transport = _agent_transport(config)
         if transport == AgentTransport.CLAUDE_INTERACTIVE:

@@ -12,9 +12,21 @@ times in a row.
 The resume path audit confirms build_retry_error_block references the
 original prompt by path only — it never inlines the original task
 content, so a "resumed" agent does not restart from scratch.
+
+The structural fingerprint detects the restart-from-scratch pattern:
+when an agent opens its next attempt with a known opening-narrative
+pattern, the fingerprint collapses to the same structural key across
+attempts even when the concrete tokens differ. The structural side is
+the dominant signal when a restart pattern is detected; the literal
+side (RepetitionTracker.fingerprint + _NUMERIC_TOKEN.sub) is the
+fallback when no restart pattern is detected. This closes the failure
+class where the agent produces a fresh-looking narrative of the same
+restart behavior.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 
@@ -23,7 +35,10 @@ from ralph.pipeline._retry_progress_guard import (
     RetryProgressGuard,
     retry_failure_signature,
 )
+from ralph.pipeline.effect_executor import _write_agent_retry_prompt
 from ralph.recovery.retry_prompt import build_retry_error_block
+
+_ORIGINAL_TASK_BODY_TOKEN = "ORIGINAL_TASK_BODY_TOKEN_xyz"
 
 
 def test_max_identical_constant_is_three() -> None:
@@ -182,3 +197,125 @@ def test_signature_includes_reason(reason: str, output: list[str], expected_cont
     """The signature embeds the reason in lowercased, normalized form."""
     sig = retry_failure_signature(reason, output)
     assert expected_contains.lower() in sig.lower()
+
+
+# ---------------------------------------------------------------------------
+# Resume prompt path: action-aware retry prompt never inlines the original task
+# ---------------------------------------------------------------------------
+
+
+def _write_original_prompt(tmp_path: Path) -> Path:
+    prompt = tmp_path / "PROMPT.md"
+    prompt.write_text(
+        "ship the fix\n\n" + _ORIGINAL_TASK_BODY_TOKEN + "\n",
+        encoding="utf-8",
+    )
+    return prompt
+
+
+def test_property_l_resume_prompt_never_inlines_original_task(
+    tmp_path: Path,
+) -> None:
+    """The resume prompt omits the ORIGINAL TASK PROMPT section entirely.
+
+    A resumed agent already has the original task in its session context;
+    re-inlining it defeats resume and forces the agent to restart from
+    scratch (the documented property L wedge).
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="InactivityTimeout",
+        context_lines=["last line"],
+        recovery_action="resume",
+    )
+    content = Path(result).read_text(encoding="utf-8")
+
+    assert "ORIGINAL TASK PROMPT:" not in content, (
+        "resume prompt must NOT include the ORIGINAL TASK PROMPT section"
+    )
+    assert _ORIGINAL_TASK_BODY_TOKEN not in content
+    assert "Original prompt:" in content, (
+        "resume prompt must reference the original prompt by path"
+    )
+    assert "continue from where you left off" in content.lower()
+
+
+def test_property_l_fresh_prompt_inlines_original_task(tmp_path: Path) -> None:
+    """The fresh prompt DOES inline the original task body (current behavior).
+
+    Fresh-session retries (stale-session, new-chain) have no prior session
+    context, so the inlined body is the only signal the agent receives.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="StaleSession",
+        context_lines=["last line"],
+        recovery_action="fresh",
+    )
+    content = Path(result).read_text(encoding="utf-8")
+
+    assert "ORIGINAL TASK PROMPT:" in content
+    assert _ORIGINAL_TASK_BODY_TOKEN in content
+
+
+def test_property_l_new_session_with_id_prompt_does_not_inline(
+    tmp_path: Path,
+) -> None:
+    """``new_session_with_id`` references the prompt by path only.
+
+    The third AgentRetryAction literal. The new session is annotated
+    with the prior session id, so the agent has resume-like context —
+    no need to re-emit the original task body.
+    """
+    prompt = _write_original_prompt(tmp_path)
+
+    result = _write_agent_retry_prompt(
+        workspace_root=tmp_path,
+        prompt_file=str(prompt),
+        reason="InactivityTimeout",
+        context_lines=["last line"],
+        recovery_action="new_session_with_id",
+    )
+    content = Path(result).read_text(encoding="utf-8")
+
+    assert _ORIGINAL_TASK_BODY_TOKEN not in content
+    assert "ORIGINAL TASK PROMPT:" not in content
+    assert "continue from where you left off" in content.lower()
+
+
+def test_property_l_structural_signature_caps_on_restart_narrative() -> None:
+    """The structural fingerprint caps a restart-narrative spiral on the 3rd attempt.
+
+    Three attempts whose rendered output opens with restart-narrative text
+    but with different concrete tokens (file names, paths, dashes) MUST
+    collapse to the same structural fingerprint, and the guard MUST trip
+    on the third attempt. The equality assertion is the GATE: if the
+    structural-collapse contract fails (e.g. the implementation reverts
+    to a concatenation that includes the divergent literal path token),
+    then ``len(set(sigs)) > 1`` and this test fails with a clear message
+    naming the divergence, BEFORE the guard-trip assertion would have
+    passed silently.
+    """
+    guard = RetryProgressGuard()
+    reason = "an inactivity timeout"
+    outputs = [
+        ["I will start by reading the prompt at /tmp/PROMPT.md"],
+        ["I will start by reading the prompt at /tmp/PROMPT_v2.md"],
+        ["I will start by reading the prompt at /tmp/PROMPT_draft.md"],
+    ]
+    sigs = [retry_failure_signature(reason, out) for out in outputs]
+    assert len(set(sigs)) == 1, (
+        f"three restart-narrative outputs with different concrete tokens "
+        f"must collapse to one structural fingerprint; got {sigs}"
+    )
+    results = [guard.record(s) for s in sigs]
+    assert results == [False, False, True], (
+        f"the structural-dominant composition must trip the cap on the 3rd "
+        f"identical structural signature; got {results}"
+    )
