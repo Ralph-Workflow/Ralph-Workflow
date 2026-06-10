@@ -9,12 +9,15 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph import __version__
+from ralph.agents.system_clock import SystemClock
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
 from ralph.mcp.server._server_state import ServerState
+from ralph.mcp.server._session_wrapup import SessionWrapupBudget
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
+from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -122,7 +125,19 @@ def _extract_client_capabilities(params: dict[str, object] | None) -> set[str]:
 
 
 class McpServer:
-    """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools."""
+    """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools.
+
+    Per-invocation reset contract: a single ``McpServer`` is a per-subprocess
+    singleton; it may be reused across multiple agent attempts within the same
+    command-line invocation. The soft wrap-up nag (and the hard ceiling it
+    warns about) is owned by ONE agent attempt: each attempt boundary MUST
+    call :meth:`reset_session_budget` (in-process) or send the wire-level
+    ``notifications/reset_wrapup`` JSON-RPC method (over HTTP from
+    :class:`RestartAwareMcpBridge`) so the budget is re-armed. See
+    ``ralph.mcp.server._session_wrapup`` for the underlying contract and
+    ``ralph.pipeline.effect_executor._run_attempt`` for the production
+    wire-up at the per-attempt boundary.
+    """
 
     def __init__(
         self,
@@ -150,6 +165,36 @@ class McpServer:
         # get_default_metrics() singleton is consulted lazily inside
         # handle_request.
         self._metrics = metrics
+
+    def reset_session_budget(self) -> None:
+        """Re-arm the soft wrap-up nag (and the hard ceiling) for a fresh attempt.
+
+        Called by the orchestrator at the top of every ``_run_attempt`` in
+        ``ralph.pipeline.effect_executor`` so a retried agent (e.g. after an
+        artifact-missing failure) starts with ``elapsed=0`` on the very first
+        tool result instead of inheriting the prior attempt's elapsed time.
+
+        The reset creates a fresh :class:`SessionWrapupBudget` backed by the
+        production :class:`SystemClock` and the canonical
+        ``SESSION_SOFT_WRAPUP_SECONDS`` / ``MAX_SESSION_SECONDS`` defaults
+        from :mod:`ralph.timeout_defaults`. The previous budget is replaced
+        in-place; the new provider retains the same
+        ``Callable[[], str | None]`` signature so no caller signature changes.
+
+        No-op when ``wrapup_provider`` was None at construction time (the
+        default; tests that do not exercise the nag have no provider to
+        reset). The reset is also reachable over the wire via the
+        ``notifications/reset_wrapup`` JSON-RPC method (see
+        :meth:`_dispatch_request`).
+        """
+        if self._wrapup_provider is None:
+            return
+        budget = SessionWrapupBudget(
+            SystemClock(),
+            soft_seconds=SESSION_SOFT_WRAPUP_SECONDS,
+            hard_seconds=MAX_SESSION_SECONDS,
+        )
+        self._wrapup_provider = budget.notice
 
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState
@@ -186,6 +231,14 @@ class McpServer:
     ) -> tuple[JsonRpcResponse | None, ServerState]:
         if request.method == "notifications/initialized":
             return (None, ServerState.RUNNING)
+        if request.method == "notifications/reset_wrapup":
+            # Wire-level seam for the per-attempt reset contract. The
+            # orchestrator's RestartAwareMcpBridge posts this method to the
+            # inner subprocess over HTTP at the start of every _run_attempt
+            # so the soft nag does not carry over from a prior attempt.
+            # Fire-and-forget: no payload, no error, no state change.
+            self.reset_session_budget()
+            return (None, state)
         if request.method == "tools/call":
             return self._handle_tools_call(request, state)
 
