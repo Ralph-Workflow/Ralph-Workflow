@@ -39,7 +39,7 @@ _SKY_BLUE_24BIT_ANSI = "\x1b[38;2;86;180;233m"
 # color code; we match the bold attribute alone.
 _BOLD_ATTR_ANSI = "\x1b[1"
 # Plain-text marker of the section rule line.
-_SECTION_RULE_MARKER = "[section] ───"
+_SECTION_RULE_MARKER = "───"
 
 
 def _make_display(*, force_terminal: bool) -> tuple[ParallelDisplay, io.StringIO]:
@@ -118,11 +118,11 @@ def test_blank_line_before_and_after_section_rule() -> None:
     _run_lifecycle(pd)
     text = buf.getvalue()
     # A blank line immediately before the section rule line means a `\n\n`
-    # before the `[section]` token. We strip ANSI and check the structure on
+    # before the rule glyph. We strip ANSI and check the structure on
     # plain text.
     plain = _ANSI_ESCAPE_RE.sub("", text)
     for tag in ("[run-start]", "[phase-close]", "[run-end]"):
-        rule_marker = f"[section] ─── {tag}"
+        rule_marker = f"─── {tag}"
         rule_idx = plain.find(rule_marker)
         assert rule_idx > 0, f"section rule for {tag!r} not found in:\n{plain!r}"
         # Check that there's a blank line (two consecutive newlines) between the
@@ -139,7 +139,7 @@ def test_blank_line_before_and_after_section_rule() -> None:
     # The blank line after the run-end block is followed by the
     # [content][unit-1] emit. Verify that a `\n\n` (blank line) appears
     # between the last run-end section rule block and the next emit.
-    last_run_end_rule = plain.rfind("[section] ─── [run-end]")
+    last_run_end_rule = plain.rfind("─── [run-end]")
     assert last_run_end_rule > 0, f"last run-end section rule not found in:\n{plain!r}"
     after_run_end_block = plain[last_run_end_rule:]
     # The blank line check: a `\n\n` (blank line) anywhere after the last

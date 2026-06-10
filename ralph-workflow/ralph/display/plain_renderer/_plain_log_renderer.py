@@ -777,8 +777,15 @@ class PlainLogRenderer(_PlainLogRendererBase):
         self.emit_activity_line(unit_id, "raw", line)
 
     def emit_status_line(self, unit_id: str, status: str) -> None:
+        """Emit a status line with the same TIMESTAMP LEVEL CAT badge as other lines."""
+        timestamp = self._format_timestamp(self._clock())
         sanitized = _sanitize(status)
-        self._console.out(f"[{unit_id}] status={sanitized}")
+        self._console.print(
+            self._build_line(timestamp, "INFO", "META", f"[status][{unit_id}] {sanitized}"),
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
 
     def emit_artifact(self, kind: str, summary: str) -> None:
         """Emit an artifact summary line for copy-paste-safe transcripts."""

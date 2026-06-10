@@ -325,7 +325,6 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._console.print()  # blank line BEFORE the section rule
             rule_text = _RichText()
-            rule_text.append("[section] ", style="theme.banner.ascii")
             rule_text.append(self._ctx.glyph_for("rule"), style="theme.banner.border")
             rule_text.append(f" {tag}", style="theme.banner.title")
             self._console.print(rule_text, highlight=False, overflow="ignore")

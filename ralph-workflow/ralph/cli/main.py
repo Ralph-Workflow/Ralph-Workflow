@@ -303,7 +303,6 @@ def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
     if any(r.action in {"created", "regenerated"} for r in results):
         registry = _try_load_registry()
     emit_first_run_welcome(
-        display_context.console,
         results,
         agent_registry=registry,
         display_context=display_context,
@@ -324,7 +323,7 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
     if results:
         created_or_regenerated = [r for r in results if r.action in {"created", "regenerated"}]
         if created_or_regenerated:
-            emit_first_run_welcome(c, results, is_regenerate=True, display_context=display_context)
+            emit_first_run_welcome(results, is_regenerate=True, display_context=display_context)
         else:
             msg = "No configs needed regeneration (all files up-to-date)"
             c.print(Text(msg, style="theme.text.muted"))
@@ -350,7 +349,7 @@ def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
     scope = resolve_workspace_scope()
     results = ensure_local_configs(scope.local_config_path.parent)
     if any(result.action in {"created", "regenerated"} for result in results):
-        emit_first_run_welcome(console, results, display_context=display_context)
+        emit_first_run_welcome(results, display_context=display_context)
         return
     text = Text("Local config files already exist in: ", style="theme.text.muted")
     text.append(str(scope.local_config_path.parent))

@@ -161,7 +161,11 @@ def test_parallel_display_set_status_writes_line() -> None:
     console = Console(force_terminal=True, width=120, record=True)
     pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.set_status("unit-1", WorkerStatus.RUNNING)
-    assert "status=RUNNING" in console.export_text()
+    text = console.export_text()
+    assert "INFO" in text
+    assert "META" in text
+    assert "[status][unit-1]" in text
+    assert "RUNNING" in text
 
 
 def test_parallel_display_start_stop_do_not_raise() -> None:

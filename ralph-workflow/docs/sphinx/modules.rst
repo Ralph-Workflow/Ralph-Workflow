@@ -2602,6 +2602,13 @@ ralph.display.context
    :members:
    :show-inheritance:
 
+ralph.display.first_run_panel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.first_run_panel
+   :members:
+   :show-inheritance:
+
 ralph.display.completion_summary
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

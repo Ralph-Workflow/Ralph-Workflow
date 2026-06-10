@@ -157,7 +157,6 @@ def init_command(
         if created_or_regenerated:
             registry = _try_load_registry()
             emit_first_run_welcome(
-                console,
                 all_results,
                 agent_registry=registry,
                 display_context=ctx,

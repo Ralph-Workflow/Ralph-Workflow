@@ -200,10 +200,10 @@ def test_no_env_reads_outside_allowed_modules() -> None:
 
 # ---------------------------------------------------------------------------
 # wt-007-consolidate-display: extended DI scope to ralph/cli/commands/
-# and ralph/pipeline/. Three of the six new tests are TDD-red on the
-# pre-refactor code (the inline-Console / runtime-Console-import / singleton
-# violations that this PR removes); the other three are anti-drift guards
-# that pass on the current code and stay passing to prevent future drift.
+# and ralph/pipeline/. All nine tests in this file pass on the current
+# code and stay passing to prevent future drift re-introducing inline
+# Console construction, runtime rich Console imports, or split
+# resolve_display symbols.
 # ---------------------------------------------------------------------------
 
 
@@ -227,13 +227,14 @@ for _f in _all_pipeline_files():
 
 
 def test_no_console_constructor_in_cli_commands() -> None:
-    """TDD-RED on the pre-refactor code: no inline ``Console()`` in CLI commands.
+    """Anti-drift guard: passes on current code; fails on drift re-introducing inline ``Console()``.
 
     Every Console in ralph/cli/commands/ must come from a DisplayContext.
-    The pre-refactor code has 7 inline ``Console()`` constructions in
-    prompt_helper.py and 1 in run.py; this test pins the consolidation
-    by failing before the refactor and passing afterwards. The
-    ``# noqa: di-allow`` marker exempts intentional constructions.
+    The current code is clean (zero inline ``Console()`` constructions);
+    this test pins that property. A future commit that adds an inline
+    ``Console()`` to a CLI command without going through DisplayContext
+    will be flagged here. The ``# noqa: di-allow`` marker exempts
+    intentional constructions.
     """
     violations: list[str] = [
         f"{path.name}:{line.rstrip()}"
@@ -297,17 +298,16 @@ def test_no_os_environ_in_cli_commands_except_run_py() -> None:
 
 
 def test_resolve_display_is_singleton() -> None:
-    """TDD-RED on the pre-refactor code: ``resolve_display`` must be a single function object.
+    """Anti-drift guard: ``resolve_display`` must be a single function object.
 
     Imports ``resolve_display`` from both ``ralph.display`` and
     ``ralph.pipeline.runner`` and asserts they are the same function
-    object (``is``). The pre-refactor code has two distinct
-    ``resolve_display`` functions; the refactor consolidates them into
-    one canonical owner at ``ralph.display.parallel_display.resolve_display``
-    and re-exports the symbol from both surfaces. Also asserts the
-    canonical signature accepts ``is_quiet=False`` as a keyword, which
-    is the post-step-2(a0) extension that keeps the re-export
-    signature-compatible with the runner's prior ``is_quiet`` kwarg.
+    object (``is``). The current code is clean (single canonical
+    function at ``ralph.display.parallel_display.resolve_display``
+    re-exported from both surfaces); this test pins that property.
+    Also asserts the canonical signature accepts ``is_quiet=False`` as
+    a keyword, which keeps the re-export signature-compatible with the
+    runner's prior ``is_quiet`` kwarg.
     """
     cdr = _resolve_display_canonical
     rdr = _resolve_display_runner
@@ -350,14 +350,14 @@ def test_no_module_level_console_globals_in_pipeline() -> None:
 
 
 def test_no_runtime_rich_console_import_in_cli_or_pipeline() -> None:
-    """TDD-RED on pre-refactor: no runtime rich Console import outside TYPE_CHECKING.
+    """Anti-drift guard: fails on drift re-introducing runtime rich Console import.
 
     Scans ralph/cli/commands/ and ralph/pipeline/ for runtime
     ``from rich.console import Console`` imports. Lines inside
     ``if TYPE_CHECKING:`` blocks are correctly excluded by the
-    tokenize-based scan. The pre-refactor code has 2 runtime hits
-    (prompt_helper.py:35 and run.py:17); the refactor removes
-    them. The di-allow marker exempts intentional imports.
+    tokenize-based scan. The current code is clean (zero runtime
+    hits); this test pins that property. The di-allow marker
+    exempts intentional imports.
     """
     violations: list[str] = [
         f"{path.name}:{line.rstrip()}"

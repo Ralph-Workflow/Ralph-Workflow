@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from io import StringIO
-from typing import cast
 
 from rich.console import Console
 
@@ -12,7 +11,6 @@ from ralph.banner import (
     RichGroupProto,
     RichPanelProto,
     RichTextProto,
-    SupportsPrint,
     render_banner,
     show_banner,
 )
@@ -57,13 +55,13 @@ def test_render_banner_allows_version_override() -> None:
     assert "9.9.9" in buffer.getvalue()
 
 
-def test_show_banner_prints_to_provided_console() -> None:
-    """show_banner should print the banner to the supplied console."""
+def test_show_banner_prints_to_display_context_console() -> None:
+    """show_banner should print the banner to the display_context.console."""
     buffer = StringIO()
     console = _create_console(buffer)
     ctx = make_display_context(console=console, env={})
 
-    show_banner(display_context=ctx, console=cast("SupportsPrint", console))
+    show_banner(display_context=ctx)
 
     output = buffer.getvalue()
     assert "Ralph" in output

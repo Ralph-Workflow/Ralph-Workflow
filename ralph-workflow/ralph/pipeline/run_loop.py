@@ -341,8 +341,9 @@ def _emit_post_loop_result(
             )
             if exit_code == 0:
                 with suppress(Exception):
-                    active_display.console.print(
-                        f"\n{RUN_COMPLETION_STAR_CTA}"
+                    active_display.emit(
+                        unit_id="run",
+                        line=f"\n{RUN_COMPLETION_STAR_CTA}",
                     )
 
 

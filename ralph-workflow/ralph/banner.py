@@ -90,12 +90,10 @@ def render_banner(
 def show_banner(
     *,
     display_context: DisplayContext,
-    console: SupportsPrint | None = None,
     version: str = __version__,
 ) -> None:
-    """Print the Ralph Workflow welcome banner to the provided console."""
+    """Print the Ralph Workflow welcome banner to ``display_context.console``."""
     compact = display_context.mode == "compact"
-    console_instance: SupportsPrint = (
-        console if console is not None else cast("SupportsPrint", display_context.console)
+    cast("SupportsPrint", display_context.console).print(
+        render_banner(version=version, compact=compact)
     )
-    console_instance.print(render_banner(version=version, compact=compact))

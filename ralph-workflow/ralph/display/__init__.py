@@ -93,6 +93,7 @@ from ralph.display.context import (
     install_width_refresher,
     make_display_context,
 )
+from ralph.display.first_run_panel import render_first_run_panel
 from ralph.display.parallel_display import (
     ParallelDisplay,
     build_default_display_legacy_bridge,
@@ -136,6 +137,7 @@ __all__ = [
     "make_display_context",
     "render_analysis_decision",
     "render_commit_message",
+    "render_first_run_panel",
     "render_fix_artifact",
     "render_missing_plan_hint",
     "render_plan_artifact",

@@ -674,8 +674,6 @@ def collect_commit_agent_output(
     session_id_sink: typing.Callable[[str], None] | None = None,
 ) -> tuple[list[str], list[str], str | None]:
     """Consume agent output lines, returning (parsed_lines, raw_lines, resume_session_id)."""
-    ctx = display_context
-    console = ctx.console
     parser = _resolve_commit_parser(parser_type)
     parsed_output: deque[str] = deque(maxlen=_MAX_COMMIT_PARSED_OUTPUT_LINES)
     raw_output: deque[str] = deque(maxlen=_MAX_COMMIT_RAW_OUTPUT_LINES)
@@ -700,7 +698,9 @@ def collect_commit_agent_output(
                 continue
             parsed_output.append(rendered.plain)
             if verbose:
-                console.print(rendered)
+                display_context.console.print(
+                    rendered, markup=False, highlight=False, no_wrap=True
+                )
     except AgentInvocationError as exc:
         raise _invocation_error_with_output(
             exc,

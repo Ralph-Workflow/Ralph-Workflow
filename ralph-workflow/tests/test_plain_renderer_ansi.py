@@ -54,7 +54,10 @@ def test_emit_status_line_strips_rich_markup() -> None:
     output = buffer.getvalue()
     assert "[green]" not in output
     assert "[/green]" not in output
-    assert "status=RUNNING" in output
+    assert "INFO" in output
+    assert "META" in output
+    assert "[status][unit-1]" in output
+    assert "RUNNING" in output
 
 
 def test_emit_status_line_strips_ansi() -> None:
@@ -63,7 +66,10 @@ def test_emit_status_line_strips_ansi() -> None:
     renderer.emit_status_line("unit-1", "\x1b[32mSUCCESS\x1b[0m")
     output = buffer.getvalue()
     assert "\x1b[" not in output
-    assert "status=SUCCESS" in output
+    assert "INFO" in output
+    assert "META" in output
+    assert "[status][unit-1]" in output
+    assert "SUCCESS" in output
 
 
 def test_emit_artifact_strips_ansi() -> None:

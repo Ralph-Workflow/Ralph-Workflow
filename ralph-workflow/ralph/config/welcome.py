@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-from rich.console import Group, RenderableType
-from rich.panel import Panel
 from rich.text import Text
 
 from ralph.agents.availability import HasListAgents, check_agent_availability
-from ralph.banner import SupportsPrint, show_banner
+from ralph.banner import show_banner
 from ralph.display.context import DisplayContext
+from ralph.display.first_run_panel import render_first_run_panel
 from ralph.onboarding import (
     CODEBERG_STAR_CTA,
     ERROR_REPORTING_DISCLOSURE,
@@ -19,6 +18,8 @@ from ralph.onboarding import (
 )
 
 if TYPE_CHECKING:
+    from rich.console import RenderableType
+
     from ralph.config.bootstrap import BootstrapResult
     from ralph.display.context import DisplayContext
 
@@ -126,7 +127,6 @@ def _build_next_steps_text() -> Text:
 
 
 def emit_first_run_welcome(
-    console: object,
     results: list[BootstrapResult],
     *,
     agent_registry: HasListAgents | None = None,
@@ -136,11 +136,11 @@ def emit_first_run_welcome(
     """Print a structured first-run welcome panel.
 
     Args:
-        console: A rich.console.Console-like object with a .print() method.
         results: Bootstrap results from a bootstrap operation.
         agent_registry: Optional agent registry for availability checking.
         is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
         display_context: Display context for adaptive layout (required).
+            The banner and panel are both emitted on ``display_context.console``.
     """
     if all(r.action == "skipped" for r in results):
         return
@@ -149,8 +149,7 @@ def emit_first_run_welcome(
     if not has_new_or_regenerated:
         return
 
-    rich_console = cast("SupportsPrint", console)
-    show_banner(display_context=display_context, console=rich_console)
+    show_banner(display_context=display_context)
 
     content: list[RenderableType] = []
 
@@ -195,10 +194,4 @@ def emit_first_run_welcome(
     content.append(Text())  # blank line
     content.append(Text(CODEBERG_STAR_CTA, style="theme.status.warning"))
 
-    panel = Panel(
-        Group(*content),
-        title="Ralph Workflow first-run setup",
-        border_style="theme.banner.border",
-        padding=(1, 2),
-    )
-    rich_console.print(panel)
+    render_first_run_panel(content, display_context=display_context)
