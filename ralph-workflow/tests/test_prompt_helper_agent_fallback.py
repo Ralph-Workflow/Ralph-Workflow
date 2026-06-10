@@ -45,6 +45,10 @@ class TestAgentFallback:
             "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
             lambda *args, **kwargs: None,
         )
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.Prompt.ask",
+            lambda *args, **kwargs: "An idea",
+        )
 
     def test_explicit_nonexistent_agent_raises(
         self,

@@ -1,4 +1,10 @@
-"""Regression tests for prompt-helper conversational intake turns."""
+"""Regression tests: the prompt-helper agent runs non-interactively.
+
+The agent must never converse with the user. The only conversation is between
+the user and the host orchestrator. When the agent's single turn produces no
+artifact, the host must NOT fall into a chat loop — it surfaces the failure and
+leaves no PROMPT.md behind.
+"""
 
 from __future__ import annotations
 
@@ -21,26 +27,17 @@ def _session_runtime() -> object:
     return import_module("ralph.session_runtime")
 
 
-class TestPromptHelperConversationalIntake:
-    """Prompt-helper must stay interactive before any artifact exists."""
+class TestPromptHelperNonInteractive:
+    """The agent gets one non-interactive turn; the host owns all conversation."""
 
-    def test_resumable_turn_without_artifact_prompts_for_user_input_and_resumes(
+    def test_no_artifact_does_not_prompt_for_chat_and_writes_no_prompt_md(
         self,
         workspace_root: Path,
         config_with_helper_agent: UnifiedConfig,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A pre-artifact Claude turn must return control to the user, not fail."""
-        prompt_payloads: list[str] = []
-        session_ids: list[str | None] = []
-        artifact_reads = {"count": 0}
-        spec = {
-            "title": "Notes App",
-            "scope": "A small personal notes app with tags.",
-            "goals": ["Capture quick notes"],
-            "users": ["Solo users"],
-            "success_criteria": ["A user can create and organize notes"],
-        }
+        """A turn that submits no artifact must not re-prompt the user to chat."""
+        invoke_count = {"count": 0}
 
         class _FakeRuntime:
             def __enter__(self) -> _FakeRuntime:
@@ -57,54 +54,32 @@ class TestPromptHelperConversationalIntake:
                 session_id_sink: object | None = None,
                 required_artifact: object | None = None,
             ) -> Iterator[str]:
-                del required_artifact, session_id_sink
-                prompt_payloads.append(prompt_file.read_text(encoding="utf-8"))
-                session_ids.append(session_id)
-                if len(prompt_payloads) == 1:
+                del prompt_file, session_id, session_id_sink, required_artifact
+                invoke_count["count"] += 1
 
-                    def _first_turn() -> Iterator[str]:
-                        yield "What do you want to build?"
-                        raise OpenCodeResumableExitError("claude", session_id="resume-123")
-
-                    return _first_turn()
-
-                def _second_turn() -> Iterator[str]:
-                    yield "Thanks — I turned that into a draft specification."
+                def _turn() -> Iterator[str]:
+                    yield "Working on it..."
+                    # Resumable exit without ever submitting an artifact.
                     raise OpenCodeResumableExitError("claude", session_id="resume-123")
 
-                return _second_turn()
+                return _turn()
 
         monkeypatch.setattr(
             cast("Any", _session_runtime()).ManagedAgentSessionRuntime,
             "open",
             classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )
-
-        def fake_read_product_spec_artifact(
-            *args: object,
-            **kwargs: object,
-        ) -> dict[str, object] | None:
-            del args, kwargs
-            artifact_reads["count"] += 1
-            if artifact_reads["count"] == 1:
-                return None
-            return spec
-
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
-            fake_read_product_spec_artifact,
+            lambda *args, **kwargs: None,
         )
 
-        prompt_calls: list[tuple[str, tuple[str, ...] | None]] = []
+        ask_calls: list[tuple[str, ...] | None] = []
 
-        def fake_prompt_ask(message: str, *args: object, **kwargs: object) -> str:
-            del args
+        def fake_prompt_ask(*args: object, **kwargs: object) -> str:
             raw_choices = kwargs.get("choices")
-            choice_values = tuple(raw_choices) if isinstance(raw_choices, list) else None
-            prompt_calls.append((message, choice_values))
-            if raw_choices is None:
-                return "A notes app with tags and search."
-            return "Finish"
+            ask_calls.append(tuple(raw_choices) if isinstance(raw_choices, list) else None)
+            return "A notes app with tags and search."
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.Prompt.ask",
@@ -113,10 +88,8 @@ class TestPromptHelperConversationalIntake:
 
         run_prompt_helper(config_with_helper_agent, workspace_root)
 
-        assert len(prompt_payloads) == 2
-        assert "What do you want to build or define?" in prompt_payloads[0]
-        assert "A notes app with tags and search." in prompt_payloads[1]
-        assert session_ids[1] == "resume-123"
-        assert prompt_calls[0][1] is None
-        assert prompt_calls[1][1] is not None
-        assert (workspace_root / "PROMPT.md").exists()
+        # Exactly one agent turn; no second, conversational re-invoke.
+        assert invoke_count["count"] == 1
+        # Only the single up-front idea prompt was shown — no chat follow-up.
+        assert ask_calls == [None]
+        assert not (workspace_root / "PROMPT.md").exists()

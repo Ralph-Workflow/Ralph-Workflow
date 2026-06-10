@@ -8,12 +8,30 @@ from ralph.cli.commands.prompt_helper_prompt import build_prompt_helper_prompt
 class TestBuildPromptHelperPrompt:
     """Tests for build_prompt_helper_prompt."""
 
-    def test_prompt_asks_what_to_build(self) -> None:
-        """Prompt contains opening question asking what user wants to build."""
+    def test_prompt_instructs_one_shot_submit_without_questions(self) -> None:
+        """Prompt tells the agent to submit immediately and not to ask the user."""
         result = build_prompt_helper_prompt(
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
         )
-        assert "What do you want to build" in result
+        lowered = result.lower()
+        assert "immediately" in lowered
+        assert "do not ask" in lowered
+
+    def test_prompt_includes_user_idea_when_provided(self) -> None:
+        """The host-supplied idea is embedded as a request block for the agent."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact",
+            user_idea="A notes app with tags and search.",
+        )
+        assert "A notes app with tags and search." in result
+        assert "USER REQUEST" in result
+
+    def test_prompt_without_user_idea_omits_user_request_block(self) -> None:
+        """Without an idea, no user-request block is included."""
+        result = build_prompt_helper_prompt(
+            submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
+        )
+        assert "USER REQUEST" not in result
 
     def test_prompt_contains_follow_up_domains(self) -> None:
         """Prompt contains follow-up domains: users, goals, constraints, success, behavior."""
@@ -27,13 +45,18 @@ class TestBuildPromptHelperPrompt:
         assert "behavior" in result.lower()
         assert "ux/ui" in result.lower()
 
-    def test_prompt_contains_review_loop_language(self) -> None:
-        """Prompt contains review-loop language: present draft, ask if plan looks right."""
-        result = build_prompt_helper_prompt(
+    def test_prompt_does_not_contain_conversational_intake_language(self) -> None:
+        """Prompt must not tell the agent to converse with the user.
+
+        The agent runs non-interactively; the only conversation is between the
+        user and the host orchestrator, not the agent.
+        """
+        lowered = build_prompt_helper_prompt(
             submit_artifact_tool_name="mcp__ralph__ralph_submit_artifact"
-        )
-        assert "review" in result.lower() or "draft" in result.lower()
-        assert "polished" in result.lower() or "refined" in result.lower()
+        ).lower()
+        assert "ask the user" not in lowered
+        assert "follow-up question" not in lowered
+        assert "once the user is satisfied" not in lowered
 
     def test_prompt_contains_ux_ui_capture_guidance(self) -> None:
         """Prompt contains explicit UX/UI capture guidance."""

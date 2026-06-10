@@ -52,14 +52,30 @@ class TestPromptMdCheck:
             lambda *args, **kwargs: None,
         )
 
-    def test_existing_prompt_context_is_injected_after_host_choice(
+    def test_existing_prompt_md_is_seeded_without_a_replace_refine_menu(
         self,
         workspace_root: Path,
         config_with_helper_agent: UnifiedConfig,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Existing PROMPT.md is handled by the host and injected as context."""
+        """Detecting PROMPT.md seeds it as agent context with no up-front menu.
+
+        The host does not ask "Replace it / Refine it" — detection alone means
+        "refine the existing prompt", and the agent produces a fresh draft from
+        it. The only user interaction is the post-artifact review choice.
+        """
         self._stub_runtime(monkeypatch)
+        # An artifact is produced from the seeded PROMPT.md.
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
+            lambda *args, **kwargs: {
+                "title": "Notes App",
+                "scope": "scope",
+                "goals": ["g"],
+                "users": ["u"],
+                "success_criteria": ["c"],
+            },
+        )
         prompt_md = workspace_root / "PROMPT.md"
         prompt_md.write_text("# Existing prompt\nBuild a notes app.", encoding="utf-8")
 
@@ -70,7 +86,7 @@ class TestPromptMdCheck:
             raw_choices = kwargs.get("choices")
             choice_values = tuple(raw_choices) if isinstance(raw_choices, list) else None
             prompt_calls.append((message, choice_values))
-            return "Refine it" if raw_choices is not None else "Finish"
+            return "Accept"
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.Prompt.ask",
@@ -84,4 +100,6 @@ class TestPromptMdCheck:
         assert "Build a notes app." in content
         assert "Replace it" not in content
         assert "Refine it" not in content
-        assert prompt_calls[0][1] == ("Replace it", "Refine it")
+        # No up-front idea prompt and no replace/refine menu — only the review
+        # choice (Refine / Accept) was shown.
+        assert prompt_calls == [(prompt_calls[0][0], ("Refine", "Accept"))]
