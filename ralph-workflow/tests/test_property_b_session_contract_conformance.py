@@ -199,10 +199,11 @@ def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
     hits: list[str] = []
     for py_file in ralph_root.rglob("*.py"):
         text = py_file.read_text(encoding="utf-8", errors="ignore")
-        if "cast" in text and "McpSession" in text:
-            if re.search(r"cast\s*\(\s*['\"]McpSession['\"]", text):
-                rel = py_file.relative_to(Path(__file__).parent.parent)
-                hits.append(f"{rel}")
+        if "cast" in text and "McpSession" in text and re.search(
+            r"cast\s*\(\s*['\"]McpSession['\"]", text
+        ):
+            rel = py_file.relative_to(Path(__file__).parent.parent)
+            hits.append(f"{rel}")
     assert not hits, f"Found cast(*McpSession, ...) laundering: {hits}"
 
 

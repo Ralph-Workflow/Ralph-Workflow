@@ -13,6 +13,7 @@ import json
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server import _fallback_http_handler
 from ralph.mcp.server._in_memory_transport import (
     _build_tools_list_payload,
     _make_fake_server,
@@ -71,7 +72,7 @@ def test_round_trip_uses_no_sockets_and_no_real_time(
     def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
 
-    monkeypatch.setattr("ralph.mcp.server._fallback_http_handler.sleep", fake_sleep)
+    monkeypatch.setattr(_fallback_http_handler, "sleep", fake_sleep)
     mcp_server = _make_mcp_server(tmp_path)
     status, _headers, _body = drive_request(mcp_server, _build_tools_list_payload())
     assert status == 200

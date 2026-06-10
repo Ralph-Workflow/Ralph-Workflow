@@ -112,15 +112,30 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             503,
         )
 
-    def do_POST(self) -> None:  # noqa: PLR0911, PLR0912
+    def do_POST(self) -> None:
         if self.path != DEFAULT_MOUNT_PATH:
             self.send_error(404)
             return
-        # Trust boundary (property K): reject the request BEFORE any
-        # further processing if MCP_AUTH_TOKEN is set and the bearer
-        # token does not match. The check is a no-op when MCP_AUTH_TOKEN
-        # is unset, so the public-LAN deployment (no token) still works
-        # (relying on the 127.0.0.1 bind for the trust boundary).
+        if not self._authorize_request():
+            return
+        data, request, error_message = self._parse_request_body()
+        if data is None or request is None:
+            self._write_json(
+                {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32700, "message": error_message or "Parse error"},
+                    "id": None,
+                },
+                400,
+            )
+            return
+        self._dispatch_parsed_request(request, data)
+
+    def _authorize_request(self) -> bool:
+        """Apply the trust boundary (property K). Return True if allowed.
+
+        Sends a 401 frame and returns False when the request must be rejected.
+        """
         try:
             require_trust_boundary(
                 self.headers.get("Authorization"),
@@ -135,30 +150,36 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 },
                 401,
             )
-            return
+            return False
+        return True
+
+    def _parse_request_body(
+        self,
+    ) -> tuple[dict[str, object] | None, JsonRpcRequest | None, str | None]:
+        """Decode the JSON-RPC request body. Returns (data, request, error_msg)."""
         length = int(self.headers.get("Content-Length", "0"))
         payload = self.rfile.read(length)
         try:
-            data = cast("dict[str, object]", json.loads(payload or b"{}"))
-        except json.JSONDecodeError:
-            self._write_json(
-                {
-                    "jsonrpc": "2.0",
-                    "error": {"code": -32700, "message": "Parse error"},
-                    "id": None,
-                },
-                400,
-            )
-            return
-        params_value = data.get("params")
+            data_obj = cast("dict[str, object]", json.loads(payload or b"{}"))
+        except json.JSONDecodeError as exc:
+            return None, None, f"Parse error: {exc}"
+        params_value = data_obj.get("params")
         request = JsonRpcRequest(
-            jsonrpc=cast("str", data.get("jsonrpc", "2.0")),
-            method=cast("str", data.get("method", "")),
+            jsonrpc=cast("str", data_obj.get("jsonrpc", "2.0")),
+            method=cast("str", data_obj.get("method", "")),
             params=cast("dict[str, object] | None", params_value)
             if isinstance(params_value, dict)
             else None,
-            msg_id=data.get("id"),
+            msg_id=data_obj.get("id"),
         )
+        return data_obj, request, None
+
+    def _dispatch_parsed_request(
+        self,
+        request: JsonRpcRequest,
+        data: dict[str, object],
+    ) -> None:
+        """Handle the SSE streaming and saturated-dispatch paths."""
         server = cast("_FallbackHttpServer", self.server)
 
         # Exec tool calls use SSE streaming: chunk notifications before final
@@ -171,7 +192,14 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         ):
             self._handle_exec_streaming_post(request, server)
             return
+        self._dispatch_standard_request(request, server, data)
 
+    def _dispatch_standard_request(
+        self,
+        request: JsonRpcRequest,
+        server: _FallbackHttpServer,
+        data: dict[str, object],
+    ) -> None:
         # Dispatch the JSON-RPC request through the saturated-dispatch seam so
         # the production transport can bound concurrency with backpressure
         # (property H) without queueing past an unstated limit. The seam is a
@@ -181,8 +209,12 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         # (property G) can consult the failure signature BEFORE the response
         # is written: 3 identical -32001-class failures within 60s short-
         # circuit to a 503 + transport_loop_detected frame.
+        # The saturated-dispatch wrapper (property H) returns a
+        # SaturatedResponse sentinel when the bounded executor's queue is
+        # full; the handler writes that as a 503 + JSON-RPC -32001 frame
+        # rather than queueing silently past max_workers.
         try:
-            response, next_state = _saturated_dispatch.submit(
+            dispatch_result = _saturated_dispatch.submit(
                 lambda: server.mcp_server.handle_request(request, server.state)
             )
         except Exception as exc:
@@ -201,6 +233,26 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 )
                 return
             raise
+        # Saturation: the bounded executor rejected the call. The handler
+        # writes the 503 + JSON-RPC -32001 frame and short-circuits the
+        # response so the client sees backpressure, not a queue.
+        if isinstance(dispatch_result, _saturated_dispatch.SaturatedResponse):
+            self._write_json(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request.msg_id,
+                    "error": {
+                        "code": dispatch_result.code,
+                        "message": dispatch_result.message,
+                    },
+                },
+                _saturated_dispatch.SATURATION_STATUS,
+            )
+            return
+        # dispatch_result is the saturated-dispatch union: a successful tuple
+        # OR a SaturatedResponse sentinel. The SaturatedResponse branch
+        # returns above; mypy narrows to the tuple here.
+        response, next_state = dispatch_result
         # The dispatch net inside McpServer.handle_request converts thrown
         # exceptions into a -32603 JSON-RPC error frame. Observe that frame
         # too: a doomed retry loop produces 3 identical -32603 errors, and
@@ -224,6 +276,9 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
                 return
         server.state = next_state
         if response is None:
+            # JSON-RPC notification: no response frame expected. Return 202
+            # Accepted with an empty body so the client sees the
+            # notification was received but no reply will be sent.
             self.send_response(202)
             self.send_header("Content-Length", "0")
             self.end_headers()

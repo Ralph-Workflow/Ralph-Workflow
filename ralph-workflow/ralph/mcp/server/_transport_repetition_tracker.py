@@ -27,6 +27,10 @@ import re
 import threading
 import time as _time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: Time window (seconds) over which ``THRESHOLD`` identical signatures
 #: trip the breaker. Aligns with the agent-recovery layer's window.
@@ -83,7 +87,7 @@ class TransportRepetitionTracker:
     _last_signature: str | None = field(default=None, init=False)
     _last_seen_at: float = field(default=0.0, init=False)
     _streak: int = field(default=0, init=False)
-    _clock: _ClockLike = field(default=_time.monotonic, repr=False)
+    _clock: Callable[[], float] = field(default=_time.monotonic, repr=False)
 
     def observe(self, signature: str) -> bool:
         """Record a failure signature; return True when the breaker trips.
@@ -122,10 +126,6 @@ class TransportRepetitionTracker:
                 "threshold": self.threshold,
                 "window_seconds": self.window_seconds,
             }
-
-
-class _ClockLike:
-    """Protocol-shaped clock dependency so tests can inject FakeClock."""
 
 
 __all__ = [

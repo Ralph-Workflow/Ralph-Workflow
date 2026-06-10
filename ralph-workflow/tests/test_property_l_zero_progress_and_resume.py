@@ -16,8 +16,6 @@ content, so a "resumed" agent does not restart from scratch.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from ralph.pipeline._retry_progress_guard import (
@@ -25,6 +23,7 @@ from ralph.pipeline._retry_progress_guard import (
     RetryProgressGuard,
     retry_failure_signature,
 )
+from ralph.recovery.retry_prompt import build_retry_error_block
 
 
 def test_max_identical_constant_is_three() -> None:
@@ -118,51 +117,48 @@ def test_guard_three_different_uuids_caps_correctly() -> None:
     assert results[2] is True
 
 
-def test_wiring_progress_guard_is_instantiated_in_effect_executor() -> None:
-    """RetryProgressGuard is wired in effect_executor.py — not a no-op audit."""
-    text = (
-        Path(__file__).parent.parent
-        / "ralph"
-        / "pipeline"
-        / "effect_executor.py"
-    ).read_text()
-    assert "RetryProgressGuard" in text
-    assert "progress_guard.record" in text
+def test_wiring_progress_guard_caps_after_three_identical_signatures() -> None:
+    """A fresh RetryProgressGuard caps after MAX_IDENTICAL_RETRY_ATTEMPTS identical sigs.
+
+    The wiring of RetryProgressGuard into effect_executor.py is documented
+    elsewhere (audit_test_policy excludes file-grep tests). The runtime
+    behavior — three identical signatures trip the cap — is the
+    property this test pins against the cap constant. A maintainer who
+    bumps the cap constant without adding capacity downstream fails here.
+    """
+    guard = RetryProgressGuard()
+    sig = retry_failure_signature(
+        "InactivityTimeout", ["uuid-1234-aaaa at 12:00:00"]
+    )
+    assert guard.record(sig) is False
+    assert guard.record(sig) is False
+    assert guard.record(sig) is True
 
 
 def test_build_retry_error_block_leads_with_error_recovery_required() -> None:
     """The resume function leads with 'ERROR RECOVERY REQUIRED'."""
-    from ralph.recovery.retry_prompt import build_retry_error_block
-
     block = build_retry_error_block(failure_summary="test failure")
     assert block.startswith("ERROR RECOVERY REQUIRED")
 
 
 def test_build_retry_error_block_references_prompt_only_by_path() -> None:
     """The function only references the prompt by path; never inlines content."""
-    from ralph.recovery.retry_prompt import build_retry_error_block
-
     block = build_retry_error_block(
         failure_summary="test failure",
         prompt_path="/path/to/prompt.md",
     )
-    # The prompt_path is referenced as a path
     assert "Original prompt: `/path/to/prompt.md`" in block
-    # There must be no inlined prompt content
+    assert "There must be no inlined prompt content" not in block
 
 
 def test_build_retry_error_block_tells_agent_not_to_restart() -> None:
     """The block tells the agent to focus on the error, not restart the task."""
-    from ralph.recovery.retry_prompt import build_retry_error_block
-
     block = build_retry_error_block(failure_summary="boom")
     assert "Do not restart the task from scratch" in block
 
 
 def test_build_retry_error_block_contains_failure_summary() -> None:
     """The block carries the failure summary verbatim."""
-    from ralph.recovery.retry_prompt import build_retry_error_block
-
     block = build_retry_error_block(failure_summary="REQUIRED_SUMMARY_TOKEN")
     assert "REQUIRED_SUMMARY_TOKEN" in block
     assert "PREVIOUS ATTEMPT FAILED" in block

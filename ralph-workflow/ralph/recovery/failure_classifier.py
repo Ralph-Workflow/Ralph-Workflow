@@ -8,6 +8,8 @@ import urllib.error
 
 from loguru import logger
 
+from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
+
 from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
 from .failure_details import contains_casefolded_marker, failure_detail_parts
@@ -414,8 +416,6 @@ class FailureClassifier:
         # substring-match vocabulary below would mislabel it as a
         # connectivity blip. The check is FIRST so the typed-cause
         # branch wins before any text scanning.
-        from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
-
         if isinstance(exc, IdleWatchdogKilledError):
             return FailureCategory.AGENT, True, False
         for predicate, result in (

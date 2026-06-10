@@ -13,9 +13,11 @@
 from __future__ import annotations
 
 import json
-from typing import Never
+import threading
+from typing import TYPE_CHECKING, Never
 
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server import _fallback_http_handler
 from ralph.mcp.server._in_memory_transport import drive_request
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._transport_repetition_tracker import (
@@ -28,6 +30,10 @@ from ralph.mcp.server.runtime import build_ralph_tool_registry
 from ralph.process._alive_by import AliveBy
 from ralph.process._child_activity_snapshot import ChildActivitySnapshot
 from ralph.process.child_liveness import classify_child_snapshot
+
+if TYPE_CHECKING:
+    from ralph.mcp.server._json_rpc_request import JsonRpcRequest
+    from ralph.mcp.server._server_state import ServerState
 
 
 def test_os_descendant_only_stale_progress_does_not_defer() -> None:
@@ -176,8 +182,6 @@ def test_signature_for_exception_uses_type_and_str() -> None:
 
 def test_transport_repetition_tracker_is_thread_safe() -> None:
     """The tracker is thread-safe under concurrent observe() calls."""
-    import threading
-
     tracker = TransportRepetitionTracker()
     results: list[bool] = []
     lock = threading.Lock()
@@ -229,11 +233,8 @@ def test_transport_loop_detected_returns_503_with_specific_message() -> None:
     """
 
     # Reset the singleton tracker for this test
-    from ralph.mcp.server import _fallback_http_handler
-
-    fallback_module = _fallback_http_handler
     fresh = TransportRepetitionTracker()
-    fallback_module._transport_repetition_tracker = fresh
+    _fallback_http_handler._transport_repetition_tracker = fresh
 
     session = AgentSession(
         session_id="g-test",
@@ -246,7 +247,9 @@ def test_transport_loop_detected_returns_503_with_specific_message() -> None:
     mcp_server = McpServer(session, workspace, registry)
 
     # Force the server's _dispatch_request to raise the same exception
-    def explode(self, request, state) -> Never:
+    def explode(
+        server: McpServer, request: JsonRpcRequest, state: ServerState
+    ) -> Never:
         raise TimeoutError("aabbccdd-1234-5678-90ab-cdef12345678 at 12:34:56")
 
     mcp_server._dispatch_request = lambda req, state: explode(mcp_server, req, state)

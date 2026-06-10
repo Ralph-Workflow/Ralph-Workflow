@@ -11,12 +11,14 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 from typing import cast
 
 import pytest
 
 from ralph.mcp.server import _saturated_dispatch
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
+from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 
 
@@ -91,26 +93,30 @@ def test_no_restart_when_process_is_healthy() -> None:
 def test_saturated_dispatch_free_function_exists() -> None:
     """_SaturatedDispatch.submit exists at ralph.mcp.server._saturated_dispatch.
 
-    Merge-order constraint: Unit 4 (Property H) lands this no-op FIRST;
-    Unit 1 (Property A) wires it into do_POST second. The free function
-    must exist for the do_POST import to resolve.
+    The free function is the public seam the do_POST handler imports; it
+    must exist and be callable. The merge-order constraint (Unit 4 lands
+    this first, Unit 1 wires it into do_POST second) is satisfied by
+    the helper's existence, not its current behavior.
     """
     assert hasattr(_saturated_dispatch, "submit")
     assert callable(_saturated_dispatch.submit)
 
 
-def test_saturated_dispatch_passes_through_callable_result() -> None:
-    """_SaturatedDispatch.submit invokes the callable and returns its result."""
+def test_saturated_dispatch_returns_callable_result() -> None:
+    """_SaturatedDispatch.submit invokes the callable and returns its result.
+
+    The bounded executor runs the callable; a result is returned to the
+    caller.
+    """
     result = _saturated_dispatch.submit(lambda: 42)
     assert result == 42
 
 
-def test_saturated_dispatch_propagates_exceptions() -> None:
-    """A raising callable surfaces its exception unchanged.
+def test_saturated_dispatch_propagates_callable_exceptions() -> None:
+    """A raising callable surfaces its exception to the caller.
 
-    The future bounded-executor wiring returns a 503 + -32001 frame on
-    queue.Full; the no-op pass-through today simply propagates the
-    exception (the caller's try/except handles it).
+    The transport-repetition breaker observes the exception in the
+    handler's outer try/except; the helper must NOT swallow it.
     """
     def raise_value_error() -> None:
         raise ValueError("boom")
@@ -144,8 +150,6 @@ def test_adversarial_restart_fn_raises_propagates() -> None:
 
 def test_restart_count_caps_at_max_restarts() -> None:
     """The bridge raises McpServerError when restart_count reaches max_restarts."""
-    from ralph.mcp.server._mcp_server_error import McpServerError
-
     inner_a = _RecordingInner(exit_code=1)
     inner_b = _RecordingInner(exit_code=1)
     inner_b.endpoint = "http://127.0.0.1:8766/mcp"
@@ -174,16 +178,28 @@ def test_restart_count_caps_at_max_restarts() -> None:
         bridge.check_health_and_restart_if_needed()
 
 
-def test_no_op_saturated_dispatch_does_not_silently_queue() -> None:
-    """The no-op _SaturatedDispatch does not silently queue past an unstated limit.
+def test_saturated_dispatch_overflow_returns_saturation_response() -> None:
+    """When the bounded executor is shut down, submit returns SaturatedResponse.
 
-    The bounded-executor wiring is layered on top in a follow-up; today
-    the helper is a pass-through. This test pins the seam so a future
-    maintainer can replace the body without changing call sites in
-    do_POST (the merge-order constraint is satisfied by the helper's
-    existence, not by its current behavior).
+    The current implementation is backed by a ThreadPoolExecutor; once
+    the executor is shut down, submit returns a SaturatedResponse (not
+    the callable's result) and does NOT raise. The handler converts the
+    SaturatedResponse into an HTTP 503 + JSON-RPC -32001 frame.
+
+    Uses an isolated _SaturatedDispatch instance (not the process
+    singleton) so the test does not race with concurrent tests that
+    depend on the singleton's executor.
     """
-    # The free function is callable with a no-arg callable and returns
-    # the result. A bounded executor would still satisfy this contract;
-    # backpressure-rejected calls would return a 503 frame object.
-    assert _saturated_dispatch.submit(lambda: "ok") == "ok"
+    isolated = _saturated_dispatch._SaturatedDispatch(max_workers=2)
+    # Install an executor and immediately shut it down so the next
+    # submit() observes the post-shutdown state.
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    executor.shutdown(wait=False)
+    isolated.install_executor(executor)
+    try:
+        result = isolated.submit(lambda: "ok")
+        assert isinstance(result, _saturated_dispatch.SaturatedResponse)
+        assert result.code == _saturated_dispatch.SATURATION_CODE
+        assert result.message == _saturated_dispatch.SATURATION_MESSAGE
+    finally:
+        isolated.shutdown()

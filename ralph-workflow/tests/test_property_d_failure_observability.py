@@ -13,9 +13,11 @@ counter behavior on the production McpServer and the in-memory /health route.
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING, Never, cast
 
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server import _in_memory_transport
 from ralph.mcp.server._fallback_http_handler_probe import _ProbeResult
 from ralph.mcp.server._in_memory_transport import drive_request
 from ralph.mcp.server._json_rpc_request import JsonRpcRequest
@@ -26,7 +28,7 @@ from ralph.mcp.server.runtime import build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
 
 
 def _make_mcp_server(tmp_path: Path, *, metrics: McpMetrics | None = None) -> McpServer:
@@ -66,7 +68,7 @@ def test_post_header_failure_increments_counter(tmp_path: Path) -> None:
     metrics = McpMetrics()
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
 
-    def explode(self, request, state) -> Never:
+    def explode(server: McpServer, request: JsonRpcRequest, state: ServerState) -> Never:
         raise RuntimeError("simulated dispatch failure")
 
     # Monkeypatch _dispatch_request to raise.
@@ -87,7 +89,7 @@ def test_post_header_failure_100_concurrent_increments_counter(tmp_path: Path) -
     metrics = McpMetrics()
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
 
-    def explode(self, request, state) -> Never:
+    def explode(server: McpServer, request: JsonRpcRequest, state: ServerState) -> Never:
         raise RuntimeError("simulated dispatch failure")
 
     mcp_server._dispatch_request = lambda req, state: explode(
@@ -113,13 +115,13 @@ def test_post_header_failure_100_concurrent_increments_counter(tmp_path: Path) -
 
 def test_health_probe_outcome_counter_increments(tmp_path: Path) -> None:
     """A failed /health probe increments health_probe_outcomes[failure]."""
-    from ralph.mcp.server import _in_memory_transport
-
     metrics = McpMetrics()
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
     original_make = _in_memory_transport._make_fake_server
 
-    def _make_with_probe(mcp_server_arg, state):
+    def _make_with_probe(
+        mcp_server_arg: McpServer, state: ServerState
+    ) -> _FallbackHttpServer:
         fake = original_make(mcp_server_arg, state)
 
         def _probe() -> _ProbeResult:
@@ -139,13 +141,13 @@ def test_health_probe_outcome_counter_increments(tmp_path: Path) -> None:
 
 def test_health_probe_success_increments_success_counter(tmp_path: Path) -> None:
     """A successful /health probe increments health_probe_outcomes[success]."""
-    from ralph.mcp.server import _in_memory_transport
-
     metrics = McpMetrics()
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
     original_make = _in_memory_transport._make_fake_server
 
-    def _make_with_probe(mcp_server_arg, state):
+    def _make_with_probe(
+        mcp_server_arg: McpServer, state: ServerState
+    ) -> _FallbackHttpServer:
         fake = original_make(mcp_server_arg, state)
 
         def _probe() -> _ProbeResult:
@@ -182,8 +184,6 @@ def test_metrics_snapshot_has_all_three_keys() -> None:
 
 def test_startup_banner_contains_all_six_fields() -> None:
     """The startup banner announces transport/session/dispatch/drain/kill/probe/auth."""
-    from pathlib import Path
-
     text = (
         Path(__file__).parent.parent
         / "ralph"
@@ -230,8 +230,6 @@ def test_metrics_record_does_not_require_real_wall_clock() -> None:
     import time as _time inside unrelated modules) confirms no wall-clock
     dependency.
     """
-    from pathlib import Path
-
     text = (
         Path(__file__).parent.parent
         / "ralph"

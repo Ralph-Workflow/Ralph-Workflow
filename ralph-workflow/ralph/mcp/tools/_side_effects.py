@@ -14,7 +14,7 @@ default-deny test (tests/test_property_f_retry_side_effects.py).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal
 
 SideEffectClassification = Literal["read", "mutate", "unknown"]
 
@@ -112,7 +112,7 @@ def get_contract(tool_name: str) -> SideEffectContract:
 def register(tool_name: str, classification: SideEffectClassification) -> SideEffectContract:
     """Register a new contract (test-only convenience; production uses REGISTRY)."""
     REGISTRY[tool_name] = _contract(tool_name, classification)
-    return cast("SideEffectContract", REGISTRY[tool_name])
+    return REGISTRY[tool_name]
 
 
 __all__ = [

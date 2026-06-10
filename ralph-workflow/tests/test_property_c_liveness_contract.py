@@ -11,24 +11,42 @@ in-memory transport harness exercises the shipped path end-to-end.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import _in_memory_transport
 from ralph.mcp.server._fallback_http_handler_probe import _ProbeResult
 from ralph.mcp.server._in_memory_transport import drive_request
+from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server import McpServer
 from ralph.mcp.server._metrics import McpMetrics
+from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 from ralph.mcp.server.runtime import build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import timedelta
-    from pathlib import Path
 
     from ralph.mcp.server._fallback_http_server import _FallbackHttpServer
     from ralph.mcp.server._server_state import ServerState
+
+
+class _ServerWithHealthProbe(Protocol):
+    """Typed view of the production handler's fake-server attributes.
+
+    The SimpleNamespace returned by ``_make_fake_server`` is a structural
+    stand-in for ``_FallbackHttpServer``; this Protocol declares the
+    attributes the test sets (health_probe_fn, metrics) so assignments
+    are typed without suppression markers. The structural Protocol
+    is preferred over inheriting from ``_FallbackHttpServer`` (a concrete
+    ``ThreadingHTTPServer`` subclass) because Protocol can only inherit
+    from other Protocols.
+    """
+
+    health_probe_fn: Callable[[], _ProbeResult] | None
+    metrics: McpMetrics | None
 
 
 def _make_mcp_server(tmp_path: Path) -> McpServer:
@@ -52,7 +70,7 @@ def _make_mcp_server(tmp_path: Path) -> McpServer:
 def _make_with_probe(
     mcp_server: McpServer,
     state: ServerState,
-    probe: callable | None = None,
+    probe: Callable[[], _ProbeResult] | None = None,
     metrics: McpMetrics | None = None,
     *,
     _original: Callable[[McpServer, ServerState], _FallbackHttpServer] | None = None,
@@ -60,10 +78,11 @@ def _make_with_probe(
     """Build a SimpleNamespace with health_probe_fn and metrics set."""
     factory = _original if _original is not None else _in_memory_transport._make_fake_server
     fake = factory(mcp_server, state)
+    typed: _ServerWithHealthProbe = cast("_ServerWithHealthProbe", fake)
     if probe is not None:
-        fake.health_probe_fn = probe  # type: ignore[attr-defined]
+        typed.health_probe_fn = probe
     if metrics is not None:
-        fake.metrics = metrics  # type: ignore[attr-defined]
+        typed.metrics = metrics
     return fake
 
 
@@ -154,15 +173,13 @@ def test_health_route_increments_health_probe_outcomes_counter(tmp_path: Path) -
     assert outcomes["success"] >= 2
 
 
-def test_supervisor_calls_restart_within_configured_probe_timeout(tmp_path: Path) -> None:
+def test_supervisor_calls_restart_within_configured_probe_timeout() -> None:
     """The supervisor restarts within the bounded RALPH_MCP_PROBE_TIMEOUT_MS.
 
     Inject a fake clock and a probe that fails. Verify the supervisor calls
     restart_fn within the configured probe timeout, not only at the far-off
     session cap.
     """
-    from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
-    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 
     class _FakeProcess:
         def poll(self) -> int | None:  # exits -> process_exited path
@@ -200,8 +217,6 @@ def test_supervisor_calls_restart_within_configured_probe_timeout(tmp_path: Path
 
 def test_supervisor_probe_failure_with_explicit_timeout() -> None:
     """When the probe function fails, the supervisor restarts within bound."""
-    from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
-    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
 
     class _FakeProcess:
         def poll(self) -> int | None:  # alive
@@ -240,8 +255,6 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
 
 def test_health_route_is_present_in_fallback_handler() -> None:
     """The /health branch was added by Property C; verify the code path is present."""
-    from pathlib import Path
-
     handler_text = (
         Path(__file__).parent.parent
         / "ralph"

@@ -19,8 +19,10 @@ import os
 from ralph.mcp.protocol.env import MCP_REQUEST_TIMEOUT_MS_ENV
 from ralph.timeout_defaults import (
     EXEC_MAX_TIMEOUT_MS,
-    KILL_ESCALATION_CEILING_MS,
     SSE_DRAIN_CEILING_MS,
+)
+from ralph.timeout_defaults import (
+    KILL_ESCALATION_CEILING_MS as _KILL_ESCALATION_CEILING_MS,
 )
 
 #: Default client request timeout (milliseconds). 330_000 = 5 minutes +
@@ -44,15 +46,19 @@ DISPATCH_CAP_MS: int = EXEC_MAX_TIMEOUT_MS
 DRAIN_CEILING_MS: int = SSE_DRAIN_CEILING_MS
 
 #: Worst-case kill escalation ceiling. The SIGTERM-then-SIGKILL grace
-#: before a child is hard-killed.
-KILL_ESCALATION_CEILING_MS: int = KILL_ESCALATION_CEILING_MS  # noqa: PLW0127
+#: before a child is hard-killed. The canonical value lives in
+#: ``ralph.timeout_defaults``; this module-local name is the public
+#: surface for the timing-safety group.
+KILL_ESCALATION_CEILING_MS: int = _KILL_ESCALATION_CEILING_MS
 
 #: End-to-end timing safety margin. The server's worst case (sum of the
 #: three constants above) must remain strictly less than the client's
 #: request timeout — otherwise a slow client can hit its request
 #: timeout while the server is still dispatching, producing the
 #: ``-32001`` retry storm the architecture is built to prevent.
-SERVER_WORST_CASE_MS: int = DISPATCH_CAP_MS + DRAIN_CEILING_MS + KILL_ESCALATION_CEILING_MS
+SERVER_WORST_CASE_MS: int = (
+    DISPATCH_CAP_MS + DRAIN_CEILING_MS + KILL_ESCALATION_CEILING_MS
+)
 
 # Import-time invariant (NOT assert) — survives python -O.
 if not SERVER_WORST_CASE_MS < CLIENT_REQUEST_TIMEOUT_MS:

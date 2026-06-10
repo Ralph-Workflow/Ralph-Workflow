@@ -115,11 +115,11 @@ def test_idle_watchdog_kill_classifier_uses_typed_signal_and_reason() -> None:
 def test_idle_watchdog_kill_subclass_with_misleading_str_still_agent() -> None:
     """A subclass that lies in __str__ still classifies as AGENT (typed wins)."""
 
-    class _MisleadingIdleKill(IdleWatchdogKilledError):  # noqa: N818
+    class _MisleadingIdleKillError(IdleWatchdogKilledError):
         def __str__(self) -> str:
             return "ConnectionError: transient timeout blip"
 
-    exc = _MisleadingIdleKill(reason="idle", signal=15)
+    exc = _MisleadingIdleKillError(reason="idle", signal=15)
     classified = FailureClassifier().classify(exc, phase="p", agent="a")
     assert classified.category == FailureCategory.AGENT, (
         f"subclass with misleading __str__ must still classify as AGENT, "
@@ -136,10 +136,10 @@ def test_idle_watchdog_kill_carries_typed_attributes() -> None:
 
 def test_idle_watchdog_kill_preserves_attrs_in_subclass() -> None:
     """A subclass inherits .reason and .signal from the base."""
-    class _IdleKill(IdleWatchdogKilledError):  # noqa: N818
+    class _IdleKillError(IdleWatchdogKilledError):
         pass
 
-    exc = _IdleKill(reason="stalled", signal=9)
+    exc = _IdleKillError(reason="stalled", signal=9)
     assert exc.reason == "stalled"
     assert exc.signal == 9
 
