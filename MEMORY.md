@@ -24,6 +24,8 @@
 - Reddit monitoring is now a required part of the regular RalphWorkflow marketing loop, including review of prior Reddit activity and self-improving adjustments based on what worked, what failed, and sentiment/usefulness trends.
 - Reddit should not be posted to on a daily quota; only post when the content is genuinely insightful, useful to the community, and RalphWorkflow is not the main focus of the post.
 - Reddit volume is flexible (as many as 10 posts or as few as 1), but every Reddit post must be genuinely insightful and meaningfully contribute to the community.
+- CLEANUP SAFETY (2026-06-10): any future cleanup commit that removes scripts under `agents/marketing/` must first parse `agents/marketing/crontab.txt` and refuse to remove anything still cron-referenced. The 7d285cb9 cleanup deleted `log_janitor.py` and `stale_artifact_watchdog.py` while leaving the crontab pointing at them, causing silent weekly/daily cron failure. The fleet monitor only sees "no log written" and reports OK — script-deletion-via-cleanup is invisible to it.
+- Untracked working-tree files that the system depends on (channel_spidering_guard.py, distribution_lane_selector.py, marketing_fleet_monitor.py as of 2026-06-10) are a real failure mode — they work on disk but disappear on `git stash` / fresh clone. Always `git add` new working-tree scripts as part of the change, not as optional cleanup.
 
 ## Ralph Workflow Guidance
 - Ralph Workflow is best suited for big, ambitious tasks; it is not a great fit for minor changes or small features that a capable AI agent can finish in about an hour or less.
