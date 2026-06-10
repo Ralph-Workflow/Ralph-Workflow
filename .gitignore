@@ -38,6 +38,8 @@ wt-*/
 .tmp/
 /tmp/
 *PLAN.md
+# Bundled artifact format doc — not a user plan file; must stay tracked.
+!ralph-workflow/ralph/mcp/artifacts/format_docs/plan.md
 
 .plan
 

@@ -131,7 +131,7 @@ def _bullet_lines(items: object, text_key: str) -> list[str]:
     ]
 
 
-def _format_steps_section(plan: dict[str, object]) -> str:  # noqa: PLR0912 - per-step field rendering
+def _format_steps_section(plan: dict[str, object]) -> str:
     steps = plan.get("steps")
     if not isinstance(steps, list) or not steps:
         return ""
