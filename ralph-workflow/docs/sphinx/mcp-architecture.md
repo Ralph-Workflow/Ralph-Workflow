@@ -199,9 +199,7 @@ contract is asserted by observable behavior on the shipped path.
 | M | `test_property_m_structured_cause.py` | a watchdog-SIGTERM failure is classified by its preserved fire-reason, not relabeled by a stderr substring match, asserted on a fabricated failure whose text contains a misleading timeout token. |
 | N | `test_property_n_spill_inside_workspace.py` | without an injected spill dir, oversized exec/unsafe_exec output spills to a path inside the workspace root (readable by the agent read tools), asserted over an in-memory workspace. |
 
-The full property table with cross-references to the architecture file
-lives in {doc}`../ralph/mcp/ARCHITECTURE` § "Target architecture
-properties (A–N)". A property is "done" only when the proof obligation
+A property is "done" only when the proof obligation
 above is demonstrable as a fast, deterministic, black-box test that
 asserts observable behavior on the shipped path.
 
