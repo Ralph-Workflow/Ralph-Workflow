@@ -55,7 +55,7 @@ def sequence_stats() -> dict | None:
         key = km.group(1).strip()
         req = urllib.request.Request(
             "https://api.apollo.io/api/v1/emailer_campaigns/search",
-            data=json.dumps({"page": 1, "per_page": 25}).encode(),
+            data=json.dumps({"page": 1, "per_page": 100}).encode(),
             headers={"Content-Type": "application/json", "X-Api-Key": key}, method="POST")
         with urllib.request.urlopen(req, timeout=20) as resp:
             cs = json.load(resp).get("emailer_campaigns", [])
@@ -98,12 +98,12 @@ def sequence_stats() -> dict | None:
         opened = sum(c.get("unique_opened_unfiltered") or 0 for c in live)
         opened_tracked_delivered = sum(c.get("unique_delivered_open_tracked") or 0 for c in live)
         replied = sum(c.get("unique_replied") or 0 for c in live)
-        # D17 (owner-found 2026-06-09): hard_bounced is a REAL bounce — the SMTP rejection
-        # of a dead address is worse than a soft bounce, and excluding it under-counts the
-        # primary domain's deliverability damage. Both count toward the brake.
-        bounced = (sum(c.get("unique_bounced") or 0 for c in live)
-                   + sum(c.get("unique_hard_bounced") or 0 for c in live))
+        # D18 CORRECTED (Apollo-API review 2026-06-10): unique_hard_bounced is a SUBSET of
+        # unique_bounced (verified live), NOT additive — the old sum double-counted hard bounces.
+        # Count unique_bounced only; keep hard separately for diagnosis.
+        bounced = sum(c.get("unique_bounced") or 0 for c in live)
         hard_bounced = sum(c.get("unique_hard_bounced") or 0 for c in live)
+        delivered_for_bounce = sum(c.get("unique_delivered") or 0 for c in live)
         active = sum(1 for c in cs if c.get("active"))
         ralph_active = sum(1 for c in cs if c.get("active") and str(c.get("name","")).startswith("Ralph-AB-"))
         # D17b: R7 cap is 2 live variants. If >2 Ralph-AB sequences are active, the cap is breached
@@ -111,16 +111,21 @@ def sequence_stats() -> dict | None:
         r7_violation = ralph_active > 2
         legacy_bounced = sum(c.get("unique_bounced") or 0 for c in cs) - bounced
         # staged-but-never-activated Ralph-AB experiments = the account's #1 theater failure mode
+        # (D56: subtract manual_pause sequences — they are ABORTED, not staged. status_reason='manual_pause'
+        # is the R2/R7 abort signal; truly-staged-waiting sequences have status_reason=None.)
         staged_unsent = sum(1 for c in cs if str(c.get("name", "")).startswith("Ralph-AB-")
-                            and not c.get("active") and (c.get("unique_sent") or 0) == 0)
-        denom = sent or (opened + bounced) or 1
+                            and not c.get("active") and (c.get("unique_sent") or 0) == 0
+                            and c.get("status_reason") != "manual_pause")
+        # bounce base = delivered + bounced (Apollo-API review): delivered EXCLUDES bounces, so
+        # bounces/delivered-only overstates the rate. This is the real "could-have-bounced" base.
+        bounce_base = delivered_for_bounce + bounced
         return {"sequences": len(cs), "active": active, "ralph_active": ralph_active,
                 "sent": sent, "opened": opened, "opened_tracked": opened_tracked,
                 "opened_tracked_delivered": opened_tracked_delivered,
                 "replied": replied, "bounced": bounced,
                 "hard_bounced": hard_bounced, "staged_unsent": staged_unsent,
                 "legacy_bounced": legacy_bounced, "arm_fill": arm_fill, "r7_violation": r7_violation,
-                "bounce_rate_pct": round(100 * bounced / denom, 1),
+                "bounce_rate_pct": round(100 * bounced / bounce_base, 1) if bounce_base else 0.0,
                 "reply_rate_pct": round(100 * replied / (sent or 1), 1),
                 "open_rate_pct_unfiltered": round(100 * opened / (sent or 1), 1),
                 "open_rate_pct_tracked": round(100 * opened_tracked / (sent or 1), 1)}
@@ -235,7 +240,7 @@ def main() -> int:
         f"(of {discovery_raw} raw entries — internal/aggregate/synthesized notes and delivery logs "
         f"do NOT count toward the gate)\n"
         f"- Worked tactics (all-time): **{worked}**\n"
-        + (f"- **SEQUENCE OUTREACH (Apollo live):** {seq['active']} active seq ({seq.get('ralph_active',seq['active'])} Ralph-AB) · **{seq.get('sent',0)} sent** · "
+        + (f"- **SEQUENCE OUTREACH (Apollo live):** {seq['active']} active seq ({seq.get('ralph_active',seq['active'])} Ralph-AB) · **{seq.get('sent',0)} delivered** (Apollo has no unique_sent field; this is unique_delivered = sent minus bounces) · "
            f"{seq['opened']} opens [unfiltered, MPP-raw; {seq.get('opened_tracked',0)} tracked] (open rate {seq.get('open_rate_pct_unfiltered',0)}% raw / {seq.get('open_rate_pct_tracked',0)}% tracked) · "
            f"**{seq['replied']} replies** · {seq['bounced']} bounced "
            f"(includes {seq.get('hard_bounced',0)} hard_bounced) (**bounce {seq['bounce_rate_pct']}%**, reply {seq['reply_rate_pct']}%). "
