@@ -215,18 +215,88 @@ def main() -> int:
     except Exception:  # noqa: BLE001
         pass
 
-    # (v) PHANTOM-BLOCKER detector (D36, marketing review 2026-06-10): the marketer keeps deferring
-    # the highest-ROI warm-pool/H-item work with "staged until the GitHub token is resolved/provisioned"
-    # — but `gh` is authed (repo scope). A fabricated blocker is warm-pool activity-theater. Scan the
-    # last 60 ledger lines + segments.md for the pattern; flag if present (the prompt ban needs a detector).
+    # (v) PHANTOM-BLOCKER detector (D36, marketing review 2026-06-10; D52 STALE-SCAN FIX 2026-06-10):
+    # the marketer used to defer the highest-ROI warm-pool/H-item work with "staged until the GitHub
+    # token is resolved/provisioned" — but `gh` is authed (repo scope). A fabricated blocker is
+    # warm-pool activity-theater. The fix (D52): scope the scan to the last 24h of ledger lines
+    # (NOT the last 60 lines regardless of date). Old corrections ("github=UNBLOCKED" 2026-06-08) used
+    # to fire the alert every 2h forever; the date prefix `^.*"date":\s*"YYYY-MM-DD"` filter makes
+    # the scan a 24h window and stops the stale alert. Alert text also updated to the D36-revised +
+    # D46-revised binding (DRAFT public writes for owner, do not POST).
     phantom = re.compile(r"(?i)(staged|blocked|defer).{0,40}(github|gh)\b.{0,30}(token|auth).{0,30}"
                          r"(resolv|provision|set ?up|unresolved|missing)")
-    blob = recent + "\n" + ((LOGS / "segments.md").read_text(encoding="utf-8", errors="replace")
+    # Build a 24h-scoped ledger slice: parse the JSON `date` field, keep only entries from the last 24h.
+    ledger_path = LOGS / "tactic_ledger.jsonl"
+    recent_24h_blob = ""
+    if ledger_path.exists():
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        cutoff = _dt.now(_tz.utc) - _td(hours=24)
+        kept = []
+        for line in ledger_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                d = json.loads(line).get("date", "")
+                if d and _dt.strptime(d, "%Y-%m-%d") >= cutoff.replace(hour=0, minute=0, second=0, microsecond=0):
+                    kept.append(line)
+            except Exception:
+                continue
+        recent_24h_blob = "\n".join(kept)
+    blob = recent_24h_blob + "\n" + ((LOGS / "segments.md").read_text(encoding="utf-8", errors="replace")
                             if (LOGS / "segments.md").exists() else "")
-    if phantom.search(blob):
-        criticals.append("phantom-blocker LIVE (D36): an artifact defers warm-pool/H-item work on a "
-                         "'GitHub token unresolved' premise — but gh IS authed (repo scope). The "
-                         "highest-ROI action is being avoided on a fabricated blocker; engage via gh now.")
+    # D52b FALSE-POSITIVE FILTER: the new PUBLIC-WRITE CONDUCT uses the word "STAGED" + "owner" +
+    # "DRAFT" as POSITIVE framings (the work is staged for the owner to post). The old phantom-
+    # blocker regex caught those. Strip lines that contain a "for owner", "PENDING_OWNER",
+    # "DRAFT", "drafts/", or "DRAFTED" frame BEFORE searching — those are NOT phantom blockers,
+    # they are the correct D46-revised state.
+    lines_to_check = [ln for ln in blob.splitlines() if not re.search(
+        r"(?i)(for\s+owner|pending_owner|^.*drafts/|drafted|\\bdraft\\b|owner will post|owner posts)", ln
+    )]
+    blob_filtered = "\n".join(lines_to_check)
+    if phantom.search(blob_filtered):
+        criticals.append("phantom-blocker LIVE (D36, 24h-scan, D52b-filtered): a 24h artifact "
+                         "defers warm-pool/H-item work on a 'GitHub token unresolved' premise — "
+                         "but gh IS authed (repo scope) for READ; DRAFT public writes for the "
+                         "owner, do NOT post them yourself (D46-revised). Engage via gh for "
+                         "discovery; do not fabricate a 'token unresolved' blocker.")
+
+    # (vi) AUTONOMOUS PUBLIC-WRITE detector (D46, owner-mandated 2026-06-10): the loop must NEVER
+    # post to GitHub/public surfaces itself (gh-write-guard blocks gh; this catches any bypass —
+    # /usr/bin/gh, a future PATH change, a different tool). Flag a ledger footprint of an actual
+    # public write TODAY so the owner knows immediately a reputation action happened autonomously.
+    pubwrite = re.compile(r"(?i)\b(posted|fired|opened|created|commented on)\b.{0,40}"
+                          r"(issue|pr|pull request|comment|discussion)\b|gh (issue|pr) (create|comment)")
+    today = datetime.now().strftime("%Y-%m-%d")
+    todays = [l for l in (recent.splitlines() if recent else []) if today in l]
+    pw_hits = [l for l in todays if pubwrite.search(l)]
+    if pw_hits:
+        criticals.append(f"AUTONOMOUS PUBLIC-WRITE footprint TODAY (D46): {len(pw_hits)} ledger line(s) "
+                         f"indicate the loop posted to a public surface itself — this must be HUMAN-only. "
+                         f"Verify the gh-write-guard is intact and on PATH; the owner posts, the loop suggests.")
+    # also surface if the gh-write-guard logged blocked attempts (the loop is TRYING to post → prompt drift)
+    gwlog = LOGS / "gh_write_guard_blocks.jsonl"
+    if gwlog.exists():
+        gw_today = [l for l in gwlog.read_text(encoding="utf-8").splitlines() if today in l]
+        if len(gw_today) > 2:
+            criticals.append(f"gh-write-guard blocked {len(gw_today)} write attempt(s) today — the marketer "
+                             f"is still TRYING public writes despite PUBLIC-WRITE CONDUCT; tighten the prompt.")
+
+    # (vii) gh-write-guard INTEGRITY (D46): the deterministic block only works while the shim exists
+    # and carries its guard logic. If it's missing/gutted, autonomous public writes become possible
+    # again — alert loudly (watchers need watching, like the lint --selftest).
+    import os as _os
+    shim_ok = False
+    for _d in ("/home/mistlight/.local/share/pnpm/bin/gh", "/home/mistlight/.bun/bin/gh",
+               "/home/mistlight/.cargo/bin/gh", "/home/mistlight/.opencode/bin/gh"):
+        try:
+            if _os.path.exists(_d) and "gh-write-guard" in Path(_d).read_text(encoding="utf-8"):
+                shim_ok = True
+        except Exception:  # noqa: BLE001
+            pass
+    if not shim_ok:
+        criticals.append("gh-write-guard SHIM MISSING/GUTTED (D46): the deterministic block on autonomous "
+                         "public GitHub writes is gone — reinstall it first in the gateway PATH before the "
+                         "next marketer turn, or the loop can post publicly again.")
 
     # ---- goal header (the point of the whole fleet) ----
     goal = []
