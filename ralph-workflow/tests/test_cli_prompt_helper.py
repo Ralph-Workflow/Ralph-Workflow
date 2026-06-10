@@ -20,6 +20,7 @@ def cli_runner() -> typer.testing.CliRunner:
 class TestPromptHelperDispatch:
     """Tests for --prompt-helper flag dispatch."""
 
+    @pytest.mark.timeout_seconds(3)
     def test_prompt_helper_flag_calls_run_prompt_helper(
         self,
         cli_runner: typer.testing.CliRunner,
@@ -51,6 +52,7 @@ class TestPromptHelperDispatch:
         # Should have raised typer.Exit (exit code 0)
         assert result.exit_code == 0
 
+    @pytest.mark.timeout_seconds(3)
     def test_prompt_helper_flag_does_not_start_pipeline(
         self,
         cli_runner: typer.testing.CliRunner,
@@ -82,6 +84,7 @@ class TestPromptHelperDispatch:
         mock_invoke_pipeline.assert_not_called()
         assert result.exit_code == 0
 
+    @pytest.mark.timeout_seconds(3)
     def test_without_prompt_helper_flag_does_not_call_run_prompt_helper(
         self,
         cli_runner: typer.testing.CliRunner,
@@ -103,6 +106,7 @@ class TestPromptHelperDispatch:
         mock_run_prompt_helper.assert_not_called()
         assert result.exit_code == 0
 
+    @pytest.mark.timeout_seconds(3)
     def test_prompt_helper_passes_workspace_scope_to_load_config(
         self,
         cli_runner: typer.testing.CliRunner,
