@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import signal
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.interrupt.controller import InterruptController
+from ralph.interrupt.dispatcher import InterruptDispatcher
 
 _PID_A = 42
 _PID_B = 1234
@@ -167,3 +169,43 @@ class TestInstallSignalHandlers:
             first_handler()
 
         mock_killpg.assert_not_called()
+
+    def test_asyncio_bridge_first_sigint_does_not_pass_block_true(self) -> None:
+        """The first-SIGINT path in the asynchro_bridge must call
+        ``active_dispatcher.begin_interrupt(...)`` WITHOUT ``block=True``
+        (intentional — the bridge relies on ``root_task.cancel()`` to
+        wake the event loop instead of blocking). A regression that
+        flips this to ``block=True`` would deadlock the asyncio event
+        loop waiting for a process manager that is never drained.
+
+        The test monkeypatches ``InterruptDispatcher.begin_interrupt``
+        on the CLASS (via setattr on the class object) with a wrapper
+        that records the ``block`` kwarg and delegates to the original
+        method via the original bound method. Class-level patching
+        makes the wrapper apply to ALL instances, including the one
+        the asynchro_bridge builds internally.
+        """
+        original_begin = InterruptDispatcher.__dict__["begin_interrupt"]
+        block_kwargs: list[bool] = []
+
+        def _spy(self: object, *args: object, **kwargs: object) -> object:
+            block_kwargs.append(bool(kwargs.get("block", False)))
+            return original_begin(self, *args, **kwargs)
+
+        InterruptDispatcher.begin_interrupt = cast("Any", _spy)
+        try:
+            loop = MagicMock(spec=asyncio.AbstractEventLoop)
+            task = MagicMock(spec=asyncio.Task)
+            bridge = SignalBridge()
+
+            first_handler = _install_and_get_first_handler(loop, task, bridge)
+            first_handler()
+        finally:
+            InterruptDispatcher.begin_interrupt = cast("Any", original_begin)
+        # The first-SIGINT path passes no ``block`` kwarg, so the
+        # default ``block=False`` is recorded.
+        assert block_kwargs, "begin_interrupt was not called"
+        assert block_kwargs == [False], (
+            f"asynchro_bridge first-SIGINT must NOT pass block=True; "
+            f"got block_kwargs={block_kwargs}"
+        )

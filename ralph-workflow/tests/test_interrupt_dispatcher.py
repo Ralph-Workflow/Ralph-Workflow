@@ -21,9 +21,10 @@ import contextlib
 import os
 import signal
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -483,6 +484,250 @@ def test_dispatcher_begin_interrupt_block_true_blocks_until_list_active_empty() 
     assert drained.wait(timeout=0.5)
     drainer.join(timeout=0.1)
     assert manager.shutdown_all_for_label_calls == [("invoke:", _INVOKE_GRACE)]
+
+
+class _FakeClock:
+    """Minimal clock abstraction for clock-seam tests.
+
+    A replacement for ``time.monotonic`` that the dispatcher reads through
+    ``self.clock()``. Each ``advance(s)`` call moves time forward by
+    ``s`` seconds; the next ``now()`` returns the new value.
+    """
+
+    def __init__(self) -> None:
+        self._t = 0.0
+
+    def now(self) -> float:
+        return self._t
+
+    def advance(self, s: float) -> None:
+        self._t += s
+
+
+def _make_fake_sleep(clock: _FakeClock) -> Callable[[float], None]:
+    """Build a fake sleep that advances the clock on every call."""
+
+    def _fake_sleep(s: float) -> None:
+        clock.advance(s)
+
+    return _fake_sleep
+
+
+def test_dispatcher_uses_injected_clock_for_block_wait_deadline() -> None:
+    """Test 1: dispatcher must read its ``clock`` field (not call
+    ``time.monotonic`` directly) when computing the block-wait deadline
+    in ``_wait_for_list_active_empty``. A fake clock and fake sleep let
+    the test run in microseconds and never depend on real wall-clock
+    time. The fake manager's ``list_active()`` drains on the first
+    sleep tick so the wait resolves early.
+    """
+    clock = _FakeClock()
+    sleep_calls: list[float] = []
+    active_records: list[ProcessRecord] = []
+    record = ProcessRecord(
+        pid=_PID,
+        pgid=_PGID,
+        command=("fake",),
+        cwd=None,
+        started_at=datetime.now(tz=UTC),
+        status=ProcessStatus.RUNNING,
+        label="invoke:fake",
+    )
+    active_records.append(record)
+
+    def _fake_clock() -> float:
+        return clock.now()
+
+    def _fake_sleep(s: float) -> None:
+        sleep_calls.append(s)
+        if active_records:
+            active_records.clear()
+
+    manager = FakeProcessManager()
+    manager._active_records = active_records
+    exit_calls: list[tuple[int, ...]] = []
+    _, dispatcher = _build_dispatcher(
+        process_manager=manager,
+        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        clock=cast("Callable[[], float]", _fake_clock),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+    )
+    dispatcher.begin_interrupt(block=True, grace_period_s=_INVOKE_GRACE)
+    assert len(sleep_calls) >= 1
+    assert sleep_calls[0] <= 0.01
+
+
+def test_dispatcher_block_wait_does_not_sleep_when_already_empty() -> None:
+    """Test 2: when the manager's active list is already empty, the
+    dispatcher must short-circuit and NOT call sleep. This is the
+    canonical early-exit path for the ``block=True`` flow when no
+    process is registered as active.
+    """
+    clock = _FakeClock()
+    sleep_calls: list[float] = []
+
+    manager = FakeProcessManager()
+    _, dispatcher = _build_dispatcher(
+        process_manager=manager,
+        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", sleep_calls.append),
+    )
+    dispatcher.begin_interrupt(block=True, grace_period_s=_INVOKE_GRACE)
+    assert sleep_calls == []
+
+
+def test_dispatcher_early_escalation_uses_injected_clock_for_deadline() -> None:
+    """Test 3: ``run_early_escalation_poll`` must read the dispatcher's
+    ``clock`` field for its deadline and call ``self.sleep`` (not
+    ``time.sleep``) for the per-iteration wait. Pins the seam for the
+    early-escalation path so a regression to ``time.monotonic()`` /
+    ``time.sleep()`` breaks this test.
+    """
+    clock = _FakeClock()
+    sleep_calls: list[float] = []
+
+    manager = FakeProcessManager()
+    manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
+
+    def _fake_sleep(s: float) -> None:
+        sleep_calls.append(s)
+
+    dispatcher = InterruptDispatcher(
+        controller=InterruptController(
+            shutdown_all=lambda _g: None,
+            shutdown_all_for_label=lambda _l, _g: None,
+        ),
+        process_manager=manager,
+        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        poll_interval_s=_POLL_INTERVAL,
+        hard_kill_budget_s=_QUICK_BUDGET,
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+    )
+    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    assert sleep_calls, "sleep must be called by run_early_escalation_poll"
+    assert sleep_calls[0] == _POLL_INTERVAL
+
+
+def test_dispatcher_constructor_rejects_clock_returning_non_float() -> None:
+    """Test 4: ``__post_init__`` must raise ``RuntimeError`` if the
+    ``clock`` field returns a non-float. The clock() call here is the
+    only place we can detect a malformed injection at construction
+    time, before ``begin_interrupt`` runs.
+    """
+    manager = FakeProcessManager()
+    with pytest.raises(RuntimeError):
+        InterruptDispatcher(
+            controller=InterruptController(shutdown_all=lambda _g: None),
+            process_manager=manager,
+            hard_exit=cast("Callable[[int], None]", lambda _c: None),
+            poll_interval_s=0.01,
+            hard_kill_budget_s=0.05,
+            clock=cast("Callable[[], float]", lambda: "1.0"),
+            sleep=cast("Callable[[float], None]", lambda _s: None),
+        )
+
+
+def test_dispatcher_factory_defaults_to_time_monotonic() -> None:
+    """Test 5: when the factory is called without explicit ``clock`` /
+    ``sleep`` kwargs, the dispatcher must default ``clock`` to
+    ``time.monotonic`` and ``sleep`` to ``time.sleep``. Identity check
+    (``is``) confirms the module-level reference is the same as the
+    default — not a wrapper.
+    """
+    dispatcher = dispatcher_from_process_manager(
+        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+    )
+    assert dispatcher.clock is time.monotonic
+    assert dispatcher.sleep is time.sleep
+
+
+def test_dispatcher_early_escalation_poll_sleeps_before_matched_check() -> None:
+    """Test 6 (NEW): the per-iteration order in
+    ``run_early_escalation_poll`` MUST be ``sleep(poll)`` then
+    ``list_active()`` (matched check), not the reverse. Pinning the
+    order preserves the existing semantics where the first poll
+    happens AFTER one sleep tick (so a freshly-started process has
+    time to register).
+    """
+    clock = _FakeClock()
+    event_order: list[str] = []
+
+    manager = FakeProcessManager()
+    manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
+
+    original_list_active = manager.list_active
+
+    def _recording_list_active() -> list[ProcessRecord]:
+        event_order.append("list_active")
+        return original_list_active()
+
+    manager.list_active = cast("Any", _recording_list_active)
+
+    def _fake_sleep(s: float) -> None:
+        event_order.append(f"sleep({s})")
+
+    dispatcher = InterruptDispatcher(
+        controller=InterruptController(
+            shutdown_all=lambda _g: None,
+            shutdown_all_for_label=lambda _l, _g: None,
+        ),
+        process_manager=manager,
+        hard_exit=cast("Callable[[int], None]", lambda _c: None),
+        poll_interval_s=_POLL_INTERVAL,
+        hard_kill_budget_s=_QUICK_BUDGET,
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+    )
+    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    sleep_indices = [i for i, e in enumerate(event_order) if e.startswith("sleep(")]
+    list_indices = [i for i, e in enumerate(event_order) if e == "list_active"]
+    assert sleep_indices and list_indices
+    assert sleep_indices[0] < list_indices[0], (
+        f"sleep(poll) MUST come before the first list_active check; "
+        f"got event_order={event_order}"
+    )
+
+
+def test_dispatcher_waits_until_empty_or_escalates_when_stuck() -> None:
+    """ROOT-CAUSE FIX PIN: when ``block=True`` and the manager's active
+    records never drain, the dispatcher must ESCALATE (via
+    ``force_exit``) after the grace deadline, not return silently.
+    This is the canonical pin for the PROMPT's 'frozen pipeline after
+    Ctrl+C' failure mode — production code must call
+    ``self.force_exit(bridge_pids=...)`` with the still-active
+    records' pids.
+    """
+    clock = _FakeClock()
+    sleep_calls: list[float] = []
+    exit_calls: list[tuple[int, ...]] = []
+    kill_calls: list[tuple[int, int]] = []
+
+    manager = FakeProcessManager()
+    # The record NEVER drains — fake_sleep does NOT touch _active_records.
+    manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
+
+    def _fake_sleep(s: float) -> None:
+        sleep_calls.append(s)
+        # Advance the clock past the grace deadline to escape the wait loop.
+        clock.advance(s)
+
+    _, dispatcher = _build_dispatcher(
+        process_manager=manager,
+        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        kill_process_group=cast(
+            "Callable[[int, int], None]", lambda pgid, sig: kill_calls.append((pgid, sig))
+        ),
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+    )
+    dispatcher.begin_interrupt(block=True, grace_period_s=0.05)
+    # force_exit was called with INTERRUPT_EXIT_CODE
+    assert exit_calls == [(INTERRUPT_EXIT_CODE,)]
+    # force_exit routed through controller.force_interrupt, which calls
+    # kill_process_group for each registered pid in bridge_pids.
+    assert (_PGID, signal.SIGKILL) in kill_calls
 
 
 def test_handle_keyboard_interrupt_force_kill_handler_restores_previous() -> None:

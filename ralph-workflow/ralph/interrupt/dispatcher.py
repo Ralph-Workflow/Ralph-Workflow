@@ -202,6 +202,8 @@ class InterruptDispatcher:
     poll_interval_s: float
     hard_kill_budget_s: float
     kill_label: str = "invoke:"
+    clock: Callable[[], float] = time.monotonic
+    sleep: Callable[[float], None] = time.sleep
     _force_exit_called: bool = field(default=False, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -214,6 +216,11 @@ class InterruptDispatcher:
             raise RuntimeError(
                 "poll_interval_s must be positive "
                 f"(got {self.poll_interval_s})"
+            )
+        if not isinstance(self.clock(), float):
+            raise RuntimeError(
+                "clock() must return a float "
+                f"(got {type(self.clock()).__name__})"
             )
 
     def begin_interrupt(
@@ -236,15 +243,28 @@ class InterruptDispatcher:
         """Block until ``process_manager.list_active()`` is empty or the
         grace period elapses. The grace period is the upper bound on the
         wait; a process that exits faster resolves the wait early.
+
+        If the grace deadline elapses with active records still present,
+        the dispatcher escalates via ``self.force_exit(bridge_pids=...)``
+        to break the frozen-pipeline-after-Ctrl+C failure mode. The
+        escalation is idempotent: a subsequent force_exit (e.g. from
+        a second SIGINT) is a no-op.
         """
-        deadline = time.monotonic() + grace_period_s
-        while time.monotonic() < deadline:
+        deadline = self.clock() + grace_period_s
+        while self.clock() < deadline:
             try:
                 if not self.process_manager.list_active():
                     return
             except Exception:
                 return
-            time.sleep(min(self.poll_interval_s, 0.01))
+            self.sleep(min(self.poll_interval_s, 0.01))
+        # Deadline elapsed with records still active: escalate to force_exit.
+        try:
+            active = self.process_manager.list_active()
+        except Exception:
+            return
+        if active:
+            self.force_exit(bridge_pids=[r.pgid for r in active])
 
     def force_exit(self, bridge_pids: Iterable[int] = ()) -> None:
         """Escalate to immediate tracked-process termination and exit.
@@ -288,10 +308,10 @@ class InterruptDispatcher:
             else self.poll_interval_s
         )
         bound = max_wait_s if max_wait_s is not None else self.hard_kill_budget_s
-        deadline = time.monotonic() + bound
+        deadline = self.clock() + bound
         cpu_baselines: dict[int, float] = {}
-        while time.monotonic() < deadline:
-            time.sleep(poll)
+        while self.clock() < deadline:
+            self.sleep(poll)
             matched = _matched_active_records(self.process_manager, self.kill_label)
             if matched is None:
                 continue
@@ -316,6 +336,8 @@ def dispatcher_from_process_manager(
     poll_interval_s: float = SIGINT_PROGRESS_POLL_INTERVAL_SECONDS,
     hard_kill_budget_s: float = INTERRUPT_HARD_KILL_BUDGET_SECONDS,
     kill_label: str = "invoke:",
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> InterruptDispatcher:
     """Build an :class:`InterruptDispatcher` from a ProcessManager instance.
 
@@ -323,7 +345,9 @@ def dispatcher_from_process_manager(
     factory so the controller's own force_exit path uses the same
     injected exit callable. The ``hard_exit`` is also stored on the
     dispatcher (the dispatcher's force_exit invokes the dispatcher's
-    own field, not the controller's).
+    own field, not the controller's). The ``clock`` and ``sleep``
+    kwargs default to ``time.monotonic`` and ``time.sleep`` and are
+    forwarded to the dispatcher so tests can inject fakes.
     """
     resolved_record_interrupt = (
         record_interrupt if record_interrupt is not None else request_user_interrupt
@@ -343,7 +367,55 @@ def dispatcher_from_process_manager(
         poll_interval_s=poll_interval_s,
         hard_kill_budget_s=hard_kill_budget_s,
         kill_label=kill_label,
+        clock=clock,
+        sleep=sleep,
     )
+
+
+def handle_keyboard_interrupt_at_cli(
+    *,
+    process_manager: ProcessManager | None = None,
+    record_interrupt: Callable[[], None] | None = None,
+    poll_interval_s: float = SIGINT_PROGRESS_POLL_INTERVAL_SECONDS,
+    hard_kill_budget_s: float = INTERRUPT_HARD_KILL_BUDGET_SECONDS,
+    kill_label: str = "invoke:",
+    exit_code: int = INTERRUPT_EXIT_CODE,
+) -> int:
+    """Canonical CLI-level entry point for handling ``KeyboardInterrupt``.
+
+    Consolidates the near-duplicate inline catches in
+    ``ralph.cli.main._run_pipeline`` and ``ralph.cli.commands.run.run``
+    behind a single helper. The helper:
+
+    1. Builds an :class:`InterruptDispatcher` via the factory.
+    2. Calls ``begin_interrupt(grace_period_s=..., block=True)`` so the
+       agent's process group is SIGTERMed via
+       ``shutdown_all_for_label('invoke:', grace)`` and the CLI
+       catch blocks until the process manager's active list drains
+       (or escalates via ``force_exit`` on deadline expiration).
+    3. Returns ``exit_code`` (default ``INTERRUPT_EXIT_CODE = 130``).
+
+    Strategy A: this helper does NOT wrap the dispatcher call in
+    ``try/except``. It propagates any exception. The two CLI catches
+    each wrap the helper call in their own ``try/except`` and emit
+    the verbatim "Interrupt dispatcher failed during outer CLI catch" /
+    "during CLI catch" log warning. This preserves bit-for-bit
+    production output and lets the canonical block=True contract be
+    black-box tested in isolation.
+    """
+    dispatcher = dispatcher_from_process_manager(
+        process_manager=process_manager,
+        record_interrupt=record_interrupt,
+        poll_interval_s=poll_interval_s,
+        hard_kill_budget_s=hard_kill_budget_s,
+        kill_label=kill_label,
+    )
+    if process_manager is not None:
+        grace_period_s = process_manager.policy.default_grace_period_s
+    else:
+        grace_period_s = get_process_manager().policy.default_grace_period_s
+    dispatcher.begin_interrupt(grace_period_s=grace_period_s, block=True)
+    return exit_code
 
 
 __all__ = [
@@ -351,5 +423,6 @@ __all__ = [
     "SIGINT_PROGRESS_POLL_INTERVAL_SECONDS",
     "InterruptDispatcher",
     "dispatcher_from_process_manager",
+    "handle_keyboard_interrupt_at_cli",
     "install_force_kill_handler",
 ]

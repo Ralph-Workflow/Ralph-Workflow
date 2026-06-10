@@ -269,6 +269,17 @@ specific label (e.g. `invoke:claude`). The controller is the single source
 of truth for interrupt-driven shutdown — there is no parallel `kill_label`
 mechanism in `handle_keyboard_interrupt`.
 
+The two CLI catches (in `ralph.cli.main._run_pipeline` and
+`ralph.cli.commands.run.run`) delegate to a single helper
+`ralph.interrupt.handle_keyboard_interrupt_at_cli`, which is the canonical
+owner of the `block=True` + exit-code-130 contract AND the
+escalation-when-stuck behavior. When the grace deadline expires with active
+records still present, the dispatcher escalates via `force_exit` (root-cause
+fix for the 'frozen pipeline after Ctrl+C' failure mode). Both call sites
+use the same helper so a regression in one is a regression in both. The
+helper is black-box tested in `tests/test_interrupt_cli_helper.py` with a
+fake clock and fake process manager — no real wall-clock waits.
+
 ## InterruptDispatcher — the single seam
 
 The `InterruptDispatcher` in `ralph.interrupt.dispatcher` is the single seam
@@ -285,6 +296,17 @@ outside the pipeline loop. The dispatcher's `hard_kill_budget_s` and
 `poll_interval_s` fields are the source of truth for the early-escalation
 timing; the module-level constants in `_runner_interrupt` are kept only for
 backward compatibility (re-exported from `ralph.interrupt.dispatcher`).
+
+The CLI-level entry point `ralph.interrupt.handle_keyboard_interrupt_at_cli`
+sits alongside the dispatcher factory as the canonical seam for the CLI
+catch path. It builds an `InterruptDispatcher` via the factory, calls
+`begin_interrupt(grace_period_s=..., block=True)`, and returns the canonical
+exit code (130 by default, or the override supplied). When the grace
+deadline elapses with active records still present, the helper's underlying
+dispatcher escalates via `force_exit` so the frozen-pipeline-after-Ctrl+C
+failure mode is no longer silent. The helper is the single owner of the
+CLI catch contract; both call sites use the same function so a regression
+in one is a regression in both.
 
 ## Session-resume flag drift
 

@@ -429,10 +429,9 @@ def _execute_pipeline(
     except KeyboardInterrupt:
         console.print(Text("\nInterrupted by user", style="theme.status.warning"))
         try:
-            from ralph.interrupt import dispatcher_from_process_manager
+            from ralph.interrupt import handle_keyboard_interrupt_at_cli
 
-            dispatcher = dispatcher_from_process_manager()
-            dispatcher.begin_interrupt(block=True)
+            handle_keyboard_interrupt_at_cli(exit_code=_EXIT_INTERRUPT)
         except Exception:
             logger.warning("Interrupt dispatcher failed during CLI catch", exc_info=True)
         if request.initial_state is not None:

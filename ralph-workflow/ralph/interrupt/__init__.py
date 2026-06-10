@@ -7,6 +7,7 @@ simple so both CLI code and long-running loops can check it safely.
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from ralph.interrupt.asyncio_bridge import install_signal_handlers
@@ -20,8 +21,11 @@ from ralph.interrupt.dispatcher import (
     INTERRUPT_HARD_KILL_BUDGET_SECONDS,
     SIGINT_PROGRESS_POLL_INTERVAL_SECONDS,
     InterruptDispatcher,
+    handle_keyboard_interrupt_at_cli,
 )
-from ralph.interrupt.dispatcher import dispatcher_from_process_manager as build_dispatcher
+from ralph.interrupt.dispatcher import (
+    dispatcher_from_process_manager as build_dispatcher,
+)
 from ralph.interrupt.state import request_user_interrupt, user_interrupted_occurred
 
 if TYPE_CHECKING:
@@ -40,6 +44,8 @@ def dispatcher_from_process_manager(
     poll_interval_s: float = SIGINT_PROGRESS_POLL_INTERVAL_SECONDS,
     hard_kill_budget_s: float = INTERRUPT_HARD_KILL_BUDGET_SECONDS,
     kill_label: str = "invoke:",
+    clock: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> InterruptDispatcher:
     """Convenience re-export of :func:`ralph.interrupt.dispatcher.dispatcher_from_process_manager`.
 
@@ -47,6 +53,8 @@ def dispatcher_from_process_manager(
     ``from ralph.interrupt import dispatcher_from_process_manager``
     without depending on the dispatcher module path directly.
     """
+    resolved_clock = clock if clock is not None else time.monotonic
+    resolved_sleep = sleep if sleep is not None else time.sleep
     return build_dispatcher(
         process_manager=process_manager,
         stop_connectivity=stop_connectivity,
@@ -56,6 +64,8 @@ def dispatcher_from_process_manager(
         poll_interval_s=poll_interval_s,
         hard_kill_budget_s=hard_kill_budget_s,
         kill_label=kill_label,
+        clock=resolved_clock,
+        sleep=resolved_sleep,
     )
 
 
@@ -67,6 +77,7 @@ __all__ = [
     "InterruptDispatcher",
     "controller_from_process_manager",
     "dispatcher_from_process_manager",
+    "handle_keyboard_interrupt_at_cli",
     "install_force_kill_handler",
     "install_signal_handlers",
     "request_user_interrupt",
