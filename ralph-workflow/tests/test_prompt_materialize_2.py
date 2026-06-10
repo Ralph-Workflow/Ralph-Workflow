@@ -471,9 +471,8 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
                             "number": 1,
                             "title": "step",
                             "content": "do it",
-                            "step_type": "file_change",
+                            "step_type": "action",
                             "priority": "high",
-                            "targets": [],
                             "depends_on": [],
                         }
                     ],

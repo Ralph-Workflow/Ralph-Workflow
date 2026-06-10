@@ -64,6 +64,26 @@ class PlanArtifact(RalphBaseModel):
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
     work_units: "list[WorkUnit]" = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def _validate_step_ac_cross_references(self) -> PlanArtifact:
+        """Cross-validate the 2-way step<->acceptance-criterion link.
+
+        Each step's ``satisfies`` list must reference an AC id that exists on
+        the plan, and each AC's ``satisfied_by_steps`` list must reference a
+        real step number. Orphan links are rejected so the executor never
+        consumes a stale or broken AC<->step link.
+        """
+        criteria: list[AcceptanceCriterion] = _collect_criteria(self.design)
+        ac_ids: set[str] = {c.id for c in criteria}
+        step_numbers: set[int] = set()
+        for s in self.steps:
+            n: int = s.number
+            step_numbers.add(n)
+
+        _check_satisfies_links(self.steps, criteria, ac_ids)
+        _check_satisfied_by_steps_links(criteria, step_numbers)
+        return self
+
     @model_validator(mode="before")
     @classmethod
     def _auto_fill_minimal_skills(cls, raw: object) -> object:
@@ -102,6 +122,7 @@ PLAN_SECTION_LIST_ITEM_MODELS: dict[str, type[RalphBaseModel]] = {
 PLAN_SECTION_NAMES: frozenset[str] = frozenset(
     set(PLAN_SECTION_OBJECT_MODELS) | set(PLAN_SECTION_LIST_ITEM_MODELS) | {"work_units"}
 )
+
 
 class _PlanArtifactRebuildState:
     rebuilt: bool = False
@@ -272,6 +293,106 @@ def _steps_from_sections(sections: dict[str, object]) -> list[dict[str, object]]
     return cast("list[dict[str, object]]", validated)
 
 
+def _collect_criteria(design: DesignSection | None) -> list[AcceptanceCriterion]:
+    if design is None or design.acceptance_criteria is None:
+        return []
+    return list(design.acceptance_criteria.criteria)
+
+
+def _check_satisfies_links(
+    steps: list[PlanStep],
+    criteria: list[AcceptanceCriterion],
+    ac_ids: set[str],
+) -> None:
+    for step in steps:
+        if not step.satisfies:
+            continue
+        if not criteria:
+            msg = (
+                f"step {step.number} declares satisfies entries but plan has no "
+                "design.acceptance_criteria"
+            )
+            raise PlanArtifactValidationError(msg)
+        for entry in step.satisfies:
+            if entry not in ac_ids:
+                msg = f"step {step.number} satisfies unknown acceptance criterion {entry!r}"
+                raise PlanArtifactValidationError(msg)
+
+
+def _check_satisfied_by_steps_links(
+    criteria: list[AcceptanceCriterion],
+    step_numbers: set[int],
+) -> None:
+    for criterion in criteria:
+        # Read the runtime field directly to avoid a mypy static-analysis gap
+        # where pydantic v2 updates __pydantic_fields__ without refreshing
+        # the class __annotations__ that mypy reads.
+        raw_refs: object = getattr(criterion, "satisfied_by_steps", [])
+        refs: list[int] = (
+            [raw for raw in raw_refs if isinstance(raw, int)]
+            if isinstance(raw_refs, list)
+            else []
+        )
+        for step_ref in refs:
+            if step_ref not in step_numbers:
+                msg = (
+                    f"acceptance criterion {criterion.id!r} references unknown step "
+                    f"number {step_ref}"
+                )
+                raise PlanArtifactValidationError(msg)
+
+
+def _remap_ac_step_refs(
+    sections: dict[str, object],
+    number_map: dict[int, int],
+) -> dict[str, object]:
+    """Keep ``AC.satisfied_by_steps`` in lockstep with the new step numbering.
+
+    Entries that no longer point at a real step are dropped silently; entries
+    that survive the reindex are translated through ``number_map``. This is
+    the principle-of-least-surprise behavior for the executor: when step 2 is
+    removed, the AC that listed step 2 as a satisfier no longer claims to be
+    satisfied by it, but the rest of the AC graph is preserved.
+    """
+    new_sections: dict[str, object] = dict(sections)
+    design = new_sections.get("design")
+    if not isinstance(design, dict):
+        return new_sections
+    ac = design.get("acceptance_criteria")
+    if not isinstance(ac, dict):
+        return new_sections
+    criteria = ac.get("criteria")
+    if not isinstance(criteria, list):
+        return new_sections
+    kept_new_numbers = set(number_map.values())
+    new_criteria: list[object] = []
+    for entry in criteria:
+        if not isinstance(entry, dict):
+            new_criteria.append(entry)
+            continue
+        refs = entry.get("satisfied_by_steps")
+        if not isinstance(refs, list):
+            new_criteria.append(entry)
+            continue
+        remapped: list[int] = []
+        for ref in refs:
+            if not isinstance(ref, int) or ref not in number_map:
+                continue
+            new_number = number_map[ref]
+            if new_number not in kept_new_numbers:
+                continue
+            remapped.append(new_number)
+        new_entry: dict[str, object] = dict(cast("dict[str, object]", entry))
+        new_entry["satisfied_by_steps"] = remapped
+        new_criteria.append(new_entry)
+    new_ac_dict: dict[str, object] = dict(cast("dict[str, object]", ac))
+    new_ac_dict["criteria"] = new_criteria
+    new_design_dict: dict[str, object] = dict(cast("dict[str, object]", design))
+    new_design_dict["acceptance_criteria"] = new_ac_dict
+    new_sections["design"] = new_design_dict
+    return new_sections
+
+
 def _normalize_step_edit_payload(
     step_payload: object,
     *,
@@ -289,7 +410,7 @@ def _reindex_plan_steps(
     steps: list[dict[str, object]],
     *,
     removed_step_number: int | None = None,
-) -> list[dict[str, object]]:
+) -> tuple[list[dict[str, object]], dict[int, int]]:
     old_numbers = [cast("int", step["number"]) for step in steps]
     if len(set(old_numbers)) != len(old_numbers):
         raise PlanArtifactValidationError("plan steps must have unique step numbers before edit")
@@ -323,7 +444,7 @@ def _reindex_plan_steps(
         updated_steps.append(remapped)
 
     normalized = validate_plan_section("steps", updated_steps, mode="replace")
-    return cast("list[dict[str, object]]", normalized)
+    return cast("list[dict[str, object]]", normalized), number_map
 
 
 def insert_plan_step(
@@ -344,8 +465,10 @@ def insert_plan_step(
         synthetic_number=max(existing_numbers, default=0) + 1,
     )
     steps.insert(index - 1, inserted_step)
+    reindexed_steps, number_map = _reindex_plan_steps(steps)
     updated_sections = dict(sections)
-    updated_sections["steps"] = _reindex_plan_steps(steps)
+    updated_sections["steps"] = reindexed_steps
+    updated_sections = _remap_ac_step_refs(updated_sections, number_map)
     return updated_sections
 
 
@@ -369,8 +492,10 @@ def replace_plan_step(
         synthetic_number=max(existing_numbers, default=0) + 1,
     )
     steps[target_index] = replacement_step
+    reindexed_steps, number_map = _reindex_plan_steps(steps)
     updated_sections = dict(sections)
-    updated_sections["steps"] = _reindex_plan_steps(steps)
+    updated_sections["steps"] = reindexed_steps
+    updated_sections = _remap_ac_step_refs(updated_sections, number_map)
     return updated_sections
 
 
@@ -384,11 +509,13 @@ def remove_plan_step(
     if len(remaining_steps) == len(steps):
         raise PlanArtifactValidationError(f"step {step_number} does not exist")
 
-    updated_sections = dict(sections)
-    updated_sections["steps"] = _reindex_plan_steps(
+    reindexed_steps, number_map = _reindex_plan_steps(
         remaining_steps,
         removed_step_number=step_number,
     )
+    updated_sections = dict(sections)
+    updated_sections["steps"] = reindexed_steps
+    updated_sections = _remap_ac_step_refs(updated_sections, number_map)
     return updated_sections
 
 
@@ -528,6 +655,17 @@ def _render_summary_section(summary: object) -> list[str]:
         return []
 
     lines: list[str] = []
+    intent = summary.get("intent")
+    intent_verb = summary.get("intent_verb")
+    has_intent = isinstance(intent, str) and intent.strip()
+    has_verb = isinstance(intent_verb, str) and intent_verb.strip()
+    if has_intent or has_verb:
+        lines.extend(["", "## Intent", ""])
+        if has_verb:
+            lines.extend(["", f"verb: {cast('str', intent_verb).strip()}"])
+        if has_intent:
+            lines.extend(["", cast("str", intent).strip()])
+
     context = summary.get("context")
     if isinstance(context, str) and context.strip():
         lines.extend(["", "## Summary", "", context.strip()])
@@ -681,6 +819,12 @@ def _render_design_section(design: object) -> list[str]:
     )
 
     rendered: list[str] = []
+    outcome = design.get("outcome")
+    if isinstance(outcome, str) and outcome.strip():
+        rendered.append("### Outcome")
+        rendered.append("")
+        rendered.append(outcome.strip())
+
     profile = design.get("planning_profile")
     if isinstance(profile, str) and profile.strip():
         rendered.append(f"- planning_profile: {profile.strip()}")

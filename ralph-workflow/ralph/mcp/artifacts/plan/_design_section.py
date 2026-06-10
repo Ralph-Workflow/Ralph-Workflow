@@ -10,7 +10,7 @@ entries because the prefix is distinct.
 
 from __future__ import annotations
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ralph.mcp.artifacts.plan._acceptance_criteria import (
     AcceptanceCriteria,
@@ -82,7 +82,16 @@ class DesignSection(RalphBaseModel):
     testability: Testability | None = None
     refactor_strategy: RefactorStrategy | None = None
     acceptance_criteria: AcceptanceCriteria | None = None
+    outcome: str | None = Field(default=None, max_length=500)
     notes: str | None = Field(default=None)
+
+    @field_validator("outcome")
+    @classmethod
+    def _strip_outcome(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
     @model_validator(mode="after")
     def _bias_fill_from_profile(self) -> DesignSection:

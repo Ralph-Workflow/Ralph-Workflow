@@ -14,6 +14,7 @@ class AcceptanceCriterion(RalphBaseModel):
     description: str = Field(..., min_length=1, max_length=1000)
     verification_step: str | None = None
     evidence_path: str | None = None
+    satisfied_by_steps: list[int] = Field(default_factory=list)
 
     @field_validator("id")
     @classmethod
@@ -32,6 +33,29 @@ class AcceptanceCriterion(RalphBaseModel):
             msg = "acceptance_criterion.description must not be empty"
             raise ValueError(msg)
         return stripped
+
+    @field_validator("satisfied_by_steps", mode="before")
+    @classmethod
+    def _validate_satisfied_by_steps(cls, value: object) -> list[int]:
+        if not isinstance(value, list):
+            msg = "satisfied_by_steps must be a list of integers"
+            raise ValueError(msg)
+        cleaned: list[int] = []
+        seen: set[int] = set()
+        for raw_entry in value:
+            entry: object = raw_entry
+            if isinstance(entry, bool) or not isinstance(entry, int):
+                msg = f"satisfied_by_steps entry must be an int, got {type(entry).__name__}"
+                raise ValueError(msg)
+            assert isinstance(entry, int)
+            if entry < 1:
+                msg = "satisfied_by_steps entries must be positive integers"
+                raise ValueError(msg)
+            if entry in seen:
+                continue
+            seen.add(entry)
+            cleaned.append(entry)
+        return cleaned
 
 
 class AcceptanceCriteria(RalphBaseModel):

@@ -19,9 +19,11 @@ _SKIP_DIRS = frozenset({"__pycache__", ".venv", "tmp"})
 _MAX_FILE_LINES = 1_000
 _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
     {
+        "ralph/mcp/artifacts/plan/__init__.py",
         "ralph/pipeline/runner.py",
         "ralph/prompts/materialize.py",
         "tests/test_mcp_server_load_runtime_upstream_servers.py",
+        "tests/test_plan_artifact.py",
     }
 )
 _TYPE_IGNORE_MARKER = "# type:" + " ignore"

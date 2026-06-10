@@ -860,6 +860,7 @@ def test_plan_step_accepts_verify_type() -> None:
             "title": "Run pytest",
             "content": "Execute the test suite.",
             "step_type": "verify",
+            "location": "tests/test_x.py",
         }
     )
     assert validated.step_type == "verify"
@@ -1006,6 +1007,7 @@ def test_minimal_valid_plan_round_trip() -> None:
                 "title": "Add regression test",
                 "content": "Write a test that fails.",
                 "step_type": "verify",
+                "location": "tests/test_foo.py",
                 "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
             }
         ],

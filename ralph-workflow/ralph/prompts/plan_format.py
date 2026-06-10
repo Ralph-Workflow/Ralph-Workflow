@@ -45,29 +45,58 @@ def _format_summary_section(plan: dict[str, object]) -> str:
         return ""
 
     sections: list[str] = []
-    context = summary.get("context")
-    if isinstance(context, str) and context.strip():
-        sections.append(f"Summary:\n{context.strip()}")
-    else:
-        sections.append("Summary:\nNo additional context provided.")
-
-    scope_items = summary.get("scope_items")
-    scope_lines: list[str] = []
-    if isinstance(scope_items, list) and scope_items:
-        for item in scope_items:
-            if not isinstance(item, dict):
-                continue
-            text = item.get("text")
-            if isinstance(text, str) and text.strip():
-                category = item.get("category")
-                if isinstance(category, str) and category.strip():
-                    scope_lines.append(f"- {text.strip()} [category]")
-                else:
-                    scope_lines.append(f"- {text.strip()}")
-    if scope_lines:
-        sections.append("\n".join(["Scope items:", *scope_lines]))
+    intent_block = _format_intent_block(summary)
+    if intent_block:
+        sections.append(intent_block)
+    sections.append(_format_context_block(summary))
+    scope_block = _format_scope_block(summary)
+    if scope_block:
+        sections.append(scope_block)
 
     return "\n\n".join(sections)
+
+
+def _format_intent_block(summary: dict[str, object]) -> str:
+    intent = summary.get("intent")
+    intent_verb = summary.get("intent_verb")
+    has_intent = isinstance(intent, str) and intent.strip()
+    has_verb = isinstance(intent_verb, str) and intent_verb.strip()
+    if not (has_intent or has_verb):
+        return ""
+    intent_lines: list[str] = ["Intent:"]
+    if has_verb:
+        intent_lines.append(f"verb: {cast('str', intent_verb).strip()}")
+    if has_intent:
+        intent_lines.append(cast("str", intent).strip())
+    return "\n".join(intent_lines)
+
+
+def _format_context_block(summary: dict[str, object]) -> str:
+    context = summary.get("context")
+    if isinstance(context, str) and context.strip():
+        return f"Summary:\n{context.strip()}"
+    return "Summary:\nNo additional context provided."
+
+
+def _format_scope_block(summary: dict[str, object]) -> str:
+    scope_items = summary.get("scope_items")
+    if not isinstance(scope_items, list) or not scope_items:
+        return ""
+    scope_lines: list[str] = []
+    for item in scope_items:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        category = item.get("category")
+        if isinstance(category, str) and category.strip():
+            scope_lines.append(f"- {text.strip()} [category]")
+        else:
+            scope_lines.append(f"- {text.strip()}")
+    if not scope_lines:
+        return ""
+    return "\n".join(["Scope items:", *scope_lines])
 
 
 def _format_skills_mcp_section(plan: dict[str, object]) -> str:
@@ -200,6 +229,9 @@ def _format_design_section(plan: dict[str, object]) -> str:
         return ""
 
     lines: list[str] = ["Design:"]
+    outcome = design.get("outcome")
+    if isinstance(outcome, str) and outcome.strip():
+        lines.append(f"- Outcome: {outcome.strip()}")
     profile = design.get("planning_profile")
     if isinstance(profile, str) and profile.strip():
         lines.append(f"- planning_profile: {profile.strip()}")

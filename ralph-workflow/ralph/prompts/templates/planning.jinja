@@ -108,6 +108,30 @@ Default submission flow:
 7. Stage optional sections like `parallel_plan` only when they add real value.
 8. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
 
+## INTENT & INTENT_VERB (cheap-model shortcut)
+
+Every plan benefits from declaring two optional `summary` fields that make the cheapest possible signal of what the plan does:
+
+- `summary.intent` — a ≤200-char one-line user-facing outcome (e.g. "Clamp foo() index so the off-by-one regression cannot recur."). Empty string is allowed and dropped from `model_dump(exclude_defaults=True)`. Strip whitespace, no min length.
+- `summary.intent_verb` — a closed enum value, stored as `str | None` (default `None`). Accepted values are `add`, `fix`, `refactor`, `migrate`, `document`, `investigate`, `improve`, `configure`, `remove`. The Summary model sets `validate_default=True`, so a before-validator normalizes the default `None` to `""` and runs on every supplied value. The validator LOWERCASES the input before the closed-enum check, so `Add`, `ADD`, and `add` all pass. An explicit `""` is rejected with `ValueError("intent_verb must not be empty")` to distinguish a deliberate empty value from an omitted field.
+
+Cheap models should set these two fields first. The rendered plan surfaces them as a `## Intent` heading before the `## Summary` block, giving the executor a one-line answer to "what does this plan do?" without having to parse the full context.
+
+## STEP CONTRACT
+
+Every `PlanStep` is bound by a tightened contract. Plans that violate the contract are rejected at `normalize_plan_artifact_content` time:
+
+- Every `file_change` step MUST declare at least one `targets` entry (a `path` + `action` pair). Use a `read` or `reference` action for steps that touch zero files, or switch the `step_type` to `action` / `research`.
+- Every `verify` step MUST declare either `verify_command` (a shell command the executor should run, e.g. `pytest tests/test_x.py -q`) OR `location` (a test-file path, e.g. `tests/test_x.py`). Both fields are optional individually, but at least one must be present.
+
+These two rules are enforced by the per-step model validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep`. If you set `step_type="file_change"`, declare `targets` for every file the step will touch.
+
+## STEP ↔ ACCEPTANCE-CRITERIA LINKING
+
+If the plan declares `design.acceptance_criteria`, every step's `satisfies` list must reference a real AC id (matching `^[A-Z]+-\d{2,}$`). Every AC's `satisfied_by_steps` list must reference a real step number. The cross-section validator in `ralph.mcp.artifacts.plan.__init__.PlanArtifact` enforces both directions and rejects orphan references. Cheap models should set `satisfies` to a single AC id per step; high-quality models may also populate the reverse link `satisfied_by_steps` for executor provability.
+
+Insert/replace/remove step operations automatically reindex both `depends_on` AND `satisfied_by_steps` so the AC<->step link stays in lockstep after edits.
+
 ## DESIGN SECTION
 
 If the request is about Ralph Workflow internals or any multi-file task (3+ files, refactor, or new feature touching existing modules), also stage a `design` section so the executor gets the seven SE-opinionated sub-sections in one round-trip. The `design` section is OPTIONAL but strongly recommended; submit it via `{{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}` with `section='design'`, `mode='replace'` (the only supported mode).
@@ -123,6 +147,8 @@ The seven typed sub-sections, with the exact labels the executor will see in the
 - **Acceptance Criteria**: one entry per requirement with a stable id matching `^[A-Z]+-\d{2,}$` (e.g. `AC-01`)
 
 **Model-tier guidance for the optional `notes` field**: For high-quality models, use the optional `notes` free-form field to capture rationale, alternative designs considered, and trade-offs that do not fit the seven typed sub-models. For cheap models, leave `notes` unset and rely entirely on the seven typed sub-models for schema-driven validation. Either choice is acceptable; the section passes validation as long as the seven sub-models are well-formed (or all None).
+
+**`design.outcome` (top-level design outcome)**: The optional `outcome` field (≤500 chars, distinct from `notes`) is a one-line top-level design outcome that the executor surfaces as a `### Outcome` sub-block at the TOP of the Design section, before the seven sub-section headings. Cheap models can populate `design.outcome` and skip `design.notes` for the same level of executor signal. Stripped empty values are dropped from the dump.
 
 **`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset also seeds a sentinel acceptance criterion `PRESET-01` that you may strip or replace. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
 
@@ -141,6 +167,8 @@ Your payload must decode to an object shaped like this:
 {
   "summary": {
     "context": "What is being changed, why it matters, and what the executor should accomplish.",
+    "intent": "One-line user-facing outcome (<=200 chars).",
+    "intent_verb": "fix",
     "scope_items": [
       {"text": "Concrete outcome 1", "count": "optional quantity", "category": "optional category"},
       {"text": "Concrete outcome 2", "count": "optional quantity", "category": "optional category"},
@@ -163,7 +191,19 @@ Your payload must decode to an object shaped like this:
       ],
       "location": "optional module or function",
       "rationale": "optional reason this step exists",
+      "satisfies": ["AC-01"],
+      "expected_evidence": ["file: path/to/file.py"],
       "depends_on": []
+    },
+    {
+      "number": 2,
+      "title": "Imperative verify step title",
+      "content": "Run the test that proves the fix works.",
+      "step_type": "verify",
+      "verify_command": "pytest tests/test_x.py -q",
+      "location": "tests/test_x.py",
+      "satisfies": ["AC-01"],
+      "depends_on": [1]
     }
   ],
   "critical_files": {
@@ -191,13 +231,16 @@ Your payload must decode to an object shaped like this:
   "work_units": [],
   "design": {
     "planning_profile": "strict",
+    "outcome": "One-line design outcome (<=500 chars). Distinct from notes.",
     "testability": {
       "must_be_black_box": true,
       "forbidden_in_tests": ["time.sleep"],
       "required_test_layers": ["unit"]
     },
     "acceptance_criteria": {
-      "criteria": [{"id": "AC-01", "description": "All new tests pass"}]
+      "criteria": [
+        {"id": "AC-01", "description": "All new tests pass", "satisfied_by_steps": [1, 2]}
+      ]
     }
   }
 }
