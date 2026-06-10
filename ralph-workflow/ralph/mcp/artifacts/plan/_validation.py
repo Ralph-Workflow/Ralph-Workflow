@@ -285,7 +285,73 @@ def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDi
 
 
 def _format_validation_error(exc: ValidationError) -> str:
-    return str(exc)
+    """Format a pydantic ValidationError into an agent-friendly message.
+
+    For step_type validation errors on PlanStep, synthesize a structured
+    message that names the four valid StepType members and the
+    verify_command remediation hint. For all other errors, fall through
+    to the default pydantic string. The synthesized message keeps the
+    literal substring ``step_type`` so existing
+    ``pytest.raises(PlanArtifactValidationError, match='step_type')``
+    matchers continue to pass.
+    """
+    valid_step_types: tuple[str, ...] = (
+        "file_change",
+        "action",
+        "research",
+        "verify",
+    )
+    _min_step_type_loc_len: int = 3
+    step_type_lines: list[str] = []
+    other_lines: list[str] = []
+    saw_step_type_error = False
+    err_records = _error_records(exc)
+    for err in err_records:
+        loc_value: object = err.get("loc", ())
+        loc: tuple[object, ...] = (
+            cast("tuple[object, ...]", loc_value)
+            if isinstance(loc_value, tuple)
+            else ()
+        )
+        is_step_type_error = (
+            len(loc) >= _min_step_type_loc_len
+            and loc[0] == "steps"
+            and isinstance(loc[1], int)
+            and loc[2] == "step_type"
+        )
+
+        if not is_step_type_error:
+            other_lines.append(str(err))
+            continue
+        saw_step_type_error = True
+        step_index = cast("int", loc[1])
+        input_value: object = err.get("input", None)
+        step_type_lines.append(
+            f"step {step_index + 1} step_type={input_value!r} is not a valid value; "
+            f"valid values are {list(valid_step_types)}. "
+            f"For test-running steps use step_type='verify' with a "
+            f"verify_command like 'pytest tests/test_x.py -q'."
+        )
+    if not saw_step_type_error:
+        return str(exc)
+    parts: list[str] = list(step_type_lines)
+    if other_lines:
+        parts.append("")
+        parts.append(str(exc))
+    return "\n".join(parts)
+
+
+def _error_records(exc: ValidationError) -> list[dict[str, object]]:
+    """Wrap ``ValidationError.errors()`` and re-cast to a clean dict type.
+
+    Pydantic's ``ErrorDetails`` TypedDict has fields annotated with
+    ``_Any`` so mypy with ``disallow_any_expr=True`` rejects direct
+    iteration. This helper isolates the cast in one place so the
+    consumer can iterate without spreading the cast across the loop.
+    """
+    raw = cast("list[object]", exc.errors())
+    records: list[dict[str, object]] = [cast("dict[str, object]", r) for r in raw]
+    return records
 
 
 def _dump_model(model: RalphBaseModel) -> dict[str, object]:

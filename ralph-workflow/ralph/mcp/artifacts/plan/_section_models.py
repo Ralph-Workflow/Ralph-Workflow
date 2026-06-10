@@ -34,7 +34,7 @@ from ralph.mcp.artifacts.plan._scope_category import ScopeCategory
 from ralph.mcp.artifacts.plan._scope_item import ScopeItem
 from ralph.mcp.artifacts.plan._skills_mcp import SkillsMcp
 from ralph.mcp.artifacts.plan._step_target import StepTarget
-from ralph.mcp.artifacts.plan._summary import Summary
+from ralph.mcp.artifacts.plan._summary import CoverageArea, Summary
 from ralph.mcp.artifacts.plan._verification_step import VerificationStep
 from ralph.mcp.artifacts.plan.plan_schema import ParallelPlanItem
 
@@ -43,6 +43,7 @@ PlanArtifactDict = dict[str, object]
 __all__ = [
     "AcceptanceCriteria",
     "AcceptanceCriterion",
+    "CoverageArea",
     "CriticalFiles",
     "CriticalPrimaryFile",
     "DesignSection",

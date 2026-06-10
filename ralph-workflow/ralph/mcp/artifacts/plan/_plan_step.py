@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from typing import Literal
 
+from loguru import logger as _logger
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from ralph.mcp.artifacts.plan._evidence_ref import EvidenceRef
@@ -31,6 +32,13 @@ from ralph.pydantic_compat import RalphBaseModel
 _ACCEPTANCE_CRITERION_ID_PATTERN = re.compile(r"^[A-Z]+-\d{2,}$")
 _MAX_EVIDENCE_ENTRIES = 50
 _MAX_EVIDENCE_ENTRY_LENGTH = 200
+
+_STEP_TYPE_ALIASES: dict[str, str] = {
+    "test": "verify",
+    "tests": "verify",
+    "check": "verify",
+    "run": "verify",
+}
 
 
 class PlanStep(RalphBaseModel):
@@ -48,6 +56,35 @@ class PlanStep(RalphBaseModel):
     satisfies: list[str] = Field(default_factory=list)
     expected_evidence: list[EvidenceRef] = Field(default_factory=list)
     verify_command: str | None = None
+
+    @field_validator("step_type", mode="before")
+    @classmethod
+    def _coerce_step_type_aliases(cls, value: object) -> object:
+        """Coerce common step_type mistakes to the likely intended value.
+
+        Cheap models sometimes use ``step_type='test'`` (or ``'tests'``,
+        ``'check'``, ``'run'``) when they really mean ``'verify'``. A
+        before-validator lowercases the trimmed string, looks it up in
+        the closed allowlist ``_STEP_TYPE_ALIASES``, and returns the
+        mapped value with a WARNING log. Unknown values fall through
+        so the closed StrEnum rejects them with a clear error.
+
+        The before-validator is a pure function: raw in, coerced out.
+        No ClassVar, no module-level mutable state, no thread-local —
+        the observable ``step_type`` value is the contract.
+        """
+        if not isinstance(value, str):
+            return value
+        lowered = value.strip().lower()
+        coerced = _STEP_TYPE_ALIASES.get(lowered)
+        if coerced is None:
+            return value
+        _logger.warning(
+            "plan step_type coerced from {!r} to {!r} (likely intended value)",
+            value,
+            coerced,
+        )
+        return coerced
 
     @field_validator("satisfies")
     @classmethod

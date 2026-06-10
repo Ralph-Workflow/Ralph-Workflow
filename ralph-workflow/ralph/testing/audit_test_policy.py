@@ -110,6 +110,20 @@ _WALL_CLOCK_ALLOWLIST: set[str] = {
     "test_no_anti_drift_recovery_invariants",
 }
 
+# Files that legitimately use step_type='test' / 'tests' / 'check' / 'run'
+# as a literal value (e.g. the test that locks the alias coercion itself
+# in test_plan_artifact.py). The step-type-alias audit rule skips these
+# files so the rule does not flag its own test fixture.
+_STEP_TYPE_AUDIT_ALLOWLIST: set[str] = {
+    "test_plan_artifact",  # contains the step_type coercion regression tests
+}
+
+# Closed set of step_type values that the alias audit rule flags. The
+# values map to "verify" in ralph.mcp.artifacts.plan._plan_step
+# ._STEP_TYPE_ALIASES; the audit rule enforces the structural shape so a
+# future commit that removes the alias coercion would fail the audit.
+_STEP_TYPE_ALIAS_VALUES: frozenset[str] = frozenset({"test", "tests", "check", "run"})
+
 # Path I/O methods that indicate real filesystem access.
 _PATH_IO_METHODS: frozenset[str] = frozenset(
     {"read_text", "write_text", "read_bytes", "write_bytes", "open"}
@@ -433,6 +447,31 @@ def _is_subprocess_e2e_decorator(node: ast.AST) -> bool:
     )
 
 
+def _extract_step_type_aliases(tree: ast.Module) -> list[tuple[int, str]]:
+    """Walk the AST and collect (lineno, value) tuples for every step_type kwarg
+    or step_type dict-key value in the module.
+
+    Returns a list of (line, value) pairs where value is the raw string. The
+    caller filters for the known alias values {'test', 'tests', 'check', 'run'}
+    so this helper stays a thin AST walker with no domain knowledge.
+    """
+    matches: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.keyword) and node.arg == "step_type":
+            if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+                matches.append((node.lineno, node.value.value))
+        elif isinstance(node, ast.Dict):
+            for key_node, value_node in zip(node.keys, node.values, strict=False):
+                if (
+                    isinstance(key_node, ast.Constant)
+                    and key_node.value == "step_type"
+                    and isinstance(value_node, ast.Constant)
+                    and isinstance(value_node.value, str)
+                ):
+                    matches.append((value_node.lineno, value_node.value))
+    return matches
+
+
 def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0911
     """Audit a single test file for policy violations.
 
@@ -466,6 +505,10 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0
     if file_stem in _WALL_CLOCK_ALLOWLIST:
         return []
 
+    # Skip files in the step-type-alias allowlist (the rule's own test fixture).
+    if file_stem in _STEP_TYPE_AUDIT_ALLOWLIST:
+        return []
+
     try:
         tree = ast.parse(source, filename=str(file_path))
     except SyntaxError:
@@ -475,7 +518,23 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0
     auditor = TestPolicyAuditor(str(file_path), source)
     auditor.visit(tree)
 
-    return auditor.violations
+    # PA-NEW-05 fix: separate top-down AST pass for the step-type-alias rule.
+    alias_violations: list[TestPolicyViolation] = []
+    for lineno, raw_value in _extract_step_type_aliases(tree):
+        if raw_value in _STEP_TYPE_ALIAS_VALUES:
+            alias_violations.append(
+                TestPolicyViolation(
+                    file_path=str(file_path),
+                    line=lineno,
+                    category="step-type-alias",
+                    detail=(
+                        f"step_type={raw_value!r} is a known alias; "
+                        f"use 'verify' instead."
+                    ),
+                )
+            )
+
+    return [*auditor.violations, *alias_violations]
 
 
 def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], int]:

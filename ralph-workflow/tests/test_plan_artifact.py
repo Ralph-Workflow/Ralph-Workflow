@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from itertools import pairwise
 from pathlib import Path
 from typing import cast
 
 import pytest
+from pydantic import ValidationError
 
 from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.plan import (
@@ -18,6 +20,7 @@ from ralph.mcp.artifacts.plan import (
     PlanArtifactValidationError,
     PlanStep,
     ScopeItem,
+    StepType,
     Summary,
     delete_plan_draft,
     extract_plan_skill_names,
@@ -34,6 +37,7 @@ from ralph.mcp.artifacts.plan import (
     save_plan_draft,
     validate_plan_section,
 )
+from ralph.mcp.artifacts.plan._plan_step import _STEP_TYPE_ALIASES
 from ralph.mcp.artifacts.plan._scope_category import ScopeCategory
 from ralph.pipeline.work_unit import WorkUnit
 from ralph.prompts.plan_format import format_plan_for_execution
@@ -1533,3 +1537,96 @@ def test_step_type_default_is_action() -> None:
     step = PlanStep(number=1, title="t", content="c")
     assert step.step_type == "action"
     assert "step_type" not in step.model_dump(exclude_defaults=True)
+
+
+# ---------------------------------------------------------------------------
+# Step 1: step_type alias coercion (test -> verify, etc.)
+# ---------------------------------------------------------------------------
+
+
+def test_step_type_test_alias_coerced_to_verify() -> None:
+    """A step with step_type='test' is coerced to step_type=verify (observable value)."""
+    step = PlanStep.model_validate(
+        {
+            "number": 1,
+            "title": "t",
+            "content": "c",
+            "step_type": "test",
+            "verify_command": "pytest tests/test_x.py -q",
+        }
+    )
+    assert step.step_type == StepType.VERIFY
+    assert str(step.step_type) == "verify"
+
+
+def test_step_type_unknown_invalid_value_raises_with_structured_message() -> None:
+    """A step with step_type='ship_it' raises ValidationError (no coercion)."""
+    with pytest.raises(ValidationError, match=r"ship_it"):
+        PlanStep.model_validate(
+            {
+                "number": 1,
+                "title": "t",
+                "content": "c",
+                "step_type": "ship_it",
+            }
+        )
+
+
+def test_step_type_aliases_dict_is_strict() -> None:
+    """_STEP_TYPE_ALIASES is the documented allowlist: 4 keys, all map to 'verify'."""
+    assert len(_STEP_TYPE_ALIASES) == 4
+    for key, value in _STEP_TYPE_ALIASES.items():
+        assert key.islower() and key.isascii(), key
+        assert value == "verify", (key, value)
+
+
+def test_format_validation_error_for_step_type_lists_valid_values() -> None:
+    """normalize_plan_artifact_content with step_type='ship_it' raises a structured error."""
+    plan = copy.deepcopy(_valid_plan())
+    plan["steps"][0]["step_type"] = "ship_it"
+    with pytest.raises(PlanArtifactValidationError) as exc_info:
+        normalize_plan_artifact_content(plan)
+    message = str(exc_info.value)
+    assert "step_type" in message
+    assert "file_change" in message
+    assert "action" in message
+    assert "research" in message
+    assert "verify" in message
+    assert "verify_command" in message
+
+
+# ---------------------------------------------------------------------------
+# Step 6: typed summary.coverage_areas field
+# ---------------------------------------------------------------------------
+
+
+def test_summary_coverage_areas_typed_field_accepts_closed_set() -> None:
+    """Summary.coverage_areas accepts the closed Literal set, rejects unknown values."""
+    summary = Summary.model_validate(
+        {
+            "context": "x",
+            "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+            "coverage_areas": ["bugfix", "test"],
+        }
+    )
+    assert summary.coverage_areas == ["bugfix", "test"]
+
+    with pytest.raises(ValidationError):
+        Summary.model_validate(
+            {
+                "context": "x",
+                "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+                "coverage_areas": ["unknown_area"],
+            }
+        )
+
+
+def test_summary_coverage_areas_default_is_empty() -> None:
+    """Summary.coverage_areas defaults to an empty list when not provided."""
+    summary = Summary.model_validate(
+        {
+            "context": "x",
+            "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+        }
+    )
+    assert summary.coverage_areas == []
