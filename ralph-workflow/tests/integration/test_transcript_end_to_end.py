@@ -215,7 +215,13 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     assert "[content-end]" in out, "Transcript should contain a content-end marker"
 
     # --- Assert [phase-close] contains elapsed= and content_blocks= ---
-    phase_close_lines = [ln for ln in out.splitlines() if "[phase-close]" in ln]
+    # Exclude the visual-hierarchy section rule line `[section] ─── [phase-close]`
+    # which is a section delimiter, not a phase-close content line.
+    phase_close_lines = [
+        ln
+        for ln in out.splitlines()
+        if "[phase-close]" in ln and "[section]" not in ln
+    ]
     assert phase_close_lines, "Transcript should contain at least one [phase-close] line"
     for pc_line in phase_close_lines:
         assert "elapsed=" in pc_line, f"[phase-close] missing elapsed=: {pc_line}"

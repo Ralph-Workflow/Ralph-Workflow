@@ -93,6 +93,17 @@ from ralph.display.context import (
     install_width_refresher,
     make_display_context,
 )
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    build_default_display_legacy_bridge,
+    emit_activity_line,
+    get_display_context,
+    resolve_active_display,
+    resolve_display,
+    status_text,
+    strip_markup,
+    subscriber_for_display,
+)
 from ralph.display.phase_banner import (
     show_phase_close_banner,
     show_phase_start,
@@ -110,11 +121,15 @@ from ralph.display.tables import show_agents, show_config, show_providers
 
 __all__ = [
     "DisplayContext",
+    "ParallelDisplay",
     "PhaseIterationContext",
     "RalphProgress",
     "RunStartOrientation",
+    "build_default_display_legacy_bridge",
+    "emit_activity_line",
     "format_analysis_cycle",
     "format_dev_cycle",
+    "get_display_context",
     "get_progress",
     "install_sigwinch_refresher",
     "install_width_refresher",
@@ -124,6 +139,8 @@ __all__ = [
     "render_fix_artifact",
     "render_missing_plan_hint",
     "render_plan_artifact",
+    "resolve_active_display",
+    "resolve_display",
     "show_agents",
     "show_config",
     "show_phase_close_banner",
@@ -131,4 +148,7 @@ __all__ = [
     "show_phase_start_from_entry",
     "show_phase_transition",
     "show_providers",
+    "status_text",
+    "strip_markup",
+    "subscriber_for_display",
 ]

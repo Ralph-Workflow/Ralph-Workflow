@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from rich.text import Text as _Text
+
 from ralph.display.long_content_summary import build_ai_summary, build_headline_or_placeholder
 from ralph.display.phase_status import format_elapsed_seconds
 from ralph.display.plain_renderer._activity_line_options import (
@@ -37,17 +39,18 @@ class PlainLogRenderer(_PlainLogRendererBase):
         timestamp = self._format_timestamp(self._clock())
         compact = self._ctx.mode == "compact"
 
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "MILESTONE",
-                "META",
-                f"[run-start] {self._ctx.glyph_for('milestone')} Ralph Workflow run start",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
+        t = _Text()
+        t.append(f"{timestamp} ")
+        t.append("MILESTONE", style="theme.level.milestone")
+        t.append(" ")
+        t.append("META", style="theme.cat.meta")
+        t.append(" ")
+        t.append(
+            f"[run-start] {self._ctx.glyph_for('milestone')} ",
+            style="theme.banner.ascii",
         )
+        t.append("Ralph Workflow run start", style="theme.banner.title")
+        self._console.print(t, markup=False, highlight=False, no_wrap=True)
 
         if orientation.legend_enabled and not compact:
             self._console.print(
@@ -440,17 +443,18 @@ class PlainLogRenderer(_PlainLogRendererBase):
                     no_wrap=True,
                 )
         else:
-            self._console.print(
-                self._build_line(
-                    timestamp,
-                    "MILESTONE",
-                    "META",
-                    f"[run-end] {self._ctx.glyph_for('milestone')} Ralph Workflow run end",
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
+            t = _Text()
+            t.append(f"{timestamp} ")
+            t.append("MILESTONE", style="theme.level.milestone")
+            t.append(" ")
+            t.append("META", style="theme.cat.meta")
+            t.append(" ")
+            t.append(
+                f"[run-end] {self._ctx.glyph_for('milestone')} ",
+                style="theme.banner.ascii",
             )
+            t.append("Ralph Workflow run end", style="theme.banner.title")
+            self._console.print(t, markup=False, highlight=False, no_wrap=True)
             phase_elapsed = f"[run-end] phase={phase} elapsed={elapsed_str}"
             if exit_trigger is not None:
                 phase_elapsed += f" exit={exit_trigger}"

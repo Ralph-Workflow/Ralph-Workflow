@@ -10,6 +10,7 @@ from loguru import logger
 from rich.console import Console
 
 from ralph.cli.commands import run as run_module
+from ralph.display.context import make_display_context
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -160,7 +161,8 @@ def test_sync_hint_text_mentions_force_init_skills(
         force_terminal=False,
         color_system=None,
     )
-    monkeypatch.setattr(run_module, "_PROJECT_SYNC_CONSOLE", captured_console)
+    captured_ctx = make_display_context(console=captured_console)
+    monkeypatch.setattr(run_module, "make_display_context", lambda **_kwargs: captured_ctx)
 
     run_module._print_project_skill_conflict_hint(["sibling-conflict-using-superpowers"])
 
@@ -288,7 +290,8 @@ def test_sync_user_global_hint_text_mentions_force_init_skills(
         force_terminal=False,
         color_system=None,
     )
-    monkeypatch.setattr(run_module, "_PROJECT_SYNC_CONSOLE", captured_console)
+    captured_ctx = make_display_context(console=captured_console)
+    monkeypatch.setattr(run_module, "make_display_context", lambda **_kwargs: captured_ctx)
 
     run_module._print_user_global_update_hint()
 

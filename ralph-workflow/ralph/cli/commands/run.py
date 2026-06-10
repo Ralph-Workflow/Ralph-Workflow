@@ -5,7 +5,6 @@ This module implements the main pipeline execution command.
 
 from __future__ import annotations
 
-import os
 import shutil
 from contextlib import ExitStack
 from importlib import import_module
@@ -14,7 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, Protocol, Unpack, cast
 
 from loguru import logger
-from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
@@ -56,6 +54,8 @@ from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from rich.console import Console
+
     from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
@@ -500,9 +500,6 @@ def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> No
         )
 
 
-_PROJECT_SYNC_CONSOLE = Console()
-
-
 def _print_project_skill_conflict_hint(failures: list[str]) -> None:
     """Surface a NEEDS_REPAIR on the project-scope auto-seed to the user.
 
@@ -513,7 +510,8 @@ def _print_project_skill_conflict_hint(failures: list[str]) -> None:
     """
     if not failures:
         return
-    _PROJECT_SYNC_CONSOLE.print(
+    ctx = make_display_context()
+    ctx.console.print(
         Text(
             f"Project-scope skill install reported: {', '.join(failures)}. "
             "Run `ralph --force-init-skills` to repair and overwrite, "
@@ -536,7 +534,8 @@ def _print_user_global_update_hint() -> None:
     hint on the same non-DEBUG channel as the project-scope conflict
     hint.
     """
-    _PROJECT_SYNC_CONSOLE.print(
+    ctx = make_display_context()
+    ctx.console.print(
         Text(
             "[warning] Baseline skills have an update available. "
             "Run `ralph --force-init-skills` to apply, "
@@ -630,7 +629,9 @@ def run_pipeline(
     effective_counter_overrides = effective_request.counter_overrides or {}
     effective_parallel_worker_manifest = effective_request.parallel_worker_manifest
     if effective_parallel_worker_manifest is None:
-        manifest_from_env = os.environ.get(str(RALPH_PARALLEL_WORKER_MANIFEST_ENV))
+        # Read from the in-scope DisplayContext env mapping (per wt-007 DI contract);
+        # never re-read os.environ directly here.
+        manifest_from_env = ctx.env.get(str(RALPH_PARALLEL_WORKER_MANIFEST_ENV))
         if manifest_from_env:
             effective_parallel_worker_manifest = Path(manifest_from_env)
 

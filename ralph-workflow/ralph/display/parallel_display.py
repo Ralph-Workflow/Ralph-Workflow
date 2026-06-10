@@ -9,6 +9,8 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
+from rich.text import Text as _RichText
+
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.content_condenser import CondenseOptions, condense_content
@@ -271,6 +273,8 @@ class ParallelDisplay:
         Bare lifecycle tokens (e.g. prefixed transcript noise) are silently
         dropped before reaching the renderer. If unit_id is None, defaults to "run".
         """
+        if self._is_quiet:
+            return
         if _is_bare_lifecycle(line):
             return
         self._plain_renderer.emit_log_line(unit_id or "run", line)
@@ -292,6 +296,8 @@ class ParallelDisplay:
         self._emit_activity_event(unit_id, kind, content, None, metadata)
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
+        if self._is_quiet:
+            return
         self._plain_renderer.emit_status_line(unit_id, str(status))
 
     def emit_analysis_result(
@@ -303,11 +309,33 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._subscriber.record_analysis(phase, decision, reason)
 
+    def _emit_section_rule(self, tag: str) -> None:
+        """Emit a visual section break (rule line) for the given log-line tag.
+
+        Uses the ``rule`` glyph from DisplayContext (Unicode ``───`` in
+        Unicode mode, ASCII ``---`` in ASCII fallback mode). The tag
+        appears in the message so log parsers can still locate the
+        section boundary even if they don't render the rule glyph.
+
+        The rule glyph carries the theme.banner.border style (sky-blue) and
+        the tag suffix carries the theme.banner.title style (bold sky-blue).
+        A blank line is emitted before the rule to give the transcript
+        visual breathing room. The rule itself never wraps (``overflow=ignore``).
+        """
+        with contextlib.suppress(Exception):
+            self._console.print()  # blank line BEFORE the section rule
+            rule_text = _RichText()
+            rule_text.append("[section] ", style="theme.banner.ascii")
+            rule_text.append(self._ctx.glyph_for("rule"), style="theme.banner.border")
+            rule_text.append(f" {tag}", style="theme.banner.title")
+            self._console.print(rule_text, highlight=False, overflow="ignore")
+
     def emit_run_start(self, orientation: RunStartOrientation) -> None:
         """Emit a one-time run-start orientation block at pipeline start."""
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
+            self._emit_section_rule("[run-start]")
             self._plain_renderer.emit_run_start(orientation)
 
     def begin_phase(self, phase: str) -> None:
@@ -342,6 +370,8 @@ class ParallelDisplay:
 
     def record_artifact_outcome(self, outcome: str) -> None:
         """Record artifact outcome without emitting a log line."""
+        if self._is_quiet:
+            return
         with contextlib.suppress(Exception):
             self._plain_renderer.record_artifact_outcome(outcome)
 
@@ -358,6 +388,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
+            self._emit_section_rule("[phase-close]")
             self._plain_renderer.emit_phase_close(
                 phase,
                 produced,
@@ -388,6 +419,7 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
+            self._emit_section_rule("[run-end]")
             self._plain_renderer.emit_run_end(
                 phase=phase,
                 total_agent_calls=total_agent_calls,
@@ -395,6 +427,7 @@ class ParallelDisplay:
                 exit_trigger=exit_trigger,
                 outer_dev_iteration=outer_dev_iteration,
             )
+            self._console.print()  # blank line AFTER the run-end block
 
     @property
     def display_context(self) -> DisplayContext:
@@ -467,6 +500,8 @@ def resolve_active_display(
 def resolve_display(
     display: ParallelDisplay | None,
     display_context: DisplayContext | None = None,
+    *,
+    is_quiet: bool = False,
 ) -> ParallelDisplay:
     """Return the given display or construct one from the context.
 
@@ -474,13 +509,16 @@ def resolve_display(
     ``resolve_display`` helper from
     ``ralph.pipeline.legacy_console_display``. Pass-through for
     non-None inputs; constructs a :class:`ParallelDisplay` from
-    the supplied context when ``display`` is ``None``.
+    the supplied context when ``display`` is ``None``. When
+    ``is_quiet=True``, the constructed display short-circuits all
+    banner and log-line emissions (see ParallelDisplay quiet-mode
+    contract).
     """
     if display is not None:
         return display
     if display_context is None:
         raise TypeError("display_context is required when display is None")
-    return ParallelDisplay(display_context)
+    return ParallelDisplay(display_context, is_quiet=is_quiet)
 
 
 def status_text(label: str, value: str, style: str) -> str:

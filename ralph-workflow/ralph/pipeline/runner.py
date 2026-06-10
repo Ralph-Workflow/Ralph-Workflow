@@ -8,9 +8,7 @@ plumbing that connects them.
 from __future__ import annotations
 
 import os
-import uuid
 from inspect import signature
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from git import InvalidGitRepositoryError, Repo
@@ -25,6 +23,7 @@ from ralph.display.context import install_width_refresher, make_display_context
 from ralph.display.parallel_display import (
     ParallelDisplay,
     emit_activity_line,
+    resolve_display,
     status_text,
 )
 from ralph.display.phase_banner import show_phase_close_banner, show_phase_transition
@@ -156,6 +155,7 @@ from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from pathlib import Path
     from typing import Protocol
 
     from ralph.config.models import AgentConfig, UnifiedConfig
@@ -263,32 +263,6 @@ VALIDATE_MCP = _default_validate_mcp
 PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
 _VALIDATE_MCP = _default_validate_mcp
 _PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
-
-
-def resolve_display(
-    display: ParallelDisplay | None,
-    display_context: DisplayContext | None = None,
-    *,
-    is_quiet: bool = False,
-) -> ParallelDisplay:
-    """Return a usable :class:`ParallelDisplay`, constructing one if needed.
-
-    Single source of truth for resolving the active display in the
-    pipeline. If ``display`` is provided it is returned unchanged;
-    otherwise a :class:`ParallelDisplay` is built from the supplied
-    ``display_context`` (or a freshly-created one). Rich is a verified
-    required dependency (declared in ``pyproject.toml`` line 22:
-    ``rich>=13.0``), so the construction cannot fail.
-    """
-    if display is not None:
-        return display
-    resolved_ctx = display_context if display_context is not None else make_display_context()
-    return ParallelDisplay(
-        resolved_ctx,
-        workspace_root=Path.cwd(),
-        run_id=str(uuid.uuid4()),
-        is_quiet=is_quiet,
-    )
 
 
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:

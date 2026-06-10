@@ -40,6 +40,7 @@ UNICODE_GLYPHS: Final[dict[str, str]] = {
     "inner_analysis": "▸",  # ▸ - inner analysis indicator (triangle: direction/analysis)
     "proceed": "↑",  # ↑ - proceed arrow
     "revise": "↓",  # ↓ - revise arrow
+    "rule": "───",  # ─── - section rule
 }
 
 ASCII_GLYPHS: Final[dict[str, str]] = {
@@ -62,6 +63,7 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
     "inner_analysis": "[IA]",
     "proceed": "^",
     "revise": "v",
+    "rule": "---",
 }
 
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})

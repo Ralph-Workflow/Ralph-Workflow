@@ -317,7 +317,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer_with_policy)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.NORMAL)
 
         assert result == 0
         ckpt_save.assert_called_once_with(state, ANY)
@@ -338,7 +338,7 @@ class TestPipelineRunnerLoop:
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.NORMAL)
 
         assert result == 0
         printed = captured_console.export_text()

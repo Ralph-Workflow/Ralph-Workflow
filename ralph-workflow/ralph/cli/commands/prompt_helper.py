@@ -32,13 +32,13 @@ if TYPE_CHECKING:
 else:
     _ManagedSessionRuntime = object
 
-from rich.console import Console
 from rich.prompt import Prompt
 from rich.text import Text
 
 from ralph.agents.invoke import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.prompt_helper_prompt import build_prompt_helper_prompt
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.mcp.artifacts.product_spec import (
     read_product_spec_artifact,
     render_product_spec_as_prompt,
@@ -107,35 +107,57 @@ def _build_existing_prompt_prompt() -> list[str]:
     return ["Replace it", "Refine it"]
 
 
-def _prompt_existing_prompt_choice() -> ExistingPromptAction:
-    """Prompt the user before the first agent turn when PROMPT.md already exists."""
-    console = Console()
+def _prompt_existing_prompt_choice(
+    display_context: DisplayContext | None = None,
+) -> ExistingPromptAction:
+    """Prompt the user before the first agent turn when PROMPT.md already exists.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
+    ctx = display_context or make_display_context()
     choices = _build_existing_prompt_prompt()
     choice = Prompt.ask(
         "I found an existing PROMPT.md in this workspace. What should prompt-helper do?",
-        console=console,
+        console=ctx.console,
         choices=choices,
         default=choices[1],
     )
     return _EXISTING_PROMPT_ACTION_MAP.get(choice, _EXISTING_PROMPT_REFINE)
 
 
-def _prompt_review_choice() -> ReviewAction:
-    """Prompt user for review action and return the chosen action."""
-    console = Console()
+def _prompt_review_choice(display_context: DisplayContext | None = None) -> ReviewAction:
+    """Prompt user for review action and return the chosen action.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
+    ctx = display_context or make_display_context()
     choices = _build_review_prompt()
     choice = Prompt.ask(
         "What would you like to do? ",
-        console=console,
+        console=ctx.console,
         choices=choices,
         default=choices[0],
     )
     return _REVIEW_ACTION_MAP.get(choice, _REVIEW_FINISH)
 
 
-def _prompt_for_user_input(prompt_text: str) -> str:
-    """Prompt the user for conversational feedback between agent turns."""
-    return Prompt.ask(prompt_text, console=Console()).strip()
+def _prompt_for_user_input(
+    prompt_text: str,
+    *,
+    display_context: DisplayContext | None = None,
+) -> str:
+    """Prompt the user for conversational feedback between agent turns.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
+    ctx = display_context or make_display_context()
+    return Prompt.ask(prompt_text, console=ctx.console).strip()
 
 
 def _reinvoke_agent(
@@ -161,13 +183,23 @@ def _reinvoke_agent(
     return read_product_spec_artifact(workspace_root), next_session_id
 
 
-def _write_prompt_md(workspace_root: Path, spec: dict[str, object]) -> None:
-    """Write PROMPT.md from the given product spec."""
-    console = Console()
+def _write_prompt_md(
+    workspace_root: Path,
+    spec: dict[str, object],
+    *,
+    display_context: DisplayContext | None = None,
+) -> None:
+    """Write PROMPT.md from the given product spec.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
+    ctx = display_context or make_display_context()
     prompt_md_content = render_product_spec_as_prompt(spec)
     prompt_md_path = workspace_root / "PROMPT.md"
     prompt_md_path.write_text(prompt_md_content, encoding="utf-8")
-    console.print(
+    ctx.console.print(
         Text("PROMPT.md written from product specification.", style="theme.status.success")
     )
 
@@ -179,12 +211,22 @@ def _clear_draft_artifact(workspace_root: Path) -> None:
         artifact_file.unlink()
 
 
-def _display_agent_line(line: str) -> None:
-    """Render a single agent output line for the user."""
+def _display_agent_line(
+    line: str,
+    *,
+    display_context: DisplayContext | None = None,
+) -> None:
+    """Render a single agent output line for the user.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
     visible = line.strip()
     if not visible:
         return
-    Console().print(visible)
+    ctx = display_context or make_display_context()
+    ctx.console.print(visible)
 
 
 def _run_single_invoke(
@@ -192,8 +234,14 @@ def _run_single_invoke(
     prompt_file: Path,
     *,
     session_id: str | None = None,
+    display_context: DisplayContext | None = None,
 ) -> str | None:
-    """Run a single agent turn and preserve resumable sessions for host-owned loops."""
+    """Run a single agent turn and preserve resumable sessions for host-owned loops.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
     observed_session_id = session_id
 
     def _capture_session_id(captured_session_id: str) -> None:
@@ -206,7 +254,7 @@ def _run_single_invoke(
             session_id=session_id,
             session_id_sink=_capture_session_id,
         ):
-            _display_agent_line(line)
+            _display_agent_line(line, display_context=display_context)
     except OpenCodeResumableExitError as exc:
         return exc.resumable_session_id or observed_session_id
     return observed_session_id
@@ -264,19 +312,26 @@ def _run_conversational_intake(
     runtime: _ManagedSessionRuntime,
     existing_prompt_context: str | None,
     submit_artifact_tool_name: str,
+    *,
+    display_context: DisplayContext | None = None,
 ) -> tuple[dict[str, object] | None, str | None]:
-    """Run the intake loop until an artifact exists or the agent can no longer resume."""
+    """Run the intake loop until an artifact exists or the agent can no longer resume.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
     prompt_file = _update_prompt_file(
         workspace_root,
         submit_artifact_tool_name,
         existing_prompt_context,
         None,
     )
-    session_id = _run_single_invoke(runtime, prompt_file)
+    session_id = _run_single_invoke(runtime, prompt_file, display_context=display_context)
     spec = read_product_spec_artifact(workspace_root)
 
     while spec is None and session_id is not None:
-        user_input = _prompt_for_user_input("Your response")
+        user_input = _prompt_for_user_input("Your response", display_context=display_context)
         spec, session_id = _reinvoke_agent(
             workspace_root,
             runtime,
@@ -297,22 +352,30 @@ def _handle_artifact_exists(
     submit_artifact_tool_name: str,
     spec: dict[str, object],
     session_id: str | None,
+    *,
+    display_context: DisplayContext | None = None,
 ) -> None:
-    """Handle the case where an artifact exists - present review choices to user."""
-    console = Console()
-    action = _prompt_review_choice()
+    """Handle the case where an artifact exists - present review choices to user.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
+    ctx = display_context or make_display_context()
+    action = _prompt_review_choice(display_context=ctx)
 
     if action == _REVIEW_FINISH:
-        _write_prompt_md(workspace_root, spec)
+        _write_prompt_md(workspace_root, spec, display_context=ctx)
         return
     if action == _REVIEW_START_OVER:
-        console.print(Text("Starting over with a fresh specification."))
+        ctx.console.print(Text("Starting over with a fresh specification."))
         _clear_draft_artifact(workspace_root)
         new_spec, new_session_id = _run_conversational_intake(
             workspace_root,
             runtime,
             existing_prompt_context,
             submit_artifact_tool_name,
+            display_context=ctx,
         )
         if new_spec is not None:
             _handle_artifact_exists(
@@ -322,15 +385,20 @@ def _handle_artifact_exists(
                 submit_artifact_tool_name,
                 new_spec,
                 new_session_id,
+                display_context=ctx,
             )
         return
 
     if action == _REVIEW_UPDATE_SECTION:
         user_input = _prompt_for_user_input(
-            "Which section should be updated, and what should change?"
+            "Which section should be updated, and what should change?",
+            display_context=ctx,
         )
     else:
-        user_input = _prompt_for_user_input("What would you like to change or add?")
+        user_input = _prompt_for_user_input(
+            "What would you like to change or add?",
+            display_context=ctx,
+        )
 
     _continue_review_loop(
         workspace_root,
@@ -340,6 +408,7 @@ def _handle_artifact_exists(
         spec,
         user_input,
         session_id,
+        display_context=ctx,
     )
 
 
@@ -351,8 +420,15 @@ def _continue_review_loop(
     current_spec: dict[str, object],
     user_input: str,
     session_id: str | None,
+    *,
+    display_context: DisplayContext | None = None,
 ) -> None:
-    """Continue the review loop by sending user feedback back to the agent."""
+    """Continue the review loop by sending user feedback back to the agent.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
     spec, next_session_id = _reinvoke_agent(
         workspace_root,
         runtime,
@@ -370,6 +446,7 @@ def _continue_review_loop(
             submit_artifact_tool_name,
             spec,
             next_session_id,
+            display_context=display_context,
         )
 
 
@@ -390,12 +467,21 @@ def _prompt_helper_session_request() -> ManagedAgentSessionRequest:
     )
 
 
-def _existing_prompt_context_for_intake(workspace_root: Path) -> str | None:
-    """Return existing PROMPT.md content when the user chooses to refine it."""
+def _existing_prompt_context_for_intake(
+    workspace_root: Path,
+    *,
+    display_context: DisplayContext | None = None,
+) -> str | None:
+    """Return existing PROMPT.md content when the user chooses to refine it.
+
+    Added ``display_context`` parameter to remove inline Console construction per
+    wt-007-consolidate-display; pass an explicit context to avoid env re-read
+    between caller and default resolve.
+    """
     prompt_md_path = workspace_root / "PROMPT.md"
     if not prompt_md_path.exists():
         return None
-    action = _prompt_existing_prompt_choice()
+    action = _prompt_existing_prompt_choice(display_context=display_context)
     if action == _EXISTING_PROMPT_REPLACE:
         _clear_draft_artifact(workspace_root)
         return None
@@ -412,6 +498,7 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
     4. After artifact submission, presents review choices to the user
     5. Only writes PROMPT.md when the user explicitly chooses Finish
     """
+    ctx = make_display_context()
     registry = AgentRegistry.from_config(config)
 
     # Resolve agent: explicit setting > first configured > built-in opencode
@@ -432,7 +519,9 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
         raise RuntimeError(msg)
 
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
-    existing_prompt_context = _existing_prompt_context_for_intake(workspace_root)
+    existing_prompt_context = _existing_prompt_context_for_intake(
+        workspace_root, display_context=ctx
+    )
 
     with ManagedAgentSessionRuntimeType.open(
         config=config,
@@ -445,6 +534,7 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
             runtime,
             existing_prompt_context,
             submit_artifact_tool_name,
+            display_context=ctx,
         )
         if spec is not None:
             _handle_artifact_exists(
@@ -454,6 +544,7 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
                 submit_artifact_tool_name,
                 spec,
                 session_id,
+                display_context=ctx,
             )
 
 

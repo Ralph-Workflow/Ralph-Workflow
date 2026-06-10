@@ -31,6 +31,88 @@ at test time:
 To opt a line out of the invariant scan, append ``# noqa: di-allow`` to it
 and document why in the same commit.
 
+Single display owner
+-------------------
+
+:class:`~ralph.display.parallel_display.ParallelDisplay` is the **only**
+display class in Ralph Workflow. Every public display helper lives in
+exactly one module (``ralph/display/parallel_display.py`` or
+``ralph/display/context.py``) and is re-exported through
+:mod:`ralph.display`. The complete public surface is:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Symbol
+     - Owner
+   * - :class:`~ralph.display.parallel_display.ParallelDisplay`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.emit_activity_line`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.resolve_display`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.resolve_active_display`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.get_display_context`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.status_text`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.subscriber_for_display`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.strip_markup`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.build_default_display_legacy_bridge`
+     - ``ralph/display/parallel_display.py``
+
+This contract is enforced by two test classes:
+
+- :class:`tests.display.test_di_invariants.TestDisplayIsOnlyParallelDisplay`
+  in ``tests/display/test_di_invariants.py`` (DI seam contract).
+- :class:`tests.test_no_anti_drift_regression.TestParallelDisplayOwnsAllDisplayHelpers`
+  in ``tests/test_no_anti_drift_regression.py`` (anti-drift regression pin).
+
+No drift in CLI/pipeline display
+--------------------------------
+
+CLI command modules under ``ralph/cli/commands/`` and pipeline modules
+under ``ralph/pipeline/`` are forbidden from constructing their own
+``Console`` instances or from reading environment variables directly once
+a ``DisplayContext`` is in scope. The anti-drift invariant test
+:class:`tests.display.test_di_invariants.TestNoInlineConsoleConstructor`
+walks every ``*.py`` under ``ralph/`` (excluding ``tests/``, ``docs/``,
+and the legitimate ``ralph/display/theme.py`` source) and asserts zero
+inline ``Console(`` constructions and zero module-level
+``DisplayContext(...)`` calls. The companion test
+:class:`tests.display.test_di_invariants.TestNoModuleLevelDisplayContext`
+in ``tests/test_no_anti_drift_regression.py`` performs the same scan
+specifically for ``DisplayContext`` materialisation at import time.
+
+The :class:`tests.test_no_anti_drift_regression.TestPublicSurfaceImports`
+test pins the public surface by importing all nine canonical symbols from
+:mod:`ralph.display` and asserting they are all callable or class
+objects — this catches accidental re-export drift before users notice.
+
+Visual hierarchy
+----------------
+
+:class:`~ralph.display.parallel_display.ParallelDisplay` emits distinct
+visual section breaks (a ``───`` rule in Unicode mode, an ASCII ``---``
+fallback otherwise) between run-start, phase-close, and run-end blocks.
+The rule glyph is sourced from ``ralph/display/theme.py`` via
+:meth:`~ralph.display.context.DisplayContext.glyph_for` so it is
+substitutable per the existing Okabe-Ito discipline. Quiet mode
+(``is_quiet=True``) short-circuits the eight short-circuit-capable emit
+methods (``emit``, ``emit_run_start``, ``begin_phase``, ``emit_phase_close``,
+``emit_phase_close_from_exit``, ``emit_run_end``, ``set_status``,
+``record_artifact_outcome``) so no banner or log line leaks when
+:func:`~ralph.display.parallel_display.resolve_display` is called with
+``is_quiet=True``. Log-line tag markers emitted by ``PlainLogRenderer``
+(``[run-start]``, ``[phase-close]``, ``[run-end]``, the inlined
+``[{tag}][{unit_id}]`` substring) are preserved byte-for-byte; see
+``tests/test_parallel_display_preserves_log_tags.py`` for the AC-09
+regression pin.
+
 Environment variables
 ---------------------
 

@@ -13,6 +13,7 @@ The test name format `test_<surface>_<invariant>` mirrors the surfaces in
 from __future__ import annotations
 
 import ast
+import importlib
 import pathlib
 import re
 import time
@@ -755,13 +756,24 @@ class TestParallelDisplayOwnsAllDisplayHelpers:
             pathlib.Path("ralph/display/parallel_display.py"),
             pathlib.Path("ralph/display/context.py"),
         }
-        # The status-emission symbols from PA-005/Grep 10.
+        # The status-emission symbols from PA-005/Grep 10 plus the
+        # consolidated canonical helpers from ralph.display.parallel_display
+        # __all__ (8 def entries + 1 class entry = 9 total). The
+        # `def display_console` phantom (which does not exist anywhere in
+        # ralph/) is removed; the 4 missing canonical helpers
+        # (build_default_display_legacy_bridge, emit_activity_line,
+        # resolve_display, strip_markup) and the class declaration
+        # `class ParallelDisplay` are added.
         user_facing_symbols = (
-            "def status_text",
-            "def display_console",
-            "def subscriber_for_display",
+            "class ParallelDisplay",
+            "def build_default_display_legacy_bridge",
+            "def emit_activity_line",
             "def get_display_context",
             "def resolve_active_display",
+            "def resolve_display",
+            "def status_text",
+            "def strip_markup",
+            "def subscriber_for_display",
         )
         offenders: list[str] = []
         # Collect all (rel, source) pairs outside the allowed files.
@@ -773,19 +785,130 @@ class TestParallelDisplayOwnsAllDisplayHelpers:
             candidate_files.append((rel, path, _read(path)))
         # Phase 1: collect other user-facing symbol matches.
         for rel, _, source in candidate_files:
-            offenders.extend(f"{rel}:{sym}" for sym in user_facing_symbols if sym in source)
+            for sym in user_facing_symbols:
+                if sym == "class ParallelDisplay":
+                    if re.search(r"^class\s+ParallelDisplay\b", source, re.MULTILINE):
+                        offenders.append(f"{rel}:class ParallelDisplay")
+                else:
+                    func_name = sym.replace("def ", "")
+                    if re.search(rf"^def\s+{func_name}\b", source, re.MULTILINE):
+                        offenders.append(f"{rel}:{sym}")
         # Phase 2: collect `def emit_activity_line` matches outside the
         # private plain renderer.
         for rel, _, source in candidate_files:
             if "ralph/display/plain_renderer" in str(rel):
                 continue
-            if re.search(r"\bdef\s+emit_activity_line\b", source):
+            if re.search(r"^def\s+emit_activity_line\b", source, re.MULTILINE):
                 offenders.append(f"{rel}:def emit_activity_line")
         assert offenders == [], (
             "User-facing display helpers found outside ralph/display/: "
             f"{offenders}. Move them to ralph/display/parallel_display.py "
             "or ralph/display/context.py."
         )
+
+
+# ---------------------------------------------------------------------------
+# wt-007-consolidate-display: extended DI anti-drift pins
+# ---------------------------------------------------------------------------
+
+
+class TestNoInlineConsoleConstructor:
+    """Pin that no inline ``Console()`` construction leaks into non-display code.
+
+    Walks every .py file under ``ralph/`` (excluding tests/, docs/,
+    and the ralph/display/theme.py legend file where Console is the
+    legitimate source) and asserts no code-only line contains
+    ``Console(``. Lines carrying the ``# noqa: di-allow`` marker are
+    explicitly exempted so that an intentional, documented construction
+    can still be made.
+    """
+
+    def test_no_inline_console_constructor_outside_ralph_display(self) -> None:
+        excluded_dirs = {"tests", "docs"}
+        excluded_files = {
+            pathlib.Path("ralph/display/theme.py"),
+            pathlib.Path("ralph/display/__init__.py"),
+        }
+        violations: list[str] = []
+        for path in _walk_python_files(RALPH_ROOT):
+            rel = path.relative_to(RALPH_ROOT.parent)
+            if any(part in excluded_dirs for part in rel.parts):
+                continue
+            if rel in excluded_files:
+                continue
+            for lineno, line in enumerate(_read(path).splitlines(), start=1):
+                if "noqa" in line and "di-allow" in line:
+                    continue
+                if "Console(" in line and "Console(console" not in line \
+                        and "Console(self" not in line and "Console(theme" not in line:
+                    violations.append(f"{rel}:{lineno}:{line.rstrip()}")
+        assert not violations, (
+            "Inline Console() found outside ralph/display/theme.py:\n"
+            + "\n".join(violations)
+        )
+
+
+class TestNoModuleLevelDisplayContext:
+    """Pin that no module-level ``DisplayContext(...)`` construction is allowed.
+
+    Module-level ``DisplayContext`` construction defeats DI overrides
+    (the test fixture cannot monkey-patch an already-materialised
+    value). ``make_display_context()`` calls at module level are still
+    permitted because they can be patched; what is forbidden is
+    materialising a ``DisplayContext`` (with its frozen dataclass
+    fields) at import time.
+    """
+
+    def test_no_module_level_display_context_construction(self) -> None:
+        excluded_dirs = {"tests", "docs"}
+        excluded_substrs = ("ralph/display/",)
+        violations: list[str] = []
+        for path in _walk_python_files(RALPH_ROOT):
+            rel = path.relative_to(RALPH_ROOT.parent)
+            if any(part in excluded_dirs for part in rel.parts):
+                continue
+            if any(s in str(rel) for s in excluded_substrs):
+                continue
+            for lineno, line in enumerate(_read(path).splitlines(), start=1):
+                if re.search(r"^\s*DisplayContext\s*\(", line):
+                    violations.append(f"{rel}:{lineno}:{line.rstrip()}")
+        assert not violations, (
+            "Module-level DisplayContext(...) construction found:\n"
+            + "\n".join(violations)
+        )
+
+
+class TestPublicSurfaceImports:
+    """Pin the public re-export surface of ralph.display.
+
+    Each of the 9 canonical user-facing symbols from
+    ralph/display/parallel_display.__all__ must be importable from
+    ralph.display. This is the public-surface pin from AC-03, separate
+    from the AST-based anti-drift scan.
+    """
+
+    def test_all_9_canonical_symbols_importable_from_ralph_display(self) -> None:
+        # Use importlib to verify the public re-export surface without
+        # triggering ruff PLC0415 (function-scope imports forbidden in tests).
+        ralph_display = importlib.import_module("ralph.display")
+        for name in (
+            "ParallelDisplay",
+            "build_default_display_legacy_bridge",
+            "emit_activity_line",
+            "get_display_context",
+            "resolve_active_display",
+            "resolve_display",
+            "status_text",
+            "strip_markup",
+            "subscriber_for_display",
+        ):
+            assert hasattr(ralph_display, name), (
+                f"ralph.display does not re-export {name!r}"
+            )
+            sym = getattr(ralph_display, name)
+            assert callable(sym) or isinstance(sym, type), (
+                f"{name!r} from ralph.display is neither callable nor a class"
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -138,6 +138,7 @@ class TestRunPromptHelper:
             submit_artifact_tool_name: str,
             spec: dict[str, object],
             session_id: str | None,
+            **_kwargs: object,
         ) -> None:
             del (
                 workspace_root,
