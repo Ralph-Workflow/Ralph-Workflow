@@ -8,7 +8,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Literal, cast
 
 from loguru import logger
-from pydantic import ConfigDict, Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.plan.plan_artifact_validation_error import PlanArtifactValidationError
@@ -22,9 +22,11 @@ from .plan_schema import (
     DesignSection,
     EditArea,
     ParallelPlanItem,
+    PlanningProfile,
     PlanStep,
     ReferenceFile,
     RiskMitigation,
+    ScopeCategory,
     ScopeItem,
     SkillsMcp,
     StepTarget,
@@ -35,6 +37,8 @@ from .plan_schema import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from pathlib import Path
+
+    from ralph.pipeline.work_unit import WorkUnit
 
 PLAN_ARTIFACT_TYPE = "plan"
 PLAN_ARTIFACT_PATH = ".agent/artifacts/plan.json"
@@ -58,7 +62,27 @@ class PlanArtifact(RalphBaseModel):
     design: DesignSection | None = None
     verification_strategy: list[VerificationStep] = Field(..., min_length=1)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
-    work_units: list[dict[str, object]] = Field(default_factory=list)
+    work_units: "list[WorkUnit]" = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _auto_fill_minimal_skills(cls, raw: object) -> object:
+        """When planning_profile is 'minimal', auto-fill empty skills with default.
+
+        Runs in mode='before' so the patch lands before SkillsMcp field-level
+        validators (min_length=1 and normalize_skill_names empty-check) execute.
+        """
+        if not isinstance(raw, dict):
+            return raw
+        skills_mcp_raw: object = raw.get("skills_mcp")
+        design_raw: object = raw.get("design")
+        if not isinstance(skills_mcp_raw, dict) or not isinstance(design_raw, dict):
+            return raw
+        skills_value: object = skills_mcp_raw.get("skills")
+        design_profile: object = design_raw.get("planning_profile")
+        if isinstance(skills_value, list) and not skills_value and design_profile == "minimal":
+            skills_mcp_raw["skills"] = cast("list[str]", ["writing-plans"])
+        return raw
 
 
 PLAN_SECTION_OBJECT_MODELS: dict[str, type[RalphBaseModel]] = {
@@ -78,6 +102,31 @@ PLAN_SECTION_LIST_ITEM_MODELS: dict[str, type[RalphBaseModel]] = {
 PLAN_SECTION_NAMES: frozenset[str] = frozenset(
     set(PLAN_SECTION_OBJECT_MODELS) | set(PLAN_SECTION_LIST_ITEM_MODELS) | {"work_units"}
 )
+
+class _PlanArtifactRebuildState:
+    rebuilt: bool = False
+
+
+_PLAN_ARTIFACT_REBUILD_STATE = _PlanArtifactRebuildState()
+
+
+def _ensure_plan_artifact_rebuilt() -> None:
+    """Lazily resolve the TYPE_CHECKING forward reference to WorkUnit on PlanArtifact.
+
+    Pydantic needs the class itself (not just the string) to resolve a forward
+    reference used in a field annotation. We use import_module (deferred) to
+    avoid the ralph.pipeline -> ralph.phases -> ralph.mcp.artifacts.plan
+    circular import; the canonical WorkUnit lives in ralph.pipeline.work_unit.
+
+    Idempotent: subsequent calls are no-ops once the model has been rebuilt.
+    """
+    if _PLAN_ARTIFACT_REBUILD_STATE.rebuilt:
+        return
+    work_unit_cls: type[object] = import_module("ralph.pipeline.work_unit").WorkUnit
+    PlanArtifact.model_rebuild(
+        _types_namespace=cast("dict[str, object]", {"WorkUnit": work_unit_cls}),
+    )
+    _PLAN_ARTIFACT_REBUILD_STATE.rebuilt = True
 
 
 def is_noop_plan(artifact: Mapping[str, object]) -> bool:
@@ -104,6 +153,7 @@ def is_noop_plan(artifact: Mapping[str, object]) -> bool:
 
 def normalize_plan_artifact_content(content: dict[str, object]) -> dict[str, object]:
     """Validate and normalize a raw plan artifact content dict."""
+    _ensure_plan_artifact_rebuilt()
     if is_noop_plan(content):
         return {"noop": True}
     try:
@@ -162,7 +212,8 @@ def validate_plan_section(
 
     if section == "work_units":
         work_unit_model = cast(
-            "type[RalphBaseModel]", import_module("ralph.pipeline.work_units").WorkUnit
+            "type[RalphBaseModel]",
+            import_module("ralph.pipeline.work_unit").WorkUnit,
         )
         if mode == "replace":
             if not isinstance(payload, list):
@@ -480,6 +531,8 @@ def _render_summary_section(summary: object) -> list[str]:
     context = summary.get("context")
     if isinstance(context, str) and context.strip():
         lines.extend(["", "## Summary", "", context.strip()])
+    else:
+        lines.extend(["", "## Summary", "", "No additional context provided."])
 
     scope_items = summary.get("scope_items")
     if isinstance(scope_items, list) and scope_items:
@@ -489,7 +542,11 @@ def _render_summary_section(summary: object) -> list[str]:
                 continue
             text = item.get("text")
             if isinstance(text, str) and text.strip():
-                lines.extend(["", f"- {text.strip()}"])
+                category = item.get("category")
+                if isinstance(category, str) and category.strip():
+                    lines.extend(["", f"- {text.strip()} [category]"])
+                else:
+                    lines.extend(["", f"- {text.strip()}"])
     return lines
 
 
@@ -539,11 +596,7 @@ def extract_plan_skill_names(content: Mapping[str, object]) -> tuple[str, ...]:
     skills = skills_mcp.get("skills")
     if not isinstance(skills, list):
         return ()
-    names = tuple(
-        entry.strip()
-        for entry in skills
-        if isinstance(entry, str) and entry.strip()
-    )
+    names = tuple(entry.strip() for entry in skills if isinstance(entry, str) and entry.strip())
     return names
 
 
@@ -628,6 +681,10 @@ def _render_design_section(design: object) -> list[str]:
     )
 
     rendered: list[str] = []
+    profile = design.get("planning_profile")
+    if isinstance(profile, str) and profile.strip():
+        rendered.append(f"- planning_profile: {profile.strip()}")
+
     for key, heading, renderer in sub_section_order:
         sub = design.get(key)
         if not isinstance(sub, dict):
@@ -673,11 +730,7 @@ def _render_design_non_goals_block(non_goals: Mapping[str, object]) -> list[str]
     items = non_goals.get("items")
     if not isinstance(items, list):
         return []
-    return [
-        f"- {entry.strip()}"
-        for entry in items
-        if isinstance(entry, str) and entry.strip()
-    ]
+    return [f"- {entry.strip()}" for entry in items if isinstance(entry, str) and entry.strip()]
 
 
 def _render_design_di_block(di: Mapping[str, object]) -> list[str]:
@@ -879,8 +932,10 @@ __all__ = [
     "PlanArtifact",
     "PlanArtifactValidationError",
     "PlanStep",
+    "PlanningProfile",
     "ReferenceFile",
     "RiskMitigation",
+    "ScopeCategory",
     "ScopeItem",
     "SectionMode",
     "SkillsMcp",

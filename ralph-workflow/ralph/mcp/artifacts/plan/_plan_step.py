@@ -14,7 +14,7 @@ class PlanStep(RalphBaseModel):
     number: int = Field(..., ge=1)
     title: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
-    step_type: Literal["file_change", "action", "research"] = "file_change"
+    step_type: Literal["file_change", "action", "research", "verify"] = "file_change"
     priority: Literal["critical", "high", "medium", "low"] | None = None
     targets: list[StepTarget] = Field(default_factory=list)
     location: str | None = None

@@ -46,10 +46,24 @@ def _format_summary_section(plan: dict[str, object]) -> str:
 
     sections: list[str] = []
     context = summary.get("context")
-    if context:
-        sections.append(f"Summary:\n{context}")
+    if isinstance(context, str) and context.strip():
+        sections.append(f"Summary:\n{context.strip()}")
+    else:
+        sections.append("Summary:\nNo additional context provided.")
 
-    scope_lines = _bullet_lines(summary.get("scope_items"), "text")
+    scope_items = summary.get("scope_items")
+    scope_lines: list[str] = []
+    if isinstance(scope_items, list) and scope_items:
+        for item in scope_items:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                category = item.get("category")
+                if isinstance(category, str) and category.strip():
+                    scope_lines.append(f"- {text.strip()} [category]")
+                else:
+                    scope_lines.append(f"- {text.strip()}")
     if scope_lines:
         sections.append("\n".join(["Scope items:", *scope_lines]))
 
@@ -69,9 +83,7 @@ def _format_skills_mcp_section(plan: dict[str, object]) -> str:
     mcp_values = skills_mcp.get("mcps")
     if isinstance(mcp_values, list):
         mcp_lines = [
-            f"- {entry}"
-            for entry in mcp_values
-            if isinstance(entry, str) and entry.strip()
+            f"- {entry}" for entry in mcp_values if isinstance(entry, str) and entry.strip()
         ]
         if mcp_lines:
             sections.append("\n".join(["Planner-recommended MCP servers:", *mcp_lines]))
@@ -188,6 +200,9 @@ def _format_design_section(plan: dict[str, object]) -> str:
         return ""
 
     lines: list[str] = ["Design:"]
+    profile = design.get("planning_profile")
+    if isinstance(profile, str) and profile.strip():
+        lines.append(f"- planning_profile: {profile.strip()}")
     lines.extend(_format_design_constraints(design))
     lines.extend(_format_design_non_goals(design))
     lines.extend(_format_design_dependency_injection(design))

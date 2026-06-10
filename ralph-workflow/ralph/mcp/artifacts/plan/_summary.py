@@ -9,5 +9,5 @@ from ralph.pydantic_compat import RalphBaseModel
 class Summary(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    context: str = Field(..., min_length=1)
+    context: str = Field(default="", max_length=2000)
     scope_items: list[ScopeItem] = Field(..., min_length=3)

@@ -13,8 +13,10 @@ from ralph.mcp.artifacts.plan._critical_primary_file import CriticalPrimaryFile
 from ralph.mcp.artifacts.plan._design_section import DesignSection
 from ralph.mcp.artifacts.plan._edit_area import EditArea
 from ralph.mcp.artifacts.plan._plan_step import PlanStep
+from ralph.mcp.artifacts.plan._planning_profile import PlanningProfile
 from ralph.mcp.artifacts.plan._reference_file import ReferenceFile
 from ralph.mcp.artifacts.plan._risk_mitigation import RiskMitigation
+from ralph.mcp.artifacts.plan._scope_category import ScopeCategory
 from ralph.mcp.artifacts.plan._scope_item import ScopeItem
 from ralph.mcp.artifacts.plan._skills_mcp import SkillsMcp
 from ralph.mcp.artifacts.plan._step_target import StepTarget
@@ -43,8 +45,10 @@ __all__ = [
     "EditArea",
     "ParallelPlanItem",
     "PlanStep",
+    "PlanningProfile",
     "ReferenceFile",
     "RiskMitigation",
+    "ScopeCategory",
     "ScopeItem",
     "SkillsMcp",
     "StepTarget",

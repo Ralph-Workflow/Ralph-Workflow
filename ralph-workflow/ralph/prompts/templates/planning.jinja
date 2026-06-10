@@ -124,6 +124,8 @@ The seven typed sub-sections, with the exact labels the executor will see in the
 
 **Model-tier guidance for the optional `notes` field**: For high-quality models, use the optional `notes` free-form field to capture rationale, alternative designs considered, and trade-offs that do not fit the seven typed sub-models. For cheap models, leave `notes` unset and rely entirely on the seven typed sub-models for schema-driven validation. Either choice is acceptable; the section passes validation as long as the seven sub-models are well-formed (or all None).
 
+**`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset also seeds a sentinel acceptance criterion `PRESET-01` that you may strip or replace. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
+
 The full reference for the design sub-section, including every enum value and the JSON shape, is at `.agent/artifact-formats/plan.md` (bundled by Ralph Workflow and materialized into the workspace). Cross-reference `AGENTS.md` §'Non-negotiables' for the canonical SE opinions the sub-sections enforce.
 
 Atomic fallback for short plans:
@@ -188,6 +190,7 @@ Your payload must decode to an object shaped like this:
   ],
   "work_units": [],
   "design": {
+    "planning_profile": "strict",
     "testability": {
       "must_be_black_box": true,
       "forbidden_in_tests": ["time.sleep"],

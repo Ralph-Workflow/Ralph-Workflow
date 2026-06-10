@@ -62,3 +62,26 @@ class TestToolSpecsWebSearch:
                 f"submit-plan-section description is missing schema-supported section "
                 f"{section_name!r}"
             )
+
+    def test_input_schema_section_description_enumerates_every_supported_plan_section(
+        self,
+    ) -> None:
+        """The input_schema section description must enumerate every PLAN_SECTION_NAMES entry.
+
+        This guards against the input_schema description drifting out of sync with
+        the runtime validator; the runtime accepts every section, and the metadata
+        must reflect that for tool consumers that introspect the schema.
+        """
+        specs = tool_specs(McpConfig())
+        submit_plan_spec = next(
+            spec for spec in specs if spec.metadata.definition.name == SUBMIT_PLAN_SECTION_TOOL
+        )
+        section_description = submit_plan_spec.metadata.definition.input_schema["properties"][
+            "section"
+        ]["description"]
+
+        for section_name in sorted(PLAN_SECTION_NAMES):
+            assert section_name in section_description, (
+                f"submit-plan-section input_schema section description is missing "
+                f"schema-supported section {section_name!r}"
+            )

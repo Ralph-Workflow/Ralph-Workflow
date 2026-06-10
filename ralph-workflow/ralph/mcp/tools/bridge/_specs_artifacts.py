@@ -88,10 +88,10 @@ def artifact_specs() -> list[ToolSpec]:
                             "type": "string",
                             "description": (
                                 "Section name as a string: summary, skills_mcp, steps, "
-                                "critical_files, risks_mitigations, verification_strategy, "
-                                "parallel_plan, or work_units "
+                                "critical_files, risks_mitigations, design, "
+                                "verification_strategy, parallel_plan, or work_units "
                                 "(example values: 'summary', 'steps', "
-                                "'risks_mitigations', 'work_units')."
+                                "'risks_mitigations', 'design', 'work_units')."
                             ),
                         },
                         "content": {

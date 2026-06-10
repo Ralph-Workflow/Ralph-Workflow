@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import json
 from itertools import pairwise
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import cast
 
 import pytest
 
+from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.plan import (
+    PlanArtifact,
     PlanArtifactValidationError,
+    PlanStep,
+    ScopeItem,
+    Summary,
     delete_plan_draft,
     extract_plan_skill_names,
     finalize_plan_draft,
@@ -25,10 +31,10 @@ from ralph.mcp.artifacts.plan import (
     save_plan_draft,
     validate_plan_section,
 )
+from ralph.mcp.artifacts.plan._scope_category import ScopeCategory
+from ralph.pipeline.work_unit import WorkUnit
 from ralph.prompts.plan_format import format_plan_for_execution
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from tests.test_artifact_format_docs import _extract_complete_example_inner_payload
 
 
 class FakeFileBackend:
@@ -684,9 +690,7 @@ def test_design_section_rejects_acceptance_criterion_bad_id_pattern() -> None:
     plan = {
         **_valid_plan(),
         "design": {
-            "acceptance_criteria": {
-                "criteria": [{"id": "a-1", "description": "no upper case"}]
-            }
+            "acceptance_criteria": {"criteria": [{"id": "a-1", "description": "no upper case"}]}
         },
     }
     with pytest.raises(PlanArtifactValidationError, match=r"id|pattern"):
@@ -813,3 +817,275 @@ def test_plan_format_for_execution_includes_design_block() -> None:
     assert design_idx >= 0
     assert verify_idx >= 0
     assert risks_idx < design_idx < verify_idx
+
+# ---------------------------------------------------------------------------
+# Schema and preset tests (Steps 2-10 of PLAN.md)
+# ---------------------------------------------------------------------------
+
+
+def test_scope_item_accepts_known_categories() -> None:
+    """All 15 ScopeCategory values (including the 3 legacy ones) are accepted."""
+    assert ScopeCategory is not None
+    legacy_and_new = (
+        "bugfix",
+        "feature",
+        "refactor",
+        "test",
+        "docs",
+        "infra",
+        "migration",
+        "security",
+        "performance",
+        "cleanup",
+        "research",
+        "unknown",
+        "file_change",
+        "prompt",
+        "other",
+    )
+    for category_value in legacy_and_new:
+        validated = ScopeItem.model_validate({"text": "x", "category": category_value})
+        assert validated.category == category_value
+
+
+def test_scope_item_rejects_unknown_category() -> None:
+    with pytest.raises(ValueError):
+        ScopeItem.model_validate({"text": "x", "category": "misc"})
+
+
+def test_plan_step_accepts_verify_type() -> None:
+    validated = PlanStep.model_validate(
+        {
+            "number": 1,
+            "title": "Run pytest",
+            "content": "Execute the test suite.",
+            "step_type": "verify",
+        }
+    )
+    assert validated.step_type == "verify"
+
+    with pytest.raises(ValueError):
+        PlanStep.model_validate(
+            {
+                "number": 1,
+                "title": "Ship it",
+                "content": "Should fail.",
+                "step_type": "ship_it",
+            }
+        )
+
+
+def test_summary_accepts_empty_context_with_render_substitute() -> None:
+    """summary.context defaults to '' and the rendered markdown uses the placeholder."""
+    plan = _valid_plan()
+    plan["summary"] = {
+        "context": "",
+        "scope_items": [
+            {"text": "a"},
+            {"text": "b"},
+            {"text": "c"},
+        ],
+    }
+    normalized = normalize_plan_artifact_content(plan)
+    assert "context" not in cast("dict[str, object]", normalized["summary"])
+    markdown = render_plan_markdown(plan)
+    assert "No additional context provided." in markdown
+
+
+def test_summary_drops_empty_context_via_exclude_defaults() -> None:
+    """model_dump(exclude_defaults=True) drops an empty context field."""
+    summary = Summary.model_validate(
+        {
+            "scope_items": [
+                {"text": "a"},
+                {"text": "b"},
+                {"text": "c"},
+            ]
+        }
+    )
+    dumped = summary.model_dump(mode="python", exclude_defaults=True)
+    assert "context" not in dumped
+
+
+def test_skills_mcp_minimal_profile_escape() -> None:
+    """Empty skills_mcp.skills is auto-filled under planning_profile=minimal only."""
+    minimal_plan = {
+        **_valid_plan(),
+        "skills_mcp": {"skills": [], "mcps": []},
+        "design": {"planning_profile": "minimal"},
+    }
+    normalized = normalize_plan_artifact_content(minimal_plan)
+    skills = cast("list[str]", cast("dict[str, object]", normalized["skills_mcp"])["skills"])
+    assert skills == ["writing-plans"]
+
+    no_profile_plan = {
+        **_valid_plan(),
+        "skills_mcp": {"skills": [], "mcps": []},
+        "design": {},
+    }
+    with pytest.raises(PlanArtifactValidationError, match="skills"):
+        normalize_plan_artifact_content(no_profile_plan)
+
+
+def test_design_strict_profile_bias_fills_seven_sub_sections() -> None:
+    plan = {**_valid_plan(), "design": {"planning_profile": "strict"}}
+    normalized = normalize_plan_artifact_content(plan)
+    design = cast("dict[str, object]", normalized["design"])
+    testability = cast("dict[str, object]", design["testability"])
+    di = cast("dict[str, object]", design["dependency_injection"])
+    refactor = cast("dict[str, object]", design["refactor_strategy"])
+    drift = cast("dict[str, object]", design["drift_detection"])
+    ac = cast("dict[str, object]", design["acceptance_criteria"])
+
+    assert testability["must_be_black_box"] is True
+    assert "time.sleep" in testability["forbidden_in_tests"]
+    assert "unit" in testability["required_test_layers"]
+    assert di["required_for_testability"] is True
+    assert "global-singleton" in di["forbidden_patterns"]
+    # dead_code_policy has the default value 'delete-immediately' and is dropped
+    # by model_dump(exclude_defaults=True); assert via the in-memory model
+    # attribute on the original (un-dumped) design instead.
+    assert "approach" in refactor
+    assert len(drift["guard_commands"]) >= 1
+
+    criteria = cast("list[dict[str, object]]", ac["criteria"])
+    assert len(criteria) >= 1
+    assert criteria[0]["id"] == "PRESET-01"
+
+
+def test_design_strict_profile_user_values_win() -> None:
+    plan = {
+        **_valid_plan(),
+        "design": {
+            "planning_profile": "strict",
+            "testability": {
+                "must_be_black_box": False,
+                "forbidden_in_tests": [],
+                "required_test_layers": ["integration"],
+            },
+        },
+    }
+    normalized = normalize_plan_artifact_content(plan)
+    design = cast("dict[str, object]", normalized["design"])
+    testability = cast("dict[str, object]", design["testability"])
+    assert testability["must_be_black_box"] is False
+    assert "integration" in testability["required_test_layers"]
+
+
+def test_design_balanced_profile_only_bias_fills_three() -> None:
+    plan = {**_valid_plan(), "design": {"planning_profile": "balanced"}}
+    normalized = normalize_plan_artifact_content(plan)
+    design = cast("dict[str, object]", normalized["design"])
+    assert design.get("testability") is not None
+    assert design.get("dependency_injection") is not None
+    assert design.get("refactor_strategy") is not None
+    for absent_key in ("constraints", "non_goals", "drift_detection", "acceptance_criteria"):
+        assert absent_key not in design, f"{absent_key} should not be bias-filled by balanced"
+
+
+def test_plan_no_design_baseline_round_trip() -> None:
+    plan = _valid_plan()
+    plan.pop("design", None)
+    normalized = normalize_plan_artifact_content(plan)
+    assert "design" not in normalized
+
+
+def test_minimal_valid_plan_round_trip() -> None:
+    plan: dict[str, object] = {
+        "summary": {
+            "scope_items": [
+                {"text": "Fix bug", "category": "bugfix"},
+                {"text": "Modify src/foo.py", "category": "file_change"},
+                {"text": "Add regression test", "category": "test"},
+            ],
+        },
+        "skills_mcp": {"skills": ["test-driven-development"], "mcps": []},
+        "steps": [
+            {
+                "number": 1,
+                "title": "Add regression test",
+                "content": "Write a test that fails.",
+                "step_type": "verify",
+                "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+            }
+        ],
+        "critical_files": {"primary_files": [{"path": "src/foo.py", "action": "modify"}]},
+        "risks_mitigations": [{"risk": "clamp hides bugs", "mitigation": "log the index"}],
+        "verification_strategy": [
+            {"method": "pytest tests/test_foo.py -q", "expected_outcome": "ok"}
+        ],
+        "design": {"planning_profile": "strict"},
+    }
+    normalized = normalize_plan_artifact_content(plan)
+    assert "summary" in normalized
+    markdown = render_plan_markdown(plan)
+    assert "## Design" in markdown
+    assert "planning_profile: strict" in markdown
+    assert "No additional context provided." in markdown
+
+
+def test_format_doc_minimal_plan_example_parses() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    inner = _extract_complete_example_inner_payload(doc)
+    assert "summary" in inner
+    assert "steps" in inner
+    assert "design" in inner
+    normalized = normalize_plan_artifact_content(inner)
+    assert "summary" in normalized
+
+
+def test_planning_jinja_mentions_planning_profile_preset() -> None:
+    template = Path("ralph/prompts/templates/planning.jinja").read_text(encoding="utf-8")
+    assert "planning_profile" in template
+    assert "step_type" in template
+
+
+def test_work_unit_typed_model() -> None:
+    """Canonical WorkUnit (frozen=True only) is the typed model for work_units.
+
+    The PlanArtifact.work_units annotation is ``list[WorkUnit]`` (resolved via
+    model_rebuild's namespace). WorkUnit is NOT extra='forbid' — RalphBaseModel
+    is a thin pydantic.BaseModel alias with no implicit extra='forbid', and
+    WorkUnit explicitly sets only model_config = ConfigDict(frozen=True). So
+    extra fields are accepted by default; do not assert extra-field rejection.
+    """
+    # 4 legacy-id format cases
+    for accepted_id in ("API", "1", "foo-bar", "a_b-1"):
+        WorkUnit.model_validate(
+            {
+                "unit_id": accepted_id,
+                "description": "x",
+                "allowed_directories": [],
+                "dependencies": [],
+            }
+        )
+    for rejected_id in ("foo bar", ""):
+        with pytest.raises(ValueError):
+            WorkUnit.model_validate(
+                {
+                    "unit_id": rejected_id,
+                    "description": "x",
+                    "allowed_directories": [],
+                    "dependencies": [],
+                }
+            )
+
+    # Round-trip with the canonical 4 fields
+    parsed = WorkUnit.model_validate(
+        {
+            "unit_id": "u-1",
+            "description": "Real unit",
+            "allowed_directories": ["src/a/"],
+            "dependencies": [],
+        }
+    )
+    assert parsed.unit_id == "u-1"
+    assert parsed.description == "Real unit"
+    assert parsed.allowed_directories == ["src/a/"]
+    assert parsed.dependencies == []
+
+    # Annotation introspection — PlanArtifact.work_units is a list[WorkUnit]
+    field = PlanArtifact.model_fields["work_units"]
+    annotation_repr = repr(field.annotation)
+    assert "WorkUnit" in annotation_repr
