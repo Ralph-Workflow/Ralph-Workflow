@@ -312,6 +312,15 @@ def _run_attempt(
 
     try:
         _check_bridge_health(ctx, bridge_ctx)
+        # Per-invocation session-budget reset: every attempt boundary
+        # re-arms the inner subprocess's soft wrap-up nag so a retried
+        # agent does not inherit the prior attempt's elapsed time. The
+        # 60-minute timing budget is a per-invocation soft timeout; a
+        # fresh command line (or a retry within the recovery loop) is a
+        # fresh attempt. The ``isinstance`` guard lets test stubs that
+        # inject a non-RestartAwareMcpBridge skip the reset silently.
+        if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge):
+            bridge_ctx.bridge.reset_session_budget()
         options = _build_attempt_invoke_options(ctx, bridge_ctx, resume_session_id)
         _consume_attempt_output(
             ctx,

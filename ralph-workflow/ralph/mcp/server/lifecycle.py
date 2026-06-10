@@ -79,6 +79,20 @@ if not (
         f" (got {_RESPAWN_ALIAS_VERIFY_TIMEOUT_S})"
     )
 
+# Reset-wrapup timeout for the per-attempt session-budget reset POST.
+# Same bounded, fail-closed contract as the alias-verify timeout so
+# ``audit_mcp_timeout`` stays green: a wedged inner process or a
+# just-respawned one that has not finished binding its HTTP socket
+# must not stall the attempt boundary. The invariant below is
+# enforced at import time via `if`/`raise RuntimeError` (NOT
+# `assert`) so it survives `python -O`.
+_RESET_WRAPUP_TIMEOUT_S: float = 2.0
+if not _RESET_WRAPUP_TIMEOUT_S > 0:
+    raise RuntimeError(
+        "_RESET_WRAPUP_TIMEOUT_S must be positive"
+        f" (got {_RESET_WRAPUP_TIMEOUT_S})"
+    )
+
 # Canonical tool name whose alias is verified after every
 # ``reset_tool_registry()`` call. ``read_file`` is the most common
 # wedge surface: a regression that strips the alias from the
@@ -353,6 +367,103 @@ class RestartAwareMcpBridge:
             msg,
             restart_count=self._restart_count,
         )
+
+    def reset_session_budget(self) -> None:
+        """Re-arm the inner subprocess's soft wrap-up nag for a fresh attempt.
+
+        The McpServer is a per-subprocess singleton; the bridge is its only
+        client. Each attempt boundary (e.g. the start of every
+        ``effect_executor._run_attempt``) must re-arm the inner subprocess's
+        soft nag so a retried agent does not inherit the prior attempt's
+        elapsed time. The reset is exposed as the custom JSON-RPC method
+        ``notifications/reset_wrapup`` over HTTP; the McpServer handles it
+        via ``McpServer._dispatch_request`` by calling
+        ``McpServer.reset_session_budget()``.
+
+        Best-effort: transport errors are logged and swallowed (the
+        recovery controller's attempt loop will retry on the next attempt
+        boundary). The HTTP POST is bounded by ``_RESET_WRAPUP_TIMEOUT_S``
+        so ``audit_mcp_timeout`` stays green; a wedged or just-respawned
+        inner process does not stall the attempt.
+
+        When the inner process is a MagicMock (e.g. in unit tests that do
+        not exercise the HTTP path) the reset is a no-op. Same pattern as
+        :meth:`_verify_alias_present` so the bridge tests stay hermetic
+        (a real HTTP POST against a fake endpoint would otherwise hit the
+        1.0-second per-test timeout and time out the suite).
+
+        Thread-safe: holds ``self._lock`` to serialize with concurrent
+        ``check_health_and_restart_if_needed`` and ``reset_tool_registry``
+        calls so a respawn and a reset cannot interleave.
+
+        Note: the intra-bridge respawn paths
+        (:meth:`check_health_and_restart_if_needed` and
+        :meth:`reset_tool_registry`) do NOT call this method. A fresh
+        subprocess starts with ``elapsed=0`` by construction, so the next
+        attempt boundary's reset is sufficient — adding a second reset
+        inside the bridge would only matter on a tight crash-respawn cycle
+        and would risk blocking on a 1.0s test-timeout-budget in unit
+        tests that use a ``FakeProcess`` (which has ``poll()`` but no
+        real HTTP endpoint). The attempt-boundary wire-up at the top of
+        :func:`effect_executor._run_attempt` is the single production
+        seam that drives the reset.
+        """
+        endpoint = self._inner.endpoint
+        if not isinstance(endpoint, str) or not endpoint:
+            logger.debug(
+                "reset_session_budget skipped: inner process endpoint is not a string"
+            )
+            return
+        # MagicMock / fake-bridge detection: a MagicMock inner process
+        # (e.g. ``MagicMock(spec=StandaloneMcpProcess)``) does NOT have
+        # ``.process.poll()`` because the spec excludes instance
+        # attributes. A real ``_NoopProcess`` test fake DOES have poll.
+        # The check below matches the same pattern as
+        # :meth:`_verify_alias_present` so the respawn paths stay
+        # hermetic in unit tests.
+        inner_process: object = getattr(self._inner, "process", None)
+        if inner_process is None or not hasattr(inner_process, "poll"):
+            logger.debug(
+                "reset_session_budget skipped: inner process lacks poll() (MagicMock?)"
+            )
+            return
+        request_payload: dict[str, object] = {
+            "jsonrpc": "2.0",
+            "method": "notifications/reset_wrapup",
+            "params": {},
+            "id": "reset-wrapup-1",
+        }
+        body = json.dumps(request_payload).encode("utf-8")
+        with self._lock:
+            request = urllib.request.Request(
+                endpoint,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                response = cast(
+                    "IO[bytes]",
+                    urllib.request.urlopen(request, timeout=_RESET_WRAPUP_TIMEOUT_S),
+                )
+                try:
+                    response_data = response.read()
+                finally:
+                    response.close()
+                _ = response_data  # payload is opaque; the wire-level seam
+                # is the method dispatch, not the response body.
+            except (
+                urllib.error.URLError,
+                OSError,
+                TimeoutError,
+                ValueError,
+            ) as exc:
+                logger.warning(
+                    "reset_session_budget POST to {} failed (swallowed, best-effort): {}",
+                    endpoint,
+                    exc,
+                )
+                return
 
 
 def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
