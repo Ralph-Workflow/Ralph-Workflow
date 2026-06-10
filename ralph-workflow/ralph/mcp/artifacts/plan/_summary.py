@@ -4,9 +4,11 @@ Carries the cheap-model-friendly ``intent`` and ``intent_verb`` shortcuts in
 addition to the existing ``context`` and ``scope_items`` fields. ``intent`` is
 a free-form 1-line user-facing outcome (defaults to empty string so it is
 dropped by ``model_dump(exclude_defaults=True)``, mirroring ``context``).
-``intent_verb`` is a closed enum stored as ``str | None`` so cheap models can
-emit ``"Add"`` or ``"ADD"`` and have the before-validator lowercase it before
-the closed-set check fires.
+``intent_verb`` is a closed enum stored as ``str`` defaulting to ``""`` (also
+dropped from ``model_dump(exclude_defaults=True)``). A before-validator
+lowercases the value before the closed-set check fires (so ``Add`` and
+``ADD`` both pass), rejects unknown values, and explicitly rejects ``""`` to
+distinguish a deliberate empty value from an omitted field.
 """
 
 from __future__ import annotations
@@ -32,11 +34,11 @@ _INTENT_VERB_SET: frozenset[str] = frozenset(
 
 
 class Summary(RalphBaseModel):
-    model_config = ConfigDict(extra="forbid", validate_default=True)
+    model_config = ConfigDict(extra="forbid")
 
     context: str = Field(default="", max_length=2000)
     intent: str = Field(default="", max_length=200)
-    intent_verb: str | None = None
+    intent_verb: str = Field(default="")
     scope_items: list[ScopeItem] = Field(..., min_length=3)
 
     @field_validator("intent")
@@ -54,7 +56,8 @@ class Summary(RalphBaseModel):
             raise ValueError(msg)
         stripped = value.strip()
         if not stripped:
-            return ""
+            msg = "intent_verb must not be empty"
+            raise ValueError(msg)
         lowered = stripped.lower()
         if lowered not in _INTENT_VERB_SET:
             msg = f"intent_verb {value!r} is not one of: {sorted(_INTENT_VERB_SET)!r}"

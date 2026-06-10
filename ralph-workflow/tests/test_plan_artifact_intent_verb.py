@@ -52,16 +52,14 @@ def test_intent_verb_rejects_unknown_value() -> None:
 
 
 def test_intent_verb_rejects_empty_string() -> None:
-    """Explicit '' and pure whitespace collapse to the default '' (no raise).
+    """Explicit '' and pure whitespace are rejected.
 
-    Round-trip safety: a previously-serialized plan that emitted ``""`` for
-    the default value must validate without error on reload.
+    Explicit ``""`` is rejected with ``ValueError("intent_verb must not be empty")``
+    to distinguish a deliberate empty value from an omitted field (the
+    omitted-field path is allowed and yields ``intent_verb=""`` because the
+    ``None`` field default round-trips through the before-validator).
     """
-    normalized = normalize_plan_artifact_content(_plan_with_intent_verb(""))
-    summary = normalized["summary"]
-    assert isinstance(summary, dict)
-    assert summary.get("intent_verb", "") == ""
-    normalized_ws = normalize_plan_artifact_content(_plan_with_intent_verb("   "))
-    summary_ws = normalized_ws["summary"]
-    assert isinstance(summary_ws, dict)
-    assert summary_ws.get("intent_verb", "") == ""
+    with pytest.raises(PlanArtifactValidationError, match="intent_verb must not be empty"):
+        normalize_plan_artifact_content(_plan_with_intent_verb(""))
+    with pytest.raises(PlanArtifactValidationError, match="intent_verb must not be empty"):
+        normalize_plan_artifact_content(_plan_with_intent_verb("   "))

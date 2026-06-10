@@ -486,10 +486,9 @@ def replace_plan_step(
     if target_index is None:
         raise PlanArtifactValidationError(f"step {step_number} does not exist")
 
-    existing_numbers = [cast("int", step["number"]) for step in steps]
     replacement_step = _normalize_step_edit_payload(
         step_payload,
-        synthetic_number=max(existing_numbers, default=0) + 1,
+        synthetic_number=step_number,
     )
     steps[target_index] = replacement_step
     reindexed_steps, number_map = _reindex_plan_steps(steps)

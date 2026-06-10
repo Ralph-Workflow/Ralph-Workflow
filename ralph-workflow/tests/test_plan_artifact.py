@@ -11,6 +11,8 @@ import pytest
 
 from ralph.mcp.artifacts.format_docs import load_bundled_format_doc
 from ralph.mcp.artifacts.plan import (
+    AcceptanceCriterion,
+    DesignSection,
     PlanArtifact,
     PlanArtifactValidationError,
     PlanStep,
@@ -1091,3 +1093,439 @@ def test_work_unit_typed_model() -> None:
     field = PlanArtifact.model_fields["work_units"]
     annotation_repr = repr(field.annotation)
     assert "WorkUnit" in annotation_repr
+
+
+# ---------------------------------------------------------------------------
+# Cheap-model shortcut tests (Summary.intent / Summary.intent_verb)
+# ---------------------------------------------------------------------------
+
+
+def test_summary_intent_default_empty_string() -> None:
+    """Omitting intent/intent_verb returns empty strings (default round-trip).
+
+    intent_verb returns '' because the Summary model sets validate_default=True
+    so the before-validator runs on the None field default and the first
+    branch returns ''.
+    """
+    summary = Summary.model_validate(
+        {"scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]}
+    )
+    assert summary.intent == ""
+    assert summary.intent_verb == ""
+
+
+def test_summary_intent_stripped() -> None:
+    """Whitespace is stripped and intent_verb is lowercased before closed-set check."""
+    summary = Summary.model_validate(
+        {
+            "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+            "intent": "  X passes  ",
+            "intent_verb": "Add",
+        }
+    )
+    assert summary.intent == "X passes"
+    assert summary.intent_verb == "add"
+
+
+def test_summary_intent_verb_rejects_unknown_value() -> None:
+    """Closed enum: unknown values raise ValueError with the bad value in the message."""
+    with pytest.raises(ValueError, match="ship_it"):
+        Summary.model_validate(
+            {
+                "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+                "intent_verb": "ship_it",
+            }
+        )
+
+
+def test_summary_intent_verb_rejects_explicit_empty_string() -> None:
+    """Explicit '' is rejected to distinguish a deliberate empty from an omitted field."""
+    with pytest.raises(ValueError, match="intent_verb must not be empty"):
+        Summary.model_validate(
+            {
+                "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+                "intent_verb": "",
+            }
+        )
+
+
+def test_summary_intent_max_length_200() -> None:
+    """intent is capped at 200 chars (raises ValueError with 'at most 200')."""
+    with pytest.raises(ValueError, match="at most 200"):
+        Summary.model_validate(
+            {
+                "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+                "intent": "x" * 201,
+            }
+        )
+
+
+def test_summary_intent_dumped_exclude_defaults() -> None:
+    """model_dump(exclude_defaults=True) drops an empty intent field (mirrors context)."""
+    summary = Summary.model_validate(
+        {"scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]}
+    )
+    dumped = summary.model_dump(mode="python", exclude_defaults=True)
+    assert "intent" not in dumped
+
+
+# ---------------------------------------------------------------------------
+# PlanStep contract tests
+# ---------------------------------------------------------------------------
+
+
+def test_plan_step_file_change_requires_targets() -> None:
+    """file_change steps must declare at least one targets entry."""
+    with pytest.raises(ValueError, match="file_change"):
+        PlanStep.model_validate(
+            {"number": 1, "title": "t", "content": "c", "step_type": "file_change"}
+        )
+
+
+def test_plan_step_verify_requires_command_or_location() -> None:
+    """verify steps must declare verify_command or location."""
+    with pytest.raises(ValueError, match="verify"):
+        PlanStep.model_validate(
+            {"number": 1, "title": "t", "content": "c", "step_type": "verify"}
+        )
+    by_command = PlanStep.model_validate(
+        {
+            "number": 1,
+            "title": "t",
+            "content": "c",
+            "step_type": "verify",
+            "verify_command": "pytest -q",
+        }
+    )
+    assert by_command.verify_command == "pytest -q"
+    by_location = PlanStep.model_validate(
+        {
+            "number": 1,
+            "title": "t",
+            "content": "c",
+            "step_type": "verify",
+            "location": "tests/test_x.py",
+        }
+    )
+    assert by_location.location == "tests/test_x.py"
+
+
+def test_plan_step_satisfies_validates_regex() -> None:
+    """satisfies entries must match ^[A-Z]+-\\d{2,}$; lowercase ids are rejected."""
+    with pytest.raises(ValueError, match=r"AC|pattern"):
+        PlanStep.model_validate(
+            {
+                "number": 1,
+                "title": "t",
+                "content": "c",
+                "step_type": "file_change",
+                "targets": [{"path": "a.py", "action": "modify"}],
+                "satisfies": ["ac-1"],
+            }
+        )
+    ok_step = PlanStep.model_validate(
+        {
+            "number": 1,
+            "title": "t",
+            "content": "c",
+            "step_type": "file_change",
+            "targets": [{"path": "a.py", "action": "modify"}],
+            "satisfies": ["AC-01"],
+        }
+    )
+    assert ok_step.satisfies == ["AC-01"]
+
+
+def test_plan_step_expected_evidence_passthrough() -> None:
+    """expected_evidence: blank dropped, case-insensitive dedupe with last-wins."""
+    step = PlanStep.model_validate(
+        {
+            "number": 1,
+            "title": "t",
+            "content": "c",
+            "step_type": "file_change",
+            "targets": [{"path": "a.py", "action": "modify"}],
+            "expected_evidence": ["a", "b", " ", "a", "B"],
+        }
+    )
+    assert step.expected_evidence == ["a", "B"]
+
+
+# ---------------------------------------------------------------------------
+# AcceptanceCriterion.satisfied_by_steps tests
+# ---------------------------------------------------------------------------
+
+
+def test_acceptance_criterion_satisfied_by_steps_rejects_zero_or_negative() -> None:
+    """satisfied_by_steps entries must be positive integers; non-int is rejected."""
+    with pytest.raises(ValueError, match="positive integers"):
+        AcceptanceCriterion.model_validate(
+            {"id": "AC-01", "description": "x", "satisfied_by_steps": [0]}
+        )
+    with pytest.raises(ValueError, match="positive integers"):
+        AcceptanceCriterion.model_validate(
+            {"id": "AC-01", "description": "x", "satisfied_by_steps": [-1]}
+        )
+    with pytest.raises(ValueError, match="must be an int"):
+        AcceptanceCriterion.model_validate(
+            {"id": "AC-01", "description": "x", "satisfied_by_steps": ["1"]}
+        )
+    ok = AcceptanceCriterion.model_validate(
+        {"id": "AC-01", "description": "x", "satisfied_by_steps": [1, 2]}
+    )
+    assert ok.satisfied_by_steps == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# DesignSection.outcome tests
+# ---------------------------------------------------------------------------
+
+
+def test_design_section_outcome_stripped_and_dumped_as_none() -> None:
+    """outcome is stripped; whitespace-only values are dropped from the dump."""
+    design = DesignSection.model_validate({"outcome": "  X  "})
+    assert design.outcome == "X"
+    empty = DesignSection.model_validate({"outcome": "   "})
+    dumped = empty.model_dump(exclude_none=True)
+    assert "outcome" not in dumped
+
+
+def test_design_section_outcome_max_length_500() -> None:
+    """outcome is capped at 500 chars (raises with 'at most 500' in the message)."""
+    with pytest.raises(ValueError, match="at most 500"):
+        DesignSection.model_validate({"outcome": "x" * 501})
+
+
+# ---------------------------------------------------------------------------
+# PlanArtifact cross-section validator tests
+# ---------------------------------------------------------------------------
+
+
+def test_plan_cross_section_rejects_unknown_satisfies_id() -> None:
+    """step.satisfies referencing an unknown AC id raises with 'unknown acceptance criterion'."""
+    plan = _valid_plan()
+    plan["design"] = {
+        "acceptance_criteria": {"criteria": [{"id": "AC-01", "description": "x"}]}
+    }
+    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps[0]["satisfies"] = ["AC-99"]
+    with pytest.raises(PlanArtifactValidationError, match="unknown acceptance criterion"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_plan_cross_section_rejects_satisfies_without_design() -> None:
+    """step.satisfies on a plan with no design.acceptance_criteria raises."""
+    plan = _valid_plan()
+    plan.pop("design", None)
+    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps[0]["satisfies"] = ["AC-01"]
+    with pytest.raises(PlanArtifactValidationError, match=r"no design\.acceptance_criteria"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_plan_cross_section_rejects_unknown_satisfied_by_steps_number() -> None:
+    """AC.satisfied_by_steps referencing an unknown step number raises."""
+    plan = _valid_plan()
+    plan["design"] = {
+        "acceptance_criteria": {
+            "criteria": [
+                {"id": "AC-01", "description": "x", "satisfied_by_steps": [99]}
+            ]
+        }
+    }
+    with pytest.raises(PlanArtifactValidationError, match="unknown step number"):
+        normalize_plan_artifact_content(plan)
+
+
+def test_plan_cross_section_accepts_consistent_links() -> None:
+    """Consistent step<->AC links normalize without error."""
+    plan = _valid_plan()
+    plan["design"] = {
+        "acceptance_criteria": {
+            "criteria": [
+                {"id": "AC-01", "description": "x", "satisfied_by_steps": [1]}
+            ]
+        }
+    }
+    steps = cast("list[dict[str, object]]", plan["steps"])
+    steps[0]["satisfies"] = ["AC-01"]
+    normalized = normalize_plan_artifact_content(plan)
+    assert "summary" in normalized
+
+
+# ---------------------------------------------------------------------------
+# Renderer tests (Intent block, Design outcome)
+# ---------------------------------------------------------------------------
+
+
+def test_render_plan_markdown_surfaces_intent_block() -> None:
+    """summary.intent/intent_verb render as a ## Intent block before ## Summary."""
+    plan = _valid_plan()
+    plan["summary"]["intent"] = "X passes"
+    plan["summary"]["intent_verb"] = "fix"
+    markdown = render_plan_markdown(plan)
+    assert "## Intent" in markdown
+    assert "verb: fix" in markdown
+    assert "X passes" in markdown
+    assert "## Summary" in markdown
+    assert "## Scope" in markdown
+
+
+def test_render_plan_markdown_surfaces_design_outcome() -> None:
+    """design.outcome renders as a ### Outcome sub-block at the TOP of the Design section."""
+    plan = _valid_plan()
+    plan["design"] = _valid_design_section()
+    plan["design"]["outcome"] = "Y"
+    markdown = render_plan_markdown(plan)
+    design_idx = markdown.find("## Design")
+    outcome_idx = markdown.find("### Outcome")
+    constraints_idx = markdown.find("### Design Constraints")
+    assert design_idx >= 0
+    assert outcome_idx >= 0
+    assert constraints_idx >= 0
+    assert design_idx < outcome_idx < constraints_idx
+    assert "Y" in markdown[outcome_idx:constraints_idx]
+
+
+# ---------------------------------------------------------------------------
+# _remap_ac_step_refs tests at all three call sites
+# ---------------------------------------------------------------------------
+
+
+def test_insert_plan_step_remaps_satisfied_by_steps() -> None:
+    """insert_plan_step remaps AC.satisfied_by_steps through the new number_map."""
+    sections = _valid_plan()
+    sections["design"] = {
+        "acceptance_criteria": {
+            "criteria": [
+                {"id": "AC-01", "description": "x", "satisfied_by_steps": [2]}
+            ]
+        }
+    }
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "First",
+            "content": "first",
+            "step_type": "file_change",
+            "targets": [{"path": "a.py", "action": "modify"}],
+        },
+        {
+            "number": 2,
+            "title": "Second",
+            "content": "second",
+            "step_type": "file_change",
+            "targets": [{"path": "b.py", "action": "modify"}],
+        },
+    ]
+    updated = insert_plan_step(
+        sections,
+        index=2,
+        step_payload={
+            "title": "Inserted",
+            "content": "inserted",
+            "step_type": "file_change",
+            "targets": [{"path": "c.py", "action": "modify"}],
+        },
+    )
+    design = cast("dict[str, object]", updated["design"])
+    ac = cast("dict[str, object]", design["acceptance_criteria"])
+    criteria = cast("list[dict[str, object]]", ac["criteria"])
+    assert criteria[0]["satisfied_by_steps"] == [3]
+
+
+def test_replace_plan_step_remaps_satisfied_by_steps() -> None:
+    """replace_plan_step preserves satisfied_by_steps when the step number is unchanged."""
+    sections = _valid_plan()
+    sections["design"] = {
+        "acceptance_criteria": {
+            "criteria": [
+                {"id": "AC-01", "description": "x", "satisfied_by_steps": [1]}
+            ]
+        }
+    }
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "First",
+            "content": "first",
+            "step_type": "file_change",
+            "targets": [{"path": "a.py", "action": "modify"}],
+        },
+        {
+            "number": 2,
+            "title": "Second",
+            "content": "second",
+            "step_type": "file_change",
+            "targets": [{"path": "b.py", "action": "modify"}],
+        },
+    ]
+    updated = replace_plan_step(
+        sections,
+        step_number=1,
+        step_payload={
+            "title": "First replaced",
+            "content": "first replaced",
+            "step_type": "file_change",
+            "targets": [{"path": "a.py", "action": "modify"}],
+        },
+    )
+    design = cast("dict[str, object]", updated["design"])
+    ac = cast("dict[str, object]", design["acceptance_criteria"])
+    criteria = cast("list[dict[str, object]]", ac["criteria"])
+    assert criteria[0]["satisfied_by_steps"] == [1]
+
+
+def test_remove_plan_step_remaps_satisfied_by_steps() -> None:
+    """remove_plan_step drops dead AC references (the removed step's number) without raising."""
+    sections = _valid_plan()
+    sections["design"] = {
+        "acceptance_criteria": {
+            "criteria": [
+                {"id": "AC-01", "description": "x", "satisfied_by_steps": [2]}
+            ]
+        }
+    }
+    sections["steps"] = [
+        {
+            "number": 1,
+            "title": "First",
+            "content": "first",
+            "step_type": "file_change",
+            "targets": [{"path": "a.py", "action": "modify"}],
+        },
+        {
+            "number": 2,
+            "title": "Second",
+            "content": "second",
+            "step_type": "file_change",
+            "targets": [{"path": "b.py", "action": "modify"}],
+        },
+    ]
+    updated = remove_plan_step(sections, step_number=2)
+    design = cast("dict[str, object]", updated["design"])
+    ac = cast("dict[str, object]", design["acceptance_criteria"])
+    criteria = cast("list[dict[str, object]]", ac["criteria"])
+    assert criteria[0]["satisfied_by_steps"] == []
+
+
+# ---------------------------------------------------------------------------
+# Format doc coverage tests
+# ---------------------------------------------------------------------------
+
+
+def test_format_doc_intent_and_satisfies_appear() -> None:
+    """Bundled plan.md documents the new summary.intent, intent_verb, satisfies, outcome fields."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "summary.intent" in doc
+    assert "summary.intent_verb" in doc
+    assert "satisfies" in doc
+    assert "outcome" in doc
+
+
+def test_format_doc_step_contract_section_present() -> None:
+    """Bundled plan.md has the new ## Tightened step contract section heading."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Tightened step contract" in doc
