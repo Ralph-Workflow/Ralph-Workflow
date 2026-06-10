@@ -31,8 +31,9 @@ Each non-plan artifact type also ships with a small Markdown format guide that a
 The format doc loader is in `ralph.mcp.artifacts.format_docs`. The `FORMAT_DOC_ARTIFACT_TYPES` tuple lists all types that have bundled docs:
 
 ```
-commit_message, development_result, issues, fix_result,
-development_analysis_decision, review_analysis_decision
+commit_message, commit_cleanup, development_result, issues, fix_result,
+development_analysis_decision, planning_analysis_decision,
+review_analysis_decision, smoke_test_result, product_spec, plan
 ```
 
 An index doc (`artifact_formats_index.md`) is also materialized at `.agent/artifact-formats/artifact_formats_index.md` and lists every available type with a one-line description.

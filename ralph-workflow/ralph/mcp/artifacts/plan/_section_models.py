@@ -1,8 +1,20 @@
-"""Structured Pydantic schema models for plan artifacts."""
+"""Pydantic sub-models for plan artifacts.
+
+This module is a thin re-export surface for the existing per-section
+Pydantic models. It owns no behavior. The models themselves are defined
+in their own ``_<modelname>.py`` files for fast import. The re-exports
+keep the public ``ralph.mcp.artifacts.plan`` namespace stable so callers
+can write ``from ralph.mcp.artifacts.plan import Summary`` without
+having to know the file layout.
+
+The module also defines the canonical ``PlanArtifactDict`` type alias
+that downstream functions use to annotate normalized plan dicts. A
+single named alias makes mypy catch drift when the schema evolves
+instead of silently propagating the implicit ``dict[str, object]``
+type through every helper.
+"""
 
 from __future__ import annotations
-
-from pydantic import ConfigDict, Field
 
 from ralph.mcp.artifacts.plan._acceptance_criteria import (
     AcceptanceCriteria,
@@ -12,6 +24,8 @@ from ralph.mcp.artifacts.plan._critical_files import CriticalFiles
 from ralph.mcp.artifacts.plan._critical_primary_file import CriticalPrimaryFile
 from ralph.mcp.artifacts.plan._design_section import DesignSection
 from ralph.mcp.artifacts.plan._edit_area import EditArea
+from ralph.mcp.artifacts.plan._evidence_ref import EvidenceRef, ExpectedEvidence
+from ralph.mcp.artifacts.plan._plan_constraints import PlanConstraints
 from ralph.mcp.artifacts.plan._plan_step import PlanStep
 from ralph.mcp.artifacts.plan._planning_profile import PlanningProfile
 from ralph.mcp.artifacts.plan._reference_file import ReferenceFile
@@ -22,19 +36,9 @@ from ralph.mcp.artifacts.plan._skills_mcp import SkillsMcp
 from ralph.mcp.artifacts.plan._step_target import StepTarget
 from ralph.mcp.artifacts.plan._summary import Summary
 from ralph.mcp.artifacts.plan._verification_step import VerificationStep
-from ralph.pydantic_compat import RalphBaseModel
+from ralph.mcp.artifacts.plan.plan_schema import ParallelPlanItem
 
-
-class ParallelPlanItem(RalphBaseModel):
-    """A unit of parallelisable work with dependency tracking."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(..., min_length=1)
-    description: str = Field(..., min_length=1)
-    edit_area: EditArea
-    depends_on: list[str] = Field(default_factory=list)
-
+PlanArtifactDict = dict[str, object]
 
 __all__ = [
     "AcceptanceCriteria",
@@ -43,7 +47,11 @@ __all__ = [
     "CriticalPrimaryFile",
     "DesignSection",
     "EditArea",
+    "EvidenceRef",
+    "ExpectedEvidence",
     "ParallelPlanItem",
+    "PlanArtifactDict",
+    "PlanConstraints",
     "PlanStep",
     "PlanningProfile",
     "ReferenceFile",

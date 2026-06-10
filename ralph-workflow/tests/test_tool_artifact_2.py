@@ -181,8 +181,8 @@ def test_handle_submit_artifact_invalid_planning_analysis_decision_points_to_for
     assert content.startswith("# planning_analysis_decision artifact format")
 
 
-def test_plan_validation_error_is_not_redirected_through_format_doc(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match="verification_strategy"):
+def test_plan_validation_error_is_redirected_through_format_doc(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError, match=r"artifact-formats/plan\.md"):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -207,7 +207,7 @@ def test_plan_validation_error_is_not_redirected_through_format_doc(tmp_path: Pa
                 ),
             },
         )
-    assert not (tmp_path / ".agent" / "artifact-formats" / "plan.md").exists()
+    assert (tmp_path / ".agent" / "artifact-formats" / "plan.md").exists()
 
 
 def test_format_doc_materialization_failure_still_raises_pointer_error(tmp_path: Path) -> None:

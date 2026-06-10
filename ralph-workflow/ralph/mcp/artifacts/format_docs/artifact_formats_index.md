@@ -64,7 +64,6 @@ This example shows the minimum fields needed to submit each type:
 - Do NOT use `artifact_type` values that are not listed below — they will be rejected
 - Do NOT leave out `artifact_type` — it is required
 - Do NOT guess the artifact type — read the list below and pick the right one
-- Do NOT use `plan` as an artifact_type here — plan uses a separate flow with `ralph_submit_plan_section` and `ralph_finalize_plan`
 
 ## Supported Artifact Types
 
@@ -80,7 +79,7 @@ This example shows the minimum fields needed to submit each type:
 | `review_analysis_decision` | Report a review analysis decision | `.agent/artifact-formats/review_analysis_decision.md` |
 | `smoke_test_result` | Report the outcome of a manual runtime smoke test | `.agent/artifact-formats/smoke_test_result.md` |
 | `product_spec` | Submit a product specification from the prompt-helper agent | `.agent/artifact-formats/product_spec.md` |
-| `plan` | Submit a full implementation plan (uses special flow) | Uses `ralph_submit_plan_section` / `ralph_finalize_plan` |
+| `plan` | Submit a structured execution plan | `.agent/artifact-formats/plan.md` |
 
 ## Dumb-proof checklist
 
