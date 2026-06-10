@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._content import BASELINE_SKILL_NAMES, get_skill_content
 from ralph.skills._installer import (
     _project_skills_need_install,
@@ -206,3 +207,34 @@ def test_self_improving_skills_hook_is_no_op_by_default(tmp_path: Path) -> None:
     assert list(tmp_path.iterdir()) == [], (
         f"No-op hook must NOT write anything; got: {list(tmp_path.iterdir())!r}"
     )
+
+
+def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_conflict(
+    tmp_path: Path,
+) -> None:
+    """On a user-owned canonical conflict (NEEDS_REPAIR), the hook must NOT be called.
+
+    The hook is only fired after a successful project fan-out. A conflict
+    leaves the workspace untouched; running the hook on a NEEDS_REPAIR path
+    would let it observe and write to the canonical prematurely.
+    """
+    home = _fake_user_global_home(tmp_path)
+    canonical = tmp_path / ".opencode" / "skills"
+    user_skill = canonical / "using-superpowers"
+    user_skill.mkdir(parents=True, exist_ok=True)
+    (user_skill / "SKILL.md").write_text(
+        "# my custom override\n",
+        encoding="utf-8",
+    )
+
+    with (
+        patch("pathlib.Path.home", return_value=home),
+        patch("ralph.skills._installer.self_improving_skills_hook") as hook_mock,
+    ):
+        result = install_project_baseline_skills(tmp_path)
+
+    assert result[0].status == CapabilityStatus.NEEDS_REPAIR
+    assert any(code == "skills-conflict-using-superpowers" for code in result[1]), (
+        f"Expected skills-conflict-using-superpowers, got {result[1]}"
+    )
+    hook_mock.assert_not_called()

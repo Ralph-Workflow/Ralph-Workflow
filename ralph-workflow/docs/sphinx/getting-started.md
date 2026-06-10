@@ -48,6 +48,8 @@ After the first successful `ralph --init`, the bundled skill bundle is also auto
 
 **Note:** A normal `ralph` run (without `--init`) also auto-seeds the project-scope skills and the batteries-included `.gitignore` when missing, so the explicit first-run `ralph --init` step is no longer required for either artifact. Use `ralph --force-init-skills` to repair a conflict or overwrite the project-scope skills.
 
+Outdated **user-global** skills are NOT auto-repaired on a normal `ralph` run; the run surfaces a `ralph --force-init-skills` hint instead. Run that flag to apply the update.
+
 ## Minimal first-run example
 
 ```bash

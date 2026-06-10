@@ -26,6 +26,12 @@ Self-improving skills are not yet implemented — see the future-extension sketc
 
 On every `ralph` run, missing project skills AND the batteries-included `.gitignore` (see `_DEFAULT_GITIGNORE_PATTERNS` in `ralph/config/bootstrap.py`) are auto-seeded when missing. Re-running is idempotent. Use `ralph --force-init-skills` to force a full re-resolve even when valid installs exist. If a project-scope install reports a conflict (NEEDS_REPAIR), `_sync_shipped_skills_on_pipeline_run` surfaces `ralph --force-init-skills` as the remediation hint on a non-DEBUG channel so the user actually sees it.
 
+### User-global update policy
+
+On a normal `ralph` run, outdated **user-global** baseline skills (e.g. `~/.claude/skills/`, `~/.codex/skills/`, `~/.config/opencode/skills/`, `~/.gemini/antigravity-cli/skills/`) are **NOT auto-repaired**. `SkillManager.check_skills_for_updates()` records `update_available=True` in capability state but never mutates the user-global canonical root or any sibling symlink. The run prints a `ralph --force-init-skills` hint on a non-DEBUG channel so the user knows how to apply the update. Only an explicit `ralph --force-init-skills` (or `ralph --init`) invocation overwrites the user-global canonical or sibling symlinks.
+
+This split — project-scope artifacts are auto-seeded, user-global artifacts are hint-only — matches the prompt's "we don't update it unless the person runs --force-init-skills" contract.
+
 ### Customization contract
 
 Editing the SKILL.md under `./.opencode/skills/` propagates to all sibling symlinks. Editing a sibling symlink's target directly is a no-op. The `.ralph-managed.json` marker protects user-edited content from being overwritten.

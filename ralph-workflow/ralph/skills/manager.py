@@ -249,42 +249,38 @@ class SkillManager:
         return updated, merged_failures
 
     def check_skills_for_updates(self) -> bool:
-        """Auto-repair outdated baseline skills and return whether an update still remains."""
+        """Surface outdated baseline skills and return whether an update is available.
+
+        The user must run ``ralph --force-init-skills`` to apply the update;
+        this method records the signal in state for ``ralph`` runs and
+        ``_print_user_global_update_hint`` to surface, but does NOT mutate
+        the user-global canonical or any sibling symlink. (Do NOT auto-repair.)
+        """
         state = self._load_state()
         entry = state.skills
         if not needs_recheck(entry, self._policy):
             return entry.update_available
 
         update_available = check_skills_update_available()
+        now_iso = _now_iso()
         if update_available:
-            repaired_entry, failures = install_baseline_skills()
-            if not failures:
-                updated_entry = repaired_entry.model_copy(
-                    update={
-                        "update_available": False,
-                    }
-                )
-                updated_state = state.model_copy(update={"skills": updated_entry})
-                self._save_state(updated_state)
-                return False
-
             updated_entry = entry.model_copy(
                 update={
-                    "status": CapabilityStatus.NEEDS_REPAIR,
                     "update_available": True,
-                    "last_check_fail_iso": _now_iso(),
+                    "last_check_ok_iso": now_iso,
                 }
             )
-            updated_state = state.model_copy(update={"skills": updated_entry})
-            self._save_state(updated_state)
         else:
-            healthy_entry = CapabilityEntry(
-                status=CapabilityStatus.INSTALLED_HEALTHY,
-                last_check_ok_iso=_now_iso(),
-                update_available=False,
+            updated_entry = entry.model_copy(
+                update={
+                    "status": CapabilityStatus.INSTALLED_HEALTHY,
+                    "update_available": False,
+                    "last_check_ok_iso": now_iso,
+                    "last_check_fail_iso": "",
+                }
             )
-            updated_state = state.model_copy(update={"skills": healthy_entry})
-            self._save_state(updated_state)
+        updated_state = state.model_copy(update={"skills": updated_entry})
+        self._save_state(updated_state)
         return update_available
 
     def get_docs_mcp_available(self, *, workspace_root: Path) -> bool:

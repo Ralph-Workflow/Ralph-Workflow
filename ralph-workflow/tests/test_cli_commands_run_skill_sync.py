@@ -240,3 +240,60 @@ def test_sync_gitignore_seed_is_non_fatal_on_exception(
     assert any(
         "Project .gitignore auto-seed failed" in message for message in captured
     ), f"Expected debug log line, got: {captured!r}"
+
+
+def test_sync_surfaces_force_init_skills_hint_on_user_global_update_available(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When the user-global check returns True, the hint helper is called once with True."""
+    mock_manager = MagicMock()
+    mock_manager.check_skills_for_updates.return_value = True
+    monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
+    monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: False)
+    monkeypatch.setattr(run_module, "install_project_baseline_skills", MagicMock())
+
+    hint_mock = MagicMock()
+    monkeypatch.setattr(run_module, "_print_user_global_update_hint", hint_mock)
+
+    run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    hint_mock.assert_called_once_with()
+
+
+def test_sync_does_not_surface_user_global_hint_when_update_not_available(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When the user-global check returns False, the hint helper is NOT called."""
+    mock_manager = MagicMock()
+    mock_manager.check_skills_for_updates.return_value = False
+    monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
+    monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: False)
+    monkeypatch.setattr(run_module, "install_project_baseline_skills", MagicMock())
+
+    hint_mock = MagicMock()
+    monkeypatch.setattr(run_module, "_print_user_global_update_hint", hint_mock)
+
+    run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    hint_mock.assert_not_called()
+
+
+def test_sync_user_global_hint_text_mentions_force_init_skills(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The hint text must mention ralph --force-init-skills so the user can act on it."""
+    stream = io.StringIO()
+    captured_console = Console(
+        file=stream,
+        force_terminal=False,
+        color_system=None,
+    )
+    monkeypatch.setattr(run_module, "_PROJECT_SYNC_CONSOLE", captured_console)
+
+    run_module._print_user_global_update_hint()
+
+    rendered = stream.getvalue()
+    normalized = " ".join(rendered.split())
+    assert "ralph --force-init-skills" in normalized, (
+        f"Expected `ralph --force-init-skills` hint in captured console text; got: {rendered!r}"
+    )

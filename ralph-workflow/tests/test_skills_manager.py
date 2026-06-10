@@ -169,38 +169,24 @@ def test_check_baseline_health_marks_outdated_on_version_mismatch(
     assert health["visit_url"] is False
 
 
-def test_check_skills_for_updates_auto_repairs_when_update_found(tmp_path: Path) -> None:
+def test_check_skills_for_updates_marks_state_only_on_update(tmp_path: Path) -> None:
+    """check_skills_for_updates is surface-only: it records the update signal in state
+    and returns True, but MUST NOT call install_baseline_skills."""
     manager = SkillManager(state_path=tmp_path / "state.json")
-    with (
-        patch("ralph.skills.manager.install_baseline_skills") as mock_install,
-        patch("ralph.skills.manager._find_configured_docs_mcp_url", return_value=None),
-        patch("ralph.skills.manager._get_ralph_version", return_value="1.0.0"),
-        patch("ralph.skills.manager._web_search_is_available", return_value=True),
-        patch("ralph.skills.manager._visit_url_is_available", return_value=True),
-    ):
-        mock_install.return_value = (
-            CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY),
-            [],
-        )
-        manager.ensure_baseline_capabilities(workspace_root=tmp_path)
-
     with (
         patch(
             "ralph.skills.manager.check_skills_update_available",
             return_value=True,
         ) as mock_check,
-        patch(
-            "ralph.skills.manager.install_baseline_skills",
-            return_value=(CapabilityEntry(status=CapabilityStatus.INSTALLED_HEALTHY), []),
-        ) as mock_reinstall,
+        patch("ralph.skills.manager.install_baseline_skills") as mock_reinstall,
     ):
-        assert manager.check_skills_for_updates() is False
+        assert manager.check_skills_for_updates() is True
         mock_check.assert_called_once()
-        mock_reinstall.assert_called_once()
+        mock_reinstall.assert_not_called()
 
-    repaired_state = manager._load_state()
-    assert repaired_state.skills.status == CapabilityStatus.INSTALLED_HEALTHY
-    assert repaired_state.skills.update_available is False
+    saved_state = manager._load_state()
+    assert saved_state.skills.update_available is True
+    assert saved_state.skills.last_check_ok_iso != ""
 
 
 def test_check_skills_for_updates_saves_healthy_state_when_no_update_available(

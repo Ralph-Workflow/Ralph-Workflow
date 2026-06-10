@@ -101,18 +101,29 @@ class AgentSkillRoot:
         return Path.home().joinpath(*self.path_segments)
 
 
+# Re-verified source URLs (2026-06-09, see _AGENT_PATH_LAST_VERIFIED):
+#   - claude:   https://code.claude.com/docs/en/skills
+#               (formerly https://docs.claude.com/claude-code; updated to the
+#                canonical Claude Code skills page)
+#   - codex:    https://github.com/openai/codex/blob/main/codex-rs/utils/home-dir/src/lib.rs
+#               (re-verified; documents ~/.codex as the default home dir)
+#   - opencode: https://github.com/anomalyco/opencode/blob/dev/packages/web/src/content/docs/skills.mdx
+#               (re-verified; documents ~/.config/opencode/skills/ + Claude-compatible fallback)
+#   - agy:      https://medium.com/google-cloud/configuring-mcp-servers-and-skills-for-antigravity-cli-and-ide-a938c7eebb78
+#               (re-verified; documents ~/.gemini/antigravity-cli/skills/ as the CLI global path)
+#
 # Canonical (materialize-here) root must come first so installers can use it as the
 # symlink target. Sibling roots after it.
 #
 # last_verified_iso: set to the date the upstream documentation was last
 # confirmed for this entry. Bump on every path or source_url change.
-_AGENT_PATH_LAST_VERIFIED = "2026-06-08"
+_AGENT_PATH_LAST_VERIFIED = "2026-06-09"
 
 AGENT_SKILL_ROOTS: tuple[AgentSkillRoot, ...] = (
     AgentSkillRoot(
         agent="claude",
         path_segments=(".claude", "skills"),
-        source_url="https://docs.claude.com/claude-code",
+        source_url="https://code.claude.com/docs/en/skills",
         is_canonical=True,
         last_verified_iso=_AGENT_PATH_LAST_VERIFIED,
     ),

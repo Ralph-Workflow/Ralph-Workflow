@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from contextlib import ExitStack, suppress
+from contextlib import ExitStack
 from importlib import import_module
 from inspect import signature
 from pathlib import Path
@@ -524,11 +524,39 @@ def _print_project_skill_conflict_hint(failures: list[str]) -> None:
     )
 
 
+def _print_user_global_update_hint() -> None:
+    """Surface an outdated user-global baseline on a normal ``ralph`` run.
+
+    The user-global canonical root is intentionally NOT auto-repaired on a
+    normal ``ralph`` run (see ``SkillManager.check_skills_for_updates``);
+    the run records ``update_available=True`` in capability state and
+    delegates the user-visible hint to this helper. Called from
+    ``_sync_shipped_skills_on_pipeline_run`` only when an update is
+    available, so the helper unconditionally prints the remediation
+    hint on the same non-DEBUG channel as the project-scope conflict
+    hint.
+    """
+    _PROJECT_SYNC_CONSOLE.print(
+        Text(
+            "[warning] Baseline skills have an update available. "
+            "Run `ralph --force-init-skills` to apply, "
+            "or `ralph --diagnose` for details.",
+            style="theme.status.warning",
+        ),
+        highlight=False,
+    )
+
+
 def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> None:
-    with suppress(Exception):
-        SkillManager().check_skills_for_updates()
+    target_root = workspace_root or Path.cwd()
+    update_available = False
     try:
-        target_root = workspace_root or Path.cwd()
+        update_available = SkillManager().check_skills_for_updates()
+    except Exception as exc:  # user-global check is best-effort; must not break the pipeline
+        logger.debug("User-global skill update check failed (non-fatal): {}", exc)
+    if update_available:
+        _print_user_global_update_hint()
+    try:
         if _project_skills_need_install(target_root):
             _, failures = install_project_baseline_skills(target_root)
             if failures:
