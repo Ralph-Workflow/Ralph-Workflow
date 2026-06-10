@@ -54,6 +54,18 @@ Inspect this history when you want to understand what plans have been tried befo
 and what planning-analysis feedback they received.
 {% endif %}
 
+## PROMPT SCOPE CLASSIFICATION
+
+Classify the user prompt into exactly one scope bucket BEFORE drafting any step. Misclassification produces a plan that fixes a planner bug while the user's real task is untouched (or vice versa). The three buckets are:
+
+1. **external-task** — the user wants an implementation, refactor, fix, or feature in the user's own project (e.g. "add a CLI flag to my tool", "fix the SQL injection in src/auth.py", "migrate the database to v2"). The plan's `critical_files` are paths under the user's project root and the steps modify production code in the user's repo.
+2. **planner-meta-task** — the user wants to change the planner itself: the plan artifact schema, the planning prompt, the planning MCP tools, the planning audit checks, or any other Ralph Workflow internal that participates in producing plans. Examples: "add a typed summary.coverage_areas field to the plan artifact", "rewrite the planning.jinja prompt", "fix the planner misclassifying MCP prompts as planner-bug-fix-task", "generalize the StepType alias pattern to other enums".
+3. **planner-bug-fix-task** — the user reports a specific concrete bug in the planner WITH a reproduction. The bug is reproducible: a specific commit SHA, a specific failing test name, a specific input/output pair, a specific stack trace, or a specific observed-vs-expected diff. Generic complaints ("the planner is bad", "planner is slow") are NOT planner-bug-fix-task — they are planner-meta-task (improvement) or external-task (the user's real complaint is about a downstream tool).
+
+Decision rule: if the prompt mentions MCP, plan artifact, planner, Ralph Workflow internals, pydantic ValidationError on a plan, or any other self-referential keyword AND the prompt is not a clear bug report with a reproduction, default to `planner-meta-task`. Cheap models frequently misroute external-task prompts into planner-bug-fix-task because the visible error message contains the string "plan" or "planner"; that string match is not a reproduction.
+
+Self-check before finalize: re-read your `summary.intent` one last time. If `summary.intent` describes a single bug fix in the planner but the user's prompt is broader (e.g. "optimize the plan artifact for AI coding", "make planning more robust"), re-classify as `planner-meta-task` and rewrite the steps to cover the broader scope. A single-bug plan that fails to address the user's actual ask is a misroute.
+
 ## DISCOVERY PREFLIGHT
 
 Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools.
@@ -144,6 +156,14 @@ The `steps[*].step_type` field is a closed enum. Pick exactly one:
 | `verify`      | The step is a pure-verification step (e.g. `run ruff`, `run pytest`) with no file changes. |
 
 Default is action so a step that does not declare step_type is a generic non-mutating executor action; file-modifying steps must explicitly set step_type="file_change" and provide targets.
+
+## Common StepType mistakes
+
+- Do NOT use `step_type: "test"` — there is no test step_type. Use `step_type: "verify"` with `verify_command: "pytest tests/test_x.py -q"` for test-running steps.
+- Do NOT use `step_type: "check"`, `step_type: "run"`, or any other ad-hoc label. The closed set is `file_change`, `action`, `research`, `verify`.
+- If a step does not modify a file and does not run a verification command, it is `action` (a non-mutating executor action) or `research` (an exploratory step with no committed change).
+
+The before-validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep._coerce_step_type_aliases` silently coerces `test`, `tests`, `check`, and `run` to `verify` with a WARNING log so cheap-model mistakes do not fail validation; the canonical value is still `verify` and you should set it explicitly.
 
 ## STEP ↔ ACCEPTANCE-CRITERIA LINKING
 

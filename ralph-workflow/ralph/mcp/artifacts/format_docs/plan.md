@@ -153,6 +153,85 @@ The `steps[*].step_type` field is a closed enum. Pick exactly one:
 | `research`    | The step is exploratory and may not produce a code change.             |
 | `verify`      | The step is a pure-verification step (e.g. `run ruff`, `run pytest`) with no file changes. |
 
+## Cheap-model shortcut examples
+
+Copy-paste-able reference shapes for the four fields that cheap models most often get wrong. The fenced JSON blocks show the canonical shape and the `When to use` annotation above each fence names the trigger.
+
+### `summary.intent` + `summary.intent_verb`
+
+When to use: you want a one-line user-facing outcome plus a closed verb that drives the cross-section `intent_verb` -> `scope_item.category` compatibility check.
+
+```json
+{
+  "intent": "Clamp foo() index so the off-by-one regression cannot recur.",
+  "intent_verb": "fix"
+}
+```
+
+### `ScopeCategory` closed-set usage
+
+When to use: you are filling the `summary.scope_items[*].category` field and need a quick reminder of the 15 valid values.
+
+```json
+{
+  "scope_items": [
+    {"text": "Fix the off-by-one bug in foo()", "category": "bugfix"},
+    {"text": "Modify src/foo.py to clamp the index", "category": "file_change"},
+    {"text": "Add a regression test for foo()", "category": "test"}
+  ]
+}
+```
+
+### `StepType` reference usage
+
+When to use: you are drafting the `steps` array and want a copy-paste template that exercises one step of each kind so the executor can locate the contract requirements.
+
+```json
+{
+  "steps": [
+    {
+      "number": 1,
+      "title": "Add a regression test",
+      "content": "Write a unit test that exposes the off-by-one.",
+      "step_type": "verify",
+      "verify_command": "pytest tests/test_foo.py -q"
+    },
+    {
+      "number": 2,
+      "title": "Modify src/foo.py",
+      "content": "Clamp the index in foo() and re-run the test.",
+      "step_type": "file_change",
+      "targets": [{"path": "src/foo.py", "action": "modify"}]
+    },
+    {
+      "number": 3,
+      "title": "Run the executor action",
+      "content": "Trigger a non-mutating command via ralph.",
+      "step_type": "action"
+    },
+    {
+      "number": 4,
+      "title": "Investigate the regression",
+      "content": "Read git log to understand the original change.",
+      "step_type": "research"
+    }
+  ]
+}
+```
+
+### `EvidenceRef` shape
+
+When to use: you are filling the `steps[*].expected_evidence` field and need the canonical `EvidenceRef` shape (the `kind` discriminator in `{file, command_output, test_name}`).
+
+```json
+{
+  "expected_evidence": [
+    {"kind": "file", "ref": "src/foo.py"},
+    {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp"}
+  ]
+}
+```
+
 ## ScopeCategory reference
 
 The `summary.scope_items[*].category` field is a closed enum (15 values). The three trailing values (`file_change`, `prompt`, `other`) are legacy aliases kept for backward compatibility with test fixtures and existing plan examples.
@@ -180,6 +259,7 @@ The `summary.scope_items[*].category` field is a closed enum (15 values). The th
 - Do NOT wrap the atomic payload in `{"type":"plan","content":...}` — only the step-wise flow accepts that envelope; atomic `content` must be the raw plan payload as a JSON string.
 - Do NOT use `ralph_submit_artifact` with `artifact_type="plan"` for a long plan — prefer the step-wise flow (`ralph_submit_plan_section` + `ralph_finalize_plan`) so each section validates independently.
 - Do NOT leave `step_type` blank — set it to one of `file_change`, `action`, `research`, or `verify`.
+- Do NOT use `step_type: "test"` (or `"check"` / `"run"` / any ad-hoc label) — the closed set is `file_change`, `action`, `research`, `verify`. For test-running steps use `step_type: "verify"` with `verify_command: "pytest tests/test_x.py -q"`.
 - Do NOT set `summary.scope_items` to fewer than 3 entries — `_summary.py` requires `min_length=3`.
 - Do NOT use an arbitrary `summary.scope_items[*].category` — it must be one of the 15 closed `ScopeCategory` values (see the ScopeCategory reference above).
 - Do NOT use arbitrary strings for `drift_detection.guard_commands` — each entry must match `^[A-Za-z0-9 _./\-:=+]+$`.
@@ -206,6 +286,7 @@ The `summary.scope_items[*].category` field is a closed enum (15 values). The th
 - If you included `design`, did every sub-section's shape match the schema (enums for `architecture_style`, `step_type`, `forbidden_patterns`, `required_test_layers`, `approach`, `dead_code_policy`, `sources`, `on_drift_action`; regex `^[A-Z]+-\d{2,}$` for `acceptance_criteria.criteria[*].id`)?
 - If you used `step_type="file_change"`, did you list every file in `targets`?
 - If you used `step_type="verify"`, did you set `verify_command` (or `location` for a test file)?
+- Did you use exactly one of `file_change`, `action`, `research`, `verify` for `step_type` (never `test`, `check`, `run`, or any other label)?
 - Did you set `summary.intent_verb` to one of the 9 closed values (or leave it blank), and `summary.intent` to a ≤200-char one-line outcome (or leave it blank)?
 - Did you stringify the content object into a JSON string for the `content` field (atomic flow only)?
 

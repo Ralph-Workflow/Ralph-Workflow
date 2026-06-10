@@ -253,3 +253,32 @@ def test_policy_violation_str_representation() -> None:
     assert "42" in s
     assert "sleep" in s
     assert "time.sleep(1) is bad" in s
+
+
+# ---------------------------------------------------------------------------
+# Step 7: step-type-alias audit rule
+# ---------------------------------------------------------------------------
+
+
+def test_step_type_alias_value_raises_violation(tmp_path: Path) -> None:
+    """step_type='test'/'tests'/'check'/'run' value raises step-type-alias violation."""
+    fixture = tmp_path / "test_alias_user.py"
+    fixture.write_text('def test_user():\n    s = {"step_type": "test"}\n')
+    violations = audit_test_file(fixture)
+    step_type_violations = [v for v in violations if v.category == "step-type-alias"]
+    assert len(step_type_violations) >= 1
+    assert "test" in step_type_violations[0].detail
+
+    fixture_canonical = tmp_path / "test_canonical.py"
+    fixture_canonical.write_text('def test_user():\n    s = {"step_type": "verify"}\n')
+    canonical_violations = audit_test_file(fixture_canonical)
+    canonical_step_type_violations = [
+        v for v in canonical_violations if v.category == "step-type-alias"
+    ]
+    assert canonical_step_type_violations == []
+
+    fixture_file_change = tmp_path / "test_file_change.py"
+    fixture_file_change.write_text('def test_user():\n    s = {"step_type": "file_change"}\n')
+    fc_violations = audit_test_file(fixture_file_change)
+    fc_step_type_violations = [v for v in fc_violations if v.category == "step-type-alias"]
+    assert fc_step_type_violations == []

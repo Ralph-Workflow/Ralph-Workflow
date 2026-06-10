@@ -491,3 +491,16 @@ def test_every_format_doc_has_dumb_proof_checklist(artifact_type: str) -> None:
     assert len(bullet_lines) >= MIN_CHECKLIST_BULLETS, (
         f"Doc {artifact_type!r} checklist has fewer than {MIN_CHECKLIST_BULLETS} bullets"
     )
+
+
+# ---------------------------------------------------------------------------
+# Step 8: regression lock for the format doc content
+# ---------------------------------------------------------------------------
+
+
+def test_format_doc_forbids_test_step_type() -> None:
+    """The bundled plan.md forbids step_type='test' and contains the cheap-model examples."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert 'Do NOT use `step_type: "test"`' in doc
+    assert "Cheap-model shortcut examples" in doc
