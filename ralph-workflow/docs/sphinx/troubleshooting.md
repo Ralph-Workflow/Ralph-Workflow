@@ -269,6 +269,23 @@ specific label (e.g. `invoke:claude`). The controller is the single source
 of truth for interrupt-driven shutdown — there is no parallel `kill_label`
 mechanism in `handle_keyboard_interrupt`.
 
+## InterruptDispatcher — the single seam
+
+The `InterruptDispatcher` in `ralph.interrupt.dispatcher` is the single seam
+that wires `InterruptController` to `ProcessManager`, the connectivity-stop
+callback, and the hard-exit function. Both the sync `handle_keyboard_interrupt`
+path (`ralph.pipeline._runner_interrupt`) and the asyncio path
+(`ralph.interrupt.asyncio_bridge.install_signal_handlers`) build their
+dispatchers through the same factory `dispatcher_from_process_manager`, so any
+future change to the wiring happens in one place. The CLI KeyboardInterrupt
+catches in `ralph.cli.commands.run` and `ralph.cli.main` also call
+`dispatcher.begin_interrupt(block=True)` before returning exit code 130, so
+the agent process group is SIGTERMed even when the interrupt propagates
+outside the pipeline loop. The dispatcher's `hard_kill_budget_s` and
+`poll_interval_s` fields are the source of truth for the early-escalation
+timing; the module-level constants in `_runner_interrupt` are kept only for
+backward compatibility (re-exported from `ralph.interrupt.dispatcher`).
+
 ## Session-resume flag drift
 
 **Symptom:** After a retry, Claude behaves like a fresh session — it
