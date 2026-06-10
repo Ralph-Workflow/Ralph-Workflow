@@ -77,9 +77,26 @@ def main() -> int:
         if not m:
             continue
         expr, cmd, logpath = m.groups()
-        name = Path(re.search(r"(\S+\.(?:py|sh))", cmd).group(1)).name if re.search(r"\.(py|sh)", cmd) else cmd[:30]
+        # Resolve the actual script path the cron entry would exec (D47: handle
+        # renamed-to-.disabled or pruned scripts; surface as STALE-PRUNED, not as a
+        # phantom critical). cmd may be "python3 agents/marketing/foo.py" — we want
+        # the foo.py part. We do NOT trust the .py basename if the file is actually
+        # .py.disabled (cron wouldn't have found it on next launch).
+        mscript = re.search(r"(\S+\.(?:py|sh))", cmd)
+        name = Path(mscript.group(1)).name if mscript else cmd[:30]
         lp = Path(logpath)
         gap = cron_max_gap_hours(expr)
+        # D47: if the underlying script was renamed to .disabled (known-pruned) or
+        # deleted, the cron entry is dead but the monitor would otherwise show
+        # 'NO LOG YET' and never resolve. Detect both forms and mark STALE-PRUNED.
+        if mscript:
+            script_path = Path(mscript.group(1))
+            if not script_path.exists() and Path(str(script_path) + ".disabled").exists():
+                rows.append((name, "system-cron", "PRUNED (.disabled)", "—", "STALE-PRUNED"))
+                continue
+            if not script_path.exists():
+                rows.append((name, "system-cron", "PRUNED (no file)", "—", "STALE-PRUNED"))
+                continue
         if not lp.exists():
             rows.append((name, "system-cron", "NO LOG YET", f"≤{gap:.0f}h", "—"))
             continue
@@ -197,6 +214,19 @@ def main() -> int:
         json.dump(state, state_p.open("w"), indent=1)
     except Exception:  # noqa: BLE001
         pass
+
+    # (v) PHANTOM-BLOCKER detector (D36, marketing review 2026-06-10): the marketer keeps deferring
+    # the highest-ROI warm-pool/H-item work with "staged until the GitHub token is resolved/provisioned"
+    # — but `gh` is authed (repo scope). A fabricated blocker is warm-pool activity-theater. Scan the
+    # last 60 ledger lines + segments.md for the pattern; flag if present (the prompt ban needs a detector).
+    phantom = re.compile(r"(?i)(staged|blocked|defer).{0,40}(github|gh)\b.{0,30}(token|auth).{0,30}"
+                         r"(resolv|provision|set ?up|unresolved|missing)")
+    blob = recent + "\n" + ((LOGS / "segments.md").read_text(encoding="utf-8", errors="replace")
+                            if (LOGS / "segments.md").exists() else "")
+    if phantom.search(blob):
+        criticals.append("phantom-blocker LIVE (D36): an artifact defers warm-pool/H-item work on a "
+                         "'GitHub token unresolved' premise — but gh IS authed (repo scope). The "
+                         "highest-ROI action is being avoided on a fabricated blocker; engage via gh now.")
 
     # ---- goal header (the point of the whole fleet) ----
     goal = []
