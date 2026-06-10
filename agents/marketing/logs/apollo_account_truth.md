@@ -1,4 +1,4 @@
-# Apollo ACCOUNT GROUND TRUTH — live snapshot 2026-06-10T12:00:03
+# Apollo ACCOUNT GROUND TRUTH — live snapshot 2026-06-10T14:00:03
 
 > Auto-generated every gate run by `apollo_account_truth.py`. This is what the account
 > ACTUALLY looks like right now. If your plan contradicts this file, your plan is wrong.
@@ -17,12 +17,12 @@
 - **Ralph-AB-V7-AI-Observability-OSPM-clean-2026-06-09** — active=False · scheduled=0 delivered=0 opened=0 replied=0 bounced=1 spam_blocked=0
 - **Ralph-AB-V5-OSS-Maintainer-Distribution-2026-06-09** — active=False · scheduled=0 delivered=0 opened=0 replied=0 bounced=0 spam_blocked=0
 - **Ralph-AB-V4-SpecDriven-OpenStandards-2026-06-09** — active=False · scheduled=0 delivered=0 opened=0 replied=0 bounced=0 spam_blocked=0
-- **Ralph-AB-V3-AI-Agent-Composition-2026-06-09** — active=True · scheduled=30 delivered=26 opened=0 replied=0 bounced=0 spam_blocked=0
+- **Ralph-AB-V3-AI-Agent-Composition-2026-06-09** — active=True · scheduled=30 delivered=27 opened=0 replied=0 bounced=0 spam_blocked=0
 - **Ralph-AB-V2-DevTool-OSPM-DevRel-2026-06-09** — active=False · scheduled=0 delivered=0 opened=0 replied=0 bounced=1 spam_blocked=1
 - **Ralph-AB-V1-AI-Observability-OSPM-2026-06-09** — active=False · scheduled=0 delivered=5 opened=0 replied=0 bounced=3 spam_blocked=0
 - **Ralph Workflow Test 2026-06-09 (dry-run)** — active=False · scheduled=0 delivered=0 opened=0 replied=0 bounced=0 spam_blocked=0
 - **tokenmaxxing** — active=False · scheduled=0 delivered=401 opened=30 replied=0 bounced=16 spam_blocked=1
-- **Ralph Workflow Seq** — active=False · scheduled=0 delivered=1138 opened=159 replied=1 bounced=293 spam_blocked=196
+- **Ralph Workflow Seq** — active=False · scheduled=0 delivered=1138 opened=160 replied=1 bounced=293 spam_blocked=196
 
 ## HOW APOLLO ACTUALLY BEHAVES (verified facts — read before ANY sequence/template work)
 1. **The mailbox SIGNS every send.** The sending mailbox has a configured signature (shown above)

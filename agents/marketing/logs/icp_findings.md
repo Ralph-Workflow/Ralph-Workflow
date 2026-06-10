@@ -494,3 +494,5 @@ The marketer prompt was updated with binding EXPERIMENT DESIGN STANDARDS at 21:2
 <!-- ai_eng sample: ? (Machine Learning Engineer, AI dev @ Groupe BPCE); ? (AI Developer | AI Engineer @ Edgematics Group); ? (AI Developer/ AI Engineer @ IBM) -->
 | 2026-06-10 | platform | 2800297 | TOPdesk, Gradle Technologies, Skydio, Woven by Toyota, Cruise, Aspect Build |
 <!-- platform sample: ? (Developer Experience Engineer / Platform Engineer @ TOPdesk); ? (Developer Productivity Engineer @ Gradle Technologies); ? (Developer Productivity Engineer @ Skydio) -->
+| 2026-06-10 | eng_leaders | 810772 | Tury, Subquadratic, The Routing Company (TRC), Aakash Technology Innovation Lab, Fireflies.ai, Scopely |
+<!-- eng_leaders sample: ? (Engineering Manager | Head of Engineering | CTO @ Tury); ? (Head of Engineering (VP Engineering) @ Subquadratic); ? (VP of Engineering, Head of Engineering @ The Routing Company (TRC)) -->
