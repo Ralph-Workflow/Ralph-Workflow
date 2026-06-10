@@ -126,6 +126,12 @@ Every `PlanStep` is bound by a tightened contract. Plans that violate the contra
 
 These two rules are enforced by the per-step model validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep`. If you set `step_type="file_change"`, declare `targets` for every file the step will touch.
 
+## MODULE FAMILY
+
+The plan artifact is implemented as a focused module family under `ralph/mcp/artifacts/plan/`. The public `ralph.mcp.artifacts.plan` package is a thin re-export surface (under 60 lines) that re-exports every public symbol from the seven submodules below. Reading order for a new contributor: `_section_models` → `_section_registry` → `_validation` → `_step_edit` → `_renderers` → `_draft_io` → `_step_contract` → `_noop`.
+
+Key new public symbols introduced by the module split (so a cheap model can locate them by name): `PlanArtifactDict` (the canonical `dict[str, object]` alias for normalized plan dicts), `StepType` (StrEnum for the per-step kind), `requires_targets` / `requires_verify_handle` (per-step contract helpers), and `parse_plan_payload_strict` / `parse_plan_payload_lenient` (the canonical envelope-aware decoders shared by `tools/artifact.py` and `plan_format.py`).
+
 ## STEP ↔ ACCEPTANCE-CRITERIA LINKING
 
 If the plan declares `design.acceptance_criteria`, every step's `satisfies` list must reference a real AC id (matching `^[A-Z]+-\d{2,}$`). Every AC's `satisfied_by_steps` list must reference a real step number. The cross-section validator in `ralph.mcp.artifacts.plan.__init__.PlanArtifact` enforces both directions and rejects orphan references. Cheap models should set `satisfies` to a single AC id per step; high-quality models may also populate the reverse link `satisfied_by_steps` for executor provability.

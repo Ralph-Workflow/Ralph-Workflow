@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import cast
+
+from ralph.mcp.artifacts.plan._validation import parse_plan_payload_lenient
 
 
 def format_plan_for_execution(content: str) -> str:
@@ -26,17 +27,14 @@ def format_plan_for_execution(content: str) -> str:
 
 
 def _parse_plan_content(content: str) -> dict[str, object] | None:
-    try:
-        parsed_obj: object = json.loads(content)
-    except json.JSONDecodeError:
-        return None
+    """Thin wrapper that delegates to the canonical lenient plan-payload decoder.
 
-    if not isinstance(parsed_obj, dict):
-        return None
-
-    parsed = cast("dict[str, object]", parsed_obj)
-    plan = parsed.get("content") if parsed.get("type") == "plan" else parsed_obj
-    return plan if isinstance(plan, dict) else None
+    Returns ``None`` on any failure (invalid JSON, envelope with non-dict
+    content, or non-dict payload) so ``format_plan_for_execution`` can
+    short-circuit to the original input string. The decoder is shared
+    with ``extract_plan_payload`` so envelope handling stays in one place.
+    """
+    return parse_plan_payload_lenient(content)
 
 
 def _format_summary_section(plan: dict[str, object]) -> str:

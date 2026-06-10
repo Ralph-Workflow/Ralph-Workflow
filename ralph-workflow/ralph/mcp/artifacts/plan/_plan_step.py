@@ -5,6 +5,11 @@ step into an executor-ready unit with an explicit completion contract. The
 ``_validate_step_type_contract`` model-level validator enforces that every
 ``file_change`` step declares at least one ``targets`` entry and every
 ``verify`` step declares either ``verify_command`` or ``location``.
+
+The step type is a ``StepType`` StrEnum (see ``_step_contract``) so the
+closed set of kinds is self-documenting and the per-step contract helpers
+(``requires_targets`` / ``requires_verify_handle``) can be consulted
+instead of pattern-matching literal strings.
 """
 
 from __future__ import annotations
@@ -14,6 +19,11 @@ from typing import Literal
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from ralph.mcp.artifacts.plan._step_contract import (
+    StepType,
+    requires_targets,
+    requires_verify_handle,
+)
 from ralph.mcp.artifacts.plan._step_target import StepTarget
 from ralph.pydantic_compat import RalphBaseModel
 
@@ -28,7 +38,7 @@ class PlanStep(RalphBaseModel):
     number: int = Field(..., ge=1)
     title: str = Field(..., min_length=1)
     content: str = Field(..., min_length=1)
-    step_type: Literal["file_change", "action", "research", "verify"] = "action"
+    step_type: StepType = StepType.ACTION
     priority: Literal["critical", "high", "medium", "low"] | None = None
     targets: list[StepTarget] = Field(default_factory=list)
     location: str | None = None
@@ -92,10 +102,14 @@ class PlanStep(RalphBaseModel):
 
     @model_validator(mode="after")
     def _validate_step_type_contract(self) -> PlanStep:
-        if self.step_type == "file_change" and len(self.targets) == 0:
+        if requires_targets(self.step_type) and len(self.targets) == 0:
             msg = "file_change step must declare at least one target"
             raise ValueError(msg)
-        if self.step_type == "verify" and self.verify_command is None and self.location is None:
+        if (
+            requires_verify_handle(self.step_type)
+            and self.verify_command is None
+            and self.location is None
+        ):
             msg = "verify step must declare verify_command or location"
             raise ValueError(msg)
         return self

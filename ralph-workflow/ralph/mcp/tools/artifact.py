@@ -45,6 +45,7 @@ from ralph.mcp.artifacts.plan import (
     merge_plan_section,
     new_plan_draft,
     normalize_plan_artifact_content,
+    parse_plan_payload_strict,
     save_plan_draft,
     validate_plan_section,
 )
@@ -500,7 +501,10 @@ def _section_mode(params: dict[str, object]) -> SectionMode:
 
 
 def _parse_content(raw_content: str) -> dict[str, object]:
-    parsed = _parse_content_any(raw_content)
+    try:
+        parsed = _parse_content_any(raw_content)
+    except InvalidParamsError:
+        raise
     if not isinstance(parsed, dict):
         raise InvalidParamsError("Artifact content must decode to a JSON object")
     return cast("dict[str, object]", parsed)
@@ -511,6 +515,37 @@ def _parse_content_any(raw_content: str) -> object:
         return cast("object", json.loads(raw_content))
     except json.JSONDecodeError as exc:
         raise InvalidParamsError(f"Content must be valid JSON: {exc}") from exc
+
+
+def _parse_plan_content(raw_content: str) -> dict[str, object]:
+    """Strict envelope-aware plan payload decoder.
+
+    Delegates to ``parse_plan_payload_strict`` so the four previously
+    duplicated JSON parsers share a single source of truth. The strict
+    helper raises ``PlanArtifactValidationError`` on invalid JSON or a
+    malformed envelope, which we translate to ``InvalidParamsError`` so
+    the MCP tool error path stays consistent.
+    """
+    try:
+        return parse_plan_payload_strict(raw_content)
+    except PlanArtifactValidationError as exc:
+        raise InvalidParamsError(str(exc)) from exc
+
+
+def _decode_artifact_payload(
+    artifact_type: str, raw_content: str
+) -> dict[str, object]:
+    """Decode the artifact submission content with the type-appropriate parser.
+
+    Plan artifacts use ``parse_plan_payload_strict`` so the four previously
+    duplicated JSON parsers share a single envelope-aware core. Every other
+    artifact type keeps the dict-required contract.
+    """
+    if artifact_type == PLAN_ARTIFACT_TYPE:
+        decoded = _parse_plan_content(raw_content)
+    else:
+        decoded = _parse_content(raw_content)
+    return _unwrap_persisted_artifact_payload(artifact_type, decoded)
 
 
 def _workspace_root(workspace: WorkspaceLike) -> Path:
@@ -607,9 +642,7 @@ def prepare_artifact_submission(
     )
 
     try:
-        parsed_content = _unwrap_persisted_artifact_payload(
-            artifact_type, _parse_content(raw_content)
-        )
+        parsed_content = _decode_artifact_payload(artifact_type, raw_content)
     except InvalidParamsError as exc:
         if (
             base_path is not None

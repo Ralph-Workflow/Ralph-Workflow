@@ -1529,3 +1529,15 @@ def test_format_doc_step_contract_section_present() -> None:
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     assert "## Tightened step contract" in doc
+
+
+def test_step_type_default_is_action() -> None:
+    """StepType default is 'action' to match the existing serialized output."""
+    step = PlanStep(number=1, title="t", content="c")
+    assert step.step_type == "action"
+
+
+def test_step_type_strenum_preserves_default() -> None:
+    """PlanStep.model_dump preserves the 'action' default after the StrEnum refactor."""
+    step = PlanStep(number=1, title="t", content="c")
+    assert step.model_dump()["step_type"] == "action"
