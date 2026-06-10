@@ -1,4 +1,4 @@
-"""Tests for ralph/cli/commands/prompt_helper.py — post-artifact review loop."""
+"""Tests for ralph/cli/commands/prompt_helper.py — post-artifact refine/accept loop."""
 
 from __future__ import annotations
 
@@ -16,13 +16,21 @@ if TYPE_CHECKING:
 
     from ralph.config.models import UnifiedConfig
 
+_SPEC: dict[str, object] = {
+    "title": "Test Title",
+    "scope": "Test scope",
+    "goals": ["Goal 1"],
+    "users": ["User 1"],
+    "success_criteria": ["Criterion 1"],
+}
+
 
 def _session_runtime() -> object:
     return import_module("ralph.session_runtime")
 
 
-class TestReviewLoopBehavior:
-    """Tests for the post-artifact review loop state machine."""
+class TestRefineAcceptLoop:
+    """Tests for the post-artifact refine/accept loop state machine."""
 
     def _setup_base_runtime(
         self,
@@ -30,7 +38,7 @@ class TestReviewLoopBehavior:
         *,
         outputs: list[str] | None = None,
     ) -> MagicMock:
-        """Set up a fake managed-session runtime for review loop tests."""
+        """Set up a fake managed-session runtime; returns a per-call MagicMock."""
         mock_invoke_runtime = MagicMock(return_value=iter(outputs or []))
 
         class _FakeRuntime:
@@ -56,130 +64,54 @@ class TestReviewLoopBehavior:
             "open",
             classmethod(lambda cls, **kwargs: _FakeRuntime()),
         )
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
+            lambda *args, **kwargs: _SPEC,
+        )
         return mock_invoke_runtime
 
-    def test_finish_action_writes_prompt_md(
+    def test_accept_writes_prompt_md(
         self,
         workspace_root: Path,
         config_with_helper_agent: UnifiedConfig,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Choosing Finish writes PROMPT.md from the artifact."""
-        self._setup_base_runtime(monkeypatch)
+        """Choosing Accept writes PROMPT.md from the artifact."""
+        mock_invoke = self._setup_base_runtime(monkeypatch)
 
-        spec = {
-            "title": "Test Title",
-            "scope": "Test scope",
-            "goals": ["Goal 1"],
-            "users": ["User 1"],
-            "success_criteria": ["Criterion 1"],
-        }
-        # Always return the spec when artifact exists
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
-            lambda *args, **kwargs: spec,
-        )
-
-        # Prompt.ask returns "Finish" immediately
+        # Idea prompt (no choices) returns the seed; review prompt returns Accept.
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.Prompt.ask",
-            lambda *args, **kwargs: "Finish",
+            lambda *args, **kwargs: "An idea" if kwargs.get("choices") is None else "Accept",
         )
 
         run_prompt_helper(config_with_helper_agent, workspace_root)
 
-        prompt_md_file = workspace_root / "PROMPT.md"
-        assert prompt_md_file.exists(), "PROMPT.md should be written on Finish"
+        assert (workspace_root / "PROMPT.md").exists(), "PROMPT.md should be written on Accept"
+        # Only the initial artifact-producing turn ran; Accept does not re-invoke.
+        assert mock_invoke.call_count == 1
 
-    def test_post_artifact_transition_with_realistic_agent_output(
+    def test_refine_reinvokes_agent_then_accept_writes_prompt_md(
         self,
         workspace_root: Path,
         config_with_helper_agent: UnifiedConfig,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Post-artifact transition works with realistic streaming agent output.
+        """Refine re-invokes the agent with the draft, then Accept writes PROMPT.md."""
+        mock_invoke = self._setup_base_runtime(monkeypatch)
 
-        Even when invoke_agent returns representative streaming output (not empty
-        iterator), the review loop correctly transitions because the host, not
-        the agent, owns the post-artifact state machine. The agent produces
-        output and submits the artifact; the host checks for the artifact and
-        presents Prompt.ask choices.
-        """
-        # Representative streaming output from the agent
-        streaming_output = iter(
-            [
-                "Let me help you define this product specification...",
-                "I have a few questions to clarify your requirements.",
-                "Based on your input, I'll structure the specification...",
-                "SUBMITTING ARTIFACT: product_spec",
-            ]
-        )
-
-        self._setup_base_runtime(monkeypatch, outputs=list(streaming_output))
-
-        spec = {
-            "title": "Test Title",
-            "scope": "Test scope",
-            "goals": ["Goal 1"],
-            "users": ["User 1"],
-            "success_criteria": ["Criterion 1"],
-        }
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
-            lambda *args, **kwargs: spec,
-        )
-
-        # User chooses Finish at the review prompt
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.Prompt.ask",
-            lambda *args, **kwargs: "Finish",
-        )
-
-        run_prompt_helper(config_with_helper_agent, workspace_root)
-
-        # PROMPT.md should be written because user chose Finish
-        prompt_md_file = workspace_root / "PROMPT.md"
-        assert prompt_md_file.exists(), (
-            "PROMPT.md should be written when user chooses Finish, "
-            "regardless of agent streaming output"
-        )
-
-    def test_continue_refining_reinvokes_agent_with_current_draft(
-        self,
-        workspace_root: Path,
-        config_with_helper_agent: UnifiedConfig,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Choosing Continue refining re-invokes agent with current draft spec."""
-        mock_invoke_agent = self._setup_base_runtime(monkeypatch)
-
-        spec = {
-            "title": "Test Title",
-            "scope": "Test scope",
-            "goals": ["Goal 1"],
-            "users": ["User 1"],
-            "success_criteria": ["Criterion 1"],
-        }
-        # Always return the spec when artifact exists (artifact persists across calls)
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
-            lambda *args, **kwargs: spec,
-        )
-
-        # First Prompt.ask returns the review action, then freeform feedback, then Finish
+        # Review choices in order: Refine (with feedback), then Accept.
         review_calls = [0]
 
         def mock_prompt_ask(*args: object, **kwargs: object) -> str:
             raw_choices = kwargs.get("choices")
             if raw_choices is None:
+                # Idea prompt and refine-feedback prompt are freeform.
                 return "Please add tagging and search."
-            choices = raw_choices if isinstance(raw_choices, list) else []
-            if choices and choices[0] == "Continue refining":
-                if review_calls[0] == 0:
-                    review_calls[0] += 1
-                    return "Continue refining"
-                return "Finish"
-            return "Finish"
+            if review_calls[0] == 0:
+                review_calls[0] += 1
+                return "Refine"
+            return "Accept"
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.Prompt.ask",
@@ -188,166 +120,41 @@ class TestReviewLoopBehavior:
 
         run_prompt_helper(config_with_helper_agent, workspace_root)
 
-        # Agent should have been called twice (initial + continue refining)
-        assert mock_invoke_agent.call_count == 2, (
-            "Agent should be invoked twice: once initially and once for continue"
-        )
+        # Agent invoked twice: initial artifact + one refine.
+        assert mock_invoke.call_count == 2
+        assert (workspace_root / "PROMPT.md").exists(), "PROMPT.md should be written on Accept"
 
-        prompt_md_file = workspace_root / "PROMPT.md"
-        assert prompt_md_file.exists(), "PROMPT.md should be written on Finish"
-
-    def test_start_over_reinvokes_agent_without_draft(
+    def test_refine_does_not_write_prompt_md_until_accept(
         self,
         workspace_root: Path,
         config_with_helper_agent: UnifiedConfig,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Choosing Start over re-invokes agent with fresh intake (no draft)."""
-        mock_invoke_agent = self._setup_base_runtime(monkeypatch)
+        """PROMPT.md is only written when the user accepts, never on Refine alone."""
+        self._setup_base_runtime(monkeypatch)
 
-        spec = {
-            "title": "Test Title",
-            "scope": "Test scope",
-            "goals": ["Goal 1"],
-            "users": ["User 1"],
-            "success_criteria": ["Criterion 1"],
-        }
-        # Track call count for read_product_spec_artifact
-        read_call_count = [0]
-
-        def mock_read_artifact(*args: object, **kwargs: object) -> dict[str, object] | None:
-            read_call_count[0] += 1
-            # Initial call returns spec, after start_over no new spec is produced
-            return spec if read_call_count[0] <= 2 else None
-
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
-            mock_read_artifact,
-        )
-
-        # First Prompt.ask returns "Start over", second returns "Finish"
-        prompt_calls = ["Start over", "Finish"]
-
-        def mock_prompt_ask(*args: object, **kwargs: object) -> str:
-            return prompt_calls.pop(0)
-
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.Prompt.ask",
-            mock_prompt_ask,
-        )
-
-        run_prompt_helper(config_with_helper_agent, workspace_root)
-
-        # Agent should have been called twice (initial + start over)
-        assert mock_invoke_agent.call_count == 2, (
-            "Agent should be invoked twice: once initially and once for start over"
-        )
-
-        prompt_md_file = workspace_root / "PROMPT.md"
-        assert prompt_md_file.exists(), "PROMPT.md should be written on Finish"
-
-    def test_start_over_does_not_write_prompt_md_until_finish(
-        self,
-        workspace_root: Path,
-        config_with_helper_agent: UnifiedConfig,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Choosing Start over does NOT write PROMPT.md until explicit Finish."""
-        mock_invoke_agent = self._setup_base_runtime(monkeypatch)
-
-        spec = {
-            "title": "Test Title",
-            "scope": "Test scope",
-            "goals": ["Goal 1"],
-            "users": ["User 1"],
-            "success_criteria": ["Criterion 1"],
-        }
-        # Track whether artifact has been "cleared" (simulates _clear_draft_artifact effect)
-        artifact_cleared = [False]
-
-        def mock_read_artifact(*args: object, **kwargs: object) -> dict[str, object] | None:
-            # After start_over clears the draft, artifact should be gone
-            if artifact_cleared[0]:
-                return None
-            return spec
-
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
-            mock_read_artifact,
-        )
-
-        # Patch _clear_draft_artifact to set our flag
-        def mock_clear_draft(workspace_root: Path) -> None:
-            artifact_cleared[0] = True
-
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper._clear_draft_artifact",
-            mock_clear_draft,
-        )
-
-        # First Prompt.ask returns "Start over"
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.Prompt.ask",
-            lambda *args, **kwargs: "Start over",
-        )
-
-        # Track whether _write_prompt_md was called
-        write_prompt_md_called = [False]
+        write_called = [False]
 
         def mock_write_prompt_md(workspace_root: Path, spec: dict[str, object]) -> None:
-            write_prompt_md_called[0] = True
+            del workspace_root, spec
+            write_called[0] = True
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper._write_prompt_md",
             mock_write_prompt_md,
         )
 
-        run_prompt_helper(config_with_helper_agent, workspace_root)
-
-        # _write_prompt_md should NOT have been called during the start over flow
-        assert not write_prompt_md_called[0], (
-            "_write_prompt_md should not be called until explicit Finish"
-        )
-
-        # Agent was invoked twice (initial + start over re-invoke)
-        assert mock_invoke_agent.call_count == 2
-
-    def test_update_section_reinvokes_agent_with_current_draft(
-        self,
-        workspace_root: Path,
-        config_with_helper_agent: UnifiedConfig,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Choosing Update a section re-invokes agent with current draft spec."""
-        mock_invoke_agent = self._setup_base_runtime(monkeypatch)
-
-        spec = {
-            "title": "Test Title",
-            "scope": "Test scope",
-            "goals": ["Goal 1"],
-            "users": ["User 1"],
-            "success_criteria": ["Criterion 1"],
-        }
-        # Always return the spec when artifact exists
-        monkeypatch.setattr(
-            "ralph.cli.commands.prompt_helper.read_product_spec_artifact",
-            lambda *args, **kwargs: spec,
-        )
-
-        # First Prompt.ask returns the review action, then section feedback, then Finish
-        review_calls = [0]
+        # Refine twice, then Accept — assert no write happened before Accept.
+        review_sequence = ["Refine", "Refine", "Accept"]
 
         def mock_prompt_ask(*args: object, **kwargs: object) -> str:
-            raw_choices = kwargs.get("choices")
-            if raw_choices is None:
-                return "Update the scope section to mention tags."
-            choices = raw_choices if isinstance(raw_choices, list) else []
-            if choices and choices[0] == "Continue refining":
-                if review_calls[0] == 0:
-                    review_calls[0] += 1
-                    return "Update a section"
-                return "Finish"
-            return "Finish"
+            if kwargs.get("choices") is None:
+                return "Some feedback."
+            # The first review choice must be Refine and must not have written yet.
+            choice = review_sequence.pop(0)
+            if choice == "Refine":
+                assert not write_called[0], "PROMPT.md written before Accept"
+            return choice
 
         monkeypatch.setattr(
             "ralph.cli.commands.prompt_helper.Prompt.ask",
@@ -356,10 +163,30 @@ class TestReviewLoopBehavior:
 
         run_prompt_helper(config_with_helper_agent, workspace_root)
 
-        # Agent should have been called twice (initial + update section)
-        assert mock_invoke_agent.call_count == 2, (
-            "Agent should be invoked twice: once initially and once for update"
+        assert write_called[0], "PROMPT.md should be written once the user accepts"
+
+    def test_accept_with_realistic_agent_output(
+        self,
+        workspace_root: Path,
+        config_with_helper_agent: UnifiedConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Accept works even when the agent streams realistic output.
+
+        The host, not the agent, owns the post-artifact state machine.
+        """
+        self._setup_base_runtime(
+            monkeypatch,
+            outputs=[
+                "Structuring the specification...",
+                "SUBMITTING ARTIFACT: product_spec",
+            ],
+        )
+        monkeypatch.setattr(
+            "ralph.cli.commands.prompt_helper.Prompt.ask",
+            lambda *args, **kwargs: "An idea" if kwargs.get("choices") is None else "Accept",
         )
 
-        prompt_md_file = workspace_root / "PROMPT.md"
-        assert prompt_md_file.exists(), "PROMPT.md should be written on Finish"
+        run_prompt_helper(config_with_helper_agent, workspace_root)
+
+        assert (workspace_root / "PROMPT.md").exists()

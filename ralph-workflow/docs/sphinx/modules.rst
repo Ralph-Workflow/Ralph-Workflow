@@ -2801,6 +2801,13 @@ ralph.interrupt.controller
    :members:
    :show-inheritance:
 
+ralph.interrupt.dispatcher
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.interrupt.dispatcher
+   :members:
+   :show-inheritance:
+
 ralph.interrupt.state
 ~~~~~~~~~~~~~~~~~~~~~
 

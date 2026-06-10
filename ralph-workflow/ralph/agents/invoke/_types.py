@@ -27,6 +27,7 @@ class _ProcessReaderCtx:
     liveness_probe: LivenessProbe | None = None
     waiting_listener: WaitingStatusListener | None = None
     monitor: WorkspaceMonitor | None = None
+    expected_session_id: str | None = None
 
 
 __all__ = [

@@ -18,7 +18,6 @@ from ralph.agents.invoke import AgentInvocationError, invoke_agent
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.config.enums import Verbosity
-from ralph.display.artifact_renderer import render_commit_message
 from ralph.display.context import install_width_refresher, make_display_context
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -26,7 +25,6 @@ from ralph.display.parallel_display import (
     resolve_display,
     status_text,
 )
-from ralph.display.phase_banner import show_phase_close_banner, show_phase_transition
 from ralph.executor.process import run_process_async
 from ralph.git.operations import create_commit, stage_all
 from ralph.interrupt.asyncio_bridge import install_signal_handlers
@@ -216,8 +214,6 @@ __all__ = [
     "resolve_workspace_scope",
     "run",
     "run_process_async",
-    "show_phase_close_banner",
-    "show_phase_transition",
     "shutdown_mcp_server",
     "skipped_exhausted_analysis_info",
     "start_mcp_server",
@@ -825,9 +821,6 @@ _original_mcp_supervisor = McpSupervisor
 _original_heartbeat_policy_from_env = heartbeat_policy_from_env
 _original_materialize_prompt_for_phase = materialize_prompt_for_phase
 _original_handle_phase = handle_phase
-_original_render_commit_message = render_commit_message
-_original_show_phase_close_banner = show_phase_close_banner
-_original_show_phase_transition = show_phase_transition
 _cleanup_commit_message_artifacts = cleanup_commit_message_artifacts
 
 

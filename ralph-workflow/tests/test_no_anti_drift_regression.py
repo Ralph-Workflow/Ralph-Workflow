@@ -643,11 +643,20 @@ class TestInterruptPathReliable:
     def test_no_duplicate_keyboard_interrupt_handlers(self) -> None:
         """No production code outside the canonical owner defines its own
         `handle_keyboard_interrupt`. The owner is `ralph.pipeline._runner_interrupt`.
+
+        The CLI helper `handle_keyboard_interrupt_at_cli` (in
+        ``ralph.interrupt.dispatcher``) is NOT a duplicate of
+        `handle_keyboard_interrupt` — it is a deliberately suffixed
+        consolidation entry point. The check below matches the exact
+        function name (followed by a ``(``), not the substring, so the
+        helper is not flagged.
         """
         offenders: list[str] = []
         for path in _walk_python_files(RALPH_ROOT):
             source = _read(path)
-            if "def handle_keyboard_interrupt" not in source:
+            # Match the exact function name (with `(` after) so the
+            # CLI helper `handle_keyboard_interrupt_at_cli` is not flagged.
+            if "def handle_keyboard_interrupt(" not in source:
                 continue
             if path == RALPH_ROOT / "pipeline" / "_runner_interrupt.py":
                 continue
@@ -656,6 +665,57 @@ class TestInterruptPathReliable:
             "Duplicate `def handle_keyboard_interrupt` definitions found: "
             f"{offenders}. The only owner is "
             "ralph/pipeline/_runner_interrupt.py."
+        )
+
+    def test_no_inline_dispatcher_plus_block_pattern_outside_helper(self) -> None:
+        """The inline ``dispatcher_from_process_manager()`` +
+        ``begin_interrupt(block=True)`` pattern may ONLY appear in the
+        canonical implementation file and the test files that use
+        begin_interrupt in assertions. Anywhere else it appears is a
+        re-introduction of the duplicated CLI catch — those call sites
+        must use ``ralph.interrupt.handle_keyboard_interrupt_at_cli``.
+
+        Whitelisted files (legitimate uses):
+        - ``ralph/interrupt/dispatcher.py`` (the implementation)
+        - ``tests/test_interrupt_dispatcher.py`` (existing test with
+          begin_interrupt in assertions)
+        - ``tests/test_interrupt_cli_helper.py`` (new test with
+          begin_interrupt in assertions)
+        - ``tests/test_no_anti_drift_regression.py`` (this test file
+          itself; the pattern is referenced as a string)
+        """
+        whitelisted = {
+            pathlib.Path("ralph/interrupt/dispatcher.py"),
+            pathlib.Path("tests/test_interrupt_dispatcher.py"),
+            pathlib.Path("tests/test_interrupt_cli_helper.py"),
+            pathlib.Path("tests/test_no_anti_drift_regression.py"),
+        }
+        offenders: list[str] = []
+        for root in (RALPH_ROOT, TESTS_ROOT):
+            for path in _walk_python_files(root):
+                rel = path.relative_to(RALPH_ROOT.parent)
+                if rel in whitelisted:
+                    continue
+                source = _read(path)
+                if "dispatcher_from_process_manager()" not in source:
+                    continue
+                if "begin_interrupt(block=True)" not in source:
+                    continue
+                # Both must appear within 10 lines of each other.
+                source_lines = source.splitlines()
+                pattern_a = "dispatcher_from_process_manager()"
+                pattern_b = "begin_interrupt(block=True)"
+                for i, line in enumerate(source_lines):
+                    if pattern_a not in line:
+                        continue
+                    window = source_lines[max(0, i - 10) : i + 11]
+                    if any(pattern_b in w for w in window):
+                        offenders.append(str(rel))
+                        break
+        assert offenders == [], (
+            "Inline dispatcher_from_process_manager() + begin_interrupt(block=True) "
+            "pattern found in: "
+            f"{offenders}. Use ralph.interrupt.handle_keyboard_interrupt_at_cli instead."
         )
 
 

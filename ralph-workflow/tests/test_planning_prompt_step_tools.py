@@ -90,6 +90,35 @@ def test_planning_prompt_mentions_step_edit_tools(tmp_path: Path) -> None:
     assert "ralph_remove_plan_step" in rendered
 
 
+# ---------------------------------------------------------------------------
+# Step 8: regression lock for the planning.jinja prompt content
+# ---------------------------------------------------------------------------
+
+
+def test_planning_prompt_forbids_test_step_type(tmp_path: Path) -> None:
+    """The planning.jinja template forbids step_type='test' and includes the
+    PROMPT SCOPE CLASSIFICATION section.
+    """
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the work")
+
+    prompt_path = materialize_prompt_for_phase(
+        PromptPhaseContext(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=_MINIMAL_PLANNING_POLICY,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+        ),
+        PromptPhaseOptions(artifacts_policy=_MINIMAL_PLANNING_ARTIFACTS_POLICY),
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PROMPT SCOPE CLASSIFICATION" in rendered
+    assert "Common StepType mistakes" in rendered
+    assert 'Do NOT use `step_type: "test"`' in rendered
+
+
 def test_planning_analysis_prompt_mentions_step_edit_remediation_flow(tmp_path: Path) -> None:
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Plan the work")

@@ -17,6 +17,7 @@ from ralph.agents.invoke import (
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
     extract_transport_session_id,
+    recovery_action_for_failure_reason,
     resolve_resume_session_id,
 )
 from ralph.config.enums import Verbosity
@@ -66,7 +67,7 @@ from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
-from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.recovery.failure_classifier import FailureClassifier, should_reset_tool_registry
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import build_retry_error_block
 from ralph.workspace import FsWorkspace
@@ -527,7 +528,16 @@ def _consume_attempt_output(
 
 
 def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecoveryPlan | None:
-    """Determine whether and how to retry a failed agent invocation."""
+    """Determine whether and how to retry a failed agent invocation.
+
+    Computes ``session_id`` and ``recovery_action`` BEFORE the
+    prompt-construction call so the prompt constructor can branch on
+    ``recovery_action`` (``resume`` / ``new_session_with_id`` take the
+    resume-style path; ``fresh`` inlines the original task). The
+    single owner of ``recovery_action`` is this function; the only
+    consumer is ``_write_agent_retry_prompt`` via
+    ``_retry_prompt_file_for_context``.
+    """
     if recovery_input.attempt_index >= recovery_input.max_recovery_attempts:
         return None
     reason = retryable_agent_failure_reason(
@@ -538,18 +548,34 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
     context_lines = _recovery_context_lines(
         recovery_input.exc, recovery_input.raw_output, recovery_input.rendered_output
     )
-    prompt_file = _retry_prompt_file_for_context(
-        workspace_root=recovery_input.workspace_root,
-        prompt_file=recovery_input.effect.prompt_file,
-        reason=reason,
-        context_lines=context_lines,
-    )
     session_id = _resolve_recovery_session_id(
         recovery_input.exc,
         recovery_input.extracted_session_id,
         recovery_input.inactivity_error_type,
     )
-    return AgentRecoveryPlan(prompt_file=prompt_file, session_id=session_id, reason=reason)
+    reset_tool_registry = should_reset_tool_registry(
+        recovery_input.exc,
+        phase=str(recovery_input.effect.phase),
+        agent=recovery_input.effect.agent_name,
+    )
+    recovery_action = recovery_action_for_failure_reason(
+        type(recovery_input.exc).__name__,
+        has_prior_session=bool(session_id),
+        reset_tool_registry=reset_tool_registry,
+    )
+    prompt_file = _retry_prompt_file_for_context(
+        workspace_root=recovery_input.workspace_root,
+        prompt_file=recovery_input.effect.prompt_file,
+        reason=reason,
+        context_lines=context_lines,
+        recovery_action=recovery_action,
+    )
+    return AgentRecoveryPlan(
+        prompt_file=prompt_file,
+        session_id=session_id,
+        reason=reason,
+        recovery_action=recovery_action,
+    )
 
 
 def _resolve_recovery_session_id(
@@ -643,12 +669,29 @@ def _retry_prompt_file_for_context(
     prompt_file: str,
     reason: str,
     context_lines: list[str],
+    recovery_action: str | None = None,
 ) -> str:
     return _write_agent_retry_prompt(
         workspace_root=workspace_root,
         prompt_file=prompt_file,
         reason=reason,
         context_lines=context_lines,
+        recovery_action=recovery_action,
+    )
+
+
+def _resume_mode_tail(prompt_path: Path) -> str:
+    """Return the resume-mode tail for the retry prompt.
+
+    Single source of truth so the resume tail wording is one
+    change in one place (and tests can import the helper as a stable
+    token source).
+    """
+    return (
+        "CONTINUE FROM WHERE YOU LEFT OFF: The prior session for this "
+        "task is being resumed. Do not restart from the beginning; "
+        f"refer to the original prompt at {prompt_path} for context "
+        "only and pick up from the most recent state in the resumed session."
     )
 
 
@@ -668,9 +711,9 @@ def _write_agent_retry_prompt(
     prompt_file: str,
     reason: str,
     context_lines: list[str],
+    recovery_action: str | None = None,
 ) -> str:
     prompt_path = Path(prompt_file)
-    base_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
     prompt_dir = workspace_root / ".agent" / "tmp"
     prompt_dir.mkdir(parents=True, exist_ok=True)
     retry_prompt_path = prompt_dir / f"agent_retry_{uuid.uuid4().hex}.md"
@@ -685,6 +728,30 @@ def _write_agent_retry_prompt(
         prompt_path=str(prompt_path),
         context_path=str(context_path),
     )
+    if recovery_action in {"resume", "new_session_with_id"}:
+        # Resume / new_session_with_id: do NOT read the original task body
+        # and do NOT include the 'ORIGINAL TASK PROMPT:' section. The
+        # resumed session already has the original task in its context;
+        # re-inlining it defeats resume (the documented property L wedge).
+        # The agent is told to continue from where it left off and to refer
+        # to the original prompt by path only if it needs context.
+        tail = _resume_mode_tail(prompt_path)
+        retry_prompt_path.write_text(
+            (
+                f"{error_block}\n\n"
+                "PREVIOUS OUTPUT SUMMARY EXCERPT:\n"
+                f"{summary}\n\n"
+                f"{tail}\n"
+            ),
+            encoding="utf-8",
+        )
+        return str(retry_prompt_path)
+    # Fresh (and the defensive ``None`` default): inline the original task
+    # body so a brand-new session has the full context. This preserves
+    # the prior behavior for fresh-session retries (stale-session,
+    # new-chain) and for un-updated callers that have not been threaded
+    # the new ``recovery_action`` keyword.
+    base_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
     retry_prompt_path.write_text(
         (
             f"{error_block}\n\n"

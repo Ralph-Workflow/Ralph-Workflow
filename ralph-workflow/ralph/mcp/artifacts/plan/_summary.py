@@ -13,6 +13,8 @@ distinguish a deliberate empty value from an omitted field.
 
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from pydantic import ConfigDict, Field, field_validator
 
 from ralph.mcp.artifacts.plan._scope_item import ScopeItem
@@ -32,6 +34,34 @@ _INTENT_VERB_SET: frozenset[str] = frozenset(
     }
 )
 
+CoverageArea = Literal[
+    "bugfix",
+    "feature",
+    "refactor",
+    "test",
+    "docs",
+    "infra",
+    "security",
+    "performance",
+    "migration",
+    "release",
+]
+
+_COVERAGE_AREAS: frozenset[str] = frozenset(
+    {
+        "bugfix",
+        "feature",
+        "refactor",
+        "test",
+        "docs",
+        "infra",
+        "security",
+        "performance",
+        "migration",
+        "release",
+    }
+)
+
 
 class Summary(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -40,6 +70,7 @@ class Summary(RalphBaseModel):
     intent: str = Field(default="", max_length=200)
     intent_verb: str = Field(default="")
     scope_items: list[ScopeItem] = Field(..., min_length=3)
+    coverage_areas: list[CoverageArea] = Field(default_factory=list)
 
     @field_validator("intent")
     @classmethod
@@ -64,5 +95,27 @@ class Summary(RalphBaseModel):
             raise ValueError(msg)
         return lowered
 
+    @field_validator("coverage_areas", mode="before")
+    @classmethod
+    def _validate_coverage_areas(cls, value: object) -> list[CoverageArea]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            msg = "coverage_areas must be a list"
+            raise ValueError(msg)
+        cleaned: list[CoverageArea] = []
+        for entry in value:
+            if not isinstance(entry, str):
+                msg = f"coverage_areas elements must be strings, got {type(entry).__name__}"
+                raise ValueError(msg)
+            if entry not in _COVERAGE_AREAS:
+                msg = (
+                    f"coverage_areas element {entry!r} is not one of: "
+                    f"{sorted(_COVERAGE_AREAS)!r}"
+                )
+                raise ValueError(msg)
+            cleaned.append(cast("CoverageArea", entry))
+        return cleaned
 
-__all__ = ["_INTENT_VERB_SET", "Summary"]
+
+__all__ = ["_COVERAGE_AREAS", "_INTENT_VERB_SET", "CoverageArea", "Summary"]

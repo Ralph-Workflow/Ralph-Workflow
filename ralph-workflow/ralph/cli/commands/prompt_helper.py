@@ -62,43 +62,28 @@ PROMPT_HELPER_PROMPT_FILE = PROMPT_HELPER_TMP_DIR / "prompt_helper_prompt.md"
 
 
 class _PromptHelperAction(StrEnum):
-    """Shared action enum for prompt-helper review and existing-prompt choices."""
+    """Post-artifact review choices owned by the host orchestrator."""
 
-    CONTINUE = "continue"
-    UPDATE_SECTION = "update"
-    START_OVER = "start_over"
-    FINISH = "finish"
-    REPLACE = "replace"
     REFINE = "refine"
+    ACCEPT = "accept"
 
 
 ReviewAction = _PromptHelperAction
-ExistingPromptAction = _PromptHelperAction
 
 
-_REVIEW_CONTINUE = ReviewAction.CONTINUE
-_REVIEW_UPDATE_SECTION = ReviewAction.UPDATE_SECTION
-_REVIEW_START_OVER = ReviewAction.START_OVER
-_REVIEW_FINISH = ReviewAction.FINISH
-_EXISTING_PROMPT_REPLACE = ExistingPromptAction.REPLACE
-_EXISTING_PROMPT_REFINE = ExistingPromptAction.REFINE
+_REVIEW_REFINE = ReviewAction.REFINE
+_REVIEW_ACCEPT = ReviewAction.ACCEPT
 
 # Map review choice strings to ReviewAction values
 _REVIEW_ACTION_MAP: dict[str, ReviewAction] = {
-    "Continue refining": _REVIEW_CONTINUE,
-    "Update a section": _REVIEW_UPDATE_SECTION,
-    "Start over": _REVIEW_START_OVER,
-    "Finish": _REVIEW_FINISH,
-}
-
-_EXISTING_PROMPT_ACTION_MAP: dict[str, ExistingPromptAction] = {
-    "Replace it": _EXISTING_PROMPT_REPLACE,
-    "Refine it": _EXISTING_PROMPT_REFINE,
+    "Refine": _REVIEW_REFINE,
+    "Accept": _REVIEW_ACCEPT,
 }
 
 
 def _build_review_prompt() -> list[str]:
     """Build the review choice options for the console prompt."""
+<<<<<<< HEAD
     return ["Continue refining", "Update a section", "Start over", "Finish"]
 
 
@@ -139,10 +124,22 @@ def _prompt_review_choice(display_context: DisplayContext | None = None) -> Revi
     choice = Prompt.ask(
         "What would you like to do? ",
         console=ctx.console,
+=======
+    return ["Refine", "Accept"]
+
+
+def _prompt_review_choice() -> ReviewAction:
+    """Prompt user for the post-artifact review action and return the choice."""
+    console = Console()
+    choices = _build_review_prompt()
+    choice = Prompt.ask(
+        "Refine this specification further, or accept it?",
+        console=console,
+>>>>>>> main
         choices=choices,
-        default=choices[0],
+        default=_REVIEW_ACCEPT.name.capitalize(),
     )
-    return _REVIEW_ACTION_MAP.get(choice, _REVIEW_FINISH)
+    return _REVIEW_ACTION_MAP.get(choice, _REVIEW_ACCEPT)
 
 
 def _prompt_for_user_input(
@@ -273,6 +270,7 @@ def _update_prompt_file(
     submit_artifact_tool_name: str,
     existing_prompt_context: str | None,
     spec: dict[str, object] | None,
+    user_idea: str | None,
 ) -> Path:
     """Build and write the initial helper instructions, returning the path."""
     prompt_content = build_prompt_helper_prompt(
@@ -280,6 +278,7 @@ def _update_prompt_file(
         existing_prompt_context=existing_prompt_context,
         has_draft=spec is not None,
         current_draft=spec,
+        user_idea=user_idea,
     )
     return _write_prompt_file(workspace_root, prompt_content)
 
@@ -307,26 +306,36 @@ def _write_follow_up_prompt_file(
     return _write_prompt_file(workspace_root, prompt_content)
 
 
-def _run_conversational_intake(
+def _produce_initial_artifact(
     workspace_root: Path,
     runtime: _ManagedSessionRuntime,
     existing_prompt_context: str | None,
+    user_idea: str | None,
     submit_artifact_tool_name: str,
     *,
     display_context: DisplayContext | None = None,
 ) -> tuple[dict[str, object] | None, str | None]:
+<<<<<<< HEAD
     """Run the intake loop until an artifact exists or the agent can no longer resume.
 
     Added ``display_context`` parameter to remove inline Console construction per
     wt-007-consolidate-display; pass an explicit context to avoid env re-read
     between caller and default resolve.
+=======
+    """Run one non-interactive agent turn and return the submitted artifact, if any.
+
+    The agent does not converse with the user: it is invoked once with the idea
+    and/or existing PROMPT.md context and is expected to submit an artifact.
+>>>>>>> main
     """
     prompt_file = _update_prompt_file(
         workspace_root,
         submit_artifact_tool_name,
         existing_prompt_context,
         None,
+        user_idea,
     )
+<<<<<<< HEAD
     session_id = _run_single_invoke(runtime, prompt_file, display_context=display_context)
     spec = read_product_spec_artifact(workspace_root)
 
@@ -343,9 +352,13 @@ def _run_conversational_intake(
         )
 
     return spec, session_id
+=======
+    session_id = _run_single_invoke(runtime, prompt_file)
+    return read_product_spec_artifact(workspace_root), session_id
+>>>>>>> main
 
 
-def _handle_artifact_exists(
+def _run_review_loop(
     workspace_root: Path,
     runtime: _ManagedSessionRuntime,
     existing_prompt_context: str | None,
@@ -355,6 +368,7 @@ def _handle_artifact_exists(
     *,
     display_context: DisplayContext | None = None,
 ) -> None:
+<<<<<<< HEAD
     """Handle the case where an artifact exists - present review choices to user.
 
     Added ``display_context`` parameter to remove inline Console construction per
@@ -371,10 +385,29 @@ def _handle_artifact_exists(
         ctx.console.print(Text("Starting over with a fresh specification."))
         _clear_draft_artifact(workspace_root)
         new_spec, new_session_id = _run_conversational_intake(
+=======
+    """Drive the host-owned refine/accept loop after an artifact exists.
+
+    The only conversation is between the user and this orchestrator. On Refine,
+    the user's prompt is sent to the agent for a fresh non-interactive turn; on
+    Accept, PROMPT.md is written from the current draft and the loop ends.
+    """
+    current_spec = spec
+    current_session_id = session_id
+
+    while True:
+        action = _prompt_review_choice()
+        if action == _REVIEW_ACCEPT:
+            _write_prompt_md(workspace_root, current_spec)
+            return
+
+        user_input = _prompt_for_user_input("How should this specification be refined?")
+        new_spec, current_session_id = _reinvoke_agent(
+>>>>>>> main
             workspace_root,
             runtime,
-            existing_prompt_context,
             submit_artifact_tool_name,
+<<<<<<< HEAD
             display_context=ctx,
         )
         if new_spec is not None:
@@ -448,6 +481,15 @@ def _continue_review_loop(
             next_session_id,
             display_context=display_context,
         )
+=======
+            existing_prompt_context,
+            current_spec,
+            user_input,
+            current_session_id,
+        )
+        if new_spec is not None:
+            current_spec = new_spec
+>>>>>>> main
 
 
 def _prompt_helper_session_request() -> ManagedAgentSessionRequest:
@@ -467,6 +509,7 @@ def _prompt_helper_session_request() -> ManagedAgentSessionRequest:
     )
 
 
+<<<<<<< HEAD
 def _existing_prompt_context_for_intake(
     workspace_root: Path,
     *,
@@ -486,17 +529,30 @@ def _existing_prompt_context_for_intake(
         _clear_draft_artifact(workspace_root)
         return None
     return FsWorkspace(workspace_root).read("PROMPT.md")
+=======
+def _initial_seed(workspace_root: Path) -> tuple[str | None, str | None]:
+    """Resolve the first-turn seed as ``(existing_prompt_context, user_idea)``.
+
+    When a ``PROMPT.md`` exists, it is read (with workspace-escape protection)
+    and refined directly — no user prompt. Otherwise the orchestrator collects
+    the idea from the user once, up front.
+    """
+    if (workspace_root / "PROMPT.md").exists():
+        return FsWorkspace(workspace_root).read("PROMPT.md"), None
+    return None, _prompt_for_user_input("What do you want to build?")
+>>>>>>> main
 
 
 def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
-    """Run the interactive prompt helper.
+    """Run the prompt helper.
 
-    This is a host-owned state machine that:
-    1. Resolves existing PROMPT.md choices before the first agent turn
-    2. Starts a conversational intake turn with the agent
-    3. Prompts the user for freeform replies between resumable turns
-    4. After artifact submission, presents review choices to the user
-    5. Only writes PROMPT.md when the user explicitly chooses Finish
+    This is a host-owned state machine in which the agent never converses with
+    the user; the only conversation is between the user and this orchestrator:
+    1. Seed the first turn from an existing PROMPT.md, or ask the user once for
+       an idea when none exists.
+    2. Invoke the agent non-interactively for one turn to produce an artifact.
+    3. If no artifact is produced, report the failure and leave PROMPT.md alone.
+    4. Otherwise drive the refine/accept loop, writing PROMPT.md only on Accept.
     """
     ctx = make_display_context()
     registry = AgentRegistry.from_config(config)
@@ -519,9 +575,13 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
         raise RuntimeError(msg)
 
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
+<<<<<<< HEAD
     existing_prompt_context = _existing_prompt_context_for_intake(
         workspace_root, display_context=ctx
     )
+=======
+    existing_prompt_context, user_idea = _initial_seed(workspace_root)
+>>>>>>> main
 
     with ManagedAgentSessionRuntimeType.open(
         config=config,
@@ -529,11 +589,31 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
         agent_config=agent_config,
         request=_prompt_helper_session_request(),
     ) as runtime:
-        spec, session_id = _run_conversational_intake(
+        # Start from a clean slate so a stale draft can't masquerade as this
+        # run's output if the agent fails to submit.
+        _clear_draft_artifact(workspace_root)
+        spec, session_id = _produce_initial_artifact(
+            workspace_root,
+            runtime,
+            existing_prompt_context,
+            user_idea,
+            submit_artifact_tool_name,
+        )
+        if spec is None:
+            Console().print(
+                Text(
+                    "The agent did not produce a product specification. "
+                    "No PROMPT.md was written.",
+                    style="theme.status.warning",
+                )
+            )
+            return
+        _run_review_loop(
             workspace_root,
             runtime,
             existing_prompt_context,
             submit_artifact_tool_name,
+<<<<<<< HEAD
             display_context=ctx,
         )
         if spec is not None:
@@ -546,6 +626,11 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
                 session_id,
                 display_context=ctx,
             )
+=======
+            spec,
+            session_id,
+        )
+>>>>>>> main
 
 
 __all__ = ["run_prompt_helper"]

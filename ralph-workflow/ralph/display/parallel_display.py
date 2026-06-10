@@ -1,22 +1,48 @@
-"""Parallel display adapter: always emit log-first, copy-paste-safe transcript lines."""
+"""Parallel display adapter: always emit log-first, copy-paste-safe transcript lines.
+
+wt-007-consolidate-display: All display logic is consolidated onto this class.
+Twenty-one new methods (4 phase-banner + 7 artifact-renderer + 10 misc) own
+every user-facing banner, table, panel, and status surface. Pre-existing
+emit_phase_close / emit_phase_close_from_exit are the one-line recap path and
+are PRESERVED; emit_phase_close_banner (new) is the rich, model-based banner
+that ports the legacy show_phase_close_banner free function.
+"""
 
 from __future__ import annotations
 
 import contextlib
+import json
 import queue
 import time
 import uuid
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
+from rich.console import Group
+from rich.panel import Panel
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
 from rich.text import Text as _RichText
 
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.activity_router import ActivityRouter
+from ralph.display.artifact_reader import (
+    read_latest_analysis_decision,
+    read_plan_artifact,
+)
 from ralph.display.content_condenser import CondenseOptions, condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
+from ralph.display.phase_status import (
+    format_analysis_cycle,
+    format_dev_cycle,
+    format_elapsed_seconds,
+    format_transition_context_items,
+)
 from ralph.display.plain_renderer import (
     ActivityLineOptions as _ActivityLineOptions,
 )
@@ -30,23 +56,154 @@ from ralph.display.plain_renderer import (
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
+from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
+from ralph.mcp.artifacts.handoffs import (
+    ensure_markdown_handoff_from_artifact,
+    handoff_path_for_artifact,
+)
 
 if TYPE_CHECKING:
     from types import TracebackType
 
     from rich.console import Console
+    from rich.console import RenderableType
 
-    from ralph.display.phase_lifecycle import PhaseExitModel
+    from ralph.config.models import UnifiedConfig
+    from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
     from ralph.display.phase_status import PhaseIterationContext
     from ralph.display.plain_renderer import RunStartOrientation
     from ralph.display.snapshot import PipelineSnapshot
     from ralph.pipeline.worker_state import WorkerStatus
     from ralph.policy.models import PipelinePolicy
+    from ralph.skills._capability_state import CapabilityState
 
 _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
 _MAX_OVERFLOW_FILE_BYTES: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
+
+# ASCII banner art inlined from ralph.banner so emit_welcome_banner does not
+# need a separate module-level import for these constants. The plan moves the
+# banner constants onto this module as private constants; the ralph.banner
+# module keeps public ASCII_ART / WELCOME_MESSAGE / TAGLINE exports.
+_ASCII_ART_BANNER: tuple[str, ...] = (
+    " ____       _       _     _     ",
+    "|  _ \\ __ _| |_ __ | |__ | |__  ",
+    "| |_) / _` | | '_ \\| '_ \\| '_ \\ ",
+    "|  _ < (_| | | |_) | | | | | | |",
+    "|_| \\_\\__,_|_| .__/|_| |_|_| |_|",
+    "              |_|                ",
+)
+_WELCOME_MESSAGE_TEXT: str = "Welcome to Ralph Workflow"
+_TAGLINE_TEXT: str = "PROMPT-driven agent orchestrator"
+
+# Phase banner helpers (port of phase_banner.py). These are private to
+# parallel_display and the I/O bodies (show_*_phase_*) have been moved onto
+# ParallelDisplay. The pure helpers phase_style, phase_label, _PHASE_STYLES,
+# MAJOR_ROLE_PAIRS, _resolve_transition_meta, _build_outer_iteration_suffix,
+# _build_inner_analysis_suffix stay here so the new emit_* methods have
+# non-I/O pure logic to call. Tests that previously imported from
+# ralph.display.phase_banner now import from ralph.display.parallel_display
+# (or, in the future, from ralph.display._phase_banner).
+_PHASE_STYLES: dict[str, str] = {
+    "execution": "theme.phase.development",
+    "analysis": "theme.phase.development_analysis",
+    "review": "theme.phase.review",
+    "commit": "theme.phase.commit",
+    "fix": "theme.phase.fix",
+    "verification": "theme.phase.development_analysis",
+    "terminal": "theme.phase.complete",
+    "fanout_join": "theme.phase.development",
+}
+
+_MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("execution", "analysis"),
+        ("analysis", "commit"),
+        ("commit", "review"),
+        ("review", "analysis"),
+        ("analysis", "execution"),
+        ("commit", "execution"),
+        ("commit", "terminal"),
+        ("review", "terminal"),
+        ("execution", "terminal"),
+    }
+)
+
+
+def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
+    """Pure helper: return the rich style string for a phase name or role."""
+    if pipeline_policy is not None:
+        phase_def = pipeline_policy.phases.get(phase)
+        if phase_def is not None:
+            if phase_def.display_style is not None:
+                return phase_def.display_style
+            role = phase_def.role or ""
+            terminal_outcome = phase_def.terminal_outcome
+            if role == "terminal" and terminal_outcome == "failure":
+                return "theme.phase.failed"
+            style = _PHASE_STYLES.get(role)
+            if style is not None:
+                return style
+    return _PHASE_STYLES.get(phase, "theme.text.muted")
+
+
+def _phase_label(phase: str) -> str:
+    """Pure helper: return a human-readable label for a phase name."""
+    return phase.replace("_", " ").title()
+
+
+# Public aliases for tests and other callers that previously imported
+# ``phase_style`` / ``phase_label`` from ``ralph.display.phase_banner``.
+phase_style = _phase_style
+phase_label = _phase_label
+
+
+def _resolve_transition_meta(
+    from_phase: str,
+    to_phase: str,
+    pipeline_policy: PipelinePolicy | None,
+) -> bool:
+    """Pure helper: return is_major for a phase transition."""
+    if pipeline_policy is None:
+        return False
+    phases = pipeline_policy.phases
+    from_def = phases.get(from_phase)
+    to_def = phases.get(to_phase)
+    if from_def is None or to_def is None:
+        return False
+    from_role = from_def.role or ""
+    to_role = to_def.role or ""
+    return (from_role, to_role) in _MAJOR_ROLE_PAIRS
+
+
+def _build_outer_iteration_suffix(
+    iteration: int | None,
+    cap: int | None = None,
+    *,
+    od_glyph: str = "\u229e",
+    qualifier: str = "",
+) -> str:
+    if iteration is None:
+        return ""
+    qual = f" {qualifier}" if qualifier else ""
+    return f"  {od_glyph} {format_dev_cycle(iteration, cap)}{qual}"
+
+
+def _build_inner_analysis_suffix(
+    inner: int | None,
+    max_inner: int | None = None,
+    *,
+    ia_glyph: str = "\u2274",
+    qualifier: str = "",
+) -> str:
+    if inner is None:
+        return ""
+    qual = f" {qualifier}" if qualifier else ""
+    return f"  {ia_glyph} {format_analysis_cycle(inner, max_inner)}{qual}"
+
+
+_ARTIFACTS_DIR: str = ".agent/artifacts"
 
 
 def strip_markup(line: str) -> str:
@@ -428,6 +585,959 @@ class ParallelDisplay:
             )
             self._console.print()  # blank line AFTER the run-end block
 
+    # -- Phase banner methods (port of phase_banner.py) ---------------------
+    # All four methods route through self._console.print. Each method calls
+    # self._emit_section_rule only when self._ctx.mode != 'compact', so the
+    # existing no-rule-lines-in-compact-mode contract is preserved.
+
+    def emit_phase_start(
+        self,
+        phase: str,
+        *,
+        agent_name: str | None = None,
+        pipeline_policy: PipelinePolicy | None = None,
+    ) -> None:
+        """Display the start of a pipeline phase (no iteration context).
+
+        Port of :func:`ralph.display.phase_banner.show_phase_start`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[phase-start]")
+            c = self._console
+            style = _phase_style(phase, pipeline_policy)
+            label = _phase_label(phase)
+            line = Text()
+            start_glyph = self._ctx.glyph_for("start")
+            line.append(f"{start_glyph} ", style=style)
+            line.append(label, style=style)
+            if agent_name is not None:
+                line.append(f"  agent={agent_name}", style="theme.text.muted")
+            c.print(line)
+
+    def emit_phase_start_from_entry(
+        self,
+        entry: PhaseEntryModel,
+        *,
+        pipeline_policy: PipelinePolicy | None = None,
+    ) -> None:
+        """Display the start of a pipeline phase from a lifecycle entry model.
+
+        Port of :func:`ralph.display.phase_banner.show_phase_start_from_entry`.
+        Canonical model-based path. Wide mode emits a titled Rule; medium mode
+        emits a banner line with qualifiers; compact mode emits a terse line.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[phase-start]")
+            c = self._console
+            style = _phase_style(entry.phase_name, pipeline_policy)
+            label = entry.human_label()
+            mode = self._ctx.mode
+            start_glyph = self._ctx.glyph_for("start")
+            od_glyph = self._ctx.glyph_for("outer_dev")
+            ia_glyph = self._ctx.glyph_for("inner_analysis")
+
+            if mode == "wide":
+                rule_title = Text()
+                rule_title.append(f"{start_glyph} ", style=style)
+                rule_title.append(label, style=style)
+                if entry.outer_dev_iteration is not None:
+                    rule_title.append(
+                        _build_outer_iteration_suffix(
+                            entry.outer_dev_iteration,
+                            entry.outer_dev_cap,
+                            od_glyph=od_glyph,
+                            qualifier="(outer)",
+                        ),
+                        style="theme.outer_dev",
+                    )
+                if entry.inner_analysis is not None:
+                    rule_title.append(
+                        _build_inner_analysis_suffix(
+                            entry.inner_analysis,
+                            entry.inner_analysis_cap,
+                            ia_glyph=ia_glyph,
+                            qualifier="(inner)",
+                        ),
+                        style="theme.inner_analysis",
+                    )
+                if entry.inner_analysis is not None and entry.inner_analysis_cap is not None:
+                    remaining = entry.inner_analysis_cap - entry.inner_analysis
+                    if remaining > 0:
+                        rule_title.append(f"  [{remaining} left]", style="theme.text.muted")
+                    elif remaining == 0:
+                        rule_title.append("  [last]", style="theme.level.warn")
+                c.print(Rule(title=rule_title, style=style))
+                if entry.agent_name is not None:
+                    agent_line = Text()
+                    agent_line.append("    agent: ", style="theme.text.muted")
+                    agent_line.append(entry.agent_name, style="theme.text.emphasis")
+                    c.print(agent_line)
+                return
+
+            if mode == "medium":
+                c.print()
+
+            line = Text()
+            line.append(f"{start_glyph} ", style=style)
+            line.append(label, style=style)
+
+            outer_qualifier = "(outer)" if mode == "medium" else ""
+            inner_qualifier = "(inner)" if mode == "medium" else ""
+
+            if entry.outer_dev_iteration is not None:
+                suffix = _build_outer_iteration_suffix(
+                    entry.outer_dev_iteration,
+                    entry.outer_dev_cap,
+                    od_glyph=od_glyph,
+                    qualifier=outer_qualifier,
+                )
+                line.append(suffix, style="theme.outer_dev")
+
+            if entry.inner_analysis is not None:
+                suffix = _build_inner_analysis_suffix(
+                    entry.inner_analysis,
+                    entry.inner_analysis_cap,
+                    ia_glyph=ia_glyph,
+                    qualifier=inner_qualifier,
+                )
+                line.append(suffix, style="theme.inner_analysis")
+
+            if (
+                mode == "medium"
+                and entry.inner_analysis is not None
+                and entry.inner_analysis_cap is not None
+            ):
+                remaining = entry.inner_analysis_cap - entry.inner_analysis
+                if remaining > 0:
+                    line.append(f"  [{remaining} left]", style="theme.text.muted")
+                elif remaining == 0:
+                    line.append("  [last]", style="theme.level.warn")
+
+            if entry.agent_name is not None:
+                line.append(f"  agent={entry.agent_name}", style="theme.text.muted")
+
+            c.print(line)
+
+    def emit_phase_transition(
+        self,
+        from_phase: str,
+        to_phase: str,
+        *,
+        context: dict[str, object] | None = None,
+        pipeline_policy: PipelinePolicy | None = None,
+    ) -> None:
+        """Display a visual transition between pipeline phases.
+
+        Port of :func:`ralph.display.phase_banner.show_phase_transition`.
+        Major transitions get a prominent Rule banner; minor transitions get
+        a simple titled Rule. The leading section rule is suppressed in
+        compact mode to preserve the no-rule-lines-in-compact-mode contract.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            c = self._console
+            style = _phase_style(to_phase, pipeline_policy)
+            from_label = _phase_label(from_phase)
+            to_label = _phase_label(to_phase)
+            is_major = _resolve_transition_meta(from_phase, to_phase, pipeline_policy)
+            ctx = self._ctx
+            if is_major:
+                if self._ctx.mode != "compact":
+                    self._emit_section_rule("[phase-transition]")
+                title = Text()
+                title.append(from_label, style="theme.text.muted")
+                title.append(f" {ctx.glyph_for('arrow')} ", style="theme.text.emphasis")
+                title.append(to_label, style=style)
+                if context:
+                    detail = "  ".join(format_transition_context_items(context))
+                    title.append(f"  ({detail})", style="theme.text.muted")
+                c.print(Rule(title=title, style=style))
+                return
+
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[phase-transition]")
+                c.print()
+            title = Text()
+            arrow = ctx.glyph_for("arrow")
+            title.append(f"{from_label} {arrow} {to_label}")
+            c.print(Rule(title=title, style=style))
+
+    def emit_phase_close_banner(
+        self,
+        exit_model: PhaseExitModel,
+        *,
+        pipeline_policy: PipelinePolicy | None = None,
+    ) -> None:
+        """Display the close of a pipeline phase from a lifecycle exit model.
+
+        Port of :func:`ralph.display.phase_banner.show_phase_close_banner`.
+        The rich, model-based phase-close banner (full stats line, review
+        outcome, debug breadcrumb, and wide-mode trailing Rule).
+
+        .. note::
+           This method is semantically distinct from the existing
+           :meth:`emit_phase_close` (one-line recap) and
+           :meth:`emit_phase_close_from_exit` (one-line recap from a
+           ``PhaseExitModel``). The two recap methods stay unchanged; this
+           banner method is the rich, model-based close banner. Do not
+           collapse the three methods.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[phase-close]")
+            c = self._console
+            style = _phase_style(exit_model.phase_name, pipeline_policy)
+            label = _phase_label(exit_model.phase_name)
+            line = Text()
+            success_glyph = self._ctx.glyph_for("success")
+            od_glyph = self._ctx.glyph_for("outer_dev")
+            ia_glyph = self._ctx.glyph_for("inner_analysis")
+            arrow = self._ctx.glyph_for("arrow")
+            line.append(f"{success_glyph} ", style=style)
+            line.append(label, style=style)
+
+            mode = self._ctx.mode
+            outer_qualifier = "(outer)" if mode in ("medium", "wide") else ""
+            inner_qualifier = "(inner)" if mode in ("medium", "wide") else ""
+
+            if exit_model.outer_dev_iteration is not None:
+                suffix = _build_outer_iteration_suffix(
+                    exit_model.outer_dev_iteration,
+                    exit_model.outer_dev_cap,
+                    od_glyph=od_glyph,
+                    qualifier=outer_qualifier,
+                )
+                line.append(suffix, style="theme.outer_dev")
+
+            if exit_model.inner_analysis is not None:
+                suffix = _build_inner_analysis_suffix(
+                    exit_model.inner_analysis,
+                    exit_model.inner_analysis_cap,
+                    ia_glyph=ia_glyph,
+                    qualifier=inner_qualifier,
+                )
+                line.append(suffix, style="theme.inner_analysis")
+
+            if exit_model.elapsed_seconds > 0:
+                line.append(
+                    f"  {format_elapsed_seconds(exit_model.elapsed_seconds)}",
+                    style="theme.text.muted",
+                )
+
+            if exit_model.exit_trigger is not None:
+                line.append(f"  {arrow} {exit_model.exit_trigger}", style="theme.text.muted")
+
+            c.print(line)
+
+            stats_line = self._build_phase_close_stats_line(exit_model)
+            if stats_line is not None:
+                c.print(stats_line)
+
+            if exit_model.artifact_outcome and mode != "compact":
+                artifact_line = Text()
+                artifact_line.append("    \u21b3 artifact: ", style="theme.text.muted")
+                artifact_line.append(exit_model.artifact_outcome, style="theme.text.emphasis")
+                c.print(artifact_line)
+
+            review_line = self._build_review_outcome_line(exit_model)
+            if review_line is not None:
+                c.print(review_line)
+
+            if exit_model.routing_note is not None:
+                routing_line = Text()
+                routing_line.append(f"  {arrow} ", style="theme.text.muted")
+                routing_line.append(exit_model.routing_note, style="theme.level.warn")
+                c.print(routing_line)
+
+            debug_line = self._build_debug_line(exit_model)
+            if debug_line is not None:
+                c.print(debug_line)
+
+            if mode == "wide":
+                self._print_wide_close_rule(
+                    style,
+                    c,
+                    elapsed_seconds=exit_model.elapsed_seconds,
+                    exit_trigger=exit_model.exit_trigger,
+                    arrow=arrow,
+                )
+
+    def _build_phase_close_stats_line(self, exit_model: PhaseExitModel) -> Text | None:
+        """Return an activity-stats supplementary line for the phase-close banner."""
+        if self._ctx.mode == "compact":
+            return None
+        total = (
+            exit_model.content_blocks
+            + exit_model.thinking_blocks
+            + exit_model.tool_calls
+            + exit_model.errors
+        )
+        if total == 0:
+            return None
+        stats = Text()
+        stats.append("    \u21b3 stats: ", style="theme.text.muted")
+        parts: list[tuple[str, str]] = [
+            (f"content={exit_model.content_blocks}", "theme.text.muted"),
+            (f"thinking={exit_model.thinking_blocks}", "theme.text.muted"),
+            (f"tools={exit_model.tool_calls}", "theme.text.muted"),
+        ]
+        if exit_model.errors > 0:
+            parts.append((f"errors={exit_model.errors}", "theme.level.error"))
+        for i, (part_text, part_style) in enumerate(parts):
+            if i > 0:
+                stats.append("  ", style="theme.text.muted")
+            stats.append(part_text, style=part_style)
+        return stats
+
+    def _build_review_outcome_line(self, exit_model: PhaseExitModel) -> Text | None:
+        """Return a review outcome line if review_issues_found is set."""
+        if exit_model.review_issues_found is None:
+            return None
+        review_line = Text()
+        review_glyph_pass = self._ctx.glyph_for("review_pass")
+        review_glyph_fail = self._ctx.glyph_for("review_fail")
+        if exit_model.review_issues_found:
+            review_line.append(f"    {review_glyph_fail} ", style="theme.review_fail")
+            review_line.append("review: ", style="theme.text.muted")
+            review_line.append("issues found", style="theme.level.error")
+        else:
+            review_line.append(f"    {review_glyph_pass} ", style="theme.review_pass")
+            review_line.append("review: ", style="theme.text.muted")
+            review_line.append("clean", style="theme.status.success")
+        return review_line
+
+    def _build_debug_line(self, exit_model: PhaseExitModel) -> Text | None:
+        """Return a debug breadcrumb line if waiting status or failure category is set."""
+        if not exit_model.waiting_status_line and not exit_model.last_failure_category:
+            return None
+        debug_line = Text()
+        warning_glyph = self._ctx.glyph_for("warning")
+        debug_parts: list[str] = []
+        if exit_model.waiting_status_line:
+            debug_parts.append(f"waiting: {exit_model.waiting_status_line[:80]}")
+        if exit_model.last_failure_category:
+            debug_parts.append(f"failure: {exit_model.last_failure_category}")
+        debug_line.append(f"  {warning_glyph} debug: ", style="theme.level.warn")
+        debug_line.append(" | ".join(debug_parts), style="theme.text.muted")
+        return debug_line
+
+    @staticmethod
+    def _print_wide_close_rule(
+        style: str,
+        console: Console,
+        *,
+        elapsed_seconds: float = 0.0,
+        exit_trigger: str | None = None,
+        arrow: str = "\u2192",
+    ) -> None:
+        """Print the wide-mode trailing titled Rule as the section-close separator."""
+        parts: list[str] = []
+        if elapsed_seconds > 0:
+            parts.append(format_elapsed_seconds(elapsed_seconds))
+        if exit_trigger is not None:
+            parts.append(f"{arrow} {exit_trigger}")
+        if parts:
+            console.print(Rule(title="  ".join(parts), style=style))
+        else:
+            console.print(Rule(style=style))
+
+    # -- Artifact renderer methods (port of artifact_renderer.py) ----------
+    # All seven methods route through self._console.print. The six titled-block
+    # methods also call self._emit_section_rule so the visual hierarchy is
+    # unified with the rest of the transcript.
+
+    def emit_plan_artifact(self, workspace_root: Path) -> None:
+        """Render the agent-facing plan handoff, falling back to the JSON summary.
+
+        Port of :func:`ralph.display.artifact_renderer.render_plan_artifact`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[plan]")
+            markdown = self._resolve_authoritative_markdown_handoff(
+                workspace_root,
+                "plan",
+                workspace_root / _ARTIFACTS_DIR / "plan.json",
+            )
+            if markdown:
+                self._render_text_block("PLAN", markdown, "execution")
+                return
+            plan = read_plan_artifact(workspace_root)
+            if plan is None:
+                self.emit_missing_plan_hint()
+                return
+            lines: list[str] = []
+            if plan.summary:
+                lines.append(f"  Context: {plan.summary}")
+            if plan.scope_items:
+                lines.append("  Scope:")
+                lines.extend(f"    - {item}" for item in plan.scope_items)
+            if plan.total_steps > 0:
+                lines.append(f"  Steps: {plan.total_steps}")
+            if plan.risks_mitigations:
+                lines.append("  Risks:")
+                lines.extend(f"    - {risk}" for risk in plan.risks_mitigations)
+            self._render_titled_lines("PLAN", "execution", lines)
+
+    def emit_development_artifact(self, workspace_root: Path) -> None:
+        """Render development results using the authoritative Markdown handoff.
+
+        Port of :func:`ralph.display.artifact_renderer.render_development_artifact`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[development-result]")
+            markdown = self._resolve_authoritative_markdown_handoff(
+                workspace_root,
+                "development_result",
+                workspace_root / _ARTIFACTS_DIR / "development_result.json",
+            )
+            if markdown:
+                self._render_text_block("DEVELOPMENT RESULT", markdown, "execution")
+                return
+            found = self._read_json_defensive(
+                workspace_root / _ARTIFACTS_DIR / "development_result.json"
+            )
+            if found is None:
+                return
+            self._render_text_block(
+                "DEVELOPMENT RESULT",
+                json.dumps(found, indent=2),
+                "execution",
+            )
+
+    def emit_review_artifact(self, workspace_root: Path) -> None:
+        """Render review findings using the authoritative Markdown handoff.
+
+        Port of :func:`ralph.display.artifact_renderer.render_review_artifact`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[review]")
+            markdown = self._resolve_authoritative_markdown_handoff(
+                workspace_root,
+                "issues",
+                workspace_root / _ARTIFACTS_DIR / "issues.json",
+            )
+            if markdown:
+                self._render_text_block("REVIEW ISSUES", markdown, "review")
+                return
+            found = self._read_json_defensive(workspace_root / _ARTIFACTS_DIR / "issues.json")
+            if found is None:
+                return
+            self._render_text_block(
+                "REVIEW ISSUES",
+                json.dumps(found, indent=2),
+                "review",
+            )
+
+    def emit_fix_artifact(self, workspace_root: Path) -> None:
+        """Render fix result artifacts as a titled block.
+
+        Port of :func:`ralph.display.artifact_renderer.render_fix_artifact`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[fix]")
+            markdown = self._resolve_authoritative_markdown_handoff(
+                workspace_root,
+                "fix_result",
+                workspace_root / _ARTIFACTS_DIR / "fix_result.json",
+            )
+            if markdown:
+                self._render_text_block("FIX", markdown, "fix")
+                return
+            found = self._first_json_candidate(
+                workspace_root / _ARTIFACTS_DIR / "fix_result.json",
+                workspace_root / _ARTIFACTS_DIR / "issues.json",
+            )
+            if found is None:
+                return
+            lines = self._render_fix_json_summary(found)
+            self._render_titled_lines("FIX", "fix", lines)
+
+    def emit_analysis_decision(self, workspace_root: Path, drain: str) -> None:
+        """Render an analysis decision artifact as a titled block.
+
+        Port of :func:`ralph.display.artifact_renderer.render_analysis_decision`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[analysis]")
+            artifact_type = self._analysis_handoff_artifact_type(drain)
+            if artifact_type is not None:
+                markdown = self._resolve_authoritative_markdown_handoff(
+                    workspace_root,
+                    artifact_type,
+                    workspace_root / _ARTIFACTS_DIR / f"{artifact_type}.json",
+                )
+                if markdown:
+                    self._render_text_block(f"ANALYSIS: {drain}", markdown, "analysis")
+                    return
+            summary = read_latest_analysis_decision(workspace_root, drain)
+            if summary is None:
+                return
+            lines = [f"  decision: {summary.decision}"]
+            if summary.reason:
+                lines.append(f"  reason: {summary.reason}")
+            self._render_titled_lines(f"ANALYSIS: {drain}", "analysis", lines)
+
+    def emit_commit_message(self, workspace_root: Path) -> None:
+        """Render the commit message artifact as a titled block.
+
+        Port of :func:`ralph.display.artifact_renderer.render_commit_message`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[commit-message]")
+            try:
+                message = read_commit_message_artifact(workspace_root)
+            except Exception:
+                message = None
+            if message is None:
+                return
+            self._render_text_block("COMMIT MESSAGE", message, "commit", indent=True)
+
+    def emit_missing_plan_hint(self) -> None:
+        """Emit a plain INFO line when the plan artifact is absent at phase completion.
+
+        Port of :func:`ralph.display.artifact_renderer.render_missing_plan_hint`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            timestamp = datetime.now(UTC).isoformat()
+            self._console.print(
+                f"{timestamp} INFO META [plan] (no plan artifact on disk)",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+    @staticmethod
+    def _analysis_handoff_artifact_type(drain: str) -> str:
+        return f"{drain}_decision"
+
+    @staticmethod
+    def _read_text_defensive(path: Path) -> str | None:
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (FileNotFoundError, OSError, PermissionError):
+            return None
+        return content
+
+    @staticmethod
+    def _read_markdown_handoff(workspace_root: Path, artifact_type: str) -> str | None:
+        relative_path = handoff_path_for_artifact(artifact_type)
+        if relative_path is None:
+            return None
+        candidate = workspace_root / relative_path
+        markdown = ParallelDisplay._read_text_defensive(candidate)
+        if markdown is None:
+            return None
+        stripped = markdown.strip()
+        return stripped or None
+
+    @staticmethod
+    def _regenerated_markdown_handoff(
+        workspace_root: Path,
+        artifact_type: str,
+        artifact_path: Path,
+    ) -> str | None:
+        artifact_content = ParallelDisplay._read_text_defensive(artifact_path)
+        if artifact_content is None:
+            return None
+        try:
+            created_path = ensure_markdown_handoff_from_artifact(
+                workspace_root,
+                artifact_type,
+                artifact_content,
+            )
+        except (json.JSONDecodeError, OSError, PermissionError, TypeError, ValueError):
+            return None
+        if created_path is None:
+            return None
+        regenerated = ParallelDisplay._read_text_defensive(Path(created_path))
+        if regenerated is None:
+            return None
+        stripped = regenerated.strip()
+        return stripped or None
+
+    @staticmethod
+    def _resolve_authoritative_markdown_handoff(
+        workspace_root: Path,
+        artifact_type: str,
+        artifact_path: Path,
+    ) -> str | None:
+        regenerated = ParallelDisplay._regenerated_markdown_handoff(
+            workspace_root, artifact_type, artifact_path
+        )
+        if regenerated is not None:
+            return regenerated
+        return ParallelDisplay._read_markdown_handoff(workspace_root, artifact_type)
+
+    def _render_titled_lines(self, title: str, style_phase: str, lines: list[str]) -> None:
+        """Render a title rule, the body lines, and a closing rule."""
+        self._console.print()
+        self._console.print(
+            Rule(title, style=_phase_style(style_phase)), markup=False, highlight=False
+        )
+        for line in lines:
+            self._console.print(line, markup=False, highlight=False)
+        self._console.print(
+            Rule(style=_phase_style(style_phase)), markup=False, highlight=False
+        )
+
+    def _render_text_block(
+        self,
+        title: str,
+        body: str,
+        style_phase: str,
+        *,
+        indent: bool = False,
+    ) -> None:
+        lines = [line.rstrip() for line in body.splitlines() if line.strip()]
+        if indent:
+            lines = (
+                [f"  {lines[0]}", *[f"    {line}" for line in lines[1:]]] if lines else []
+            )
+        self._render_titled_lines(title, style_phase, lines)
+
+    @staticmethod
+    def _read_json_defensive(path: Path) -> dict[str, object] | None:
+        raw = ParallelDisplay._read_text_defensive(path)
+        if raw is None:
+            return None
+        try:
+            parsed_obj: object = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(parsed_obj, dict):
+            return None
+        return cast("dict[str, object]", parsed_obj)
+
+    @staticmethod
+    def _first_json_candidate(*candidates: Path) -> dict[str, object] | None:
+        for candidate in candidates:
+            found = ParallelDisplay._read_json_defensive(candidate)
+            if found is not None:
+                return found
+        return None
+
+    @staticmethod
+    def _render_fix_json_summary(found: dict[str, object]) -> list[str]:
+        if "issues" in found and isinstance(found["issues"], list):
+            return ParallelDisplay._render_issues_summary(found["issues"])
+        if "fixed" in found:
+            return ParallelDisplay._render_fixed_summary(found["fixed"])
+        return [f"  Fix artifact: {list(found.keys())[:5]}"]
+
+    @staticmethod
+    def _render_issues_summary(issues: list[object]) -> list[str]:
+        lines = [f"  {len(issues)} issue(s) addressed:"]
+        for issue in issues[:10]:
+            if isinstance(issue, dict):
+                desc_obj = issue.get("description") or issue.get("message") or str(issue)
+            else:
+                desc_obj = str(issue)
+            lines.append(f"    - {str(desc_obj)[:120]}")
+        return lines
+
+    @staticmethod
+    def _render_fixed_summary(fixed: object) -> list[str]:
+        if isinstance(fixed, list):
+            lines = [f"  {len(fixed)} item(s) fixed:"]
+            lines.extend(f"    - {str(item)[:120]}" for item in fixed[:10])
+            return lines
+        return [f"  Fixed: {fixed}"]
+
+    # -- Welcome-banner, first-run-panel, table, capability-summary, status -
+
+    def emit_first_run_panel(self, content: list[RenderableType]) -> None:
+        """Print the first-run welcome Panel to ``self._ctx.console``.
+
+        Port of :func:`ralph.display.first_run_panel.render_first_run_panel`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            panel = Panel(
+                Group(*content),
+                title="Ralph Workflow first-run setup",
+                border_style="theme.banner.border",
+                padding=(1, 2),
+            )
+            self._console.print(panel)
+
+    def emit_welcome_banner(
+        self,
+        *,
+        version: str,
+    ) -> None:
+        """Print the Ralph Workflow welcome banner.
+
+        Port of :func:`ralph.banner.show_banner`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[welcome]")
+            compact = self._ctx.mode == "compact"
+            if compact:
+                welcome = Text(f"Ralph Workflow v{version}", style="theme.banner.welcome")
+                tagline = Text(_TAGLINE_TEXT, style="theme.banner.tagline")
+                self._console.print(Group(welcome, tagline))
+                return
+            banner_text = Text("\n".join(_ASCII_ART_BANNER), style="theme.banner.ascii")
+            version_text = Text(f"v{version}", style="theme.banner.version")
+            title_text = Text("Ralph Workflow", style="theme.banner.title")
+            welcome_text = Text(_WELCOME_MESSAGE_TEXT, style="theme.banner.welcome")
+            tagline_text = Text(_TAGLINE_TEXT, style="theme.banner.tagline")
+            banner_panel = Panel.fit(
+                banner_text,
+                border_style="theme.banner.border",
+                padding=(0, 1),
+                title=title_text,
+                subtitle=version_text,
+            )
+            self._console.print(Group(banner_panel, welcome_text, tagline_text))
+
+    def emit_agents_table(self, agents: Mapping[str, object]) -> None:
+        """Render the agent table for --list-agents.
+
+        Port of :func:`ralph.cli.options.display_agents_table`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            show_secondary = self._ctx.mode != "compact"
+            table = Table(title="Configured Agents", show_header=True)
+            table.add_column("Name", style="theme.cat.meta")
+            table.add_column("Command")
+            if show_secondary:
+                table.add_column("Parser", style="theme.cat.cont")
+                table.add_column("Can Commit", justify="center")
+            if not agents:
+                if show_secondary:
+                    table.add_row(
+                        Text("No agents configured", style="theme.text.muted"), "", "", ""
+                    )
+                else:
+                    table.add_row(
+                        Text("No agents configured", style="theme.text.muted"), ""
+                    )
+            else:
+                for name, agent in agents.items():
+                    cmd = getattr(agent, "cmd", "")
+                    parser = getattr(agent, "json_parser", None)
+                    can_commit = getattr(agent, "can_commit", False)
+                    if show_secondary:
+                        can_commit_str = "yes" if can_commit else "no"
+                        table.add_row(
+                            name, cmd, str(parser.value if parser is not None else ""), can_commit_str
+                        )
+                    else:
+                        table.add_row(name, cmd)
+            self._console.print(table)
+
+    def emit_providers_table(self, providers: list[str]) -> None:
+        """Render the providers table for --list-providers.
+
+        Port of :func:`ralph.cli.options.display_providers_table`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            show_status = self._ctx.mode != "compact"
+            table = Table(title="Available Providers", show_header=True)
+            table.add_column("Provider", style="theme.cat.meta")
+            if show_status:
+                table.add_column("Status", justify="center")
+            if not providers:
+                if show_status:
+                    table.add_row(
+                        Text("No providers available", style="theme.text.muted"), ""
+                    )
+                else:
+                    table.add_row(
+                        Text("No providers available", style="theme.text.muted")
+                    )
+            else:
+                for provider in providers:
+                    if show_status:
+                        table.add_row(provider, "Available")
+                    else:
+                        table.add_row(provider)
+            self._console.print(table)
+
+    def emit_config_table(self, config: UnifiedConfig) -> None:
+        """Render the effective config panel for --check-config.
+
+        Port of :func:`ralph.display.tables.show_config`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            config_json = config.model_dump_json(indent=2)
+            if self._ctx.mode == "compact":
+                self._console.print(
+                    Panel(
+                        config_json,
+                        title="Effective Configuration",
+                        border_style="theme.phase.planning",
+                        width=self._ctx.width,
+                    )
+                )
+            else:
+                self._console.print(
+                    Panel(
+                        config_json,
+                        title="Effective Configuration",
+                        border_style="theme.phase.planning",
+                    )
+                )
+
+    def emit_capability_summary(
+        self,
+        state: CapabilityState,
+        *,
+        workspace_root: Path | None = None,
+    ) -> None:
+        """Print the baseline capabilities summary table.
+
+        Port of :func:`ralph.cli._capability_summary.print_capability_summary`.
+        The base table and skill-root coverage table are built by the
+        standalone helper module (collected via lazy import to avoid a
+        circular import). The print side goes through self._console.print
+        so the entire transcript is consolidated on ParallelDisplay.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[capabilities]")
+            from ralph.cli._capability_summary import collect_skill_root_rows
+            from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
+            from ralph.skills._capability_status import CapabilityStatus
+            from ralph.skills._content import BASELINE_SKILL_NAMES
+
+            resolved_workspace = Path.cwd() if workspace_root is None else workspace_root
+            table = Table(title="Baseline Capabilities", show_header=True)
+            table.add_column("Capability", style="theme.cat.meta")
+            table.add_column("Type")
+            table.add_column("Status")
+            for cap in STATIC_BUILTIN_CAPABILITIES:
+                table.add_row(
+                    cap.name.replace("_", " ").title(),
+                    "Built-in",
+                    Text("OK \u2014 always available", style="theme.status.success"),
+                )
+            managed_rows = [
+                ("Web search (DuckDuckGo)", state.web_search),
+                ("Page retrieval (visit_url)", state.visit_url),
+                ("Docs MCP (localhost:6280)", state.docs_mcp),
+                ("Skill bundles", state.skills),
+            ]
+            for label, entry in managed_rows:
+                if entry.status == CapabilityStatus.INSTALLED_HEALTHY:
+                    status_text = Text("OK", style="theme.status.success")
+                elif entry.update_available:
+                    status_text = Text(
+                        "Update available \u2014 run `ralph --init` to update",
+                        style="theme.status.warning",
+                    )
+                else:
+                    status_text = Text(
+                        f"{entry.status.value} \u2014 run `ralph --init` or check config",
+                        style="theme.status.warning",
+                    )
+                table.add_row(label, "Managed", status_text)
+            self._console.print(table)
+            del BASELINE_SKILL_NAMES  # only used for completeness of the import surface
+            if state.skills.status != CapabilityStatus.NOT_INSTALLED:
+                self._console.print(Text("Skill root coverage", style="theme.cat.meta"))
+                skill_rows = collect_skill_root_rows(workspace_root=resolved_workspace)
+                skill_table = Table(show_header=True)
+                skill_table.add_column("Agent", style="theme.cat.meta")
+                skill_table.add_column("Skill root", style="theme.text.muted")
+                skill_table.add_column("Scope", style="theme.cat.meta")
+                skill_table.add_column("Status")
+                for agent_label, skill_root, scope, status_text in skill_rows:
+                    skill_table.add_row(agent_label, skill_root, scope, status_text)
+                self._console.print(skill_table)
+
+    def emit_status(self, message: str) -> None:
+        """Emit a status line through the consolidated display.
+
+        Ports the prior ``_status_text`` helper in
+        :mod:`ralph.cli.commands.init` (one of the 13+ direct
+        ``console.print`` call sites).
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[status]")
+            self._console.print(message, markup=False, highlight=False, no_wrap=True)
+
+    def emit_warning(self, message: str) -> None:
+        """Emit a warning line through the consolidated display.
+
+        Ports the prior warning ``console.print`` calls in
+        :mod:`ralph.cli.commands.init`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[warning]")
+            self._console.print(message, markup=False, highlight=False, no_wrap=True)
+
+    def emit_skill_failure_warning(self, failures: list[str]) -> None:
+        """Emit a single warning line listing the skill-failure entries.
+
+        Ports :func:`ralph.cli.commands.init._print_skill_failure_warning`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[skill-failure]")
+            joined = ", ".join(failures)
+            self._console.print(
+                Text(
+                    f"Skills reinstall reported: {joined}. "
+                    "Run `ralph --force-init-skills` to repair and overwrite, "
+                    "or `ralph --diagnose` for details.",
+                    style="theme.status.warning",
+                )
+            )
+
+    def emit_fallback_next_steps(self, next_steps: list[str]) -> None:
+        """Emit the fallback next-steps list.
+
+        Ports :func:`ralph.cli.commands.init._print_fallback_next_steps`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[next-steps]")
+            for index, line in enumerate(next_steps, start=1):
+                self._console.print(f"  {index}. {line}", markup=False, highlight=False)
+
     @property
     def display_context(self) -> DisplayContext:
         """Return the DisplayContext this display renders against."""
@@ -593,6 +1703,8 @@ __all__ = [
     "build_default_display_legacy_bridge",
     "emit_activity_line",
     "get_display_context",
+    "phase_label",
+    "phase_style",
     "resolve_active_display",
     "resolve_display",
     "status_text",

@@ -428,6 +428,12 @@ def _execute_pipeline(
         return run_func(request.config, request.initial_state, **kwargs)
     except KeyboardInterrupt:
         console.print(Text("\nInterrupted by user", style="theme.status.warning"))
+        try:
+            from ralph.interrupt import handle_keyboard_interrupt_at_cli
+
+            handle_keyboard_interrupt_at_cli(exit_code=_EXIT_INTERRUPT)
+        except Exception:
+            logger.warning("Interrupt dispatcher failed during CLI catch", exc_info=True)
         if request.initial_state is not None:
             _save_interrupt_checkpoint(request.initial_state)
         return _EXIT_INTERRUPT

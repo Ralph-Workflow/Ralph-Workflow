@@ -118,6 +118,18 @@ Recovery includes things like:
 
 For most users, recovery is automatic.
 
+**Interrupt dispatch.** When a user presses Ctrl+C during a run, the
+`InterruptDispatcher` (in `ralph.interrupt.dispatcher`) coordinates orderly
+shutdown: the first SIGINT routes through
+`InterruptController.begin_interrupt(kill_label='invoke:')` to send SIGTERM
+to the agent's process group, then a poll thread escalates to SIGKILL if
+the agent makes no CPU-time progress within `hard_kill_budget_s` (default
+1.5s). A second SIGINT calls `InterruptController.force_exit(bridge_pids=...)`
+which terminates tracked processes and exits with code 130. The CLI catches
+in `ralph.cli.commands.run` and `ralph.cli.main` also call the dispatcher
+with `block=True`, so the orderly shutdown happens even when the interrupt
+is raised outside the pipeline loop.
+
 ## Work unit
 
 A **work unit** is a sub-task inside a larger plan that can be executed independently.
