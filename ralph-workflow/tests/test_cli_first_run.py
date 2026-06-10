@@ -49,6 +49,7 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]
     return env
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_first_run_shows_welcome_banner(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -76,6 +77,7 @@ def test_cli_first_run_shows_welcome_banner(
         )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_first_run_banner_not_shown_on_second_run(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -106,6 +108,7 @@ def test_cli_first_run_banner_not_shown_on_second_run(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_regenerate_config_shows_banner(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -135,6 +138,7 @@ def test_cli_regenerate_config_shows_banner(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_shows_welcome_banner(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -159,6 +163,7 @@ def test_cli_init_shows_welcome_banner(
         )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_without_label_has_no_deprecation_warning(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -176,6 +181,7 @@ def test_cli_init_without_label_has_no_deprecation_warning(
     assert "deprecated" not in result.output.lower(), result.output
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_with_default_label_emits_deprecation_warning(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -193,6 +199,7 @@ def test_cli_init_with_default_label_emits_deprecation_warning(
     assert "deprecated" in result.output.lower(), result.output
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_with_arbitrary_label_emits_deprecation_warning(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -212,6 +219,7 @@ def test_cli_init_with_arbitrary_label_emits_deprecation_warning(
     assert "ignored" in result.output.lower(), result.output
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_idempotent_no_banner_on_second_run(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -238,6 +246,7 @@ def test_cli_init_idempotent_no_banner_on_second_run(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_does_not_create_local_main_config_when_global_exists(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -260,6 +269,7 @@ def test_cli_init_does_not_create_local_main_config_when_global_exists(
     assert (tmp_path / ".agent" / "artifacts.toml").exists()
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_adds_default_gitignore_entries(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -283,6 +293,7 @@ def test_cli_init_adds_default_gitignore_entries(
     assert ".DS_Store" in content
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_local_config_copies_global_configs_into_project(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -314,6 +325,7 @@ def test_cli_init_local_config_copies_global_configs_into_project(
     ).read_text(encoding="utf-8")
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_in_linked_worktree_reuses_main_worktree_config_root(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -347,6 +359,7 @@ def test_cli_init_in_linked_worktree_reuses_main_worktree_config_root(
     assert not (linked_worktree / ".agent" / "mcp.toml").exists()
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_local_config_in_linked_worktree_targets_main_checkout(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -398,6 +411,7 @@ def test_cli_init_local_config_in_linked_worktree_targets_main_checkout(
     assert not (linked_worktree / ".agent" / "ralph-workflow.toml").exists()
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_creates_self_teaching_prompt_md(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -429,6 +443,7 @@ def test_cli_init_creates_self_teaching_prompt_md(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_embeds_starter_sentinel_in_prompt_md(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -456,6 +471,7 @@ def test_cli_init_embeds_starter_sentinel_in_prompt_md(
         validate_required_inputs(scope)
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_first_run_panel_includes_what_is_ralph_pitch(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -477,6 +493,7 @@ def test_cli_first_run_panel_includes_what_is_ralph_pitch(
         )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_first_run_panel_includes_getting_started_pointer(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -498,6 +515,7 @@ def test_cli_first_run_panel_includes_getting_started_pointer(
         )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_fallback_next_steps_includes_docs_pointer(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -520,6 +538,7 @@ def test_cli_init_fallback_next_steps_includes_docs_pointer(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_fallback_next_steps_includes_getting_started(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -542,6 +561,7 @@ def test_cli_init_fallback_next_steps_includes_getting_started(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_init_fallback_no_duplicated_loop_wording(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -566,6 +586,7 @@ def test_cli_init_fallback_no_duplicated_loop_wording(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_run_in_fresh_dir_shows_init_hint(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -615,6 +636,7 @@ def test_cli_run_in_fresh_dir_shows_init_hint(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_cli_run_with_only_prompt_shows_init_hint(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

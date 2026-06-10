@@ -6,6 +6,8 @@ import io
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -232,6 +234,7 @@ def test_commit_invocation_requires_commit_message_artifact(tmp_path: Path) -> N
     assert opts.required_artifact.artifact_required is True
 
 
+@pytest.mark.timeout_seconds(3)
 def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() -> None:
     display_context = make_display_context()
     session_line = '{"type":"session","session_id":"sess-early"}'

@@ -176,6 +176,7 @@ def _line_is_absence_asserting(line: str, rel: str) -> bool:
     return rel.endswith("test_property_a_one_transport_one_behavior.py")
 
 
+@pytest.mark.timeout_seconds(3)
 def test_grep_audit_finds_zero_fastmcp_hits_in_tests() -> None:
     """The file-walk audit must find no USAGE hits in tests/.
 
