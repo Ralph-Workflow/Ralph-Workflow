@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.agents.invoke._types import InvokeOptions
+    from ralph.pipeline.agent_retry_intent import AgentRetryAction
 
 
 def fresh_session_options(
@@ -106,7 +107,7 @@ def recovery_action_for_failure_reason(
     *,
     has_prior_session: bool,
     reset_tool_registry: bool = False,
-) -> str:
+) -> AgentRetryAction:
     """Map a stored failure reason to a recovery action.
 
     Used by the pipeline executor to decide whether the next attempt

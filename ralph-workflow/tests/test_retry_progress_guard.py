@@ -172,3 +172,40 @@ def test_numeric_noise_spiral_trips_the_guard_within_the_cap() -> None:
             tripped_at = attempt
             break
     assert tripped_at == 2, "the counter-wiggling spiral must trip on the 3rd identical attempt"
+
+
+def test_structural_signature_caps_on_changing_text_same_pattern() -> None:
+    """Three attempts with the same opening-narrative pattern but DIFFERENT
+    concrete tokens (file names, paths) MUST collapse to the same structural
+    fingerprint, and the guard MUST trip on the third attempt.
+
+    This is the gap the structural-dominant composition closes: the literal
+    fingerprint cannot collapse path tokens (e.g. ``/tmp/PROMPT.md`` vs
+    ``/tmp/PROMPT_v2.md`` differ in the chars beyond the ``_NUMERIC_TOKEN``
+    vocabulary), so without the structural safety net the literal divergence
+    would let the restart-from-scratch spiral evade the cap.
+
+    The equality assertion is the GATE: if the structural-collapse-on-
+    different-tokens contract fails (e.g. the implementation reverts to a
+    concatenation that includes the divergent literal path token), then
+    ``len(set(sigs)) > 1`` and this test fails with a clear message naming
+    the divergence, BEFORE the guard-trip assertion would have passed
+    silently.
+    """
+    guard = RetryProgressGuard(max_identical=3)
+    reason = "an inactivity timeout"
+    outputs = [
+        ["I will start by reading the prompt at /tmp/PROMPT.md"],
+        ["I will start by reading the prompt at /tmp/PROMPT_v2.md"],
+        ["I will start by reading the prompt at /tmp/PROMPT_draft.md"],
+    ]
+    sigs = [retry_failure_signature(reason, out) for out in outputs]
+    assert len(set(sigs)) == 1, (
+        f"three restart-narrative outputs with different concrete tokens "
+        f"must collapse to one structural fingerprint; got {sigs}"
+    )
+    results = [guard.record(s) for s in sigs]
+    assert results == [False, False, True], (
+        f"the structural-dominant composition must trip the cap on the 3rd "
+        f"identical structural signature; got {results}"
+    )
