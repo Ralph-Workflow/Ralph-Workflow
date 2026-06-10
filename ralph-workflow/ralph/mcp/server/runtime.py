@@ -1,9 +1,15 @@
-"""Standalone FastMCP HTTP server runtime for Ralph tools.
+"""Standalone MCP HTTP server runtime for Ralph tools.
 
 Runs the Ralph MCP server as a long-lived HTTP process that AI agents connect
 to over the MCP protocol. The server exposes Ralph's tool registry (file
 operations, git commands, artifact submission, coordination, etc.) through
-FastMCP endpoints.
+the production streamable-HTTP transport (``_FallbackStandaloneServer``).
+
+The architecture is intentionally single-path: there is exactly one server
+transport — the production ``_FallbackHttpHandler`` (constructed by
+``_FallbackStandaloneServer``) — and every behavior (tool dispatch,
+streaming, session handling, concurrency control, error framing) lives on
+that one path. See ``docs/agents/architecture.md`` for the rationale.
 
 Key responsibilities:
 
@@ -27,19 +33,13 @@ The server is launched by ``ralph.process.manager`` via the
 from __future__ import annotations
 
 import argparse
-import functools
-import json
 import os
 import uuid
 from dataclasses import dataclass
-from importlib import import_module
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, Literal, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
-import anyio.to_thread
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, create_model
 
 from ralph import __version__
 from ralph.agents.system_clock import SystemClock
@@ -60,7 +60,7 @@ from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._session_wrapup import SessionWrapupBudget
 from ralph.mcp.server._standalone_http_server import _StandaloneHttpServer
 from ralph.mcp.server.runtime_session import FileBackedSession, session_from_env
-from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
+from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.transport.common import mcp_config_as_upstreams, merge_mcp_toml_into_upstreams
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
@@ -74,106 +74,9 @@ from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECO
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
-
-    from mcp.server.fastmcp.tools.base import Tool as ToolClass
+    from collections.abc import Callable, Mapping, Sequence
 
     from ralph.config.mcp_models import McpConfig
-
-if TYPE_CHECKING:
-
-    class RegisteredToolLike(Protocol):
-        """Minimal registered FastMCP tool surface used by tests."""
-
-        name: str
-        parameters: dict[str, object]
-
-    class ToolManagerLike(Protocol):
-        """Minimal FastMCP tool manager surface used by tests."""
-
-        def call_tool(
-            self, name: str, arguments: dict[str, object]
-        ) -> Coroutine[object, object, object]:
-            """Call a registered tool."""
-            ...
-
-        def list_tools(self) -> list[RegisteredToolLike]:
-            """Return registered tools."""
-            ...
-
-    class ToolBuilderLike(Protocol):
-        """Mutable tool surface returned by FastMCP tool registration."""
-
-        parameters: dict[str, object]
-
-    class ToolFactoryLike(Protocol):
-        """Factory surface used to create typed FastMCP tools."""
-
-        @staticmethod
-        def from_function(*args: object, **kwargs: object) -> ToolBuilderLike:
-            """Create a tool from a callable."""
-            ...
-
-    class ToolHandlerLike(Protocol):
-        """Dynamic callable wrapper accepted by the FastMCP tool factory."""
-
-        __name__: str
-        __doc__: str | None
-
-        def __call__(self, **kwargs: object) -> object:
-            """Invoke the wrapped Ralph tool."""
-            ...
-
-    class _ToDict(Protocol):
-        """Callable protocol for tool results that can serialize to a dict."""
-
-        def __call__(self) -> dict[str, object]:
-            """Serialize result to a dictionary."""
-            ...
-
-    class FastMcpServerLike(Protocol):
-        """Minimal standalone FastMCP server surface used by Ralph."""
-
-        _tool_manager: ToolManagerLike
-
-        def run(self, transport: Literal["streamable-http"] = "streamable-http") -> None:
-            """Run the standalone server."""
-            ...
-
-    class FastMcpConstructorLike(Protocol):
-        """Protocol for constructing FastMCP server instances."""
-
-        def __call__(self, *args: object, **kwargs: object) -> FastMcpServerLike:
-            """Construct a FastMCP server instance."""
-            ...
-
-    class CreateModelFactoryLike(Protocol):
-        """Protocol for pydantic create_model-like factories."""
-
-        def __call__(self, *args: object, **kwargs: object) -> type[BaseModel]:
-            """Create a BaseModel subclass."""
-            ...
-
-    class ModelConstructLike(Protocol):
-        """Protocol for BaseModel.model_construct-like callables."""
-
-        def __call__(self, *args: object, **kwargs: object) -> ToolBuilderLike:
-            """Construct a tool instance."""
-            ...
-
-
-_func_metadata_module: ModuleType | None = None
-try:
-    _fastmcp_module = import_module("mcp.server.fastmcp")
-    _tool_module = import_module("mcp.server.fastmcp.tools.base")
-    _func_metadata_module = import_module("mcp.server.fastmcp.utilities.func_metadata")
-except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback tests
-    FastMCP = cast("object | None", None)
-    Tool = cast("object | None", None)
-    _func_metadata_module = None
-else:
-    FastMCP = cast("object | None", _fastmcp_module.FastMCP)
-    Tool = cast("object | None", _tool_module.Tool)
 
 
 @dataclass(frozen=True)
@@ -186,99 +89,6 @@ class McpServerExtras:
 
 
 FallbackStandaloneServer = _FallbackStandaloneServer
-
-
-def _make_tool_argument_model(
-    *,
-    required: set[str],
-    property_types: Mapping[str, str | None],
-) -> type[BaseModel]:
-    """Create a lightweight argument model for FastMCP tool wrappers."""
-
-    fields: dict[str, tuple[type[object], object]] = {}
-    for name in property_types:
-        fields[name] = (object, ... if name in required else None)
-    create_model_factory = cast("CreateModelFactoryLike", create_model)
-    return create_model_factory(
-        "ToolArgumentModel",
-        __config__=ConfigDict(extra="allow"),
-        **fields,
-    )
-
-
-def _make_tool_metadata(
-    *,
-    required: set[str],
-    property_types: Mapping[str, str | None],
-) -> object:
-    """Create FastMCP-compatible metadata without dynamic Pydantic model generation."""
-
-    arg_model = _make_tool_argument_model(required=required, property_types=property_types)
-
-    def pre_parse_json(data: dict[str, object]) -> dict[str, object]:
-        new_data = data.copy()
-        for data_key, data_value in data.items():
-            schema_type = property_types.get(data_key)
-            if not isinstance(data_value, str) or schema_type == "string":
-                continue
-            try:
-                loaded: object = json.loads(data_value)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(loaded, (str, int, float)):
-                continue
-            new_data[data_key] = loaded
-        return new_data
-
-    async def call_fn_with_arg_validation(
-        fn: ToolHandlerLike,
-        fn_is_async: bool,
-        arguments_to_validate: dict[str, object],
-        arguments_to_pass_directly: dict[str, object] | None,
-    ) -> object:
-        arguments_pre_parsed = pre_parse_json(arguments_to_validate)
-        missing = sorted(required.difference(arguments_pre_parsed))
-        if missing:
-            raise ValueError(f"Missing required tool arguments: {', '.join(missing)}")
-        arguments_parsed_model = arg_model.model_validate(arguments_pre_parsed)
-        arguments_parsed_dict = cast("dict[str, object]", arguments_parsed_model.model_dump())
-        arguments_parsed_dict |= arguments_to_pass_directly or {}
-        if fn_is_async:
-            result = fn(**arguments_parsed_dict)
-            return await cast("Awaitable[object]", result)
-        # SINGLE async-offload point for EVERY registered tool. Every tool — both
-        # Ralph-native (exec, git_read, websearch, webvisit, …) and proxied
-        # third-party/upstream MCP tools — is registered via `_create_tool`, which
-        # wires this same `_make_tool_metadata`, so they all inherit this behavior
-        # with no per-tool duplication. Sync handlers block on subprocesses/IO/
-        # network for up to their timeout; running them in a worker thread keeps
-        # the asyncio event loop free. A frozen loop stalls SSE streaming and
-        # keepalives, which the MCP client surfaces as -32001 Request timed out.
-        return await anyio.to_thread.run_sync(functools.partial(fn, **arguments_parsed_dict))
-
-    def convert_result(result: object) -> object:
-        if (
-            isinstance(result, dict)
-            and "content" in result
-            and ("isError" in result or "is_error" in result)
-        ):
-            return result
-        if hasattr(result, "isError") and hasattr(result, "content"):
-            return result
-        _converter: object = getattr(_func_metadata_module, "_convert_to_content", None)
-        if callable(_converter):
-            return cast("object", _converter(result))
-        return result
-
-    return SimpleNamespace(
-        arg_model=arg_model,
-        output_schema=None,
-        output_model=None,
-        wrap_output=False,
-        pre_parse_json=pre_parse_json,
-        call_fn_with_arg_validation=call_fn_with_arg_validation,
-        convert_result=convert_result,
-    )
 
 
 def build_standalone_http_server(
@@ -379,127 +189,6 @@ def _all_capability_values() -> set[str]:
     return values
 
 
-def _build_tool_handler(registry: ToolBridge, definition: ToolDefinition) -> ToolHandlerLike:
-    def _dispatch(**kwargs: object) -> object:
-        params = {key: value for key, value in kwargs.items() if value is not None}
-        raw_result = registry.dispatch(definition.name, params)
-        to_dict = cast("Callable[[], object] | None", getattr(raw_result, "to_dict", None))
-        if callable(to_dict):
-            return to_dict()
-        return raw_result
-
-    def handler(**kwargs: object) -> object:
-        return _dispatch(**kwargs)
-
-    handler.__name__ = f"ralph_tool_{definition.name}"
-    handler.__doc__ = definition.description
-    return handler
-
-
-def _create_tool(registry: ToolBridge, definition: ToolDefinition) -> ToolBuilderLike:
-    schema = definition.input_schema
-    properties = cast("dict[str, dict[str, object]]", schema.get("properties", {}))
-    required = set(cast("list[str]", schema.get("required", [])))
-    property_types = {
-        name: cast("str | None", property_schema.get("type"))
-        for name, property_schema in properties.items()
-    }
-    metadata = _make_tool_metadata(required=required, property_types=property_types)
-    handler = _build_tool_handler(registry, definition)
-    tool_cls = cast("type[BaseModel]", Tool)
-    model_construct = cast("ModelConstructLike", cast("object", tool_cls.model_construct))
-    return model_construct(
-        fn=handler,
-        name=definition.name,
-        title=None,
-        description=definition.description,
-        parameters=definition.input_schema,
-        fn_metadata=metadata,
-        is_async=False,
-        context_kwarg=None,
-        annotations=None,
-        icons=None,
-        meta=None,
-    )
-
-
-def build_fastmcp_server(
-    workspace_root: Path,
-    *,
-    host: str = DEFAULT_HOST,
-    port: int = DEFAULT_PORT,
-    extras: McpServerExtras | None = None,
-    session: McpSession | None = None,
-) -> FastMcpServerLike:
-    """Build a standalone FastMCP server exposing Ralph tools over HTTP."""
-    _extras = extras or McpServerExtras()
-    fastmcp_cls = FastMCP
-    tool_cls = Tool
-    effective_session = (
-        session
-        or _extras.session
-        or AgentSession(
-            session_id=f"standalone-{uuid.uuid4().hex[:8]}",
-            run_id=str(uuid.uuid4()),
-            drain="standalone",
-            capabilities=_all_capability_values(),
-        )
-    )
-    allowed_roots = cast("tuple[Path, ...]", getattr(effective_session, "allowed_roots", ()))
-    workspace = FsWorkspace(
-        workspace_root,
-        allowed_roots=allowed_roots if allowed_roots else None,
-    )
-    mcp_cfg = (
-        _extras.mcp_config
-        if _extras.mcp_config is not None
-        else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
-    )
-    upstream_servers = load_runtime_upstream_servers(mcp_cfg)
-    tool_catalog = load_upstream_tool_catalog(os.environ.get(UPSTREAM_MCP_TOOL_CATALOG_ENV))
-    if tool_catalog:
-        upstream_servers = tuple(
-            server for server in upstream_servers if server.name in tool_catalog
-        )
-    if _extras.upstream_registry is not None:
-        upstream_reg = _extras.upstream_registry
-    elif upstream_servers and tool_catalog:
-        upstream_reg = UpstreamRegistry.build_from_tool_catalog(upstream_servers, tool_catalog)
-    elif upstream_servers:
-        upstream_reg = UpstreamRegistry.build(upstream_servers)
-    else:
-        upstream_reg = None
-    registry = build_ralph_tool_registry(
-        effective_session,
-        workspace,
-        upstream_registry=upstream_reg,
-        mcp_config=mcp_cfg,
-    )
-    if fastmcp_cls is None or tool_cls is None:
-        fallback_server = McpServer(
-            effective_session,
-            workspace,
-            registry,
-            wrapup_provider=_session_wrapup_provider(),
-        )
-        return cast(
-            "FastMcpServerLike",
-            FallbackStandaloneServer(host, port, fallback_server),
-        )
-    tools = cast(
-        "list[ToolClass]",
-        [_create_tool(registry, definition) for definition in registry.list_definitions()],
-    )
-    fastmcp_constructor = cast("FastMcpConstructorLike", fastmcp_cls)
-    return fastmcp_constructor(
-        "ralph-mcp",
-        host=host,
-        port=port,
-        streamable_http_path=DEFAULT_MOUNT_PATH,
-        tools=tools,
-    )
-
-
 def _workspace_mcp_config_path(workspace_root: Path) -> Path:
     return workspace_root / ".agent" / "mcp.toml"
 
@@ -570,13 +259,13 @@ __all__ = [
     "DEFAULT_MOUNT_PATH",
     "DEFAULT_PORT",
     "DEFAULT_TRANSPORT",
+    "FallbackStandaloneServer",
     "FileBackedSession",
     "JsonRpcRequest",
     "McpServer",
     "McpServerExtras",
     "ServerState",
     "__version__",
-    "build_fastmcp_server",
     "build_standalone_http_server",
     "load_runtime_upstream_servers",
     "main",

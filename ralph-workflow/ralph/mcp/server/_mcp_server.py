@@ -12,6 +12,7 @@ from ralph import __version__
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.resources import parse_media_uri
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
+from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
 
@@ -131,6 +132,7 @@ class McpServer:
         *,
         expose_mcp_aliases: bool = True,
         wrapup_provider: Callable[[], str | None] | None = None,
+        metrics: McpMetrics | None = None,
     ) -> None:
         self._session = session
         self._workspace = workspace
@@ -141,6 +143,13 @@ class McpServer:
         # invocation passes the soft threshold, else None. Appended to every
         # tool result so the agent winds down before the hard force-cut.
         self._wrapup_provider = wrapup_provider
+        # Observability metrics — counters the production transport wires
+        # to record post-header failures, terminal frames, and health-probe
+        # outcomes. Tests inject a fresh instance to assert observable behavior
+        # without the production default. If left as None, the
+        # get_default_metrics() singleton is consulted lazily inside
+        # handle_request.
+        self._metrics = metrics
 
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState
@@ -158,6 +167,13 @@ class McpServer:
         except Exception as exc:
             logger.error(
                 "MCP request handler crashed for method={}: {}", request.method, exc
+            )
+            metrics = self._metrics if self._metrics is not None else get_default_metrics()
+            metrics.record_post_header_failure(
+                request_id=request.msg_id,
+                method=request.method,
+                session_impl=type(self._session).__name__,
+                cause=type(exc).__name__,
             )
             error = {"code": -32603, "message": f"Internal server error: {exc}"}
             return (

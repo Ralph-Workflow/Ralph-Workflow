@@ -1194,6 +1194,13 @@ ralph.agents.unknown_agent_error
    :members:
    :show-inheritance:
 
+ralph.agents.idle_watchdog_kill
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.idle_watchdog_kill
+   :members:
+   :show-inheritance:
+
 ralph.agents.worker_result
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

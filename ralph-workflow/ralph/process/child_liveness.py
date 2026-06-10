@@ -81,9 +81,14 @@ def classify_child_snapshot(
 
     # No scoped Ralph evidence at all — fall back to OS descendants if present.
     if has_os_descendants:
+        # Property G: do NOT allow deferral just because the agent has
+        # descendant processes. The watchdog exists to recognize that a
+        # session is wedged even when the agent spawned unrelated, long-lived
+        # children (ng mcp, playwright, etc.). Deferral permission must come
+        # from Ralph's own progress signals, not from process tree presence.
         return ChildEvidenceVerdict(
             alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
-            deferral_allowed=True,
+            deferral_allowed=False,
         )
 
     return ChildEvidenceVerdict(alive_by=None, deferral_allowed=False)

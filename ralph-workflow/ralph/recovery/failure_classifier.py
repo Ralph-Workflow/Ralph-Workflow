@@ -407,6 +407,17 @@ class FailureClassifier:
         *,
         connectivity_state: str | None,
     ) -> tuple[FailureCategory, bool, bool] | None:
+        # IdleWatchdogKilledError: classify by the watchdog's typed
+        # attributes (reason, signal) — never by the str(exc) text. The
+        # exception message may legitimately contain misleading tokens
+        # like the word "timeout" (it is in fact a SIGTERM), and the
+        # substring-match vocabulary below would mislabel it as a
+        # connectivity blip. The check is FIRST so the typed-cause
+        # branch wins before any text scanning.
+        from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
+
+        if isinstance(exc, IdleWatchdogKilledError):
+            return FailureCategory.AGENT, True, False
         for predicate, result in (
             (_is_user_config_exc(exc), (FailureCategory.USER_CONFIG, False, False)),
             (

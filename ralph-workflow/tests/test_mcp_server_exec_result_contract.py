@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import io
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -17,7 +16,8 @@ from ralph.mcp.server._json_rpc_request import JsonRpcRequest
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server.exec_sse_streaming import exec_sse_streaming_post
-from ralph.mcp.server.runtime import build_fastmcp_server
+from ralph.mcp.server.runtime import McpServer, build_ralph_tool_registry
+from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,13 +50,31 @@ def test_fastmcp_exec_family_returns_inline_text_result(
     monkeypatch.setattr(exec_tool, "run_command", _fake_run_command)
     monkeypatch.setattr(unsafe_exec_tool, "run_command", _fake_run_command)
 
-    server = build_fastmcp_server(tmp_path)
+    # when exec runs through the production _FallbackHttpHandler (McpServer.handle_request).
+    session = AgentSession(
+        session_id="test-exec-family",
+        run_id="run-family",
+        drain="standalone",
+        capabilities={"ProcessExecBounded", "ProcessExecUnbounded"},
+    )
+    workspace = FsWorkspace(tmp_path)
+    registry = build_ralph_tool_registry(session, workspace)
+    mcp = McpServer(session, workspace, registry)
 
-    result = asyncio.run(server._tool_manager.call_tool(tool_name, arguments))
-
-    assert isinstance(result, dict)
-    assert result["isError"] is False
-    content = result["content"]
+    response, _state = mcp.handle_request(
+        JsonRpcRequest(
+            jsonrpc="2.0",
+            method="tools/call",
+            params={"name": tool_name, "arguments": arguments},
+            msg_id=1,
+        ),
+        ServerState.RUNNING,
+    )
+    assert response is not None
+    assert response.error is None
+    result_obj = cast("dict[str, object]", response.result or {})
+    assert result_obj.get("isError") is False
+    content = result_obj.get("content")
     assert isinstance(content, list)
     assert content
     first_block = content[0]
@@ -155,7 +173,7 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """AgentSession.tool_output_sink receives chunk events before the final result
-    when exec runs through the FastMCP server path (build_fastmcp_server + session)."""
+    when exec runs through the production _FallbackHttpHandler (McpServer.handle_request)."""
     session = AgentSession(
         session_id="test-fastmcp-stream",
         run_id="run-2",
@@ -168,8 +186,9 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
     def _capture_sink(event: dict[str, object]) -> None:
         received_events.append(event)
 
-    # Owner None = "any thread": the FastMCP path dispatches tools on a
-    # worker thread, so a single-tenant embedder installs an unowned sink.
+    # Owner None = "any thread": the streaming path dispatches on the request
+    # thread but the exec reader threads call into the sink cross-thread, so
+    # the handler installs an unowned sink entry for the duration of the call.
     session.tool_output_sink_entry = (None, _capture_sink)
 
     def fake_run_command(
@@ -190,9 +209,17 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
 
     monkeypatch.setattr(exec_tool, "run_command", fake_run_command)
 
-    server = build_fastmcp_server(tmp_path, session=session)
-    result = asyncio.run(
-        server._tool_manager.call_tool("exec", {"command": "echo", "args": ["hi"]})
+    workspace = FsWorkspace(tmp_path)
+    registry = build_ralph_tool_registry(session, workspace)
+    mcp = McpServer(session, workspace, registry)
+    response, _state = mcp.handle_request(
+        JsonRpcRequest(
+            jsonrpc="2.0",
+            method="tools/call",
+            params={"name": "exec", "arguments": {"command": "echo", "args": ["hi"]}},
+            msg_id=1,
+        ),
+        ServerState.RUNNING,
     )
 
     assert received_events, "Expected chunk events via the unowned session sink entry"
@@ -202,8 +229,8 @@ def test_fastmcp_exec_session_sink_receives_output_chunks_before_result(
     assert any(e.get("text") == "chunk-B\n" for e in received_events), (
         f"Expected 'chunk-B\\n' in events: {received_events}"
     )
-    assert isinstance(result, dict)
-    assert result["isError"] is False
+    assert response is not None
+    assert response.error is None
 
 
 def test_fallback_handler_exec_streaming_post_via_handler_seam() -> None:

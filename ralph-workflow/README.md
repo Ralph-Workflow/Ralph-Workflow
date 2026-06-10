@@ -15,6 +15,14 @@ Ralph Workflow is a free, open-source composable loop framework that runs the co
 
 Run the coding agents you already use — Claude Code, Codex, OpenCode, Nanocoder, and Google Anti Gravity — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
+## MCP server trust boundary
+
+The standalone Ralph Workflow MCP server (`ralph-mcp`) binds to `127.0.0.1` and exposes the exec
+surface only over loopback. When the optional `MCP_AUTH_TOKEN` environment variable is
+set, requests must carry a matching `Authorization: Bearer <token>` header; the
+comparison uses `hmac.compare_digest` to prevent timing-side-channel attacks. An unset
+or empty `MCP_AUTH_TOKEN` is a no-op (the loopback bind is the trust boundary).
+
 ## Install and run
 
 ```bash

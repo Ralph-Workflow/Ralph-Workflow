@@ -75,7 +75,7 @@ The standalone `ralph-mcp` runtime (not changed in this reorganization).
 
 | File | Purpose |
 |------|---------|
-| `runtime.py` | Server runtime (`build_standalone_http_server`, `build_fastmcp_server`) |
+| `runtime.py` | Server runtime (`build_standalone_http_server`) — single transport path |
 | `factory.py` / `factory_impl.py` | Server factory |
 | `lifecycle.py` | Server lifecycle; spawns the standalone process via `ProcessManager`; owns the `RestartAwareMcpBridge` restart policy |
 | `__main__.py` | Entry point |
@@ -107,6 +107,45 @@ than an opaque agent timeout.
 
 All process spawning and termination during restart routes through `ProcessManager` as normal;
 the bridge never holds a raw `Popen` handle outside that boundary.
+
+**GET /health route (property C):** the production transport exposes a real `GET /health`
+HTTP route on the same `_FallbackHttpHandler` that serves every other request. The route
+invokes the existing `probe_mcp_http_endpoint` (via an injected `health_probe_fn`) and
+returns 200 healthy / 503 unhealthy application/json. Saturation-rejected requests
+(property H) return 503 + JSON-RPC -32001 `server saturated: try again later` from the
+do_POST path; the transport-repetition breaker (property G) returns 503 + JSON-RPC -32001
+`transport_loop_detected` when 3 identical failures within 60s are observed.
+
+**Trust boundary (property K):** the bind host is hard-coded to `127.0.0.1` (never
+`0.0.0.0`). When `MCP_AUTH_TOKEN` is set, the `Authorization: Bearer <token>` header is
+verified via `hmac.compare_digest` before any further dispatch. An empty/unset
+`MCP_AUTH_TOKEN` is treated as no-op (the loopback bind is the trust boundary).
+
+**Startup banner:** the standalone server logs a single line on start that announces the
+live configuration (transport, session class, dispatch cap, drain ceiling, kill escalation,
+probe timeout, auth token set) so an operator can confirm what is running.
+
+#### Target architecture properties (A–N)
+
+The MCP server realizes the target architecture from `docs/PROMPT.md` (PROMPT.md).
+Each property is paired with a fast, deterministic, black-box test in `tests/`:
+
+| Property | Test | Description |
+|----------|------|-------------|
+| A | `test_property_a_one_transport_one_behavior.py` | One transport, one behavior — the shipped path is the tested path |
+| B | `test_property_b_session_contract_conformance.py` | McpSession Protocol runtime conformance (20 members, both impls) |
+| C | `test_property_c_liveness_contract.py` | GET /health route; supervisor restart within bounded latency |
+| D | `test_property_d_failure_observability.py` | Counters, log records, startup banner |
+| E | `test_property_e_streaming_terminates.py` | Committed streaming response always terminates with a frame |
+| F | `test_property_f_retry_side_effects.py` | Side-effect registry covers every Ralph tool |
+| G | `test_property_g_recovery_signal.py` | Watchdog de-Ralph-children; transport-layer breaker |
+| H | `test_property_h_bounded_resources.py` | Bounded resources, no orphans, terminating cleanup |
+| I | `test_property_i_timing_safety.py` | End-to-end timing safety margin asserted by sum of constants |
+| K | `test_property_k_trust_boundary.py` | Loopback + auth, asserted in-memory |
+| L | `test_property_l_zero_progress_and_resume.py` | Zero-progress cap and resume path |
+| M | `test_property_m_structured_cause.py` | Failures classified by structured cause, not text-match |
+| N | `test_property_n_spill_inside_workspace.py` | Spill paths inside the workspace root |
+| Foundation | `test_in_memory_transport_round_trip.py` | In-memory transport harness — drives A, B, C, E, K |
 
 Key guarantees:
 

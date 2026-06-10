@@ -6,6 +6,8 @@ import json
 import threading
 from typing import TYPE_CHECKING
 
+from ralph.mcp.server._metrics import get_default_metrics
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 
@@ -80,6 +82,7 @@ def exec_sse_streaming_post(
             if response.error is not None:
                 body["error"] = response.error
             _locked_write(f"event: message\r\ndata: {json.dumps(body)}\r\n\r\n".encode())
+            get_default_metrics().record_terminal_frame(request.method)
     except Exception as exc:
         error_body: dict[str, object] = {
             "jsonrpc": "2.0",
@@ -87,6 +90,7 @@ def exec_sse_streaming_post(
             "error": {"code": -32603, "message": str(exc)},
         }
         _locked_write(f"event: message\r\ndata: {json.dumps(error_body)}\r\n\r\n".encode())
+        get_default_metrics().record_terminal_frame(request.method)
     finally:
         # Compare-and-swap clear: only clear if this request's entry is still
         # installed. An overlapping request that took ownership mid-dispatch

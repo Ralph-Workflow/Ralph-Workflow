@@ -82,6 +82,19 @@ EXEC_DEFAULT_TIMEOUT_MS: int = 90_000
 #: ``-32001 Request timed out`` storm). 5 minutes is generous for any single command.
 EXEC_MAX_TIMEOUT_MS: int = 300_000
 
+#: Hard upper bound on the post-final-frame SSE drain grace (the time the
+#: server waits for the final frame's write to complete before closing the
+#: connection). A slow client cannot outrun the dispatch cap by holding
+#: the receive buffer open past the dispatch — the server gives the final
+#: frame at most this many milliseconds to drain. Tuned for LAN clients.
+SSE_DRAIN_CEILING_MS: int = 5_000
+
+#: Hard upper bound on the SIGTERM-then-SIGKILL escalation grace. When a
+#: child must be terminated, the server first sends SIGTERM and waits at
+#: most this long before escalating to SIGKILL. Tuned for fast subprocess
+#: shutdown.
+KILL_ESCALATION_CEILING_MS: int = 5_000
+
 #: Default poll interval for the read loop.
 IDLE_POLL_INTERVAL_SECONDS: float = 0.05
 

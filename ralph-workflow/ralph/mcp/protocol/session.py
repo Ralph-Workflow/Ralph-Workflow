@@ -50,17 +50,18 @@ def session_has_capability(granted: set[str], requested: str) -> bool:
 #: lives in ONE attribute so a concurrent reader performs a single (atomic)
 #: attribute load and can never observe a torn owner/sink combination — the
 #: TOCTOU that routed one request's exec output onto another's connection.
-#: An owner of ``None`` means "any thread" — for single-tenant embeddings
-#: (e.g. the FastMCP path, where dispatch hops to a worker thread); the
-#: fallback HTTP server always stamps the real request-thread ident.
+#: An owner of ``None`` means "any thread" — used by single-tenant embeddings
+#: where the exec reader threads run on a different thread than the request
+#: thread; the production ``_FallbackHttpHandler`` stamps the real
+#: request-thread ident.
 ToolOutputSinkEntry = tuple[int | None, "Callable[[dict[str, object]], None]"]
 
 
 class McpSession(Protocol):
     """Full structural contract for MCP server session objects.
 
-    Both implementations — the in-memory ``AgentSession`` (tests, FastMCP
-    path) and the production ``FileBackedSession`` (standalone server via
+    Both implementations — the in-memory ``AgentSession`` (used by tests)
+    and the production ``FileBackedSession`` (standalone server via
     ``session_from_env``) — must satisfy this protocol. ``session_from_env``
     returns this type, so ``mypy ralph/`` (run by ``make verify``) enforces
     structural conformance of both; surface drift between the two shipped a

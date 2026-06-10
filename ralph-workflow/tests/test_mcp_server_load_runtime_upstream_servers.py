@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -250,9 +249,12 @@ def test_file_backed_session_accepts_injected_fallback_id_factories() -> None:
     assert session.run_id == "fallback-run"
 
 
-def test_build_fastmcp_server_falls_back_without_mcp_dependency(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_build_standalone_http_server_falls_back_without_mcp_dependency(
+    tmp_path: Path,
 ) -> None:
+    # Property A: there is no alternate FastMCP path. The single production
+    # _FallbackStandaloneServer (via build_standalone_http_server) is the
+    # only server construction surface. This test pins the shipped path.
     session = _session(
         capabilities={
             "WorkspaceRead",
@@ -261,14 +263,9 @@ def test_build_fastmcp_server_falls_back_without_mcp_dependency(
             "RunReportProgress",
         }
     )
-
-    monkeypatch.setattr(server_runtime, "FastMCP", None)
-    monkeypatch.setattr(server_runtime, "Tool", None)
-    server = server_runtime.build_fastmcp_server(
+    server = server_runtime.build_standalone_http_server(
         tmp_path, extras=server_runtime.McpServerExtras(session=session)
     )
-
-    assert isinstance(server, server_runtime.FallbackStandaloneServer)
 
     mcp_server = server._mcp_server
     state = server_runtime.ServerState.UNINITIALIZED
@@ -425,7 +422,7 @@ def test_build_standalone_http_server_allows_post_while_get_stream_is_open(
     assert next_state == server_runtime.ServerState.RUNNING
 
 
-def test_build_fastmcp_server_filters_tools_by_session_capabilities(tmp_path: Path) -> None:
+def test_build_standalone_http_server_filters_tools_by_session_capabilities(tmp_path: Path) -> None:
     session = AgentSession(
         session_id="session-filtered",
         run_id="run-filtered",
@@ -433,8 +430,22 @@ def test_build_fastmcp_server_filters_tools_by_session_capabilities(tmp_path: Pa
         capabilities={"WorkspaceRead", "ArtifactSubmit"},
     )
 
-    server = server_runtime.build_fastmcp_server(tmp_path, session=session)
-    tool_names = {tool.name for tool in server._tool_manager.list_tools()}
+    workspace = FsWorkspace(tmp_path)
+    registry = server_runtime.build_ralph_tool_registry(session, workspace)
+    mcp_server = server_runtime.McpServer(session, workspace, registry)
+    _, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        server_runtime.ServerState.UNINITIALIZED,
+    )
+    tools_response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=2),
+        state,
+    )
+    assert tools_response is not None
+    tools_result = cast("dict[str, object]", tools_response.result)
+    tool_names = {
+        cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+    }
 
     assert "read_file" in tool_names
     assert "directory_tree" in tool_names
@@ -443,18 +454,36 @@ def test_build_fastmcp_server_filters_tools_by_session_capabilities(tmp_path: Pa
     assert "write_file" not in tool_names
 
 
-def test_build_fastmcp_server_preserves_registry_input_schema(tmp_path: Path) -> None:
-    server = server_runtime.build_fastmcp_server(tmp_path)
+def test_build_standalone_http_server_preserves_registry_input_schema(tmp_path: Path) -> None:
+    workspace = FsWorkspace(tmp_path)
+    session = AgentSession(
+        session_id="schema-session",
+        run_id="schema-run",
+        drain="standalone",
+        capabilities=server_runtime._all_capability_values(),
+    )
+    registry = server_runtime.build_ralph_tool_registry(session, workspace)
+    mcp_server = server_runtime.McpServer(session, workspace, registry)
+    _, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        server_runtime.ServerState.UNINITIALIZED,
+    )
+    tools_response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=2),
+        state,
+    )
+    assert tools_response is not None
+    tools_result = cast("dict[str, object]", tools_response.result)
+    tools_list = cast("list[dict[str, object]]", tools_result["tools"])
+    tools = {cast("str", t["name"]): t for t in tools_list}
 
-    tool_manager = server._tool_manager
-    tools = {tool.name: tool for tool in tool_manager.list_tools()}
-
-    read_env_schema = cast("dict[str, object]", tools["read_env"].parameters)
+    read_env_schema = cast("dict[str, object]", tools["read_env"]["inputSchema"])
     properties = cast("dict[str, object]", read_env_schema["properties"])
     assert read_env_schema["required"] == ["name"]
     assert "name" in properties
 
-    submit_artifact_schema = cast("dict[str, object]", tools["ralph_submit_artifact"].parameters)
+    submit_artifact_schema_raw = tools["ralph_submit_artifact"]["inputSchema"]
+    submit_artifact_schema = cast("dict[str, object]", submit_artifact_schema_raw)
     submit_properties = cast("dict[str, object]", submit_artifact_schema["properties"])
     assert "partial" not in submit_properties
     assert "content_path" not in submit_properties
@@ -495,14 +524,33 @@ def test_runtime_main_launches_streamable_http_server(
     }
 
 
-def test_build_fastmcp_server_normalizes_tool_result_payload(tmp_path: Path) -> None:
-    server = server_runtime.build_fastmcp_server(tmp_path)
-
-    result = cast(
-        "dict[str, object]",
-        asyncio.run(server._tool_manager.call_tool("report_progress", {"status": "running"})),
+def test_build_standalone_http_server_normalizes_tool_result_payload(tmp_path: Path) -> None:
+    session = AgentSession(
+        session_id="normalize-session",
+        run_id="normalize-run",
+        drain="standalone",
+        capabilities=server_runtime._all_capability_values(),
+    )
+    workspace = FsWorkspace(tmp_path)
+    registry = server_runtime.build_ralph_tool_registry(session, workspace)
+    mcp_server = server_runtime.McpServer(session, workspace, registry)
+    _, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        server_runtime.ServerState.UNINITIALIZED,
+    )
+    response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(
+            jsonrpc="2.0",
+            method="tools/call",
+            msg_id=2,
+            params={"name": "report_progress", "arguments": {"status": "running"}},
+        ),
+        state,
     )
 
+    assert response is not None
+    assert response.error is None
+    result = cast("dict[str, object]", response.result or {})
     assert isinstance(result, dict)
     assert result["isError"] is False
     assert isinstance(result["content"], list)
@@ -662,7 +710,7 @@ def test_upstream_proxy_tool_name_follows_canonical_namespace_format() -> None:
     assert upstream_proxy_tool_name("my_server", "my_tool") == "ralph_upstream__my_server__my_tool"
 
 
-def test_build_fastmcp_server_lists_proxied_upstream_tools(tmp_path: Path) -> None:
+def test_build_standalone_http_server_lists_proxied_upstream_tools(tmp_path: Path) -> None:
     session = AgentSession(
         session_id="session-upstream-list",
         run_id="run-upstream-list",
@@ -802,10 +850,6 @@ def test_upstream_registry_catalog_excludes_unhealthy_upstream_servers() -> None
     [
         (
             "build_standalone_http_server",
-            lambda mcp_config: {"extras": server_runtime.McpServerExtras(mcp_config=mcp_config)},
-        ),
-        (
-            "build_fastmcp_server",
             lambda mcp_config: {"extras": server_runtime.McpServerExtras(mcp_config=mcp_config)},
         ),
     ],

@@ -6,9 +6,10 @@ Only version control commands (git, hg, svn) are blocked.
 Execution goes through the SAME bounded process-manager path as ``exec``
 (``run_command``): output is capped (and spilled to a file when oversized rather
 than buffered unbounded in memory) and the process tree is killed on timeout. The
-sync handler itself is offloaded off the asyncio event loop by the FastMCP
-dispatch (``ralph.mcp.server.runtime``), so a long shell command cannot freeze
-the server — it is async by default like every other tool.
+sync handler is dispatched off the asyncio event loop by the production
+``_FallbackHttpHandler`` via the saturated-dispatch seam
+(``ralph.mcp.server._saturated_dispatch``), so a long shell command cannot
+freeze the server.
 """
 
 from __future__ import annotations
