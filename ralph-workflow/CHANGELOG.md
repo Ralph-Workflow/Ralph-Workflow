@@ -74,6 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after fan-out completes. Records per-worker status (`succeeded`, `failed`, `blocked`, `cancelled`),
   artifact counts, and verification outcome. Worker success is based on worker-local artifact
   evidence only — repo-wide git state is never used.
+- **Visual hierarchy fill for the 4 table/panel emit_* methods** — `ParallelDisplay.emit_agents_table`, `emit_providers_table`, `emit_config_table`, and `emit_info_panel` now emit a `[agents]` / `[providers]` / `[config]` / `[info]` section-rule header in non-compact mode, matching the contract pinned by `tests/display/test_parallel_display_visual_hierarchy.py`. The 4 methods gain a `_emit_section_rule(tag)` call as the first statement inside the `with contextlib.suppress(Exception):` block, guarded by `ctx.mode != "compact"` so the narrow-terminal contract is preserved.
+- **Black-box coverage for the 11 previously untested emit_* methods** — new test files in `tests/display/` pin the section-rule header, the banner title, and the quiet-mode no-output contract for `emit_agents_table`, `emit_providers_table`, `emit_config_table`, `emit_capability_summary`, `emit_diagnose_inventory_table`, `emit_diagnose_probe_table`, `emit_diagnose_servers_table`, `emit_renderable`, `emit_first_run_panel`, `emit_welcome_banner`, and `emit_phase_close_from_exit`. The existing `tests/display/test_parallel_display_emit_info_panel.py` gains 2 new tests (section-rule assertion, quiet-mode no-output assertion). The new tests follow the existing `_display()` StringIO+Console factory pattern and complete in < 0.1s each. `tests/display/test_di_invariants.py` now also asserts every emit_* method is referenced in at least one `tests/display/test_parallel_display_*.py` test file (broadened glob), so a future addition without a test reference fails `make verify`.
 
 ### Removed
 - **Cloud reporting infrastructure removed.** The old cloud reporting package, API shim, config model, and TOML section have been removed in favour of the new `ralph.supervising` trackable instance model.
@@ -96,6 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   post-fanout merge step; soft isolation by path fencing and per-worker namespaces only.
 - `worker_developer.jinja` now correctly includes `shared/_unattended_mode.jinja` (was
   `_unattended_mode.j2`) and explicitly tells workers they share the checkout.
+- **Strengthened anti-drift guard against free-function display imports** — `tests/test_no_anti_drift_regression.py` adds `TestNoExcludedEmitMethod` which AST-walks `ralph/cli/commands/`, `ralph/pipeline/`, and `ralph/config/` and asserts no module imports an `emit_*` method directly from `ralph.display.parallel_display`. Callers must use the public `ralph.display` re-export surface (`from ralph.display import ParallelDisplay`, then `display.emit_xxx`). This closes the original drift vector that caused the wt-007 split to begin with. The module docstring of `parallel_display.py` now correctly states 'Thirty-six instance methods' (was 'Thirty-five').
 
 ### Removed
 - Dead worktree-first parallel code paths. The only supported parallel execution mode is

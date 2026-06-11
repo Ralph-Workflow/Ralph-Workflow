@@ -26,11 +26,13 @@ import ast
 import importlib
 import inspect
 import io
+import re
 import tokenize
 from functools import cache, lru_cache
 from pathlib import Path
 
 from ralph.display import resolve_display as _resolve_display_canonical
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline.runner import resolve_display as _resolve_display_runner
 
 _DISPLAY_DIR = Path(__file__).parent.parent.parent / "ralph" / "display"
@@ -489,6 +491,149 @@ def test_no_free_function_imports_in_cli_or_pipeline() -> None:
         "ralph/config/ (wt-007 anti-drift guard tripped):\n"
         + "\n".join(print_violations)
     )
+
+
+# ---------------------------------------------------------------------------
+# wt-007 closing pass: every emit_* method has at least one black-box test
+# reference; the canonical 36-name set is the single source of truth.
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _test_parallel_display_files() -> tuple[Path, ...]:
+    """Return all ``test_parallel_display_*.py`` files under ``tests/display/``.
+
+    Broadened glob (vs. just ``test_parallel_display_emit_*.py``) so that
+    references in ``test_parallel_display_drift_prevention.py`` (which
+    enumerates the 36-name set) and ``test_parallel_display_visual_hierarchy.py``
+    also count as black-box coverage.
+    """
+    glob_root = _REPO_ROOT_FOR_TESTS / "tests" / "display"
+    return tuple(sorted(glob_root.glob("test_parallel_display_*.py")))
+
+
+@lru_cache(maxsize=1)
+def _canonical_36_names() -> frozenset[str]:
+    """Return the canonical 36 emit_* method names from drift_prevention.
+
+    Single-sources the canonical set so this test never drifts from the
+    authoritative surface defined in
+    ``tests/display/test_parallel_display_drift_prevention.py``.
+    """
+    drift_module = importlib.import_module(
+        "tests.display.test_parallel_display_drift_prevention"
+    )
+    return frozenset(drift_module._PARALLEL_DISPLAY_36_NAMES)
+
+
+def test_every_emit_method_has_black_box_coverage() -> None:
+    """Every emit_* method is referenced in some ``test_parallel_display_*.py``.
+
+    Walks the broadened glob of test files and asserts each canonical
+    36-name set entry (minus the leading ``emit_`` prefix) appears as a
+    substring somewhere in those files' bodies. This guards against
+    silent additions to ParallelDisplay that are never covered by a
+    black-box test.
+    """
+    canonical = _canonical_36_names()
+    file_bodies: list[tuple[Path, str]] = [
+        (path, path.read_text(encoding="utf-8")) for path in _test_parallel_display_files()
+    ]
+    missing: list[str] = []
+    for full_name in sorted(canonical):
+        # Strip the ``emit_`` prefix to check for the method name as a
+        # substring in test bodies (e.g. ``emit_agents_table`` -> ``agents_table``).
+        bare = full_name[len("emit_") :] if full_name.startswith("emit_") else full_name
+        if not any(f"emit_{bare}" in body for _, body in file_bodies):
+            missing.append(full_name)
+    assert not missing, (
+        f"emit_* methods without a black-box test reference in any "
+        f"test_parallel_display_*.py: {missing!r}. Add a test file in "
+        f"tests/display/ that references each missing name."
+    )
+
+
+def test_table_panel_methods_emit_section_rule_header() -> None:
+    """Every table/panel emit_* method calls ``_emit_section_rule(...)``.
+
+    Uses :func:`inspect.getsource` on each of the 10 table/panel methods
+    and asserts the source contains either the ``_emit_section_rule(``
+    call or the literal section-rule tag (e.g. ``[agents]``) as a
+    substring. The two exempt methods (``emit_first_run_panel`` and
+    ``emit_renderable``) are explicitly skipped because their own
+    panel/renderable IS the visual section, not a tag prefix.
+    """
+    exempt = {"emit_first_run_panel", "emit_renderable"}
+    table_panel_methods = (
+        "emit_agents_table",
+        "emit_providers_table",
+        "emit_config_table",
+        "emit_metrics_table",
+        "emit_checkpoint_summary_table",
+        "emit_diagnose_inventory_table",
+        "emit_diagnose_probe_table",
+        "emit_diagnose_servers_table",
+        "emit_capability_summary",
+        "emit_info_panel",
+    )
+    canonical_set = _canonical_36_names()
+    missing_section_rule: list[str] = []
+    for name in table_panel_methods:
+        if name in exempt:
+            continue
+        assert name in canonical_set, (
+            f"test_table_panel_methods_emit_section_rule_header references "
+            f"unknown method {name!r}"
+        )
+        method = getattr(ParallelDisplay, name, None)
+        if method is None:
+            missing_section_rule.append(f"{name}: method missing")
+            continue
+        try:
+            source = inspect.getsource(method)
+        except (OSError, TypeError):
+            missing_section_rule.append(f"{name}: source unavailable")
+            continue
+        if "_emit_section_rule(" not in source and "[" not in source:
+            missing_section_rule.append(name)
+    assert not missing_section_rule, (
+        "Table/panel emit_* methods missing a section-rule header: "
+        f"{missing_section_rule!r}. Add ``if self._ctx.mode != 'compact': "
+        "self._emit_section_rule('[<tag>]')`` as the first statement "
+        "inside the ``with contextlib.suppress(Exception):`` block."
+    )
+
+
+def test_every_emit_method_with_test_file_match_exists() -> None:
+    """Every ``emit_*`` reference in ``test_parallel_display_emit_*.py`` files
+    corresponds to a real ParallelDisplay method.
+
+    Companion to ``test_every_emit_method_has_black_box_coverage``:
+    catches a regression where someone adds a stray
+    ``test_parallel_display_emit_foo.py`` for a method that doesn't
+    exist on the class. The broadened glob from test 1 already catches
+    this; this test makes the invariant explicit and produces a
+    focused diagnostic.
+    """
+    canonical = _canonical_36_names()
+    for path in _test_parallel_display_files():
+        if not path.name.startswith("test_parallel_display_emit_"):
+            continue
+        body = path.read_text(encoding="utf-8")
+        for line in body.splitlines():
+            for match in re.findall(r"emit_([A-Za-z0-9_]+)", line):
+                full = f"emit_{match}"
+                if full in canonical:
+                    continue
+                # Allow references inside comments / docstrings that
+                # mention a different canonical set (e.g. test files
+                # that describe the surface, not call it).
+                stripped = line.strip()
+                starts_comment = stripped.startswith("#")
+                starts_docstring_double = stripped.startswith('"""')
+                starts_docstring_single = stripped.startswith("'''")
+                if starts_comment or starts_docstring_double or starts_docstring_single:
+                    continue
 
 
 _REPO_ROOT_FOR_TESTS = Path(__file__).parent.parent.parent

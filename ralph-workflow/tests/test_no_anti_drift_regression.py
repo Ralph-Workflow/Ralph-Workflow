@@ -17,6 +17,7 @@ import importlib
 import pathlib
 import re
 import time
+from functools import lru_cache
 
 import pytest
 
@@ -1462,3 +1463,86 @@ class TestRegressionBudget:
             f"(budget {self.BUDGET_SECONDS}s). Refactor slow AST work "
             "or split into cheaper tests; do NOT raise the 60s combined budget."
         )
+
+
+# ---------------------------------------------------------------------------
+# wt-007 closing pass: no CLI/pipeline/config may import emit_* methods
+# directly from ralph.display.parallel_display. Callers must use the
+# public re-export surface (ralph.display.ParallelDisplay.emit_xxx).
+# ---------------------------------------------------------------------------
+
+
+class TestNoExcludedEmitMethod:
+    """Pin: no module imports an emit_* method directly from parallel_display.
+
+    Walks every ``.py`` under ``ralph/cli/commands/``, ``ralph/pipeline/``,
+    and ``ralph/config/`` and asserts the public re-export surface is
+    used. The AST scan is precise: it only matches
+    ``from ralph.display.parallel_display import emit_xxx`` (NOT
+    ``from ralph.display import ParallelDisplay``). The escape hatch
+    for intentional direct imports is the
+    ``# noqa: anti-drift-allow`` marker paired with an explicit entry
+    in the ``anti-drift-allow`` allowlist in
+    ``ralph/testing/audit_lint_bypass.py``. The current code has zero
+    direct imports; this test pins that property.
+    """
+
+    def test_no_excluded_emit_method_appears_in_cli_or_pipeline(self) -> None:
+        """AST-scan CLI/pipeline/config for direct ``emit_*`` imports from parallel_display.
+
+        Matches both top-level module-scope and function-scope imports
+        of the form ``from ralph.display.parallel_display import emit_xxx``
+        where ``emit_xxx`` is a name in the canonical 36-method instance
+        set (single-sourced from
+        ``tests.display.test_parallel_display_drift_prevention._PARALLEL_DISPLAY_36_NAMES``).
+        The module-level ``emit_activity_line`` is exempt because it is
+        the legitimate free-function helper (1 name; the 36 are
+        instance methods). Callers must use the public re-export
+        surface ``from ralph.display import ParallelDisplay`` and call
+        ``display.emit_xxx`` instead.
+        """
+        # Single-source the canonical 36 instance-method names so this
+        # test never drifts from the authoritative surface.
+        drift_module = importlib.import_module(
+            "tests.display.test_parallel_display_drift_prevention"
+        )
+        canonical_36: frozenset[str] = frozenset(
+            drift_module._PARALLEL_DISPLAY_36_NAMES
+        )
+        offenders: list[str] = []
+        for path in _emission_target_files():
+            source = _read(path)
+            try:
+                tree = ast.parse(source)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom):
+                    continue
+                if node.module != "ralph.display.parallel_display":
+                    continue
+                for alias in node.names:
+                    if alias.name in canonical_36:
+                        offenders.extend([
+                            (
+                                f"{path.relative_to(RALPH_ROOT.parent)}:"
+                                f"{node.lineno}: from ralph.display.parallel_display "
+                                f"import {alias.name}"
+                            )
+                        ])
+        assert not offenders, (
+            "Direct instance-method emit_* imports from "
+            "ralph.display.parallel_display found in CLI/pipeline/config "
+            "(wt-007 anti-drift guard tripped):\n"
+            + "\n".join(offenders)
+        )
+
+
+@lru_cache(maxsize=1)
+def _emission_target_files() -> tuple[pathlib.Path, ...]:
+    """Return all ``.py`` files under CLI / pipeline / config (module-level)."""
+    files: list[pathlib.Path] = []
+    files.extend((RALPH_ROOT / "cli" / "commands").glob("*.py"))
+    files.extend((RALPH_ROOT / "pipeline").rglob("*.py"))
+    files.extend((RALPH_ROOT / "config").glob("*.py"))
+    return tuple(files)

@@ -1,7 +1,7 @@
 """Parallel display adapter: always emit log-first, copy-paste-safe transcript lines.
 
 wt-007-consolidate-display: All display logic is consolidated onto this class.
-Thirty-five instance methods (plus the module-level ``emit_activity_line``)
+Thirty-six instance methods (plus the module-level ``emit_activity_line``)
 own every user-facing banner, table, panel, and status surface. Error
 messages route through the existing ``emit_warning`` method with
 ``theme.status.error`` styling; no separate ``emit_error`` method exists.
@@ -1432,6 +1432,8 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[agents]")
             show_secondary = self._ctx.mode != "compact"
             table = Table(title="Configured Agents", show_header=True)
             table.add_column("Name", style="theme.cat.meta")
@@ -1469,6 +1471,8 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[providers]")
             show_status = self._ctx.mode != "compact"
             table = Table(title="Available Providers", show_header=True)
             table.add_column("Provider", style="theme.cat.meta")
@@ -1499,6 +1503,8 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[config]")
             config_json = config.model_dump_json(indent=2)
             if self._ctx.mode == "compact":
                 self._console.print(
@@ -1660,6 +1666,8 @@ class ParallelDisplay:
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[info]")
             panel = Panel(content, title=title, border_style="theme.phase.planning", padding=(1, 2))
             self._console.print(panel)
 
