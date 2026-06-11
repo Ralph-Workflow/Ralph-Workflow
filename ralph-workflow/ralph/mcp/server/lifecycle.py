@@ -168,6 +168,18 @@ class RestartAwareMcpBridge:
         """
         return self._tool_registry_resets
 
+    @property
+    def process(self) -> ProcessLike:
+        """The currently running MCP server process.
+
+        Satisfies the ``_BridgeWithProcess`` protocol so consumers (e.g. the
+        parallel worker session factory) can read the server pid. Reads the
+        inner process under the lock because a concurrent health-check
+        restart may swap it.
+        """
+        with self._lock:
+            return self._inner.process
+
     def start(self) -> None:
         return
 

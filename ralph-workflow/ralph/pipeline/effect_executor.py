@@ -238,9 +238,15 @@ def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
         workspace = FsWorkspace(
             ctx.workspace_scope.root, allowed_roots=ctx.workspace_scope.allowed_roots
         )
-        clear_phase_output_artifacts(
-            workspace, ctx.effect.phase, drain=ctx.effect.drain, policy_bundle=ctx.policy_bundle
-        )
+        if not ctx.parallel_worker:
+            # Shared phase outputs live at the repo root, outside a parallel
+            # worker's write scope; clearing them is the parent's job.
+            clear_phase_output_artifacts(
+                workspace,
+                ctx.effect.phase,
+                drain=ctx.effect.drain,
+                policy_bundle=ctx.policy_bundle,
+            )
         _start_mcp: _StartMcpServerFn = cast(
             "_StartMcpServerFn", ctx.deps.start_mcp_server_fn or start_mcp_server
         )

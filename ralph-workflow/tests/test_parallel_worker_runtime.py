@@ -122,7 +122,7 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
     captured: dict[str, object] = {}
 
     class _FakeWorkspace:
-        def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...]) -> None:
+        def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...] | None = None) -> None:
             captured["workspace_root"] = root
             captured["allowed_roots"] = allowed_roots
 
@@ -252,7 +252,7 @@ def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_ag
     captured: dict[str, object] = {}
 
     class _FakeWorkspace:
-        def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...]) -> None:
+        def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...] | None = None) -> None:
             del root, allowed_roots
 
         def read(self, path: str) -> str:
@@ -349,7 +349,7 @@ def test_run_parallel_worker_from_manifest_preserves_transport_tool_prefix(
     captured: dict[str, object] = {}
 
     class _FakeWorkspace:
-        def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...]) -> None:
+        def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...] | None = None) -> None:
             del root, allowed_roots
 
         def read(self, path: str) -> str:
@@ -451,7 +451,7 @@ def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_with
     save_calls: list[object] = []
 
     class _FakeWorkspace:
-        def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...]) -> None:
+        def __init__(self, root: Path, *, allowed_roots: tuple[Path, ...] | None = None) -> None:
             del root, allowed_roots
 
         def read(self, path: str) -> str:
