@@ -10,3 +10,4 @@ class GeneralOverrides(TypedDict, total=False):
     git_user_email: str | None
     execution: dict[str, bool]
     developer_iters: int
+    workflow: dict[str, bool]

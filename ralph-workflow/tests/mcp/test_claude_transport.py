@@ -154,6 +154,120 @@ def test_load_existing_claude_upstream_servers_workspace_overrides_global_on_nam
     assert result[0].url == "https://workspace.example.invalid/mcp"
 
 
+def test_claude_mcp_config_unsafe_mode_merges_existing_servers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """unsafe_mode=True merges ~/.claude.json and workspace .mcp.json entries with Ralph."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "github": {
+                        "type": "http",
+                        "url": "https://api.example.com/mcp/",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    (workspace / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "workspace-upstream": {
+                        "type": "http",
+                        "url": "http://workspace-upstream:7777/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = json.loads(
+        claude_mcp_config(
+            "http://127.0.0.1:9999/mcp", workspace_path=workspace, unsafe_mode=True
+        )
+    )
+
+    servers = config["mcpServers"]
+    assert "github" in servers
+    assert "workspace-upstream" in servers
+    assert "ralph" in servers
+    ralph = servers["ralph"]
+    assert ralph["type"] == "http"
+    assert ralph["url"] == "http://127.0.0.1:9999/mcp"
+
+
+def test_claude_mcp_config_unsafe_mode_false_keeps_ralph_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """unsafe_mode=False (default) returns a Ralph-only mcpServers payload."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "github": {
+                        "type": "http",
+                        "url": "https://api.example.com/mcp/",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = json.loads(
+        claude_mcp_config(
+            "http://127.0.0.1:9999/mcp", workspace_path=tmp_path, unsafe_mode=False
+        )
+    )
+
+    assert list(config["mcpServers"].keys()) == ["ralph"]
+
+
+def test_claude_mcp_config_unsafe_mode_overwrites_stale_ralph(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """unsafe_mode=True replaces a stale ralph entry but keeps other servers."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    (tmp_path / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "ralph": {
+                        "type": "http",
+                        "url": "http://old.example/mcp",
+                    },
+                    "github": {
+                        "type": "http",
+                        "url": "https://api.example.com/mcp/",
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = json.loads(
+        claude_mcp_config(
+            "http://127.0.0.1:9999/mcp", workspace_path=tmp_path, unsafe_mode=True
+        )
+    )
+
+    servers = config["mcpServers"]
+    assert servers["ralph"]["url"] == "http://127.0.0.1:9999/mcp"
+    assert servers["github"]["url"] == "https://api.example.com/mcp/"
+
+
 def test_load_existing_claude_upstream_servers_skips_missing_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

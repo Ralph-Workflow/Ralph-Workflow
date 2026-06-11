@@ -52,17 +52,21 @@ def agy_mcp_config(endpoint: str) -> str:
 
 
 @contextmanager
-def agy_workspace_mcp_endpoint(workspace_path: Path, endpoint: str) -> Iterator[None]:
+def agy_workspace_mcp_endpoint(
+    workspace_path: Path, endpoint: str, *, unsafe_mode: bool = False
+) -> Iterator[None]:
     """Write a run-scoped Ralph-only MCP config for AGY and restore it after exit."""
     config_path = workspace_path / ".agents" / "mcp_config.json"
     original_bytes = config_path.read_bytes() if config_path.is_file() else None
-    config_payload = {
-        "mcpServers": {
-            RALPH_MCP_SERVER_NAME: {
-                "serverUrl": endpoint,
-            }
+    if unsafe_mode:
+        existing = _load_mcpservers_from_paths(_agy_mcp_config_paths(workspace_path))
+        merged_servers: dict[str, object] = {
+            **existing,
+            RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint},
         }
-    }
+    else:
+        merged_servers = {RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint}}
+    config_payload = {"mcpServers": merged_servers}
     try:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")

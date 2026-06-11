@@ -46,6 +46,7 @@ def build_invoke_options_from_config(
         show_progress=rt.show_progress,
         workspace_path=rt.workspace_path,
         extra_env=rt.extra_env,
+        unsafe_mode=general_config.workflow.unsafe_mode,
         pure=rt.pure,
         session_id=rt.session_id,
         system_prompt_file=rt.system_prompt_file,

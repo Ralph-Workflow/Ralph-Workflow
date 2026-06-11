@@ -34,25 +34,36 @@ def merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
 
 
 def build_opencode_provider_config(
-    existing: str | None, endpoint: str
+    existing: str | None, endpoint: str, *, unsafe_mode: bool = False
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
     """Build a full OpenCode config JSON with Ralph MCP and return it with upstream servers."""
     config_obj = _parse_opencode_config_content(existing)
     existing_mcp = config_obj.get("mcp")
-    upstreams = (
-        normalize_upstream_mcp_servers(cast("dict[str, object]", existing_mcp))
-        if isinstance(existing_mcp, dict)
-        else ()
-    )
+    if isinstance(existing_mcp, dict):
+        if unsafe_mode:
+            existing_for_upstreams = {
+                name: entry
+                for name, entry in cast("dict[str, object]", existing_mcp).items()
+                if name != "ralph"
+            }
+        else:
+            existing_for_upstreams = cast("dict[str, object]", existing_mcp)
+        upstreams = normalize_upstream_mcp_servers(existing_for_upstreams)
+    else:
+        upstreams = ()
 
-    config_obj["mcp"] = {
-        "ralph": {
-            "type": "remote",
-            "url": endpoint,
-            "enabled": True,
-            "timeout": _OPENCODE_MCP_CLIENT_TIMEOUT_MS,
-        }
+    ralph_entry: dict[str, object] = {
+        "type": "remote",
+        "url": endpoint,
+        "enabled": True,
+        "timeout": _OPENCODE_MCP_CLIENT_TIMEOUT_MS,
     }
+    if unsafe_mode and isinstance(existing_mcp, dict):
+        merged_mcp = dict(cast("dict[str, object]", existing_mcp))
+        merged_mcp["ralph"] = ralph_entry
+        config_obj["mcp"] = merged_mcp
+    else:
+        config_obj["mcp"] = {"ralph": ralph_entry}
 
     # The field OpenCode actually honors for the MCP request timeout (the per-server
     # `timeout` above is ignored). Without this, long tool calls (exec running tests/

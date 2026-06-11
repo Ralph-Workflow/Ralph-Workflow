@@ -1062,3 +1062,91 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
 
     assert seen_env
     assert seen_env[0][str(MCP_ENDPOINT_ENV)] == "http://127.0.0.1:9999/mcp"
+
+
+def test_build_command_merges_existing_mcp_servers_when_unsafe_mode(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """BuildCommandOptions(unsafe_mode=True) merges workspace .mcp.json into the Claude command."""
+    config = AgentConfig(
+        cmd="claude",
+        transport=AgentTransport.CLAUDE,
+        output_flag="--output-format=stream-json",
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "existing-server": {
+                        "type": "http",
+                        "url": "http://existing.example/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    prompt_file = workspace / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(
+            mcp_endpoint="http://127.0.0.1:9999/mcp",
+            workspace_path=workspace,
+            unsafe_mode=True,
+        ),
+    )
+
+    assert "--mcp-config" in cmd
+    mcp_config_idx = cmd.index("--mcp-config")
+    mcp_config_json = cmd[mcp_config_idx + 1]
+    parsed = json.loads(mcp_config_json)
+    servers = parsed["mcpServers"]
+    assert "existing-server" in servers
+    assert "ralph" in servers
+
+
+def test_build_command_ralph_only_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """BuildCommandOptions(unsafe_mode=False, default) returns a Ralph-only --mcp-config JSON."""
+    config = AgentConfig(
+        cmd="claude",
+        transport=AgentTransport.CLAUDE,
+        output_flag="--output-format=stream-json",
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "existing-server": {
+                        "type": "http",
+                        "url": "http://existing.example/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    prompt_file = workspace / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+
+    cmd = build_command(
+        config,
+        str(prompt_file),
+        options=BuildCommandOptions(
+            mcp_endpoint="http://127.0.0.1:9999/mcp",
+            workspace_path=workspace,
+        ),
+    )
+
+    assert "--mcp-config" in cmd
+    mcp_config_idx = cmd.index("--mcp-config")
+    parsed = json.loads(cmd[mcp_config_idx + 1])
+    assert list(parsed["mcpServers"].keys()) == ["ralph"]

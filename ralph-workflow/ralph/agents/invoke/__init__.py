@@ -240,6 +240,7 @@ def invoke_agent(
         base_opts.extra_env,
         base_opts.workspace_path,
         system_prompt_file=base_opts.system_prompt_file,
+        unsafe_mode=base_opts.unsafe_mode,
     )
     opts = _prepare_interactive_claude_options(base_opts, config)
     runtime_env = runtime.agent_env
@@ -255,6 +256,7 @@ def invoke_agent(
             pure=opts.pure,
             mcp_endpoint=mcp_endpoint,
             allowed_mcp_tool_names=allowed_mcp_tool_names,
+            unsafe_mode=opts.unsafe_mode,
             system_prompt_file=opts.system_prompt_file,
             workspace_path=opts.workspace_path,
             initial_session_id=opts.initial_session_id,
@@ -307,7 +309,11 @@ def invoke_agent(
             if opts.workspace_path is not None:
                 _clear_session_completion_sentinel(opts.workspace_path, run_id)
             mcp_ctx = (
-                agy_workspace_mcp_endpoint(opts.workspace_path, runtime.mcp_endpoint)
+                agy_workspace_mcp_endpoint(
+                    opts.workspace_path,
+                    runtime.mcp_endpoint,
+                    unsafe_mode=base_opts.unsafe_mode,
+                )
                 if runtime.mcp_endpoint and opts.workspace_path
                 else contextlib.nullcontext()
             )
@@ -359,6 +365,7 @@ def resolve_invocation_runtime(
     *,
     _base_env: Mapping[str, str] | None = None,
     system_prompt_file: str | None = None,
+    unsafe_mode: bool = False,
 ) -> ResolvedInvocationRuntime:
     """Build the runtime configuration needed to launch an agent.
 
@@ -408,6 +415,7 @@ def resolve_invocation_runtime(
         provider_config, upstreams = build_opencode_provider_config(
             opencode_config,
             endpoint,
+            unsafe_mode=unsafe_mode,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
         _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
@@ -423,6 +431,9 @@ def resolve_invocation_runtime(
             nanocoder_mcp_servers,
             endpoint,
             always_allow=_canonical_http_mcp_tool_names(endpoint),
+            unsafe_mode=unsafe_mode,
+            workspace_path=workspace_path,
+            env=runtime_env or dict(_env),
         )
         runtime_env["NANOCODER_MCPSERVERS"] = mcp_config
         _apply_upstream_env(
@@ -442,6 +453,7 @@ def resolve_invocation_runtime(
             workspace_path=workspace_path,
             existing_home=runtime_env.get("CODEX_HOME") or _env.get("CODEX_HOME"),
             system_prompt_file=system_prompt_file,
+            unsafe_mode=unsafe_mode,
         )
         runtime_env["CODEX_HOME"] = codex_home
         _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)

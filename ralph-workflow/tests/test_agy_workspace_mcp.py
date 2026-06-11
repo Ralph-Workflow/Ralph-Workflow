@@ -110,3 +110,60 @@ def test_agy_workspace_mcp_endpoint_creates_agents_dir_if_missing(tmp_path: Path
         assert config_path.parent.exists()
 
     assert not config_path.exists()
+
+
+def test_agy_workspace_mcp_endpoint_merges_when_unsafe_mode(tmp_path: Path) -> None:
+    """unsafe_mode=True keeps the existing other-server entry alongside Ralph."""
+    config_path = tmp_path / ".agents" / "mcp_config.json"
+    original_text = json.dumps(
+        {
+            "mcpServers": {
+                "other-server": {"serverUrl": "http://other.example/mcp"},
+            }
+        },
+        indent=2,
+    )
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(original_text, encoding="utf-8")
+    endpoint = "http://127.0.0.1:9999/mcp"
+
+    with agy_workspace_mcp_endpoint(tmp_path, endpoint, unsafe_mode=True):
+        config = _read_config(config_path)
+        servers = config["mcpServers"]
+        assert isinstance(servers, dict)
+        assert "other-server" in servers
+        assert "ralph" in servers
+        ralph = servers["ralph"]
+        assert isinstance(ralph, dict)
+        assert ralph["serverUrl"] == endpoint
+        assert "url" not in ralph
+
+    assert config_path.read_text(encoding="utf-8") == original_text
+
+
+def test_agy_workspace_mcp_endpoint_unsafe_mode_overwrites_stale_ralph(tmp_path: Path) -> None:
+    """unsafe_mode=True replaces a stale ralph entry but keeps other servers."""
+    config_path = tmp_path / ".agents" / "mcp_config.json"
+    original_text = json.dumps(
+        {
+            "mcpServers": {
+                "ralph": {"serverUrl": "http://old.example/mcp"},
+                "other-server": {"serverUrl": "http://other.example/mcp"},
+            }
+        },
+        indent=2,
+    )
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(original_text, encoding="utf-8")
+    endpoint = "http://127.0.0.1:9999/mcp"
+
+    with agy_workspace_mcp_endpoint(tmp_path, endpoint, unsafe_mode=True):
+        config = _read_config(config_path)
+        servers = config["mcpServers"]
+        assert isinstance(servers, dict)
+        ralph = servers["ralph"]
+        assert isinstance(ralph, dict)
+        assert ralph["serverUrl"] == endpoint
+        assert "other-server" in servers
+
+    assert config_path.read_text(encoding="utf-8") == original_text
