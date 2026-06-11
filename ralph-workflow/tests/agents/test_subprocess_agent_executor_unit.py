@@ -4,6 +4,7 @@ Tests verify that SubprocessAgentExecutor:
 - spawns processes with correct label via ProcessManager
 - tracks processes to terminal state after normal completion
 - marks processes KILLED when cancelled
+- cleans up the process when a non-CancelledError exception escapes drain_output
 
 No real subprocesses are spawned; all tests use FakeControllableAsyncProcess
 and FakePsutil injected via a custom ProcessManager.
@@ -24,7 +25,7 @@ from ralph.agents.subprocess_executor import (
 )
 from ralph.pipeline.work_units import WorkUnit
 from ralph.process import ProcessManager, ProcessManagerPolicy, ProcessStatus
-from ralph.testing.fake_process import FakeControllableAsyncProcess, FakePsutil
+from ralph.testing.fake_process import FakeControllableAsyncProcess, FakePsutil, FakePsutilProcess
 
 # --------------------------------------------------------------------------/
 # CAT-AGENT-UNIT: normal completion + label contract
@@ -170,3 +171,169 @@ async def test_subprocess_executor_cancellation_marks_process_killed() -> None:
 
     # Verify list_active is empty
     assert len(pm.list_active()) == 0
+
+
+# --------------------------------------------------------------------------
+# CAT-AGENT-EXC: cleanup-on-exception
+# --------------------------------------------------------------------------/
+
+
+class _ExCAsyncProcess:
+    """Async-process stub with stdout data and a completeable wait().
+
+    Mirrors the surface of FakeControllableAsyncProcess used by the
+    SubprocessAgentExecutor (pid, stdout StreamReader, wait/terminate/kill
+    methods, returncode property). ``wait()`` blocks on an asyncio.Event
+    that is only set when ``terminate()`` or ``kill()`` is invoked, OR
+    when ``set_completion()`` is called explicitly.
+
+    The production code's terminate path uses psutil to signal the child
+    rather than calling this stub's ``terminate()`` directly. So the
+    test also relies on a sibling psutil fake invoking
+    ``set_completion()`` when the psutil side is killed, which keeps
+    the executor's finally-block ``wait_for(handle.wait(), timeout=0.5)``
+    bounded to a fraction of a millisecond instead of hitting the full
+    500ms cap. This keeps the test well under the 1.0s per-test budget.
+    """
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._returncode: int | None = None
+        self._completion_event = asyncio.Event()
+        self._stream_reader: asyncio.StreamReader | None = None
+        self.stdin = None
+        self.stderr = None
+
+    def _ensure_stdout(self) -> asyncio.StreamReader:
+        if self._stream_reader is None:
+            self._stream_reader = asyncio.StreamReader()
+            self._stream_reader.feed_data(b"boom\n")
+            self._stream_reader.feed_eof()
+        return self._stream_reader
+
+    @property
+    def stdout(self) -> asyncio.StreamReader:
+        return self._ensure_stdout()
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+    async def wait(self) -> int:
+        await asyncio.wait_for(self._completion_event.wait(), timeout=0.5)
+        if self._returncode is None:
+            self._returncode = 0
+        return self._returncode
+
+    async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+        await asyncio.wait_for(self._completion_event.wait(), timeout=0.5)
+        return b"", b""
+
+    def terminate(self) -> None:
+        self._returncode = 0
+        self._completion_event.set()
+
+    def kill(self) -> None:
+        self._returncode = 0
+        self._completion_event.set()
+
+    def set_completion(self) -> None:
+        """Mark the process as completed without flipping returncode.
+
+        Used by sibling psutil fakes to signal that the production
+        code's psutil.terminate()/kill() has reached the OS-level
+        kill, so the executor's finally-block wait can return.
+        """
+        if self._returncode is None:
+            self._returncode = 0
+        self._completion_event.set()
+
+
+@pytest.mark.asyncio
+async def test_subprocess_executor_cleans_up_on_non_cancellation_exception() -> None:
+    """Non-CancelledError exception from on_output triggers process cleanup.
+
+    The finally block in SubprocessAgentExecutor.run() must terminate the
+    spawned process and mark the record KILLED when a non-CancelledError
+    exception escapes the asyncio.gather(). This proves the executor is no
+    longer a "leak the process when output parsing crashes" hole.
+    """
+
+    # Track spawned async procs so the psutil fake can signal them when
+    # the production terminate path runs psutil.kill. This keeps the
+    # executor's wait_for(handle.wait(), timeout=0.5) bounded to a
+    # fraction of a millisecond instead of hitting the full 500ms cap.
+    spawned_procs: dict[int, _ExCAsyncProcess] = {}
+    pid_counter = itertools.count(200)
+
+    async def async_factory(
+        command: tuple[str, ...],
+        *,
+        cwd: str | None,
+        env: dict[str, str] | None,
+        stdin: int | None,
+        stdout: int | None,
+        stderr: int | None,
+        start_new_session: bool,
+    ) -> _ExCAsyncProcess:
+        proc = _ExCAsyncProcess(pid=next(pid_counter))
+        spawned_procs[proc.pid] = proc
+        return proc
+
+    class _LinkedPsutilProcess(FakePsutilProcess):
+        def kill(self) -> None:
+            super().kill()
+            linked = spawned_procs.get(self.pid)
+            if linked is not None:
+                linked.set_completion()
+
+        def terminate(self) -> None:
+            super().terminate()
+            linked = spawned_procs.get(self.pid)
+            if linked is not None:
+                linked.set_completion()
+
+    class _LinkedFakePsutil(FakePsutil):
+        def process_from_pid(self, pid: int) -> _LinkedPsutilProcess:
+            existing = self._processes.get(pid)
+            if existing is None:
+                existing = _LinkedPsutilProcess(pid=pid)
+                self._processes[pid] = existing
+            return existing
+
+    pm = ProcessManager(
+        async_process_factory=async_factory,
+        psutil=_LinkedFakePsutil(),
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.0,
+            kill_followup_timeout_s=0.0,
+            log_events=False,
+            enable_zombie_reaper=False,
+        ),
+    )
+
+    executor = SubprocessAgentExecutor(
+        command=[sys.executable, "-c", "pass"],
+        _pm=pm,
+    )
+
+    unit = WorkUnit(unit_id="unit-exc-1", description="test")
+
+    def on_output(_: str) -> None:
+        raise RuntimeError("on_output boom")
+
+    with pytest.raises(RuntimeError, match="on_output boom"):
+        await executor.run(
+            unit,
+            on_output=on_output,
+            on_status=lambda _: None,
+        )
+
+    # Verify the process record became terminal with KILLED status.
+    records = pm.list_records(include_active=False, include_terminal=True)
+    assert len(records) == 1, f"Expected 1 terminal record, got {len(records)}"
+    assert records[0].status == ProcessStatus.KILLED
+
+    # Verify no active records remain — the cleanup ran.
+    assert pm.list_active() == []
+
