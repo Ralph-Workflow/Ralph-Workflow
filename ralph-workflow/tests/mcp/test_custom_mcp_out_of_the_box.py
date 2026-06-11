@@ -87,6 +87,55 @@ def test_single_server_entry_appears_in_ralph_transport_configs(
     )
 
 
+def test_codex_unsafe_mode_preserves_existing_mcp_servers(tmp_path: Path) -> None:
+    """unsafe_mode=True keeps the [mcp_servers.existing] table alongside Ralph."""
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        '[mcp_servers.existing]\nurl = "http://existing.example/mcp"\n',
+        encoding="utf-8",
+    )
+    ralph_endpoint = "http://127.0.0.1:9999/mcp"
+
+    new_home, _upstreams = prepare_codex_home_with_upstreams(
+        ralph_endpoint,
+        workspace_path=tmp_path,
+        existing_home=str(codex_home),
+        system_prompt_file=None,
+        unsafe_mode=True,
+    )
+
+    config_text = (Path(new_home) / "config.toml").read_text(encoding="utf-8")
+    assert "[mcp_servers.existing]" in config_text
+    assert "http://existing.example/mcp" in config_text
+    assert "[mcp_servers.ralph]" in config_text
+    assert ralph_endpoint in config_text
+
+
+def test_codex_unsafe_mode_false_removes_existing_mcp_servers(tmp_path: Path) -> None:
+    """unsafe_mode=False (default) removes existing [mcp_servers.*] tables."""
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        '[mcp_servers.existing]\nurl = "http://existing.example/mcp"\n',
+        encoding="utf-8",
+    )
+    ralph_endpoint = "http://127.0.0.1:9999/mcp"
+
+    new_home, _upstreams = prepare_codex_home_with_upstreams(
+        ralph_endpoint,
+        workspace_path=tmp_path,
+        existing_home=str(codex_home),
+        system_prompt_file=None,
+        unsafe_mode=False,
+    )
+
+    config_text = (Path(new_home) / "config.toml").read_text(encoding="utf-8")
+    assert "[mcp_servers.existing]" not in config_text
+    assert "[mcp_servers.ralph]" in config_text
+    assert ralph_endpoint in config_text
+
+
 def test_single_server_entry_appears_in_codex_transport_config(
     tmp_path: Path,
 ) -> None:

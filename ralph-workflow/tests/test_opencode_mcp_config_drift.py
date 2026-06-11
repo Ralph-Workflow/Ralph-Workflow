@@ -17,8 +17,10 @@ from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
 
 
-def _config(existing: str | None = None) -> dict:
-    config_text, _ = build_opencode_provider_config(existing, "http://127.0.0.1:9999/mcp")
+def _config(existing: str | None = None, *, unsafe_mode: bool = False) -> dict:
+    config_text, _ = build_opencode_provider_config(
+        existing, "http://127.0.0.1:9999/mcp", unsafe_mode=unsafe_mode
+    )
     config = json.loads(config_text)
     assert isinstance(config, dict)
     return config
@@ -41,3 +43,73 @@ def test_per_server_timeout_also_set_for_forward_compat() -> None:
     server = _config()["mcp"]["ralph"]
     assert isinstance(server, dict)
     assert server["timeout"] > EXEC_MAX_TIMEOUT_MS
+
+
+def test_unsafe_mode_merges_existing_mcp_servers() -> None:
+    """unsafe_mode=True preserves any pre-existing OpenCode MCP servers."""
+    existing = json.dumps(
+        {
+            "mcp": {
+                "existing-server": {
+                    "type": "remote",
+                    "url": "http://other.example/mcp",
+                    "enabled": True,
+                }
+            }
+        }
+    )
+
+    config = _config(existing, unsafe_mode=True)
+    mcp = config["mcp"]
+    assert isinstance(mcp, dict)
+    assert "existing-server" in mcp
+    assert "ralph" in mcp
+    ralph = mcp["ralph"]
+    assert isinstance(ralph, dict)
+    assert ralph["url"] == "http://127.0.0.1:9999/mcp"
+    assert ralph["timeout"] > EXEC_MAX_TIMEOUT_MS
+
+
+def test_unsafe_mode_false_replaces_existing_mcp_servers() -> None:
+    """unsafe_mode=False (default) replaces existing servers with Ralph-only config."""
+    existing = json.dumps(
+        {
+            "mcp": {
+                "existing-server": {
+                    "type": "remote",
+                    "url": "http://other.example/mcp",
+                    "enabled": True,
+                }
+            }
+        }
+    )
+
+    config = _config(existing, unsafe_mode=False)
+    mcp = config["mcp"]
+    assert isinstance(mcp, dict)
+    assert list(mcp.keys()) == ["ralph"]
+    ralph = mcp["ralph"]
+    assert isinstance(ralph, dict)
+    assert ralph["timeout"] > EXEC_MAX_TIMEOUT_MS
+
+
+def test_unsafe_mode_overwrites_stale_ralph_entry() -> None:
+    """unsafe_mode=True still lets Ralph win on name collision."""
+    existing = json.dumps(
+        {
+            "mcp": {
+                "ralph": {
+                    "type": "remote",
+                    "url": "http://old.example/mcp",
+                    "enabled": True,
+                }
+            }
+        }
+    )
+
+    config = _config(existing, unsafe_mode=True)
+    mcp = config["mcp"]
+    assert isinstance(mcp, dict)
+    ralph = mcp["ralph"]
+    assert isinstance(ralph, dict)
+    assert ralph["url"] == "http://127.0.0.1:9999/mcp"

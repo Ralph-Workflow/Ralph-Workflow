@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 
 
 @dataclass
@@ -30,3 +32,6 @@ class _GeneralConfigStub:
     agent_system_prompt: str | None = None
     agent_provider: str | None = None
     verbose: bool = False
+    workflow: GeneralWorkflowFlags = field(
+        default_factory=GeneralWorkflowFlags
+    )
