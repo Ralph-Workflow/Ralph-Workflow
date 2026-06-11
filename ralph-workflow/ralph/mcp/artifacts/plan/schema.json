@@ -1,0 +1,1239 @@
+{
+  "$defs": {
+    "AcceptanceCriteria": {
+      "additionalProperties": false,
+      "properties": {
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/AcceptanceCriterion"
+          },
+          "minItems": 1,
+          "title": "Criteria",
+          "type": "array"
+        }
+      },
+      "required": [
+        "criteria"
+      ],
+      "title": "AcceptanceCriteria",
+      "type": "object"
+    },
+    "AcceptanceCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Path"
+        },
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Z]+-\\d{2,}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "satisfied_by_steps": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Satisfied By Steps",
+          "type": "array"
+        },
+        "verification_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification Step"
+        }
+      },
+      "required": [
+        "id",
+        "description"
+      ],
+      "title": "AcceptanceCriterion",
+      "type": "object"
+    },
+    "CriticalFiles": {
+      "additionalProperties": false,
+      "properties": {
+        "primary_files": {
+          "items": {
+            "$ref": "#/$defs/CriticalPrimaryFile"
+          },
+          "minItems": 1,
+          "title": "Primary Files",
+          "type": "array"
+        },
+        "reference_files": {
+          "items": {
+            "$ref": "#/$defs/ReferenceFile"
+          },
+          "title": "Reference Files",
+          "type": "array"
+        }
+      },
+      "required": [
+        "primary_files"
+      ],
+      "title": "CriticalFiles",
+      "type": "object"
+    },
+    "CriticalPrimaryFile": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "create",
+            "modify",
+            "delete"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "estimated_changes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Estimated Changes"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "action"
+      ],
+      "title": "CriticalPrimaryFile",
+      "type": "object"
+    },
+    "DependencyInjection": {
+      "additionalProperties": false,
+      "properties": {
+        "forbidden_patterns": {
+          "items": {
+            "enum": [
+              "global-singleton",
+              "module-level-mutable-state",
+              "import-time-side-effects",
+              "subprocess-time-random",
+              "env-var-direct-read",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "title": "Forbidden Patterns",
+          "type": "array"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "preferred_patterns": {
+          "items": {
+            "enum": [
+              "constructor",
+              "parameter",
+              "interface",
+              "service-locator",
+              "ambient-context",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "title": "Preferred Patterns",
+          "type": "array"
+        },
+        "required_for_testability": {
+          "title": "Required For Testability",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "required_for_testability"
+      ],
+      "title": "DependencyInjection",
+      "type": "object"
+    },
+    "DesignConstraints": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture_style": {
+          "anyOf": [
+            {
+              "enum": [
+                "monolith",
+                "modular-monolith",
+                "microservice",
+                "library",
+                "cli",
+                "spa",
+                "mobile",
+                "serverless",
+                "embedded",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Architecture Style"
+        },
+        "invariants": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Invariants",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "DesignConstraints",
+      "type": "object"
+    },
+    "DesignSection": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance_criteria": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcceptanceCriteria"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "constraints": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DesignConstraints"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dependency_injection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DependencyInjection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "drift_detection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DriftDetection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "non_goals": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NonGoals"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome"
+        },
+        "planning_profile": {
+          "anyOf": [
+            {
+              "enum": [
+                "strict",
+                "balanced",
+                "minimal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Planning Profile"
+        },
+        "refactor_strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RefactorStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "testability": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Testability"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "DesignSection",
+      "type": "object"
+    },
+    "DriftDetection": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Expected Outputs",
+          "type": "array"
+        },
+        "guard_commands": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Guard Commands",
+          "type": "array"
+        },
+        "on_drift_action": {
+          "anyOf": [
+            {
+              "enum": [
+                "fail-verify",
+                "log-only",
+                "open-issue",
+                "ignore"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "On Drift Action"
+        },
+        "sources": {
+          "items": {
+            "enum": [
+              "ruff",
+              "mypy",
+              "pytest",
+              "make",
+              "custom-script",
+              "ci",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "title": "DriftDetection",
+      "type": "object"
+    },
+    "EditArea": {
+      "additionalProperties": false,
+      "properties": {
+        "directories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Directories",
+          "type": "array"
+        },
+        "paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Paths",
+          "type": "array"
+        }
+      },
+      "title": "EditArea",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "A single evidence entry for a plan step.\n\nThe kind discriminator tells the executor how to verify the entry:\n\n- ``file``: a workspace file the executor can ``cat`` or stat\n- ``command_output``: a shell command the executor should run and\n  capture; the entry text is the command itself\n- ``test_name``: a single test id (e.g. ``tests/test_foo.py::test_x``)\n  the executor should run",
+      "properties": {
+        "kind": {
+          "enum": [
+            "file",
+            "command_output",
+            "test_name"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "NonGoals": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "NonGoals",
+      "type": "object"
+    },
+    "ParallelPlanItem": {
+      "additionalProperties": false,
+      "description": "A unit of parallelisable work with dependency tracking.",
+      "properties": {
+        "depends_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "edit_area": {
+          "$ref": "#/$defs/EditArea"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "edit_area"
+      ],
+      "title": "ParallelPlanItem",
+      "type": "object"
+    },
+    "PlanConstraints": {
+      "additionalProperties": false,
+      "properties": {
+        "must_keep_working": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Must Keep Working",
+          "type": "array"
+        },
+        "must_not_break": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Must Not Break",
+          "type": "array"
+        },
+        "performance_budget": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Performance Budget"
+        },
+        "security_posture": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Security Posture"
+        }
+      },
+      "title": "PlanConstraints",
+      "type": "object"
+    },
+    "PlanStep": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "depends_on": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "expected_evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Expected Evidence",
+          "type": "array"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Location"
+        },
+        "number": {
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "enum": [
+                "critical",
+                "high",
+                "medium",
+                "low"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Priority"
+        },
+        "rationale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rationale"
+        },
+        "satisfies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Satisfies",
+          "type": "array"
+        },
+        "step_type": {
+          "$ref": "#/$defs/StepType",
+          "default": "action"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/StepTarget"
+          },
+          "title": "Targets",
+          "type": "array"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "verify_command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verify Command"
+        }
+      },
+      "required": [
+        "number",
+        "title",
+        "content"
+      ],
+      "title": "PlanStep",
+      "type": "object"
+    },
+    "RefactorStrategy": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_temporary_hacks": {
+          "default": false,
+          "title": "Allow Temporary Hacks",
+          "type": "boolean"
+        },
+        "approach": {
+          "enum": [
+            "greenfield",
+            "incremental",
+            "strangler",
+            "branch-by-abstraction",
+            "rebuild-in-parallel",
+            "no-refactor"
+          ],
+          "title": "Approach",
+          "type": "string"
+        },
+        "dead_code_policy": {
+          "default": "delete-immediately",
+          "enum": [
+            "delete-immediately",
+            "delete-after-feature",
+            "keep-for-trace",
+            "unknown"
+          ],
+          "title": "Dead Code Policy",
+          "type": "string"
+        },
+        "preserve_public_api": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preserve Public Api"
+        }
+      },
+      "required": [
+        "approach"
+      ],
+      "title": "RefactorStrategy",
+      "type": "object"
+    },
+    "ReferenceFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "purpose": {
+          "minLength": 1,
+          "title": "Purpose",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "purpose"
+      ],
+      "title": "ReferenceFile",
+      "type": "object"
+    },
+    "RiskMitigation": {
+      "additionalProperties": false,
+      "properties": {
+        "mitigation": {
+          "minLength": 1,
+          "title": "Mitigation",
+          "type": "string"
+        },
+        "risk": {
+          "minLength": 1,
+          "title": "Risk",
+          "type": "string"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity"
+        }
+      },
+      "required": [
+        "risk",
+        "mitigation"
+      ],
+      "title": "RiskMitigation",
+      "type": "object"
+    },
+    "ScopeItem": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "anyOf": [
+            {
+              "enum": [
+                "bugfix",
+                "feature",
+                "refactor",
+                "test",
+                "docs",
+                "infra",
+                "migration",
+                "security",
+                "performance",
+                "cleanup",
+                "research",
+                "unknown",
+                "file_change",
+                "prompt",
+                "other"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Category"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ScopeItem",
+      "type": "object"
+    },
+    "SkillsMcp": {
+      "additionalProperties": false,
+      "properties": {
+        "mcps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mcps",
+          "type": "array"
+        },
+        "skills": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Skills",
+          "type": "array"
+        }
+      },
+      "required": [
+        "skills"
+      ],
+      "title": "SkillsMcp",
+      "type": "object"
+    },
+    "StepTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "create",
+            "modify",
+            "delete",
+            "read",
+            "reference"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "action"
+      ],
+      "title": "StepTarget",
+      "type": "object"
+    },
+    "StepType": {
+      "description": "Closed set of valid step kinds.\n\n- ``FILE_CHANGE``: the step creates, modifies, or deletes one or more\n  source files. The model validator requires at least one ``targets``\n  entry.\n- ``ACTION``: a non-mutating executor action (a command or a tool\n  call). No target/handle binding.\n- ``RESEARCH``: an exploratory step that may not produce a code\n  change. No target/handle binding.\n- ``VERIFY``: a pure-verification step (e.g. ``run ruff``, ``run\n  pytest``) with no file changes. The model validator requires\n  either ``verify_command`` or ``location``.",
+      "enum": [
+        "file_change",
+        "action",
+        "research",
+        "verify"
+      ],
+      "title": "StepType",
+      "type": "string"
+    },
+    "Summary": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Context",
+          "type": "string"
+        },
+        "coverage_areas": {
+          "items": {
+            "enum": [
+              "bugfix",
+              "feature",
+              "refactor",
+              "test",
+              "docs",
+              "infra",
+              "security",
+              "performance",
+              "migration",
+              "release"
+            ],
+            "type": "string"
+          },
+          "title": "Coverage Areas",
+          "type": "array"
+        },
+        "intent": {
+          "default": "",
+          "maxLength": 200,
+          "title": "Intent",
+          "type": "string"
+        },
+        "intent_verb": {
+          "default": "",
+          "title": "Intent Verb",
+          "type": "string"
+        },
+        "scope_items": {
+          "items": {
+            "$ref": "#/$defs/ScopeItem"
+          },
+          "minItems": 3,
+          "title": "Scope Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope_items"
+      ],
+      "title": "Summary",
+      "type": "object"
+    },
+    "Testability": {
+      "additionalProperties": false,
+      "properties": {
+        "clock_injection_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Clock Injection Required"
+        },
+        "forbidden_in_tests": {
+          "items": {
+            "enum": [
+              "time.sleep",
+              "subprocess.run-no-timeout",
+              "real-file-IO",
+              "real-network",
+              "global-mutation",
+              "monkeypatch-of-prod",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "title": "Forbidden In Tests",
+          "type": "array"
+        },
+        "max_unit_test_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 60,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Unit Test Seconds"
+        },
+        "must_be_black_box": {
+          "title": "Must Be Black Box",
+          "type": "boolean"
+        },
+        "required_test_layers": {
+          "items": {
+            "enum": [
+              "unit",
+              "integration",
+              "subprocess_e2e",
+              "property",
+              "snapshot",
+              "contract",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "title": "Required Test Layers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "must_be_black_box"
+      ],
+      "title": "Testability",
+      "type": "object"
+    },
+    "VerificationStep": {
+      "additionalProperties": false,
+      "properties": {
+        "cwd": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cwd"
+        },
+        "expected_outcome": {
+          "minLength": 1,
+          "title": "Expected Outcome",
+          "type": "string"
+        },
+        "method": {
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 3600,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout Seconds"
+        }
+      },
+      "required": [
+        "method",
+        "expected_outcome"
+      ],
+      "title": "VerificationStep",
+      "type": "object"
+    },
+    "WorkUnit": {
+      "description": "Single planning work unit declaration.",
+      "properties": {
+        "allowed_directories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Directories",
+          "type": "array"
+        },
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "unit_id": {
+          "minLength": 1,
+          "title": "Unit Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_id",
+        "description"
+      ],
+      "title": "WorkUnit",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Top-level validated schema for a plan artifact.",
+  "properties": {
+    "constraints": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PlanConstraints"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "critical_files": {
+      "$ref": "#/$defs/CriticalFiles"
+    },
+    "design": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DesignSection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "noop": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Noop"
+    },
+    "parallel_plan": {
+      "items": {
+        "$ref": "#/$defs/ParallelPlanItem"
+      },
+      "title": "Parallel Plan",
+      "type": "array"
+    },
+    "risks_mitigations": {
+      "items": {
+        "$ref": "#/$defs/RiskMitigation"
+      },
+      "minItems": 1,
+      "title": "Risks Mitigations",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "skills_mcp": {
+      "$ref": "#/$defs/SkillsMcp"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/PlanStep"
+      },
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/Summary"
+    },
+    "verification_strategy": {
+      "items": {
+        "$ref": "#/$defs/VerificationStep"
+      },
+      "minItems": 1,
+      "title": "Verification Strategy",
+      "type": "array"
+    },
+    "work_units": {
+      "items": {
+        "$ref": "#/$defs/WorkUnit"
+      },
+      "title": "Work Units",
+      "type": "array"
+    }
+  },
+  "required": [
+    "summary",
+    "skills_mcp",
+    "steps",
+    "critical_files",
+    "risks_mitigations",
+    "verification_strategy"
+  ],
+  "title": "PlanArtifact",
+  "type": "object"
+}

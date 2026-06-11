@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+import tempfile
 from pathlib import Path
 from typing import cast
 
@@ -504,3 +505,118 @@ def test_format_doc_forbids_test_step_type() -> None:
     assert doc is not None
     assert 'Do NOT use `step_type: "test"`' in doc
     assert "Cheap-model shortcut examples" in doc
+
+
+# ---------------------------------------------------------------------------
+# Step 2: new format doc sections (Minimal preset quickstart, CoverageArea
+# reference, Planning for any coding project, Model-tier guidance)
+# Step 3: per-preset SE-bias defaults + Flexibility boundaries
+# Step 4: Step-wise quickstart subheading + Worked example subheading
+# ---------------------------------------------------------------------------
+
+
+def test_minimal_preset_quickstart_example_round_trips() -> None:
+    """The fenced JSON in '## Minimal preset quickstart' round-trips."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    parts = doc.split("## Minimal preset quickstart")
+    assert len(parts) > 1, "Missing '## Minimal preset quickstart' section"
+    section = parts[1]
+    match = re.search(r"```json\n(.*?)```", section, re.DOTALL)
+    assert match is not None, "No ```json block in '## Minimal preset quickstart' section"
+    inner_payload = json.loads(match.group(1))
+    assert isinstance(inner_payload, dict)
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        result = handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "plan",
+                "content": json.dumps(inner_payload),
+            },
+        )
+        assert result.is_error is False, (
+            f"Minimal preset quickstart did not round-trip: {result!r}"
+        )
+
+
+def test_format_doc_has_minimal_preset_quickstart_section() -> None:
+    """The bundled plan.md has a '## Minimal preset quickstart' section."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Minimal preset quickstart" in doc
+    assert "design.planning_profile" in doc
+    assert "```json" in doc
+
+
+def test_format_doc_has_coverage_area_reference_section() -> None:
+    """The bundled plan.md has a '## CoverageArea reference' section listing all 10 values."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## CoverageArea reference" in doc
+    for value in (
+        "bugfix",
+        "feature",
+        "refactor",
+        "test",
+        "docs",
+        "infra",
+        "security",
+        "performance",
+        "migration",
+        "release",
+    ):
+        assert value in doc, f"CoverageArea value {value!r} missing from doc"
+
+
+def test_format_doc_has_planning_for_any_coding_project_section() -> None:
+    """The bundled plan.md has a '## Planning for any coding project' section with all 3 presets."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Planning for any coding project" in doc
+    match = re.search(
+        r"## Planning for any coding project.*?minimal.*?balanced.*?strict",
+        doc,
+        re.DOTALL,
+    )
+    assert match is not None, (
+        "## Planning for any coding project section is missing one of the 3 preset names"
+    )
+
+
+def test_format_doc_has_model_tier_guidance_section() -> None:
+    """The bundled plan.md has a '## Model-tier guidance' section with both tiers."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Model-tier guidance" in doc
+    assert "Cheap-model" in doc
+    assert "High-quality-model" in doc
+
+
+def test_format_doc_preserves_se_opinionated_surfaces_section() -> None:
+    """The bundled plan.md preserves the '## SE-opinionated design surfaces' section
+    and gains the '### Preset-by-preset SE-bias defaults' sub-heading."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## SE-opinionated design surfaces" in doc
+    assert "### Preset-by-preset SE-bias defaults" in doc
+    assert "dead_code_policy" in doc
+
+
+def test_format_doc_has_flexibility_boundaries_section() -> None:
+    """The bundled plan.md has a '## Flexibility boundaries' section."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Flexibility boundaries" in doc
+    assert "Does NOT fit" in doc
+    assert "commit message" in doc or "issues.md" in doc
+
+
+def test_format_doc_has_step_wise_quickstart_and_worked_example_subheadings() -> None:
+    """The bundled plan.md has both step-wise sub-headings under '## Step-wise submission'."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "### Step-wise quickstart (cheap-model baseline)" in doc
+    assert "### Worked example: 3-section short plan" in doc

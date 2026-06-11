@@ -128,6 +128,7 @@ class PlanArtifact(RalphBaseModel):
     risks_mitigations: list[RiskMitigation] = Field(..., min_length=1)
     constraints: PlanConstraints | None = None
     noop: bool | None = Field(default=None, exclude=True)
+    schema_version: int = Field(default=0, ge=0, exclude=True)
     design: DesignSection | None = None
     verification_strategy: list[VerificationStep] = Field(..., min_length=1)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
@@ -610,11 +611,25 @@ def finalize_plan_draft(draft: PlanArtifactDict) -> PlanArtifactDict:
     return normalize_plan_artifact_content(cast("PlanArtifactDict", sections))
 
 
+def generate_plan_schema() -> dict[str, object]:
+    """Return the JSON Schema for ``PlanArtifact`` as a Python dict.
+
+    The on-disk file at ``ralph/mcp/artifacts/plan/schema.json`` is generated
+    from this helper (via ``PlanArtifact.model_json_schema()``) and locked
+    by the regression test ``test_schema_json_file_matches_generate_plan_schema``.
+    External tools (mypy, pyright, vscode) can consume the on-disk file to
+    type-check a plan without round-tripping Pydantic.
+    """
+    _ensure_plan_artifact_rebuilt()
+    return PlanArtifact.model_json_schema()
+
+
 __all__ = [
     "PlanArtifact",
     "PlanArtifactValidationError",
     "SectionMode",
     "finalize_plan_draft",
+    "generate_plan_schema",
     "is_noop_plan",
     "merge_plan_section",
     "normalize_plan_artifact_content",
