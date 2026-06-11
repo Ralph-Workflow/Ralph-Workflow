@@ -467,6 +467,17 @@ class PipelineState(_FrozenPipelineStateModel):
         """Return a copy with one additional fallover record, trimmed to cycle cap."""
         return self.copy_with(fallover_history=(*self.fallover_history, record))
 
+    def with_parallel_execution_cleared(self) -> PipelineState:
+        """Return a copy with completed fan-out tracking removed.
+
+        This is the single sanctioned seam for ending a parallel wave's
+        lifecycle. ``copy_with`` deliberately refuses to mutate non-empty
+        ``work_units`` so mid-wave state cannot be lost by accident; once a
+        wave has fully succeeded the tracking state must be dropped here or
+        it would poison routing of the next (non-parallelized) phase.
+        """
+        return self.model_copy(update={"work_units": (), "worker_states": {}})
+
     def copy_with(self, **updates: object) -> PipelineState:
         """Return a copy with updates applied in a typed-safe manner."""
         if self.work_units and "work_units" in updates and updates["work_units"] != self.work_units:

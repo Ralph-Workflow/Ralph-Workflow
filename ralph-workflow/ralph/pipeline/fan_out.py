@@ -390,6 +390,20 @@ def _worker_commands_from_manifests(
     }
 
 
+def _cleared_after_successful_wave(state: PipelineState) -> PipelineState:
+    """Drop fan-out tracking state once every worker in the wave succeeded.
+
+    A failed or interrupted wave keeps work_units and worker_states so the
+    next development entry resumes only the unfinished units.
+    """
+    worker_states = state.worker_states
+    if worker_states and all(
+        ws.status == WorkerStatus.SUCCEEDED for ws in worker_states.values()
+    ):
+        return state.with_parallel_execution_cleared()
+    return state
+
+
 def _resume_fan_out_state(
     state: PipelineState,
     effect: FanOutEffect,
@@ -535,14 +549,32 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             executor_cls=ctx.executor_cls,
             mcp_factory_cls=ctx.mcp_factory_cls,
         )
+        # The router derives work units from the plan artifact, so the state
+        # entering fan-out may carry empty work_units. The reducer seeds
+        # worker_states from state.work_units on FAN_OUT_STARTED, so the wave
+        # state must carry the effect's units before any event is reduced.
+        seeded_state = (
+            ctx.state
+            if ctx.state.work_units
+            else ctx.state.copy_with(work_units=ctx.effect.work_units)
+        )
         current, resume_units = _resume_fan_out_state(
-            ctx.state,
+            seeded_state,
             ctx.effect,
             ctx.policy_bundle.pipeline,
             ctx.pipeline_subscriber,
             reducer_reduce_fn=_reduce,
         )
         if not resume_units:
+            current, _ = _reduce(
+                current, PipelineEvent.ALL_WORKERS_COMPLETE, ctx.policy_bundle.pipeline
+            )
+            current = _cleared_after_successful_wave(current)
+            _notify_subscriber(ctx.pipeline_subscriber, current)
+            _save_checkpoint_or_log(
+                current,
+                message="Checkpoint save failed after resumed fan-out in phase={phase}: {err}",
+            )
             return current
 
         fan_out_events = await coordinator.run_fan_out(
@@ -558,6 +590,12 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         for ev in fan_out_events:
             current, _ = _reduce(current, ev, ctx.policy_bundle.pipeline)
             _notify_subscriber(ctx.pipeline_subscriber, current)
+        # Clear tracking BEFORE checkpointing: a checkpoint that retains
+        # work_units past a fully successful wave would hard-fail routing of
+        # the advanced (non-parallelized) phase on crash-resume. The pre-clear
+        # state is kept solely for the per-worker summary below.
+        wave_state = current
+        current = _cleared_after_successful_wave(current)
         _save_checkpoint_or_log(
             current,
             message="Checkpoint save failed after fan-out in phase={phase}: {err}",
@@ -565,7 +603,9 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
 
         any_worker_failed = any(isinstance(ev, WorkerFailedEvent) for ev in fan_out_events)
         current, verification = await _run_verify_phase(ctx, current, any_worker_failed)
-        write_parallel_development_summary(ctx.workspace_scope, ctx.effect, current, verification)
+        write_parallel_development_summary(
+            ctx.workspace_scope, ctx.effect, wave_state, verification
+        )
         return current
     except KeyboardInterrupt:
         raise

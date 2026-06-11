@@ -2,12 +2,26 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
+
+from loguru import logger
 
 from ralph.git.operations import has_uncommitted_changes
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
+)
+from ralph.mcp.artifacts.plan import (
+    PLAN_ARTIFACT_PATH,
+    PlanArtifactValidationError,
+    is_noop_plan,
+    normalize_plan_artifact_content,
+)
+from ralph.phases.artifacts import (
+    PhaseArtifactError,
+    load_phase_artifact,
+    unwrap_phase_artifact_content,
 )
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -21,11 +35,14 @@ from ralph.pipeline.effects import (
 )
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.work_units import (
+    WorkUnit,
     WorkUnitsPlan,
     WorkUnitsValidationError,
+    parse_work_units_from_artifact,
     validate_for_same_workspace,
 )
 from ralph.prompts.materialize import prompt_file_for_phase
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -67,7 +84,7 @@ def determine_effect_from_policy(
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
-    return _parallel_or_agent_effect(state, phase_def, policy_bundle, config)
+    return _parallel_or_agent_effect(state, phase_def, policy_bundle, config, workspace_scope)
 
 
 def _skip_invocation_effect(
@@ -90,9 +107,14 @@ def _parallel_or_agent_effect(
     phase_def: PhaseDefinition,
     policy_bundle: PolicyBundle,
     config: UnifiedConfig | None,
+    workspace_scope: WorkspaceScope | None = None,
 ) -> Effect:
-    if len(state.work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
-        return _fan_out_effect(state, phase_def)
+    work_units = state.work_units
+    if not work_units and phase_def.parallelization is not None:
+        scope = workspace_scope or resolve_workspace_scope()
+        work_units = _work_units_from_plan_artifact(scope.root)
+    if len(work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
+        return _fan_out_effect(state, phase_def, work_units)
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
@@ -104,32 +126,75 @@ def _parallel_or_agent_effect(
     )
 
 
-def _fan_out_effect(state: PipelineState, phase_def: PhaseDefinition) -> Effect:
+def _fan_out_effect(
+    state: PipelineState,
+    phase_def: PhaseDefinition,
+    work_units: tuple[WorkUnit, ...],
+) -> Effect:
     phase_para = phase_def.parallelization
     if phase_para is None:
         return ExitFailureEffect(
             reason=(
                 f"Phase {state.phase!r} does not declare parallelization but the plan "
-                f"declares {len(state.work_units)} work_units; either declare "
+                f"declares {len(work_units)} work_units; either declare "
                 f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
             )
         )
     try:
-        validate_for_same_workspace(WorkUnitsPlan(work_units=list(state.work_units)))
+        validate_for_same_workspace(WorkUnitsPlan(work_units=list(work_units)))
     except WorkUnitsValidationError as exc:
         offending = (
-            ", ".join(u.unit_id for u in state.work_units if not u.allowed_directories)
+            ", ".join(u.unit_id for u in work_units if not u.allowed_directories)
             or "(see details)"
         )
         return ExitFailureEffect(
             reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
         )
     return FanOutEffect(
-        work_units=state.work_units,
+        work_units=work_units,
         max_workers=phase_para.max_parallel_workers,
         run_post_fanout_verification=phase_para.post_fanout_verification,
         phase=str(state.phase),
     )
+
+
+def _work_units_from_plan_artifact(workspace_root: Path) -> tuple[WorkUnit, ...]:
+    """Best-effort read of work_units from the on-disk plan artifact.
+
+    Returns an empty tuple when the plan is absent, a no-op, declares no
+    work_units, or fails to parse. Planning-phase validation already gated
+    validity, so a routing-time failure means corrupted on-disk state — the
+    serial single-agent fallback preserves prior behavior in that case.
+    """
+    workspace = FsWorkspace(workspace_root)
+    try:
+        artifact_wrapper = load_phase_artifact(workspace, PLAN_ARTIFACT_PATH)
+        content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
+        if is_noop_plan(content):
+            return ()
+        artifact = (
+            content
+            if "work_units" in content and "summary" not in content
+            else normalize_plan_artifact_content(content)
+        )
+        parsed = parse_work_units_from_artifact(artifact)
+    except (
+        PhaseArtifactError,
+        json.JSONDecodeError,
+        PlanArtifactValidationError,
+        ValueError,
+        WorkUnitsValidationError,
+    ) as exc:
+        logger.warning(
+            "Could not derive work_units from plan artifact at {}: {} — "
+            "falling back to serial execution",
+            PLAN_ARTIFACT_PATH,
+            exc,
+        )
+        return ()
+    if parsed is None:
+        return ()
+    return tuple(parsed.work_units)
 
 
 def _terminal_phase_effect(state: PipelineState, pipeline_policy: PipelinePolicy) -> Effect | None:

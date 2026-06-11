@@ -40,7 +40,6 @@ from ralph.pipeline.events import Event, PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
-from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, PhaseParallelization
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.scope import WorkspaceScope
@@ -236,6 +235,24 @@ _TWO_WORKERS_EXPECTED = 2
 _THREE_WORKERS_EXPECTED = 3
 
 
+def _assert_workers_succeeded_in_summary(tmp_path: Path, unit_ids: tuple[str, ...]) -> int:
+    """Assert each unit succeeded per the durable fan-out summary artifact.
+
+    A fully successful wave clears worker tracking from the returned state,
+    so the persisted summary is the post-wave observable for worker outcomes.
+    Returns the number of verified workers.
+    """
+    summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
+    assert summary_path.exists(), "fan-out must write parallel_development_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    statuses = {w["unit_id"]: w["status"] for w in summary["workers"]}
+    for unit_id in unit_ids:
+        assert statuses.get(unit_id) == "succeeded", (
+            f"Worker {unit_id} expected succeeded, got {statuses.get(unit_id)!r}"
+        )
+    return len(unit_ids)
+
+
 @pytest.mark.integration
 def test_workers_complete_successfully_with_multimodal_session_contract(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -263,16 +280,9 @@ def test_workers_complete_successfully_with_multimodal_session_contract(
         monkeypatch=monkeypatch,
     )
 
-    completed_workers = 0
-    for unit_id in ("unit-a", "unit-b"):
-        worker_state = final_state.worker_states.get(unit_id)
-        assert worker_state is not None, f"Worker {unit_id} missing from final state"
-        assert worker_state.status == WorkerStatus.SUCCEEDED, (
-            f"Worker {unit_id} expected SUCCEEDED, got {worker_state.status}"
-        )
-        completed_workers += 1
-
+    completed_workers = _assert_workers_succeeded_in_summary(tmp_path, ("unit-a", "unit-b"))
     assert completed_workers == _TWO_WORKERS_EXPECTED
+    assert final_state.worker_states == {}, "successful wave must clear worker tracking"
     assert captured.session_drain == "development"
     assert captured.session_capabilities == frozenset({"media.read", "workspace.edit"})
     assert captured.session_model_identity == identity
@@ -307,16 +317,11 @@ def test_multiple_workers_each_get_unique_session_ids(
         monkeypatch=monkeypatch,
     )
 
-    completed_workers = 0
-    for unit_id in ("unit-multi-a", "unit-multi-b", "unit-multi-c"):
-        worker_state = final_state.worker_states.get(unit_id)
-        assert worker_state is not None, f"Worker {unit_id} missing from final state"
-        assert worker_state.status == WorkerStatus.SUCCEEDED, (
-            f"Worker {unit_id} expected SUCCEEDED, got {worker_state.status}"
-        )
-        completed_workers += 1
-
+    completed_workers = _assert_workers_succeeded_in_summary(
+        tmp_path, ("unit-multi-a", "unit-multi-b", "unit-multi-c")
+    )
     assert completed_workers == _THREE_WORKERS_EXPECTED
+    assert final_state.worker_states == {}, "successful wave must clear worker tracking"
     assert captured.session_drain == "development"
     assert captured.session_capabilities == frozenset({"media.read"})
     assert captured.session_model_identity == identity
@@ -347,9 +352,8 @@ def test_claude_worker_completes_with_inline_image_capability(
         monkeypatch=monkeypatch,
     )
 
-    worker_state = final_state.worker_states.get("unit-claude")
-    assert worker_state is not None
-    assert worker_state.status == WorkerStatus.SUCCEEDED
+    _assert_workers_succeeded_in_summary(tmp_path, ("unit-claude",))
+    assert final_state.worker_states == {}, "successful wave must clear worker tracking"
 
     assert captured.session_model_identity == identity
     assert captured.session_model_identity is not None
@@ -381,9 +385,8 @@ def test_gemini_worker_completes_with_typed_block_capability(
         monkeypatch=monkeypatch,
     )
 
-    worker_state = final_state.worker_states.get("unit-gemini")
-    assert worker_state is not None
-    assert worker_state.status == WorkerStatus.SUCCEEDED
+    _assert_workers_succeeded_in_summary(tmp_path, ("unit-gemini",))
+    assert final_state.worker_states == {}, "successful wave must clear worker tracking"
 
     assert captured.session_model_identity == identity
     assert captured.session_model_identity is not None
@@ -414,9 +417,8 @@ def test_unknown_provider_worker_completes_with_replay_fallback(
         monkeypatch=monkeypatch,
     )
 
-    worker_state = final_state.worker_states.get("unit-unknown")
-    assert worker_state is not None
-    assert worker_state.status == WorkerStatus.SUCCEEDED
+    _assert_workers_succeeded_in_summary(tmp_path, ("unit-unknown",))
+    assert final_state.worker_states == {}, "successful wave must clear worker tracking"
 
     assert captured.session_model_identity == UNKNOWN_IDENTITY
     assert captured.session_model_identity is not None
