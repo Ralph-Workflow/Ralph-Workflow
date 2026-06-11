@@ -29,7 +29,14 @@ from ralph.process import (
     process_phase_scope,
     reset_process_manager,
 )
-from ralph.process.manager import ProcessTerminationError, _singleton
+from ralph.process.manager import (
+    LivenessResult,
+    ProcessTerminationError,
+    _singleton,
+)
+from ralph.process.manager import (
+    _process_manager as pm_mod,
+)
 from ralph.testing.fake_process import (
     FakeImmortalPopen,
     FakePopen,
@@ -1117,5 +1124,133 @@ def test_process_phase_scope_logs_and_reraises_on_termination_error() -> None:
             pass
     finally:
         _singleton._pm_state.instance = None
+
+
+# ---------------------------------------------------------------------------
+# AC-01: ProcessManager.terminate(ManagedAsyncProcess) dispatches async path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pm_terminate_routes_async_handle_to_escalation() -> None:
+    """ProcessManager.terminate(async_handle) dispatches the async termination path.
+
+    Synchronously calls ``pm.terminate(handle)`` on a ManagedAsyncProcess
+    obtained via ``pm.spawn_async(...)`` and asserts the dispatch routed
+    to the async escalation path. The fake async process is configured
+    to report ALIVE on the liveness probe so the call actually reaches
+    ``proc.terminate()`` and ``proc.kill()``; after the kill, the liveness
+    probe is switched to GONE so the record transitions to KILLED.
+    """
+    target_pid_ref: list[int] = [0]
+    first_seen: list[bool] = [False]
+
+    def _fake_verify(
+        p: int,
+        *,
+        psutil_mod: object = None,
+    ) -> LivenessResult:
+        del psutil_mod
+        # First call (pre-kill in _escalate_async_in_sync_context):
+        # report ALIVE so the escalation actually runs proc.terminate/kill.
+        # Subsequent calls (post-kill probe in _escalate_without_psutil):
+        # report GONE so the record is marked KILLED rather than failed.
+        if p == target_pid_ref[0] and first_seen[0]:
+            return LivenessResult.GONE
+        if p == target_pid_ref[0]:
+            first_seen[0] = True
+        return LivenessResult.ALIVE
+
+    async_factory = make_async_process_factory(itertools.count(9001), returncode=None)
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=make_sync_process_factory(itertools.count(100)),
+        async_process_factory=async_factory,
+        psutil=None,
+    )
+
+    handle = await pm.spawn_async(
+        [sys.executable, "-c", "pass"],
+        SpawnOptions(stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE),
+    )
+    assert handle.record.status == ProcessStatus.RUNNING
+    target_pid_ref[0] = handle.pid
+    first_seen[0] = False
+
+    with patch.object(pm_mod, "verify_process_liveness", _fake_verify):
+        pm.terminate(handle, grace_period_s=0.0)
+
+    fake_proc = handle._proc
+    assert fake_proc._terminated is True or fake_proc._killed is True, (
+        "pm.terminate on an async handle must drive proc.terminate()/kill()"
+    )
+    assert handle.record.status == ProcessStatus.KILLED
+
+
+@pytest.mark.asyncio
+async def test_pm_terminate_async_handle_is_idempotent() -> None:
+    """ProcessManager.terminate(async_handle) is idempotent across repeated calls.
+
+    Calling ``pm.terminate`` twice on the same async handle must not raise
+    and must not double-terminate the underlying fake process. The first
+    call is forced through the no-psutil escalation by reporting ALIVE on
+    the pre-kill liveness probe; the second call is a no-op because the
+    record is already terminal.
+    """
+    target_pid_ref: list[int] = [0]
+    first_seen: list[bool] = [False]
+
+    def _fake_verify(
+        p: int,
+        *,
+        psutil_mod: object = None,
+    ) -> LivenessResult:
+        del psutil_mod
+        if p == target_pid_ref[0] and first_seen[0]:
+            return LivenessResult.GONE
+        if p == target_pid_ref[0]:
+            first_seen[0] = True
+        return LivenessResult.ALIVE
+
+    async_factory = make_async_process_factory(itertools.count(9101), returncode=None)
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=make_sync_process_factory(itertools.count(100)),
+        async_process_factory=async_factory,
+        psutil=None,
+    )
+
+    handle = await pm.spawn_async(
+        [sys.executable, "-c", "pass"],
+        SpawnOptions(stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE),
+    )
+    fake_proc = handle._proc
+    target_pid_ref[0] = handle.pid
+    first_seen[0] = False
+
+    with patch.object(pm_mod, "verify_process_liveness", _fake_verify):
+        pm.terminate(handle, grace_period_s=0.0)
+    terminated_count_after_first = int(fake_proc._terminated) + int(fake_proc._killed)
+    first_cause = handle.record.cause
+    first_status = handle.record.status
+    assert first_status == ProcessStatus.KILLED
+
+    # Second call must be a no-op (record is already terminal); undo
+    # the liveness probe so the public-API call path is exercised
+    # without re-entry through the patched verify.
+    with patch.object(
+        pm_mod,
+        "verify_process_liveness",
+        lambda p, *, psutil_mod=None: LivenessResult.GONE,
+    ):
+        pm.terminate(handle, grace_period_s=0.0)
+
+    terminated_count_after_second = int(fake_proc._terminated) + int(fake_proc._killed)
+    assert handle.record.status == first_status
+    assert handle.record.cause == first_cause
+    assert terminated_count_after_second == terminated_count_after_first, (
+        "pm.terminate must not re-terminate an already-terminal async handle"
+    )
+
 
 _publish_named_process_manager_regressions()

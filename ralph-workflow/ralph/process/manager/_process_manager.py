@@ -567,6 +567,9 @@ class ProcessManager:
             return
         if isinstance(handle, ManagedPtyProcess):
             self._escalate_termination_pty(handle.record, handle._proc, gp)
+            return
+        if isinstance(handle, ManagedAsyncProcess):
+            self._escalate_async_in_sync_context(handle.record, handle._proc, gp)
 
     # ------------------------------------------------------------------
     # Shutdown methods (with stale-entry reconciliation)
@@ -574,6 +577,12 @@ class ProcessManager:
 
     def _reconcile_stale_entries(self) -> int:
         """Scan active records and mark as KILLED any PIDs no longer alive at the OS level.
+
+        For zombie PIDs, dispatch to the existing sync-safe reaping
+        helpers (``_reap_sync_and_mark`` / ``_reap_async_in_sync_and_mark``)
+        so the OS is asked to collect the defunct child before the record
+        is moved to a terminal state. When no tracked process object is
+        present for the zombie PID, fall back to the mark-only path.
 
         Also cleans up _descendants entries for stale PIDs.
 
@@ -591,7 +600,21 @@ class ProcessManager:
                 logger.debug(f"Stale tracking entry reconciled: PID {pid} no longer exists")
                 reconciled += 1
             elif liveness == LivenessResult.ZOMBIE:
-                self._mark_killed(record, returncode=None, cause="zombie_reconciled")
+                sync_proc = self._sync_procs.get(pid)
+                pty_proc = self._pty_procs.get(pid)
+                async_proc = self._async_procs.get(pid)
+                if sync_proc is not None or pty_proc is not None:
+                    reap_target = sync_proc if sync_proc is not None else pty_proc
+                    assert reap_target is not None
+                    self._reap_sync_and_mark(record, reap_target, cause="zombie_reconciled")
+                elif async_proc is not None:
+                    self._reap_async_in_sync_and_mark(
+                        record, async_proc, cause="zombie_reconciled"
+                    )
+                else:
+                    self._mark_killed(
+                        record, returncode=None, cause="zombie_reconciled"
+                    )
                 logger.warning(f"Stale zombie entry reconciled: PID {pid} is zombie")
                 reconciled += 1
         return reconciled
