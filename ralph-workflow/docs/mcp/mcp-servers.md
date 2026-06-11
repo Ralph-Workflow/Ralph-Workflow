@@ -97,6 +97,7 @@ When `media.enabled = true` (default), Ralph Workflow registers `read_media` as 
 - Returns PDFs and documents as typed blocks (e.g., `pdf` or `document` block type) for providers that support them natively (Claude, Gemini)
 - Returns audio and video as typed blocks for providers that support them (Gemini); returns an explicit unsupported error for providers that do not (Claude, OpenAI/Codex)
 - Returns all media as replayable `resource_reference` blocks for unknown providers, stored in the session manifest and retrievable via `ralph://media/...` URIs through `resources/read`
+- Keeps the on-disk replay byte cache under `.agent/tmp/media/` bounded to 256 MiB, pruning older cache files instead of growing without limit
 - Uses the session’s `ResolvedCapabilityProfile` — pre-computed at session start from the provider/model identity — to select the delivery mode for each modality (inline, typed-block, resource-reference, or explicit unsupported)
 - Returns an explicit error when the modality is unsupported by the current provider/model
 
@@ -155,7 +156,7 @@ For unknown providers, or when the artifact should remain retrievable via `resou
 {"type": "resource_reference", "uri": "ralph://media/<id>", "mimeType": "application/pdf", "modality": "pdf", "title": "report.pdf", "delivery": "resource_reference_replay"}
 ```
 
-The artifact bytes are retrievable via `resources/read` using the `ralph://media/<id>` URI.
+The artifact bytes are retrievable via `resources/read` using the `ralph://media/<id>` URI while the live session manifest or bounded `.agent/tmp/media/` cache still has the bytes. If an old cache entry is pruned and no source file is available, replay returns an explicit missing-source error instead of silently reading stale data.
 
 ### Provider/modality delivery matrix
 
@@ -171,7 +172,7 @@ The artifact bytes are retrievable via `resources/read` using the `ralph://media
 When an upstream MCP server returns a multimodal content block (`image`, `audio`, `video`, `pdf`, or `document`), Ralph Workflow **normalizes it to a `resource_reference` block** rather than rejecting or silently stringifying it.
 
 - **URI-backed blocks** (blocks with a `uri` or `source.uri` field): the upstream URI is preserved in the normalized `resource_reference`. The artifact bytes are not fetched or stored by Ralph.
-- **Embedded-data blocks** (blocks with `data` or `source.data`): the bytes are stored in the active session manifest before a `ralph://media/...` URI is returned. This requires an active session; calls without a session raise an explicit error.
+- **Embedded-data blocks** (blocks with `data` or `source.data`): the bytes are stored in the active session manifest before a `ralph://media/...` URI is returned. The on-disk replay cache is bounded and prunes older cache files. This requires an active session; calls without a session raise an explicit error.
 
 Malformed blocks (inconsistent MIME type vs declared type, or blocks with neither URI nor data) raise `UpstreamCallError` with a clear description. Unknown block types (e.g., `binary_blob`) also raise `UpstreamCallError`, listing the accepted types.
 

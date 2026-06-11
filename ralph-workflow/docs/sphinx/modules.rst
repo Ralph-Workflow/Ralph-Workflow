@@ -2647,12 +2647,6 @@ ralph.display.phase_status
    :members:
    :show-inheritance:
 
-ralph.display.plain_renderer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.plain_renderer
-   :no-members:
-
 ralph.display.progress
 ~~~~~~~~~~~~~~~~~~~~~~
 

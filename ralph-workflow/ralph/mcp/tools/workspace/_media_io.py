@@ -7,6 +7,7 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.tools._cache_retention import prune_cache_files
 from ralph.prompts.debug_dump import (
     media_cache_artifact_path,
     media_registry_path,
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from ralph.workspace import Workspace
 
 _MEDIA_SESSION_SCHEMA_VERSION = "2"
+MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 
 
 def _media_session_identity(entry: dict[str, str]) -> str:
@@ -42,14 +44,40 @@ def _write_durable_media_cache(
     raw_bytes: bytes,
 ) -> str:
     """Write raw bytes to the durable media cache and return the workspace-relative path."""
+    if len(raw_bytes) > MEDIA_CACHE_MAX_TOTAL_BYTES:
+        return ""
     cache_path = media_cache_artifact_path(artifact_id)
     try:
         abs_path = Path(workspace.absolute_path(cache_path))
         abs_path.parent.mkdir(parents=True, exist_ok=True)
         abs_path.write_bytes(raw_bytes)
+        prune_cache_files(
+            abs_path.parent.glob("*"),
+            max_total_bytes=MEDIA_CACHE_MAX_TOTAL_BYTES,
+            keep_paths=(abs_path,),
+        )
     except Exception:
         return ""
     return cache_path
+
+
+def _entry_has_available_cache(workspace: Workspace, entry: dict[str, str]) -> bool:
+    """Return False when an entry points at a cache file already evicted from disk."""
+    cache_path = entry.get("cache_path", "")
+    if not cache_path:
+        return True
+    try:
+        return Path(workspace.absolute_path(cache_path)).is_file()
+    except Exception:
+        return False
+
+
+def _drop_evicted_cache_entries(
+    workspace: Workspace,
+    artifacts: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Drop metadata entries whose durable cache files no longer exist."""
+    return [artifact for artifact in artifacts if _entry_has_available_cache(workspace, artifact)]
 
 
 def _persist_media_registry_entry(
@@ -67,6 +95,7 @@ def _persist_media_registry_entry(
             artifacts = list(raw_artifacts) if isinstance(raw_artifacts, list) else []
         except Exception:
             artifacts = []
+        artifacts = _drop_evicted_cache_entries(workspace, artifacts)
         artifacts = [a for a in artifacts if a.get("artifact_id") != artifact_id]
         artifacts.append(entry)
         payload: dict[str, object] = {
@@ -152,6 +181,7 @@ def _persist_media_session_entry(
             )
         except Exception:
             artifacts = []
+        artifacts = _drop_evicted_cache_entries(workspace, artifacts)
 
         new_identity = _media_session_identity(new_entry)
         ordered: OrderedDict[str, dict[str, str]] = OrderedDict()

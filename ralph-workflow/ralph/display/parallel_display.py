@@ -1043,9 +1043,7 @@ class ParallelDisplay:
             return []
 
         reason = (
-            f" \u2014 {_sanitize(snapshot.analysis_reason)}"
-            if snapshot.analysis_reason
-            else ""
+            f" \u2014 {_sanitize(snapshot.analysis_reason)}" if snapshot.analysis_reason else ""
         )
         return [
             self._build_line(
@@ -1098,15 +1096,18 @@ class ParallelDisplay:
         texts = [self._build_line(timestamp, "SUCCESS", "META", "[result] pipeline complete")]
         if snapshot.pr_url:
             texts.append(
-                self._build_line(
-                    timestamp, "SUCCESS", "META", f"[pr] {_sanitize(snapshot.pr_url)}"
-                )
+                self._build_line(timestamp, "SUCCESS", "META", f"[pr] {_sanitize(snapshot.pr_url)}")
             )
         return texts
 
     def emit_snapshot(self, snapshot: PipelineSnapshot) -> None:
         for text in self._snapshot_texts(snapshot):
             self._console.print(text, markup=False, highlight=False, no_wrap=True)
+
+    @property
+    def _plain_renderer(self) -> ParallelDisplay:
+        """Compatibility view for callers that predate renderer inlining."""
+        return self
 
     @property
     def content_blocks_count(self) -> int:
@@ -1179,8 +1180,9 @@ class ParallelDisplay:
         kind: ActivityEventKind,
         content: str | None,
         raw_ref: str | None,
-        metadata: dict[str, object],
+        metadata: dict[str, object] | None = None,
     ) -> None:
+        metadata = {} if metadata is None else metadata
         text = content or ""
 
         tool_signature: tuple[str, str] | None = None
@@ -1379,9 +1381,7 @@ class ParallelDisplay:
             else:
                 self._emit_run_start_wide(timestamp, orientation)
 
-    def _emit_run_start_compact(
-        self, timestamp: str, orientation: RunStartOrientation
-    ) -> None:
+    def _emit_run_start_compact(self, timestamp: str, orientation: RunStartOrientation) -> None:
         """Compact layout: max 4 [run-start] lines (milestone + up to 3 content)."""
         prompt_ws_parts: list[str] = []
         if orientation.prompt_path is not None:
@@ -1428,9 +1428,7 @@ class ParallelDisplay:
         if orientation.parallel_max_workers is not None:
             misc_parts.append(f"parallel=max_workers={orientation.parallel_max_workers}")
         self._console.print(
-            self._build_line(
-                timestamp, "INFO", "META", f"[run-start] {' '.join(misc_parts)}"
-            ),
+            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(misc_parts)}"),
             markup=False,
             highlight=False,
             no_wrap=True,
@@ -1445,9 +1443,7 @@ class ParallelDisplay:
             pw_parts.append(f"workspace={_sanitize(orientation.workspace_root)}")
         if pw_parts:
             self._console.print(
-                self._build_line(
-                    timestamp, "INFO", "META", f"[run-start] {' '.join(pw_parts)}"
-                ),
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(pw_parts)}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -1498,9 +1494,7 @@ class ParallelDisplay:
         if orientation.verbosity is not None:
             plan_parts.append(f"verbosity={orientation.verbosity}")
         self._console.print(
-            self._build_line(
-                timestamp, "INFO", "META", f"[run-start] {' '.join(plan_parts)}"
-            ),
+            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(plan_parts)}"),
             markup=False,
             highlight=False,
             no_wrap=True,
@@ -1605,9 +1599,7 @@ class ParallelDisplay:
                 else counters.tool_calls
             )
             err = (
-                opts.counter_overrides.errors
-                if opts.counter_overrides.errors
-                else counters.errors
+                opts.counter_overrides.errors if opts.counter_overrides.errors else counters.errors
             )
         else:
             cb = counters.content_blocks
@@ -2500,9 +2492,7 @@ class ParallelDisplay:
         )
         for line in lines:
             self._console.print(line, markup=False, highlight=False)
-        self._console.print(
-            Rule(style=_phase_style(style_phase)), markup=False, highlight=False
-        )
+        self._console.print(Rule(style=_phase_style(style_phase)), markup=False, highlight=False)
 
     def _render_text_block(
         self,
@@ -2514,9 +2504,7 @@ class ParallelDisplay:
     ) -> None:
         lines = [line.rstrip() for line in body.splitlines() if line.strip()]
         if indent:
-            lines = (
-                [f"  {lines[0]}", *[f"    {line}" for line in lines[1:]]] if lines else []
-            )
+            lines = [f"  {lines[0]}", *[f"    {line}" for line in lines[1:]]] if lines else []
         self._render_titled_lines(title, style_phase, lines)
 
     @staticmethod
@@ -2642,9 +2630,7 @@ class ParallelDisplay:
                         Text("No agents configured", style="theme.text.muted"), "", "", ""
                     )
                 else:
-                    table.add_row(
-                        Text("No agents configured", style="theme.text.muted"), ""
-                    )
+                    table.add_row(Text("No agents configured", style="theme.text.muted"), "")
             else:
                 for name, agent in agents.items():
                     cmd = getattr(agent, "cmd", "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -2675,13 +2661,9 @@ class ParallelDisplay:
                 table.add_column("Status", justify="center")
             if not providers:
                 if show_status:
-                    table.add_row(
-                        Text("No providers available", style="theme.text.muted"), ""
-                    )
+                    table.add_row(Text("No providers available", style="theme.text.muted"), "")
                 else:
-                    table.add_row(
-                        Text("No providers available", style="theme.text.muted")
-                    )
+                    table.add_row(Text("No providers available", style="theme.text.muted"))
             else:
                 for provider in providers:
                     if show_status:
@@ -2923,9 +2905,7 @@ class ParallelDisplay:
                 table.add_row(str(counter_name), f"{completed}/{cap}")
             self._console.print(table)
 
-    def emit_diagnose_inventory_table(
-        self, rows: Sequence[tuple[object, ...]]
-    ) -> None:
+    def emit_diagnose_inventory_table(self, rows: Sequence[tuple[object, ...]]) -> None:
         """Render the diagnose inventory table.
 
         ``rows`` is a list of tuples; each tuple is one row whose items
@@ -2956,9 +2936,7 @@ class ParallelDisplay:
                 table.add_row(*cells[:_INVENTORY_TABLE_COLUMNS])
             self._console.print(table)
 
-    def emit_diagnose_probe_table(
-        self, rows: Sequence[tuple[object, ...]]
-    ) -> None:
+    def emit_diagnose_probe_table(self, rows: Sequence[tuple[object, ...]]) -> None:
         """Render the diagnose probe (transport compatibility) table.
 
         Each row is a 5-tuple: (server, claude, codex, opencode, agy).
@@ -2986,9 +2964,7 @@ class ParallelDisplay:
                 table.add_row(*cells[:_PROBE_TABLE_COLUMNS])
             self._console.print(table)
 
-    def emit_diagnose_servers_table(
-        self, rows: Sequence[tuple[object, ...]]
-    ) -> None:
+    def emit_diagnose_servers_table(self, rows: Sequence[tuple[object, ...]]) -> None:
         """Render the diagnose MCP servers (custom health) table.
 
         Each row is a 5-tuple: (server, transport, status, tools, detail).

@@ -7,6 +7,7 @@ console, theme, terminal width, color policy, mode, and adaptive limits.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import sys
@@ -108,10 +109,35 @@ def _resolve_env(env: Mapping[str, str]) -> _ResolvedEnv:
     )
 
 
-def _console_has_no_color(console: Console) -> bool:
+def _console_has_no_color(console: Console, *, injected_console: bool) -> bool:
     """Return True when the console has color disabled via its no_color attribute."""
     raw: object = getattr(console, "no_color", False)
-    return bool(raw)
+    if not bool(raw):
+        return False
+    if not injected_console:
+        return True
+    if _console_has_forced_color(console):
+        return False
+    raw_file: object = getattr(console, "_file", None)
+    return raw_file is not None
+
+
+def _console_has_forced_color(console: Console) -> bool:
+    """Return True when an injected console explicitly requests terminal color."""
+    force_terminal_raw: object = getattr(console, "_force_terminal", None)
+    color_system_raw: object = getattr(console, "_color_system", None)
+    return force_terminal_raw is True and color_system_raw is not None
+
+
+def _normalize_injected_console_color(console: Console, resolved_env: _ResolvedEnv) -> None:
+    """Make injected Rich consoles honor Ralph's env-driven color contract."""
+    if resolved_env.no_color:
+        with contextlib.suppress(Exception):
+            console.no_color = True
+        return
+    if _console_has_forced_color(console):
+        with contextlib.suppress(Exception):
+            console.no_color = False
 
 
 def _build_console(resolved_env: _ResolvedEnv) -> Console:
@@ -347,22 +373,35 @@ def make_display_context(
     Returns:
         Fully initialised DisplayContext.
     """
+    env_was_provided = env is not None
     env_dict: dict[str, str] = dict(os.environ if env is None else env)
     resolved_env = _resolve_env(env_dict)
-    resolved_console = console if console is not None else _build_console(resolved_env)
+    if console is None:
+        injected_console = False
+        resolved_console = _build_console(resolved_env)
+    else:
+        injected_console = True
+        resolved_console = console
+        _normalize_injected_console_color(resolved_console, resolved_env)
     width = _compute_width(resolved_env, resolved_console, force_width)
     mode = _compute_mode(resolved_env, force_mode, width)
     limits = _MODE_LIMITS.get(mode, _MODE_LIMITS["wide"])
 
     # NO_COLOR wins over FORCE_COLOR per CLI conventions.
-    color_enabled = not resolved_env.no_color and not _console_has_no_color(resolved_console)
+    color_enabled = not resolved_env.no_color and not _console_has_no_color(
+        resolved_console,
+        injected_console=injected_console,
+    )
 
     # Glyph capability detection: force_glyphs > RALPH_FORCE_ASCII > stream encoding > TERM=dumb
     if force_glyphs is not None:
         glyphs_enabled = force_glyphs
+    elif injected_console and not env_was_provided and not resolved_env.force_ascii:
+        glyphs_enabled = True
     else:
+        glyph_file: object = resolved_console.file
         glyphs_enabled = detect_glyph_capability(
-            resolved_console.file if resolved_console.file is not None else sys.stdout,
+            glyph_file if glyph_file is not None else sys.stdout,
             env_dict,
         )
 

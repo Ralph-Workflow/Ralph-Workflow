@@ -28,6 +28,7 @@ from ralph.mcp.tools.coordination import (
     ImageContent,
     ToolContent,
 )
+from ralph.mcp.tools.workspace import _media_io as media_io
 from ralph.mcp.tools.workspace import (
     handle_read_media,
 )
@@ -339,6 +340,46 @@ class TestHandleReadMedia:
         titles = {a["title"] for a in artifacts}
         assert "a.pdf" in titles
         assert "b.pdf" in titles
+
+    def test_resource_reference_prunes_old_media_cache_when_budget_exceeded(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The durable media byte cache must not grow without a total-size bound."""
+
+        @dataclass
+        class SessionWithDrain:
+            allowed_capability: str | None = None
+            drain: str = "development"
+            session_id: str = "test-session"
+            media_manifest: MediaManifest = field(default_factory=MediaManifest)
+            model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+            def check_capability(self, capability: str) -> object:
+                return capability == self.allowed_capability
+
+            def check_edit_area(self, _: str) -> object:
+                return True
+
+        monkeypatch.setattr(media_io, "MEDIA_CACHE_MAX_TOTAL_BYTES", 32)
+        session = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        ws = FsWorkspace(tmp_path)
+
+        (tmp_path / "a.pdf").write_bytes(b"a" * 20)
+        (tmp_path / "b.pdf").write_bytes(b"b" * 20)
+
+        handle_read_media(session, ws, {"path": "a.pdf"})
+        handle_read_media(session, ws, {"path": "b.pdf"})
+
+        cache_dir = tmp_path / ".agent" / "tmp" / "media"
+        cache_files = sorted(path for path in cache_dir.iterdir() if path.is_file())
+        assert len(cache_files) == 1
+        assert cache_files[0].read_bytes() == b"b" * 20
+        assert sum(path.stat().st_size for path in cache_files) <= 32
+
+        registry_path = tmp_path / ".agent" / "tmp" / "media_registry.json"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        artifacts = registry["artifacts"]
+        assert [artifact["title"] for artifact in artifacts] == ["b.pdf"]
 
     def test_resource_reference_repeated_same_file_replaces_live_session_entry(
         self, tmp_path: Path

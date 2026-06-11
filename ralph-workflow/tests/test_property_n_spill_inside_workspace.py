@@ -12,9 +12,14 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
+from ralph.mcp.tools import _exec_output_spill as spill_mod
 from ralph.mcp.tools._exec_output_spill import format_or_spill
 from ralph.mcp.tools.exec import ExecRunDeps, resolve_spill_dir
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class _FakeWorkspace:
@@ -127,9 +132,7 @@ def test_resolve_spill_dir_does_not_use_os_temp_dir() -> None:
         is_in_temp = spill_resolved.is_relative_to(temp_dir)
     except ValueError:
         is_in_temp = False
-    assert not is_in_temp, (
-        f"spill {spill} must not be inside OS temp dir {temp_dir}"
-    )
+    assert not is_in_temp, f"spill {spill} must not be inside OS temp dir {temp_dir}"
 
 
 def test_format_or_spill_does_not_truncate_small_text(tmp_path: Path) -> None:
@@ -164,6 +167,28 @@ def test_format_or_spill_forced_truncated_writes_file(tmp_path: Path) -> None:
     assert files, "truncated=True must spill even small text"
     # The spill is inside the workspace
     assert files[0].resolve().is_relative_to(tmp_path.resolve())
+
+
+def test_format_or_spill_prunes_old_spill_files_when_budget_exceeded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Repeated oversized exec output must not grow the spill cache without bound."""
+    spill_dir = tmp_path / ".agent" / "tmp"
+    spill_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(spill_mod, "SPILL_CACHE_MAX_TOTAL_BYTES", 150)
+
+    for payload in ("a" * 80, "b" * 80, "c" * 80):
+        spill_mod.format_or_spill(
+            payload,
+            returncode=0,
+            truncated=True,
+            spill_dir=spill_dir,
+        )
+
+    spill_files = sorted(spill_dir.glob("ralph-exec-*.txt"))
+    assert len(spill_files) == 1
+    assert spill_files[0].read_text(encoding="utf-8") == "c" * 80
+    assert sum(path.stat().st_size for path in spill_files) <= 150
 
 
 def test_spill_file_path_under_workspace_for_explicit_workspace(tmp_path: Path) -> None:

@@ -22,6 +22,7 @@ import os
 import tempfile
 from pathlib import Path
 
+from ralph.mcp.tools._cache_retention import prune_cache_files
 from ralph.mcp.tools.coordination import ToolContent, ToolResult
 
 #: Above this many bytes the formatted result is spilled to a file instead of
@@ -30,6 +31,8 @@ INLINE_OUTPUT_LIMIT_BYTES = 1 * 1024 * 1024
 #: Hard cap on captured subprocess output for the bounded exec tool. The process
 #: is killed past this; the captured tail is still spilled (not discarded).
 SPILL_OUTPUT_LIMIT_BYTES = 10 * 1024 * 1024
+#: Total retained exec spill cache under a workspace's .agent/tmp directory.
+SPILL_CACHE_MAX_TOTAL_BYTES = 64 * 1024 * 1024
 #: Head/tail sizes (chars) for the inline preview shown alongside a spill path.
 PREVIEW_HEAD_CHARS = 8 * 1024
 PREVIEW_TAIL_CHARS = 8 * 1024
@@ -46,7 +49,14 @@ def spill_output(text: str, spill_dir: Path | None) -> Path:
     fd, name = tempfile.mkstemp(prefix="ralph-exec-", suffix=".txt", dir=str(directory))
     with os.fdopen(fd, "w", encoding="utf-8", errors="replace") as spill_file:
         spill_file.write(text)
-    return Path(name)
+    path = Path(name)
+    if spill_dir is not None:
+        prune_cache_files(
+            directory.glob("ralph-exec-*.txt"),
+            max_total_bytes=SPILL_CACHE_MAX_TOTAL_BYTES,
+            keep_paths=(path,),
+        )
+    return path
 
 
 def build_spill_preview(text: str, path: Path, total_bytes: int, *, truncated: bool) -> str:
@@ -88,6 +98,7 @@ __all__ = [
     "INLINE_OUTPUT_LIMIT_BYTES",
     "PREVIEW_HEAD_CHARS",
     "PREVIEW_TAIL_CHARS",
+    "SPILL_CACHE_MAX_TOTAL_BYTES",
     "SPILL_OUTPUT_LIMIT_BYTES",
     "build_spill_preview",
     "format_or_spill",
