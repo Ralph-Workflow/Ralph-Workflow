@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -9,7 +10,8 @@ from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
-from ralph.process.manager import SpawnOptions, get_process_manager
+from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
+from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
     from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -76,7 +78,13 @@ def _parse_tools(result: JsonObject) -> list[UpstreamTool]:
     return tools
 
 
-def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
+def _make_stdio_caller(
+    server: UpstreamMcpServer,
+    *,
+    pm: ProcessManager | None = None,
+) -> JsonRpcCaller:
+    effective_pm = pm if pm is not None else get_process_manager()
+
     def _call(method: str, params: JsonObject) -> JsonObject:
         if not server.command:
             raise UpstreamCallError(f"upstream server '{server.name}' has no command configured")
@@ -109,7 +117,7 @@ def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
         ]
         payload = "\n".join(payload_lines) + "\n"
         env: dict[str, str] = {**os.environ, **server.env}
-        handle = get_process_manager().spawn(
+        handle = effective_pm.spawn(
             command,
             SpawnOptions(
                 stdin=subprocess.PIPE,
@@ -124,6 +132,13 @@ def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
         except subprocess.TimeoutExpired:
             handle.terminate(grace_period_s=0)
             raise UpstreamCallError(f"upstream server '{server.name}' timed out") from None
+        except BaseException:
+            if handle.record.status not in _TERMINAL_STATUSES:
+                with contextlib.suppress(Exception):
+                    handle.terminate(grace_period_s=0)
+                with contextlib.suppress(Exception):
+                    handle.wait(timeout=0)
+            raise
         if (handle.returncode or 0) != 0:
             raise UpstreamCallError(
                 f"upstream server '{server.name}' process exited {handle.returncode}"

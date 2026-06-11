@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import subprocess
 from typing import TYPE_CHECKING
@@ -11,6 +12,7 @@ from ralph.executor._process_error_details import ProcessErrorDetails
 from ralph.executor._process_result import ProcessResult
 from ralph.executor._process_run_options import ProcessRunOptions
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
+from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -101,20 +103,30 @@ async def run_process_async(
     communicate_task: asyncio.Task[tuple[bytes, bytes]]
     communicate_task = asyncio.create_task(handle.communicate())
 
-    done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
-    if communicate_task not in done:
-        await handle.terminate(grace_period_s=0)
-        stdout_bytes, stderr_bytes = await communicate_task
-        # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
-        # instead of raising an exception, so callers can handle it gracefully
-        return ProcessResult(
-            command=cmd,
-            returncode=TIMEOUT_EXIT_CODE,
-            stdout=_decode_output(stdout_bytes),
-            stderr=_decode_output(stderr_bytes),
-        )
+    try:
+        done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
+        if communicate_task not in done:
+            await handle.terminate(grace_period_s=0)
+            stdout_bytes, stderr_bytes = await communicate_task
+            # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
+            # instead of raising an exception, so callers can handle it gracefully
+            return ProcessResult(
+                command=cmd,
+                returncode=TIMEOUT_EXIT_CODE,
+                stdout=_decode_output(stdout_bytes),
+                stderr=_decode_output(stderr_bytes),
+            )
 
-    stdout_bytes, stderr_bytes = communicate_task.result()
+        stdout_bytes, stderr_bytes = communicate_task.result()
+    except BaseException:
+        with contextlib.suppress(Exception):
+            communicate_task.cancel()
+        if handle.record.status not in _TERMINAL_STATUSES:
+            with contextlib.suppress(Exception):
+                await handle.terminate(grace_period_s=0)
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(handle.wait(), timeout=0)
+        raise
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(
@@ -169,6 +181,13 @@ def run_process(
             stdout=_decode_output(stdout_bytes),
             stderr=_decode_output(stderr_bytes),
         )
+    except BaseException:
+        if handle.record.status not in _TERMINAL_STATUSES:
+            with contextlib.suppress(Exception):
+                handle.terminate(grace_period_s=0)
+            with contextlib.suppress(Exception):
+                handle.wait(timeout=0)
+        raise
 
     rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(

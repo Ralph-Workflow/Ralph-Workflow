@@ -12,6 +12,7 @@ import pytest
 
 import ralph.process.manager as _mgr
 from ralph.mcp.protocol.transport import StdioTransport
+from ralph.mcp.upstream._stdio_upstream_client import _make_stdio_caller
 from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
@@ -224,3 +225,84 @@ def test_stdio_upstream_client_lists_tools() -> None:
 
     assert [t.name for t in tools] == ["search_repos", "create_issue"]
     assert all(isinstance(t, UpstreamTool) for t in tools)
+
+
+class _FakeRaisingUpstreamPopen:
+    """Fake Popen whose communicate() raises OSError to exercise the stdio caller cleanup path."""
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._returncode: int | None = None
+        self.terminate_calls = 0
+        self.wait_calls: list[float | None] = []
+        self.stdin: IO[bytes] | None = None
+        self.stdout: IO[bytes] | None = BytesIO()
+        self.stderr: IO[bytes] | None = BytesIO()
+
+    def poll(self) -> int | None:
+        return self._returncode
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls.append(timeout)
+        self._returncode = 0
+        return 0
+
+    def communicate(
+        self,
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input, timeout
+        raise OSError("broken pipe")
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        self._returncode = -15
+
+    def kill(self) -> None:
+        self._returncode = -9
+
+
+def test_stdio_caller_terminates_handle_on_communicate_exception() -> None:
+    """Communicate OSError in the stdio caller must terminate the handle and propagate.
+
+    Proves the new try/finally in _make_stdio_caller:
+    - The underlying OSError is re-raised (caught and re-wrapped by StdioUpstreamClient).
+    - The ProcessManager record reaches ProcessStatus.KILLED.
+    - The fake Popen's terminate() is called exactly once.
+    """
+    fake = _FakeRaisingUpstreamPopen(pid=1)
+
+    def factory(command: object, opts: object) -> object:
+        del command, opts
+        return fake
+
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.0,
+            kill_followup_timeout_s=0.0,
+            log_events=False,
+            enable_zombie_reaper=False,
+        ),
+        sync_process_factory=factory,
+    )
+
+    server = UpstreamMcpServer(
+        name="test-upstream",
+        transport="stdio",
+        command="fake-cmd",
+        args=(),
+    )
+    caller = _make_stdio_caller(server, pm=pm)
+    client = StdioUpstreamClient(server, caller=caller)
+
+    with pytest.raises(UpstreamCallError) as excinfo:
+        client.list_tools()
+
+    assert isinstance(excinfo.value.__cause__, OSError)
+    assert str(excinfo.value.__cause__) == "broken pipe"
+
+    records = pm.list_records(include_active=True, include_terminal=True)
+    assert len(records) == 1
+    assert records[0].status == ProcessStatus.KILLED
+    assert fake.terminate_calls == 1

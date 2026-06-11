@@ -11,7 +11,7 @@ import pytest
 
 from ralph.executor import ProcessExecutionError, ProcessResult, run_process, run_process_async
 from ralph.executor.process import ProcessRunOptions
-from ralph.process.manager import ProcessManager, ProcessManagerPolicy, SpawnOptions
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessStatus, SpawnOptions
 from ralph.testing.fake_process import FakeControllableAsyncProcess, FakeTimeoutPopen
 
 if TYPE_CHECKING:
@@ -40,6 +40,75 @@ def _make_timeout_pm(partial_stdout: bytes = b"") -> ProcessManager:
         return FakeTimeoutPopen(next(pid_iter), partial_stdout=partial_stdout)
 
     return ProcessManager(policy=_FAST_POLICY, sync_process_factory=factory)
+
+
+class _FakeRaisingPopen:
+    """FakePopen variant whose communicate() raises OSError before reading any output."""
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._returncode: int | None = None
+        self.terminate_calls = 0
+        self.wait_calls: list[float | None] = []
+        self.stdin: object = None
+        self.stdout: object = None
+        self.stderr: object = None
+
+    def poll(self) -> int | None:
+        return self._returncode
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls.append(timeout)
+        self._returncode = 0
+        return 0
+
+    def communicate(
+        self,
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input, timeout
+        raise OSError("broken pipe")
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        self._returncode = -15
+
+    def kill(self) -> None:
+        self._returncode = -9
+
+
+class _FakeRaisingAsyncProcess:
+    """asyncio-style fake whose communicate() raises OSError and wait() returns 0."""
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._returncode: int | None = None
+        self.terminate_calls = 0
+        self.wait_calls = 0
+        self.stdin: object = None
+        self.stdout: object = None
+        self.stderr: object = None
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+    async def wait(self) -> int:
+        self.wait_calls += 1
+        self._returncode = 0
+        return 0
+
+    async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+        del input
+        raise OSError("broken pipe")
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        self._returncode = -15
+
+    def kill(self) -> None:
+        self._returncode = -9
 
 
 def test_run_process_captures_stdout_stderr_and_exit_code(tmp_path: Path) -> None:
@@ -157,3 +226,77 @@ def test_run_process_wraps_missing_command(tmp_path: Path) -> None:
     assert error.timed_out is False
     assert error.command == (missing_command,)
     assert error.__cause__ is not None
+
+
+def test_run_process_cleans_up_on_non_timeout_communicate_exception(
+    tmp_path: Path,
+) -> None:
+    """Generic OSError from communicate() must terminate the process and re-raise.
+
+    Proves the run_process try/finally cleanup path:
+    - The original OSError still propagates to the caller (not suppressed).
+    - The ProcessManager record reaches ProcessStatus.KILLED (not RUNNING/SPAWNED).
+    - The fake Popen's terminate() is called exactly once by the cleanup path.
+    """
+    fake = _FakeRaisingPopen(pid=1)
+
+    def factory(command: object, opts: SpawnOptions) -> object:
+        del command, opts
+        return fake
+
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=factory)
+
+    with pytest.raises(OSError, match="broken pipe"):
+        run_process("fake-cmd", options=ProcessRunOptions(cwd=tmp_path), _pm=pm)
+
+    records = pm.list_records(include_active=True, include_terminal=True)
+    assert len(records) == 1
+    assert records[0].status == ProcessStatus.KILLED
+    assert fake.terminate_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_run_process_async_cleans_up_on_non_timeout_communicate_exception(
+    tmp_path: Path,
+) -> None:
+    """Async path: generic OSError from communicate() must terminate and re-raise.
+
+    Proves the run_process_async try/finally cleanup path:
+    - The original OSError still propagates to the caller.
+    - The ProcessManager record reaches ProcessStatus.KILLED.
+    - The fake async process's terminate() is called exactly once.
+    """
+    fake = _FakeRaisingAsyncProcess(pid=1)
+
+    async def factory(
+        command: object,
+        *,
+        cwd: object,
+        env: object,
+        stdin: object,
+        stdout: object,
+        stderr: object,
+        start_new_session: object,
+    ) -> object:
+        del command, cwd, env, stdin, stdout, stderr, start_new_session
+        return fake
+
+    # Async terminate path uses asyncio.wait_for(proc.wait(), timeout=grace_period_s).
+    # The non-zero grace period lets the fake's wait() complete without timing out.
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.5,
+            kill_followup_timeout_s=0.5,
+            log_events=False,
+            enable_zombie_reaper=False,
+        ),
+        async_process_factory=factory,
+    )
+
+    with pytest.raises(OSError, match="broken pipe"):
+        await run_process_async("fake-cmd", cwd=tmp_path, _pm=pm)
+
+    records = pm.list_records(include_active=True, include_terminal=True)
+    assert len(records) == 1
+    assert records[0].status == ProcessStatus.KILLED
+    assert fake.terminate_calls == 1
