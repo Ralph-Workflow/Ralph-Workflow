@@ -66,11 +66,29 @@ _COVERAGE_AREAS: frozenset[str] = frozenset(
 class Summary(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    context: str = Field(default="", max_length=2000)
-    intent: str = Field(default="", max_length=200)
-    intent_verb: str = Field(default="")
-    scope_items: list[ScopeItem] = Field(..., min_length=3)
-    coverage_areas: list[CoverageArea] = Field(default_factory=list)
+    context: str = Field(
+        default="",
+        max_length=2000,
+        description="Free-form context (max 2000 chars).",
+    )
+    intent: str = Field(
+        default="",
+        max_length=200,
+        description="One-line user-facing outcome (max 200 chars).",
+    )
+    intent_verb: str = Field(
+        default="",
+        description="Closed verb; see _INTENT_VERB_SET (9 values).",
+    )
+    scope_items: list[ScopeItem] = Field(
+        ...,
+        min_length=3,
+        description="At least 3 scope items; see ScopeItem.",
+    )
+    coverage_areas: list[CoverageArea] = Field(
+        default_factory=list,
+        description="Optional CoverageArea enum list; see CoverageArea literal.",
+    )
 
     @field_validator("intent")
     @classmethod
@@ -109,10 +127,7 @@ class Summary(RalphBaseModel):
                 msg = f"coverage_areas elements must be strings, got {type(entry).__name__}"
                 raise ValueError(msg)
             if entry not in _COVERAGE_AREAS:
-                msg = (
-                    f"coverage_areas element {entry!r} is not one of: "
-                    f"{sorted(_COVERAGE_AREAS)!r}"
-                )
+                msg = f"coverage_areas element {entry!r} is not one of: {sorted(_COVERAGE_AREAS)!r}"
                 raise ValueError(msg)
             cleaned.append(cast("CoverageArea", entry))
         return cleaned

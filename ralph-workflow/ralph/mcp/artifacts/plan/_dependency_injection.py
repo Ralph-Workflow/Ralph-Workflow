@@ -30,10 +30,23 @@ ForbiddenPattern = Literal[
 class DependencyInjection(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    required_for_testability: bool
-    preferred_patterns: list[PreferredPattern] = Field(default_factory=list)
-    forbidden_patterns: list[ForbiddenPattern] = Field(default_factory=list)
-    notes: str | None = Field(default=None, max_length=2000)
+    required_for_testability: bool = Field(
+        ...,
+        description="Whether DI is required for testability.",
+    )
+    preferred_patterns: list[PreferredPattern] = Field(
+        default_factory=list,
+        description="PreferredPattern enum list; see PreferredPattern literal.",
+    )
+    forbidden_patterns: list[ForbiddenPattern] = Field(
+        default_factory=list,
+        description="ForbiddenPattern enum list; see ForbiddenPattern literal.",
+    )
+    notes: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional free-form notes (max 2000 chars).",
+    )
 
 
 __all__ = [

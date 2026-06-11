@@ -32,11 +32,28 @@ TestLayer = Literal[
 class Testability(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    must_be_black_box: bool
-    forbidden_in_tests: list[ForbiddenInTest] = Field(default_factory=list)
-    required_test_layers: list[TestLayer] = Field(default_factory=list)
-    clock_injection_required: bool | None = None
-    max_unit_test_seconds: float | None = Field(default=None, gt=0, le=60)
+    must_be_black_box: bool = Field(
+        ...,
+        description="Whether tests must be black-box (no production monkeypatches).",
+    )
+    forbidden_in_tests: list[ForbiddenInTest] = Field(
+        default_factory=list,
+        description="ForbiddenInTest enum list; see ForbiddenInTest literal.",
+    )
+    required_test_layers: list[TestLayer] = Field(
+        default_factory=list,
+        description="TestLayer enum list; see TestLayer literal.",
+    )
+    clock_injection_required: bool | None = Field(
+        default=None,
+        description="Whether a clock-injection seam is required.",
+    )
+    max_unit_test_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        le=60,
+        description="Optional per-unit-test budget in seconds (0 < value <= 60).",
+    )
 
 
 __all__ = [

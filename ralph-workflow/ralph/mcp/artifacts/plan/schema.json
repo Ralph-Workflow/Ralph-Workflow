@@ -21,11 +21,29 @@
     "AcceptanceCriterion": {
       "additionalProperties": false,
       "properties": {
+        "id": {
+          "minLength": 1,
+          "pattern": "^[A-Z]+-\\d{2,}$",
+          "title": "Id",
+          "type": "string"
+        },
         "description": {
           "maxLength": 1000,
           "minLength": 1,
           "title": "Description",
           "type": "string"
+        },
+        "verification_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification Step"
         },
         "evidence_path": {
           "anyOf": [
@@ -39,30 +57,12 @@
           "default": null,
           "title": "Evidence Path"
         },
-        "id": {
-          "minLength": 1,
-          "pattern": "^[A-Z]+-\\d{2,}$",
-          "title": "Id",
-          "type": "string"
-        },
         "satisfied_by_steps": {
           "items": {
             "type": "integer"
           },
           "title": "Satisfied By Steps",
           "type": "array"
-        },
-        "verification_step": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Verification Step"
         }
       },
       "required": [
@@ -100,6 +100,11 @@
     "CriticalPrimaryFile": {
       "additionalProperties": false,
       "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
         "action": {
           "enum": [
             "create",
@@ -120,11 +125,6 @@
           ],
           "default": null,
           "title": "Estimated Changes"
-        },
-        "path": {
-          "minLength": 1,
-          "title": "Path",
-          "type": "string"
         }
       },
       "required": [
@@ -137,7 +137,29 @@
     "DependencyInjection": {
       "additionalProperties": false,
       "properties": {
+        "required_for_testability": {
+          "description": "Whether DI is required for testability.",
+          "title": "Required For Testability",
+          "type": "boolean"
+        },
+        "preferred_patterns": {
+          "description": "PreferredPattern enum list; see PreferredPattern literal.",
+          "items": {
+            "enum": [
+              "constructor",
+              "parameter",
+              "interface",
+              "service-locator",
+              "ambient-context",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "title": "Preferred Patterns",
+          "type": "array"
+        },
         "forbidden_patterns": {
+          "description": "ForbiddenPattern enum list; see ForbiddenPattern literal.",
           "items": {
             "enum": [
               "global-singleton",
@@ -163,26 +185,8 @@
             }
           ],
           "default": null,
+          "description": "Optional free-form notes (max 2000 chars).",
           "title": "Notes"
-        },
-        "preferred_patterns": {
-          "items": {
-            "enum": [
-              "constructor",
-              "parameter",
-              "interface",
-              "service-locator",
-              "ambient-context",
-              "unknown"
-            ],
-            "type": "string"
-          },
-          "title": "Preferred Patterns",
-          "type": "array"
-        },
-        "required_for_testability": {
-          "title": "Required For Testability",
-          "type": "boolean"
         }
       },
       "required": [
@@ -194,6 +198,21 @@
     "DesignConstraints": {
       "additionalProperties": false,
       "properties": {
+        "text": {
+          "description": "Required design constraints text (1-2000 chars).",
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "invariants": {
+          "description": "Optional list of design invariants (max 500 chars each after dedup).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Invariants",
+          "type": "array"
+        },
         "architecture_style": {
           "anyOf": [
             {
@@ -216,20 +235,8 @@
             }
           ],
           "default": null,
+          "description": "ArchitectureStyle enum; see ArchitectureStyle literal.",
           "title": "Architecture Style"
-        },
-        "invariants": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Invariants",
-          "type": "array"
-        },
-        "text": {
-          "maxLength": 2000,
-          "minLength": 1,
-          "title": "Text",
-          "type": "string"
         }
       },
       "required": [
@@ -241,10 +248,27 @@
     "DesignSection": {
       "additionalProperties": false,
       "properties": {
-        "acceptance_criteria": {
+        "planning_profile": {
           "anyOf": [
             {
-              "$ref": "#/$defs/AcceptanceCriteria"
+              "enum": [
+                "strict",
+                "balanced",
+                "minimal"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Planning Profile"
+        },
+        "constraints": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DesignConstraints"
             },
             {
               "type": "null"
@@ -252,10 +276,10 @@
           ],
           "default": null
         },
-        "constraints": {
+        "non_goals": {
           "anyOf": [
             {
-              "$ref": "#/$defs/DesignConstraints"
+              "$ref": "#/$defs/NonGoals"
             },
             {
               "type": "null"
@@ -285,10 +309,10 @@
           ],
           "default": null
         },
-        "non_goals": {
+        "testability": {
           "anyOf": [
             {
-              "$ref": "#/$defs/NonGoals"
+              "$ref": "#/$defs/Testability"
             },
             {
               "type": "null"
@@ -296,17 +320,27 @@
           ],
           "default": null
         },
-        "notes": {
+        "refactor_strategy": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/$defs/RefactorStrategy"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Notes"
+          "default": null
+        },
+        "acceptance_criteria": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcceptanceCriteria"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "outcome": {
           "anyOf": [
@@ -321,14 +355,9 @@
           "default": null,
           "title": "Outcome"
         },
-        "planning_profile": {
+        "notes": {
           "anyOf": [
             {
-              "enum": [
-                "strict",
-                "balanced",
-                "minimal"
-              ],
               "type": "string"
             },
             {
@@ -336,29 +365,7 @@
             }
           ],
           "default": null,
-          "title": "Planning Profile"
-        },
-        "refactor_strategy": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/RefactorStrategy"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "testability": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Testability"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
+          "title": "Notes"
         }
       },
       "title": "DesignSection",
@@ -367,18 +374,37 @@
     "DriftDetection": {
       "additionalProperties": false,
       "properties": {
+        "guard_commands": {
+          "description": "Guard command strings; restricted punctuation per validator.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Guard Commands",
+          "type": "array"
+        },
         "expected_outputs": {
+          "description": "Expected guard command output substrings.",
           "items": {
             "type": "string"
           },
           "title": "Expected Outputs",
           "type": "array"
         },
-        "guard_commands": {
+        "sources": {
+          "description": "DriftSource enum list; see DriftSource literal.",
           "items": {
+            "enum": [
+              "ruff",
+              "mypy",
+              "pytest",
+              "make",
+              "custom-script",
+              "ci",
+              "unknown"
+            ],
             "type": "string"
           },
-          "title": "Guard Commands",
+          "title": "Sources",
           "type": "array"
         },
         "on_drift_action": {
@@ -397,23 +423,8 @@
             }
           ],
           "default": null,
+          "description": "OnDriftAction enum; see OnDriftAction literal.",
           "title": "On Drift Action"
-        },
-        "sources": {
-          "items": {
-            "enum": [
-              "ruff",
-              "mypy",
-              "pytest",
-              "make",
-              "custom-script",
-              "ci",
-              "unknown"
-            ],
-            "type": "string"
-          },
-          "title": "Sources",
-          "type": "array"
         }
       },
       "title": "DriftDetection",
@@ -422,18 +433,18 @@
     "EditArea": {
       "additionalProperties": false,
       "properties": {
-        "directories": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Directories",
-          "type": "array"
-        },
         "paths": {
           "items": {
             "type": "string"
           },
           "title": "Paths",
+          "type": "array"
+        },
+        "directories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Directories",
           "type": "array"
         }
       },
@@ -453,6 +464,12 @@
           "title": "Kind",
           "type": "string"
         },
+        "ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
         "note": {
           "anyOf": [
             {
@@ -465,12 +482,6 @@
           ],
           "default": null,
           "title": "Note"
-        },
-        "ref": {
-          "maxLength": 200,
-          "minLength": 1,
-          "title": "Ref",
-          "type": "string"
         }
       },
       "required": [
@@ -502,12 +513,10 @@
       "additionalProperties": false,
       "description": "A unit of parallelisable work with dependency tracking.",
       "properties": {
-        "depends_on": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Depends On",
-          "type": "array"
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
         },
         "description": {
           "minLength": 1,
@@ -517,10 +526,12 @@
         "edit_area": {
           "$ref": "#/$defs/EditArea"
         },
-        "id": {
-          "minLength": 1,
-          "title": "Id",
-          "type": "string"
+        "depends_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
         }
       },
       "required": [
@@ -534,15 +545,6 @@
     "PlanConstraints": {
       "additionalProperties": false,
       "properties": {
-        "must_keep_working": {
-          "items": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
-          "title": "Must Keep Working",
-          "type": "array"
-        },
         "must_not_break": {
           "items": {
             "maxLength": 200,
@@ -550,6 +552,15 @@
             "type": "string"
           },
           "title": "Must Not Break",
+          "type": "array"
+        },
+        "must_keep_working": {
+          "items": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Must Keep Working",
           "type": "array"
         },
         "performance_budget": {
@@ -585,41 +596,28 @@
     "PlanStep": {
       "additionalProperties": false,
       "properties": {
+        "number": {
+          "description": "1-based step number.",
+          "minimum": 1,
+          "title": "Number",
+          "type": "integer"
+        },
+        "title": {
+          "description": "Short step title (non-empty).",
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
         "content": {
+          "description": "Step body / detailed content (non-empty).",
           "minLength": 1,
           "title": "Content",
           "type": "string"
         },
-        "depends_on": {
-          "items": {
-            "type": "integer"
-          },
-          "title": "Depends On",
-          "type": "array"
-        },
-        "expected_evidence": {
-          "items": {
-            "$ref": "#/$defs/EvidenceRef"
-          },
-          "title": "Expected Evidence",
-          "type": "array"
-        },
-        "location": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Location"
-        },
-        "number": {
-          "minimum": 1,
-          "title": "Number",
-          "type": "integer"
+        "step_type": {
+          "$ref": "#/$defs/StepType",
+          "default": "action",
+          "description": "StepType; see StepType literal. file_change needs targets."
         },
         "priority": {
           "anyOf": [
@@ -637,7 +635,29 @@
             }
           ],
           "default": null,
+          "description": "Optional priority; one of critical, high, medium, low.",
           "title": "Priority"
+        },
+        "targets": {
+          "description": "Required for file_change; list of {path, action} entries.",
+          "items": {
+            "$ref": "#/$defs/StepTarget"
+          },
+          "title": "Targets",
+          "type": "array"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional location; required for verify steps when verify_command is absent.",
+          "title": "Location"
         },
         "rationale": {
           "anyOf": [
@@ -649,30 +669,32 @@
             }
           ],
           "default": null,
+          "description": "Optional rationale for the step.",
           "title": "Rationale"
         },
+        "depends_on": {
+          "description": "Optional list of step numbers this step depends on.",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
         "satisfies": {
+          "description": "Optional list of AC ids (^[A-Z]+-\\d{2,}$) this step satisfies.",
           "items": {
             "type": "string"
           },
           "title": "Satisfies",
           "type": "array"
         },
-        "step_type": {
-          "$ref": "#/$defs/StepType",
-          "default": "action"
-        },
-        "targets": {
+        "expected_evidence": {
+          "description": "Optional list of evidence references (max 50).",
           "items": {
-            "$ref": "#/$defs/StepTarget"
+            "$ref": "#/$defs/EvidenceRef"
           },
-          "title": "Targets",
+          "title": "Expected Evidence",
           "type": "array"
-        },
-        "title": {
-          "minLength": 1,
-          "title": "Title",
-          "type": "string"
         },
         "verify_command": {
           "anyOf": [
@@ -684,6 +706,7 @@
             }
           ],
           "default": null,
+          "description": "Optional verify command; required for verify steps when location is absent.",
           "title": "Verify Command"
         }
       },
@@ -698,12 +721,8 @@
     "RefactorStrategy": {
       "additionalProperties": false,
       "properties": {
-        "allow_temporary_hacks": {
-          "default": false,
-          "title": "Allow Temporary Hacks",
-          "type": "boolean"
-        },
         "approach": {
+          "description": "RefactorApproach enum; see RefactorApproach literal.",
           "enum": [
             "greenfield",
             "incremental",
@@ -713,17 +732,6 @@
             "no-refactor"
           ],
           "title": "Approach",
-          "type": "string"
-        },
-        "dead_code_policy": {
-          "default": "delete-immediately",
-          "enum": [
-            "delete-immediately",
-            "delete-after-feature",
-            "keep-for-trace",
-            "unknown"
-          ],
-          "title": "Dead Code Policy",
           "type": "string"
         },
         "preserve_public_api": {
@@ -736,7 +744,26 @@
             }
           ],
           "default": null,
+          "description": "Whether the public API must be preserved.",
           "title": "Preserve Public Api"
+        },
+        "dead_code_policy": {
+          "default": "delete-immediately",
+          "description": "DeadCodePolicy enum; see DeadCodePolicy literal.",
+          "enum": [
+            "delete-immediately",
+            "delete-after-feature",
+            "keep-for-trace",
+            "unknown"
+          ],
+          "title": "Dead Code Policy",
+          "type": "string"
+        },
+        "allow_temporary_hacks": {
+          "default": false,
+          "description": "Whether temporary hacks are allowed during the refactor.",
+          "title": "Allow Temporary Hacks",
+          "type": "boolean"
         }
       },
       "required": [
@@ -769,14 +796,14 @@
     "RiskMitigation": {
       "additionalProperties": false,
       "properties": {
-        "mitigation": {
-          "minLength": 1,
-          "title": "Mitigation",
-          "type": "string"
-        },
         "risk": {
           "minLength": 1,
           "title": "Risk",
+          "type": "string"
+        },
+        "mitigation": {
+          "minLength": 1,
+          "title": "Mitigation",
           "type": "string"
         },
         "severity": {
@@ -808,6 +835,25 @@
     "ScopeItem": {
       "additionalProperties": false,
       "properties": {
+        "text": {
+          "description": "Required scope item text (non-empty).",
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional count or size hint (e.g. '3 files').",
+          "title": "Count"
+        },
         "category": {
           "anyOf": [
             {
@@ -835,24 +881,8 @@
             }
           ],
           "default": null,
+          "description": "Optional ScopeCategory enum; see ScopeCategory literal.",
           "title": "Category"
-        },
-        "count": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Count"
-        },
-        "text": {
-          "minLength": 1,
-          "title": "Text",
-          "type": "string"
         }
       },
       "required": [
@@ -864,19 +894,19 @@
     "SkillsMcp": {
       "additionalProperties": false,
       "properties": {
-        "mcps": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Mcps",
-          "type": "array"
-        },
         "skills": {
           "items": {
             "type": "string"
           },
           "minItems": 1,
           "title": "Skills",
+          "type": "array"
+        },
+        "mcps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mcps",
           "type": "array"
         }
       },
@@ -889,6 +919,11 @@
     "StepTarget": {
       "additionalProperties": false,
       "properties": {
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
         "action": {
           "enum": [
             "create",
@@ -898,11 +933,6 @@
             "reference"
           ],
           "title": "Action",
-          "type": "string"
-        },
-        "path": {
-          "minLength": 1,
-          "title": "Path",
           "type": "string"
         }
       },
@@ -929,11 +959,35 @@
       "properties": {
         "context": {
           "default": "",
+          "description": "Free-form context (max 2000 chars).",
           "maxLength": 2000,
           "title": "Context",
           "type": "string"
         },
+        "intent": {
+          "default": "",
+          "description": "One-line user-facing outcome (max 200 chars).",
+          "maxLength": 200,
+          "title": "Intent",
+          "type": "string"
+        },
+        "intent_verb": {
+          "default": "",
+          "description": "Closed verb; see _INTENT_VERB_SET (9 values).",
+          "title": "Intent Verb",
+          "type": "string"
+        },
+        "scope_items": {
+          "description": "At least 3 scope items; see ScopeItem.",
+          "items": {
+            "$ref": "#/$defs/ScopeItem"
+          },
+          "minItems": 3,
+          "title": "Scope Items",
+          "type": "array"
+        },
         "coverage_areas": {
+          "description": "Optional CoverageArea enum list; see CoverageArea literal.",
           "items": {
             "enum": [
               "bugfix",
@@ -951,25 +1005,6 @@
           },
           "title": "Coverage Areas",
           "type": "array"
-        },
-        "intent": {
-          "default": "",
-          "maxLength": 200,
-          "title": "Intent",
-          "type": "string"
-        },
-        "intent_verb": {
-          "default": "",
-          "title": "Intent Verb",
-          "type": "string"
-        },
-        "scope_items": {
-          "items": {
-            "$ref": "#/$defs/ScopeItem"
-          },
-          "minItems": 3,
-          "title": "Scope Items",
-          "type": "array"
         }
       },
       "required": [
@@ -981,19 +1016,13 @@
     "Testability": {
       "additionalProperties": false,
       "properties": {
-        "clock_injection_required": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Clock Injection Required"
+        "must_be_black_box": {
+          "description": "Whether tests must be black-box (no production monkeypatches).",
+          "title": "Must Be Black Box",
+          "type": "boolean"
         },
         "forbidden_in_tests": {
+          "description": "ForbiddenInTest enum list; see ForbiddenInTest literal.",
           "items": {
             "enum": [
               "time.sleep",
@@ -1009,25 +1038,8 @@
           "title": "Forbidden In Tests",
           "type": "array"
         },
-        "max_unit_test_seconds": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "maximum": 60,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Max Unit Test Seconds"
-        },
-        "must_be_black_box": {
-          "title": "Must Be Black Box",
-          "type": "boolean"
-        },
         "required_test_layers": {
+          "description": "TestLayer enum list; see TestLayer literal.",
           "items": {
             "enum": [
               "unit",
@@ -1042,6 +1054,34 @@
           },
           "title": "Required Test Layers",
           "type": "array"
+        },
+        "clock_injection_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether a clock-injection seam is required.",
+          "title": "Clock Injection Required"
+        },
+        "max_unit_test_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 60,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional per-unit-test budget in seconds (0 < value <= 60).",
+          "title": "Max Unit Test Seconds"
         }
       },
       "required": [
@@ -1053,27 +1093,16 @@
     "VerificationStep": {
       "additionalProperties": false,
       "properties": {
-        "cwd": {
-          "anyOf": [
-            {
-              "maxLength": 200,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Cwd"
-        },
-        "expected_outcome": {
-          "minLength": 1,
-          "title": "Expected Outcome",
-          "type": "string"
-        },
         "method": {
+          "description": "Verification method (non-empty).",
           "minLength": 1,
           "title": "Method",
+          "type": "string"
+        },
+        "expected_outcome": {
+          "description": "Expected outcome string (non-empty).",
+          "minLength": 1,
+          "title": "Expected Outcome",
           "type": "string"
         },
         "timeout_seconds": {
@@ -1088,7 +1117,22 @@
             }
           ],
           "default": null,
+          "description": "Optional timeout in seconds (0 < value <= 3600).",
           "title": "Timeout Seconds"
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional working directory string (max 200 chars).",
+          "title": "Cwd"
         }
       },
       "required": [
@@ -1101,6 +1145,17 @@
     "WorkUnit": {
       "description": "Single planning work unit declaration.",
       "properties": {
+        "unit_id": {
+          "minLength": 1,
+          "title": "Unit Id",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
         "allowed_directories": {
           "items": {
             "type": "string"
@@ -1114,17 +1169,6 @@
           },
           "title": "Dependencies",
           "type": "array"
-        },
-        "description": {
-          "maxLength": 4096,
-          "minLength": 1,
-          "title": "Description",
-          "type": "string"
-        },
-        "unit_id": {
-          "minLength": 1,
-          "title": "Unit Id",
-          "type": "string"
         }
       },
       "required": [
@@ -1138,24 +1182,35 @@
   "additionalProperties": false,
   "description": "Top-level validated schema for a plan artifact.",
   "properties": {
-    "constraints": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/PlanConstraints"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
+    "summary": {
+      "$ref": "#/$defs/Summary"
+    },
+    "skills_mcp": {
+      "$ref": "#/$defs/SkillsMcp"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/PlanStep"
+      },
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
     },
     "critical_files": {
       "$ref": "#/$defs/CriticalFiles"
     },
-    "design": {
+    "risks_mitigations": {
+      "items": {
+        "$ref": "#/$defs/RiskMitigation"
+      },
+      "minItems": 1,
+      "title": "Risks Mitigations",
+      "type": "array"
+    },
+    "constraints": {
       "anyOf": [
         {
-          "$ref": "#/$defs/DesignSection"
+          "$ref": "#/$defs/PlanConstraints"
         },
         {
           "type": "null"
@@ -1175,40 +1230,22 @@
       "default": null,
       "title": "Noop"
     },
-    "parallel_plan": {
-      "items": {
-        "$ref": "#/$defs/ParallelPlanItem"
-      },
-      "title": "Parallel Plan",
-      "type": "array"
-    },
-    "risks_mitigations": {
-      "items": {
-        "$ref": "#/$defs/RiskMitigation"
-      },
-      "minItems": 1,
-      "title": "Risks Mitigations",
-      "type": "array"
-    },
     "schema_version": {
       "default": 0,
       "minimum": 0,
       "title": "Schema Version",
       "type": "integer"
     },
-    "skills_mcp": {
-      "$ref": "#/$defs/SkillsMcp"
-    },
-    "steps": {
-      "items": {
-        "$ref": "#/$defs/PlanStep"
-      },
-      "minItems": 1,
-      "title": "Steps",
-      "type": "array"
-    },
-    "summary": {
-      "$ref": "#/$defs/Summary"
+    "design": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DesignSection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "verification_strategy": {
       "items": {
@@ -1216,6 +1253,13 @@
       },
       "minItems": 1,
       "title": "Verification Strategy",
+      "type": "array"
+    },
+    "parallel_plan": {
+      "items": {
+        "$ref": "#/$defs/ParallelPlanItem"
+      },
+      "title": "Parallel Plan",
       "type": "array"
     },
     "work_units": {

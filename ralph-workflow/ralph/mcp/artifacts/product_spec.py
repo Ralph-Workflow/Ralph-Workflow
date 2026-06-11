@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from ralph.mcp.artifacts._product_spec_errors import ProductSpecValidationError
+from ralph.pydantic_validation_errors import format_validation_error_messages
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -50,7 +51,10 @@ def normalize_product_spec_content(content: dict[str, object]) -> dict[str, obje
         validated = ProductSpec.model_validate(content)
         return validated.model_dump(mode="python", exclude_none=True)
     except ValidationError as exc:
-        raise ProductSpecValidationError(str(exc)) from exc
+        msgs = format_validation_error_messages(exc)
+        raise ProductSpecValidationError(
+            msgs[0] if len(msgs) == 1 else "\n".join(msgs) if msgs else str(exc)
+        ) from exc
 
 
 def _bullet_lines(items: list[str]) -> list[str]:
