@@ -576,6 +576,72 @@ class TestExecuteAgentEffectA:
         assert session.worker_namespace == worker_ns
         assert worker_ns in session.allowed_roots
 
+    def test_execute_agent_effect_worker_mode_does_not_clear_shared_phase_artifacts(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Parallel workers must not touch shared repo-root phase outputs.
+
+        The worker's workspace is write-restricted to its allowed directories
+        plus its namespace; pre-run cleanup of the shared development_result
+        artifact is the parent's job. The worker invocation must neither
+        crash on the restricted scope nor delete the shared artifact.
+        """
+        effect = InvokeAgentEffect(
+            agent_name="developer",
+            phase="development",
+            prompt_file="PROMPT.md",
+            drain="development",
+        )
+        worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
+        shared_artifact = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        shared_artifact.parent.mkdir(parents=True, exist_ok=True)
+        shared_artifact.write_text("{}", encoding="utf-8")
+        prompt_file = worker_ns / "tmp" / "development_system_prompt.md"
+
+        monkeypatch.setattr(
+            effect_executor_module,
+            "materialize_system_prompt",
+            lambda **_kwargs: str(prompt_file),
+        )
+        monkeypatch.setattr(
+            effect_executor_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: _FakeBridge(),
+        )
+        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
+
+        agent_config = AgentConfig(
+            cmd="claude",
+            output_flag="--json-stream",
+            json_parser=JsonParserType.CLAUDE,
+            transport=AgentTransport.CLAUDE,
+        )
+
+        result = runner_module.execute_agent_effect(
+            effect,
+            UnifiedConfig(),
+            runner_module.AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=AgentError,
+                agent_registry=_registry_factory(agent_config),
+            ),
+            WorkspaceScope.for_same_workspace_worker(
+                repo_root=tmp_path,
+                allowed_directories=("src/a",),
+                worker_namespace=worker_ns,
+            ),
+            display_context=make_display_context(),
+            policy_bundle=_load_default_policy_bundle(),
+            worker_namespace=worker_ns,
+            worker_artifact_dir=worker_ns / "artifacts",
+            parallel_worker=True,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert shared_artifact.exists(), "worker must not clear shared phase artifacts"
+
     def test_execute_agent_effect_preserves_planning_artifacts_on_same_phase_retry(
         self,
         monkeypatch: MonkeyPatch,

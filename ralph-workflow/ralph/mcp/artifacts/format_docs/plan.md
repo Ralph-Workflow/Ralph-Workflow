@@ -142,6 +142,61 @@ This minimal example is the cheapest valid plan the executor can run. It uses th
 
 This example is exercised by tests/test_artifact_format_docs.py and must round-trip.
 
+## Minimal preset quickstart
+
+The `design.planning_profile="minimal"` preset is the cheapest valid plan
+shape a cheap model can submit. It bias-fills the seven typed
+`design` sub-sections (so a cheap model can leave them unset) and permits
+`skills_mcp.skills = []` (auto-filled with `["writing-plans"]`). The
+payload below is the canonical "one config tweak" plan: copy it
+verbatim, then change `summary.scope_items[*].text`, the
+`critical_files.primary_files[*].path`, and the
+`verification_strategy[*].method` to fit your work. It round-trips
+through `normalize_plan_artifact_content` and is exercised by
+`tests/test_artifact_format_docs.py::test_minimal_preset_quickstart_example_round_trips`.
+
+```json
+{
+  "summary": {
+    "context": "Minimal preset quickstart plan.",
+    "intent": "Tweak one config line.",
+    "intent_verb": "configure",
+    "scope_items": [
+      {"text": "Tweak the config key", "category": "infra"},
+      {"text": "Verify config reloads", "category": "infra"},
+      {"text": "Document the change", "category": "infra"}
+    ]
+  },
+  "skills_mcp": {"skills": [], "mcps": []},
+  "steps": [
+    {
+      "number": 1,
+      "title": "Edit the config",
+      "content": "Edit the config key.",
+      "step_type": "file_change",
+      "targets": [{"path": "config/app.yml", "action": "modify"}]
+    },
+    {
+      "number": 2,
+      "title": "Verify the change",
+      "content": "Run the config load test.",
+      "step_type": "verify",
+      "verify_command": "pytest tests/test_config.py -q"
+    }
+  ],
+  "critical_files": {
+    "primary_files": [{"path": "config/app.yml", "action": "modify"}]
+  },
+  "risks_mitigations": [
+    {"risk": "Config reload could fail", "mitigation": "Wrap in try/except"}
+  ],
+  "verification_strategy": [
+    {"method": "pytest tests/test_config.py -q", "expected_outcome": "All tests pass"}
+  ],
+  "design": {"planning_profile": "minimal"}
+}
+```
+
 ## StepType reference
 
 The `steps[*].step_type` field is a closed enum. Pick exactly one:
@@ -253,6 +308,50 @@ The `summary.scope_items[*].category` field is a closed enum (15 values). The th
 | `file_change`   | Legacy alias for `file_change`-class scope items.            |
 | `prompt`        | Legacy alias for prompt-template changes.                    |
 | `other`         | Legacy catch-all for categories that do not map above.       |
+
+## CoverageArea reference
+
+The `summary.coverage_areas` field is a closed enum (10 values) used to
+tag the high-level kind of change the plan covers. Cheap models
+frequently leave it empty; the field is optional and the empty default
+is accepted. The values are independent of `ScopeCategory` (which
+classifies per-scope-item work) and independent of `step_type` (which
+classifies per-step action).
+
+| Value           | When to use                                                  |
+|-----------------|--------------------------------------------------------------|
+| `bugfix`        | Defect, regression, or incorrect behavior remediation.       |
+| `feature`       | New user-facing feature work.                                |
+| `refactor`      | Code restructuring without observable behavior change.       |
+| `test`          | Test-only changes (new tests, refactored tests, no prod code).|
+| `docs`          | Documentation-only changes.                                  |
+| `infra`         | CI/CD, build, deployment, or repository infrastructure.      |
+| `security`      | Security hardening or CVE remediation.                       |
+| `performance`   | Performance or scalability work.                             |
+| `migration`     | Data, schema, or large-scale code migration.                 |
+| `release`       | Release-process changes (changelog, version bump, tagging).  |
+
+## Planning for any coding project
+
+The plan artifact is intentionally universal: the same shape works
+for any coding project, not just Ralph Workflow internals. Pick a
+preset based on the project shape, not on the project domain. CLI
+tools, libraries, refactors, migrations, infra changes, security
+hardening, performance work, and multi-stack projects with one
+codepath change all use the same `PlanArtifact` shape; only the
+preset depth differs.
+
+| Preset      | Model tier             | Bias-fills                                              | Pick this when...                                      |
+|-------------|------------------------|---------------------------------------------------------|--------------------------------------------------------|
+| `minimal`   | Cheap                  | None of the seven design sub-sections; `skills_mcp.skills` may be empty (auto-filled with `["writing-plans"]`). | A one-line config tweak, a typo fix, or a doc-only change. The design overhead is wasted budget. |
+| `balanced`  | Balanced               | `dependency_injection`, `testability`, `refactor_strategy` (the three sub-sections cheap models most often forget). | A single-file feature or a one-off fix. The executor is free to choose on `drift_detection` and `acceptance_criteria`. |
+| `strict`    | Quality                | All seven design sub-sections, plus the typed `PlanConstraints` defaults. | A multi-file refactor or a change that must not regress. Use this for any plan that has 3+ `file_change` steps. |
+
+Step up to a higher preset when (a) the executor starts improvising
+instead of following the plan, (b) drift-detection flags start
+firing, or (c) the user feedback mentions a missed `dependency_injection`
+or `testability` default. Step down to a lower preset when the plan
+is over-engineered for trivial edits.
 
 ## Common mistakes
 
@@ -385,6 +484,55 @@ is NOT in the verb's allowed set is REJECTED at
 `normalize_plan_artifact_content` time. Leave `intent_verb` empty to
 skip this check.
 
+## Model-tier guidance
+
+The plan artifact is model-tier-aware: cheap models can submit a
+smaller, less-detailed plan and rely on field-level before-validators
+to recover from common mistakes; high-quality models should populate
+the full design surface. Pick the model tier first, then fill the
+fields that tier is expected to provide.
+
+### Cheap-model
+
+Fields a cheap model may SKIP (the before-validators and presets cover
+the gap):
+
+- `design.acceptance_criteria` details — under `planning_profile="balanced"` or `"strict"` the AC structure is bias-filled; the cheap model only needs the id list.
+- `design.notes` — free-form rationale, optional at every tier.
+- `steps[*].rationale` — optional at every tier; the executor can derive rationale from `content`.
+- `steps[*].expected_evidence` — optional; the cross-section AC link (`steps[*].satisfies`) is enough to prove the step.
+
+Field-level before-validators that ALREADY recover from cheap-model
+mistakes (so the cheap model does not need to memorize the rules):
+
+- `step_type='test'` (or `'tests'`, `'check'`, `'run'`) is auto-coerced to `'verify'` with a WARNING log.
+- `summary.intent_verb` casing is auto-lowercased before the closed-set check (`Add` and `ADD` both pass).
+- `summary.coverage_areas` rejects unknown values with a message naming the closed set.
+- `skills_mcp.skills` may be empty under `planning_profile="minimal"` (auto-filled with `["writing-plans"]`).
+- `EvidenceRef` accepts bare strings (treated as `kind='file'`) for legacy fixtures.
+
+### High-quality-model
+
+Fields a high-quality model SHOULD populate (the executor relies on
+these for non-trivial plans):
+
+- `steps[*].rationale` — explains WHY the step exists, not just what it does.
+- `steps[*].expected_evidence` — lists the artifacts / files / test outputs that prove the step completed.
+- `design.notes` — captures trade-offs and alternative designs.
+- `design.outcome` — one-sentence user-facing outcome.
+- `design.drift_detection.guard_commands` and `expected_outputs` — locks the executor to specific verification commands.
+
+### Mistakes handled automatically
+
+The following cheap-model mistake patterns are ALREADY recovered at
+the field-validator level (no extra documentation needed by the
+model):
+
+1. `step_type='test'` -> `'verify'` (with WARNING log) and structured error message naming the valid values.
+2. `intent_verb` casing (`Add` -> `add`) before the closed-set check.
+3. Empty `skills_mcp.skills` under `planning_profile='minimal'` (auto-filled).
+4. `EvidenceRef` bare-string coercion (`"src/foo.py"` -> `{kind: 'file', ref: 'src/foo.py'}`).
+
 ## SE-opinionated design surfaces
 
 This section is a survey of the SE-bias surfaces the plan artifact
@@ -407,10 +555,135 @@ count:
   the work is shaped, but the top-level Constraints section pins down
   WHAT MUST KEEP WORKING for the plan to be considered complete.
 
+### Preset-by-preset SE-bias defaults
+
+The three `planning_profile` presets bias-fill the design sub-sections
+differently. The default when no preset is specified is `strict`.
+
+- **`strict` (default):** every typed sub-section is bias-filled with
+  a SE-opinionated default. Use this for multi-file work and refactors
+  that must not regress. The preset's defaults include
+  `testability.must_be_black_box=true`,
+  `dependency_injection.required_for_testability=true`,
+  `refactor_strategy.dead_code_policy="delete-immediately"`, and a
+  sentinel `PRESET-01` acceptance criterion (strip or replace it
+  yourself if you want clean AC ids).
+- **`balanced`:** biases `testability`, `dependency_injection`, and
+  `refactor_strategy` (the three sub-sections cheap models most often
+  forget) but leaves the executor free to choose on `drift_detection`
+  and `acceptance_criteria`. Use this for single-file features and
+  one-off fixes where the executor should pick the verification
+  commands.
+- **`minimal`:** no design sub-sections are bias-filled; the user
+  handcrafts the seven (or none) and `skills_mcp.skills` is allowed to
+  be empty (auto-filled with `["writing-plans"]`). Use this for
+  one-line config tweaks and trivial edits where the design overhead
+  is wasted budget.
+
+## Flexibility boundaries
+
+The plan artifact is flexible for almost any coding project, but it
+is NOT a fit for every workflow. The "Fits" list names the project
+shapes the plan artifact covers; the "Does NOT fit" list names the
+shapes it does not. The "How to know" paragraph names the soft
+heuristic that should make a developer reach for a lighter artifact
+instead.
+
+**Fits:**
+
+- CLI tools (single-binary, subcommand-based, or plugin systems).
+- Libraries (single-package, multi-package, monorepo).
+- Refactors (single-file, multi-file, cross-stack).
+- Migrations (data, schema, code, dependency, platform).
+- Infra changes (CI/CD, build, deployment, repo config).
+- Security hardening and CVE remediation.
+- Performance work (profiling, optimization, caching).
+- Multi-stack projects with one codepath change.
+- Single-file features and bugfixes.
+- Doc-only changes.
+- Test-only changes.
+
+**Does NOT fit:**
+
+- One-line shell command tweaks with no code change (use a single commit message).
+- Read-only audit reports with no committed change (use a markdown report).
+- Conversational-only tasks with no executor action (no artifact needed).
+- Real-time interactive UIs where the executor cannot pause (no plan artifact can capture event-driven flows).
+- Batch data processing with no per-item plan needed (use a script + runbook).
+
+**How to know:** if a project has zero `file_change` steps, zero
+`verify` steps, or fewer than 3 meaningful `scope_items`, the
+developer should use a lighter artifact (`issues.md` for a single
+defect, or a single commit message for a trivial edit) instead of
+the plan artifact. The 3-scope-items threshold is a soft heuristic,
+not a hard rule — a 2-scope-item plan is still a real plan when the
+two items are concrete and non-trivial.
+
 ## Step-wise submission
 
 Use the dedicated planning MCP tools to stage sections one at a time
 so each section validates independently. The exact order is:
+
+### Step-wise quickstart (cheap-model baseline)
+
+The first 3 MCP tool calls are the cheapest valid staging sequence.
+The remaining 4 calls (`critical_files`, `risks_mitigations`, `design`,
+`verification_strategy`) repeat the same `ralph_submit_plan_section`
+pattern with the corresponding payload shape; the final call is
+`ralph_finalize_plan`.
+
+| Call | Section        | Payload shape |
+|------|----------------|---------------|
+| `ralph_submit_plan_section` | `section="summary"` | Minimal `Summary` (3 scope_items, `intent`, `intent_verb`, optional `coverage_areas`). |
+| `ralph_submit_plan_section` | `section="skills_mcp"` | `{"skills": ["writing-plans"], "mcps": []}`. |
+| `ralph_submit_plan_section` | `section="steps"` | List of `PlanStep` objects. |
+
+Repeat the same pattern for `critical_files`, `risks_mitigations`,
+`design`, `verification_strategy`, then call `ralph_finalize_plan`.
+
+A single `ralph_submit_plan_section` call for the summary section
+looks like this:
+
+```json
+{
+  "section": "summary",
+  "content": {
+    "context": "Tweak the config key so the new env var is honored.",
+    "intent": "Tweak the config key.",
+    "intent_verb": "configure",
+    "scope_items": [
+      {"text": "Edit config/app.yml", "category": "infra"},
+      {"text": "Verify reload", "category": "infra"},
+      {"text": "Document the change", "category": "infra"}
+    ]
+  }
+}
+```
+
+### Worked example: 3-section short plan
+
+The exact MCP tool calls in order for a 3-section short plan (summary,
+skills_mcp, steps). Each call validates independently so a failure
+short-circuits the rest of the pipeline with a structured error.
+
+```bash
+# Stage summary
+ralph_submit_plan_section section=summary content='{"context": "...", "intent": "...", "intent_verb": "configure", "scope_items": [...]}'
+
+# Stage skills_mcp
+ralph_submit_plan_section section=skills_mcp content='{"skills": ["writing-plans"], "mcps": []}'
+
+# Stage steps
+ralph_submit_plan_section section=steps content='[{"number": 1, "title": "Edit config", "content": "...", "step_type": "file_change", "targets": [...]}, {"number": 2, "title": "Verify", "content": "...", "step_type": "verify", "verify_command": "pytest tests/test_x.py -q"}]'
+
+# Finalize
+ralph_finalize_plan
+```
+
+The remaining sections (`critical_files`, `risks_mitigations`, `design`,
+`verification_strategy`) follow the same `ralph_submit_plan_section`
+pattern. The full 10-step list (with `parallel_plan` and `constraints`
+slots) is below.
 
 1. `summary`
 2. `skills_mcp`

@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.server._standalone_mcp_process import StandaloneMcpProcess
 from ralph.mcp.server.factory import McpServerFactory
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
+from ralph.mcp.server.lifecycle import McpRestartPolicy, RestartAwareMcpBridge
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -13,6 +15,7 @@ if TYPE_CHECKING:
     from ralph.mcp.server import lifecycle
 
 from tests.test_mcp_factory_impl_helper_fakebridge import FakeBridge
+from tests.test_mcp_factory_impl_helper_fakeprocess import FakeProcess
 
 
 def test_factory_is_runtime_checkable_protocol(tmp_path: Path) -> None:
@@ -79,3 +82,41 @@ def test_handle_shutdown_calls_bridge_shutdown(tmp_path: Path) -> None:
     handle.shutdown()
 
     assert bridge.shutdown_calls == 1
+
+
+def test_build_accepts_restart_aware_bridge_from_real_lifecycle(tmp_path: Path) -> None:
+    """The production start_mcp_server returns a RestartAwareMcpBridge.
+
+    The factory must extract the pid from it; the parallel worker session
+    path hard-fails otherwise (every fan-out worker dies at session setup).
+    """
+    inner = StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:43999/mcp",
+        process=FakeProcess(43999),
+        session_file=tmp_path / "session.json",
+    )
+    bridge = RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: inner,
+        restart_policy=McpRestartPolicy(),
+    )
+
+    def fake_start_server(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> RestartAwareMcpBridge:
+        del session, workspace, deps
+        return bridge
+
+    factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        start_server=fake_start_server,
+    )
+    session = AgentSession(session_id="session-1", run_id="run-1", drain="development")
+
+    handle = factory.build(session)
+
+    assert handle.pid == 43999
+    assert handle.endpoint == "http://127.0.0.1:43999/mcp"

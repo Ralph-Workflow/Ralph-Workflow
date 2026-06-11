@@ -111,7 +111,11 @@ def run_parallel_worker_from_manifest(
         )
         return 1
 
-    workspace = FsWorkspace(workspace_scope.root, allowed_roots=workspace_scope.allowed_roots)
+    # The worker bootstrap is trusted orchestrator code and must read shared
+    # inputs at the repo root (PROMPT.md, plan artifacts) to materialize the
+    # prompt — the agent-facing write restriction is enforced separately via
+    # workspace_scope, which execute_agent_effect uses for the MCP surface.
+    workspace = FsWorkspace(workspace_root)
     agent = AgentRegistry.from_config(config).get(effect.agent_name)
     prompt_path = materialize_prompt_for_phase(
         phase=manifest.phase,

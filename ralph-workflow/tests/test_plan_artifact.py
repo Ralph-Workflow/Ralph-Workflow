@@ -25,6 +25,7 @@ from ralph.mcp.artifacts.plan import (
     delete_plan_draft,
     extract_plan_skill_names,
     finalize_plan_draft,
+    generate_plan_schema,
     insert_plan_step,
     is_noop_plan,
     load_plan_draft,
@@ -1630,3 +1631,52 @@ def test_summary_coverage_areas_default_is_empty() -> None:
         }
     )
     assert summary.coverage_areas == []
+
+
+# ---------------------------------------------------------------------------
+# Step 1: static JSON Schema file + generate_plan_schema() helper
+# ---------------------------------------------------------------------------
+
+
+def test_schema_json_file_matches_generate_plan_schema() -> None:
+    """The on-disk schema.json is dict-equal to what generate_plan_schema() returns."""
+    schema_path = (
+        Path(__file__).resolve().parents[1]
+        / "ralph" / "mcp" / "artifacts" / "plan" / "schema.json"
+    )
+    on_disk_text = schema_path.read_text(encoding="utf-8")
+    on_disk = cast("dict[str, object]", json.loads(on_disk_text))
+    generated = generate_plan_schema()
+    assert generated == on_disk
+
+
+def test_plan_artifact_schema_version_field_round_trip() -> None:
+    """schema_version uses ``Field(default=0, ge=0)`` (no exclude=True) so the
+    field is dropped from the dump only at its default value of 0 and is
+    preserved in the dump when explicitly set to a non-default value.
+
+    This locks two invariants:
+
+    * Backward-compat: existing plans that do not set the field round-trip
+      identically (the default value is dropped via ``exclude_defaults=True``).
+    * Forward-compat signaling: a plan that sets ``schema_version=N`` for
+      ``N != 0`` keeps the key in the round-tripped dict so a downstream
+      consumer can branch on the version.
+    """
+    PlanArtifact.model_rebuild(_types_namespace={"WorkUnit": WorkUnit})
+    plan = copy.deepcopy(_valid_plan())
+    plan.pop("schema_version", None)
+    validated = PlanArtifact.model_validate(plan)
+    assert validated.schema_version == 0
+    dumped = validated.model_dump(exclude_none=True, exclude_defaults=True)
+    assert "schema_version" not in dumped
+
+    plan_with_version = copy.deepcopy(_valid_plan())
+    plan_with_version["schema_version"] = 2
+    validated_with_version = PlanArtifact.model_validate(plan_with_version)
+    assert validated_with_version.schema_version == 2
+    dumped_with_version = validated_with_version.model_dump(
+        exclude_none=True, exclude_defaults=True
+    )
+    assert dumped_with_version.get("schema_version") == 2
+

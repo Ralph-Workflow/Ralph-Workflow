@@ -10,7 +10,11 @@ from __future__ import annotations
 import ast
 import pathlib
 
+import pytest
+
 _DISPLAY_ROOT = pathlib.Path(__file__).parent.parent / "ralph" / "display"
+
+pytestmark = pytest.mark.timeout_seconds(10)
 
 
 def _function_def_count(name: str) -> int:

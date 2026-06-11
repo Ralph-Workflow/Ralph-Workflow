@@ -66,6 +66,17 @@ Decision rule: if the prompt mentions MCP, plan artifact, planner, Ralph Workflo
 
 Self-check before finalize: re-read your `summary.intent` one last time. If `summary.intent` describes a single bug fix in the planner but the user's prompt is broader (e.g. "optimize the plan artifact for AI coding", "make planning more robust"), re-classify as `planner-meta-task` and rewrite the steps to cover the broader scope. A single-bug plan that fails to address the user's actual ask is a misroute.
 
+## Plan-artifact scope (planner-meta-task)
+
+When `planner-meta-task` is the correct bucket AND the user's ask is specifically about the plan artifact (rather than about another planner internal like the analysis pipeline or the executor), route the work to exactly one of the four sub-tasks below. Do NOT mix sub-tasks; do NOT route the work through a misclassification fix or an unrelated sub-task. The sub-tasks are:
+
+  - Plan-artifact schema: add or change a field in `ralph/mcp/artifacts/plan/` (e.g. a new Summary field like `coverage_areas`, a new PlanStep field, a new top-level section, a new ScopeCategory value, a new closed enum). The Pydantic model is the source of truth; the format doc and the planning prompt follow it.
+  - Planning prompt: rewrite or extend `ralph/prompts/templates/planning.jinja` (or a shared include under `ralph/prompts/templates/shared/`). The prompt is the agent-facing contract; any change must be mirrored in the bundled format doc so the fallback reference stays in sync.
+  - Planning MCP tools: change the tool handlers under `ralph/mcp/tools/` (e.g. `ralph_submit_plan_section`, `ralph_finalize_plan`, `ralph_discard_plan_draft`) or the validators they call. Treat MCP tools as a public API; preserve the existing tool names and argument shapes unless the change explicitly renames them.
+  - Planning audit checks: add or change an audit under `ralph/testing/` (e.g. `audit_di_seam`, `audit_lint_bypass`, `audit_mcp_timeout`, `audit_typecheck_bypass`, `audit_test_policy`). Audit checks are policy; coordinate with AGENTS.md non-circumvention rule before adding a new allowlist entry.
+
+When the prompt mentions one of these sub-tasks by name (e.g. "add a JSON Schema for the plan artifact", "document the minimal preset in the format doc", "rewrite the planning prompt to be more universal", "add an audit check for plan-field drift"), the plan MUST target that sub-task directly. Do NOT route the work through a misclassification fix or an unrelated sub-task; that is the planner picking the wrong sub-task within `planner-meta-task`, not a misroute to a different bucket.
+
 ## DISCOVERY PREFLIGHT
 
 Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools.

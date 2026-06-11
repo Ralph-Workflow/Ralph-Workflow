@@ -33,8 +33,9 @@ from ralph.mcp.artifacts.plan._step_edit import (
     insert_plan_step, remove_plan_step, replace_plan_step,
 )
 from ralph.mcp.artifacts.plan._validation import (
-    PlanArtifact, finalize_plan_draft, merge_plan_section, normalize_plan_artifact_content,
-    parse_plan_payload_lenient, parse_plan_payload_strict, validate_plan_section,
+    PlanArtifact, finalize_plan_draft, generate_plan_schema, merge_plan_section,
+    normalize_plan_artifact_content, parse_plan_payload_lenient, parse_plan_payload_strict,
+    validate_plan_section,
 )
 __all__ = [
     "AcceptanceCriteria",
@@ -75,6 +76,7 @@ __all__ = [
     "extract_plan_payload",
     "extract_plan_skill_names",
     "finalize_plan_draft",
+    "generate_plan_schema",
     "insert_plan_step",
     "is_noop_plan",
     "load_plan_artifact_sections",

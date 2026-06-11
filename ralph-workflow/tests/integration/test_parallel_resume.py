@@ -223,8 +223,14 @@ class TestParallelResume:
         launched_ids = {u.unit_id for u in fake_executor.calls}
         assert launched_ids == {"unit-2", "unit-3", "unit-4"}
 
+        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
+        assert summary_path.exists(), "fan-out must write parallel_development_summary.json"
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        statuses = {w["unit_id"]: w["status"] for w in summary["workers"]}
         for i in range(5):
             uid = f"unit-{i}"
-            ws = final_state.worker_states.get(uid)
-            assert ws is not None, f"{uid} missing from final worker_states"
-            assert ws.status == WorkerStatus.SUCCEEDED, f"{uid} expected SUCCEEDED, got {ws.status}"
+            assert statuses.get(uid) == "succeeded", (
+                f"{uid} expected succeeded in summary, got {statuses.get(uid)!r}"
+            )
+        assert final_state.work_units == (), "fully successful wave must clear work_units"
+        assert final_state.worker_states == {}, "fully successful wave must clear worker tracking"
