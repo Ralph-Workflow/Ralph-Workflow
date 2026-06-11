@@ -52,6 +52,16 @@ if TYPE_CHECKING:
             _types_namespace: dict[str, object] | None = None,
         ) -> bool | None: ...
 
+        @classmethod
+        def model_json_schema(
+            cls,
+            *,
+            by_alias: bool = True,
+            ref_template: str = "#/$defs/{model}",
+            schema_generator: object = ...,
+            mode: Literal["validation", "serialization"] = "validation",
+        ) -> dict[str, object]: ...
+
         def model_dump(
             self,
             *,
