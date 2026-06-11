@@ -44,36 +44,89 @@ _UNSAFE_EXTENSIONS: frozenset[str] = frozenset({
     ".py", ".js", ".ts", ".go", ".rs", ".rb", ".java", ".c", ".cpp", ".h",
     ".md", ".rst", ".txt",
     ".toml", ".yaml", ".yml", ".json", ".ini", ".cfg",
+    # Additional source code extensions
+    ".swift", ".kt", ".kts", ".scala", ".php",
+    ".sh", ".bash", ".zsh", ".fish", ".ps1",
+    ".pl", ".pm", ".lua", ".r", ".m", ".mm",
+    ".cs", ".fs", ".fsx", ".vb", ".dart",
+    ".groovy", ".clj", ".cljs", ".hs", ".lhs",
+    ".elm", ".erl", ".ex", ".exs", ".ml", ".mli",
+    ".nim", ".cr", ".pas", ".pp", ".sql",
+    ".graphql", ".gql", ".prisma", ".proto",
+    ".asm", ".s", ".inc", ".def",
+    ".cmake", ".mak", ".ninja",
+    ".dockerfile", ".jenkinsfile",
+    # Config/data extensions
+    ".xml", ".csv", ".tsv",
 })
 
 _UNSAFE_PATH_SEGMENTS: tuple[str, ...] = ("tests/", "test_", "_test.", "docs/", "doc/")
 
 _GENERATED_TEXT_MARKERS: frozenset[str] = frozenset({
+    "agent",
+    "ai",
+    "analysis",
     "artifact",
+    "brainstorm",
     "capture",
+    "chat",
     "checkpoint",
+    "completion",
+    "conversation",
     "debug",
     "dump",
     "generated",
+    "generation",
+    "inference",
+    "interaction",
+    "llm",
     "log",
+    "message",
+    "model",
+    "note",
     "output",
+    "pipeline",
+    "plan",
+    "prompt",
     "report",
+    "response",
+    "review",
+    "session",
+    "summary",
     "temp",
     "tmp",
     "trace",
     "transcript",
     "verify",
+    "worker",
 })
 
 _GENERATED_TEXT_DIRECTORIES: frozenset[str] = frozenset({
     ".agent",
+    ".cache",
+    ".gradle",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
     "artifacts",
     "build",
+    "cache",
+    "caches",
+    "coverage",
     "dist",
+    "htmlcov",
+    "logs",
+    "node_modules",
     "out",
+    "output",
+    "outputs",
     "reports",
-    "tmp",
+    "sessions",
     "temp",
+    "tmp",
+    "traces",
+    "transcripts",
+    "vendor",
 })
 
 
@@ -125,7 +178,18 @@ def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
     if any(seg in path_lower for seg in _UNSAFE_PATH_SEGMENTS):
         return False
 
+    # Dependency manifests and lock files must never be deleted
+    if candidate.name in {
+        "package-lock.json", "yarn.lock", "Cargo.lock", "poetry.lock",
+        "uv.lock", "Pipfile.lock", "composer.lock", "Gemfile.lock", "go.sum",
+    }:
+        return False
+
     suffix = candidate.suffix.lower()
+    # Housekeeping extensions that are always safe to delete
+    if suffix in {".bak", ".tmp", ".temp", ".old", ".orig", ".rej", ".patch", ".log"}:
+        return not _path_exists_in_head(repo_root, path)
+
     if suffix in (".txt", ".json"):
         return _is_generated_text_artifact(repo_root, path)
 

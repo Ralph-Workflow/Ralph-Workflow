@@ -31,7 +31,7 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path("/Users/mistlight/Projects/Ralph-Workflow/wt-004-mcp-fixes/ralph-workflow")
+REPO = Path(__file__).resolve().parents[1]
 TESTS_DIR = REPO / "tests"
 PACKAGE = REPO / "ralph"
 

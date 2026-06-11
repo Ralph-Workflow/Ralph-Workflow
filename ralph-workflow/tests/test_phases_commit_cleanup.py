@@ -260,6 +260,91 @@ def test_delete_tracked_verify_output_text_file_returns_failure_event(
     assert verify_output.exists()
 
 
+@pytest.mark.parametrize(
+    "ext",
+    [
+        ".swift", ".kt", ".kts", ".scala", ".php",
+        ".sh", ".bash", ".zsh", ".fish", ".ps1",
+        ".pl", ".pm", ".lua", ".r", ".m", ".mm",
+        ".cs", ".fs", ".fsx", ".vb", ".dart",
+        ".groovy", ".clj", ".cljs", ".hs", ".lhs",
+        ".elm", ".erl", ".ex", ".exs", ".ml", ".mli",
+        ".nim", ".cr", ".pas", ".pp", ".sql",
+        ".graphql", ".gql", ".prisma", ".proto",
+        ".asm", ".s", ".inc", ".def",
+        ".cmake", ".mak", ".ninja",
+        ".dockerfile", ".jenkinsfile",
+        ".xml", ".csv", ".tsv",
+    ],
+)
+def test_delete_source_code_extension_rejected(tmp_git_repo: Path, ext: str) -> None:
+    """Every new source-code and config extension must NOT be deleted."""
+    workspace = FsWorkspace(tmp_git_repo)
+    src = tmp_git_repo / f"App{ext}"
+    src.write_text("source code")
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": f"App{ext}"}]},
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert src.exists()
+
+
+@pytest.mark.parametrize(
+    "lock_file",
+    [
+        "package-lock.json",
+        "yarn.lock",
+        "Cargo.lock",
+        "poetry.lock",
+        "uv.lock",
+        "Pipfile.lock",
+        "composer.lock",
+        "Gemfile.lock",
+        "go.sum",
+    ],
+)
+def test_delete_lock_file_rejected(tmp_git_repo: Path, lock_file: str) -> None:
+    """Lock files and dependency manifests must NOT be deleted."""
+    workspace = FsWorkspace(tmp_git_repo)
+    lock = tmp_git_repo / lock_file
+    lock.write_text("lock content")
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": lock_file}]},
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert lock.exists()
+
+
 def test_git_exclude_action_adds_pattern(tmp_git_repo: Path) -> None:
     """Test that add_to_git_exclude action adds the pattern to .git/info/exclude."""
     workspace = FsWorkspace(tmp_git_repo)
@@ -475,3 +560,209 @@ def test_delete_file_with_absolute_path_returns_failure_event(
     assert len(result) == 1
     assert isinstance(result[0], PhaseFailureEvent)
     assert outside.exists()
+
+
+def test_delete_backup_bak_file(tmp_git_repo: Path) -> None:
+    """Backup .bak files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    backup = tmp_git_repo / "important.py.bak"
+    backup.write_text("old version")
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "important.py.bak"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not backup.exists()
+
+
+def test_delete_tmp_file(tmp_git_repo: Path) -> None:
+    """Temporary .tmp files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    tmp = tmp_git_repo / "scratch.tmp"
+    tmp.write_text("temporary data")
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {"analysis_complete": True, "actions": [{"action": "delete_file", "path": "scratch.tmp"}]},
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not tmp.exists()
+
+
+def test_delete_log_file(tmp_git_repo: Path) -> None:
+    """Log files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    log = tmp_git_repo / "debug.log"
+    log.write_text("debug output")
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {"analysis_complete": True, "actions": [{"action": "delete_file", "path": "debug.log"}]},
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not log.exists()
+
+
+def test_delete_rej_file(tmp_git_repo: Path) -> None:
+    """Patch reject .rej files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    rej = tmp_git_repo / "fix.patch.rej"
+    rej.write_text("patch reject hunk")
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "fix.patch.rej"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not rej.exists()
+
+
+def test_delete_session_txt_file(tmp_git_repo: Path) -> None:
+    """Session transcript text files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    session = tmp_git_repo / "session-transcript.txt"
+    session.write_text("agent conversation")
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "session-transcript.txt"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not session.exists()
+
+
+def test_delete_in_tmp_directory(tmp_git_repo: Path) -> None:
+    """Files inside tmp/ directories are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    tmp_dir = tmp_git_repo / "tmp"
+    tmp_dir.mkdir()
+    artifact = tmp_dir / "scratch.txt"
+    artifact.write_text("temp content")
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "tmp/scratch.txt"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not artifact.exists()
+
+
+def test_delete_tracked_backup_file_rejected(tmp_git_repo: Path) -> None:
+    """Backup files already tracked in git must NOT be deleted."""
+    workspace = FsWorkspace(tmp_git_repo)
+    backup = tmp_git_repo / "config.yml.bak"
+    backup.write_text("backup config")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["config.yml.bak"])
+        repo.index.commit("track backup")
+    finally:
+        repo.close()
+
+    _write_commit_cleanup_artifact(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "config.yml.bak"}],
+        },
+    )
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    result = handle_commit_cleanup_phase(effect, ctx)
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert backup.exists()

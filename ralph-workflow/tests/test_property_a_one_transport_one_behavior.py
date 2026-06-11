@@ -21,7 +21,7 @@ from ralph.mcp.server._in_memory_transport import drive_request, parse_sse_data
 from ralph.mcp.server.runtime import McpServer, build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
-REPO = Path("/Users/mistlight/Projects/Ralph-Workflow/wt-004-mcp-fixes/ralph-workflow")
+REPO = Path(__file__).resolve().parents[1]
 FORBIDDEN_TOKENS = (
     "build_fastmcp_server",
     "_make_tool_metadata",
