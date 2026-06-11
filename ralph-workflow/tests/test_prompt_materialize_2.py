@@ -28,6 +28,12 @@ from ralph.prompts.materialize import (
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
+# All tests in this module exercise real git operations against the
+# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
+# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
+# machines, so the default 1-second per-test ceiling is unsafe.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 class _ArtifactSubmitSession:
     session_id = "test-session"

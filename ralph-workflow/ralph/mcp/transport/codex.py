@@ -25,6 +25,7 @@ def prepare_codex_home(
     workspace_path: Path | None,
     existing_home: str | None,
     system_prompt_file: str | None,
+    unsafe_mode: bool = False,
 ) -> str:
     """Prepare an isolated Codex home directory and return its path."""
     codex_home, _upstreams = prepare_codex_home_with_upstreams(
@@ -32,6 +33,7 @@ def prepare_codex_home(
         workspace_path=workspace_path,
         existing_home=existing_home,
         system_prompt_file=system_prompt_file,
+        unsafe_mode=unsafe_mode,
     )
     return codex_home
 
@@ -42,6 +44,7 @@ def prepare_codex_home_with_upstreams(
     workspace_path: Path | None,
     existing_home: str | None,
     system_prompt_file: str | None,
+    unsafe_mode: bool = False,
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
     """Prepare an isolated Codex home directory and return its path with upstream servers."""
     codex_root = _allocate_codex_home_dir(workspace_path)
@@ -61,7 +64,8 @@ def prepare_codex_home_with_upstreams(
             "editing primitives cannot be disabled. See "
             "ralph-workflow/docs/mcp-tool-restriction.md."
         )
-        base_config = _remove_all_toml_mcp_server_tables(base_config)
+        if not unsafe_mode:
+            base_config = _remove_all_toml_mcp_server_tables(base_config)
         features_in_base = "[features]" in base_config
         feature_lines = [
             f"{key.split('.', 1)[1]} = {value}"

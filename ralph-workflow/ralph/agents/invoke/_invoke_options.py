@@ -21,6 +21,7 @@ class InvokeOptions:
     show_progress: bool = True
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
+    unsafe_mode: bool = False
     idle_timeout_seconds: float | None = None
     drain_window_seconds: float | None = None
     max_waiting_on_child_seconds: float | None = None

@@ -505,6 +505,16 @@ def main(
         bool,
         typer.Option("--no-resume", help="Ignore existing checkpoint"),
     ] = False,
+    unsafe_mode: Annotated[
+        bool | None,
+        typer.Option(
+            "--unsafe-mode",
+            help=(
+                "Merge Ralph Workflow MCP into the agent existing MCP config"
+                " instead of overwriting it"
+            ),
+        ),
+    ] = None,
     inspect_checkpoint: Annotated[
         bool,
         typer.Option("--inspect-checkpoint", help="Show checkpoint contents as raw JSON"),
@@ -682,6 +692,7 @@ def main(
             git_user_name=git_user_name,
             git_user_email=git_user_email,
             developer_iters=effective_developer_iters,
+            unsafe_mode=unsafe_mode,
         ),
     )
 
@@ -1006,6 +1017,7 @@ def _build_cli_overrides(
             "git_user_name": None,
             "git_user_email": None,
             "execution": {},
+            "workflow": {},
         },
         "developer_agent": None,
         "developer_model": None,
@@ -1025,6 +1037,9 @@ def _build_cli_overrides(
 
     if input.developer_iters is not None:
         overrides["general"]["developer_iters"] = input.developer_iters
+
+    if input.unsafe_mode is not None:
+        overrides["general"]["workflow"] = {"unsafe_mode": input.unsafe_mode}
 
     return dict(overrides)
 

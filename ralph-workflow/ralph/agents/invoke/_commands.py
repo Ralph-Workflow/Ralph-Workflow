@@ -231,6 +231,7 @@ def _extend_claude_transport_flags(
             claude_mcp_config(
                 build_options.mcp_endpoint,
                 workspace_path=build_options.workspace_path,
+                unsafe_mode=build_options.unsafe_mode,
             ),
             "--strict-mcp-config",
         ]

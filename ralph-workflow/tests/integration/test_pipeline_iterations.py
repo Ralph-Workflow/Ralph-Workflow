@@ -53,6 +53,13 @@ DEVELOPMENT_CYCLES_TWO = 2
 DEVELOPMENT_CYCLES_THREE = 3
 MAX_PLANNING_ANALYSIS_ITERATIONS = 3
 
+# All tests in this module drive the full pipeline runner (multiple
+# phases, policy routing, checkpoint save path) and frequently exceed
+# the default 1-second per-test ceiling under parallel xdist load.
+# A 5-second ceiling reflects the realistic wall-clock cost without
+# changing the test design.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
     console = Console(record=True, force_terminal=False, width=120, color_system=None)

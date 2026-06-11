@@ -182,6 +182,7 @@ verbosity = 1
 | Key | Default | Description |
 |-----|---------|-------------|
 | `checkpoint_enabled` | `true` | Enable checkpoint/resume support |
+| `unsafe_mode` | `false` | Merge Ralph Workflow MCP into the agent's existing MCP config instead of overwriting it. When `true`, agent-native MCP servers (Claude `~/.claude.json`, OpenCode `opencode.json`, Codex `~/.codex/config.toml`, AGY `.agents/mcp_config.json`, Nanocoder `NANOCODER_MCPSERVERS` and `~/.config/nanocoder/.mcp.json`) are preserved alongside the Ralph Workflow entry. Mirrors the `--unsafe-mode` CLI flag. |
 
 ### `[prompt_helper]`
 

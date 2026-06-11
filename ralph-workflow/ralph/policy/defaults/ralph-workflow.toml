@@ -62,6 +62,7 @@
 # [general.workflow] — Workflow automation flags
 [general.workflow]
 # checkpoint_enabled = true     # enable checkpoint/resume functionality
+# unsafe_mode = false          # merge Ralph Workflow MCP into agent MCP config instead of overwriting it
 
 # ---------------------------------------------------------------------------
 # [ccs] — Claude Code Switch (CCS) headless-Claude defaults.

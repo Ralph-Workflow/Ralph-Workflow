@@ -10,17 +10,25 @@ from ralph.mcp.transport.common import _load_mcpservers_from_paths
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 
-def claude_mcp_config(endpoint: str, *, workspace_path: Path | None = None) -> str:
+def claude_mcp_config(
+    endpoint: str,
+    *,
+    workspace_path: Path | None = None,
+    unsafe_mode: bool = False,
+) -> str:
     """Return the Claude MCP JSON config string pointing to the given endpoint."""
-    del workspace_path
-    config_payload = {
-        "mcpServers": {
-            RALPH_MCP_SERVER_NAME: {
-                "type": "http",
-                "url": endpoint,
-            }
+    ralph_entry = {
+        RALPH_MCP_SERVER_NAME: {
+            "type": "http",
+            "url": endpoint,
         }
     }
+    if unsafe_mode:
+        existing = _load_mcpservers_from_paths(_claude_mcp_config_paths(workspace_path))
+        merged_servers: dict[str, object] = {**existing, **ralph_entry}
+    else:
+        merged_servers = dict(ralph_entry)
+    config_payload = {"mcpServers": merged_servers}
     return json.dumps(config_payload, separators=(",", ":"))
 
 
