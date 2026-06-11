@@ -74,6 +74,10 @@ def _list_stdio_tools(server: UpstreamMcpServer, timeout: timedelta) -> list[str
 
     The ``timeout`` budget bounds the subprocess via :mod:`subprocess.run` so we
     never hang the orchestrator when an MCP binary forgets to flush stdout.
+
+    Note: this is a bounded one-shot probe, not a long-lived tracked process.
+    ProcessManager does not manage it because each probe runs to completion
+    within the timeout; the underlying client cleans up its own subprocess.
     """
 
     del timeout  # subprocess timeout is enforced by the underlying client

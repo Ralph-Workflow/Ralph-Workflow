@@ -64,6 +64,7 @@ def test_live_sigint_gracefully_terminates_runner_and_tracked_child(tmp_path: Pa
                 default_grace_period_s=0.1,
                 kill_followup_timeout_s=0.2,
                 log_events=False,
+                enable_zombie_reaper=False,
             )
         )
 
@@ -149,6 +150,7 @@ def test_second_live_sigint_force_kills_stubborn_child(tmp_path: Path) -> None:
                 default_grace_period_s=0.1,
                 kill_followup_timeout_s=0.2,
                 log_events=False,
+                enable_zombie_reaper=False,
             )
         )
 

@@ -41,6 +41,7 @@ def spawn_pty_process(
 
     master_fd, slave_fd = os.openpty()
     _set_winsize(slave_fd, rows=rows, cols=cols)
+    # Process forked via ProcessManager.spawn_pty — see ralph.process.manager.ProcessManager
     pid = os.fork()
     if pid == 0:
         try:

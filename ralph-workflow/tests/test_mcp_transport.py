@@ -31,7 +31,10 @@ from tests.test_mcp_transport_helper__fakethread import _FakeThread
 PYTHON = sys.executable
 
 _FAST_POLICY = ProcessManagerPolicy(
-    default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
+    default_grace_period_s=0.3,
+    kill_followup_timeout_s=0.5,
+    log_events=False,
+    enable_zombie_reaper=False,
 )
 
 

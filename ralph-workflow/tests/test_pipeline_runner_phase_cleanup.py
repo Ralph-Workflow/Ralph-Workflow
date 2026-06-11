@@ -36,7 +36,10 @@ from ralph.testing.fake_process import FakePsutil, make_sync_process_factory
 from ralph.workspace.scope import WorkspaceScope
 
 _FAST_POLICY = ProcessManagerPolicy(
-    default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
+    default_grace_period_s=0.3,
+    kill_followup_timeout_s=0.5,
+    log_events=False,
+    enable_zombie_reaper=False,
 )
 
 _INTERRUPT_EXIT_CODE = 130

@@ -49,7 +49,10 @@ if TYPE_CHECKING:
 
 
 _FAST_POLICY = ProcessManagerPolicy(
-    default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
+    default_grace_period_s=0.3,
+    kill_followup_timeout_s=0.5,
+    log_events=False,
+    enable_zombie_reaper=False,
 )
 
 PYTHON = sys.executable

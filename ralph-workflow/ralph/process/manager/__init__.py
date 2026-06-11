@@ -40,6 +40,7 @@ def _default_sync_process_factory(
     command: Sequence[str],
     opts: SpawnOptions,
 ) -> _SyncProcessLike:
+    # Process spawned via ProcessManager — see ralph.process.manager.ProcessManager
     return cast(
         "subprocess.Popen[bytes]",
         subprocess.Popen(

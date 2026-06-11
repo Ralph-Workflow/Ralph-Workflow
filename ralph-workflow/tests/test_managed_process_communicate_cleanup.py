@@ -37,6 +37,7 @@ _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.1,
     kill_followup_timeout_s=0.1,
     log_events=False,
+    enable_zombie_reaper=False,
 )
 
 

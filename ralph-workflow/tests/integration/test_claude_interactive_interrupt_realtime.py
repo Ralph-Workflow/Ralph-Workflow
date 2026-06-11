@@ -66,6 +66,7 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
                 default_grace_period_s=0.1,
                 kill_followup_timeout_s=0.2,
                 log_events=False,
+                enable_zombie_reaper=False,
             )
         )
 

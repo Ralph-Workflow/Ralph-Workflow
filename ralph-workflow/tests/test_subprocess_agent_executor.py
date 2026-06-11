@@ -181,7 +181,10 @@ async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -
 
     pm = ProcessManager(
         policy=ProcessManagerPolicy(
-            default_grace_period_s=0.0, kill_followup_timeout_s=0.0, log_events=False
+            default_grace_period_s=0.0,
+            kill_followup_timeout_s=0.0,
+            log_events=False,
+            enable_zombie_reaper=False,
         ),
         async_process_factory=fake_factory,
     )

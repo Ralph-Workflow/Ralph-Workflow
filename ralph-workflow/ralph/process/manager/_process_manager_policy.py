@@ -12,3 +12,10 @@ class ProcessManagerPolicy:
     log_events: bool = True
     terminal_history_limit: int = 256
     purge_on_init: bool = False
+    # Background zombie reaper settings. When enable_zombie_reaper is True,
+    # ProcessManager starts a daemon thread on the first tracked process that
+    # periodically reconciles stale tracking entries (PIDs no longer alive at
+    # the OS level) and zombie records. Set to False in tests so unit tests do
+    # not create background threads. Production default remains True.
+    enable_zombie_reaper: bool = True
+    zombie_reaper_interval_s: float = 5.0

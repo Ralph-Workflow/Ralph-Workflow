@@ -31,6 +31,7 @@ _FAST_POLICY = ProcessManagerPolicy(
     kill_followup_timeout_s=0.5,
     log_events=False,
     purge_on_init=False,
+    enable_zombie_reaper=False,
 )
 
 
@@ -78,6 +79,7 @@ def test_psutil_none_fallback_force_kill_failure() -> None:
             kill_followup_timeout_s=0.1,
             log_events=False,
             purge_on_init=False,
+            enable_zombie_reaper=False,
         ),
         sync_process_factory=immortal_factory,
         async_process_factory=make_async_process_factory(itertools.count(100)),

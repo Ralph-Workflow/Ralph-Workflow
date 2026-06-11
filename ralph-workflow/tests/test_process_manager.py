@@ -7,12 +7,13 @@ no real subprocess spawning or psutil PID polling.
 from __future__ import annotations
 
 import asyncio
+import atexit
 import itertools
 import os
 import sys
 import threading
 import time as _time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 import pytest
@@ -24,9 +25,11 @@ from ralph.process import (
     ProcessManagerPolicy,
     ProcessStatus,
     SpawnOptions,
+    get_process_manager,
+    process_phase_scope,
     reset_process_manager,
 )
-from ralph.process.manager import ProcessTerminationError
+from ralph.process.manager import ProcessTerminationError, _singleton
 from ralph.testing.fake_process import (
     FakeImmortalPopen,
     FakePopen,
@@ -41,7 +44,10 @@ if TYPE_CHECKING:
     from ralph.testing.fake_process import AsyncFactoryCallable, SyncFactoryCallable
 
 _FAST_POLICY = ProcessManagerPolicy(
-    default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
+    default_grace_period_s=0.3,
+    kill_followup_timeout_s=0.5,
+    log_events=False,
+    enable_zombie_reaper=False,
 )
 
 
@@ -322,6 +328,7 @@ def test_log_events_false_suppresses_loguru_output() -> None:
                 default_grace_period_s=0.1,
                 kill_followup_timeout_s=0.2,
                 log_events=False,
+                enable_zombie_reaper=False,
             ),
             sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
         )
@@ -341,6 +348,7 @@ def test_log_events_false_suppresses_loguru_output() -> None:
                 default_grace_period_s=0.1,
                 kill_followup_timeout_s=0.2,
                 log_events=True,
+                enable_zombie_reaper=False,
             ),
             sync_process_factory=make_sync_process_factory(itertools.count(1), returncode=0),
         )
@@ -557,6 +565,7 @@ def test_terminal_history_limit_evicts_oldest_terminal_records_first() -> None:
             kill_followup_timeout_s=0.5,
             log_events=False,
             terminal_history_limit=2,
+            enable_zombie_reaper=False,
         ),
         sync_process_factory=sync_factory,
         async_process_factory=make_async_process_factory(itertools.count(100)),
@@ -984,5 +993,129 @@ def _publish_named_process_manager_regressions() -> None:
     )
     for name in names:
         globals()[f"test_{name}"] = globals()[f"test_{name.lower()}"]
+
+
+# ---------------------------------------------------------------------------
+# Singleton and atexit handler tests
+# ---------------------------------------------------------------------------
+
+
+def test_atexit_shutdown_skips_when_no_instance() -> None:
+    """_atexit_shutdown returns early when no singleton is set."""
+    _singleton._pm_state.instance = None
+    # No exception, no side effect.
+    _singleton._atexit_shutdown()
+
+
+def test_atexit_shutdown_calls_pm_shutdown_all() -> None:
+    """_atexit_shutdown calls shutdown_all on the singleton when present."""
+    captured: dict[str, object] = {}
+
+    class _FakePM:
+        def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
+            captured["grace"] = grace_period_s
+
+    _singleton._pm_state.instance = cast("ProcessManager", _FakePM())
+    try:
+        _singleton._atexit_shutdown()
+        assert captured.get("grace") == 0.5
+    finally:
+        _singleton._pm_state.instance = None
+
+
+def test_atexit_shutdown_swallows_baseexception() -> None:
+    """_atexit_shutdown swallows BaseException from shutdown_all."""
+
+    class _ExplodingPM:
+        def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
+            del grace_period_s
+            raise RuntimeError("shutdown-failed")
+
+    _singleton._pm_state.instance = cast("ProcessManager", _ExplodingPM())
+    try:
+        # Must NOT raise.
+        _singleton._atexit_shutdown()
+    finally:
+        _singleton._pm_state.instance = None
+
+
+def test_get_process_manager_registers_atexit_exactly_once() -> None:
+    """atexit.register is called exactly once across multiple get_process_manager calls."""
+    register_calls: list[object] = []
+    original_register = atexit.register
+
+    def _spy_register(fn: object) -> object:
+        register_calls.append(fn)
+        return original_register(fn)
+
+    _singleton._pm_state.instance = None
+    _singleton._pm_state.atexit_registered = False
+    try:
+        with patch("atexit.register", side_effect=_spy_register):
+            get_process_manager()
+            get_process_manager()
+            get_process_manager()
+    finally:
+        reset_process_manager()
+
+    assert len(register_calls) == 1, f"Expected 1 atexit.register call, got {len(register_calls)}"
+
+
+def test_process_phase_scope_tears_down_labeled_processes() -> None:
+    """process_phase_scope triggers shutdown_all_for_label on exit."""
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+    # Inject the PM into the singleton so process_phase_scope uses it.
+    _singleton._pm_state.instance = ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.1,
+            kill_followup_timeout_s=0.1,
+            log_events=False,
+            enable_zombie_reaper=False,
+        ),
+        sync_process_factory=sync_factory,
+        async_process_factory=make_sync_process_factory(itertools.count(100)),
+    )
+    handle = _singleton._pm_state.instance.spawn(
+        [sys.executable, "-c", "pass"],
+        SpawnOptions(label="phase:audit"),
+    )
+
+    with process_phase_scope("audit"):
+        pass
+
+    assert handle.record.status == ProcessStatus.KILLED
+
+
+def test_process_phase_scope_logs_and_reraises_on_termination_error() -> None:
+    """process_phase_scope logs and re-raises ProcessTerminationError from cleanup."""
+
+    class _ExplodingPM:
+        policy = ProcessManagerPolicy(
+            default_grace_period_s=0.1,
+            kill_followup_timeout_s=0.1,
+            log_events=False,
+            enable_zombie_reaper=False,
+        )
+
+        def shutdown_all_for_label(
+            self,
+            label: str,
+            *,
+            grace_period_s: float | None = None,
+        ) -> None:
+            del label, grace_period_s
+            raise ProcessTerminationError(
+                1234,
+                1234,
+                stage="force_kill",
+                reason="cleanup failed",
+            )
+
+    _singleton._pm_state.instance = cast("ProcessManager", _ExplodingPM())
+    try:
+        with pytest.raises(ProcessTerminationError), process_phase_scope("audit"):
+            pass
+    finally:
+        _singleton._pm_state.instance = None
 
 _publish_named_process_manager_regressions()

@@ -6,10 +6,8 @@ and blacklist policy filtering.
 
 from __future__ import annotations
 
-import contextlib
 import os
 import shlex
-import signal
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -37,7 +35,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from ralph.process.manager import ProcessManager
-    from ralph.process.manager._process_manager_types import _PsutilModuleLike, _PsutilProcessLike
 
 PROCESS_EXEC_BOUNDED_CAPABILITY = "ProcessExecBounded"
 # Default per-call exec timeout. Single source of truth lives in
@@ -420,41 +417,6 @@ def _child_env(cwd: Path) -> dict[str, str]:
     return env
 
 
-def _kill_orphan_tree_windows(root_pid: int, psutil_mod: _PsutilModuleLike | None) -> None:
-    """Recursively kill orphaned descendants of root_pid on Windows."""
-    if psutil_mod is None or root_pid <= 0:
-        return
-    frontier: set[int] = {root_pid}
-    seen: set[int] = set()
-    while frontier:
-        children_found: dict[int, _PsutilProcessLike] = {}
-        with contextlib.suppress(Exception):
-            for proc in psutil_mod.process_iter(["pid", "ppid"]):
-                with contextlib.suppress(Exception):
-                    info = proc.info
-                    ppid = info.get("ppid")
-                    pid = proc.pid
-                    if ppid in frontier and pid not in seen:
-                        children_found[pid] = proc
-        if not children_found:
-            break
-        seen.update(children_found)
-        for proc in children_found.values():
-            with contextlib.suppress(Exception):
-                proc.kill()
-        frontier = set(children_found)
-
-
-def _cleanup_exec_orphans(pgid: int, root_pid: int, psutil_mod: _PsutilModuleLike | None) -> None:
-    """Kill orphaned processes after the exec root exits."""
-    if hasattr(os, "killpg"):
-        if pgid > 1:
-            with contextlib.suppress(OSError):
-                os.killpg(pgid, signal.SIGKILL)
-    else:
-        _kill_orphan_tree_windows(root_pid, psutil_mod)
-
-
 def run_command(
     command: str,
     args: list[str],
@@ -547,7 +509,7 @@ def _run_subprocess(
             truncated=True,
         )
     finally:
-        _cleanup_exec_orphans(handle.record.pgid, handle.record.pid, effective_pm._psutil)
+        effective_pm.cleanup_orphans(handle)
     return _CompletedProcessAdapter(
         stdout=stdout or b"",
         stderr=stderr or b"",

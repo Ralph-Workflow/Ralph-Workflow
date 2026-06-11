@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import signal
 import subprocess
 import threading
+import time as _time
 from collections import OrderedDict
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -25,6 +27,7 @@ from ralph.process.manager._process_manager_types import (
     _AsyncProcessFactory,
     _AsyncProcessLike,
     _PsutilModuleLike,
+    _PsutilProcessLike,
     _pty_cell,
     _PtyProcessFactory,
     _PtyProcessLike,
@@ -77,6 +80,7 @@ class ProcessManager:
         async_process_factory: _AsyncProcessFactory | None = None,
         pty_process_factory: _PtyProcessFactory | None = None,
         psutil: _PsutilModuleLike | None = None,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         self._records: dict[int, ProcessRecord] = {}
@@ -85,6 +89,9 @@ class ProcessManager:
         self._pty_procs: dict[int, _PtyProcessLike] = {}
         self._descendants: dict[int, list[int]] = {}
         self._termination_outcomes: dict[int, list[dict[str, str]]] = {}
+        self._clock: Callable[[], float] = clock if clock is not None else _time.monotonic
+        self._stop_event: threading.Event = threading.Event()
+        self._reaper_thread: threading.Thread | None = None
 
         # purge_on_init: clear terminal records on startup when policy requests it
         if self.policy.purge_on_init:
@@ -217,6 +224,13 @@ class ProcessManager:
             status=ProcessStatus.RUNNING,
             label=effective.label,
         )
+        if (
+            self.policy.enable_zombie_reaper
+            and self._reaper_thread is None
+            and not self._records
+            and not self._terminal_records
+        ):
+            self._start_zombie_reaper()
         self._terminal_records.pop(pid, None)
         self._records[pid] = record
         self._sync_procs[pid] = proc
@@ -277,6 +291,13 @@ class ProcessManager:
             status=ProcessStatus.RUNNING,
             label=effective.label,
         )
+        if (
+            self.policy.enable_zombie_reaper
+            and self._reaper_thread is None
+            and not self._records
+            and not self._terminal_records
+        ):
+            self._start_zombie_reaper()
         self._terminal_records.pop(pid, None)
         self._records[pid] = record
         self._pty_procs[pid] = proc
@@ -333,6 +354,13 @@ class ProcessManager:
             status=ProcessStatus.RUNNING,
             label=effective.label,
         )
+        if (
+            self.policy.enable_zombie_reaper
+            and self._reaper_thread is None
+            and not self._records
+            and not self._terminal_records
+        ):
+            self._start_zombie_reaper()
         self._terminal_records.pop(pid, None)
         self._records[pid] = record
         self._async_procs[pid] = proc
@@ -419,6 +447,147 @@ class ProcessManager:
                 reconciled += 1
         return reconciled
 
+    # ------------------------------------------------------------------
+    # Background zombie reaper (drains stale entries between shutdown calls)
+    # ------------------------------------------------------------------
+
+    def _start_zombie_reaper(self) -> None:
+        """Start the background zombie reaper thread (idempotent)."""
+        if self._reaper_thread is not None:
+            return
+        if not self.policy.enable_zombie_reaper:
+            return
+        self._stop_event.clear()
+        thread = threading.Thread(
+            target=self._zombie_reaper_loop,
+            name=f"ProcessManager-zombie-reaper-{id(self)}",
+            daemon=True,
+        )
+        self._reaper_thread = thread
+        thread.start()
+
+    def _stop_zombie_reaper(self) -> None:
+        """Stop the background zombie reaper thread (idempotent).
+
+        Returns immediately when no reaper is running. Otherwise signals
+        the loop via threading.Event.set() and joins with a 2.0s timeout.
+        If join times out, logs a warning and lets the daemon thread die
+        on interpreter shutdown.
+        """
+        thread = self._reaper_thread
+        if thread is None:
+            return
+        self._stop_event.set()
+        thread.join(timeout=2.0)
+        if thread.is_alive():
+            logger.warning("ProcessManager zombie reaper did not stop within 2.0s")
+        self._reaper_thread = None
+
+    def _zombie_reaper_loop(self) -> None:
+        """Background loop that periodically reconciles stale tracking entries.
+
+        Race-condition safety: ``_reconcile_stale_entries`` reads
+        ``record.status`` without holding ``_status_lock``, but the TOCTOU
+        window is safe because:
+          (i) ``_mark_killed`` (called by the reaper) re-checks
+              ``record.status in _TERMINAL_STATUSES`` under ``_status_lock``
+              before writing,
+          (ii) duplicate ``_mark_killed`` calls are idempotent, and
+          (iii) the reaper is the only writer that transitions records to
+              KILLED with cause ``stale_entry_reconciled`` / ``zombie_reconciled``.
+        """
+        interval = self.policy.zombie_reaper_interval_s
+        while not self._stop_event.wait(timeout=interval):
+            # If Event.wait() is interrupted by a signal, the loop simply wakes
+            # early and proceeds to the next iteration, which is harmless
+            # because _reconcile_stale_entries is idempotent.
+            try:
+                self._reconcile_stale_entries()
+            except Exception:
+                logger.exception("ProcessManager zombie reaper iteration failed")
+
+    def cleanup_orphans(
+        self,
+        handle_or_pid: ManagedProcess | ManagedPtyProcess | ManagedAsyncProcess | int,
+        *,
+        label_prefix: str | None = None,
+    ) -> None:
+        """Kill orphaned processes associated with a handle or PID.
+
+        For handle inputs, the parent PID and PGID are taken from the
+        handle's record. POSIX uses ``os.killpg(pgid, SIGKILL)`` and
+        Windows falls back to a BFS tree walk over psutil.process_iter.
+
+        For ``int`` inputs, no record is available so the API falls back
+        to PID-only cleanup: POSIX uses ``_kill_pgid(handle_or_pid)``
+        (treats the input as a PGID) and Windows uses
+        ``_kill_orphan_tree_windows(handle_or_pid)``. The
+        ``label_prefix`` filter is a no-op for the int branch.
+
+        When ``label_prefix`` is supplied on the handle branch, all
+        tracked records whose label starts with ``label_prefix`` AND
+        whose PID is not the input handle are also terminated via
+        ``_terminate_by_pid``.
+
+        Args:
+            handle_or_pid: A managed process handle, or a raw PID/PGID int.
+            label_prefix: Optional label prefix filter for the handle branch.
+        """
+        if isinstance(handle_or_pid, int):
+            if hasattr(os, "killpg"):
+                self._kill_pgid(handle_or_pid)
+            else:
+                self._kill_orphan_tree_windows(handle_or_pid)
+            return
+
+        record = handle_or_pid.record
+        if hasattr(os, "killpg"):
+            self._kill_pgid(record.pgid)
+        else:
+            self._kill_orphan_tree_windows(record.pid)
+
+        if label_prefix is not None:
+            for other_pid, other_record in list(self._records.items()):
+                if other_pid == record.pid:
+                    continue
+                if (
+                    other_record.label is not None
+                    and other_record.label.startswith(label_prefix)
+                ):
+                    self._terminate_by_pid(other_record, self.policy.default_grace_period_s)
+
+    def _kill_pgid(self, pgid: int) -> None:
+        """POSIX: kill the entire process group identified by ``pgid``."""
+        if pgid <= 1 or not hasattr(os, "killpg"):
+            return
+        with contextlib.suppress(OSError, ProcessLookupError):
+            os.killpg(pgid, signal.SIGKILL)
+
+    def _kill_orphan_tree_windows(self, root_pid: int) -> None:
+        """Windows fallback: recursively kill orphaned descendants of ``root_pid``."""
+        psutil_mod = self._psutil
+        if psutil_mod is None or root_pid <= 0:
+            return
+        frontier: set[int] = {root_pid}
+        seen: set[int] = set()
+        while frontier:
+            children_found: dict[int, _PsutilProcessLike] = {}
+            with contextlib.suppress(Exception):
+                for proc in psutil_mod.process_iter(["pid", "ppid"]):
+                    with contextlib.suppress(Exception):
+                        info = proc.info
+                        ppid = info.get("ppid")
+                        pid = proc.pid
+                        if ppid in frontier and pid not in seen:
+                            children_found[pid] = proc
+            if not children_found:
+                break
+            seen.update(children_found)
+            for proc in children_found.values():
+                with contextlib.suppress(Exception):
+                    proc.kill()
+            frontier = set(children_found)
+
     def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
         """Terminate all active processes."""
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
@@ -441,6 +610,8 @@ class ProcessManager:
                     self._escalate_async_in_sync_context(record, async_proc, gp)
                     continue
                 self._terminate_by_pid(record, gp)
+
+        self._stop_zombie_reaper()
 
     def shutdown_all_for_label(
         self, label_prefix: str, *, grace_period_s: float | None = None
@@ -470,6 +641,8 @@ class ProcessManager:
                     self._escalate_async_in_sync_context(record, async_proc, gp)
                     continue
                 self._terminate_by_pid(record, gp)
+
+        self._stop_zombie_reaper()
 
     # ------------------------------------------------------------------
     # Termination methods (with pre-kill liveness checks)
