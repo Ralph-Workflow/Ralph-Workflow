@@ -1651,12 +1651,19 @@ def test_schema_json_file_matches_generate_plan_schema() -> None:
 
 
 def test_plan_artifact_schema_version_field_round_trip() -> None:
-    """schema_version uses exclude=True (like noop) so it is always dropped from the dump.
+    """schema_version uses ``Field(default=0, ge=0)`` (no exclude=True) so the
+    field is dropped from the dump only at its default value of 0 and is
+    preserved in the dump when explicitly set to a non-default value.
 
-    This locks the backward-compat invariant: existing plans that do not set
-    the field round-trip identically. The field is still accessible on the
-    validated model for explicit introspection.
+    This locks two invariants:
+
+    * Backward-compat: existing plans that do not set the field round-trip
+      identically (the default value is dropped via ``exclude_defaults=True``).
+    * Forward-compat signaling: a plan that sets ``schema_version=N`` for
+      ``N != 0`` keeps the key in the round-tripped dict so a downstream
+      consumer can branch on the version.
     """
+    PlanArtifact.model_rebuild(_types_namespace={"WorkUnit": WorkUnit})
     plan = copy.deepcopy(_valid_plan())
     plan.pop("schema_version", None)
     validated = PlanArtifact.model_validate(plan)
@@ -1671,5 +1678,5 @@ def test_plan_artifact_schema_version_field_round_trip() -> None:
     dumped_with_version = validated_with_version.model_dump(
         exclude_none=True, exclude_defaults=True
     )
-    assert "schema_version" not in dumped_with_version
+    assert dumped_with_version.get("schema_version") == 2
 

@@ -128,7 +128,7 @@ class PlanArtifact(RalphBaseModel):
     risks_mitigations: list[RiskMitigation] = Field(..., min_length=1)
     constraints: PlanConstraints | None = None
     noop: bool | None = Field(default=None, exclude=True)
-    schema_version: int = Field(default=0, ge=0, exclude=True)
+    schema_version: int = Field(default=0, ge=0)
     design: DesignSection | None = None
     verification_strategy: list[VerificationStep] = Field(..., min_length=1)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
