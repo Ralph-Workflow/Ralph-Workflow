@@ -32,6 +32,7 @@ Only recommend removing files from the commit if they match these categories:
 **AI session and generated artifacts:**
 - `.agent/`, `artifacts/`, `reports/` directories and their contents
 - Files with names containing `session`, `transcript`, `prompt`, `analysis`, `checkpoint`, `verify`, `output`, `report`, `log`, `trace`, `debug`, `dump`, `temp`, `tmp`, `artifact`, `capture`, `generated` (e.g. `session-log.txt`, `transcript-001.txt`, `analysis-output.json`)
+- For source code files specifically: untracked source code files whose name contains one of the clearly-temporary tokens `temp`, `tmp`, `scratch`, `generated`, `throwaway`, `dump` (e.g. `temp_script.py`, `scratch_test.go`, `dump_helper.rs`, `throwaway.java`) are also safe to delete. The same temporary-token rule applies to source code in known generated directories such as `tmp/`, `temp/`, `generated/`, or `artifacts/` (e.g. `tmp/scratch.py`, `temp/App.java`).
 
 **Backup and temporary files:**
 - `*.bak`, `*.tmp`, `*.temp`, `*.old`, `*.orig`, `*.rej`, `*.patch`, `*~`
@@ -58,6 +59,8 @@ Only recommend removing files from the commit if they match these categories:
 - Any file whose removal would change what the commit does
 
 **Exception:** obvious generated text artifacts are housekeeping and may be removed, for example verification/build captures such as `verify-output.txt`, `test-output.txt`, `build/report.txt`, or temp transcripts/logs under generated-output directories.
+
+**Source code exception (narrow):** untracked source code files whose name contains one of the clearly-temporary tokens `temp`, `tmp`, `scratch`, `generated`, `throwaway`, `dump` are housekeeping and may be removed. The same applies to untracked source files inside `tmp/`, `temp/`, `generated/`, or `artifacts/` directories. **Tracked source files are NEVER safe to delete regardless of name or directory.** Untracked source files using common programming-term names (`log.py`, `model.py`, `worker.py`, `session.py`, `message.py`, `plan.py`, `chat.py`, `debug.py`, `output.py`, `report.py`, `capture.py`, `completion.py`, `note.py`, etc.) must NOT be deleted unless their name also matches the narrow temporary-token list above.
 
 **If you are unsure whether a file should be removed, do NOT include it in your actions.**
 

@@ -101,6 +101,21 @@ _GENERATED_TEXT_MARKERS: frozenset[str] = frozenset({
     "worker",
 })
 
+# Narrow allowlist of clearly-temporary source-file name tokens. Excludes
+# common programming terms (log, model, worker, session, message, plan, chat,
+# output, report, capture, completion, note, pipeline, response, review,
+# summary, debug, trace, transcript) to prevent false positives on legitimate
+# source files like log.py, debug.py, or worker.py. Only tokens that almost
+# always denote a disposable artifact are allowed.
+_SOURCE_FILE_GENERATED_MARKERS: frozenset[str] = frozenset({
+    "temp",
+    "tmp",
+    "scratch",
+    "generated",
+    "throwaway",
+    "dump",
+})
+
 _GENERATED_TEXT_DIRECTORIES: frozenset[str] = frozenset({
     ".agent",
     ".cache",
@@ -151,8 +166,20 @@ def _path_exists_in_head(repo_root: Path, relative_path: str) -> bool:
         _close_repo(repo)
 
 
-def _is_generated_text_artifact(repo_root: Path, path: str) -> bool:
-    """Return True when a ``.txt`` file looks like generated output, not authored docs."""
+def _is_generated_text_artifact(
+    repo_root: Path,
+    path: str,
+    markers: frozenset[str] = _GENERATED_TEXT_MARKERS,
+) -> bool:
+    """Return True when ``path`` looks like a generated artifact, not authored content.
+
+    The ``markers`` parameter selects which name tokens count as a generated
+    signal. The default broad set is used for ``.txt`` and ``.json`` files;
+    the narrow source-file allowlist is used for any other extension.
+
+    Tracked files (those already present in HEAD) are never treated as
+    generated, regardless of name.
+    """
     candidate = Path(path)
     name_tokens = {
         token
@@ -160,7 +187,7 @@ def _is_generated_text_artifact(repo_root: Path, path: str) -> bool:
         if token
     }
     parent_parts = {part.lower() for part in candidate.parts[:-1]}
-    has_generated_signal = bool(name_tokens & _GENERATED_TEXT_MARKERS) or bool(
+    has_generated_signal = bool(name_tokens & markers) or bool(
         parent_parts & _GENERATED_TEXT_DIRECTORIES
     )
     if not has_generated_signal:
@@ -172,13 +199,18 @@ def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
     """Return True only if path is a housekeeping artifact safe to delete.
 
     Rejects source code, test files, documentation, and configuration files.
+    Source-code files with clearly-temporary names (e.g. ``temp_script.py``)
+    are allowed to be deleted when untracked, but tracked files are always
+    protected.
     """
     candidate = Path(path)
     path_lower = path.lower()
+
+    # 1. Reject paths inside test/doc segments unconditionally
     if any(seg in path_lower for seg in _UNSAFE_PATH_SEGMENTS):
         return False
 
-    # Dependency manifests and lock files must never be deleted
+    # 2. Reject known lock files and dependency manifests
     if candidate.name in {
         "package-lock.json", "yarn.lock", "Cargo.lock", "poetry.lock",
         "uv.lock", "Pipfile.lock", "composer.lock", "Gemfile.lock", "go.sum",
@@ -186,13 +218,25 @@ def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
         return False
 
     suffix = candidate.suffix.lower()
-    # Housekeeping extensions that are always safe to delete
+
+    # 3. Housekeeping extensions are safe to delete unless already tracked
     if suffix in {".bak", ".tmp", ".temp", ".old", ".orig", ".rej", ".patch", ".log"}:
         return not _path_exists_in_head(repo_root, path)
 
+    # 4. .txt and .json use the broad generated-text marker set
     if suffix in (".txt", ".json"):
         return _is_generated_text_artifact(repo_root, path)
 
+    # 5. Other extensions (source code, configs, etc.) may still be deleted
+    #    when their name or directory carries a clearly-temporary signal AND
+    #    the file is not tracked in HEAD. _is_generated_text_artifact returns
+    #    False for tracked files, so a tracked source file is always safe.
+    if _is_generated_text_artifact(
+        repo_root, path, markers=_SOURCE_FILE_GENERATED_MARKERS
+    ):
+        return True
+
+    # 6. Fall through: reject if the extension is in the unsafe list
     return suffix not in _UNSAFE_EXTENSIONS
 
 

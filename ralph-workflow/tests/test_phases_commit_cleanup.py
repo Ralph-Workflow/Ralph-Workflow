@@ -766,3 +766,165 @@ def test_delete_tracked_backup_file_rejected(tmp_git_repo: Path) -> None:
     assert len(result) == 1
     assert isinstance(result[0], PhaseFailureEvent)
     assert backup.exists()
+
+
+def _make_cleanup_ctx(workspace: FsWorkspace) -> PhaseContext:
+    """Build a minimal PhaseContext wired to ``workspace`` for cleanup tests."""
+    return PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+
+
+def _invoke_cleanup(workspace: FsWorkspace, content: dict) -> list:
+    """Run the commit_cleanup phase with the given artifact content."""
+    _write_commit_cleanup_artifact(workspace, content)
+    ctx = _make_cleanup_ctx(workspace)
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    return handle_commit_cleanup_phase(effect, ctx)
+
+
+@pytest.mark.parametrize(
+    "file_path",
+    [
+        "temp_script.py",
+        "scratch_script.go",
+        "generated_utils.js",
+        "dump_helper.rs",
+        "tmp_helper.ts",
+        "throwaway.java",
+        "dump.cpp",
+        "tmp/scratch.py",
+        "temp/App.java",
+    ],
+)
+def test_untracked_temporary_source_code_is_deleted(
+    tmp_git_repo: Path,
+    file_path: str,
+) -> None:
+    """Untracked source files with temporary markers are housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    target = tmp_git_repo / file_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("temp source code")
+    assert target.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": file_path}],
+        },
+    )
+
+    assert PipelineEvent.AGENT_SUCCESS in result or PipelineEvent.PHASE_LOOPBACK in result
+    assert not target.exists()
+
+
+@pytest.mark.parametrize(
+    "file_path",
+    [
+        "log.py",
+        "model.py",
+        "worker.py",
+        "message.py",
+        "session.py",
+        "chat.py",
+        "plan.py",
+        "debug.py",
+        "output.py",
+        "report.py",
+        "capture.py",
+        "completion.py",
+        "note.go",
+        "message.rs",
+        "log.ts",
+        "model.js",
+    ],
+)
+def test_untracked_legitimate_source_file_rejected(
+    tmp_git_repo: Path,
+    file_path: str,
+) -> None:
+    """Untracked source files with common programming-term names must NOT be deleted.
+
+    Pins the false-positive guarantee: a source file whose name tokenizes to
+    a value in the broad _GENERATED_TEXT_MARKERS set (e.g. ``log``, ``model``,
+    ``worker``) is NOT a candidate for deletion, because the source-file
+    branch uses the narrow ``_SOURCE_FILE_GENERATED_MARKERS`` allowlist which
+    excludes these common programming terms.
+    """
+    workspace = FsWorkspace(tmp_git_repo)
+    target = tmp_git_repo / file_path
+    target.write_text("legitimate source code")
+    assert target.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": file_path}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert target.exists()
+
+
+def test_tracked_temporary_source_code_rejected(tmp_git_repo: Path) -> None:
+    """Tracked source files with temporary names must NOT be deleted."""
+    workspace = FsWorkspace(tmp_git_repo)
+    src = tmp_git_repo / "temp_script.py"
+    src.write_text("committed source")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["temp_script.py"])
+        repo.index.commit("track temp script")
+    finally:
+        repo.close()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "temp_script.py"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert src.exists()
+
+
+def test_tracked_source_code_in_tmp_directory_rejected(tmp_git_repo: Path) -> None:
+    """Tracked source files inside tmp/ directories must NOT be deleted."""
+    workspace = FsWorkspace(tmp_git_repo)
+    tmp_dir = tmp_git_repo / "tmp"
+    tmp_dir.mkdir()
+    src = tmp_dir / "utility.py"
+    src.write_text("committed utility")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["tmp/utility.py"])
+        repo.index.commit("track tmp utility")
+    finally:
+        repo.close()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "tmp/utility.py"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert src.exists()
