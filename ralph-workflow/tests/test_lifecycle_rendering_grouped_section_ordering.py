@@ -18,7 +18,7 @@ from ralph.display.completion_summary import (
     render_completion_summary_group,
 )
 from ralph.display.context import make_display_context
-from ralph.display.plain_renderer import PlainLogRenderer
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot
 
 # ---------------------------------------------------------------------------
@@ -36,10 +36,10 @@ def _make_console(width: int = 200) -> tuple[Console, StringIO]:
     return console, buf
 
 
-def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
+def _make_display() -> tuple[ParallelDisplay, StringIO]:
     console, buf = _make_console()
     ctx = make_display_context(console=console, env={})
-    return PlainLogRenderer(ctx), buf
+    return ParallelDisplay(ctx), buf
 
 
 def _blank_snapshot(

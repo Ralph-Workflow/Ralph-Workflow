@@ -1,4 +1,9 @@
-"""Context bundle for streaming block management."""
+"""Context bundle for streaming block management.
+
+Internal leaf module (wt-007-consolidate-display). Re-exports
+:class:`_StreamingCtx` from the previous
+``ralph.display.plain_renderer._streaming_ctx`` location.
+"""
 
 from __future__ import annotations
 

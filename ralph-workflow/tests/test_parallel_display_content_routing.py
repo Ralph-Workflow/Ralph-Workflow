@@ -1,4 +1,4 @@
-"""Tests for ParallelDisplay activity_router content routing to plain renderer."""
+"""Tests for ParallelDisplay activity_router content routing to plain pd."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from ralph.display.activity_model import ActivityEventKind, ActivityProvider
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.work_units import WorkUnit
@@ -207,7 +206,7 @@ def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> N
 
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    renderer = PlainLogRenderer(make_display_context(console=console, env={}))
+    renderer = ParallelDisplay(make_display_context(console=console, env={}))
 
     snapshot = PipelineSnapshot(
         phase="development",

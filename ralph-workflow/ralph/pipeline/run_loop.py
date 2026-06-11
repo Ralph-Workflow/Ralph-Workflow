@@ -13,13 +13,13 @@ from loguru import logger
 
 import ralph.pipeline.runner as _runner_module
 from ralph.config.enums import Verbosity
+from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.parallel_display import (
     ParallelDisplay,
     build_default_display_legacy_bridge,
     emit_activity_line,
     status_text,
 )
-from ralph.display.plain_renderer import RunStartOrientation
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import emit_final_summary
@@ -76,9 +76,6 @@ if TYPE_CHECKING:
     class _DisplayContextOwner(Protocol):
         _ctx: DisplayContext
 
-    class _DisplayWithPlainRenderer(_DisplayContextOwner, Protocol):
-        _plain_renderer: _DisplayContextOwner
-
     class _PhaseAwareDisplay(Protocol):
         def begin_phase(self, phase: str) -> None: ...
 
@@ -116,10 +113,8 @@ class _LoopContext:
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
-    """Keep the runner's active display and nested renderer on the same context."""
+    """Keep the runner's active display on the same context as the runner."""
     display._ctx = ctx
-    if hasattr(display, "_plain_renderer"):
-        cast("_DisplayWithPlainRenderer", display)._plain_renderer._ctx = ctx
 
 
 def _signal_if_now_online(monitor: _ConnectivityMonitorLike, wake: threading.Event) -> None:

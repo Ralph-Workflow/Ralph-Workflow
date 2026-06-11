@@ -23,9 +23,9 @@ import io
 
 from rich.console import Console
 
+from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.plain_renderer import RunStartOrientation
 
 
 def test_parallel_display_preserves_log_tags() -> None:

@@ -166,8 +166,6 @@ def test_width_refresher_updates_live_display_context(
     class StubDisplay:
         def __init__(self) -> None:
             self._ctx = wide_ctx
-            self._plain_renderer = MagicMock()
-            self._plain_renderer._ctx = wide_ctx
 
         def __enter__(self) -> StubDisplay:
             return self
@@ -222,6 +220,5 @@ def test_width_refresher_updates_live_display_context(
 
     assert exit_code == 0
     assert display._ctx.mode == "compact"
-    assert display._plain_renderer._ctx.mode == "compact"
     # The stop callback returned by install_width_refresher must be called on shutdown
     assert stop_called, "Runner did not call the width refresher stop callback on shutdown"

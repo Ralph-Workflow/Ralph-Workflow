@@ -72,12 +72,11 @@ def emit_final_summary(
         pipeline_policy = subscriber.pipeline_policy if subscriber is not None else None
         ctx = get_display_context(display, display_context)
         if isinstance(display, ParallelDisplay):
-            pr = display._plain_renderer
-            content_block_count: int = pr.content_blocks_count
-            thinking_block_count: int = pr.thinking_blocks_count
-            tool_call_count: int = pr.tool_calls_count
-            error_count: int = pr.errors_count
-            elapsed_seconds: float | None = pr.run_elapsed_seconds
+            content_block_count: int = display.content_blocks_count
+            thinking_block_count: int = display.thinking_blocks_count
+            tool_call_count: int = display.tool_calls_count
+            error_count: int = display.errors_count
+            elapsed_seconds: float | None = display.run_elapsed_seconds
         else:
             content_block_count = 0
             thinking_block_count = 0

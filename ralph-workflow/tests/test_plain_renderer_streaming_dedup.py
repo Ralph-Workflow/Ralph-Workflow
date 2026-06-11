@@ -7,30 +7,30 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.plain_renderer import PlainLogRenderer
+from ralph.display.parallel_display import ParallelDisplay
 
 # Threshold for number of fragments in dedup test
 _THREE_FRAGMENTS = 3
 
 
-def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
+def _make_display() -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    return PlainLogRenderer(make_display_context(console=console, env={})), buf
+    return ParallelDisplay(make_display_context(console=console, env={})), buf
 
 
-def _make_renderer_with_env(env: dict[str, str]) -> tuple[PlainLogRenderer, StringIO]:
+def _make_renderer_with_env(env: dict[str, str]) -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    return PlainLogRenderer(make_display_context(console=console, env=env)), buf
+    return ParallelDisplay(make_display_context(console=console, env=env)), buf
 
 
 def test_identical_consecutive_text_fragments_suppressed() -> None:
     """Three identical text deltas emit one [content-start] and zero [content-continue#N]."""
-    renderer, buf = _make_renderer()
-    renderer.emit_activity_line("u", "text", "same content")
-    renderer.emit_activity_line("u", "text", "same content")
-    renderer.emit_activity_line("u", "text", "same content")
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "text", "same content")
+    pd.emit_activity_line("u", "text", "same content")
+    pd.emit_activity_line("u", "text", "same content")
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     # Only one content-start should appear
@@ -45,9 +45,9 @@ def test_identical_consecutive_text_fragments_suppressed() -> None:
 
 def test_differing_text_fragments_emit_continue_lines() -> None:
     """Differing text deltas emit [content-start] plus [content-continue#2]."""
-    renderer, buf = _make_renderer()
-    renderer.emit_activity_line("u", "text", "first content")
-    renderer.emit_activity_line("u", "text", "second content")
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "text", "first content")
+    pd.emit_activity_line("u", "text", "second content")
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     content_start_count = sum(1 for ln in lines if "[content-start]" in ln)
@@ -61,11 +61,11 @@ def test_differing_text_fragments_emit_continue_lines() -> None:
 
 def test_dedup_disabled_by_env_restore_duplicates() -> None:
     """RALPH_STREAMING_DEDUP=0 disables suppression and duplicates are emitted."""
-    renderer, buf = _make_renderer_with_env({"RALPH_STREAMING_DEDUP": "0"})
-    assert renderer._ctx.streaming_dedup_enabled is False
-    renderer.emit_activity_line("u", "text", "same content")
-    renderer.emit_activity_line("u", "text", "same content")
-    renderer.emit_activity_line("u", "text", "same content")
+    pd, buf = _make_renderer_with_env({"RALPH_STREAMING_DEDUP": "0"})
+    assert pd._ctx.streaming_dedup_enabled is False
+    pd.emit_activity_line("u", "text", "same content")
+    pd.emit_activity_line("u", "text", "same content")
+    pd.emit_activity_line("u", "text", "same content")
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     content_start_count = sum(1 for ln in lines if "[content-start]" in ln)
@@ -84,11 +84,11 @@ def test_dedup_operates_independently_per_unit_id() -> None:
     Because of the single-block invariant, unit B opens a NEW block after unit A's block
     closes. So each unit gets its own streaming sequence.
     """
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     # Emit for unit-a
-    renderer.emit_activity_line("unit-a", "text", "same")
+    pd.emit_activity_line("unit-a", "text", "same")
     # Switch to unit-b (closes unit-a's block, opens new for unit-b)
-    renderer.emit_activity_line("unit-b", "text", "same")
+    pd.emit_activity_line("unit-b", "text", "same")
     out = buf.getvalue()
     # Both units should have their own [content-start]
     assert "[content-start][unit-a]" in out
@@ -97,13 +97,13 @@ def test_dedup_operates_independently_per_unit_id() -> None:
 
 def test_dedup_does_not_suppress_first_fragment_of_new_block() -> None:
     """First fragment is always emitted; dedup applies only to subsequent identical ones."""
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     # First block: "hello" opens a new block
-    renderer.emit_activity_line("u", "text", "hello")
+    pd.emit_activity_line("u", "text", "hello")
     # Second identical fragment gets deduplicated
-    renderer.emit_activity_line("u", "text", "hello")
+    pd.emit_activity_line("u", "text", "hello")
     # Third identical fragment also deduplicated
-    renderer.emit_activity_line("u", "text", "hello")
+    pd.emit_activity_line("u", "text", "hello")
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     # Only one [content-start] should appear
@@ -113,11 +113,11 @@ def test_dedup_does_not_suppress_first_fragment_of_new_block() -> None:
 
 def test_dedup_with_three_different_then_identical() -> None:
     """After two different fragments, a third identical to the second is deduplicated."""
-    renderer, buf = _make_renderer()
-    renderer.emit_activity_line("u", "text", "first")
-    renderer.emit_activity_line("u", "text", "second")
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "text", "first")
+    pd.emit_activity_line("u", "text", "second")
     # Same as second — should be deduplicated
-    renderer.emit_activity_line("u", "text", "second")
+    pd.emit_activity_line("u", "text", "second")
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     content_continue_count = sum(1 for ln in lines if "[content-continue#" in ln)
@@ -129,10 +129,10 @@ def test_dedup_with_three_different_then_identical() -> None:
 
 def test_dedup_default_enabled() -> None:
     """By default (no env var), dedup is enabled."""
-    renderer, buf = _make_renderer()
-    assert renderer._ctx.streaming_dedup_enabled is True
-    renderer.emit_activity_line("u", "text", "x")
-    renderer.emit_activity_line("u", "text", "x")
+    pd, buf = _make_display()
+    assert pd._ctx.streaming_dedup_enabled is True
+    pd.emit_activity_line("u", "text", "x")
+    pd.emit_activity_line("u", "text", "x")
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     content_continue_count = sum(1 for ln in lines if "[content-continue#" in ln)
@@ -142,12 +142,12 @@ def test_dedup_default_enabled() -> None:
 def test_dedup_false_values_disable() -> None:
     """Various false values (false, no, off) all disable dedup."""
     for false_val in ("false", "no", "off"):
-        renderer, buf = _make_renderer_with_env({"RALPH_STREAMING_DEDUP": false_val})
-        assert renderer._ctx.streaming_dedup_enabled is False, (
+        pd, buf = _make_renderer_with_env({"RALPH_STREAMING_DEDUP": false_val})
+        assert pd._ctx.streaming_dedup_enabled is False, (
             f"RALPH_STREAMING_DEDUP={false_val} should resolve to streaming_dedup_enabled=False"
         )
-        renderer.emit_activity_line("u", "text", "x")
-        renderer.emit_activity_line("u", "text", "x")
+        pd.emit_activity_line("u", "text", "x")
+        pd.emit_activity_line("u", "text", "x")
         out = buf.getvalue()
         content_continue_count = sum(1 for ln in out.splitlines() if "[content-continue#" in ln)
         assert content_continue_count == 1, (
@@ -157,10 +157,10 @@ def test_dedup_false_values_disable() -> None:
 
 def test_dedup_works_for_thinking_kind() -> None:
     """Identical consecutive thinking fragments are also deduplicated."""
-    renderer, buf = _make_renderer()
-    renderer.emit_activity_line("u", "thinking", "same thought")
-    renderer.emit_activity_line("u", "thinking", "same thought")
-    renderer.emit_activity_line("u", "thinking", "same thought")
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "thinking", "same thought")
+    pd.emit_activity_line("u", "thinking", "same thought")
+    pd.emit_activity_line("u", "thinking", "same thought")
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     thinking_start_count = sum(1 for ln in lines if "[thinking-start]" in ln)
@@ -173,8 +173,8 @@ def test_dedup_works_for_thinking_kind() -> None:
 
 def test_different_kind_resets_dedup() -> None:
     """Switching from text to thinking (different kind) resets the dedup state."""
-    renderer, buf = _make_renderer()
-    renderer.emit_activity_line("u", "text", "content")
-    renderer.emit_activity_line("u", "thinking", "same content")  # Different kind = new block
+    pd, buf = _make_display()
+    pd.emit_activity_line("u", "text", "content")
+    pd.emit_activity_line("u", "thinking", "same content")  # Different kind = new block
     out = buf.getvalue()
     assert "[thinking-start]" in out

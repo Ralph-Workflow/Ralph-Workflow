@@ -8,14 +8,14 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.plain_renderer import PlainLogRenderer
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot
 
 
-def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
+def _make_display() -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    return PlainLogRenderer(make_display_context(console=console, env={})), buf
+    return ParallelDisplay(make_display_context(console=console, env={})), buf
 
 
 def _base_snapshot(**kwargs: object) -> PipelineSnapshot:
@@ -49,7 +49,7 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
     The renderer must emit exactly ONE [activity] line across BOTH snapshots,
     proving that the second snapshot is deduplicated against the first.
     """
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
 
     # Snapshot N: structured fields only, no last_activity_line
     snap_n = _base_snapshot(
@@ -58,7 +58,7 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
         active_path="ralph/pipeline/runner.py",
         last_activity_line=None,
     )
-    renderer.emit_snapshot(snap_n)
+    pd.emit_snapshot(snap_n)
 
     # Snapshot N+1: same structured fields, now with last_activity_line
     activity_line = "claude/sonnet tool: mcp__ralph__read_file (path=ralph/pipeline/runner.py)"
@@ -68,7 +68,7 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
         active_path="ralph/pipeline/runner.py",
         last_activity_line=activity_line,
     )
-    renderer.emit_snapshot(snap_n1)
+    pd.emit_snapshot(snap_n1)
 
     # Combined output from both snapshots - must have exactly ONE [activity] line
     out = buf.getvalue()
@@ -85,12 +85,12 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
 
 def test_activity_line_content_uses_last_activity_line_when_set() -> None:
     """When last_activity_line is set, its content appears in the [activity] line."""
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snap = _base_snapshot(
         active_agent="claude/sonnet",
         last_activity_line="claude/sonnet tool: mcp__ralph__exec (command=ls)",
     )
-    renderer.emit_snapshot(snap)
+    pd.emit_snapshot(snap)
     out = buf.getvalue()
     assert "[activity]" in out
     assert "mcp__ralph__exec" in out
@@ -99,14 +99,14 @@ def test_activity_line_content_uses_last_activity_line_when_set() -> None:
 
 def test_activity_line_uses_structured_fields_when_no_last_activity_line() -> None:
     """When last_activity_line is absent, structured key=value fields appear in [activity]."""
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snap = _base_snapshot(
         active_agent="claude/sonnet",
         active_tool="mcp__ralph__read_file",
         active_path="some/path.py",
         last_activity_line=None,
     )
-    renderer.emit_snapshot(snap)
+    pd.emit_snapshot(snap)
     out = buf.getvalue()
     assert "[activity]" in out
     assert "agent=claude/sonnet" in out
@@ -115,13 +115,13 @@ def test_activity_line_uses_structured_fields_when_no_last_activity_line() -> No
 
 def test_activity_line_no_duplication_when_same_snapshot_repeated() -> None:
     """Identical back-to-back snapshots emit the [activity] line only once."""
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snap = _base_snapshot(
         active_agent="claude/sonnet",
         last_activity_line="claude/sonnet tool: mcp__ralph__read_file (path=x.py)",
     )
-    renderer.emit_snapshot(snap)
-    renderer.emit_snapshot(snap)
+    pd.emit_snapshot(snap)
+    pd.emit_snapshot(snap)
     out = buf.getvalue()
     # Only one [activity] line total across both snapshots
     assert out.count("[activity]") == 1
@@ -135,7 +135,7 @@ def test_repeated_tool_call_keeps_status_fresh_with_count() -> None:
     higher active_tool_repeat means a NEW call of the same tool — the status must
     update with xN rather than being suppressed by signature dedup.
     """
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     for n in (1, 2, 3):
         snap = _base_snapshot(
             active_agent="opencode/minimax",
@@ -144,7 +144,7 @@ def test_repeated_tool_call_keeps_status_fresh_with_count() -> None:
             active_tool_repeat=n,
             last_activity_line="opencode/minimax tool: exec (path=ralph/x.py)",
         )
-        renderer.emit_snapshot(snap)
+        pd.emit_snapshot(snap)
 
     out = buf.getvalue()
     # The status must update on repeats with a visible count (not frozen/hidden).
@@ -155,7 +155,7 @@ def test_repeated_tool_call_keeps_status_fresh_with_count() -> None:
 def test_same_repeat_count_is_still_deduplicated() -> None:
     """A re-rendered snapshot with the SAME repeat count (no new call) is still
     deduplicated — only an increased count (a new call) refreshes the status."""
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snap = _base_snapshot(
         active_agent="opencode/minimax",
         active_tool="mcp__ralph__exec",
@@ -163,7 +163,7 @@ def test_same_repeat_count_is_still_deduplicated() -> None:
         active_tool_repeat=2,
         last_activity_line="opencode/minimax tool: exec (path=ralph/x.py)",
     )
-    renderer.emit_snapshot(snap)
-    renderer.emit_snapshot(snap)
+    pd.emit_snapshot(snap)
+    pd.emit_snapshot(snap)
     out = buf.getvalue()
     assert out.count("[activity]") == 1, f"re-render must not duplicate:\n{out}"

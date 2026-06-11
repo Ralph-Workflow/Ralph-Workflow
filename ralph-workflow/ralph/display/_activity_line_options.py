@@ -1,4 +1,9 @@
-"""Optional parameter group for emit_activity_line."""
+"""Optional parameter group for emit_activity_line.
+
+Internal leaf module (wt-007-consolidate-display). Re-exports
+:class:`ActivityLineOptions` from the previous
+``ralph.display.plain_renderer._activity_line_options`` location.
+"""
 
 from __future__ import annotations
 

@@ -8,11 +8,11 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.plain_renderer import PlainLogRenderer
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot
 
 
-def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
+def _make_display() -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
     console = Console(
         file=buf,
@@ -21,7 +21,7 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
         color_system=None,
         width=200,
     )
-    return PlainLogRenderer(make_display_context(console=console, env={})), buf
+    return ParallelDisplay(make_display_context(console=console, env={})), buf
 
 
 def _make_snapshot(
@@ -54,65 +54,65 @@ def _make_snapshot(
 
 
 def test_plan_empty_state_emitted_once() -> None:
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snapshot = _make_snapshot()
 
-    renderer.emit_snapshot(snapshot)
-    renderer.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
 
     out = buf.getvalue()
     assert out.count("[plan] (no plan loaded yet)") == 1
 
 
 def test_activity_empty_state_emitted_once() -> None:
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snapshot = _make_snapshot()
 
-    renderer.emit_snapshot(snapshot)
-    renderer.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
 
     out = buf.getvalue()
     assert out.count("[activity] (no active agent yet)") == 1
 
 
 def test_plan_empty_state_suppressed_when_plan_loaded() -> None:
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snapshot = _make_snapshot(plan_summary="done plan")
 
-    renderer.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
 
     out = buf.getvalue()
     assert "(no plan loaded yet)" not in out
 
 
 def test_activity_empty_state_suppressed_when_agent_active() -> None:
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snapshot = _make_snapshot(active_agent="claude")
 
-    renderer.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
 
     out = buf.getvalue()
     assert "(no active agent yet)" not in out
 
 
 def test_decision_log_empty_state_emitted_once() -> None:
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snapshot = _make_snapshot()
 
-    renderer.emit_snapshot(snapshot)
-    renderer.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
 
     out = buf.getvalue()
     assert out.count("[analysis] (no decisions recorded yet)") == 1
 
 
 def test_decision_log_empty_state_suppressed_when_decisions_exist() -> None:
-    renderer, buf = _make_renderer()
+    pd, buf = _make_display()
     snapshot = _make_snapshot(
         decision_log=(("development_analysis", "approved", "looks good", "2024-01-01"),)
     )
 
-    renderer.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
 
     out = buf.getvalue()
     assert "(no decisions recorded yet)" not in out

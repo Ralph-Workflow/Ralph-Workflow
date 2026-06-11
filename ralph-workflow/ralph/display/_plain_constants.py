@@ -1,4 +1,16 @@
-"""Constants, tag maps, and markup utilities for plain log rendering."""
+"""Constants, tag maps, and markup utilities for plain log rendering.
+
+Internal leaf module (wt-007-consolidate-display). Re-exports the
+constants and helpers previously defined in
+``ralph.display.plain_renderer._constants``. ParallelDisplay imports
+the names from here so it can construct log lines without taking a
+dependency on a renderer module.
+
+Note (PA-005): ``_KV_PATTERN`` is NOT re-exported from this module.
+``_KV_PATTERN`` lives in ``ralph.display.completion_summary`` (where
+the completion-summary code is the only consumer) and is intentionally
+kept out of scope.
+"""
 
 from __future__ import annotations
 

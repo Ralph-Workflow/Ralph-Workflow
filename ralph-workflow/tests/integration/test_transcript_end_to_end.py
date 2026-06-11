@@ -61,32 +61,20 @@ def _install_runner_stubs(
             # Emit sample streaming content through the display so transcript has content markers
             # Iterate over captured displays and emit on each (normally there's just one)
             for display in captured_displays:
-                try:
-                    unit_id = "dev-1"
-                    # Emit text content that will be grouped into a streaming block.
-                    display._emit_activity_event(
-                        unit_id,
-                        ActivityEventKind.TEXT,
-                        "Sample development output line 1",
-                        None,
-                    )
-                    display._emit_activity_event(
-                        unit_id,
-                        ActivityEventKind.TEXT,
-                        "Sample development output line 2",
-                        None,
-                    )
-                except Exception:
-                    # Emit through plain renderer directly as fallback
-                    try:
-                        display._plain_renderer.emit_activity_line(
-                            "dev-1", "text", "Sample development output line 1"
-                        )
-                        display._plain_renderer.emit_activity_line(
-                            "dev-1", "text", "Sample development output line 2"
-                        )
-                    except Exception:
-                        pass
+                unit_id = "dev-1"
+                # Emit text content that will be grouped into a streaming block.
+                display._emit_activity_event(
+                    unit_id,
+                    ActivityEventKind.TEXT,
+                    "Sample development output line 1",
+                    None,
+                )
+                display._emit_activity_event(
+                    unit_id,
+                    ActivityEventKind.TEXT,
+                    "Sample development output line 2",
+                    None,
+                )
             return PipelineEvent.AGENT_SUCCESS
         if isinstance(effect, CommitEffect):
             return PipelineEvent.COMMIT_SUCCESS

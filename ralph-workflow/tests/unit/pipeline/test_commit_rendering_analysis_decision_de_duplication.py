@@ -15,7 +15,6 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
 
 
@@ -57,7 +56,7 @@ class TestAnalysisDecisionDeDuplication:
         """
         stream: io.StringIO = io.StringIO()
         console = Console(file=stream, force_terminal=False, color_system=None, width=200)
-        renderer = PlainLogRenderer(make_display_context(console=console, env={}))
+        renderer = ParallelDisplay(make_display_context(console=console, env={}))
 
         # Snapshot with analysis role set — renderer suppresses inline [analysis] display
         snapshot = PipelineSnapshot(
@@ -100,7 +99,7 @@ class TestAnalysisDecisionDeDuplication:
         """
         stream: io.StringIO = io.StringIO()
         console = Console(file=stream, force_terminal=False, color_system=None, width=200)
-        renderer = PlainLogRenderer(make_display_context(console=console, env={}))
+        renderer = ParallelDisplay(make_display_context(console=console, env={}))
 
         # Snapshot with 'review' phase (not 'review_analysis')
         snapshot = PipelineSnapshot(

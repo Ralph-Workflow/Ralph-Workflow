@@ -15,9 +15,8 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.parallel_display import resolve_active_display
+from ralph.display.parallel_display import ParallelDisplay, resolve_active_display
 from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExitModel
-from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
 
 # ---------------------------------------------------------------------------
@@ -35,10 +34,10 @@ def _make_console(width: int = 200) -> tuple[Console, StringIO]:
     return console, buf
 
 
-def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
+def _make_display() -> tuple[ParallelDisplay, StringIO]:
     console, buf = _make_console()
     ctx = make_display_context(console=console, env={})
-    return PlainLogRenderer(ctx), buf
+    return ParallelDisplay(ctx), buf
 
 
 def _blank_snapshot(
@@ -92,14 +91,14 @@ class TestSymmetricStartCloseTranscriptOrdering:
         [phase] lines are emitted via emit_snapshot() when the phase changes;
         [phase-close] lines are emitted via emit_phase_close_from_exit().
         """
-        renderer, buf = _make_renderer()
+        pd, buf = _make_display()
         # emit_snapshot triggers [phase] when phase changes
         snapshot = _blank_snapshot(phase="development", is_terminal_success=False)
-        renderer.emit_snapshot(snapshot)
-        renderer.begin_phase("development")
+        pd.emit_snapshot(snapshot)
+        pd.begin_phase("development")
         entry = PhaseEntryModel(phase_name="development", phase_role="execution")
         exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
-        renderer.emit_phase_close_from_exit(exit_model)
+        pd.emit_phase_close_from_exit(exit_model)
         out = buf.getvalue()
         # phase start marker (emit_snapshot emits [phase]) appears before phase-close
         phase_pos = out.find("[phase]")
@@ -126,10 +125,10 @@ class TestSymmetricStartCloseTranscriptOrdering:
         display.emit_phase_start_from_entry(entry)
 
         # Phase-close transcript
-        renderer, close_buf = _make_renderer()
-        renderer.begin_phase("development")
+        close_pd, close_buf = _make_display()
+        close_pd.begin_phase("development")
         exit_model = PhaseExitModel.from_entry_model(entry, ExitContext(exit_trigger="produced"))
-        renderer.emit_phase_close_from_exit(exit_model)
+        close_pd.emit_phase_close_from_exit(exit_model)
 
         start_out = start_buf.getvalue()
         close_out = close_buf.getvalue()

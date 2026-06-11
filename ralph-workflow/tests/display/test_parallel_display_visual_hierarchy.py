@@ -25,10 +25,10 @@ from datetime import UTC, datetime
 
 from rich.console import Console
 
+from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.completion_summary import CompletionSummaryOptions
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.plain_renderer import RunStartOrientation
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 

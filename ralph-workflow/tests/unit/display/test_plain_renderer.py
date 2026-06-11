@@ -1,17 +1,15 @@
+"""Tests for ParallelDisplay snapshot and log-line output (consolidated from PlainLogRenderer)."""
+
 from __future__ import annotations
 
-import importlib
 from datetime import UTC, datetime
 from io import StringIO
 
 from rich.console import Console
 
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.snapshot import PipelineSnapshot, WorkerSnapshot
-
-plain_renderer = importlib.import_module("ralph.display.plain_renderer")
-PlainLogRenderer = plain_renderer.PlainLogRenderer
-
 
 FIXED_TIME = datetime(2026, 4, 18, 12, 0, tzinfo=UTC)
 PLAN_STEP_COUNT = 2
@@ -82,10 +80,10 @@ def _make_worker(*, unit_id: str = "worker-1", status: str = "RUNNING") -> Worke
     )
 
 
-def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
+def _make_display() -> tuple[ParallelDisplay, StringIO]:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, width=200)
-    renderer = PlainLogRenderer(
+    renderer = ParallelDisplay(
         make_display_context(console=console, env={}),
         clock=lambda: FIXED_TIME,
     )
@@ -93,9 +91,9 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
 
 
 def test_emit_snapshot_for_development_outputs_phase_and_placeholders() -> None:
-    renderer, stream = _make_renderer()
+    pd, stream = _make_display()
 
-    renderer.emit_snapshot(_make_snapshot(phase="development"))
+    pd.emit_snapshot(_make_snapshot(phase="development"))
 
     assert stream.getvalue().splitlines() == [
         "2026-04-18T12:00:00+00:00 MILESTONE META [phase] ◆ development",
@@ -106,11 +104,11 @@ def test_emit_snapshot_for_development_outputs_phase_and_placeholders() -> None:
 
 
 def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
-    renderer, stream = _make_renderer()
+    pd, stream = _make_display()
     snapshot = _make_snapshot(phase="development")
 
-    renderer.emit_snapshot(snapshot)
-    renderer.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
+    pd.emit_snapshot(snapshot)
 
     assert stream.getvalue().splitlines() == [
         "2026-04-18T12:00:00+00:00 MILESTONE META [phase] ◆ development",
@@ -121,9 +119,9 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
 
 
 def test_emit_log_line_strips_markup_for_copy_paste() -> None:
-    renderer, stream = _make_renderer()
+    pd, stream = _make_display()
 
-    renderer.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
+    pd.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
     assert stream.getvalue().splitlines() == [
         "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] hello"
@@ -131,18 +129,18 @@ def test_emit_log_line_strips_markup_for_copy_paste() -> None:
 
 
 def test_emit_snapshot_output_has_no_ansi_escape_codes() -> None:
-    renderer, stream = _make_renderer()
+    pd, stream = _make_display()
 
-    renderer.emit_snapshot(_make_snapshot(workers=(_make_worker(status="RUNNING"),)))
+    pd.emit_snapshot(_make_snapshot(workers=(_make_worker(status="RUNNING"),)))
 
     output = stream.getvalue()
     assert "\x1b" not in output
 
 
 def test_emit_snapshot_includes_plan_activity_and_analysis_context() -> None:
-    renderer, stream = _make_renderer()
+    pd, stream = _make_display()
 
-    renderer.emit_snapshot(
+    pd.emit_snapshot(
         _make_snapshot(
             phase="planning",
             plan_summary="Expose the full NDJSON transcript in the UI",
@@ -165,8 +163,6 @@ def test_emit_snapshot_includes_plan_activity_and_analysis_context() -> None:
     assert any(
         "[plan-scope] Render all events | Keep output copy-pasteable" in line for line in lines
     )
-    # When last_activity_line is present, exactly one [activity] line is emitted.
-    # Structured fields (agent=, tool=, path=, workdir=, command=) are not separately emitted.
     assert not any("[activity] agent=planner" in line for line in lines), (
         "[activity] structured fields must be suppressed when last_activity_line is set"
     )
@@ -177,5 +173,6 @@ def test_emit_snapshot_includes_plan_activity_and_analysis_context() -> None:
         "[activity-line] tag must not appear; use [activity] instead"
     )
     assert any(
-        "[analysis] review revise — The current dashboard drops key state" in line for line in lines
+        "[analysis] review revise \u2014"
+        " The current dashboard drops key state" in line for line in lines
     )

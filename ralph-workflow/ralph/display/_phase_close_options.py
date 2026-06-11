@@ -1,4 +1,9 @@
-"""PhaseCloseOptions dataclass."""
+"""PhaseCloseOptions dataclass.
+
+Internal leaf module (wt-007-consolidate-display). Re-exports
+:class:`PhaseCloseOptions` from the previous
+``ralph.display.plain_renderer._phase_close_options`` location.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +11,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ralph.display._phase_close_counters import _PhaseCloseCounters
     from ralph.display.phase_status import PhaseIterationContext
-    from ralph.display.plain_renderer._phase_close_counters import _PhaseCloseCounters
 
 
 @dataclass(frozen=True)

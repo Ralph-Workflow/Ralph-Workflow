@@ -91,6 +91,7 @@ views used by CLI diagnostics and listing commands.
    narrow terminals.
 """
 
+from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.context import (
     DisplayContext,
     install_sigwinch_refresher,
@@ -114,7 +115,6 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
 )
-from ralph.display.plain_renderer import RunStartOrientation
 from ralph.display.progress import RalphProgress, get_progress
 
 __all__ = [

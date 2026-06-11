@@ -1,4 +1,9 @@
-"""Optional counter overrides for emit_phase_close."""
+"""Optional counter overrides for emit_phase_close.
+
+Internal leaf module (wt-007-consolidate-display). Re-exports
+:class:`_PhaseCloseCounters` from the previous
+``ralph.display.plain_renderer._phase_close_counters`` location.
+"""
 
 from __future__ import annotations
 

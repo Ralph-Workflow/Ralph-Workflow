@@ -16,9 +16,9 @@ import re
 
 from rich.console import Console
 
+from ralph.display._run_start_orientation import RunStartOrientation
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
-from ralph.display.plain_renderer import RunStartOrientation
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 _TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?[+\-]\d{2}:\d{2}")

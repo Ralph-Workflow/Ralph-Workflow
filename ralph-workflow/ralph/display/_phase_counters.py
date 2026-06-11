@@ -1,4 +1,9 @@
-"""Per-phase activity counter dataclass."""
+"""Per-phase activity counter dataclass.
+
+Internal leaf module (wt-007-consolidate-display). Re-exports
+:class:`PhaseCounters` from the previous
+``ralph.display.plain_renderer._phase_counters`` location.
+"""
 
 from __future__ import annotations
 
