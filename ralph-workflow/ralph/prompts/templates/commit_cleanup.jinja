@@ -1,6 +1,11 @@
 Task: analyze the current git state and identify files that MUST NOT be committed.
 Clean up the commit by removing binaries, build artifacts, temporary files, and other noise.
-The diff shows the changes not yet committed.
+The diff below shows both the tracked changes not yet committed and the untracked
+files that are present in the workspace but not yet in git. Untracked files are
+listed by name only (no diff body). If they are machine-local artifacts, use
+`add_to_git_exclude` so the user-level exclude stops tracking them locally. If
+they are actual binary or generated artifacts that should never enter the repo,
+use `delete_file`.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
@@ -39,7 +44,7 @@ Only recommend removing files from the commit if they match these categories:
 
 **Log, trace, and coverage files:**
 - `*.log`, `*.trace`, `*.profile`
-- `coverage/`, `.coverage`, `htmlcov/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`
+- `coverage/`, `.coverage`, `coverage.xml`, `htmlcov/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`
 
 **Package manager caches and vendored dependencies:**
 - `vendor/`, `.bundle/`, `.gradle/`, `.m2/`

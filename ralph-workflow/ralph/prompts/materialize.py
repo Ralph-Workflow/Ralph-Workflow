@@ -44,6 +44,7 @@ from ralph.pipeline.phase_entry_cleaner import (
     is_fresh_phase_entry,
 )
 from ralph.policy.models import ROLE_REVIEW
+from ralph.prompts._commit_diff import _UNTRACKED_HEADER
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
@@ -1093,6 +1094,6 @@ def _commit_phase_diff(workspace_root: Path) -> str:
         return diff or "(no diff available)"
     if diff == "(no diff available)":
         diff = ""
-    combined = (diff + "\n\n## Untracked files (staged by git add -A):\n" + untracked).strip()
+    combined = (diff + "\n\n" + _UNTRACKED_HEADER + "\n" + untracked).strip()
     return combined or "(no diff available)"
 

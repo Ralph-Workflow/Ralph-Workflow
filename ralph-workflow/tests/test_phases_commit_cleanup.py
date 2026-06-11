@@ -928,3 +928,270 @@ def test_tracked_source_code_in_tmp_directory_rejected(tmp_git_repo: Path) -> No
     assert len(result) == 1
     assert isinstance(result[0], PhaseFailureEvent)
     assert src.exists()
+
+
+def test_delete_coverage_untracked_succeeds(tmp_git_repo: Path) -> None:
+    """Untracked ``.coverage`` files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    coverage = tmp_git_repo / ".coverage"
+    coverage.write_text("coverage data")
+    assert coverage.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": ".coverage"}],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not coverage.exists()
+
+
+def test_delete_coverage_xml_untracked_succeeds(tmp_git_repo: Path) -> None:
+    """Untracked ``coverage.xml`` files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    coverage_xml = tmp_git_repo / "coverage.xml"
+    coverage_xml.write_text("<coverage></coverage>")
+    assert coverage_xml.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "coverage.xml"}],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not coverage_xml.exists()
+
+
+def test_reject_delete_untracked_dockerfile(tmp_git_repo: Path) -> None:
+    """Untracked ``Dockerfile`` is protected by ``_PROTECTED_BASENAMES``."""
+    workspace = FsWorkspace(tmp_git_repo)
+    dockerfile = tmp_git_repo / "Dockerfile"
+    dockerfile.write_text("FROM scratch")
+    assert dockerfile.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "Dockerfile"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert dockerfile.exists()
+
+
+def test_reject_delete_untracked_makefile(tmp_git_repo: Path) -> None:
+    """Untracked ``Makefile`` is protected by ``_PROTECTED_BASENAMES``."""
+    workspace = FsWorkspace(tmp_git_repo)
+    makefile = tmp_git_repo / "Makefile"
+    makefile.write_text("all:\n\ttrue\n")
+    assert makefile.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "Makefile"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert makefile.exists()
+
+
+def test_reject_delete_untracked_license_txt(tmp_git_repo: Path) -> None:
+    """``LICENSE.txt`` is protected even though ``.txt`` is a generated-text suffix."""
+    workspace = FsWorkspace(tmp_git_repo)
+    license_txt = tmp_git_repo / "LICENSE.txt"
+    license_txt.write_text("license text")
+    assert license_txt.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "LICENSE.txt"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert license_txt.exists()
+
+
+def test_delete_tracked_coverage_rejected(tmp_git_repo: Path) -> None:
+    """Tracked ``.coverage`` files must NOT be deleted."""
+    workspace = FsWorkspace(tmp_git_repo)
+    coverage = tmp_git_repo / ".coverage"
+    coverage.write_text("committed coverage")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add([".coverage"])
+        repo.index.commit("track coverage")
+    finally:
+        repo.close()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": ".coverage"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert coverage.exists()
+
+
+def test_delete_tracked_coverage_xml_rejected(tmp_git_repo: Path) -> None:
+    """Tracked ``coverage.xml`` files must NOT be deleted."""
+    workspace = FsWorkspace(tmp_git_repo)
+    coverage_xml = tmp_git_repo / "coverage.xml"
+    coverage_xml.write_text("<coverage></coverage>")
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["coverage.xml"])
+        repo.index.commit("track coverage xml")
+    finally:
+        repo.close()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "coverage.xml"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert coverage_xml.exists()
+
+
+def test_delete_untracked_checkpoint_json(tmp_git_repo: Path) -> None:
+    """Untracked ``checkpoint.json`` files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    checkpoint = tmp_git_repo / "checkpoint.json"
+    checkpoint.write_text('{"phase": "development"}')
+    assert checkpoint.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "checkpoint.json"}],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not checkpoint.exists()
+
+
+def test_delete_untracked_log_file(tmp_git_repo: Path) -> None:
+    """Untracked log files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    log = tmp_git_repo / "debug.log"
+    log.write_text("debug output")
+    assert log.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "debug.log"}],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not log.exists()
+
+
+def test_delete_untracked_binary_file(tmp_git_repo: Path) -> None:
+    """Untracked binary files are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    binary = tmp_git_repo / "accidental_binary.exe"
+    binary.write_bytes(b"\x00MZ")
+    assert binary.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "accidental_binary.exe"}],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not binary.exists()
+
+
+def test_reject_delete_untracked_source_code(tmp_git_repo: Path) -> None:
+    """Untracked source code files are NEVER safe to delete."""
+    workspace = FsWorkspace(tmp_git_repo)
+    helper = tmp_git_repo / "helper.py"
+    helper.write_text("def helper(): pass")
+    assert helper.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "helper.py"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert helper.exists()
+
+
+def test_delete_untracked_in_artifacts_directory(tmp_git_repo: Path) -> None:
+    """Untracked files inside ``artifacts/`` are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    artifacts_dir = tmp_git_repo / "artifacts"
+    artifacts_dir.mkdir()
+    scratch = artifacts_dir / "scratch.txt"
+    scratch.write_text("scratch")
+    assert scratch.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": "artifacts/scratch.txt"}],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not scratch.exists()
+
+
+def test_delete_untracked_file_in_generated_directory(tmp_git_repo: Path) -> None:
+    """Untracked files inside ``.output/`` are safe housekeeping artifacts."""
+    workspace = FsWorkspace(tmp_git_repo)
+    output_dir = tmp_git_repo / ".output"
+    output_dir.mkdir()
+    bundle = output_dir / "bundle.js"
+    bundle.write_text("// generated")
+    assert bundle.exists()
+
+    result = _invoke_cleanup(
+        workspace,
+        {
+            "analysis_complete": True,
+            "actions": [{"action": "delete_file", "path": ".output/bundle.js"}],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not bundle.exists()

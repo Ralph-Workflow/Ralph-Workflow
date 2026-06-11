@@ -62,6 +62,25 @@ _UNSAFE_EXTENSIONS: frozenset[str] = frozenset({
 
 _UNSAFE_PATH_SEGMENTS: tuple[str, ...] = ("tests/", "test_", "_test.", "docs/", "doc/")
 
+# Housekeeping filenames that are always safe to delete when untracked but
+# must NEVER be deleted when committed (e.g. a checked-in ``.coverage`` is
+# project content, not a stray test artifact). The basename check runs before
+# the suffix fall-through so ``coverage.xml`` can be deleted even though
+# ``.xml`` is in ``_UNSAFE_EXTENSIONS``.
+_HOUSEKEEPING_BASENAMES: frozenset[str] = frozenset({".coverage", "coverage.xml"})
+
+# Extensionless files that are protected from deletion regardless of any
+# suffix-based rule below. The check is case-insensitive so ``Dockerfile``,
+# ``MAKEFILE``, ``License`` and similar are all covered. These names win over
+# every suffix-based check, including the ``.txt`` / ``.json`` generated-text
+# marker check (e.g. ``LICENSE.txt`` is protected).
+_PROTECTED_BASENAMES: frozenset[str] = frozenset({
+    "dockerfile",
+    "makefile",
+    "license",
+    "readme",
+})
+
 _GENERATED_TEXT_MARKERS: frozenset[str] = frozenset({
     "agent",
     "ai",
@@ -121,6 +140,9 @@ _GENERATED_TEXT_DIRECTORIES: frozenset[str] = frozenset({
     ".cache",
     ".gradle",
     ".mypy_cache",
+    ".next",
+    ".nuxt",
+    ".output",
     ".pytest_cache",
     ".ruff_cache",
     "artifacts",
@@ -202,41 +224,58 @@ def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
     Source-code files with clearly-temporary names (e.g. ``temp_script.py``)
     are allowed to be deleted when untracked, but tracked files are always
     protected.
+
+    The check order matters: protected basenames win over suffix-based rules
+    (so ``LICENSE.txt`` is protected even though ``.txt`` is a generated-text
+    suffix), and housekeeping basenames win over the unsafe-extension
+    fall-through (so ``coverage.xml`` is deletable even though ``.xml`` is in
+    ``_UNSAFE_EXTENSIONS``).
     """
     candidate = Path(path)
     path_lower = path.lower()
+    suffix = candidate.suffix.lower()
 
-    # 1. Reject paths inside test/doc segments unconditionally
-    if any(seg in path_lower for seg in _UNSAFE_PATH_SEGMENTS):
+    if _is_protected_path(repo_root, candidate, path_lower):
         return False
+    return _is_deletable_housekeeping(repo_root, candidate, suffix)
 
-    # 2. Reject known lock files and dependency manifests
+
+def _is_protected_path(
+    repo_root: Path,
+    candidate: Path,
+    path_lower: str,
+) -> bool:
+    """Return True for paths that must never be deleted, regardless of suffix."""
+    if any(seg in path_lower for seg in _UNSAFE_PATH_SEGMENTS):
+        return True
     if candidate.name in {
         "package-lock.json", "yarn.lock", "Cargo.lock", "poetry.lock",
         "uv.lock", "Pipfile.lock", "composer.lock", "Gemfile.lock", "go.sum",
     }:
-        return False
+        return True
+    if candidate.name.lower() in _PROTECTED_BASENAMES:
+        return True
+    return candidate.name in _HOUSEKEEPING_BASENAMES and _path_exists_in_head(
+        repo_root, str(candidate)
+    )
 
-    suffix = candidate.suffix.lower()
 
-    # 3. Housekeeping extensions are safe to delete unless already tracked
+def _is_deletable_housekeeping(
+    repo_root: Path,
+    candidate: Path,
+    suffix: str,
+) -> bool:
+    """Return True for files that are safe housekeeping artifacts to delete."""
+    if candidate.name in _HOUSEKEEPING_BASENAMES:
+        return not _path_exists_in_head(repo_root, str(candidate))
     if suffix in {".bak", ".tmp", ".temp", ".old", ".orig", ".rej", ".patch", ".log"}:
-        return not _path_exists_in_head(repo_root, path)
-
-    # 4. .txt and .json use the broad generated-text marker set
+        return not _path_exists_in_head(repo_root, str(candidate))
     if suffix in (".txt", ".json"):
-        return _is_generated_text_artifact(repo_root, path)
-
-    # 5. Other extensions (source code, configs, etc.) may still be deleted
-    #    when their name or directory carries a clearly-temporary signal AND
-    #    the file is not tracked in HEAD. _is_generated_text_artifact returns
-    #    False for tracked files, so a tracked source file is always safe.
+        return _is_generated_text_artifact(repo_root, str(candidate))
     if _is_generated_text_artifact(
-        repo_root, path, markers=_SOURCE_FILE_GENERATED_MARKERS
+        repo_root, str(candidate), markers=_SOURCE_FILE_GENERATED_MARKERS
     ):
         return True
-
-    # 6. Fall through: reject if the extension is in the unsafe list
     return suffix not in _UNSAFE_EXTENSIONS
 
 
