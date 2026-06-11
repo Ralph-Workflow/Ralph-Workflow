@@ -27,6 +27,11 @@ from ralph.process.manager import (
     ProcessTerminationError,
     PtySpawnOptions,
     SpawnOptions,
+    _AsyncProcessLike,
+    _SyncProcessLike,
+)
+from ralph.process.manager import (
+    _process_manager as pm_mod,
 )
 from ralph.process.manager._process_manager import _TERMINAL_STATUSES
 from ralph.process.manager._process_status import ProcessStatus
@@ -35,12 +40,14 @@ from ralph.testing.fake_process import (
     FakePsutil,
     FakePsutilProcess,
     FakeStubbornPopen,
+    make_async_process_factory,
     make_sync_process_factory,
 )
 from tests.test_process_manager_pty_helper__fakeptyfactory import _FakePtyFactory
 
 if TYPE_CHECKING:
     from ralph.process.manager._process_event import ProcessEvent
+    from ralph.process.manager._process_record import ProcessRecord
     from ralph.testing.fake_process import SyncFactoryCallable
     from tests.test_process_manager_pty_helper__fakeprocess import _FakePtyProcess
 
@@ -1117,3 +1124,256 @@ def test_process_manager_kill_pgid_calls_os_killpg() -> None:
     with patch("os.killpg") as mock_killpg:
         pm._kill_pgid(12345)
         mock_killpg.assert_called_once_with(12345, 9)  # SIGKILL = 9
+
+
+# ---------------------------------------------------------------------------
+# AC-02 / AC-04: background reaper OS-level zombie reaping
+# ---------------------------------------------------------------------------
+
+
+def test_reconcile_zombie_sync_record_runs_sync_reap_helper() -> None:
+    """Background reaper runs _reap_sync_and_mark for a sync zombie record.
+
+    Patches ``proc.wait`` on the fake sync process and the per-instance
+    ``_mark_killed`` to capture the call order. Asserts:
+      - ``_reap_sync_and_mark`` is invoked (proc.wait called),
+      - the reaping call happens BEFORE ``_mark_killed`` is invoked,
+      - the record ends ``ProcessStatus.KILLED`` with cause
+        ``zombie_reconciled`` (unchanged by the reaping helper).
+    """
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+    pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+    sync_proc: _SyncProcessLike = handle._proc
+
+    # Patch proc.wait so the reap helper has something to call.
+    wait_called = {"called": False}
+    real_wait = sync_proc.wait
+
+    def _spy_wait(timeout: float | None = None) -> int:
+        wait_called["called"] = True
+        return real_wait(timeout=timeout)
+
+    sync_proc.wait = _spy_wait
+
+    # Force liveness to ZOMBIE for the reaper.
+    real_verify = pm_mod.verify_process_liveness
+
+    def _fake_verify(
+        p: int,
+        *,
+        psutil_mod: object = None,
+    ) -> LivenessResult:
+        if p == handle.pid:
+            return LivenessResult.ZOMBIE
+        return real_verify(p, psutil_mod=psutil_mod)
+
+    # Spy on _mark_killed to enforce ordering: reap runs first.
+    mark_calls: list[tuple[object, object, str]] = []
+    real_mark_killed = pm._mark_killed
+
+    def _spy_mark_killed(
+        rec: ProcessRecord,
+        returncode: int | None = None,
+        *,
+        cause: str = "killed",
+    ) -> None:
+        mark_calls.append((rec, returncode, cause))
+        real_mark_killed(rec, returncode, cause=cause)
+
+    with (
+        patch.object(pm_mod, "verify_process_liveness", _fake_verify),
+        patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed),
+    ):
+        reconciled = pm._reconcile_stale_entries()
+
+    assert reconciled == 1
+    assert wait_called["called"] is True, (
+        "Reaper must invoke proc.wait on the sync proc before _mark_killed"
+    )
+    assert len(mark_calls) == 1
+    _called_rec, _called_rc, called_cause = mark_calls[0]
+    assert called_cause == "zombie_reconciled"
+    assert handle.record.status == ProcessStatus.KILLED
+    assert handle.record.cause == "zombie_reconciled"
+
+
+def test_reconcile_zombie_async_record_runs_async_reap_helper() -> None:
+    """Background reaper runs _reap_async_in_sync_and_mark for async zombies.
+
+    Patches ``os.waitpid`` (the POSIX reaping primitive used by
+    ``_reap_async_in_sync_and_mark``) and the per-instance ``_mark_killed``
+    to capture call ordering. Asserts the reaping helper is invoked
+    before ``_mark_killed`` and the record ends KILLED with cause
+    ``zombie_reconciled``.
+    """
+    # Build an async-spawned process via a real spawn_async so the
+    # async dicts are populated correctly.
+    async_factory = make_async_process_factory(itertools.count(4001), returncode=None)
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=make_sync_process_factory(itertools.count(5000)),
+        async_process_factory=async_factory,
+        psutil=None,
+    )
+
+    async def _spawn() -> _AsyncProcessLike:
+        async_handle = await pm.spawn_async(
+            [sys.executable, "-c", "pass"],
+            SpawnOptions(
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            ),
+        )
+        return async_handle._proc
+
+    handle_proc = asyncio.run(_spawn())
+    assert handle_proc.pid in pm._async_procs
+
+    real_verify = pm_mod.verify_process_liveness
+
+    def _fake_verify(
+        p: int,
+        *,
+        psutil_mod: object = None,
+    ) -> LivenessResult:
+        if p == handle_proc.pid:
+            return LivenessResult.ZOMBIE
+        return real_verify(p, psutil_mod=psutil_mod)
+
+    waitpid_calls: list[tuple[int, int]] = []
+    real_waitpid = getattr(os, "waitpid", None)
+
+    def _fake_waitpid(wait_pid: int, options: int) -> tuple[int, int]:
+        waitpid_calls.append((wait_pid, options))
+        if real_waitpid is not None:
+            try:
+                return real_waitpid(wait_pid, options)
+            except (OSError, ChildProcessError, ProcessLookupError):
+                return (0, 0)
+        return (0, 0)
+
+    mark_calls: list[tuple[object, object, str]] = []
+    real_mark_killed = pm._mark_killed
+
+    def _spy_mark_killed(
+        rec: ProcessRecord,
+        returncode: int | None = None,
+        *,
+        cause: str = "killed",
+    ) -> None:
+        mark_calls.append((rec, returncode, cause))
+        real_mark_killed(rec, returncode, cause=cause)
+
+    with (
+        patch.object(pm_mod, "verify_process_liveness", _fake_verify),
+        patch.object(os, "waitpid", _fake_waitpid, create=True),
+        patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed),
+    ):
+        reconciled = pm._reconcile_stale_entries()
+
+    assert reconciled == 1
+    assert waitpid_calls, (
+        "Reaper must invoke os.waitpid on the async record before _mark_killed"
+    )
+    assert all(call[0] == handle_proc.pid for call in waitpid_calls), (
+        f"os.waitpid must be called for the async record's pid; got {waitpid_calls}"
+    )
+    assert len(mark_calls) == 1
+    called_rec, _called_rc, called_cause = mark_calls[0]
+    assert called_cause == "zombie_reconciled"
+    # The record passed to _mark_killed is the actual ProcessRecord, so
+    # we can assert on it directly (it has already been moved to
+    # _terminal_records by _mark_killed at this point).
+    assert called_rec.status == ProcessStatus.KILLED
+    assert called_rec.cause == "zombie_reconciled"
+
+
+def test_reconcile_zombie_record_without_process_object_uses_mark_only_fallback() -> None:
+    """Records with no process object fall back to mark-only path.
+
+    When a record exists in ``_records`` but is missing from
+    ``_sync_procs``, ``_pty_procs`` and ``_async_procs`` (e.g. a
+    manually-registered record with no live process handle), the reaper
+    must NOT invoke any reaping helper; it must fall back to the
+    plain ``_mark_killed(..., cause='zombie_reconciled')`` call.
+    """
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+    pm = _make_pm(sync_factory=sync_factory, psutil_mod=FakePsutil())
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+
+    # Force-liveness to ZOMBIE
+    real_verify = pm_mod.verify_process_liveness
+
+    def _fake_verify(
+        p: int,
+        *,
+        psutil_mod: object = None,
+    ) -> LivenessResult:
+        if p == handle.pid:
+            return LivenessResult.ZOMBIE
+        return real_verify(p, psutil_mod=psutil_mod)
+
+    # Strip process objects from all three dicts so the reaper sees
+    # "no process object present" and must fall back to mark-only.
+    pm._sync_procs.pop(handle.pid, None)
+    pm._pty_procs.pop(handle.pid, None)
+    pm._async_procs.pop(handle.pid, None)
+
+    reap_sync_called = {"called": False}
+    reap_async_called = {"called": False}
+    real_reap_sync = pm._reap_sync_and_mark
+    real_reap_async = pm._reap_async_in_sync_and_mark
+
+    def _spy_reap_sync(
+        rec: ProcessRecord,
+        proc: _SyncProcessLike,
+        *,
+        cause: str,
+    ) -> None:
+        reap_sync_called["called"] = True
+        real_reap_sync(rec, proc, cause=cause)
+
+    def _spy_reap_async(
+        rec: ProcessRecord,
+        proc: _AsyncProcessLike,
+        *,
+        cause: str,
+    ) -> None:
+        reap_async_called["called"] = True
+        real_reap_async(rec, proc, cause=cause)
+
+    mark_calls: list[tuple[object, object, str]] = []
+    real_mark_killed = pm._mark_killed
+
+    def _spy_mark_killed(
+        rec: ProcessRecord,
+        returncode: int | None = None,
+        *,
+        cause: str = "killed",
+    ) -> None:
+        mark_calls.append((rec, returncode, cause))
+        real_mark_killed(rec, returncode, cause=cause)
+
+    with (
+        patch.object(pm_mod, "verify_process_liveness", _fake_verify),
+        patch.object(pm, "_reap_sync_and_mark", side_effect=_spy_reap_sync),
+        patch.object(
+            pm, "_reap_async_in_sync_and_mark", side_effect=_spy_reap_async
+        ),
+        patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed),
+    ):
+        reconciled = pm._reconcile_stale_entries()
+
+    assert reconciled == 1
+    assert reap_sync_called["called"] is False, (
+        "_reap_sync_and_mark must NOT be invoked when no sync proc is present"
+    )
+    assert reap_async_called["called"] is False, (
+        "_reap_async_in_sync_and_mark must NOT be invoked when no async proc is present"
+    )
+    assert len(mark_calls) == 1
+    _called_rec, _called_rc, called_cause = mark_calls[0]
+    assert called_cause == "zombie_reconciled"
+    assert handle.record.status == ProcessStatus.KILLED
+    assert handle.record.cause == "zombie_reconciled"
+

@@ -131,6 +131,155 @@ class ProcessManager:
         if self.policy.log_events:
             self.register_listener(loguru_event_listener)
 
+    # ------------------------------------------------------------------
+    # Centralized zombie reaping helpers
+    #
+    # Every site that detects a post-kill zombie is required to call one of
+    # these helpers BEFORE invoking _mark_killed(..., cause="zombie_after_kill")
+    # so the child is reaped at the OS level rather than left as a defunct
+    # process. Each helper is bounded (no blocking wait_for with infinite
+    # timeout, no wait_procs with timeout=None) and wraps its reaping logic
+    # in try/except that suppresses OSError / ProcessLookupError /
+    # ChildProcessError / asyncio.CancelledError but never KeyboardInterrupt
+    # or SystemExit. _mark_killed is always called, even on exception, so the
+    # process record is still moved to a terminal state.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _has_running_event_loop() -> bool:
+        """Return True when an asyncio event loop is running on the current thread."""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        return True
+
+    def _reap_sync_and_mark(
+        self,
+        record: ProcessRecord,
+        proc: _SyncProcessLike | _PtyProcessLike,
+        cause: str,
+    ) -> None:
+        """Reap a sync (Popen-like) process and mark the record KILLED.
+
+        Calls ``proc.poll()``; if the process is still alive, calls
+        ``proc.wait(timeout=0.1)`` to attempt reaping with a strict
+        100ms cap. The final returncode is forwarded to ``_mark_killed``
+        with ``cause``.
+        """
+        last_known_rc: int | None = None
+        try:
+            if record.status not in _TERMINAL_STATUSES:
+                last_known_rc = proc.poll()
+                if last_known_rc is None:
+                    try:
+                        last_known_rc = proc.wait(timeout=0.1)
+                    except (subprocess.TimeoutExpired, TimeoutError, OSError):
+                        last_known_rc = None
+        except (OSError, ProcessLookupError, ChildProcessError):
+            last_known_rc = None
+        self._mark_killed(record, last_known_rc, cause=cause)
+
+    async def _reap_async_and_mark(
+        self,
+        record: ProcessRecord,
+        proc: _AsyncProcessLike,
+        cause: str,
+    ) -> None:
+        """Reap an async subprocess and mark the record KILLED.
+
+        Calls ``asyncio.wait_for(proc.wait(), timeout=0.5)`` with a 500ms
+        cap. The final returncode is forwarded to ``_mark_killed`` with
+        ``cause``. ``asyncio.CancelledError`` is suppressed because the
+        caller is already on the cancellation path and we still want the
+        record to transition to a terminal state.
+        """
+        last_known_rc: int | None = None
+        try:
+            if record.status not in _TERMINAL_STATUSES:
+                last_known_rc = proc.returncode
+                try:
+                    last_known_rc = await asyncio.wait_for(
+                        proc.wait(),  # mcp-timeout-ok: wait_for-bounded
+                        timeout=0.5,
+                    )
+                except (TimeoutError, asyncio.CancelledError):
+                    last_known_rc = proc.returncode
+        except (OSError, ProcessLookupError, ChildProcessError, asyncio.CancelledError):
+            last_known_rc = None
+        self._mark_killed(record, last_known_rc, cause=cause)
+
+    def _reap_psutil_zombie_and_mark(
+        self,
+        record: ProcessRecord,
+        psutil_proc: _PsutilProcessLike,
+        psutil_mod: _PsutilModuleLike,
+        cause: str,
+    ) -> None:
+        """Reap a psutil-tracked process and mark the record KILLED.
+
+        Uses ``psutil_mod.wait_procs`` with ``timeout=0.0`` (non-blocking
+        poll) to reap the process via psutil. On POSIX, when no asyncio
+        event loop is running in the current thread, additionally calls
+        ``os.waitpid(record.pid, os.WNOHANG)`` up to three times to
+        collect any remaining zombie state. Always calls ``_mark_killed``
+        with the supplied cause.
+        """
+        try:
+            if record.status not in _TERMINAL_STATUSES:
+                with contextlib.suppress(OSError, ProcessLookupError, ChildProcessError):
+                    psutil_mod.wait_procs([psutil_proc], timeout=0.0)
+                if (
+                    hasattr(os, "waitpid")
+                    and hasattr(os, "WNOHANG")
+                    and not self._has_running_event_loop()
+                ):
+                    for _ in range(3):
+                        try:
+                            reaped_pid, _ = os.waitpid(record.pid, os.WNOHANG)
+                        except (OSError, ProcessLookupError, ChildProcessError):
+                            break
+                        if reaped_pid in (0, record.pid):
+                            break
+        except (OSError, ProcessLookupError, ChildProcessError):
+            pass
+        self._mark_killed(record, None, cause=cause)
+
+    def _reap_async_in_sync_and_mark(
+        self,
+        record: ProcessRecord,
+        proc: _AsyncProcessLike,
+        cause: str,
+    ) -> None:
+        """Reap an async subprocess from a sync context and mark the record KILLED.
+
+        On POSIX, when no asyncio event loop is running in the current
+        thread, calls ``os.waitpid(record.pid, os.WNOHANG)`` up to three
+        times to collect any zombie state. On non-POSIX platforms (or when
+        an event loop is running) falls back to reading
+        ``proc.returncode``. Always calls ``_mark_killed`` with the
+        supplied cause.
+        """
+        last_known_rc: int | None = None
+        try:
+            if record.status not in _TERMINAL_STATUSES:
+                if (
+                    hasattr(os, "waitpid")
+                    and hasattr(os, "WNOHANG")
+                    and not self._has_running_event_loop()
+                ):
+                    for _ in range(3):
+                        try:
+                            reaped_pid, _ = os.waitpid(record.pid, os.WNOHANG)
+                        except (OSError, ProcessLookupError, ChildProcessError):
+                            break
+                        if reaped_pid in (0, record.pid):
+                            break
+                last_known_rc = proc.returncode
+        except (OSError, ProcessLookupError, ChildProcessError):
+            last_known_rc = proc.returncode
+        self._mark_killed(record, last_known_rc, cause=cause)
+
     def register_listener(self, callback: Callable[[ProcessEvent], None]) -> Callable[[], None]:
         """Subscribe to lifecycle events.  Returns an unsubscribe callable."""
         lid = self._listener_counter
@@ -418,6 +567,9 @@ class ProcessManager:
             return
         if isinstance(handle, ManagedPtyProcess):
             self._escalate_termination_pty(handle.record, handle._proc, gp)
+            return
+        if isinstance(handle, ManagedAsyncProcess):
+            self._escalate_async_in_sync_context(handle.record, handle._proc, gp)
 
     # ------------------------------------------------------------------
     # Shutdown methods (with stale-entry reconciliation)
@@ -425,6 +577,12 @@ class ProcessManager:
 
     def _reconcile_stale_entries(self) -> int:
         """Scan active records and mark as KILLED any PIDs no longer alive at the OS level.
+
+        For zombie PIDs, dispatch to the existing sync-safe reaping
+        helpers (``_reap_sync_and_mark`` / ``_reap_async_in_sync_and_mark``)
+        so the OS is asked to collect the defunct child before the record
+        is moved to a terminal state. When no tracked process object is
+        present for the zombie PID, fall back to the mark-only path.
 
         Also cleans up _descendants entries for stale PIDs.
 
@@ -442,7 +600,21 @@ class ProcessManager:
                 logger.debug(f"Stale tracking entry reconciled: PID {pid} no longer exists")
                 reconciled += 1
             elif liveness == LivenessResult.ZOMBIE:
-                self._mark_killed(record, returncode=None, cause="zombie_reconciled")
+                sync_proc = self._sync_procs.get(pid)
+                pty_proc = self._pty_procs.get(pid)
+                async_proc = self._async_procs.get(pid)
+                if sync_proc is not None or pty_proc is not None:
+                    reap_target = sync_proc if sync_proc is not None else pty_proc
+                    assert reap_target is not None
+                    self._reap_sync_and_mark(record, reap_target, cause="zombie_reconciled")
+                elif async_proc is not None:
+                    self._reap_async_in_sync_and_mark(
+                        record, async_proc, cause="zombie_reconciled"
+                    )
+                else:
+                    self._mark_killed(
+                        record, returncode=None, cause="zombie_reconciled"
+                    )
                 logger.warning(f"Stale zombie entry reconciled: PID {pid} is zombie")
                 reconciled += 1
         return reconciled
@@ -682,7 +854,7 @@ class ProcessManager:
                     logger.warning(
                         f"Process {record.pid} is zombie after force kill — parent must reap"
                     )
-                    self._mark_killed(record, proc.poll(), cause="zombie_after_kill")
+                    self._reap_sync_and_mark(record, proc, cause="zombie_after_kill")
                     return
                 if post_liveness != LivenessResult.ALIVE:
                     self._mark_killed(record, proc.poll(), cause="killed")
@@ -736,7 +908,7 @@ class ProcessManager:
                     logger.warning(
                         f"Process {record.pid} is zombie after force kill — parent must reap"
                     )
-                    self._mark_killed(record, proc.returncode, cause="zombie_after_kill")
+                    await self._reap_async_and_mark(record, proc, cause="zombie_after_kill")
                     return
                 if post_liveness != LivenessResult.ALIVE:
                     self._mark_killed(record, proc.returncode, cause="killed")
@@ -798,7 +970,9 @@ class ProcessManager:
                     logger.warning(
                         f"Process {p.pid} is zombie after force kill — parent must reap"
                     )
-                    self._mark_killed(record, cause="zombie_after_kill")
+                    self._reap_psutil_zombie_and_mark(
+                        record, p, psutil_mod, cause="zombie_after_kill"
+                    )
                     return
             self._mark_termination_failed(record)
             logger.error("Process {} still alive after kill", record.pid)
@@ -869,7 +1043,7 @@ class ProcessManager:
                     logger.warning(
                         f"Process {p.pid} is zombie after force kill — parent must reap"
                     )
-                    self._mark_killed(record, rc, cause="zombie_after_kill")
+                    self._reap_sync_and_mark(record, proc, cause="zombie_after_kill")
                     return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", record.pid)
@@ -956,7 +1130,7 @@ class ProcessManager:
                 logger.warning(
                     f"Process {pid} is zombie after force kill — parent must reap"
                 )
-                self._mark_killed(record, rc, cause="zombie_after_kill")
+                await self._reap_async_and_mark(record, proc, cause="zombie_after_kill")
                 return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", pid)
@@ -1004,7 +1178,9 @@ class ProcessManager:
                 post_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
                 if post_liveness == LivenessResult.ZOMBIE:
                     logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
-                    self._mark_killed(record, proc.returncode, cause="zombie_after_kill")
+                    self._reap_psutil_zombie_and_mark(
+                        record, p, psutil_mod, cause="zombie_after_kill"
+                    )
                     return
             self._mark_termination_failed(record, proc.returncode)
             logger.error("Process {} still alive after kill", record.pid)
@@ -1024,7 +1200,7 @@ class ProcessManager:
             return
         if probe_result == LivenessResult.ZOMBIE:
             logger.warning(f"Process {record.pid} is zombie after force kill — parent must reap")
-            self._mark_killed(record, None, cause="zombie_after_kill")
+            self._reap_async_in_sync_and_mark(record, proc, cause="zombie_after_kill")
             return
         self._mark_termination_failed(record, None)
         raise ProcessTerminationError(
