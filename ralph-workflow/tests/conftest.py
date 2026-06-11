@@ -99,6 +99,8 @@ def _configure_repo_identity(repo: object) -> None:
     try:
         writer.set_value("user", "name", "Test User")
         writer.set_value("user", "email", "test@example.com")
+        writer.set_value("core", "logAllRefUpdates", "false")
+        writer.set_value("gc", "auto", "0")
     finally:
         writer.release()
 
@@ -134,12 +136,12 @@ def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
     repo_path = tmp_path / "repo"
     repo = Repo.init(str(repo_path))
     try:
+        _configure_repo_identity(repo)
         readme_src = _git_repo_template / "README.md"
         readme_dst = repo_path / "README.md"
         readme_dst.write_text(readme_src.read_text())
         repo.index.add(["README.md"])
         repo.index.commit("initial commit")
-        _configure_repo_identity(repo)
     finally:
         repo.close()
     return repo_path

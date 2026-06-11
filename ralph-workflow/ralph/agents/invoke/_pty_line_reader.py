@@ -6,6 +6,7 @@ import codecs
 import contextlib
 import os
 import threading
+import time
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -48,6 +49,7 @@ from ralph.agents.invoke._pty_helpers import (
 )
 from ralph.agents.invoke._pty_transcript import (
     find_claude_transcript_entry,
+    find_latest_claude_transcript_entry,
     transcript_lines_from_event,
 )
 from ralph.agents.invoke._session import (
@@ -86,8 +88,10 @@ class PtyLineReader:
         _extras = extras or _PtyExtras()
         self._handle = handle
         self._agent_name = agent_name
+        self._started_at_wall_clock = time.time()
         self._policy = ctx.policy
         self._monitor = ctx.monitor
+        self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
         self._clock = clock
         self._strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy = (
             ctx.execution_strategy or GenericExecutionStrategy()
@@ -240,7 +244,7 @@ class PtyLineReader:
             return tuple(self._transcript_session_ids)
 
     def _transcript_thread(self) -> None:
-        if self._expected_session_id is None:
+        if self._expected_session_id is None and self._workspace_path is None:
             return
         transcript_path: Path | None = None
         transcript_session_id: str | None = None
@@ -254,6 +258,11 @@ class PtyLineReader:
                 and candidate_ids[0] != transcript_session_id
             ):
                 entry = find_claude_transcript_entry(candidate_ids)
+                if entry is None and self._workspace_path is not None:
+                    entry = find_latest_claude_transcript_entry(
+                        self._workspace_path,
+                        min_mtime=self._started_at_wall_clock,
+                    )
                 if entry is None:
                     self._monitor_stop.wait(0.1)
                     continue

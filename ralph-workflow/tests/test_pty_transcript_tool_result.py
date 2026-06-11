@@ -5,6 +5,20 @@ import json
 from ralph.agents.invoke._pty_transcript import transcript_lines_from_event
 
 
+def test_transcript_lines_from_session_event_emits_session_line() -> None:
+    raw_line = json.dumps(
+        {
+            "type": "mode",
+            "mode": "normal",
+            "sessionId": "sess-transcript-1",
+        }
+    )
+
+    lines = transcript_lines_from_event(raw_line)
+
+    assert lines == ["Session ID: sess-transcript-1\n"]
+
+
 def test_transcript_lines_from_assistant_tool_result_event_emits_result_line() -> None:
     raw_line = json.dumps(
         {

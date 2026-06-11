@@ -34,6 +34,7 @@ def test_start_agent_phase_sets_hooks_path(tmp_git_repo: Path) -> None:
         assert read_hooks_path(repo) == expected
 
 
+@pytest.mark.timeout_seconds(5)
 def test_detect_unauthorized_commit_detects_new_commit(tmp_git_repo: Path) -> None:
     """Unauthorized commit detection should compare to the stored HEAD OID."""
 
@@ -47,6 +48,7 @@ def test_detect_unauthorized_commit_detects_new_commit(tmp_git_repo: Path) -> No
         assert detect_unauthorized_commit(tmp_git_repo) is True
 
 
+@pytest.mark.timeout_seconds(5)
 def test_end_agent_phase_restores_hooks_path(tmp_git_repo: Path) -> None:
     """Ending the agent phase should restore the previous hooksPath setting."""
 

@@ -291,12 +291,12 @@ def invoke_agent(
         clock=_clock,
         evaluate_completion_fn=evaluate_completion,
     )
-    ctx = replace(ctx, expected_session_id=opts.session_id or opts.initial_session_id)
+    ctx = replace(ctx, expected_session_id=opts.session_id)
     try:
         transport = _agent_transport(config)
         if transport == AgentTransport.CLAUDE_INTERACTIVE:
             extras = _PtyExtras(
-                expected_session_id=opts.session_id or opts.initial_session_id,
+                expected_session_id=opts.session_id,
                 stop_sentinel_path=opts.stop_sentinel_path,
                 permission_prompt_listener=opts.permission_prompt_listener,
             )

@@ -732,6 +732,7 @@ def test_delete_in_tmp_directory(tmp_git_repo: Path) -> None:
     assert not artifact.exists()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_delete_tracked_backup_file_rejected(tmp_git_repo: Path) -> None:
     """Backup files already tracked in git must NOT be deleted."""
     workspace = FsWorkspace(tmp_git_repo)
@@ -1053,6 +1054,7 @@ def test_delete_tracked_coverage_rejected(tmp_git_repo: Path) -> None:
     assert coverage.exists()
 
 
+@pytest.mark.timeout_seconds(5)
 def test_delete_tracked_coverage_xml_rejected(tmp_git_repo: Path) -> None:
     """Tracked ``coverage.xml`` files must NOT be deleted."""
     workspace = FsWorkspace(tmp_git_repo)

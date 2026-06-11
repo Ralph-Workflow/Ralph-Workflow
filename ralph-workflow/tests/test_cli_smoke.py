@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
+from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.invoke import AgentInactivityTimeoutError, InactivityTimeoutOpts
 from ralph.cli.commands import smoke as smoke_module
 from ralph.cli.commands.smoke_run_params import SmokeRunParams
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -13,9 +15,6 @@ from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
@@ -54,6 +53,50 @@ def test_build_smoke_prompt_targets_tmp_javascript_todo_list() -> None:
     assert "declare_complete" in prompt
     assert "smoke_test_result" in prompt
     assert "mcp__ralph__ralph_submit_artifact" in prompt
+    assert 'status: one of "passed", "failed", or "partial"' in prompt
+    assert 'output_file: "tmp/interactive-claude-smoke/todo-list.js"' in prompt
+    assert "observed_working" in prompt
+    assert "observed_breaks" in prompt
+    assert "headless_guide_checks" in prompt
+
+
+def test_detect_smoke_errors_uses_parser_fallback_for_meaningful_output() -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    params = SmokeRunParams(
+        agent_name="claude/haiku",
+        config=config,
+        workspace_root=Path(),
+        prompt_file=Path("PROMPT.md"),
+        output_file=Path("tmp/interactive-claude-smoke/todo-list.js"),
+        options=smoke_module.InvokeOptions(show_progress=False),
+        display_context=smoke_module.make_display_context(),
+        bridge=None,
+    )
+    lines = [
+        "{"
+        '"type":"assistant","message":{"type":"message","content":'
+        '[{"type":"text","text":"Starting smoke task."}]}}\n',
+        "{"
+        '"type":"assistant","message":{"type":"message","content":'
+        '[{"type":"tool_use","name":"mcp__ralph__write_file"}]}}\n',
+        "{"
+        '"type":"assistant","message":{"type":"message","content":'
+        '[{"type":"text","text":"Submitted artifact."}]}}\n',
+    ]
+
+    errors = smoke_module._detect_smoke_errors(
+        params,
+        lines,
+        [],
+        "sess-1",
+        None,
+    )
+
+    assert "fewer than 3 meaningful output lines were observed" not in errors
 
 
 def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
@@ -372,3 +415,65 @@ def test_execute_smoke_turns_preserves_early_session_id_for_resumable_exit(
     assert final_exception is not None
     assert session_id == "sess-resume"
     assert calls == [None, "sess-resume", "sess-resume", "sess-resume", "sess-resume"]
+
+
+def test_run_smoke_attempt_preserves_inactivity_timeout_resume_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    params = SmokeRunParams(
+        agent_name="claude/haiku",
+        config=config,
+        workspace_root=tmp_path,
+        prompt_file=tmp_path / "PROMPT.md",
+        output_file=tmp_path / "todo.js",
+        options=smoke_module.InvokeOptions(show_progress=False),
+        display_context=smoke_module.make_display_context(),
+        bridge=None,
+    )
+
+    def fake_invoke_agent(
+        _config: AgentConfig,
+        _prompt_file: str,
+        *,
+        options: object = None,
+    ) -> object:
+        del _config, _prompt_file, options
+        return iter(["Claude session ready. Session ID: sess-timeout\n"])
+
+    def fake_stream_parsed_agent_activity(*args: object, **kwargs: object) -> None:
+        raw_output_sink = kwargs.get("raw_output_sink")
+        if hasattr(raw_output_sink, "append"):
+            raw_output_sink.append("Claude session ready. Session ID: sess-timeout\n")
+        raise AgentInactivityTimeoutError(
+            "claude",
+            30.0,
+            ["claude tool: write_file"],
+            InactivityTimeoutOpts(
+                reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                session_resume_safe=True,
+                resumable_session_id="sess-timeout",
+            ),
+        )
+
+    monkeypatch.setattr(smoke_module, "invoke_agent", fake_invoke_agent)
+    monkeypatch.setattr(
+        smoke_module,
+        "stream_parsed_agent_activity",
+        fake_stream_parsed_agent_activity,
+    )
+
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        smoke_module._run_smoke_attempt(params, params.options)
+
+    assert exc_info.value.session_resume_safe is True
+    assert exc_info.value.resumable_session_id == "sess-timeout"
+    assert any(
+        "Claude session ready. Session ID: sess-timeout" in line
+        for line in exc_info.value.parsed_output
+    )

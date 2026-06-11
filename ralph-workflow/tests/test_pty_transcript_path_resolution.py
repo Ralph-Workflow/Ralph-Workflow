@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import _pty_transcript as transcript_module
@@ -41,3 +42,28 @@ def test_find_claude_transcript_path_preserves_single_session_lookup(
     observed = transcript_module.find_claude_transcript_path("session-123")
 
     assert observed == expected_path
+
+
+def test_find_latest_claude_transcript_entry_uses_project_scoped_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    project_dir_name = str(workspace_root).replace("/", "-")
+    project_root = tmp_path / ".claude" / "projects" / project_dir_name
+    project_root.mkdir(parents=True)
+    older = project_root / "older-session.jsonl"
+    newer = project_root / "newer-session.jsonl"
+    older.write_text("{}\n", encoding="utf-8")
+    newer.write_text("{}\n", encoding="utf-8")
+    os.utime(older, (10.0, 10.0))
+    os.utime(newer, (20.0, 20.0))
+    monkeypatch.setattr(transcript_module.Path, "home", lambda: tmp_path)
+
+    entry = transcript_module.find_latest_claude_transcript_entry(workspace_root, min_mtime=15.0)
+
+    assert entry == (newer, "newer-session")
+    assert transcript_module.find_latest_claude_transcript_entry(
+        workspace_root, min_mtime=25.0
+    ) is None

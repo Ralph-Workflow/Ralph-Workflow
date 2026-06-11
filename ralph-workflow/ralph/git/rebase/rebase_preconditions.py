@@ -9,6 +9,7 @@ from git import InvalidGitRepositoryError, Repo
 from git.exc import GitCommandError
 
 from ralph.git.rebase._concurrent_operation import _ConcurrentOperation
+from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -45,8 +46,8 @@ def check_rebase_preconditions(repo_root: Path | str) -> None:
             )
 
         _ensure_git_identity(repo)
-        _ensure_clean_worktree(repo)
         _check_shallow_clone(repo)
+        _ensure_clean_worktree(repo)
         _check_worktree_conflicts(repo)
         _check_submodule_state(repo)
         _check_sparse_checkout_state(repo)
@@ -124,6 +125,18 @@ def _ensure_git_identity(repo: Repo) -> None:
 
 
 def _ensure_clean_worktree(repo: Repo) -> None:
+    worktree = _worktree(repo)
+    try:
+        result = run_git(("status", "--porcelain"), cwd=worktree, label="rebase-preflight-status")
+        if result.returncode == 0 and result.stdout.splitlines():
+            raise RebasePreconditionError(
+                "Working tree is not clean. Please commit or stash changes before rebasing."
+            )
+        if result.returncode == 0:
+            return
+    except OSError:
+        pass
+
     if repo.is_dirty(untracked_files=True, submodules=True):
         raise RebasePreconditionError(
             "Working tree is not clean. Please commit or stash changes before rebasing."

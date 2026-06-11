@@ -32,6 +32,7 @@ from ralph.agents.invoke._session import (
 )
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import PtySpawnOptions, get_process_manager
 
@@ -48,6 +49,9 @@ def run_pty_and_read_lines(
 ) -> Iterator[str]:
     _extras = extras or _PtyExtras()
     expected_session_id = _extras.expected_session_id
+    completion_run_id = None
+    if ctx.extra_env is not None:
+        completion_run_id = ctx.extra_env.get(str(MCP_RUN_ID_ENV))
     if _extras.stop_sentinel_path is not None:
         with contextlib.suppress(FileNotFoundError):
             _extras.stop_sentinel_path.unlink()
@@ -154,7 +158,7 @@ def run_pty_and_read_lines(
                 required_artifact=ctx.required_artifact,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
-                completion_run_id=expected_session_id,
+                completion_run_id=completion_run_id,
                 evaluate_completion_fn=ctx.evaluate_completion_fn,
             ),
             _clock=clock,

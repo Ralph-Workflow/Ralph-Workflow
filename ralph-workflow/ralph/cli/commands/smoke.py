@@ -120,7 +120,12 @@ def _build_smoke_prompt(output_relpath: str, *, submit_artifact_tool_name: str) 
         "completion signal, parser events, and tmp artifact creation.\n"
         f"- Call `{submit_artifact_tool_name}` with "
         f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
-        "and report what worked and what broke.\n"
+        "and use this exact content schema: "
+        'status: one of "passed", "failed", or "partial"; '
+        f'output_file: "{output_relpath}"; '
+        "observed_working: string[]; observed_breaks: string[]; "
+        "headless_guide_checks: string[]; summary: non-empty string.\n"
+        "- Do not nest extra objects like rubric/details/metadata inside the artifact content.\n"
         "- When finished, call declare_complete.\n"
     )
 
@@ -297,12 +302,9 @@ def _run_smoke_attempt(
         for line in exc.parsed_output:
             if line not in merged_output:
                 merged_output.append(line)
-        raise AgentInvocationError(
-            exc.agent_name,
-            exc.returncode,
-            exc.stderr,
-            parsed_output=merged_output if merged_output else exc.parsed_output,
-        ) from exc
+        if merged_output:
+            exc.parsed_output = merged_output
+        raise
     return list(raw_lines), list(rendered_lines)
 
 
@@ -315,6 +317,13 @@ def _reset_tool_registry_callback(
     if not callable(reset_tool_registry_obj):
         return None
     return cast("Callable[[], object]", reset_tool_registry_obj)
+
+
+def _clear_smoke_artifact(workspace_root: Path) -> None:
+    artifact_path = (
+        workspace_root / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.json"
+    )
+    artifact_path.unlink(missing_ok=True)
 
 
 def _detect_smoke_errors(
@@ -349,6 +358,8 @@ def _detect_smoke_errors(
         errors.append("smoke_test_result artifact was not submitted")
 
     meaningful_output = [line for line in live_output_lines if line.strip()]
+    if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
+        meaningful_output = _meaningful_output_lines(params.config, lines)
     meaningful_output = meaningful_output[:_MAX_MEANINGFUL_OUTPUT_LINES]
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES:
         errors.append("fewer than 3 meaningful output lines were observed")
@@ -515,6 +526,7 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
     try:
         if output_file.exists():
             output_file.unlink()
+        _clear_smoke_artifact(workspace_root)
         options = build_invoke_options_from_config(
             config.general,
             InvokeRuntimeOptions(
