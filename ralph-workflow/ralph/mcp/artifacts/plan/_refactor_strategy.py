@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 from ralph.pydantic_compat import RalphBaseModel
 
@@ -28,10 +28,22 @@ DeadCodePolicy = Literal[
 class RefactorStrategy(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    approach: RefactorApproach
-    preserve_public_api: bool | None = None
-    dead_code_policy: DeadCodePolicy = "delete-immediately"
-    allow_temporary_hacks: bool = False
+    approach: RefactorApproach = Field(
+        ...,
+        description="RefactorApproach enum; see RefactorApproach literal.",
+    )
+    preserve_public_api: bool | None = Field(
+        default=None,
+        description="Whether the public API must be preserved.",
+    )
+    dead_code_policy: DeadCodePolicy = Field(
+        default="delete-immediately",
+        description="DeadCodePolicy enum; see DeadCodePolicy literal.",
+    )
+    allow_temporary_hacks: bool = Field(
+        default=False,
+        description="Whether temporary hacks are allowed during the refactor.",
+    )
 
 
 __all__ = [

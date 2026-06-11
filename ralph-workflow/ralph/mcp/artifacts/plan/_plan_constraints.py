@@ -72,9 +72,7 @@ class PlanConstraints(RalphBaseModel):
             position_by_lowered[lowered] = len(cleaned)
             cleaned.append(stripped)
         if len(cleaned) > _MAX_CONSTRAINT_LIST_ENTRIES:
-            msg = (
-                f"constraint list has more than {_MAX_CONSTRAINT_LIST_ENTRIES} entries"
-            )
+            msg = f"constraint list has more than {_MAX_CONSTRAINT_LIST_ENTRIES} entries"
             raise ValueError(msg)
         return cleaned
 

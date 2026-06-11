@@ -17,6 +17,7 @@ from ralph.mcp.artifacts._fix_result import FixResult
 from ralph.mcp.artifacts._issue_entry import _IssueEntry
 from ralph.mcp.artifacts._typed_artifact_validation_error import TypedArtifactValidationError
 from ralph.pydantic_compat import RalphBaseModel
+from ralph.pydantic_validation_errors import format_validation_error_messages
 
 if TYPE_CHECKING:
     from collections.abc import Collection
@@ -78,7 +79,10 @@ def _validate(model_cls: type[RalphBaseModel], content: dict[str, object]) -> di
         validated = model_cls.model_validate(content)
         return validated.model_dump(mode="python", exclude_none=True)
     except ValidationError as exc:
-        raise TypedArtifactValidationError(str(exc)) from exc
+        msgs = format_validation_error_messages(exc)
+        raise TypedArtifactValidationError(
+            msgs[0] if len(msgs) == 1 else "\n".join(msgs) if msgs else str(exc)
+        ) from exc
 
 
 def normalize_issues_content(content: dict[str, object]) -> dict[str, object]:

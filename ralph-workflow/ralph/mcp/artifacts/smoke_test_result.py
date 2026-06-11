@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from ralph.mcp.artifacts.smoke_test_result_validation_error import SmokeTestResultValidationError
 from ralph.mcp.artifacts.store import get_artifact
 from ralph.pydantic_compat import RalphBaseModel
+from ralph.pydantic_validation_errors import format_validation_error_messages
 
 SMOKE_TEST_RESULT_ARTIFACT_TYPE = "smoke_test_result"
 
@@ -45,7 +46,10 @@ def normalize_smoke_test_result_content(content: dict[str, object]) -> dict[str,
         validated = SmokeTestResult.model_validate(content)
         return validated.model_dump(mode="python", exclude_none=True)
     except ValidationError as exc:
-        raise SmokeTestResultValidationError(str(exc)) from exc
+        msgs = format_validation_error_messages(exc)
+        raise SmokeTestResultValidationError(
+            msgs[0] if len(msgs) == 1 else "\n".join(msgs) if msgs else str(exc)
+        ) from exc
 
 
 def read_smoke_test_result_artifact(repo_root: Path) -> dict[str, object] | None:

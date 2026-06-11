@@ -9,6 +9,7 @@ from ralph.mcp.artifacts.development_result_continuation import Continuation
 from ralph.mcp.artifacts.development_result_validation_error import DevelopmentResultValidationError
 from ralph.mcp.artifacts.plan_item_proof import PlanItemProof
 from ralph.pydantic_compat import RalphBaseModel
+from ralph.pydantic_validation_errors import format_validation_error_messages
 
 DEVELOPMENT_RESULT_ARTIFACT_TYPE = "development_result"
 
@@ -42,7 +43,10 @@ def normalize_development_result_content(content: dict[str, object]) -> dict[str
         validated = DevelopmentResult.model_validate(content)
         return validated.model_dump(mode="python", exclude_none=True)
     except ValidationError as exc:
-        raise DevelopmentResultValidationError(str(exc)) from exc
+        msgs = format_validation_error_messages(exc)
+        raise DevelopmentResultValidationError(
+            msgs[0] if len(msgs) == 1 else "\n".join(msgs) if msgs else str(exc)
+        ) from exc
 
 
 __all__ = [

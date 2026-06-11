@@ -44,18 +44,42 @@ _STEP_TYPE_ALIASES: dict[str, str] = {
 class PlanStep(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    number: int = Field(..., ge=1)
-    title: str = Field(..., min_length=1)
-    content: str = Field(..., min_length=1)
-    step_type: StepType = StepType.ACTION
-    priority: Literal["critical", "high", "medium", "low"] | None = None
-    targets: list[StepTarget] = Field(default_factory=list)
-    location: str | None = None
-    rationale: str | None = None
-    depends_on: list[int] = Field(default_factory=list)
-    satisfies: list[str] = Field(default_factory=list)
-    expected_evidence: list[EvidenceRef] = Field(default_factory=list)
-    verify_command: str | None = None
+    number: int = Field(..., ge=1, description="1-based step number.")
+    title: str = Field(..., min_length=1, description="Short step title (non-empty).")
+    content: str = Field(..., min_length=1, description="Step body / detailed content (non-empty).")
+    step_type: StepType = Field(
+        default=StepType.ACTION,
+        description="StepType; see StepType literal. file_change needs targets.",
+    )
+    priority: Literal["critical", "high", "medium", "low"] | None = Field(
+        default=None,
+        description="Optional priority; one of critical, high, medium, low.",
+    )
+    targets: list[StepTarget] = Field(
+        default_factory=list,
+        description="Required for file_change; list of {path, action} entries.",
+    )
+    location: str | None = Field(
+        default=None,
+        description="Optional location; required for verify steps when verify_command is absent.",
+    )
+    rationale: str | None = Field(default=None, description="Optional rationale for the step.")
+    depends_on: list[int] = Field(
+        default_factory=list,
+        description="Optional list of step numbers this step depends on.",
+    )
+    satisfies: list[str] = Field(
+        default_factory=list,
+        description="Optional list of AC ids (^[A-Z]+-\\d{2,}$) this step satisfies.",
+    )
+    expected_evidence: list[EvidenceRef] = Field(
+        default_factory=list,
+        description="Optional list of evidence references (max 50).",
+    )
+    verify_command: str | None = Field(
+        default=None,
+        description="Optional verify command; required for verify steps when location is absent.",
+    )
 
     @field_validator("step_type", mode="before")
     @classmethod
@@ -127,11 +151,7 @@ class PlanStep(RalphBaseModel):
         for entry in value:
             if isinstance(entry, str) and not entry.strip():
                 continue
-            ref = (
-                entry
-                if isinstance(entry, EvidenceRef)
-                else EvidenceRef.model_validate(entry)
-            )
+            ref = entry if isinstance(entry, EvidenceRef) else EvidenceRef.model_validate(entry)
             key = (str(ref.kind), ref.ref.lower())
             if key in position_by_key:
                 cleaned[position_by_key[key]] = ref

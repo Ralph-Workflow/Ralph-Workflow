@@ -27,9 +27,20 @@ _MAX_ENTRY_LENGTH = 500
 class DesignConstraints(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    text: str = Field(..., min_length=1, max_length=2000)
-    invariants: list[str] = Field(default_factory=list)
-    architecture_style: ArchitectureStyle | None = None
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Required design constraints text (1-2000 chars).",
+    )
+    invariants: list[str] = Field(
+        default_factory=list,
+        description="Optional list of design invariants (max 500 chars each after dedup).",
+    )
+    architecture_style: ArchitectureStyle | None = Field(
+        default=None,
+        description="ArchitectureStyle enum; see ArchitectureStyle literal.",
+    )
 
     @field_validator("text")
     @classmethod

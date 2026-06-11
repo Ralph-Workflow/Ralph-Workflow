@@ -129,6 +129,13 @@ ralph.project_urls
    :members:
    :show-inheritance:
 
+ralph.pydantic_validation_errors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pydantic_validation_errors
+   :members:
+   :show-inheritance:
+
 ralph.logging_models
 ~~~~~~~~~~~~~~~~~~~~
 

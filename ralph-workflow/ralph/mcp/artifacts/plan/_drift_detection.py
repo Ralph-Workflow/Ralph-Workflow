@@ -27,10 +27,22 @@ _SAFE_COMMAND_REGEX = re.compile(r"^[A-Za-z0-9 _./\-:=+]+$")
 class DriftDetection(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    guard_commands: list[str] = Field(default_factory=list)
-    expected_outputs: list[str] = Field(default_factory=list)
-    sources: list[DriftSource] = Field(default_factory=list)
-    on_drift_action: OnDriftAction | None = None
+    guard_commands: list[str] = Field(
+        default_factory=list,
+        description="Guard command strings; restricted punctuation per validator.",
+    )
+    expected_outputs: list[str] = Field(
+        default_factory=list,
+        description="Expected guard command output substrings.",
+    )
+    sources: list[DriftSource] = Field(
+        default_factory=list,
+        description="DriftSource enum list; see DriftSource literal.",
+    )
+    on_drift_action: OnDriftAction | None = Field(
+        default=None,
+        description="OnDriftAction enum; see OnDriftAction literal.",
+    )
 
     @field_validator("guard_commands")
     @classmethod

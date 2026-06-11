@@ -52,6 +52,10 @@ from ralph.mcp.artifacts.plan.plan_artifact_validation_error import (
 )
 from ralph.mcp.artifacts.plan.plan_schema import ParallelPlanItem
 from ralph.pydantic_compat import RalphBaseModel
+from ralph.pydantic_validation_errors import (
+    format_validation_error_messages,
+    suggest_canonical_field,
+)
 
 if TYPE_CHECKING:
     from ralph.pipeline.work_unit import WorkUnit
@@ -194,9 +198,7 @@ class PlanArtifact(RalphBaseModel):
 
         # Cross-section invariant 4: research/verify steps cannot satisfy an AC.
         if criteria:
-            step_type_by_number: dict[int, str] = {
-                s.number: str(s.step_type) for s in self.steps
-            }
+            step_type_by_number: dict[int, str] = {s.number: str(s.step_type) for s in self.steps}
             _check_research_verify_step_references(criteria, step_type_by_number)
         return self
 
@@ -288,13 +290,49 @@ def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDi
 def _format_validation_error(exc: ValidationError) -> str:
     """Format a pydantic ValidationError into an agent-friendly message.
 
-    For step_type validation errors on PlanStep, synthesize a structured
-    message that names the four valid StepType members and the
-    verify_command remediation hint. For all other errors, fall through
-    to the default pydantic string. The synthesized message keeps the
-    literal substring ``step_type`` so existing
-    ``pytest.raises(PlanArtifactValidationError, match='step_type')``
-    matchers continue to pass.
+    Uses the shared :mod:`ralph.pydantic_validation_errors` formatter to
+    produce a field-level, value-aware message for every error in the
+    exception. After the shared formatter runs, this helper appends a
+    step_type remediation hint whenever the error set contains a
+    ``steps[*].step_type`` literal_error; this preserves the long-standing
+    ``"step_type"`` / ``"verify_command"`` substrings that existing
+    ``pytest.raises(..., match=...)`` assertions expect.
+
+    The remediation hint is appended *after* the shared formatter's
+    output so the canonical field-level messages stay first and the
+    step_type hint serves as a focused, plan-specific follow-up. The
+    shared formatter runs once per ``ValidationError`` so the result is
+    deterministic and never duplicates lines.
+
+    An unknown top-level section (``design_constraints`` at the top
+    level) is also surfaced as a follow-up hint that names the
+    rejected key and suggests the closest canonical section.
+    """
+    shared_lines = format_validation_error_messages(exc)
+    follow_ups: list[str] = []
+    step_type_hint = _step_type_remediation_hint(exc)
+    if step_type_hint is not None:
+        follow_ups.append(step_type_hint)
+    section_hint = _top_level_unknown_section_hint(exc)
+    if section_hint is not None:
+        follow_ups.append(section_hint)
+    design_hint = _design_subkey_suggestion_hint(exc)
+    if design_hint is not None:
+        follow_ups.append(design_hint)
+    if not follow_ups:
+        return "\n".join(shared_lines) if shared_lines else str(exc)
+    return "\n".join(shared_lines) + "\n" + "\n".join(follow_ups)
+
+
+def _step_type_remediation_hint(exc: ValidationError) -> str | None:
+    """Return a step_type remediation hint when the error set contains one.
+
+    Returns ``None`` if no error in the exception targets
+    ``steps[*].step_type`` so the shared formatter's output is used as-is
+    in the common case. The hint is deterministic, names the four valid
+    StepType members, and includes the canonical
+    ``verify_command = 'pytest ...'`` remediation that the planning
+    prompt recommends.
     """
     valid_step_types: tuple[str, ...] = (
         "file_change",
@@ -303,43 +341,137 @@ def _format_validation_error(exc: ValidationError) -> str:
         "verify",
     )
     _min_step_type_loc_len: int = 3
-    step_type_lines: list[str] = []
-    other_lines: list[str] = []
-    saw_step_type_error = False
-    err_records = _error_records(exc)
-    for err in err_records:
+    for err in _error_records(exc):
         loc_value: object = err.get("loc", ())
         loc: tuple[object, ...] = (
-            cast("tuple[object, ...]", loc_value)
-            if isinstance(loc_value, tuple)
-            else ()
+            cast("tuple[object, ...]", loc_value) if isinstance(loc_value, tuple) else ()
         )
-        is_step_type_error = (
+        if (
             len(loc) >= _min_step_type_loc_len
             and loc[0] == "steps"
             and isinstance(loc[1], int)
             and loc[2] == "step_type"
-        )
+        ):
+            step_index: int = loc[1]
+            input_value: object = err.get("input", None)
+            return (
+                f"step {step_index + 1} step_type={input_value!r} is not a valid value; "
+                f"valid values are {list(valid_step_types)}. "
+                f"For test-running steps use step_type='verify' with a "
+                f"verify_command like 'pytest tests/test_x.py -q'."
+            )
+    return None
 
-        if not is_step_type_error:
-            other_lines.append(str(err))
+
+def _format_design_subkey_suggestion(exc: ValidationError) -> str | None:
+    """Return a hint for an unknown design sub-section key, if any.
+
+    When the plan dict contains a top-level field that does not match
+    any known section, pydantic emits an ``extra_forbidden`` error at
+    the top level. This helper detects those errors, names the rejected
+    key, and suggests the closest canonical section name so the agent
+    can self-correct without reading the schema.
+    """
+    for err in _error_records(exc):
+        err_type = err.get("type")
+        if err_type != "extra_forbidden":
             continue
-        saw_step_type_error = True
-        step_index = cast("int", loc[1])
-        input_value: object = err.get("input", None)
-        step_type_lines.append(
-            f"step {step_index + 1} step_type={input_value!r} is not a valid value; "
-            f"valid values are {list(valid_step_types)}. "
-            f"For test-running steps use step_type='verify' with a "
-            f"verify_command like 'pytest tests/test_x.py -q'."
+        loc_obj = err.get("loc", ())
+        loc: tuple[object, ...] = (
+            cast("tuple[object, ...]", loc_obj)
+            if isinstance(loc_obj, tuple)
+            else ()
         )
-    if not saw_step_type_error:
-        return str(exc)
-    parts: list[str] = list(step_type_lines)
-    if other_lines:
-        parts.append("")
-        parts.append(str(exc))
-    return "\n".join(parts)
+        if not loc:
+            continue
+        if loc[0] != "":
+            continue
+        bad_key_obj = err.get("input")
+        if not isinstance(bad_key_obj, str):
+            continue
+        suggestion = suggest_canonical_field(bad_key_obj, sorted(PLAN_SECTION_NAMES))
+        if suggestion is None:
+            return f"unknown section {bad_key_obj!r}; valid sections: {sorted(PLAN_SECTION_NAMES)}"
+        return (
+            f"unknown section {bad_key_obj!r}; did you mean {suggestion!r}? "
+            f"valid sections: {sorted(PLAN_SECTION_NAMES)}"
+        )
+    return None
+
+
+def _top_level_unknown_section_hint(exc: ValidationError) -> str | None:
+    """Return a hint for an unknown top-level plan section, if any.
+
+    This is a thin alias for :func:`_format_design_subkey_suggestion`
+    kept for readability at the call site.
+    """
+    return _format_design_subkey_suggestion(exc)
+
+
+_DESIGN_SECTION_KEYS: tuple[str, ...] = (
+    "planning_profile",
+    "constraints",
+    "non_goals",
+    "dependency_injection",
+    "drift_detection",
+    "testability",
+    "refactor_strategy",
+    "acceptance_criteria",
+    "outcome",
+    "notes",
+)
+
+
+_DESIGN_SUBSECTION_MIN_LOC_LEN: int = 2
+
+
+def _design_subkey_suggestion_hint(exc: ValidationError) -> str | None:
+    """Return a hint for an unknown ``design`` sub-section key, if any.
+
+    Pydantic emits ``extra_forbidden`` with ``loc=('design', <bad>)``
+    when the agent writes ``design.design_constraints`` (or similar)
+    inside a top-level ``design`` block. When the agent validates the
+    ``design`` section in isolation (via
+    :func:`validate_plan_section`), the location collapses to
+    ``loc=(<bad>,)`` because the ``DesignSection`` model is the
+    validation target. This helper handles both shapes so the agent
+    always sees the canonical sub-section list and the closest
+    suggestion.
+    """
+    for err in _error_records(exc):
+        err_type = err.get("type")
+        if err_type != "extra_forbidden":
+            continue
+        loc_obj = err.get("loc", ())
+        loc: tuple[object, ...] = (
+            cast("tuple[object, ...]", loc_obj)
+            if isinstance(loc_obj, tuple)
+            else ()
+        )
+        if not loc:
+            continue
+        first = loc[0]
+        bad_key_obj: object | None
+        if first == "design" and len(loc) >= _DESIGN_SUBSECTION_MIN_LOC_LEN:
+            bad_key_obj = loc[1]
+        elif isinstance(first, str):
+            bad_key_obj = first
+        else:
+            continue
+        if not isinstance(bad_key_obj, str):
+            continue
+        suggestion = suggest_canonical_field(bad_key_obj, list(_DESIGN_SECTION_KEYS))
+        if suggestion is None:
+            return (
+                f"unknown design sub-section {bad_key_obj!r}; "
+                f"valid design sub-sections: {list(_DESIGN_SECTION_KEYS)}"
+            )
+        return (
+            f"unknown design sub-section {bad_key_obj!r}; "
+            f"did you mean design.{suggestion!r}? "
+            f"valid design sub-sections: {list(_DESIGN_SECTION_KEYS)}"
+        )
+    return None
 
 
 def _error_records(exc: ValidationError) -> list[dict[str, object]]:
@@ -481,9 +613,7 @@ def _check_satisfied_by_steps_links(
         # the class __annotations__ that mypy reads.
         raw_refs: object = getattr(criterion, "satisfied_by_steps", [])
         refs: list[int] = (
-            [raw for raw in raw_refs if isinstance(raw, int)]
-            if isinstance(raw_refs, list)
-            else []
+            [raw for raw in raw_refs if isinstance(raw, int)] if isinstance(raw_refs, list) else []
         )
         for step_ref in refs:
             if step_ref not in step_numbers:
@@ -536,9 +666,7 @@ def _check_research_verify_step_references(
     for criterion in criteria:
         raw_refs: object = getattr(criterion, "satisfied_by_steps", [])
         refs: list[int] = (
-            [raw for raw in raw_refs if isinstance(raw, int)]
-            if isinstance(raw_refs, list)
-            else []
+            [raw for raw in raw_refs if isinstance(raw, int)] if isinstance(raw_refs, list) else []
         )
         for step_ref in refs:
             step_type = step_type_by_number.get(step_ref)
@@ -578,9 +706,7 @@ def _decode_plan_payload(raw: str | Mapping[str, object]) -> PlanArtifactDict:
         nested = parsed_dict.get("content")
         if isinstance(nested, dict):
             return cast("PlanArtifactDict", nested)
-        raise PlanArtifactValidationError(
-            "plan envelope has no valid 'content' object"
-        )
+        raise PlanArtifactValidationError("plan envelope has no valid 'content' object")
     return parsed_dict
 
 

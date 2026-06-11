@@ -819,6 +819,7 @@ def test_plan_format_for_execution_includes_design_block() -> None:
     assert verify_idx >= 0
     assert risks_idx < design_idx < verify_idx
 
+
 # ---------------------------------------------------------------------------
 # Schema and preset tests (Steps 2-10 of PLAN.md)
 # ---------------------------------------------------------------------------
@@ -1106,9 +1107,7 @@ def test_summary_intent_default_empty_string() -> None:
     so the before-validator runs on the None field default and the first
     branch returns ''.
     """
-    summary = Summary.model_validate(
-        {"scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]}
-    )
+    summary = Summary.model_validate({"scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]})
     assert summary.intent == ""
     assert summary.intent_verb == ""
 
@@ -1161,9 +1160,7 @@ def test_summary_intent_max_length_200() -> None:
 
 def test_summary_intent_dumped_exclude_defaults() -> None:
     """model_dump(exclude_defaults=True) drops an empty intent field (mirrors context)."""
-    summary = Summary.model_validate(
-        {"scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]}
-    )
+    summary = Summary.model_validate({"scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]})
     dumped = summary.model_dump(mode="python", exclude_defaults=True)
     assert "intent" not in dumped
 
@@ -1184,9 +1181,7 @@ def test_plan_step_file_change_requires_targets() -> None:
 def test_plan_step_verify_requires_command_or_location() -> None:
     """verify steps must declare verify_command or location."""
     with pytest.raises(ValueError, match="verify"):
-        PlanStep.model_validate(
-            {"number": 1, "title": "t", "content": "c", "step_type": "verify"}
-        )
+        PlanStep.model_validate({"number": 1, "title": "t", "content": "c", "step_type": "verify"})
     by_command = PlanStep.model_validate(
         {
             "number": 1,
@@ -1306,9 +1301,7 @@ def test_design_section_outcome_max_length_500() -> None:
 def test_plan_cross_section_rejects_unknown_satisfies_id() -> None:
     """step.satisfies referencing an unknown AC id raises with 'unknown acceptance criterion'."""
     plan = _valid_plan()
-    plan["design"] = {
-        "acceptance_criteria": {"criteria": [{"id": "AC-01", "description": "x"}]}
-    }
+    plan["design"] = {"acceptance_criteria": {"criteria": [{"id": "AC-01", "description": "x"}]}}
     steps = cast("list[dict[str, object]]", plan["steps"])
     steps[0]["satisfies"] = ["AC-99"]
     with pytest.raises(PlanArtifactValidationError, match="unknown acceptance criterion"):
@@ -1330,9 +1323,7 @@ def test_plan_cross_section_rejects_unknown_satisfied_by_steps_number() -> None:
     plan = _valid_plan()
     plan["design"] = {
         "acceptance_criteria": {
-            "criteria": [
-                {"id": "AC-01", "description": "x", "satisfied_by_steps": [99]}
-            ]
+            "criteria": [{"id": "AC-01", "description": "x", "satisfied_by_steps": [99]}]
         }
     }
     with pytest.raises(PlanArtifactValidationError, match="unknown step number"):
@@ -1344,9 +1335,7 @@ def test_plan_cross_section_accepts_consistent_links() -> None:
     plan = _valid_plan()
     plan["design"] = {
         "acceptance_criteria": {
-            "criteria": [
-                {"id": "AC-01", "description": "x", "satisfied_by_steps": [1]}
-            ]
+            "criteria": [{"id": "AC-01", "description": "x", "satisfied_by_steps": [1]}]
         }
     }
     steps = cast("list[dict[str, object]]", plan["steps"])
@@ -1399,9 +1388,7 @@ def test_insert_plan_step_remaps_satisfied_by_steps() -> None:
     sections = _valid_plan()
     sections["design"] = {
         "acceptance_criteria": {
-            "criteria": [
-                {"id": "AC-01", "description": "x", "satisfied_by_steps": [2]}
-            ]
+            "criteria": [{"id": "AC-01", "description": "x", "satisfied_by_steps": [2]}]
         }
     }
     sections["steps"] = [
@@ -1441,9 +1428,7 @@ def test_replace_plan_step_remaps_satisfied_by_steps() -> None:
     sections = _valid_plan()
     sections["design"] = {
         "acceptance_criteria": {
-            "criteria": [
-                {"id": "AC-01", "description": "x", "satisfied_by_steps": [1]}
-            ]
+            "criteria": [{"id": "AC-01", "description": "x", "satisfied_by_steps": [1]}]
         }
     }
     sections["steps"] = [
@@ -1483,9 +1468,7 @@ def test_remove_plan_step_remaps_satisfied_by_steps() -> None:
     sections = _valid_plan()
     sections["design"] = {
         "acceptance_criteria": {
-            "criteria": [
-                {"id": "AC-01", "description": "x", "satisfied_by_steps": [2]}
-            ]
+            "criteria": [{"id": "AC-01", "description": "x", "satisfied_by_steps": [2]}]
         }
     }
     sections["steps"] = [
@@ -1641,8 +1624,7 @@ def test_summary_coverage_areas_default_is_empty() -> None:
 def test_schema_json_file_matches_generate_plan_schema() -> None:
     """The on-disk schema.json is dict-equal to what generate_plan_schema() returns."""
     schema_path = (
-        Path(__file__).resolve().parents[1]
-        / "ralph" / "mcp" / "artifacts" / "plan" / "schema.json"
+        Path(__file__).resolve().parents[1] / "ralph" / "mcp" / "artifacts" / "plan" / "schema.json"
     )
     on_disk_text = schema_path.read_text(encoding="utf-8")
     on_disk = cast("dict[str, object]", json.loads(on_disk_text))
@@ -1680,3 +1662,119 @@ def test_plan_artifact_schema_version_field_round_trip() -> None:
     )
     assert dumped_with_version.get("schema_version") == 2
 
+
+# ---------------------------------------------------------------------------
+# Typecheck hint improvements: shared formatter surfaces field path, length,
+# valid values, and unknown-key suggestions without weakening any schema.
+# ---------------------------------------------------------------------------
+
+
+def test_intent_length_error_states_200_char_limit_and_actual_length() -> None:
+    """AC-01: intent length errors name the 200-char cap and the actual length."""
+    plan = copy.deepcopy(_valid_plan())
+    plan["summary"] = {
+        "context": "x",
+        "intent": "x" * 250,
+        "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+    }
+    with pytest.raises(PlanArtifactValidationError) as exc_info:
+        normalize_plan_artifact_content(plan)
+    message = str(exc_info.value)
+    assert "intent" in message
+    assert "200" in message
+    assert "250" in message
+
+
+def test_scope_items_category_error_lists_all_valid_values() -> None:
+    """AC-02: scope_items[*].category errors list the 15 closed-enum values."""
+    plan = copy.deepcopy(_valid_plan())
+    plan["summary"] = {
+        "context": "x",
+        "scope_items": [
+            {"text": "a", "category": "ship_it"},
+            {"text": "b"},
+            {"text": "c"},
+        ],
+    }
+    with pytest.raises(PlanArtifactValidationError) as exc_info:
+        validate_plan_section("summary", plan["summary"])
+    message = str(exc_info.value)
+    assert "scope_items" in message
+    for valid_value in (
+        "bugfix",
+        "feature",
+        "refactor",
+        "test",
+        "docs",
+        "infra",
+        "migration",
+        "security",
+        "performance",
+        "cleanup",
+        "research",
+        "unknown",
+        "file_change",
+        "prompt",
+        "other",
+    ):
+        assert valid_value in message, valid_value
+    assert "ship_it" in message
+
+
+def test_unknown_design_subkey_suggests_canonical_field() -> None:
+    """AC-03: unknown design sub-section key produces a suggestion hint."""
+    with pytest.raises(PlanArtifactValidationError) as exc_info:
+        validate_plan_section(
+            "design",
+            {"design_constraints": {"text": "x"}},
+        )
+    message = str(exc_info.value)
+    assert "design_constraints" in message
+    assert "design.'constraints'" in message
+    assert "valid design sub-sections" in message
+
+
+def test_unknown_design_subkey_no_suggestion_still_lists_valid_keys() -> None:
+    """AC-03 fallback: an unknown design key with no close match still lists keys."""
+    with pytest.raises(PlanArtifactValidationError) as exc_info:
+        validate_plan_section(
+            "design",
+            {"completely_unrelated_key": "x"},
+        )
+    message = str(exc_info.value)
+    assert "completely_unrelated_key" in message
+    assert "valid design sub-sections" in message
+
+
+def test_design_enum_field_errors_enumerate_valid_values() -> None:
+    """AC-04: design enum-list errors enumerate the valid enum values."""
+    with pytest.raises(PlanArtifactValidationError) as exc_info:
+        validate_plan_section(
+            "design",
+            {
+                "testability": {
+                    "must_be_black_box": True,
+                    "forbidden_in_tests": ["bogus_kind"],
+                    "required_test_layers": ["bogus_layer"],
+                },
+            },
+        )
+    message = str(exc_info.value)
+    for valid_value in (
+        "time.sleep",
+        "subprocess.run-no-timeout",
+        "real-file-IO",
+        "real-network",
+        "global-mutation",
+        "monkeypatch-of-prod",
+    ):
+        assert valid_value in message, valid_value
+    for valid_layer in (
+        "unit",
+        "integration",
+        "subprocess_e2e",
+        "property",
+        "snapshot",
+        "contract",
+    ):
+        assert valid_layer in message, valid_layer
