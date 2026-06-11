@@ -77,7 +77,11 @@ class TestDisplayLayerHasNoCanonicalPhaseNames:
             return "\n".join(
                 p.read_text(encoding="utf-8") for p in sorted(plain_renderer.rglob("*.py"))
             )
-        return (RALPH_ROOT / "display" / "plain_renderer.py").read_text(encoding="utf-8")
+        if (RALPH_ROOT / "display" / "plain_renderer.py").exists():
+            return (RALPH_ROOT / "display" / "plain_renderer.py").read_text(encoding="utf-8")
+        # wt-007-consolidate-display deleted the plain_renderer module.
+        # The same invariant now lives inside parallel_display.py
+        return (RALPH_ROOT / "display" / "parallel_display.py").read_text(encoding="utf-8")
 
     def test_plain_renderer_levels_dict_has_no_canonical_phase_keys(
         self, plain_renderer_source: str

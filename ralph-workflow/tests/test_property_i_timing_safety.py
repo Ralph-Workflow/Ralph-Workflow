@@ -170,7 +170,7 @@ def test_timing_safety_guard_uses_runtimeerror_not_assert() -> None:
     ``time.sleep``, no real file I/O outside the import-time
     ``read_text``).
     """
-    repo = Path("/Users/mistlight/Projects/Ralph-Workflow/wt-004-mcp-fixes/ralph-workflow")
+    repo = Path(__file__).resolve().parents[1]
     text = (repo / "ralph" / "mcp" / "server" / "_timing_safety.py").read_text()
     # The strip-resistant pattern: at least one ``raise RuntimeError`` is
     # present in the source so a future guard regression to ``assert``

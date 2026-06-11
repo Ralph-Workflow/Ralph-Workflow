@@ -1,6 +1,11 @@
 Task: analyze the current git state and identify files that MUST NOT be committed.
 Clean up the commit by removing binaries, build artifacts, temporary files, and other noise.
-The diff shows the changes not yet committed.
+The diff below shows both the tracked changes not yet committed and the untracked
+files that are present in the workspace but not yet in git. Untracked files are
+listed by name only (no diff body). If they are machine-local artifacts, use
+`add_to_git_exclude` so the user-level exclude stops tracking them locally. If
+they are actual binary or generated artifacts that should never enter the repo,
+use `delete_file`.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
@@ -29,6 +34,26 @@ Only recommend removing files from the commit if they match these categories:
 **Auto-generated files already covered by .gitignore:**
 - Any file already matched by a `.gitignore` pattern that was somehow staged anyway
 
+**AI session and generated artifacts:**
+- `.agent/`, `artifacts/`, `reports/` directories and their contents
+- Files with names containing `session`, `transcript`, `prompt`, `analysis`, `checkpoint`, `verify`, `output`, `report`, `log`, `trace`, `debug`, `dump`, `temp`, `tmp`, `artifact`, `capture`, `generated` (e.g. `session-log.txt`, `transcript-001.txt`, `analysis-output.json`)
+- For source code files specifically: untracked source code files whose name contains one of the clearly-temporary tokens `temp`, `tmp`, `scratch`, `generated`, `throwaway`, `dump` (e.g. `temp_script.py`, `scratch_test.go`, `dump_helper.rs`, `throwaway.java`) are also safe to delete. The same temporary-token rule applies to source code in known generated directories such as `tmp/`, `temp/`, `generated/`, or `artifacts/` (e.g. `tmp/scratch.py`, `temp/App.java`).
+
+**Backup and temporary files:**
+- `*.bak`, `*.tmp`, `*.temp`, `*.old`, `*.orig`, `*.rej`, `*.patch`, `*~`
+
+**Log, trace, and coverage files:**
+- `*.log`, `*.trace`, `*.profile`
+- `coverage/`, `.coverage`, `coverage.xml`, `htmlcov/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`
+
+**Package manager caches and vendored dependencies:**
+- `vendor/`, `.bundle/`, `.gradle/`, `.m2/`
+- `__pycache__/`, `.eggs/`, `*.egg-info/` (already listed, keep them)
+
+**Environment and secret files:**
+- `.env`, `.env.local`, `.env.*.local`, `secrets.yml`, `credentials.json`
+- Use `add_to_git_exclude` for these, NEVER `delete_file`
+
 ## CRITICAL CONSTRAINT
 
 **NEVER recommend deleting:**
@@ -40,6 +65,8 @@ Only recommend removing files from the commit if they match these categories:
 
 **Exception:** obvious generated text artifacts are housekeeping and may be removed, for example verification/build captures such as `verify-output.txt`, `test-output.txt`, `build/report.txt`, or temp transcripts/logs under generated-output directories.
 
+**Source code exception (narrow):** untracked source code files whose name contains one of the clearly-temporary tokens `temp`, `tmp`, `scratch`, `generated`, `throwaway`, `dump` are housekeeping and may be removed. The same applies to untracked source files inside `tmp/`, `temp/`, `generated/`, or `artifacts/` directories. **Tracked source files are NEVER safe to delete regardless of name or directory.** Untracked source files using common programming-term names (`log.py`, `model.py`, `worker.py`, `session.py`, `message.py`, `plan.py`, `chat.py`, `debug.py`, `output.py`, `report.py`, `capture.py`, `completion.py`, `note.py`, etc.) must NOT be deleted unless their name also matches the narrow temporary-token list above.
+
 **If you are unsure whether a file should be removed, do NOT include it in your actions.**
 
 ## ACTION GUIDANCE
@@ -47,6 +74,7 @@ Only recommend removing files from the commit if they match these categories:
 - Use `add_to_gitignore` for **project-wide patterns** like `*.pyc`, `build/`, `dist/`
 - Use `add_to_git_exclude` for **machine-local files** like `.env.local`, `.vscode/`
 - Use `delete_file` only for **actual binary or generated files** present in the diff
+- NEVER remove `.lock` files (`package-lock.json`, `yarn.lock`, `Cargo.lock`, `poetry.lock`, `uv.lock`, `Pipfile.lock`, `composer.lock`, `Gemfile.lock`, `go.sum`) — these are intentional committed dependency manifests
 
 ## OUTPUT FORMAT
 
