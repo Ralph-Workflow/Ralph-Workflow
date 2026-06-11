@@ -15,7 +15,10 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Files to audit for bare 'Ralph' branding (static list)
+# Files to audit for bare 'Ralph' branding (static list).
+# wt-007-consolidate-display deleted ralph/banner.py; the banner text now
+# lives in ralph/display/parallel_display.py, which is included separately
+# in the audit list below.
 _AUDIT_FILES: list[Path] = [
     REPO_ROOT / "ralph" / "policy" / "defaults" / "agents.toml",
     REPO_ROOT / "ralph" / "policy" / "defaults" / "artifacts.toml",
@@ -24,7 +27,7 @@ _AUDIT_FILES: list[Path] = [
     REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workflow.toml",
     REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workflow-local.toml",
     REPO_ROOT / "ralph" / "install.py",
-    REPO_ROOT / "ralph" / "banner.py",
+    REPO_ROOT / "ralph" / "display" / "parallel_display.py",
     REPO_ROOT / "ralph" / "cli" / "commands" / "init.py",
     REPO_ROOT / "ralph" / "cli" / "commands" / "diagnose.py",
     REPO_ROOT / "ralph" / "cli" / "commands" / "run.py",

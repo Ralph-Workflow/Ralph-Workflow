@@ -69,6 +69,10 @@ _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
     ("commit_cleanup", "misc"),
     ("_sentry", "arg-type"),
     ("_sentry", "misc"),
+    ("parallel_display", "misc"),
+    ("activity_stream", "misc"),
+    ("phase_agent_handler", "misc"),
+    ("phase_transition", "misc"),
 }
 
 # Policy-compliant reason markers (must appear on the same logical line

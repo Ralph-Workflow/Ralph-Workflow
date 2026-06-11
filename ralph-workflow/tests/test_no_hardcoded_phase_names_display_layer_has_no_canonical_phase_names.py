@@ -92,13 +92,19 @@ class TestDisplayLayerHasNoCanonicalPhaseNames:
 
     @pytest.fixture(scope="class")
     def phase_banner_source(self) -> str:
-        return (RALPH_ROOT / "display" / "phase_banner.py").read_text(encoding="utf-8")
+        phase_banner = RALPH_ROOT / "display" / "phase_banner.py"
+        if not phase_banner.exists():
+            # wt-007-consolidate-display deleted the free-function module.
+            # The same invariant now lives inside parallel_display.py
+            # (the consolidated surface), so scan that file instead.
+            return (RALPH_ROOT / "display" / "parallel_display.py").read_text(encoding="utf-8")
+        return phase_banner.read_text(encoding="utf-8")
 
     def test_phase_banner_has_no_canonical_phase_pair_table(self, phase_banner_source: str) -> None:
         literals = _string_literals_in_source(phase_banner_source)
         violations = DISPLAY_BANNED_PHASE_NAMES & literals
         assert not violations, (
-            f"phase_banner.py contains canonical phase name literal(s): {sorted(violations)}. "
+            f"phase display layer contains canonical phase name literal(s): {sorted(violations)}. "
             "_PHASE_STYLES and transition tables must use role keys only. "
             "See docs/sphinx/policy-driven-overhaul-migration.md for migration details."
         )

@@ -139,6 +139,8 @@ select = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["PLR2004"]  # Magic values in tests are acceptable
 "ralph/cli/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in CLI
+"ralph/config/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in config package
+"ralph/display/**/*.py" = ["PLC0415"]  # Lazy imports avoid circular dependencies in display package
 
 [tool.ruff.lint.pylint]
 # CLI entry-point functions (e.g., typer commands) necessarily have one parameter per flag.

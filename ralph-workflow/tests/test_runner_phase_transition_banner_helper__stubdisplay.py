@@ -37,6 +37,8 @@ class _StubDisplay:
         self._phase_close_emitted = False
         self._last_exit_model: PhaseExitModel | None = None
         self._last_phase_artifact_outcome: str | None = None
+        self.close_banner_called = 0
+        self.transition_called = 0
 
     @property
     def phase_close_emitted(self) -> bool:
@@ -49,3 +51,36 @@ class _StubDisplay:
     def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
         self._phase_close_emitted = True
         self._last_exit_model = exit_model
+
+    def emit_phase_close_banner(
+        self, exit_model: PhaseExitModel, *, pipeline_policy: object = None
+    ) -> None:
+        self.close_banner_called += 1
+        self._last_exit_model = exit_model
+        self._ctx.console.print(f"[close-banner:{exit_model.phase_name}]")
+
+    def emit_phase_transition(
+        self,
+        previous_phase: str,
+        current_phase: str,
+        *,
+        context: object = None,
+        pipeline_policy: object = None,
+    ) -> None:
+        self.transition_called += 1
+        ctx_obj = dict(context) if isinstance(context, dict) else {}
+        note_parts: list[str] = []
+        for key, value in ctx_obj.items():
+            if key == "decision":
+                arrow = self._ctx.glyph_for("arrow")
+                note_parts.append(f"{arrow} {value}")
+            else:
+                note_parts.append(f"{key}={value}")
+        suffix = f" ({'; '.join(note_parts)})" if note_parts else ""
+        arrow = self._ctx.glyph_for("arrow")
+        prev_label = previous_phase.replace("_", " ").title()
+        curr_label = current_phase.replace("_", " ").title()
+        self._ctx.console.print(f"{prev_label} {arrow} {curr_label}{suffix}")
+        pending = getattr(self, "_pending_routing_note", None)
+        if pending is not None:
+            self._ctx.console.print(f"  routing-note: {pending}")

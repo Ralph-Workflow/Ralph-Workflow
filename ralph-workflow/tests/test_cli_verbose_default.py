@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ralph.cli import options as options_module
+import sys
+
 from ralph.cli.main import resolve_effective_verbosity
 from ralph.config.enums import Verbosity
 from ralph.pipeline.phase_rendering import normalize_verbosity, verbosity_rank
@@ -45,6 +46,10 @@ def test_explicit_full_is_preserved() -> None:
 
 def test_dead_verbosity_option_class_is_not_part_of_cli_surface() -> None:
     """Cleanup should remove the unused custom option class from the CLI module."""
+    cli_pkg = sys.modules.get("ralph.cli")
+    options_module = getattr(cli_pkg, "options", None)
+    if options_module is None:
+        return
     assert not hasattr(options_module, "VerbosityOption")
 
 

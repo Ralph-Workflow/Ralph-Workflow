@@ -19,7 +19,7 @@ from ralph.display._decision_labels import (
 from ralph.display._decision_labels import (
     REVISE_DECISION_VALUES as _REVISE_DECISIONS,
 )
-from ralph.display.phase_banner import phase_style
+from ralph.display.parallel_display import phase_style_for_phase as phase_style
 from ralph.display.phase_status import (
     format_dev_cycle,
     format_elapsed_seconds,

@@ -12,11 +12,7 @@ from ralph.config.enums import Verbosity
 from ralph.display.parallel_display import (
     ParallelDisplay,
     get_display_context,
-)
-from ralph.display.phase_banner import (
-    show_phase_close_banner,
-    show_phase_start_from_entry,
-    show_phase_transition,
+    resolve_active_display,
 )
 from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExitModel
 from ralph.pipeline import progress
@@ -156,9 +152,23 @@ def _show_phase_start_with_context(
         pipeline_policy,
         agent_name=agent_name,
     )
-    show_phase_start_from_entry(
-        entry, display_context=display_context, pipeline_policy=pipeline_policy
-    )
+    console = getattr(display_context, "console", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    display_obj: ParallelDisplay | None = None
+    if console is not None:  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        try:
+            display_obj = resolve_active_display(None, display_context)
+        except Exception:
+            display_obj = None
+    if display_obj is not None and hasattr(display_obj, "emit_phase_start_from_entry"):
+        with suppress(Exception):
+            display_obj.emit_phase_start_from_entry(entry, pipeline_policy=pipeline_policy)
+            return
+    with suppress(Exception):
+        fallback = resolve_active_display(None, display_context)
+        if fallback is not None and hasattr(fallback, "emit_phase_start"):
+            fallback.emit_phase_start(
+                phase, agent_name=agent_name, pipeline_policy=pipeline_policy
+            )
 
 
 @dataclass(frozen=True)
@@ -458,8 +468,6 @@ def _emit_phase_change_surfaces(
     *,
     display_context: DisplayContext,
     pipeline_policy: PipelinePolicy,
-    show_close_banner_fn: _ShowCloseBannerFn | None = None,
-    show_transition_fn: _ShowTransitionFn | None = None,
 ) -> None:
     phase_close_already_emitted_attr: object = getattr(
         display, "phase_close_emitted", False
@@ -468,22 +476,20 @@ def _emit_phase_change_surfaces(
     if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
         with suppress(Exception):
             display.emit_phase_close_from_exit(render_data.exit_model)
-    _close_fn = show_close_banner_fn or show_phase_close_banner
-    with suppress(Exception):
-        _close_fn(
-            render_data.exit_model,
-            display_context=display_context,
-            pipeline_policy=pipeline_policy,
-        )
-    _trans_fn = show_transition_fn or show_phase_transition
-    with suppress(Exception):
-        _trans_fn(
-            render_data.previous_phase,
-            render_data.current_phase,
-            context=render_data.transition_context,
-            display_context=display_context,
-            pipeline_policy=pipeline_policy,
-        )
+    if hasattr(display, "emit_phase_close_banner"):
+        with suppress(Exception):
+            display.emit_phase_close_banner(
+                render_data.exit_model,
+                pipeline_policy=pipeline_policy,
+            )
+    if hasattr(display, "emit_phase_transition"):
+        with suppress(Exception):
+            display.emit_phase_transition(
+                render_data.previous_phase,
+                render_data.current_phase,
+                context=render_data.transition_context,
+                pipeline_policy=pipeline_policy,
+            )
 
 
 def _emit_phase_transition_if_changed(
@@ -493,8 +499,6 @@ def _emit_phase_transition_if_changed(
     *,
     verbosity: Verbosity,
     pipeline_policy: PipelinePolicy,
-    show_close_banner_fn: _ShowCloseBannerFn | None = None,
-    show_transition_fn: _ShowTransitionFn | None = None,
 ) -> str:
     """Emit the canonical close+transition display when the phase changes.
 
@@ -520,8 +524,6 @@ def _emit_phase_transition_if_changed(
             render_data,
             display_context=ctx,
             pipeline_policy=pipeline_policy,
-            show_close_banner_fn=show_close_banner_fn,
-            show_transition_fn=show_transition_fn,
         )
     except Exception:  # pragma: no cover - defensive
         logger.debug("phase change emission failed", exc_info=True)

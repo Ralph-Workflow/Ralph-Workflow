@@ -11,7 +11,7 @@ from rich.console import Console
 from ralph.display.completion_summary import (
     style_for_terminal_failure,
 )
-from ralph.display.phase_banner import phase_style
+from ralph.display.parallel_display import phase_style
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 from ralph.policy.models import (

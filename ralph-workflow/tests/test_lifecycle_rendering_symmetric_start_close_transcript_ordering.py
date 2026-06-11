@@ -15,7 +15,7 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import show_phase_start_from_entry
+from ralph.display.parallel_display import resolve_active_display
 from ralph.display.phase_lifecycle import ExitContext, PhaseEntryModel, PhaseExitModel
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
@@ -122,7 +122,8 @@ class TestSymmetricStartCloseTranscriptOrdering:
             outer_dev_iteration=3,
             outer_dev_cap=5,
         )
-        show_phase_start_from_entry(entry, display_context=start_ctx)
+        display = resolve_active_display(None, start_ctx)
+        display.emit_phase_start_from_entry(entry)
 
         # Phase-close transcript
         renderer, close_buf = _make_renderer()

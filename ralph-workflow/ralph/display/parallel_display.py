@@ -15,10 +15,12 @@ import json
 import queue
 import time
 import uuid
-from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
 
 from rich.console import Group
 from rich.panel import Panel
@@ -65,8 +67,7 @@ from ralph.mcp.artifacts.handoffs import (
 if TYPE_CHECKING:
     from types import TracebackType
 
-    from rich.console import Console
-    from rich.console import RenderableType
+    from rich.console import Console, RenderableType
 
     from ralph.config.models import UnifiedConfig
     from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
@@ -131,6 +132,12 @@ _MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
 )
 
 
+# Public alias for tests that previously imported ``MAJOR_ROLE_PAIRS`` from
+# ``ralph.display.phase_banner``. Keeps the consolidated surface reachable
+# while keeping the private underscore-prefixed implementation detail.
+MAJOR_ROLE_PAIRS = _MAJOR_ROLE_PAIRS
+
+
 def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
     """Pure helper: return the rich style string for a phase name or role."""
     if pipeline_policy is not None:
@@ -157,6 +164,19 @@ def _phase_label(phase: str) -> str:
 # ``phase_style`` / ``phase_label`` from ``ralph.display.phase_banner``.
 phase_style = _phase_style
 phase_label = _phase_label
+
+
+def phase_style_for_phase(
+    phase: str,
+    pipeline_policy: PipelinePolicy | None = None,
+) -> str:
+    """Public accessor that exposes the private ``_phase_style`` helper.
+
+    Callers that previously imported ``phase_style`` from
+    ``ralph.display.phase_banner`` should import this accessor instead
+    so they can route through ParallelDisplay's consolidated surface.
+    """
+    return _phase_style(phase, pipeline_policy)
 
 
 def _resolve_transition_meta(
@@ -617,7 +637,7 @@ class ParallelDisplay:
                 line.append(f"  agent={agent_name}", style="theme.text.muted")
             c.print(line)
 
-    def emit_phase_start_from_entry(
+    def emit_phase_start_from_entry(  # noqa: PLR0912 - many branches needed for mode dispatch
         self,
         entry: PhaseEntryModel,
         *,
@@ -1344,16 +1364,15 @@ class ParallelDisplay:
                     )
             else:
                 for name, agent in agents.items():
-                    cmd = getattr(agent, "cmd", "")
-                    parser = getattr(agent, "json_parser", None)
-                    can_commit = getattr(agent, "can_commit", False)
+                    cmd = getattr(agent, "cmd", "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    parser = getattr(agent, "json_parser", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    can_commit = getattr(agent, "can_commit", False)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     if show_secondary:
-                        can_commit_str = "yes" if can_commit else "no"
-                        table.add_row(
-                            name, cmd, str(parser.value if parser is not None else ""), can_commit_str
-                        )
+                        can_commit_str = "yes" if can_commit else "no"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        parser_str = str(parser.value if parser is not None else "")  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        table.add_row(name, cmd, parser_str, can_commit_str)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     else:
-                        table.add_row(name, cmd)
+                        table.add_row(name, cmd)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             self._console.print(table)
 
     def emit_providers_table(self, providers: list[str]) -> None:
@@ -1435,7 +1454,6 @@ class ParallelDisplay:
             from ralph.cli._capability_summary import collect_skill_root_rows
             from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
             from ralph.skills._capability_status import CapabilityStatus
-            from ralph.skills._content import BASELINE_SKILL_NAMES
 
             resolved_workspace = Path.cwd() if workspace_root is None else workspace_root
             table = Table(title="Baseline Capabilities", show_header=True)
@@ -1469,7 +1487,6 @@ class ParallelDisplay:
                     )
                 table.add_row(label, "Managed", status_text)
             self._console.print(table)
-            del BASELINE_SKILL_NAMES  # only used for completeness of the import surface
             if state.skills.status != CapabilityStatus.NOT_INSTALLED:
                 self._console.print(Text("Skill root coverage", style="theme.cat.meta"))
                 skill_rows = collect_skill_root_rows(workspace_root=resolved_workspace)
@@ -1538,6 +1555,184 @@ class ParallelDisplay:
             for index, line in enumerate(next_steps, start=1):
                 self._console.print(f"  {index}. {line}", markup=False, highlight=False)
 
+    # -- Consolidated table / panel / info methods (wt-007) ----------------
+
+    def emit_blank_line(self) -> None:
+        """Print a single blank line for visual spacing."""
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._console.print()
+
+    def emit_info_panel(self, *, title: str, content: str) -> None:
+        """Render a theme.phase.planning bordered info Panel.
+
+        Used by ``diagnose`` to surface the "Next steps" panel and any
+        free-form info block. Replaces the inline ``Panel(...)`` call
+        in diagnose.py.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            panel = Panel(content, title=title, border_style="theme.phase.planning", padding=(1, 2))
+            self._console.print(panel)
+
+    def emit_metrics_table(self, metrics: dict[str, int]) -> None:
+        """Render the metrics table for pipeline summary stats.
+
+        Port of :func:`ralph.display.tables.show_metrics`.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[metrics]")
+            show_secondary = self._ctx.mode != "compact"
+            table = Table(
+                title="Pipeline Metrics",
+                show_header=True,
+                expand=show_secondary,
+                title_style="theme.banner.title",
+                header_style="theme.text.emphasis",
+            )
+            if self._ctx.mode == "compact":
+                table.add_column("Metric", style="theme.cat.meta", overflow="fold")
+            else:
+                table.add_column("Metric", style="theme.cat.meta")
+            table.add_column("Value", justify="right", style="theme.status.success")
+            for name, value in metrics.items():
+                table.add_row(name, str(value))
+            self._console.print(table)
+
+    def emit_checkpoint_summary_table(self, options: object) -> None:
+        """Render the checkpoint summary table.
+
+        Port of :func:`ralph.display.tables.show_checkpoint_summary`.
+        ``options`` is a ``CheckpointSummaryOptions``-like object with
+        ``phase`` (str) and ``budget_progress`` (Mapping[str, tuple[int, int]]).
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[checkpoint]")
+            phase: str = getattr(options, "phase", "")
+            progress: Mapping[str, tuple[int, int]] = getattr(options, "budget_progress", {})
+            show_secondary = self._ctx.mode != "compact"
+            table = Table(
+                title="Checkpoint Summary",
+                show_header=False,
+                expand=show_secondary,
+                title_style="theme.banner.title",
+            )
+            if self._ctx.mode == "compact":
+                table.add_column("Property", style="theme.cat.meta", overflow="fold")
+            else:
+                table.add_column("Property", style="theme.cat.meta")
+            table.add_column("Value")
+            table.add_row("Phase", str(phase))
+            for counter_name, value_pair in progress.items():
+                completed, cap = value_pair
+                table.add_row(str(counter_name), f"{completed}/{cap}")
+            self._console.print(table)
+
+    def emit_diagnose_inventory_table(
+        self, rows: Iterable[object]
+    ) -> None:
+        """Render the diagnose inventory table.
+
+        ``rows`` is a list of objects with a string representation per row.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[diagnose-inventory]")
+            table = Table(
+                title="Diagnose Inventory",
+                show_header=True,
+                title_style="theme.banner.title",
+                header_style="theme.text.emphasis",
+            )
+            table.add_column("Item", style="theme.cat.meta")
+            table.add_column("Status", style="theme.text.muted")
+            for row in rows:
+                table.add_row(str(row), "checked")
+            self._console.print(table)
+
+    def emit_diagnose_probe_table(
+        self, rows: Iterable[object]
+    ) -> None:
+        """Render the diagnose probe results table."""
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[diagnose-probe]")
+            table = Table(
+                title="Diagnose Probe",
+                show_header=True,
+                title_style="theme.banner.title",
+                header_style="theme.text.emphasis",
+            )
+            table.add_column("Probe", style="theme.cat.meta")
+            table.add_column("Result", style="theme.text.muted")
+            for row in rows:
+                table.add_row(str(row), "ok")
+            self._console.print(table)
+
+    def emit_diagnose_servers_table(
+        self, rows: Iterable[object]
+    ) -> None:
+        """Render the diagnose MCP servers table."""
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[diagnose-servers]")
+            table = Table(
+                title="MCP Servers",
+                show_header=True,
+                title_style="theme.banner.title",
+                header_style="theme.text.emphasis",
+            )
+            table.add_column("Server", style="theme.cat.meta")
+            table.add_column("Status", style="theme.text.muted")
+            for row in rows:
+                table.add_row(str(row), "reachable")
+            self._console.print(table)
+
+    def emit_dry_run_summary(
+        self,
+        *,
+        phase: str,
+        iterations: int,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        """Render the dry-run summary block for the run command.
+
+        ``details`` is an optional mapping of extra key/value lines to print
+        after the standard phase / iteration lines.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[dry-run]")
+            header = Text("Dry run mode", style="theme.cat.meta")
+            self._console.print(header)
+            self._console.print(
+                Text(f"  Phase: {phase}", style="theme.text.muted"),
+                markup=False,
+                highlight=False,
+            )
+            self._console.print(
+                Text(f"  Iterations: {iterations}", style="theme.text.muted"),
+                markup=False,
+                highlight=False,
+            )
+            if details is not None:
+                for key, value in details.items():
+                    self._console.print(
+                        Text(f"  {key}: {value}", style="theme.text.muted"),
+                        markup=False,
+                        highlight=False,
+                    )
+
     @property
     def display_context(self) -> DisplayContext:
         """Return the DisplayContext this display renders against."""
@@ -1590,7 +1785,7 @@ def emit_activity_line(
 
 
 def resolve_active_display(
-    display: ParallelDisplay | None,
+    display: ParallelDisplay | DisplayContext | None,
     display_context: DisplayContext | None = None,
 ) -> ParallelDisplay:
     """Return the given display, constructing a ParallelDisplay from the context if needed.
@@ -1598,11 +1793,30 @@ def resolve_active_display(
     The context is required when `display` is None. Rich is a required
     dependency (declared in `pyproject.toml` line 22: `rich>=13.0`), so
     ParallelDisplay always initialises successfully here.
+
+    A ``DisplayContext`` passed as ``display`` is unwrapped to its
+    ``display_context`` slot and a fresh ``ParallelDisplay`` is constructed,
+    so callers that only have a context still get a real display.
     """
+    if isinstance(display, DisplayContext):
+        display_context = display
+        display = None
     if display is not None:
         return display
     if display_context is None:
         raise TypeError("display_context is required when display is None")
+    return ParallelDisplay(display_context)
+
+
+def _resolve_active_display_from_context(
+    display_context: DisplayContext,
+) -> ParallelDisplay:
+    """Construct a fresh ParallelDisplay from the supplied context.
+
+    Used by helpers that only have a ``DisplayContext`` (not the original
+    display) in scope. Returns a new ParallelDisplay bound to the same
+    DisplayContext, so output goes to the same console and theme.
+    """
     return ParallelDisplay(display_context)
 
 

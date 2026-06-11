@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import phase_style, show_phase_start
+from ralph.display.parallel_display import (
+    phase_style,
+    resolve_active_display,
+)
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -53,10 +56,11 @@ class TestPhaseStyleDisplayStyle:
     def test_show_phase_start_renders_planning_banner_with_correct_style(
         self,
     ) -> None:
-        """show_phase_start for planning renders output containing 'Planning'."""
+        """emit_phase_start for planning renders output containing 'Planning'."""
         pipeline, _ = _load_default_policy_bundle()
         console = Console(record=True)
         ctx = make_display_context(console=console)
-        show_phase_start("planning", display_context=ctx, pipeline_policy=pipeline)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_start("planning", pipeline_policy=pipeline)
         output = console.export_text()
         assert "Planning" in output

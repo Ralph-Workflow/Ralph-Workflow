@@ -21,17 +21,6 @@ ralph.main
    :members:
    :show-inheritance:
 
-ralph.banner
-~~~~~~~~~~~~
-
-.. Note: RichGroupProto/RichPanelProto/RichTextProto are excluded here to avoid duplicate
-   object descriptions; they are documented under ralph.rich_protocols.
-
-.. automodule:: ralph.banner
-   :members:
-   :show-inheritance:
-   :exclude-members: RichGroupProto, RichPanelProto, RichTextProto
-
 ralph.logging
 ~~~~~~~~~~~~~
 
@@ -184,13 +173,6 @@ ralph.cli.main
 ~~~~~~~~~~~~~~
 
 .. automodule:: ralph.cli.main
-   :members:
-   :show-inheritance:
-
-ralph.cli.options
-~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.cli.options
    :members:
    :show-inheritance:
 
@@ -2588,24 +2570,10 @@ ralph.display.artifact_reader
    :members:
    :show-inheritance:
 
-ralph.display.artifact_renderer
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.artifact_renderer
-   :members:
-   :show-inheritance:
-
 ralph.display.context
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.context
-   :members:
-   :show-inheritance:
-
-ralph.display.first_run_panel
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.first_run_panel
    :members:
    :show-inheritance:
 
@@ -2662,13 +2630,6 @@ ralph.display.parallel_display
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.parallel_display
-   :members:
-   :show-inheritance:
-
-ralph.display.phase_banner
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.phase_banner
    :members:
    :show-inheritance:
 
@@ -2731,13 +2692,6 @@ ralph.display.subscriber
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.subscriber
-   :members:
-   :show-inheritance:
-
-ralph.display.tables
-~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.tables
    :members:
    :show-inheritance:
 

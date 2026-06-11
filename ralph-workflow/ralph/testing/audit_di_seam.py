@@ -116,12 +116,12 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # mcp/websearch/secrets.py:17 — ``getenv`` is a callable parameter
     # of type ``EnvGetter``, NOT an ambient read.
     "mcp/websearch/secrets.py:17",
-    # pipeline/runner.py:790 — display-only CTA: hashes the USER env var
+    # pipeline/runner.py:785 — display-only CTA: hashes the USER env var
     # with the process id to determine whether to print a star-CTA after
     # a successful pipeline run. Cosmetic, not a config read; the result
     # is non-deterministic enough that injecting it would add no test
     # value.
-    "pipeline/runner.py:790",
+    "pipeline/runner.py:785",
 )
 
 # Top-level entry points and the config package — the composition root for

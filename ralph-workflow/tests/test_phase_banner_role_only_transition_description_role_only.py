@@ -7,8 +7,8 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import (
-    show_phase_transition,
+from ralph.display.parallel_display import (
+    resolve_active_display,
 )
 from ralph.display.theme import RALPH_THEME
 from ralph.policy.models import (
@@ -104,7 +104,7 @@ def _console() -> Console:
 
 class TestTransitionDescriptionRoleOnly:
     def test_renamed_phases_transition_shows_routing_not_status_prose(self) -> None:
-        """show_phase_transition with renamed phases shows routing labels, not status prose.
+        """emit_phase_transition with renamed phases shows routing labels, not status prose.
 
         The phase-close banner communicates exit context; the transition
         banner shows only routing context (from-phase → to-phase labels).
@@ -112,7 +112,8 @@ class TestTransitionDescriptionRoleOnly:
         policy = _make_execution_to_analysis_policy()
         console = _console()
         ctx = make_display_context(console=console)
-        show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_transition("design", "audit", pipeline_policy=policy)
         output = console.file.getvalue()
         assert "Design" in output
         assert "Audit" in output
@@ -121,10 +122,11 @@ class TestTransitionDescriptionRoleOnly:
         assert "analyzing results" not in output
 
     def test_no_phase_pair_fallback(self) -> None:
-        """show_phase_transition without policy shows no hardcoded canonical description."""
+        """emit_phase_transition without policy shows no hardcoded canonical description."""
         console = _console()
         ctx = make_display_context(console=console)
-        show_phase_transition("planning", "development", pipeline_policy=None, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_transition("planning", "development", pipeline_policy=None)
         output = console.file.getvalue()
         # Old canonical table had 'Plan ready — starting development' which must not appear.
         assert "Plan ready" not in output
@@ -134,7 +136,8 @@ class TestTransitionDescriptionRoleOnly:
         """Without policy, any transition is treated as minor (no major banner)."""
         console = _console()
         ctx = make_display_context(console=console, force_mode="medium")
-        show_phase_transition("planning", "development", pipeline_policy=None, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_transition("planning", "development", pipeline_policy=None)
         output = console.file.getvalue()
         # Minor transitions render as a simple Rule, not the major banner.
         # Major banners in medium/wide mode print two Rules + description.

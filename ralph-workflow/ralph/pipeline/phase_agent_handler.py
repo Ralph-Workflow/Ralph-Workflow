@@ -13,16 +13,10 @@ from loguru import logger
 from ralph.agents.chain import ChainManager
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
-from ralph.display.artifact_renderer import (
-    render_analysis_decision,
-    render_development_artifact,
-    render_fix_artifact,
-    render_plan_artifact,
-    render_review_artifact,
-)
 from ralph.display.parallel_display import (
     ParallelDisplay,
     get_display_context,
+    resolve_active_display,
 )
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.phases import PhaseContext, handle_phase
@@ -71,6 +65,32 @@ def _read_latest_analysis_decision_func() -> _ReadLatestAnalysisDecisionFn:
 def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
     module = cast("_ArtifactReaderModule", import_module("ralph.display.artifact_reader"))
     return module.read_plan_artifact
+
+
+def _emit_via_display(
+    display_context: DisplayContext,
+    method_name: str,
+    *args: object,
+    **kwargs: object,
+) -> bool:
+    """Resolve an active display and dispatch to the named method.
+
+    Returns True when a ParallelDisplay with the requested method was found
+    and invoked. Returns False when no active display is available, allowing
+    callers to fall back to the legacy free-function path if one exists.
+    """
+    try:
+        display: ParallelDisplay = resolve_active_display(None, display_context)
+    except Exception:
+        return False
+    method = getattr(display, method_name, None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    if method is None or not callable(method):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        return False
+    try:
+        method(*args, **kwargs)
+    except Exception:
+        return False
+    return True
 
 
 def _phase_event_after_agent_run(
@@ -183,7 +203,9 @@ def _render_phase_artifact_handoff(
             phase_def = policy_bundle.pipeline.phases.get(phase)
             role = phase_def.role if phase_def is not None else None
             if role == "analysis":
-                render_analysis_decision(workspace_root, effective_drain, ctx)
+                _emit_via_display(
+                    ctx, "emit_analysis_decision", workspace_root, effective_drain
+                )
             else:
                 logger.debug(
                     "policy: no renderer for phase '{}' (role={});"
@@ -195,7 +217,9 @@ def _render_phase_artifact_handoff(
 
     artifact_type = required_artifact.artifact_type
     if artifact_type.endswith("_analysis_decision"):
-        render_analysis_decision(workspace_root, effective_drain, ctx)
+        _emit_via_display(
+            ctx, "emit_analysis_decision", workspace_root, effective_drain
+        )
         return
 
     if event == PipelineEvent.AGENT_SUCCESS:
@@ -223,7 +247,7 @@ def _render_success_artifact(
                 cast("ParallelDisplay", display).record_artifact_outcome(produced)
 
     if artifact_type == "plan":
-        render_plan_artifact(workspace_root, display_context)
+        _emit_via_display(display_context, "emit_plan_artifact", workspace_root)
         with suppress(Exception):
             read_plan_artifact = _read_plan_artifact_func()
             plan = read_plan_artifact(workspace_root)
@@ -236,7 +260,7 @@ def _render_success_artifact(
         return
 
     if artifact_type == "development_result":
-        render_development_artifact(workspace_root, display_context)
+        _emit_via_display(display_context, "emit_development_artifact", workspace_root)
         produced = (
             "result produced" if (workspace_root / ra.json_path).exists() else "no result artifact"
         )
@@ -244,7 +268,7 @@ def _render_success_artifact(
         return
 
     if artifact_type == "issues":
-        render_review_artifact(workspace_root, display_context)
+        _emit_via_display(display_context, "emit_review_artifact", workspace_root)
         with suppress(Exception):
             issue_count = 0
             issues_path = workspace_root / ra.json_path
@@ -270,7 +294,7 @@ def _render_success_artifact(
         return
 
     if artifact_type == "fix_result":
-        render_fix_artifact(workspace_root, display_context)
+        _emit_via_display(display_context, "emit_fix_artifact", workspace_root)
         _emit_close("applied")
 
 

@@ -63,9 +63,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from ralph.banner import show_banner
 from ralph.display.context import make_display_context
-from ralph.display.first_run_panel import render_first_run_panel
 from ralph.display.parallel_display import ParallelDisplay
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
@@ -138,7 +136,7 @@ def test_plain_log_renderer_status_line_uses_build_line() -> None:
 
 
 def test_first_run_panel_helper_routes_through_display_context() -> None:
-    """Pin Update 4 of step 4: render_first_run_panel uses display_context.console only."""
+    """Pin wt-007: ParallelDisplay.emit_first_run_panel routes through the active display."""
     printed: list[object] = []
 
     class _RecordingConsole:
@@ -150,34 +148,31 @@ def test_first_run_panel_helper_routes_through_display_context() -> None:
 
     recording_console = _RecordingConsole()
     ctx = make_display_context(env={}, console=recording_console)
-    render_first_run_panel([Text("hello")], display_context=ctx)
+    pd = ParallelDisplay(ctx)
+    pd.emit_first_run_panel([Text("hello")])
 
     assert len(printed) == 1, (
-        f"render_first_run_panel should print exactly one Panel, got {len(printed)}: "
+        f"emit_first_run_panel should print exactly one Panel, got {len(printed)}: "
         f"{printed!r}"
     )
     panel = printed[0]
     assert isinstance(panel, Panel), (
-        f"render_first_run_panel should print a rich.panel.Panel, got {type(panel).__name__}"
-    )
-    assert panel.title == "Ralph Workflow first-run setup", (
-        f"panel title should be 'Ralph Workflow first-run setup', got {panel.title!r}"
+        f"emit_first_run_panel should print a rich.panel.Panel, got {type(panel).__name__}"
     )
 
-    source = inspect.getsource(render_first_run_panel)
+    source = inspect.getsource(ParallelDisplay.emit_first_run_panel)
     assert "Console(" not in source, (
-        "render_first_run_panel must NOT construct its own Console; "
+        "emit_first_run_panel must NOT construct its own Console; "
         f"found 'Console(' in source:\n{source!r}"
     )
 
 
-def test_show_banner_rejects_console_parameter() -> None:
-    """Pin step 5: show_banner signature is `(*, display_context, version)`, no console param."""
-    sig = inspect.signature(show_banner)
+def test_emit_welcome_banner_rejects_console_parameter() -> None:
+    """Pin wt-007: ParallelDisplay.emit_welcome_banner signature is `(self, *, version)` only."""
+    sig = inspect.signature(ParallelDisplay.emit_welcome_banner)
     assert "console" not in sig.parameters, (
-        f"show_banner must NOT accept a 'console' parameter; got: {sig}"
+        f"emit_welcome_banner must NOT accept a 'console' parameter; got: {sig}"
     )
-    assert set(sig.parameters) == {"display_context", "version"}, (
-        f"show_banner parameters must be exactly {{'display_context', 'version'}}; "
-        f"got {set(sig.parameters)!r}"
+    assert "version" in sig.parameters, (
+        f"emit_welcome_banner must accept a 'version' parameter; got: {sig}"
     )

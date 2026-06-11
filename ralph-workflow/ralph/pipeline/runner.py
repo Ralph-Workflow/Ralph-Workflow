@@ -208,7 +208,6 @@ __all__ = [
     "reducer_reduce",
     "register_role_handlers",
     "render_agent_activity_line",
-    "render_commit_message",
     "repo_has_commit_work",
     "resolve_display",
     "resolve_workspace_scope",
@@ -957,7 +956,6 @@ def execute_commit_effect(
         create_commit_fn=create_commit_fn,
         stage_all_fn=stage_all_fn,
         has_commit_work_fn=repo_has_commit_work,
-        render_commit_message_fn=render_commit_message,
         **opts,
     )
 
@@ -970,25 +968,13 @@ def emit_phase_transition_if_changed(
     verbosity: Verbosity,
     pipeline_policy: PipelinePolicy,
 ) -> str:
-    """Emit phase-transition surfaces while honoring runner-level patched display hooks."""
-    effective_close_fn = (
-        show_phase_close_banner
-        if show_phase_close_banner is not _original_show_phase_close_banner
-        else None
-    )
-    effective_transition_fn = (
-        show_phase_transition
-        if show_phase_transition is not _original_show_phase_transition
-        else None
-    )
+    """Emit phase-transition surfaces via the consolidated display surface."""
     return _pt_emit_phase_transition_if_changed(
         display,
         previous_phase,
         state,
         verbosity=verbosity,
         pipeline_policy=pipeline_policy,
-        show_close_banner_fn=effective_close_fn,
-        show_transition_fn=effective_transition_fn,
     )
 
 

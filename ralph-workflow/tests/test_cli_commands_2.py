@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 
 from rich.console import Console
 
-from ralph.cli import options as options_module
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
@@ -21,6 +20,7 @@ from ralph.cli.commands.check_policy import check_policy_command
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.multimodal.capabilities import (
@@ -866,7 +866,8 @@ def test_display_tables_render() -> None:
     console = Console(file=buffer, force_terminal=False, color_system=None, theme=RALPH_THEME)
     ctx = make_display_context(console=console, env={})
     agent = AgentConfig(cmd="agent", can_commit=False)
-    options_module.display_agents_table({"alpha": agent}, display_context=ctx)
+    pd = ParallelDisplay(ctx)
+    pd.emit_agents_table({"alpha": agent})
     rendered = buffer.getvalue()
     assert "Configured" in rendered
     assert "Agents" in rendered
@@ -875,7 +876,7 @@ def test_display_tables_render() -> None:
 
     buffer.truncate(0)
     buffer.seek(0)
-    options_module.display_providers_table(["opencode"], display_context=ctx)
+    pd.emit_providers_table(["opencode"])
     rendered = buffer.getvalue()
     assert "Available" in rendered
     assert "Providers" in rendered

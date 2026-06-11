@@ -135,8 +135,13 @@ class TestRefineAcceptLoop:
 
         write_called = [False]
 
-        def mock_write_prompt_md(workspace_root: Path, spec: dict[str, object]) -> None:
-            del workspace_root, spec
+        def mock_write_prompt_md(
+            workspace_root: Path,
+            spec: dict[str, object],
+            *,
+            display_context: object = None,
+        ) -> None:
+            del workspace_root, spec, display_context
             write_called[0] = True
 
         monkeypatch.setattr(

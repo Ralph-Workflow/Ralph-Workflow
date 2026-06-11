@@ -5,13 +5,6 @@ from __future__ import annotations
 import contextlib
 from typing import TYPE_CHECKING, cast
 
-from ralph.agents.parsers import (
-    ClaudeParser,
-    CodexParser,
-    GeminiParser,
-    GenericParser,
-    OpenCodeParser,
-)
 from ralph.display.activity_model import (
     ActivityEventKind,
     ActivityProvider,
@@ -26,18 +19,40 @@ if TYPE_CHECKING:
 
     from ralph.agents.parsers.base import AgentParser
 
-PARSERS: dict[ActivityProvider, type[AgentParser]] = {
-    ActivityProvider.AGY: GenericParser,
-    ActivityProvider.CLAUDE: ClaudeParser,
-    ActivityProvider.OPENCODE: OpenCodeParser,
-    ActivityProvider.CODEX: CodexParser,
-    ActivityProvider.GEMINI: GeminiParser,
-    ActivityProvider.GENERIC: cast("type[AgentParser]", GenericParser),
-}
+# Parser imports are deferred: ``ralph.agents.parsers`` pulls in
+# ``ralph.display.vt_normalizer`` -> ``ralph.display`` -> ``ralph.display.parallel_display``
+# -> this module, so the eager import below would close a cycle.
+PARSERS: dict[ActivityProvider, type[AgentParser]] = {}
+
+
+def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
+    """Populate ``PARSERS`` on first use to break the parsers/display cycle."""
+    from ralph.agents.parsers import (
+        ClaudeParser,
+        CodexParser,
+        GeminiParser,
+        GenericParser,
+        OpenCodeParser,
+    )
+
+    return {
+        ActivityProvider.AGY: GenericParser,
+        ActivityProvider.CLAUDE: ClaudeParser,
+        ActivityProvider.OPENCODE: OpenCodeParser,
+        ActivityProvider.CODEX: CodexParser,
+        ActivityProvider.GEMINI: GeminiParser,
+        ActivityProvider.GENERIC: cast("type[AgentParser]", GenericParser),
+    }
 
 
 def _default_parser_factory(provider: ActivityProvider) -> AgentParser:
-    parser_cls = PARSERS.get(provider, cast("type[AgentParser]", GenericParser))
+    if not PARSERS:
+        PARSERS.update(_build_parsers())
+    parser_cls = PARSERS.get(provider)
+    if parser_cls is None:
+        from ralph.agents.parsers import GenericParser
+
+        parser_cls = cast("type[AgentParser]", GenericParser)
     return parser_cls()
 
 

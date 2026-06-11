@@ -1,4 +1,4 @@
-"""ANSI-vs-plain regression tests for ralph/display/phase_banner.py."""
+"""ANSI-vs-plain regression tests for ParallelDisplay phase methods."""
 
 from __future__ import annotations
 
@@ -7,7 +7,9 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import show_phase_start, show_phase_transition
+from ralph.display.parallel_display import (
+    resolve_active_display,
+)
 from ralph.display.theme import RALPH_THEME
 
 
@@ -39,14 +41,16 @@ def _plain_context(buf: StringIO) -> object:
 def test_show_phase_transition_emits_ansi_on_tty() -> None:
     buf = StringIO()
     ctx = _themed_context(buf)
-    show_phase_transition("planning", "development", display_context=ctx)
+    display = resolve_active_display(None, ctx)
+    display.emit_phase_transition("planning", "development")
     assert "\x1b[" in buf.getvalue()
 
 
 def test_show_phase_transition_no_ansi_on_plain() -> None:
     buf = StringIO()
     ctx = _plain_context(buf)
-    show_phase_transition("planning", "development", display_context=ctx)
+    display = resolve_active_display(None, ctx)
+    display.emit_phase_transition("planning", "development")
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "Planning" in out
@@ -56,14 +60,16 @@ def test_show_phase_transition_no_ansi_on_plain() -> None:
 def test_show_phase_start_emits_ansi_on_tty() -> None:
     buf = StringIO()
     ctx = _themed_context(buf)
-    show_phase_start("development", display_context=ctx)
+    display = resolve_active_display(None, ctx)
+    display.emit_phase_start("development")
     assert "\x1b[" in buf.getvalue()
 
 
 def test_show_phase_start_no_ansi_on_plain() -> None:
     buf = StringIO()
     ctx = _plain_context(buf)
-    show_phase_start("development", display_context=ctx)
+    display = resolve_active_display(None, ctx)
+    display.emit_phase_start("development")
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "Development" in out
@@ -72,14 +78,16 @@ def test_show_phase_start_no_ansi_on_plain() -> None:
 def test_minor_transition_emits_ansi_on_tty() -> None:
     buf = StringIO()
     ctx = _themed_context(buf)
-    show_phase_transition("development", "development_analysis", display_context=ctx)
+    display = resolve_active_display(None, ctx)
+    display.emit_phase_transition("development", "development_analysis")
     assert "\x1b[" in buf.getvalue()
 
 
 def test_minor_transition_no_ansi_on_plain() -> None:
     buf = StringIO()
     ctx = _plain_context(buf)
-    show_phase_transition("development", "development_analysis", display_context=ctx)
+    display = resolve_active_display(None, ctx)
+    display.emit_phase_transition("development", "development_analysis")
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "Development" in out

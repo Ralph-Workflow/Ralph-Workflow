@@ -16,17 +16,11 @@ from ralph.agents.invoke import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.display.activity_router import map_parser_type_to_kind
-from ralph.display.artifact_renderer import (
-    render_analysis_decision,
-    render_development_artifact,
-    render_fix_artifact,
-    render_plan_artifact,
-    render_review_artifact,
-)
 from ralph.display.parallel_display import (
     ParallelDisplay,
     emit_activity_line,
     get_display_context,
+    resolve_active_display,
     subscriber_for_display,
 )
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
@@ -40,7 +34,6 @@ if TYPE_CHECKING:
 
     from ralph.display.artifact_reader import PlanSummary
     from ralph.display.context import DisplayContext
-    from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.events import Event
@@ -66,6 +59,41 @@ _MAX_METADATA_SUMMARY_LENGTH = 120
 def _parallel_display_cls() -> type[ParallelDisplay]:
     module = cast("_ParallelDisplayModule", import_module("ralph.display.parallel_display"))
     return module.ParallelDisplay
+
+
+def _emit_via_display(
+    display_context: DisplayContext,
+    method_name: str,
+    *args: object,
+    **kwargs: object,
+) -> bool:
+    """Resolve an active display and call the named method, returning success.
+
+    Returns True when a ParallelDisplay with the requested method was found
+    and invoked. Returns False when no active display is available, allowing
+    callers to fall back to the legacy free-function path if one exists.
+
+    When ``display_context`` itself is a ``ParallelDisplay`` (test fakes,
+    legacy paths) the method is called directly on the supplied object. When
+    it is a ``DisplayContext`` (the canonical path), the active display is
+    resolved via ``resolve_active_display``.
+    """
+    display: object | None = display_context
+    if not isinstance(display_context, ParallelDisplay):
+        try:
+            display = resolve_active_display(None, display_context)
+        except Exception:
+            return False
+    if display is None:
+        return False
+    method = getattr(display, method_name, None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    if method is None or not callable(method):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        return False
+    try:
+        method(*args, **kwargs)
+    except Exception:
+        return False
+    return True
 
 
 def _read_plan_artifact_func() -> _ReadPlanArtifactFn:
@@ -119,7 +147,9 @@ def render_phase_artifact_handoff(
             phase_def = _ctx.policy_bundle.pipeline.phases.get(phase)
             role = phase_def.role if phase_def is not None else None
             if role == "analysis":
-                render_analysis_decision(workspace_root, effective_drain, display_ctx)
+                _emit_via_display(
+                    display_ctx, "emit_analysis_decision", workspace_root, effective_drain
+                )
             else:
                 logger.debug(
                     "policy: no renderer for phase '{}' (role={});"
@@ -131,7 +161,9 @@ def render_phase_artifact_handoff(
 
     artifact_type = required_artifact.artifact_type
     if artifact_type.endswith("_analysis_decision"):
-        render_analysis_decision(workspace_root, effective_drain, display_ctx)
+        _emit_via_display(
+            display_ctx, "emit_analysis_decision", workspace_root, effective_drain
+        )
         return
 
     if event == PipelineEvent.AGENT_SUCCESS:
@@ -154,7 +186,7 @@ def _render_success_artifact(artifact_type: str, ctx: _ArtifactRenderCtx) -> Non
                 cast("ParallelDisplay", ctx.display).record_artifact_outcome(produced)
 
     if artifact_type == "plan":
-        render_plan_artifact(ctx.workspace_root, ctx.display_context)
+        _emit_via_display(ctx.display_context, "emit_plan_artifact", ctx.workspace_root)
         with suppress(Exception):
             plan = _read_plan_artifact_func()(ctx.workspace_root)
             produced = (
@@ -166,7 +198,7 @@ def _render_success_artifact(artifact_type: str, ctx: _ArtifactRenderCtx) -> Non
         return
 
     if artifact_type == "development_result":
-        render_development_artifact(ctx.workspace_root, ctx.display_context)
+        _emit_via_display(ctx.display_context, "emit_development_artifact", ctx.workspace_root)
         produced = (
             "result produced"
             if (ctx.workspace_root / ctx.ra.json_path).exists()
@@ -176,14 +208,14 @@ def _render_success_artifact(artifact_type: str, ctx: _ArtifactRenderCtx) -> Non
         return
 
     if artifact_type == "issues":
-        render_review_artifact(ctx.workspace_root, ctx.display_context)
+        _emit_via_display(ctx.display_context, "emit_review_artifact", ctx.workspace_root)
         with suppress(Exception):
             issue_count = _count_issues(ctx.workspace_root / ctx.ra.json_path)
             _emit_close(f"{issue_count} issue(s)")
         return
 
     if artifact_type == "fix_result":
-        render_fix_artifact(ctx.workspace_root, ctx.display_context)
+        _emit_via_display(ctx.display_context, "emit_fix_artifact", ctx.workspace_root)
         _emit_close("applied")
 
 

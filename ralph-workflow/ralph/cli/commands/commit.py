@@ -25,8 +25,8 @@ from ralph.cli.commands._commit_chain_config import CommitChainConfig
 from ralph.cli.commands._commit_plumbing_options import CommitPlumbingOptions
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
-from ralph.display.artifact_renderer import render_commit_message
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.parallel_display import resolve_active_display
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
@@ -222,9 +222,10 @@ def _handle_agent_commit_generation(
         )
         return
 
-    # Use the shared render_commit_message for consistent UI
+    # Use the consolidated ParallelDisplay.emit_commit_message for consistent UI
     console.print(Text("\nGenerated commit message:", style="theme.status.success"))
-    render_commit_message(repo_root, ctx)
+    _display = resolve_active_display(None, ctx)
+    _display.emit_commit_message(repo_root)
     if result.failure_details:
         console.print(
             Text(
@@ -265,8 +266,9 @@ def _show_commit_message(repo_root: Path, *, display_context: DisplayContext) ->
         console.print(Text("No commit message generated yet", style="theme.status.error"))
         return
 
-    # Use the shared render_commit_message for consistent UI
-    render_commit_message(repo_root, ctx)
+    # Use the consolidated ParallelDisplay.emit_commit_message for consistent UI
+    _display = resolve_active_display(None, display_context)
+    _display.emit_commit_message(repo_root)
 
 
 def _print_commit_failure_details(

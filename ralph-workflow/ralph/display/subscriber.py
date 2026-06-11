@@ -5,11 +5,10 @@ from __future__ import annotations
 import threading
 from datetime import UTC, datetime
 from queue import Full, Queue
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
 from ralph.display.artifact_reader import (
     PlanSummary,
     read_latest_analysis_decision,
@@ -32,37 +31,73 @@ if TYPE_CHECKING:
 _DECISION_LOG_MAX = 16
 
 
+class _WaitingEventLike(Protocol):
+    cumulative_seconds: float
+    ceiling_seconds: float
+    current_run_seconds: float
+    diagnostic: dict[str, object]
+    kind: _WaitingKindLike
+
+
+class _WaitingKindLike(Protocol):
+    ENTERED: object
+    PROGRESS: object
+    SUSPECTED_FROZEN: object
+    HARD_STOP: object
+    EXITED: object
+    name: str
+
+
+def _resolve_waiting_types() -> tuple[type[_WaitingEventLike], type[_WaitingKindLike]]:
+    """Resolve ``WaitingStatusEvent`` / ``WaitingStatusKind`` lazily.
+
+    Importing ``ralph.agents.idle_watchdog`` at module load time would close a
+    cycle through ``ralph.agents.execution_state`` ->
+    ``ralph.agents.parsers.claude_interactive`` ->
+    ``ralph.display.vt_normalizer`` -> ``ralph.display`` -> this module.
+    """
+    from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind
+
+    return cast("type[_WaitingEventLike]", WaitingStatusEvent), cast(
+        "type[_WaitingKindLike]", WaitingStatusKind
+    )
+
+
 def _format_waiting_status_line(event: object) -> str:
     """Build the human-readable line for a WaitingStatusEvent."""
-    assert isinstance(event, WaitingStatusEvent)
-    cum = f"{event.cumulative_seconds:.0f}"
-    ceil = f"{event.ceiling_seconds:.0f}"
-    run = f"{event.current_run_seconds:.0f}"
-    if event.kind == WaitingStatusKind.ENTERED:
+    waiting_event_cls, waiting_kind_cls = _resolve_waiting_types()
+    assert isinstance(event, waiting_event_cls)
+    cast_event = event
+    cum = f"{cast_event.cumulative_seconds:.0f}"
+    ceil = f"{cast_event.ceiling_seconds:.0f}"
+    run = f"{cast_event.current_run_seconds:.0f}"
+    if cast_event.kind == waiting_kind_cls.ENTERED:
         return f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
-    if event.kind == WaitingStatusKind.PROGRESS:
-        delta = event.diagnostic.get("workspace_event_delta")
-        alive_by = event.diagnostic.get("alive_by")
+    if cast_event.kind == waiting_kind_cls.PROGRESS:
+        delta = cast_event.diagnostic.get("workspace_event_delta")
+        alive_by = cast_event.diagnostic.get("alive_by")
         parts = [f"run={run}s", f"cumulative={cum}s", f"ceiling={ceil}s"]
         if delta is not None:
             parts.append(f"workspace_events_since_wait={delta}")
         if alive_by is not None:
             parts.append(f"alive_by={alive_by}")
         return f"Background child work still active ({', '.join(parts)})"
-    if event.kind == WaitingStatusKind.SUSPECTED_FROZEN:
-        evidence = str(event.diagnostic.get("evidence", "unknown"))
-        alive_by = event.diagnostic.get("alive_by")
+    if cast_event.kind == waiting_kind_cls.SUSPECTED_FROZEN:
+        evidence = str(cast_event.diagnostic.get("evidence", "unknown"))
+        alive_by = cast_event.diagnostic.get("alive_by")
         suffix = f", alive_by={alive_by}" if alive_by is not None else ""
         return (
             f"Background child work may be frozen"
             f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence}{suffix})"
         )
-    if event.kind == WaitingStatusKind.EXITED:
+    if cast_event.kind == waiting_kind_cls.EXITED:
         return f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
-    scoped = event.diagnostic.get("scoped_child_active", "?")
-    oldest_val = event.diagnostic.get("oldest_child_seconds")
+    scoped = cast_event.diagnostic.get("scoped_child_active", "?")
+    oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
-        f", oldest_child_seconds={float(oldest_val):.0f}s" if oldest_val is not None else ""
+        f", oldest_child_seconds={float(cast('int | float', oldest_val)):.0f}s"
+        if oldest_val is not None
+        else ""
     )
     return (
         f"Background child work hit hard ceiling"
@@ -288,8 +323,10 @@ class PipelineSubscriber:
         agent_name: str | None = None,
     ) -> None:
         """Record a waiting-status event from IdleWatchdog and push a fresh snapshot."""
-        if not isinstance(event, WaitingStatusEvent):
+        waiting_event_cls, waiting_kind_cls = _resolve_waiting_types()
+        if not isinstance(event, waiting_event_cls):
             return
+        cast_event = event
         line = _format_waiting_status_line(event)
         snapshots_to_publish: list[PipelineSnapshot] = []
         with self._lock:
@@ -299,16 +336,16 @@ class PipelineSubscriber:
             if agent_name is not None:
                 self._active_agent = agent_name
             self._waiting_status_line = line
-            if event.kind in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.HARD_STOP):
+            if cast_event.kind in (waiting_kind_cls.SUSPECTED_FROZEN, waiting_kind_cls.HARD_STOP):
                 self._append_decision_log_locked(
                     phase=self._previous_phase or "unknown",
-                    decision=event.kind.name,
+                    decision=cast_event.kind.name,
                     reason=line,
                 )
             snapshot = self._build_snapshot_locked(self._last_state)
             if snapshot is not None:
                 snapshots_to_publish.append(snapshot)
-            if event.kind == WaitingStatusKind.EXITED:
+            if cast_event.kind == waiting_kind_cls.EXITED:
                 self._waiting_status_line = None
                 cleared = self._build_snapshot_locked(self._last_state)
                 if cleared is not None:

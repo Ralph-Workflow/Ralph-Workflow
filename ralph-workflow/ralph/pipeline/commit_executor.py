@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING, Protocol, cast
 from loguru import logger
 
 from ralph.config.enums import Verbosity
-from ralph.display.artifact_renderer import render_commit_message
 from ralph.display.parallel_display import (
     ParallelDisplay,
     get_display_context,
+    resolve_active_display,
 )
 from ralph.git.operations import (
     create_commit,
@@ -37,10 +37,32 @@ from ralph.pipeline.effects import CommitEffect
 from ralph.pipeline.events import PipelineEvent
 
 if TYPE_CHECKING:
+    from ralph.display.context import DisplayContext
     from ralph.policy.models import AgentsPolicy, PolicyBundle
     from ralph.workspace import FsWorkspace
 
 _PORCELAIN_STATUS_PREFIX_LEN = 3
+
+
+def _render_commit_message_via_display(repo_root: Path, display_context: object) -> None:
+    """Render the commit message via the consolidated display surface.
+
+    When the resolved display is a ``ParallelDisplay`` instance, dispatch
+    directly to its ``emit_commit_message`` method. When it is a
+    ``DisplayContext`` (or None), fall back to the active-display resolver.
+    """
+    display: object | None = None
+    if isinstance(display_context, ParallelDisplay):
+        display = display_context
+    elif display_context is not None:
+        try:
+            display = resolve_active_display(None, cast("DisplayContext", display_context))
+        except Exception:
+            display = None
+    if display is None:
+        return
+    with suppress(Exception):
+        cast("ParallelDisplay", display).emit_commit_message(repo_root)
 
 
 @dataclass(frozen=True)
@@ -103,7 +125,7 @@ def execute_commit_effect(
         _raw_render = opts.get("render_commit_message_fn")
         _render_commit_fn = cast(
             "_RenderCommitMessageFn",
-            _raw_render if callable(_raw_render) else render_commit_message,
+            _raw_render if callable(_raw_render) else _render_commit_message_via_display,
         )
         with suppress(Exception):
             _render_commit_fn(repo_root, get_display_context(display))

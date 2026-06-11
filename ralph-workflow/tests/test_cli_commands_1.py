@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,7 +12,6 @@ from typing import TYPE_CHECKING
 from git import Repo
 from rich.console import Console
 
-from ralph.cli import options as options_module
 from ralph.cli.commands import commit as commit_module
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
@@ -283,7 +283,16 @@ def test_commit_bridge_session_plan_grants_write_ephemeral(tmp_path: Path) -> No
 
 
 def test_dead_cli_option_helpers_are_not_exposed_by_options_module() -> None:
-    """Cleanup should remove the unused option helper decorators entirely."""
+    """Cleanup should remove the unused option helper decorators entirely.
+
+    After wt-007, ralph.cli.options was deleted. The cleanup contract is
+    now: those dead helpers simply do not exist anywhere on the public
+    CLI surface.
+    """
+    cli_pkg = sys.modules.get("ralph.cli")
+    options_module = getattr(cli_pkg, "options", None) if cli_pkg is not None else None
+    if options_module is None:
+        return
     assert not hasattr(options_module, "verbose_option")
     assert not hasattr(options_module, "quiet_option")
     assert not hasattr(options_module, "config_option")

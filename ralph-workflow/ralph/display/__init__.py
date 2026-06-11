@@ -80,36 +80,23 @@ views used by CLI diagnostics and listing commands.
    narrow terminals.
 """
 
-from ralph.display.artifact_renderer import (
-    render_analysis_decision,
-    render_commit_message,
-    render_fix_artifact,
-    render_missing_plan_hint,
-    render_plan_artifact,
-)
 from ralph.display.context import (
     DisplayContext,
     install_sigwinch_refresher,
     install_width_refresher,
     make_display_context,
 )
-from ralph.display.first_run_panel import render_first_run_panel
 from ralph.display.parallel_display import (
     ParallelDisplay,
     build_default_display_legacy_bridge,
     emit_activity_line,
     get_display_context,
+    phase_style_for_phase,
     resolve_active_display,
     resolve_display,
     status_text,
     strip_markup,
     subscriber_for_display,
-)
-from ralph.display.phase_banner import (
-    show_phase_close_banner,
-    show_phase_start,
-    show_phase_start_from_entry,
-    show_phase_transition,
 )
 from ralph.display.phase_status import (
     PhaseIterationContext,
@@ -118,7 +105,6 @@ from ralph.display.phase_status import (
 )
 from ralph.display.plain_renderer import RunStartOrientation
 from ralph.display.progress import RalphProgress, get_progress
-from ralph.display.tables import show_agents, show_config, show_providers
 
 __all__ = [
     "DisplayContext",
@@ -135,21 +121,9 @@ __all__ = [
     "install_sigwinch_refresher",
     "install_width_refresher",
     "make_display_context",
-    "render_analysis_decision",
-    "render_commit_message",
-    "render_first_run_panel",
-    "render_fix_artifact",
-    "render_missing_plan_hint",
-    "render_plan_artifact",
+    "phase_style_for_phase",
     "resolve_active_display",
     "resolve_display",
-    "show_agents",
-    "show_config",
-    "show_phase_close_banner",
-    "show_phase_start",
-    "show_phase_start_from_entry",
-    "show_phase_transition",
-    "show_providers",
     "status_text",
     "strip_markup",
     "subscriber_for_display",

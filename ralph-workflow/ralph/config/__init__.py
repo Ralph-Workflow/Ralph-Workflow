@@ -30,7 +30,6 @@ from ralph.config.models import (
     GeneralConfig,
     UnifiedConfig,
 )
-from ralph.config.welcome import emit_first_run_welcome
 
 __all__ = [
     "AgentConfig",
@@ -48,3 +47,21 @@ __all__ = [
     "regenerate_all",
     "resolve_global_config_dir",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Lazily expose ``emit_first_run_welcome`` to break the import cycle.
+
+    Importing ``ralph.config.welcome`` at package import time would pull in
+    ``ralph.display.parallel_display`` and trigger a circular import through
+    ``ralph.display.snapshot`` -> ``ralph.pipeline`` -> ``ralph.config``.
+    Defer the resolution to attribute access so direct imports from
+    ``ralph.config.welcome`` and from ``ralph.cli.main`` continue to work
+    without re-entering the cycle.
+    """
+    if name == "emit_first_run_welcome":
+        from ralph.config.welcome import emit_first_run_welcome
+
+        return emit_first_run_welcome
+    msg = f"module 'ralph.config' has no attribute {name!r}"
+    raise AttributeError(msg)

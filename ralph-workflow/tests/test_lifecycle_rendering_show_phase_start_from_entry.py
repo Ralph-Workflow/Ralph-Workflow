@@ -15,7 +15,7 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import show_phase_start_from_entry
+from ralph.display.parallel_display import resolve_active_display
 from ralph.display.phase_lifecycle import PhaseEntryModel
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
@@ -87,14 +87,16 @@ class TestShowPhaseStartFromEntry:
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={})
         entry = PhaseEntryModel(phase_name="development_analysis")
-        show_phase_start_from_entry(entry, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_start_from_entry(entry)
         assert "Development Analysis" in buf.getvalue()
 
     def test_renders_outer_dev_label(self) -> None:
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={})
         entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=2, outer_dev_cap=5)
-        show_phase_start_from_entry(entry, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
         assert "Dev" in out
         assert "2" in out
@@ -106,7 +108,8 @@ class TestShowPhaseStartFromEntry:
         entry = PhaseEntryModel(
             phase_name="development_analysis", inner_analysis=1, inner_analysis_cap=3
         )
-        show_phase_start_from_entry(entry, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
         assert "Analysis" in out
         assert "1" in out
@@ -116,7 +119,8 @@ class TestShowPhaseStartFromEntry:
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={})
         entry = PhaseEntryModel(phase_name="development", agent_name="claude-dev")
-        show_phase_start_from_entry(entry, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_start_from_entry(entry)
         assert "claude-dev" in buf.getvalue()
 
     def test_outer_dev_before_inner_analysis(self) -> None:
@@ -130,7 +134,8 @@ class TestShowPhaseStartFromEntry:
             inner_analysis=1,
             inner_analysis_cap=3,
         )
-        show_phase_start_from_entry(entry, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
         assert out.index("Dev") < out.index("Analysis")
 
@@ -139,7 +144,8 @@ class TestShowPhaseStartFromEntry:
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={}, force_glyphs="ascii")
         entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=1, inner_analysis=2)
-        show_phase_start_from_entry(entry, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
         # ASCII fallback should not emit multi-byte unicode glyphs for iteration context
         assert "Development" in out
@@ -148,7 +154,8 @@ class TestShowPhaseStartFromEntry:
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={})
         entry = PhaseEntryModel(phase_name="planning")
-        show_phase_start_from_entry(entry, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_start_from_entry(entry)
         out = buf.getvalue()
         assert "Planning" in out
         # Should not include iteration context keywords when all None

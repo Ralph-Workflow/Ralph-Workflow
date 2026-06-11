@@ -16,7 +16,7 @@ from typing import Literal
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import show_phase_close_banner
+from ralph.display.parallel_display import resolve_active_display
 from ralph.display.phase_lifecycle import PhaseExitModel
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
@@ -97,7 +97,8 @@ class TestRichCloseArtifactOutcome:
         )
         ctx = make_display_context(console=console, env={}, force_mode=mode)
 
-        show_phase_close_banner(exit_model, display_context=ctx)
+        display = resolve_active_display(None, ctx)
+        display.emit_phase_close_banner(exit_model)
         return console.export_text()
 
     def test_artifact_outcome_appears_in_medium_mode(self) -> None:

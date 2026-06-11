@@ -33,7 +33,6 @@ from ralph.cli.commands.prompt_helper import run_prompt_helper
 from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
 from ralph.cli.commands.smoke import smoke_interactive_claude_command
 from ralph.cli.commands.star import star
-from ralph.cli.options import display_agents_table, display_providers_table
 from ralph.config.bootstrap import (
     ensure_global_config,
     ensure_global_mcp_config,
@@ -46,6 +45,7 @@ from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
+from ralph.display.parallel_display import resolve_active_display
 from ralph.onboarding import init_help_text, init_local_config_help_text
 from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
@@ -829,7 +829,8 @@ def _handle_list_agents(
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         cfg = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         agents: Mapping[str, AgentConfig] = cfg.agents
-        display_agents_table(agents, display_context=display_context)
+        _display = resolve_active_display(None, display_context)
+        _display.emit_agents_table(agents)
         return 0
     except Exception as e:
         logger.error("Failed to list agents: {}", e)
@@ -846,7 +847,8 @@ def _handle_list_providers(
         return None
     try:
         providers = fetch_providers()
-        display_providers_table(providers, display_context=display_context)
+        _display = resolve_active_display(None, display_context)
+        _display.emit_providers_table(providers)
         return 0
     except Exception as e:
         logger.error("Failed to list providers: {}", e)

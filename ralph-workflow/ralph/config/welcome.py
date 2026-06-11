@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING
 
 from rich.text import Text
 
+from ralph import __version__
 from ralph.agents.availability import HasListAgents, check_agent_availability
-from ralph.banner import show_banner
 from ralph.display.context import DisplayContext
-from ralph.display.first_run_panel import render_first_run_panel
 from ralph.onboarding import (
     CODEBERG_STAR_CTA,
     ERROR_REPORTING_DISCLOSURE,
@@ -149,7 +148,10 @@ def emit_first_run_welcome(
     if not has_new_or_regenerated:
         return
 
-    show_banner(display_context=display_context)
+    from ralph.display.parallel_display import resolve_active_display
+
+    display = resolve_active_display(None, display_context)
+    display.emit_welcome_banner(version=__version__)
 
     content: list[RenderableType] = []
 
@@ -194,4 +196,4 @@ def emit_first_run_welcome(
     content.append(Text())  # blank line
     content.append(Text(CODEBERG_STAR_CTA, style="theme.status.warning"))
 
-    render_first_run_panel(content, display_context=display_context)
+    display.emit_first_run_panel(content)
