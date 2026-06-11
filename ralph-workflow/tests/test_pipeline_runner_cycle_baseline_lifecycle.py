@@ -17,9 +17,7 @@ from ralph.config.enums import (
 )
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.cycle_baseline import (
-    write_cycle_baseline,
-)
+from ralph.pipeline.cycle_baseline import write_cycle_baseline
 from ralph.pipeline.effects import (
     CommitEffect,
     ExitSuccessEffect,
@@ -30,6 +28,12 @@ from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+
+# All tests in this module exercise real git operations against the
+# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
+# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
+# machines, so the default 1-second per-test ceiling is unsafe.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch

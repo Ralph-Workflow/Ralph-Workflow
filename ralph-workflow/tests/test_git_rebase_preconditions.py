@@ -15,6 +15,12 @@ from ralph.git.rebase import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+# All tests in this module exercise real git operations against the
+# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
+# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
+# machines, so the default 1-second per-test ceiling is unsafe.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def test_allows_clean_repository(tmp_git_repo: Path) -> None:
     """A clean repository should pass all precondition checks."""

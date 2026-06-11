@@ -17,6 +17,14 @@ from ralph.workspace.fs import FsWorkspace
 
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
 
+# Most tests in this module exercise real git operations against the
+# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
+# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
+# machines, so the default 1-second per-test ceiling is unsafe. A few
+# tests that do not touch the fixture complete in < 1 s and tolerate
+# the elevated ceiling as a no-op.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def _write_commit_cleanup_artifact(
     workspace: FsWorkspace,

@@ -14,6 +14,12 @@ from ralph.git import (
     start_agent_phase,
 )
 
+# All tests in this module exercise real git operations against the
+# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
+# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
+# machines, so the default 1-second per-test ceiling is unsafe.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def read_hooks_path(repo: Repo) -> str:
     """Return the configured hooksPath value for the repository."""
