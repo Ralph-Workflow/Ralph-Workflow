@@ -21,12 +21,15 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from rich.console import Console
 
+from ralph.display.completion_summary import CompletionSummaryOptions
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.plain_renderer import RunStartOrientation
+from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
@@ -256,3 +259,56 @@ def test_visual_hierarchy_emit_info_panel() -> None:
     text = buf.getvalue()
     assert "Next steps" in text, f"missing panel title: {text!r}"
     assert "Run ralph --init" in text, f"missing panel content: {text!r}"
+
+
+def test_visual_hierarchy_emit_completion_summary_panel() -> None:
+    """AC-01+AC-03: emit_completion_summary_panel emits the [run-completion] section rule.
+
+    Wide mode: the body itself begins with a titled Rule
+    ("Pipeline Complete" or "Pipeline Failed"). The section rule line carries
+    the theme.banner.border sky-blue ANSI prefix. Both the section rule and
+    the body title are present (the wide-mode double-rule is intentional
+    visual punctuation).
+    """
+
+    def _make_snapshot() -> PipelineSnapshot:
+        return PipelineSnapshot(
+            phase="complete",
+            previous_phase=None,
+            review_issues_found=False,
+            interrupted_by_user=False,
+            last_error=None,
+            pr_url=None,
+            push_count=1,
+            total_agent_calls=4,
+            total_continuations=1,
+            total_fallbacks=0,
+            total_retries=0,
+            workers=(),
+            prompt_path="PROMPT.md",
+            prompt_preview=(),
+            run_id="r1",
+            created_at=datetime(2026, 4, 21, tzinfo=UTC),
+            plan_summary="Build the feature",
+            plan_scope_items=("item A",),
+            plan_total_steps=2,
+            plan_current_step=2,
+            plan_risks=(),
+            decision_log=(),
+            is_terminal_success=True,
+            is_terminal_failure=False,
+        )
+
+    pd, buf = _make_display(force_terminal=True)
+    pd.emit_completion_summary_panel(
+        _make_snapshot(),
+        options=CompletionSummaryOptions(),
+    )
+    pd.stop()
+    text = buf.getvalue()
+    assert "[run-completion]" in text, f"missing [run-completion] section rule: {text!r}"
+    assert "Pipeline Complete" in text, f"missing body title: {text!r}"
+    assert _SKY_BLUE_24BIT_ANSI in text, (
+        f"section rule line must carry the theme.banner.border sky-blue ANSI "
+        f"({_SKY_BLUE_24BIT_ANSI!r}); got:\n{text!r}"
+    )

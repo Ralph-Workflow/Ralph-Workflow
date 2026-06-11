@@ -437,15 +437,17 @@ def emit_completion_summary(
 ) -> None:
     """Emit the completion summary to the console.
 
-    Args:
-        snapshot: Pipeline snapshot with run metadata.
-        display_context: DisplayContext providing the console and mode.
-        options: Optional statistics and formatting parameters.
+    Thin forwarder that delegates to
+    :meth:`ralph.display.parallel_display.ParallelDisplay.emit_completion_summary_panel`,
+    the 37th consolidated emit_* method. The free-function surface is
+    preserved for backward compatibility with existing call sites and
+    tests; production callers in ralph/pipeline/ route through
+    ParallelDisplay directly.
     """
-    display_context.console.print(
-        render_completion_summary_group(snapshot, display_context=display_context, options=options),
-        markup=False,
-        highlight=False,
+    from ralph.display.parallel_display import resolve_active_display
+
+    resolve_active_display(None, display_context).emit_completion_summary_panel(
+        snapshot, options=options
     )
 
 

@@ -460,6 +460,7 @@ def test_no_free_function_imports_in_cli_or_pipeline() -> None:
         "from ralph.banner",
         "from ralph.cli.options import display_agents_table",
         "from ralph.cli.options import display_providers_table",
+        "from ralph.display.completion_summary import emit_completion_summary",
     )
     import_violations: list[str] = [
         f"{path.name}:{line.rstrip()}"
@@ -634,6 +635,58 @@ def test_every_emit_method_with_test_file_match_exists() -> None:
                 starts_docstring_single = stripped.startswith("'''")
                 if starts_comment or starts_docstring_double or starts_docstring_single:
                     continue
+
+
+# ---------------------------------------------------------------------------
+# wt-007 closing pass: the new emit_completion_summary_panel method is the
+# 37th consolidated name (intentionally outside the frozen 36-name set).
+# These tests pin the anti-drift guard so the free-function call cannot be
+# re-introduced in ralph/pipeline/ and the new method is callable on
+# ParallelDisplay.
+# ---------------------------------------------------------------------------
+
+
+def test_no_free_function_completion_summary_in_pipeline() -> None:
+    """Anti-drift guard: ralph/pipeline/ must NOT import or call the free function.
+
+    Scans every Python file under ralph/pipeline/ for any
+    ``from ralph.display.completion_summary import emit_completion_summary``
+    or ``completion_summary.emit_completion_summary`` call. The only allowed
+    import is :class:`CompletionSummaryOptions` (the dataclass is still
+    public). Production code in ralph/pipeline/ must route through
+    :meth:`ParallelDisplay.emit_completion_summary_panel`.
+    """
+    violations: list[str] = [
+        f"{path.relative_to(_PIPELINE_DIR)}:{line.rstrip()}"
+        for path in _all_pipeline_files()
+        for line in _scan_lines(path)
+        if "from ralph.display.completion_summary import emit_completion_summary" in line
+        or "completion_summary.emit_completion_summary" in line
+    ]
+    assert not violations, (
+        "Free-function emit_completion_summary re-introduced in ralph/pipeline/ "
+        "(wt-007 anti-drift guard tripped):\n" + "\n".join(violations)
+    )
+
+
+def test_parallel_display_has_emit_completion_summary_panel() -> None:
+    """The 37th consolidated method exists and is callable on ParallelDisplay.
+
+    Pins the architectural contract from the public-method side. Mirrors
+    ``test_parallel_display_exposes_all_36_emit_methods`` in
+    ``test_parallel_display_drift_prevention.py``. The new method is
+    intentionally outside the frozen 36-name set; this test makes the
+    drift visible if a future commit silently drops it.
+    """
+    method = getattr(ParallelDisplay, "emit_completion_summary_panel", None)
+    assert method is not None, (
+        "ParallelDisplay is missing the emit_completion_summary_panel method; "
+        "the 37th consolidated name must exist."
+    )
+    assert callable(method), (
+        "ParallelDisplay.emit_completion_summary_panel must be callable; "
+        f"got non-callable: {method!r}"
+    )
 
 
 _REPO_ROOT_FOR_TESTS = Path(__file__).parent.parent.parent

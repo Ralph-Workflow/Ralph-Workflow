@@ -7,12 +7,16 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph.display.parallel_display import ParallelDisplay, get_display_context
+from ralph.display.completion_summary import CompletionSummaryOptions
+from ralph.display.parallel_display import (
+    ParallelDisplay,
+    get_display_context,
+    resolve_active_display,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from ralph.display.completion_summary import CompletionSummaryOptions
     from ralph.display.context import DisplayContext
     from ralph.display.snapshot import PipelineSnapshot, SnapshotContext
     from ralph.display.subscriber import PipelineSubscriber
@@ -24,19 +28,6 @@ if TYPE_CHECKING:
     class _ParallelDisplayModule(Protocol):
         ParallelDisplay: type[ParallelDisplay]
 
-    class _EmitCompletionSummaryFn(Protocol):
-        def __call__(
-            self,
-            snapshot: PipelineSnapshot,
-            *,
-            display_context: DisplayContext,
-            options: CompletionSummaryOptions | None = None,
-        ) -> None: ...
-
-    class _CompletionSummaryModule(Protocol):
-        CompletionSummaryOptions: type[CompletionSummaryOptions]
-        emit_completion_summary: _EmitCompletionSummaryFn
-
     class _SnapshotFromStateFn(Protocol):
         def __call__(
             self,
@@ -46,10 +37,6 @@ if TYPE_CHECKING:
 
     class _SnapshotModule(Protocol):
         snapshot_from_state: _SnapshotFromStateFn
-
-
-def _load_completion_summary_module() -> _CompletionSummaryModule:
-    return cast("_CompletionSummaryModule", import_module("ralph.display.completion_summary"))
 
 
 def _snapshot_from_state_func() -> _SnapshotFromStateFn:
@@ -67,7 +54,6 @@ def emit_final_summary(
 ) -> None:
     """Emit an end-of-run completion summary panel."""
     try:
-        cs_mod = _load_completion_summary_module()
         snapshot_from_state = _snapshot_from_state_func()
 
         dropped_count = 0
@@ -98,7 +84,7 @@ def emit_final_summary(
             tool_call_count = 0
             error_count = 0
             elapsed_seconds = None
-        cs_opts = cs_mod.CompletionSummaryOptions(
+        cs_opts = CompletionSummaryOptions(
             workspace_root=workspace_root,
             dropped_count=dropped_count,
             include_context_sections=not state.interrupted_by_user,
@@ -109,10 +95,14 @@ def emit_final_summary(
             elapsed_seconds=elapsed_seconds,
             pipeline_policy=pipeline_policy,
         )
-        cs_mod.emit_completion_summary(
-            snapshot,
-            display_context=ctx,
-            options=cs_opts,
-        )
+        # Route the end-of-run completion panel through the consolidated
+        # ParallelDisplay surface (37th emit_* method). When a ParallelDisplay
+        # is in scope we call directly; otherwise we resolve one from the
+        # DisplayContext so the panel is rendered through the same console
+        # and theme as the rest of the transcript.
+        target_display = display if isinstance(display, ParallelDisplay) else None
+        if target_display is None:
+            target_display = resolve_active_display(None, ctx)
+        target_display.emit_completion_summary_panel(snapshot, options=cs_opts)
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)

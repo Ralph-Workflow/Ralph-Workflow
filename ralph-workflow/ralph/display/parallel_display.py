@@ -1,17 +1,18 @@
 """Parallel display adapter: always emit log-first, copy-paste-safe transcript lines.
 
 wt-007-consolidate-display: All display logic is consolidated onto this class.
-Thirty-six instance methods (plus the module-level ``emit_activity_line``)
+Thirty-seven instance methods (plus the module-level ``emit_activity_line``)
 own every user-facing banner, table, panel, and status surface. Error
 messages route through the existing ``emit_warning`` method with
 ``theme.status.error`` styling; no separate ``emit_error`` method exists.
 
-The 36 consolidated names (run lifecycle / phase banners / artifact
+The 37 consolidated names (run lifecycle / phase banners / artifact
 renderers / tables and panels / status and warnings / first-run and
 welcome / helpers):
 
 Run lifecycle
-    emit_run_start, emit_run_end, emit_parsed_event, emit_analysis_result
+    emit_run_start, emit_run_end, emit_parsed_event, emit_analysis_result,
+    emit_completion_summary_panel
 
 Phase banners
     emit_phase_start, emit_phase_start_from_entry, emit_phase_transition,
@@ -147,6 +148,7 @@ if TYPE_CHECKING:
     from rich.console import Console, RenderableType
 
     from ralph.config.models import UnifiedConfig
+    from ralph.display.completion_summary import CompletionSummaryOptions
     from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
     from ralph.display.phase_status import PhaseIterationContext
     from ralph.display.plain_renderer import RunStartOrientation
@@ -690,6 +692,71 @@ class ParallelDisplay:
                 outer_dev_iteration=outer_dev_iteration,
             )
             self._console.print()  # blank line AFTER the run-end block
+
+    def emit_completion_summary_panel(
+        self,
+        snapshot: PipelineSnapshot,
+        *,
+        options: CompletionSummaryOptions | None = None,
+    ) -> None:
+        """Emit the end-of-run completion summary panel.
+
+        This is the 37th consolidated emit_* method (intentionally outside
+        the frozen 36-name set in
+        ``tests/display/test_parallel_display_drift_prevention.py``).
+        The 2-segment ``[run-completion]`` section tag is intentionally
+        a companion to ``[run-end]``: ``[run-end]`` is the one-line
+        run-stop recap emitted before this method; ``[run-completion]``
+        is the full completion panel emitted at the very end of the run.
+
+        Visual-hierarchy contract:
+        - Section rule (``[run-completion]``) is emitted in non-compact mode
+          only (mirrors the ``if self._ctx.mode != 'compact'`` guard used
+          by every other emit_* method).
+        - The body is delegated to
+          :func:`ralph.display.completion_summary.render_completion_summary_group`
+          and printed via ``self._console.print(group, ...)``.
+        - In wide mode the body itself begins with a titled Rule
+          (``Pipeline Complete`` / ``Pipeline Failed``); the adjacent
+          section rule and body title Rule are intentional visual
+          punctuation and match the layering pattern used by
+          :meth:`emit_phase_transition` (section rule + transition
+          banner) and :meth:`emit_phase_close_banner` (section rule +
+          body that contains titled Rules).
+        - The section rule is the stable log-line tag for downstream
+          parsers; the body title Rule is the human-readable title.
+
+        Quiet-mode contract: unlike every other emit_* method, this method
+        intentionally does NOT short-circuit on ``self._is_quiet``. The
+        completion summary is the only dashboard surface that must
+        remain visible in ``--quiet`` mode so the user can see the final
+        pipeline result without re-running with non-quiet verbosity.
+        ``test_runner_quiet_mode.py::test_quiet_mode_suppresses_dashboard_header_and_phase_banners``
+        and
+        ``tests/integration/test_transcript_end_to_end.py::test_quiet_mode_suppresses_run_start_and_phase_close``
+        pin this contract.
+
+        Args:
+            snapshot: The pipeline snapshot to render.
+            options: Optional :class:`CompletionSummaryOptions` instance.
+                When ``None`` (the default), a fresh
+                ``CompletionSummaryOptions()`` is constructed.
+        """
+        with contextlib.suppress(Exception):
+            if self._ctx.mode != "compact":
+                self._emit_section_rule("[run-completion]")
+            from ralph.display.completion_summary import (
+                CompletionSummaryOptions,
+                render_completion_summary_group,
+            )
+
+            resolved_options = options if options is not None else CompletionSummaryOptions()
+            group = render_completion_summary_group(
+                snapshot,
+                display_context=self._ctx,
+                options=resolved_options,
+            )
+            self._console.print(group, markup=False, highlight=False)
 
     # -- Phase banner methods (port of phase_banner.py) ---------------------
     # All four methods route through self._console.print. Each method calls

@@ -10,8 +10,8 @@ views used by CLI diagnostics and listing commands.
    adaptive character limits. No renderer may construct its own ``rich.Console``.
 
    **Single display owner:** ``ParallelDisplay`` is the single source of truth
-   for all user-facing display logic in Ralph Workflow. All 36 consolidated
-   ``emit_*`` methods (35 instance methods on ``ParallelDisplay`` plus the
+   for all user-facing display logic in Ralph Workflow. All 37 consolidated
+   ``emit_*`` methods (36 instance methods on ``ParallelDisplay`` plus the
    module-level ``emit_activity_line``) own every banner, table, panel, and
    status surface. There are no separate free-function renderers; the legacy
    ``ralph.display.phase_banner``, ``ralph.display.artifact_renderer``,

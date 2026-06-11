@@ -60,12 +60,15 @@ def test_final_summary_passes_plain_renderer_counters_to_emit(tmp_path: Path) ->
 
     captured_kwargs: dict = {}
 
-    def _capture(*_args: object, **kwargs: object) -> None:
-        captured_kwargs.update(kwargs)
+    def _capture(snapshot: object, *, options: object) -> None:
+        del snapshot
+        captured_kwargs["options"] = options
 
-    with patch(
-        "ralph.display.completion_summary.emit_completion_summary",
-        side_effect=_capture,
+    with patch.object(
+        ParallelDisplay,
+        "emit_completion_summary_panel",
+        autospec=True,
+        side_effect=lambda self, snapshot, *, options: _capture(snapshot, options=options),
     ):
         runner_module.emit_final_summary(
             state,
@@ -90,12 +93,15 @@ def test_final_summary_defaults_counters_to_zero_when_no_display(tmp_path: Path)
 
     captured_kwargs: dict = {}
 
-    def _capture(*_args: object, **kwargs: object) -> None:
-        captured_kwargs.update(kwargs)
+    def _capture(snapshot: object, *, options: object) -> None:
+        del snapshot
+        captured_kwargs["options"] = options
 
-    with patch(
-        "ralph.display.completion_summary.emit_completion_summary",
-        side_effect=_capture,
+    with patch.object(
+        ParallelDisplay,
+        "emit_completion_summary_panel",
+        autospec=True,
+        side_effect=lambda self, snapshot, *, options: _capture(snapshot, options=options),
     ):
         runner_module.emit_final_summary(
             state,
