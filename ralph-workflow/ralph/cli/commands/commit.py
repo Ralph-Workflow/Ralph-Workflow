@@ -15,8 +15,6 @@ from __future__ import annotations
 import typing
 from typing import TYPE_CHECKING, cast
 
-from rich.text import Text
-
 from ralph.agents.invoke import AgentInvocationError, invoke_agent
 from ralph.agents.registry import AgentRegistry
 from ralph.api.opencode import validate_local_model_support
@@ -113,25 +111,22 @@ def commit_plumbing(
             If None, a context is created using make_display_context().
     """
     ctx = display_context if display_context is not None else make_display_context()
-    console = ctx.console
+    display = resolve_active_display(None, ctx)
     opts = options or CommitPlumbingOptions()
 
     try:
         repo_root = find_repo_root()
     except Exception as e:
-        console.print(
-            _styled_commit_status("Error", f"Not in a git repository: {e}", "theme.status.error")
-        )
+        display.emit_warning(f"Error: Not in a git repository: {e}")
         return
 
-    # Load configuration
     try:
         workspace_scope = (
             None if opts.config_path is not None else resolve_workspace_scope(repo_root)
         )
         config = load_config(opts.config_path, opts.cli_overrides, workspace_scope=workspace_scope)
     except Exception as e:
-        console.print(_styled_commit_status("Error loading config", str(e), "theme.status.error"))
+        display.emit_warning(f"Error loading config: {e}")
         return
 
     if opts.show_commit_msg:
@@ -148,7 +143,7 @@ def commit_plumbing(
         return
 
     if not has_staged_changes(repo_root):
-        console.print(Text("No staged changes to commit", style="theme.status.warning"))
+        display.emit_warning("No staged changes to commit")
         return
 
 
@@ -159,8 +154,7 @@ def _handle_agent_commit_generation(
     options: CommitPlumbingOptions,
     display_context: DisplayContext,
 ) -> None:
-    ctx = display_context
-    console = ctx.console
+    display = resolve_active_display(None, display_context)
     generate = options.generate_commit_msg or options.generate_commit
     apply = options.generate_commit
     git_user_name = config.general.git_user_name
@@ -172,17 +166,14 @@ def _handle_agent_commit_generation(
     delete_commit_message_artifacts(repo_root)
     diff = working_tree_diff(repo_root)
     if not diff.strip():
-        console.print(Text("No changes to commit", style="theme.status.warning"))
+        display.emit_warning("No changes to commit")
         return
 
     registry = AgentRegistry.from_config(config)
     agents = _resolve_commit_message_agents(config, registry)
     if not agents:
-        console.print(
-            Text(
-                "No commit-capable agents available in commit/review drains",
-                style="theme.status.error",
-            )
+        display.emit_warning(
+            "No commit-capable agents available in commit/review drains"
         )
         return
 
@@ -197,43 +188,35 @@ def _handle_agent_commit_generation(
             agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
             general_config=config.general,
         ),
-        display_context=ctx,
+        display_context=display_context,
     )
 
     if result.skipped:
         delete_commit_message_artifacts(repo_root)
-        console.print(Text("Skipping commit: agent requested skip", style="theme.status.warning"))
+        display.emit_warning("Skipping commit: agent requested skip")
         return
 
     if not result.message:
-        console.print(
-            Text(
-                "Failed to generate commit message from commit drain agents",
-                style="theme.status.error",
-            )
+        display.emit_warning(
+            "Failed to generate commit message from commit drain agents"
         )
-        _print_commit_failure_details(result.failure_details, display_context=ctx)
+        _print_commit_failure_details(
+            result.failure_details, display_context=display_context
+        )
         return
 
     persisted_message = read_commit_message_artifact(repo_root)
     if persisted_message is None:
-        console.print(
-            Text("Failed to persist generated commit message", style="theme.status.error")
-        )
+        display.emit_warning("Failed to persist generated commit message")
         return
 
-    # Use the consolidated ParallelDisplay.emit_commit_message for consistent UI
-    console.print(Text("\nGenerated commit message:", style="theme.status.success"))
-    _display = resolve_active_display(None, ctx)
-    _display.emit_commit_message(repo_root)
+    display.emit_status("\nGenerated commit message:")
+    display.emit_commit_message(repo_root)
     if result.failure_details:
-        console.print(
-            Text(
-                "Recovered after retryable MCP/agent failures:",
-                style="theme.status.warning",
-            )
+        display.emit_warning("Recovered after retryable MCP/agent failures:")
+        _print_commit_failure_details(
+            result.failure_details, display_context=display_context
         )
-        _print_commit_failure_details(result.failure_details, display_context=ctx)
 
     if apply:
         try:
@@ -245,41 +228,29 @@ def _handle_agent_commit_generation(
                 author_email=git_user_email,
             )
             delete_commit_message_artifacts(repo_root)
-            console.print(
-                _styled_commit_status(
-                    "Created commit", sha[:8], "theme.status.success", leading_newline=True
-                )
-            )
+            display.emit_status(f"Created commit: {sha[:8]}")
         except Exception as e:
-            console.print(
-                _styled_commit_status(
-                    "Commit failed", str(e), "theme.status.error", leading_newline=True
-                )
-            )
+            display.emit_warning(f"Commit failed: {e}")
 
 
 def _show_commit_message(repo_root: Path, *, display_context: DisplayContext) -> None:
-    ctx = display_context
-    console = ctx.console
+    display = resolve_active_display(None, display_context)
     commit_message = read_commit_message_artifact(repo_root)
     if commit_message is None:
-        console.print(Text("No commit message generated yet", style="theme.status.error"))
+        display.emit_warning("No commit message generated yet")
         return
-
-    # Use the consolidated ParallelDisplay.emit_commit_message for consistent UI
-    _display = resolve_active_display(None, display_context)
-    _display.emit_commit_message(repo_root)
+    display.emit_commit_message(repo_root)
 
 
 def _print_commit_failure_details(
     failure_details: list[str],
     *,
-    display_context: DisplayContext,
+    display_context: DisplayContext | None = None,
 ) -> None:
-    ctx = display_context
-    console = ctx.console
+    ctx = display_context if display_context is not None else make_display_context()
+    display = resolve_active_display(None, ctx)
     for detail in failure_details:
-        console.print(Text(detail, style="theme.status.error"))
+        display.emit_warning(detail)
 
 
 def _resolve_chain_agent_names(config: object, drain_name: str) -> list[str]:
@@ -357,22 +328,6 @@ def _normalized_opencode_model_id(model_flag: str | None) -> str | None:
     if len(parts) == 1:
         return parts[0].removeprefix("opencode/")
     return None
-
-
-def _styled_commit_status(
-    label: str,
-    detail: str,
-    style: str,
-    *,
-    leading_newline: bool = False,
-) -> Text:
-    text = Text()
-    if leading_newline:
-        text.append("\n")
-    text.append(f"{label}:", style=style)
-    text.append(" ")
-    text.append(detail)
-    return text
 
 
 def working_tree_diff(repo_root: Path) -> str:

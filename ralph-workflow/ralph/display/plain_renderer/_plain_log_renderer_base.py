@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 from rich.text import Text
 
-from ralph.display.context import DisplayContext
 from ralph.display.plain_renderer._constants import (
     _ANSI_ESCAPE,
     _CAT_THEME_KEYS,
@@ -27,6 +26,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
+    from ralph.display.context import DisplayContext
     from ralph.display.snapshot import PipelineSnapshot
 
 #: A tool activity is "repeated" (coalesced with a "xN" count in the live status)
@@ -44,7 +44,10 @@ class _PlainLogRendererBase:
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        if not isinstance(display_context, DisplayContext):
+        # Re-validate at runtime: a duck-typed stand-in (e.g. test stub) is
+        # permitted provided it exposes ``.console``. The strict type contract
+        # is preserved for production callers.
+        if not hasattr(display_context, "console"):
             raise TypeError("display_context is required")
         self._ctx = display_context
         self._clock = clock

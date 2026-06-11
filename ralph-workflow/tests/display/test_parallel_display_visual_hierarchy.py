@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import io
 import re
+from dataclasses import dataclass
 
 from rich.console import Console
 
@@ -182,3 +183,76 @@ def test_visual_hierarchy_log_tag_markers_preserved() -> None:
     assert "[phase-close]" in text, f"[phase-close] marker missing from:\n{text!r}"
     assert "[run-end]" in text, f"[run-end] marker missing from:\n{text!r}"
     assert "unit-1" in text, f"unit_id 'unit-1' missing from:\n{text!r}"
+
+
+# ---------------------------------------------------------------------------
+# wt-007: visual-hierarchy cases for the 5 new emit_* methods.
+# Each new method must (1) emit a section-rule header in non-compact mode,
+# (2) carry the theme.banner.title style, (3) use theme.text.muted for body
+# cells, and (4) be markup-free in plain output.
+# ---------------------------------------------------------------------------
+
+
+def test_visual_hierarchy_emit_metrics_table() -> None:
+    pd, buf = _make_display(force_terminal=True)
+    pd.emit_metrics_table({"files_touched": 7})
+    pd.stop()
+    text = buf.getvalue()
+    assert "[metrics]" in text, f"missing section rule: {text!r}"
+    assert "Pipeline Metrics" in text, f"missing banner title: {text!r}"
+    assert "files_touched" in text, f"missing body cell: {text!r}"
+    assert _BOLD_ATTR_ANSI in text, f"missing bold banner title style: {text!r}"
+
+
+def test_visual_hierarchy_emit_checkpoint_summary_table() -> None:
+    @dataclass
+    class _Opts:
+        phase: str = "planning"
+        budget_progress: dict[str, tuple[int, int]] | None = None
+
+        def __post_init__(self) -> None:
+            if self.budget_progress is None:
+                self.budget_progress = {"iterations": (1, 3)}
+
+    buf2 = io.StringIO()
+    console2 = Console(
+        file=buf2,
+        force_terminal=True,
+        color_system="truecolor",
+        width=120,
+        theme=RALPH_THEME,
+    )
+    pd2 = ParallelDisplay(make_display_context(console=console2, env={}))
+    pd2.emit_checkpoint_summary_table(_Opts())
+    pd2.stop()
+    text = buf2.getvalue()
+    assert "[checkpoint]" in text, f"missing section rule: {text!r}"
+    assert "Checkpoint Summary" in text, f"missing banner title: {text!r}"
+    assert "Phase" in text, f"missing body cell: {text!r}"
+
+
+def test_visual_hierarchy_emit_blank_line() -> None:
+    pd, buf = _make_display(force_terminal=False)
+    pd.emit_blank_line()
+    pd.stop()
+    text = buf.getvalue()
+    assert text == "\n", f"expected single newline, got: {text!r}"
+
+
+def test_visual_hierarchy_emit_dry_run_summary() -> None:
+    pd, buf = _make_display(force_terminal=True)
+    pd.emit_dry_run_summary(phase="development", iterations=3)
+    pd.stop()
+    text = buf.getvalue()
+    assert "[dry-run]" in text, f"missing section rule: {text!r}"
+    assert "Dry run mode" in text, f"missing header: {text!r}"
+    assert "development" in text, f"missing phase body: {text!r}"
+
+
+def test_visual_hierarchy_emit_info_panel() -> None:
+    pd, buf = _make_display(force_terminal=True)
+    pd.emit_info_panel(title="Next steps", content="  \u2022 Run ralph --init")
+    pd.stop()
+    text = buf.getvalue()
+    assert "Next steps" in text, f"missing panel title: {text!r}"
+    assert "Run ralph --init" in text, f"missing panel content: {text!r}"

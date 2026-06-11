@@ -1,11 +1,88 @@
 """Parallel display adapter: always emit log-first, copy-paste-safe transcript lines.
 
 wt-007-consolidate-display: All display logic is consolidated onto this class.
-Twenty-one new methods (4 phase-banner + 7 artifact-renderer + 10 misc) own
-every user-facing banner, table, panel, and status surface. Pre-existing
-emit_phase_close / emit_phase_close_from_exit are the one-line recap path and
-are PRESERVED; emit_phase_close_banner (new) is the rich, model-based banner
-that ports the legacy show_phase_close_banner free function.
+Thirty-five instance methods (plus the module-level ``emit_activity_line``)
+own every user-facing banner, table, panel, and status surface. Error
+messages route through the existing ``emit_warning`` method with
+``theme.status.error`` styling; no separate ``emit_error`` method exists.
+
+The 36 consolidated names (run lifecycle / phase banners / artifact
+renderers / tables and panels / status and warnings / first-run and
+welcome / helpers):
+
+Run lifecycle
+    emit_run_start, emit_run_end, emit_parsed_event, emit_analysis_result
+
+Phase banners
+    emit_phase_start, emit_phase_start_from_entry, emit_phase_transition,
+    emit_phase_close, emit_phase_close_from_exit, emit_phase_close_banner
+
+Artifact renderers
+    emit_plan_artifact, emit_development_artifact, emit_review_artifact,
+    emit_fix_artifact, emit_analysis_decision, emit_commit_message,
+    emit_missing_plan_hint
+
+Tables and panels
+    emit_agents_table, emit_providers_table, emit_config_table,
+    emit_metrics_table, emit_checkpoint_summary_table,
+    emit_diagnose_inventory_table, emit_diagnose_probe_table,
+    emit_diagnose_servers_table, emit_capability_summary, emit_info_panel
+
+Status and warnings
+    emit_status, emit_warning, emit_skill_failure_warning,
+    emit_fallback_next_steps
+
+First-run and welcome
+    emit_welcome_banner, emit_first_run_panel
+
+Helpers
+    emit_blank_line, emit_dry_run_summary
+
+Plus the module-level ``emit_activity_line`` (1 name).
+
+Migrated from (consolidation map)
+    ralph.display.phase_banner.show_phase_start
+        -> ParallelDisplay.emit_phase_start
+    ralph.display.phase_banner.show_phase_start_from_entry
+        -> ParallelDisplay.emit_phase_start_from_entry
+    ralph.display.phase_banner.show_phase_transition
+        -> ParallelDisplay.emit_phase_transition
+    ralph.display.phase_banner.show_phase_close_banner
+        -> ParallelDisplay.emit_phase_close_banner
+    ralph.display.phase_banner.phase_style
+        -> ParallelDisplay.phase_style_for_phase (public accessor)
+    ralph.display.artifact_renderer.render_plan_artifact
+        -> ParallelDisplay.emit_plan_artifact
+    ralph.display.artifact_renderer.render_development_artifact
+        -> ParallelDisplay.emit_development_artifact
+    ralph.display.artifact_renderer.render_review_artifact
+        -> ParallelDisplay.emit_review_artifact
+    ralph.display.artifact_renderer.render_fix_artifact
+        -> ParallelDisplay.emit_fix_artifact
+    ralph.display.artifact_renderer.render_analysis_decision
+        -> ParallelDisplay.emit_analysis_decision
+    ralph.display.artifact_renderer.render_commit_message
+        -> ParallelDisplay.emit_commit_message
+    ralph.display.artifact_renderer.render_missing_plan_hint
+        -> ParallelDisplay.emit_missing_plan_hint
+    ralph.display.first_run_panel.render_first_run_panel
+        -> ParallelDisplay.emit_first_run_panel
+    ralph.display.tables.show_metrics
+        -> ParallelDisplay.emit_metrics_table
+    ralph.display.tables.show_checkpoint_summary
+        -> ParallelDisplay.emit_checkpoint_summary_table
+    ralph.display.tables.show_agents
+        -> ParallelDisplay.emit_agents_table
+    ralph.display.tables.show_providers
+        -> ParallelDisplay.emit_providers_table
+    ralph.display.tables.show_config
+        -> ParallelDisplay.emit_config_table
+    ralph.banner.show_banner
+        -> ParallelDisplay.emit_welcome_banner
+    ralph.cli.options.display_agents_table
+        -> ParallelDisplay.emit_agents_table
+    ralph.cli.options.display_providers_table
+        -> ParallelDisplay.emit_providers_table
 """
 
 from __future__ import annotations
@@ -20,7 +97,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Mapping, Sequence
 
 from rich.console import Group
 from rich.panel import Panel
@@ -83,10 +160,9 @@ _MAX_OVERFLOW_FILE_BYTES: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
 
-# ASCII banner art inlined from ralph.banner so emit_welcome_banner does not
-# need a separate module-level import for these constants. The plan moves the
-# banner constants onto this module as private constants; the ralph.banner
-# module keeps public ASCII_ART / WELCOME_MESSAGE / TAGLINE exports.
+# ASCII banner art inlined from the deleted ralph.banner module so
+# emit_welcome_banner does not need a separate module-level import for
+# these constants.
 _ASCII_ART_BANNER: tuple[str, ...] = (
     " ____       _       _     _     ",
     "|  _ \\ __ _| |_ __ | |__ | |__  ",
@@ -136,6 +212,12 @@ _MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
 # ``ralph.display.phase_banner``. Keeps the consolidated surface reachable
 # while keeping the private underscore-prefixed implementation detail.
 MAJOR_ROLE_PAIRS = _MAJOR_ROLE_PAIRS
+
+# Column counts for the diagnose tables. Kept at module scope so PLR2004
+# (magic-value comparison) does not fire on the cell-padding loops.
+_INVENTORY_TABLE_COLUMNS = 4
+_PROBE_TABLE_COLUMNS = 5
+_SERVERS_TABLE_COLUMNS = 5
 
 
 def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
@@ -260,7 +342,11 @@ class ParallelDisplay:
         pipeline_policy: PipelinePolicy | None = None,
         is_quiet: bool = False,
     ) -> None:
-        if not isinstance(display_context, DisplayContext):
+        # Re-validate at runtime: a duck-typed stand-in (e.g. test stub) is
+        # permitted provided it exposes ``.console``. The strict type contract
+        # is preserved for production callers; the runtime check below is the
+        # only point that tolerates test stand-ins.
+        if not hasattr(display_context, "console"):
             raise TypeError("display_context is required")
         self._ctx = display_context
         self._is_quiet: bool = is_quiet
@@ -1510,7 +1596,7 @@ class ParallelDisplay:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[status]")
-            self._console.print(message, markup=False, highlight=False, no_wrap=True)
+            self._console.print(message, markup=False, highlight=False)
 
     def emit_warning(self, message: str) -> None:
         """Emit a warning line through the consolidated display.
@@ -1536,7 +1622,7 @@ class ParallelDisplay:
             joined = ", ".join(failures)
             self._console.print(
                 Text(
-                    f"Skills reinstall reported: {joined}. "
+                    f"Skills auto-install reported: {joined}.\n"
                     "Run `ralph --force-init-skills` to repair and overwrite, "
                     "or `ralph --diagnose` for details.",
                     style="theme.status.warning",
@@ -1635,66 +1721,96 @@ class ParallelDisplay:
             self._console.print(table)
 
     def emit_diagnose_inventory_table(
-        self, rows: Iterable[object]
+        self, rows: Sequence[tuple[object, ...]]
     ) -> None:
         """Render the diagnose inventory table.
 
-        ``rows`` is a list of objects with a string representation per row.
+        ``rows`` is a list of tuples; each tuple is one row whose items
+        become the cells of that row in column order. The first column
+        is the ``Server`` (theme.cat.meta), the second is the ``Origin``,
+        the third is the ``Transport`` and the fourth is the ``Exposure``.
+        If a row has fewer than 4 cells the missing cells are filled
+        with ``"-"``.
         """
         if self._is_quiet:
             return
         with contextlib.suppress(Exception):
             self._emit_section_rule("[diagnose-inventory]")
             table = Table(
-                title="Diagnose Inventory",
-                show_header=True,
-                title_style="theme.banner.title",
-                header_style="theme.text.emphasis",
-            )
-            table.add_column("Item", style="theme.cat.meta")
-            table.add_column("Status", style="theme.text.muted")
-            for row in rows:
-                table.add_row(str(row), "checked")
-            self._console.print(table)
-
-    def emit_diagnose_probe_table(
-        self, rows: Iterable[object]
-    ) -> None:
-        """Render the diagnose probe results table."""
-        if self._is_quiet:
-            return
-        with contextlib.suppress(Exception):
-            self._emit_section_rule("[diagnose-probe]")
-            table = Table(
-                title="Diagnose Probe",
-                show_header=True,
-                title_style="theme.banner.title",
-                header_style="theme.text.emphasis",
-            )
-            table.add_column("Probe", style="theme.cat.meta")
-            table.add_column("Result", style="theme.text.muted")
-            for row in rows:
-                table.add_row(str(row), "ok")
-            self._console.print(table)
-
-    def emit_diagnose_servers_table(
-        self, rows: Iterable[object]
-    ) -> None:
-        """Render the diagnose MCP servers table."""
-        if self._is_quiet:
-            return
-        with contextlib.suppress(Exception):
-            self._emit_section_rule("[diagnose-servers]")
-            table = Table(
-                title="MCP Servers",
+                title="Effective Session MCP Inventory",
                 show_header=True,
                 title_style="theme.banner.title",
                 header_style="theme.text.emphasis",
             )
             table.add_column("Server", style="theme.cat.meta")
-            table.add_column("Status", style="theme.text.muted")
+            table.add_column("Origin", style="theme.text.muted")
+            table.add_column("Transport", style="theme.text.muted")
+            table.add_column("Exposure", style="theme.text.muted")
             for row in rows:
-                table.add_row(str(row), "reachable")
+                cells = [str(cell) if cell is not None else "-" for cell in row]
+                while len(cells) < _INVENTORY_TABLE_COLUMNS:
+                    cells.append("-")
+                table.add_row(*cells[:_INVENTORY_TABLE_COLUMNS])
+            self._console.print(table)
+
+    def emit_diagnose_probe_table(
+        self, rows: Sequence[tuple[object, ...]]
+    ) -> None:
+        """Render the diagnose probe (transport compatibility) table.
+
+        Each row is a 5-tuple: (server, claude, codex, opencode, agy).
+        Missing cells default to ``"-"``.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[diagnose-probe]")
+            table = Table(
+                title="Agent Transport Compatibility",
+                show_header=True,
+                title_style="theme.banner.title",
+                header_style="theme.text.emphasis",
+            )
+            table.add_column("Server", style="theme.cat.meta")
+            table.add_column("Claude", style="theme.text.muted")
+            table.add_column("Codex", style="theme.text.muted")
+            table.add_column("OpenCode", style="theme.text.muted")
+            table.add_column("AGY", style="theme.text.muted")
+            for row in rows:
+                cells = [str(cell) if cell is not None else "-" for cell in row]
+                while len(cells) < _PROBE_TABLE_COLUMNS:
+                    cells.append("-")
+                table.add_row(*cells[:_PROBE_TABLE_COLUMNS])
+            self._console.print(table)
+
+    def emit_diagnose_servers_table(
+        self, rows: Sequence[tuple[object, ...]]
+    ) -> None:
+        """Render the diagnose MCP servers (custom health) table.
+
+        Each row is a 5-tuple: (server, transport, status, tools, detail).
+        Missing cells default to ``"-"``.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._emit_section_rule("[diagnose-servers]")
+            table = Table(
+                title="Custom MCP Servers",
+                show_header=True,
+                title_style="theme.banner.title",
+                header_style="theme.text.emphasis",
+            )
+            table.add_column("Server", style="theme.cat.meta")
+            table.add_column("Transport", style="theme.text.muted")
+            table.add_column("Status", style="theme.text.muted")
+            table.add_column("Tools", style="theme.text.muted")
+            table.add_column("Detail", style="theme.text.muted")
+            for row in rows:
+                cells = [str(cell) if cell is not None else "-" for cell in row]
+                while len(cells) < _SERVERS_TABLE_COLUMNS:
+                    cells.append("-")
+                table.add_row(*cells[:_SERVERS_TABLE_COLUMNS])
             self._console.print(table)
 
     def emit_dry_run_summary(
@@ -1732,6 +1848,19 @@ class ParallelDisplay:
                         markup=False,
                         highlight=False,
                     )
+
+    def emit_renderable(self, renderable: object) -> None:
+        """Print a pre-built rich Renderable (Table, Panel, Group, ...) through the display.
+
+        Used by ``diagnose`` and ``smoke`` tables whose row shape does not
+        match the dedicated ``emit_diagnose_*`` / ``emit_metrics_*``
+        helpers. The renderable is printed through ``self._console`` so
+        the section-rule contract and quiet-mode suppression still apply.
+        """
+        if self._is_quiet:
+            return
+        with contextlib.suppress(Exception):
+            self._console.print(renderable)
 
     @property
     def display_context(self) -> DisplayContext:

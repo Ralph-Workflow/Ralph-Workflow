@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, Protocol, Unpack, cast
 
 from loguru import logger
-from rich.panel import Panel
 from rich.text import Text
 
 from ralph.agents.registry import AgentRegistry
@@ -24,6 +23,7 @@ from ralph.cli.commands._preflight_request import _PreflightRequest
 from ralph.cli.commands._run_func_state import _RUN_FUNC_UNSET, _RunFuncState
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.protocol.env import RALPH_PARALLEL_WORKER_MANIFEST_ENV
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
@@ -54,8 +54,6 @@ from ralph.skills.manager import SkillManager
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from rich.console import Console
-
     from ralph.cli.commands._legacy_run_pipeline_kwargs import _LegacyRunPipelineKwargs
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
@@ -199,7 +197,7 @@ def _load_configuration(
     Returns:
         _LoadResult on success, or int error code on failure.
     """
-    console = display_context.console
+    display = resolve_active_display(None, display_context)
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
@@ -215,12 +213,9 @@ def _load_configuration(
         and inline_prompt is None
         and _invalidate_pipeline_state_if_prompt_changed(workspace_scope.root)
     ):
-        console.print(
-            Text(
-                "PROMPT.md changed since the last materialized run context; "
-                "cleared saved pipeline state and caches.",
-                style="theme.status.warning",
-            )
+        display.emit_warning(
+            "PROMPT.md changed since the last materialized run context; "
+            "cleared saved pipeline state and caches."
         )
 
     if workspace_scope is not None:
@@ -232,16 +227,13 @@ def _load_configuration(
                 policy_bundle = load_policy_for_workspace_scope(workspace_scope, config=config)
         except Exception as e:
             logger.warning("Failed to load policy bundle: {}", e)
-            err_text = Text()
-            err_text.append("Preflight error:", style="theme.status.error")
-            err_text.append(f" {e}")
-            console.print(err_text, soft_wrap=True)
+            display.emit_warning(f"Preflight error: {e}")
             return _EXIT_PREFLIGHT
 
     if resume:
         initial_state = ckpt.load()
         if initial_state is None:
-            console.print(Text("No checkpoint found to resume from", style="theme.status.warning"))
+            display.emit_warning("No checkpoint found to resume from")
 
     return _LoadResult(
         config=config,
@@ -253,26 +245,22 @@ def _load_configuration(
 
 def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
     """Print a friendly 'not initialized' panel for completely fresh workspaces."""
-    console = display_context.console
-    content = Text()
-    content.append(
+    display = resolve_active_display(None, display_context)
+    content_lines: list[str] = [
         "Ralph Workflow orchestrates AI coding agents through a "
-        "planning → development loop "
-        "driven by your PROMPT.md.\n\n"
-    )
-    content.append("Next steps:\n", style="theme.banner.title")
+        "planning → development loop driven by your PROMPT.md.",
+        "",
+    ]
     for index, line in enumerate(fresh_workspace_next_steps(), start=1):
-        content.append(f"  {index}. {line}\n")
-    content.append("\nDocs: ", style="theme.text.muted")
-    content.append(GETTING_STARTED_DOC, style="theme.text.muted")
-    content.append(" — step-by-step walkthrough for new users", style="theme.text.muted")
-    panel = Panel(
-        content,
-        title="Ralph Workflow is not initialized here yet",
-        border_style="theme.status.warning",
-        padding=(1, 2),
+        content_lines.append(f"  {index}. {line}")
+    content_lines.append("")
+    content_lines.append(
+        f"Docs: {GETTING_STARTED_DOC} — step-by-step walkthrough for new users"
     )
-    console.print(panel)
+    display.emit_info_panel(
+        title="Ralph Workflow is not initialized here yet",
+        content="\n".join(content_lines),
+    )
 
 
 def _validate_loaded_policy_bundle(policy_bundle: PolicyBundle) -> None:
@@ -286,18 +274,18 @@ def _run_policy_preflight_checks(
     display_context: DisplayContext,
 ) -> int:
     """Run policy-backed preflight checks against the already loaded bundle."""
-    console = display_context.console
+    display = resolve_active_display(None, display_context)
     try:
         agent_registry = AgentRegistry.from_config(request.config)
         validate_agent_chains_satisfiable(request.policy_bundle, agent_registry)
     except PolicyValidationError as e:
-        console.print(_preflight_error_text(e.message), soft_wrap=True)
+        display.emit_warning(_preflight_error_text(e.message).plain)
         return _EXIT_PREFLIGHT
 
     try:
         validate_recovery_config(request.policy_bundle)
     except PolicyValidationError as e:
-        console.print(_preflight_error_text(e.message), soft_wrap=True)
+        display.emit_warning(_preflight_error_text(e.message).plain)
         return _EXIT_PREFLIGHT
 
     if request.counter_overrides:
@@ -307,17 +295,17 @@ def _run_policy_preflight_checks(
                 cli_counter_overrides=request.counter_overrides,
             )
         except PolicyValidationError as e:
-            console.print(_preflight_error_text(e.message), soft_wrap=True)
+            display.emit_warning(_preflight_error_text(e.message).plain)
             return _EXIT_PREFLIGHT
 
     if request.initial_state is not None:
         try:
             validate_checkpoint_against_policy(request.initial_state, request.policy_bundle)
         except CheckpointPolicyMismatchError as e:
-            console.print(_checkpoint_mismatch_text(str(e)), soft_wrap=True)
+            display.emit_warning(_checkpoint_mismatch_text(str(e)).plain)
             return _EXIT_PREFLIGHT
         except PolicyValidationError as e:
-            console.print(_preflight_error_text(e.message), soft_wrap=True)
+            display.emit_warning(_preflight_error_text(e.message).plain)
             return _EXIT_PREFLIGHT
 
     return _EXIT_SUCCESS
@@ -333,7 +321,7 @@ def _run_preflight_checks(
     Returns:
         _EXIT_SUCCESS if all checks pass, _EXIT_PREFLIGHT if any check fails.
     """
-    console = display_context.console
+    display = resolve_active_display(None, display_context)
     # validate_required_inputs requires workspace_scope
     if request.workspace_scope is not None and request.inline_prompt is None:
         # Fresh-state detection: workspace has neither PROMPT.md nor .agent
@@ -346,13 +334,12 @@ def _run_preflight_checks(
         try:
             validate_required_inputs(request.workspace_scope)
         except PolicyValidationError as e:
-            console.print(_preflight_error_text(e.message), soft_wrap=True)
+            display.emit_warning(_preflight_error_text(e.message).plain)
             return _EXIT_PREFLIGHT
 
         if validate_custom_mcp_servers(request.workspace_scope.root) != _EXIT_SUCCESS:
-            console.print(
-                _preflight_error_text("Custom MCP validation failed — see logs"),
-                soft_wrap=True,
+            display.emit_warning(
+                _preflight_error_text("Custom MCP validation failed — see logs").plain
             )
             return _EXIT_PREFLIGHT
 
@@ -362,7 +349,7 @@ def _run_preflight_checks(
         try:
             validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
-            console.print(_preflight_error_text(e.message), soft_wrap=True)
+            display.emit_warning(_preflight_error_text(e.message).plain)
             return _EXIT_PREFLIGHT
         return _run_policy_preflight_checks(
             _PolicyPreflightRequest(
@@ -385,12 +372,13 @@ def print_dry_run(
     display_context: DisplayContext,
 ) -> None:
     """Print dry-run information."""
-    console = display_context.console
-    console.print(Text("Dry run mode", style="theme.cat.meta"))
+    display = resolve_active_display(None, display_context)
     fallback_phase = policy_bundle.pipeline.entry_phase if policy_bundle is not None else "unknown"
     phase = initial_state.phase if initial_state else fallback_phase
-    console.print(_detail_text("Phase", phase))
-    console.print(_detail_text("Iterations", str(config.general.developer_iters)))
+    display.emit_dry_run_summary(
+        phase=phase,
+        iterations=config.general.developer_iters,
+    )
 
 
 def _execute_pipeline(
@@ -403,11 +391,11 @@ def _execute_pipeline(
     Returns:
         Exit code from pipeline runner.
     """
-    console = display_context.console
+    display = resolve_active_display(None, display_context)
     run_func = _get_run_func()
     if run_func is None:
         logger.error("Pipeline runner is unavailable")
-        console.print(Text("Pipeline runner is unavailable", style="theme.status.error"))
+        display.emit_warning("Pipeline runner is unavailable")
         return _EXIT_CONFIG_ERROR
 
     try:
@@ -427,7 +415,7 @@ def _execute_pipeline(
             kwargs["cli_overrides"] = request.cli_overrides
         return run_func(request.config, request.initial_state, **kwargs)
     except KeyboardInterrupt:
-        console.print(Text("\nInterrupted by user", style="theme.status.warning"))
+        display.emit_warning("\nInterrupted by user")
         try:
             from ralph.interrupt import handle_keyboard_interrupt_at_cli
 
@@ -438,14 +426,14 @@ def _execute_pipeline(
             _save_interrupt_checkpoint(request.initial_state)
         return _EXIT_INTERRUPT
     except CheckpointPolicyMismatchError as e:
-        console.print(_checkpoint_mismatch_text(str(e)))
+        display.emit_warning(_checkpoint_mismatch_text(str(e)).plain)
         return _EXIT_PREFLIGHT
     except PolicyValidationError as e:
-        console.print(_pipeline_config_error_text(e.message))
+        display.emit_warning(_pipeline_config_error_text(e.message).plain)
         return _EXIT_PREFLIGHT
     except Exception as e:
         logger.exception("Pipeline execution failed: {}")
-        console.print(_status_text("Pipeline failed", str(e), "theme.status.error"))
+        display.emit_warning(f"Pipeline failed: {e}")
         return _EXIT_CONFIG_ERROR
 
 
@@ -487,7 +475,9 @@ def _maybe_enter_process_view(stack: ExitStack) -> Path | None:
     return stack.enter_context(SkillsProcessView())
 
 
-def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> None:
+def _warn_if_capabilities_degraded(
+    display_context: DisplayContext, workspace_root: Path
+) -> None:
     """Print a soft warning if any baseline capability appears degraded (no network I/O)."""
     state_path = default_state_path()
     if not state_path.exists():
@@ -496,13 +486,13 @@ def _warn_if_capabilities_degraded(console: Console, workspace_root: Path) -> No
     health = manager.check_baseline_health()
     mandatory_keys = ("web_search", "visit_url", "skills")
     if any(not health.get(k) for k in mandatory_keys):
-        console.print(
-            Panel(
+        display = resolve_active_display(None, display_context)
+        display.emit_info_panel(
+            title="Baseline Capability Warning",
+            content=(
                 "One or more baseline capabilities may need attention.\n"
-                "Run `ralph --init` to repair or update.",
-                title="Baseline Capability Warning",
-                border_style="theme.status.warning",
-            )
+                "Run `ralph --init` to repair or update."
+            ),
         )
 
 
@@ -516,16 +506,8 @@ def _print_project_skill_conflict_hint(failures: list[str]) -> None:
     """
     if not failures:
         return
-    ctx = make_display_context()
-    ctx.console.print(
-        Text(
-            f"Project-scope skill install reported: {', '.join(failures)}. "
-            "Run `ralph --force-init-skills` to repair and overwrite, "
-            "or `ralph --diagnose` for details.",
-            style="theme.status.warning",
-        ),
-        highlight=False,
-    )
+    display = resolve_active_display(None, make_display_context())
+    display.emit_skill_failure_warning(failures)
 
 
 def _print_user_global_update_hint() -> None:
@@ -540,15 +522,11 @@ def _print_user_global_update_hint() -> None:
     hint on the same non-DEBUG channel as the project-scope conflict
     hint.
     """
-    ctx = make_display_context()
-    ctx.console.print(
-        Text(
-            "[warning] Baseline skills have an update available. "
-            "Run `ralph --force-init-skills` to apply, "
-            "or `ralph --diagnose` for details.",
-            style="theme.status.warning",
-        ),
-        highlight=False,
+    display = resolve_active_display(None, make_display_context())
+    display.emit_warning(
+        "Baseline skills have an update available. "
+        "Run `ralph --force-init-skills` to apply, "
+        "or `ralph --diagnose` for details."
     )
 
 
@@ -686,7 +664,7 @@ def run_pipeline(
         _sync_shipped_skills_on_pipeline_run(
             workspace_root=load_result.workspace_scope.root
         )
-        _warn_if_capabilities_degraded(ctx.console, load_result.workspace_scope.root)
+        _warn_if_capabilities_degraded(ctx, load_result.workspace_scope.root)
 
     # Phase 3: Handle dry-run
     if effective_request.dry_run:

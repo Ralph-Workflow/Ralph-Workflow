@@ -33,12 +33,12 @@ else:
     _ManagedSessionRuntime = object
 
 from rich.prompt import Prompt
-from rich.text import Text
 
 from ralph.agents.invoke import OpenCodeResumableExitError
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.prompt_helper_prompt import build_prompt_helper_prompt
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.artifacts.product_spec import (
     read_product_spec_artifact,
     render_product_spec_as_prompt,
@@ -160,9 +160,8 @@ def _write_prompt_md(
     prompt_md_content = render_product_spec_as_prompt(spec)
     prompt_md_path = workspace_root / "PROMPT.md"
     prompt_md_path.write_text(prompt_md_content, encoding="utf-8")
-    ctx.console.print(
-        Text("PROMPT.md written from product specification.", style="theme.status.success")
-    )
+    display = resolve_active_display(None, ctx)
+    display.emit_status("PROMPT.md written from product specification.")
 
 
 def _clear_draft_artifact(workspace_root: Path) -> None:
@@ -187,7 +186,8 @@ def _display_agent_line(
     if not visible:
         return
     ctx = display_context or make_display_context()
-    ctx.console.print(visible)
+    display = resolve_active_display(None, ctx)
+    display.emit_status(visible)
 
 
 def _run_single_invoke(
@@ -421,12 +421,10 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
             display_context=ctx,
         )
         if spec is None:
-            ctx.console.print(
-                Text(
-                    "The agent did not produce a product specification. "
-                    "No PROMPT.md was written.",
-                    style="theme.status.warning",
-                )
+            display = resolve_active_display(None, ctx)
+            display.emit_warning(
+                "The agent did not produce a product specification. "
+                "No PROMPT.md was written."
             )
             return
         _run_review_loop(

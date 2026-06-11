@@ -470,7 +470,6 @@ def test_handle_agent_commit_generation_reports_stage_failure_without_traceback(
             "ralph.cli.commands.commit.read_commit_message_artifact",
             return_value="fix: recover stale git lock",
         ),
-        patch("ralph.cli.commands.commit.resolve_active_display"),
         patch(
             "ralph.cli.commands.commit.stage_all",
             side_effect=GitOperationError("stage_all", "stale git lock remained active"),
@@ -522,7 +521,6 @@ def test_handle_agent_commit_generation_surfaces_recovered_retry_evidence(
             "ralph.cli.commands.commit.read_commit_message_artifact",
             return_value="fix: recover stale git lock",
         ),
-        patch("ralph.cli.commands.commit.resolve_active_display"),
         patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
     ):
         commit_module._handle_agent_commit_generation(

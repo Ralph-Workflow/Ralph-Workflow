@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import io
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from rich.panel import Panel
+from rich.console import Console
 
 from ralph.cli.commands import run as run_module
+from ralph.display.context import make_display_context
+from ralph.display.theme import RALPH_THEME
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -68,6 +71,20 @@ def _configure_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Wor
     return scope
 
 
+def _make_display_context() -> tuple[io.StringIO, object]:
+    """Build a display context backed by a StringIO console for capture."""
+    output = io.StringIO()
+    console = Console(
+        file=output,
+        force_terminal=False,
+        color_system=None,
+        width=120,
+        theme=RALPH_THEME,
+    )
+    display_context = make_display_context(console=console)
+    return output, display_context
+
+
 class TestWarnIfCapabilitiesDegraded:
     """Tests for the _warn_if_capabilities_degraded helper and its integration."""
 
@@ -102,18 +119,15 @@ class TestWarnIfCapabilitiesDegraded:
         }
         monkeypatch.setattr(run_module, "SkillManager", lambda *args, **kwargs: mock_manager)
 
-        # Capture console output
-        mock_console = MagicMock()
+        output, display_context = _make_display_context()
 
         # Call the function directly
-        run_module._warn_if_capabilities_degraded(mock_console, scope.root)
+        run_module._warn_if_capabilities_degraded(display_context, scope.root)
 
         # Verify warning panel was printed
-        mock_console.print.assert_called_once()
-        call_args = mock_console.print.call_args
-        panel = call_args[0][0]
-        assert isinstance(panel, Panel)
-        assert panel.title == "Baseline Capability Warning"
+        rendered = output.getvalue()
+        assert "Baseline Capability Warning" in rendered
+        assert "One or more baseline capabilities may need attention" in rendered
 
     def test_no_warning_when_state_file_absent(
         self,
@@ -127,11 +141,12 @@ class TestWarnIfCapabilitiesDegraded:
         fake_state_file = tmp_path / "nonexistent_capabilities.json"
         monkeypatch.setattr(run_module, "default_state_path", lambda: fake_state_file)
 
-        mock_console = MagicMock()
+        output, display_context = _make_display_context()
 
-        run_module._warn_if_capabilities_degraded(mock_console, scope.root)
+        run_module._warn_if_capabilities_degraded(display_context, scope.root)
 
-        mock_console.print.assert_not_called()
+        rendered = output.getvalue()
+        assert "Baseline Capability Warning" not in rendered
 
     def test_no_warning_when_all_mandatory_capabilities_healthy(
         self,
@@ -162,11 +177,12 @@ class TestWarnIfCapabilitiesDegraded:
         }
         monkeypatch.setattr(run_module, "SkillManager", lambda *args, **kwargs: mock_manager)
 
-        mock_console = MagicMock()
+        output, display_context = _make_display_context()
 
-        run_module._warn_if_capabilities_degraded(mock_console, scope.root)
+        run_module._warn_if_capabilities_degraded(display_context, scope.root)
 
-        mock_console.print.assert_not_called()
+        rendered = output.getvalue()
+        assert "Baseline Capability Warning" not in rendered
 
     def test_warning_emitted_for_degraded_visit_url(
         self,
@@ -196,14 +212,13 @@ class TestWarnIfCapabilitiesDegraded:
         }
         monkeypatch.setattr(run_module, "SkillManager", lambda *args, **kwargs: mock_manager)
 
-        mock_console = MagicMock()
+        output, display_context = _make_display_context()
 
-        run_module._warn_if_capabilities_degraded(mock_console, scope.root)
+        run_module._warn_if_capabilities_degraded(display_context, scope.root)
 
-        mock_console.print.assert_called_once()
-        panel = mock_console.print.call_args[0][0]
-        assert isinstance(panel, Panel)
-        assert panel.title == "Baseline Capability Warning"
+        rendered = output.getvalue()
+        assert "Baseline Capability Warning" in rendered
+        assert "One or more baseline capabilities may need attention" in rendered
 
     def test_warning_emitted_for_degraded_skills(
         self,
@@ -233,11 +248,10 @@ class TestWarnIfCapabilitiesDegraded:
         }
         monkeypatch.setattr(run_module, "SkillManager", lambda *args, **kwargs: mock_manager)
 
-        mock_console = MagicMock()
+        output, display_context = _make_display_context()
 
-        run_module._warn_if_capabilities_degraded(mock_console, scope.root)
+        run_module._warn_if_capabilities_degraded(display_context, scope.root)
 
-        mock_console.print.assert_called_once()
-        panel = mock_console.print.call_args[0][0]
-        assert isinstance(panel, Panel)
-        assert panel.title == "Baseline Capability Warning"
+        rendered = output.getvalue()
+        assert "Baseline Capability Warning" in rendered
+        assert "One or more baseline capabilities may need attention" in rendered

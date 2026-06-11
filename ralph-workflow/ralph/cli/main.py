@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from ralph.cli._cli_overrides import CLIOverrides
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.display.parallel_display import ParallelDisplay
 
 
 if TYPE_CHECKING:
@@ -311,7 +312,7 @@ def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
 
 def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
     """Regenerate global and local configs from bundled defaults, backing up existing files."""
-    c = display_context.console
+    display = resolve_active_display(None, display_context)
     agent_dir: RuntimePath | None
     try:
         scope = resolve_workspace_scope()
@@ -325,10 +326,9 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
         if created_or_regenerated:
             emit_first_run_welcome(results, is_regenerate=True, display_context=display_context)
         else:
-            msg = "No configs needed regeneration (all files up-to-date)"
-            c.print(Text(msg, style="theme.text.muted"))
+            display.emit_status("No configs needed regeneration (all files up-to-date)")
     else:
-        c.print(Text("No configs found to regenerate", style="theme.text.muted"))
+        display.emit_status("No configs found to regenerate")
 
 
 def _init_telemetry() -> None:
@@ -345,15 +345,15 @@ def _init_telemetry() -> None:
 
 def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
     """Create the full project-local config override set from the global config set."""
-    console = display_context.console
+    display = resolve_active_display(None, display_context)
     scope = resolve_workspace_scope()
     results = ensure_local_configs(scope.local_config_path.parent)
     if any(result.action in {"created", "regenerated"} for result in results):
         emit_first_run_welcome(results, display_context=display_context)
         return
-    text = Text("Local config files already exist in: ", style="theme.text.muted")
-    text.append(str(scope.local_config_path.parent))
-    console.print(text)
+    display.emit_status(
+        f"Local config files already exist in: {scope.local_config_path.parent}"
+    )
 
 
 def _handle_prompt_helper(
@@ -388,7 +388,7 @@ def _handle_early_exit_flags(
 
 
 def _handle_force_init_skills(
-    *, workspace_root: RuntimePath, console: Console
+    *, workspace_root: RuntimePath
 ) -> None:
     """Run the ``--force-init-skills`` early-exit branch.
 
@@ -400,18 +400,14 @@ def _handle_force_init_skills(
     """
     from ralph.skills.manager import SkillManager
 
+    display_context = _get_cli_context()
     manager = SkillManager()
     cap_state, failures = manager.reinstall_baseline_skills(workspace_root=workspace_root)
-    print_capability_summary(console, cap_state, workspace_root=workspace_root)
+    print_capability_summary(
+        display_context.console, cap_state, workspace_root=workspace_root
+    )
     if failures:
-        console.print(
-            Text(
-                f"Skills reinstall reported: {', '.join(failures)}. "
-                "Run `ralph --force-init-skills` to repair and overwrite, "
-                "or `ralph --diagnose` for details.",
-                style="theme.status.warning",
-            )
-        )
+        resolve_active_display(None, display_context).emit_skill_failure_warning(failures)
 
 
 def main(
@@ -662,7 +658,6 @@ def main(
     verbosity = resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
     _cli_ctx = _get_cli_context()
-    _console = _cli_ctx.console
 
     bootstrap_global_configs(display_context=_cli_ctx)
     _init_telemetry()
@@ -699,11 +694,13 @@ def main(
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = handle_check_config(config, cli_overrides, check_config, console=_console)
+    exit_code = handle_check_config(
+        config, cli_overrides, check_config, console=_cli_ctx.console
+    )
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = handle_check_mcp(check_mcp, console=_console)
+    exit_code = handle_check_mcp(check_mcp, display_context=_cli_ctx)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
@@ -721,7 +718,7 @@ def main(
 
     if force_init_skills:
         _handle_force_init_skills(
-            workspace_root=RuntimePath.cwd(), console=_console
+            workspace_root=RuntimePath.cwd(),
         )
         raise typer.Exit()
 
@@ -731,7 +728,8 @@ def main(
 
     if inspect_checkpoint:
         summary = ckpt.inspect()
-        _console.print(summary)
+        display = resolve_active_display(None, _cli_ctx)
+        display.emit_status(str(summary))
         raise typer.Exit()
 
     exit_code = handle_commit_plumbing(
@@ -860,28 +858,28 @@ def _handle_check_config(
     cli_overrides: dict[str, object],
     check_config: bool,
     *,
-    console: Console | None = None,
+    display_context: DisplayContext,
 ) -> int | None:
     """Handle --check-config flag; returns exit code or None to continue."""
     if not check_config:
         return None
-    c = console if console is not None else _get_cli_context().console
+    display = resolve_active_display(None, display_context)
     try:
         config_path = _config_path(config)
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
-        c.print(Text("Configuration is valid", style="theme.status.success"))
+        display.emit_status("Configuration is valid")
         return 0
     except Exception as e:
         logger.error("Configuration is invalid: {}", e)
         return 1
 
 
-def _handle_check_mcp(check_mcp: bool, *, console: Console | None = None) -> int | None:
+def _handle_check_mcp(check_mcp: bool, *, display_context: DisplayContext) -> int | None:
     """Handle --check-mcp flag; returns exit code or None to continue."""
     if not check_mcp:
         return None
-    c = console if console is not None else _get_cli_context().console
+    display = resolve_active_display(None, display_context)
     validate_custom_mcp_servers = _load_validate_custom_mcp_servers()
 
     try:
@@ -891,9 +889,9 @@ def _handle_check_mcp(check_mcp: bool, *, console: Console | None = None) -> int
         logger.error("MCP validation failed: {}", e)
         return 1
     if rc == 0:
-        c.print(Text("MCP servers validated successfully", style="theme.status.success"))
+        display.emit_status("MCP servers validated successfully")
     else:
-        c.print(Text("MCP validation failed — see logs", style="theme.status.error"))
+        display.emit_warning("MCP validation failed — see logs")
     return rc
 
 
@@ -929,7 +927,7 @@ def _run_pipeline(
     display_context: DisplayContext,
 ) -> int:
     """Run the main pipeline."""
-    c = display_context.console
+    display = resolve_active_display(None, display_context)
     try:
         request = RunPipelineRequest(
             config_path=_config_path(config),
@@ -944,7 +942,7 @@ def _run_pipeline(
         exit_code = run_pipeline(request, display_context=display_context)
         return exit_code
     except KeyboardInterrupt:
-        c.print(Text("\nInterrupted by user", style="theme.status.warning"))
+        display.emit_warning("\nInterrupted by user")
         try:
             from ralph.interrupt import handle_keyboard_interrupt_at_cli
 
@@ -954,11 +952,7 @@ def _run_pipeline(
         return 130
     except Exception as e:
         logger.exception("Pipeline failed: {}")
-        err_text = Text()
-        err_text.append("Error:", style="theme.status.error")
-        err_text.append(" ")
-        err_text.append(str(e))
-        c.print(err_text)
+        display.emit_warning(f"Error: {e}")
         return 1
 
 
@@ -1039,8 +1033,6 @@ def _build_cli_overrides(
 init_telemetry = _init_telemetry
 bootstrap_global_configs = _bootstrap_global_configs
 configure_logging = _configure_logging
-handle_check_config = _handle_check_config
-handle_check_mcp = _handle_check_mcp
 handle_commit_plumbing = _handle_commit_plumbing
 handle_list_agents = _handle_list_agents
 handle_list_providers = _handle_list_providers
@@ -1051,6 +1043,72 @@ build_cli_overrides = _build_cli_overrides
 RunPipelineOpts = _RunPipelineOpts
 invoke_pipeline = _run_pipeline
 THOROUGH_DEVELOPER_ITERS = _THOROUGH_DEVELOPER_ITERS
+
+
+def _resolve_display_from_legacy(
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+) -> ParallelDisplay:
+    """Resolve a display from either a console or a context, or build a default.
+
+    When a legacy ``console`` is provided but no ``display_context``, build a
+    context whose console is the supplied one so the test's stream is honored.
+    """
+    if display_context is not None:
+        return resolve_active_display(None, display_context)
+    if console is not None:
+        ctx = _make_display_context(console=console, env={})
+        return resolve_active_display(None, ctx)
+    return resolve_active_display(None, _get_cli_context())
+
+
+def handle_check_mcp(
+    check_mcp: bool,
+    *,
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+) -> int | None:
+    """Public wrapper that accepts a legacy ``console`` kwarg for backward compat."""
+    if not check_mcp:
+        return None
+    display = _resolve_display_from_legacy(console=console, display_context=display_context)
+    validate_custom_mcp_servers = _load_validate_custom_mcp_servers()
+    try:
+        workspace_scope = resolve_workspace_scope()
+        rc = validate_custom_mcp_servers(workspace_scope.root)
+    except Exception as e:
+        logger.error("MCP validation failed: {}", e)
+        return 1
+    if rc == 0:
+        display.emit_status("MCP servers validated successfully")
+    else:
+        display.emit_warning("MCP validation failed \u2014 see logs")
+    return rc
+
+
+def handle_check_config(
+    config: str | None,
+    cli_overrides: dict[str, object],
+    check_config: bool,
+    *,
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+) -> int | None:
+    """Public wrapper for the ``--check-config`` short-circuit; accepts legacy
+    ``console=`` and new ``display_context=`` kwargs.
+    """
+    if not check_config:
+        return None
+    display = _resolve_display_from_legacy(console=console, display_context=display_context)
+    try:
+        config_path = _config_path(config)
+        workspace_scope = None if config_path is not None else resolve_workspace_scope()
+        load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        display.emit_status("Configuration is valid")
+        return 0
+    except Exception as e:
+        logger.error("Configuration is invalid: {}", e)
+        return 1
 
 if __name__ == "__main__":
     app()

@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
-from rich.panel import Panel
 from rich.table import Table
 
 from ralph.agents.execution_state import strategy_for_transport
@@ -453,7 +452,9 @@ def _render_smoke_report(results: list[SmokeRunResult]) -> str:
 
 
 def _render_smoke_table(results: list[SmokeRunResult], *, display_context: DisplayContext) -> None:
-    console = display_context.console
+    from ralph.display.parallel_display import resolve_active_display
+
+    display = resolve_active_display(None, display_context)
     table = Table(title="Interactive Claude parity smoke test", show_lines=False)
     table.add_column("Agent")
     table.add_column("Transport")
@@ -475,8 +476,11 @@ def _render_smoke_table(results: list[SmokeRunResult], *, display_context: Displ
             "yes" if result.artifact_submitted else "no",
             "none" if not result.errors else "; ".join(result.errors),
         )
-    console.print(table)
-    console.print(Panel(_render_smoke_report(results), title="Detailed report"))
+    display.emit_renderable(table)
+    display.emit_info_panel(
+        title="Detailed report",
+        content=_render_smoke_report(results),
+    )
 
 
 def smoke_interactive_claude_command(*, display_context: DisplayContext | None = None) -> int:

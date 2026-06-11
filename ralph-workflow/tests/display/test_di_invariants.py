@@ -369,3 +369,126 @@ def test_no_runtime_rich_console_import_in_cli_or_pipeline() -> None:
         "Runtime 'from rich.console import Console' found outside TYPE_CHECKING:\n"
         + "\n".join(violations)
     )
+
+
+def test_no_console_print_in_main_py_except_version_path() -> None:
+    """Pin wt-007: only the --version early-exit may use direct c.print in main.py.
+
+    AST-scans ralph/cli/main.py for ``console.print(``, ``c.print(``,
+    and ``ctx.console.print(`` calls. The ONLY remaining direct call
+    is the one inside ``version_callback`` — the --version early-exit
+    path that runs before any DisplayContext is built. A regression
+    that introduces a new direct c.print in main.py would be flagged
+    here.
+    """
+    main_path = _REPO_ROOT_FOR_TESTS / "ralph" / "cli" / "main.py"
+    source = main_path.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    lines = source.splitlines()
+
+    def _is_in_version_callback(lineno: int) -> bool:
+        """Return True when the given 1-based line is inside ``version_callback``."""
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if node.name != "version_callback":
+                continue
+            if node.lineno <= lineno <= node.end_lineno:
+                return True
+        return False
+
+    violations: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr != "print":
+            continue
+        # Match c.print(...) where c is a local Name
+        if isinstance(node.func.value, ast.Name) and node.func.value.id in {"c", "console"}:
+            violations.append(node.lineno)
+            continue
+        # Match ctx.console.print(...)
+        if (
+            isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "console"
+            and isinstance(node.func.value.value, ast.Name)
+            and node.func.value.value.id in {"ctx", "display_context"}
+        ):
+            violations.append(node.lineno)
+    non_version_violations = [
+        lineno for lineno in violations if not _is_in_version_callback(lineno)
+    ]
+    assert not non_version_violations, (
+        f"main.py must have zero direct console.print outside the "
+        f"version_callback function; found {non_version_violations!r}.\n"
+        f"Direct c.print/console.print/ctx.console.print call sites: {violations!r}\n"
+        f"Context around the first violation:\n"
+        f"{chr(10).join(lines[max(0, violations[0] - 3):violations[0] + 2])}"
+    )
+    assert len(violations) >= 1, (
+        f"version_callback must keep its single direct c.print at line "
+        f"{lines.index('c.print(version_text)') + 1 if 'c.print(version_text)' in lines else '?'}; "
+        f"found no direct c.print/console.print calls in main.py at all."
+    )
+
+
+def test_no_free_function_imports_in_cli_or_pipeline() -> None:
+    """Pin wt-007: zero free-function display imports in CLI / pipeline / config.
+
+    Scans ralph/cli/commands/, ralph/pipeline/, ralph/config/ for the 7
+    forbidden free-function import prefixes and asserts zero hits. Also
+    scans for direct ``console.print(``, ``c.print(``, and
+    ``ctx.console.print(`` calls in ralph/cli/commands/*.py,
+    ralph/pipeline/*.py, ralph/config/*.py and asserts zero hits — a
+    regression that re-introduces a direct console.print would be
+    flagged here.
+    """
+    targets = [
+        *_all_cli_command_files(),
+        *_all_pipeline_files(),
+        *(_REPO_ROOT_FOR_TESTS / "ralph" / "config").glob("*.py"),
+    ]
+    forbidden_prefixes = (
+        "from ralph.display.phase_banner",
+        "from ralph.display.artifact_renderer",
+        "from ralph.display.first_run_panel",
+        "from ralph.display.tables",
+        "from ralph.banner",
+        "from ralph.cli.options import display_agents_table",
+        "from ralph.cli.options import display_providers_table",
+    )
+    import_violations: list[str] = [
+        f"{path.name}:{line.rstrip()}"
+        for path in targets
+        for line in _scan_lines(path)
+        for prefix in forbidden_prefixes
+        if prefix in line
+    ]
+    assert not import_violations, (
+        "Free-function display imports re-introduced in CLI/pipeline/config "
+        "(wt-007 anti-drift guard tripped):\n" + "\n".join(import_violations)
+    )
+
+    print_call_patterns = (
+        "console.print(",
+        "c.print(",
+        "ctx.console.print(",
+    )
+    print_violations: list[str] = [
+        f"{path.name}:{line.rstrip()}"
+        for path in targets
+        for line in _scan_lines(path)
+        for pattern in print_call_patterns
+        if pattern in line
+    ]
+    assert not print_violations, (
+        "Direct console.print/c.print/ctx.console.print calls "
+        "re-introduced in ralph/cli/commands/, ralph/pipeline/, or "
+        "ralph/config/ (wt-007 anti-drift guard tripped):\n"
+        + "\n".join(print_violations)
+    )
+
+
+_REPO_ROOT_FOR_TESTS = Path(__file__).parent.parent.parent

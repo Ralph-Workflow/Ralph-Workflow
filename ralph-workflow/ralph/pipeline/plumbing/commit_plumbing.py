@@ -59,6 +59,7 @@ from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
+from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     COMMIT_MESSAGE_TYPE,
@@ -698,9 +699,8 @@ def collect_commit_agent_output(
                 continue
             parsed_output.append(rendered.plain)
             if verbose:
-                display_context.console.print(
-                    rendered, markup=False, highlight=False, no_wrap=True
-                )
+                display = resolve_active_display(None, display_context)
+                display.emit_status(rendered.plain)
     except AgentInvocationError as exc:
         raise _invocation_error_with_output(
             exc,

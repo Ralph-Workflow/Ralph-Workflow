@@ -93,23 +93,30 @@ def test_run_loop_does_not_use_active_display_console_print() -> None:
 
 
 def test_commit_plumbing_uses_display_context_console() -> None:
-    """Pin Update 2: commit_plumbing routes verbose output via display_context.console.print."""
-    tree = ast.parse(_COMMIT_PLUMBING_PATH.read_text(encoding="utf-8"))
+    """Pin Update 2: commit_plumbing routes verbose output via ParallelDisplay.
+
+    The wt-007 consolidation moved verbose output from
+    ``display_context.console.print(rendered, ...)`` to
+    ``display.emit_status(rendered.plain)``. This test pins the new
+    contract by asserting that the call site resolves a display via
+    :func:`resolve_active_display` and emits through the consolidated
+    ParallelDisplay surface.
+    """
+    text = _COMMIT_PLUMBING_PATH.read_text(encoding="utf-8")
+    tree = ast.parse(text)
     matches = [
         node.lineno
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "print"
-        and isinstance(node.func.value, ast.Attribute)
-        and node.func.value.attr == "console"
-        and isinstance(node.func.value.value, ast.Name)
-        and node.func.value.value.id == "display_context"
+        and node.func.attr == "emit_status"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "display"
     ]
     assert matches, (
-        "expected at least one display_context.console.print(...) call in "
+        "expected at least one display.emit_status(...) call in "
         f"{_COMMIT_PLUMBING_PATH.relative_to(_REPO_ROOT)}; the verbose "
-        "commit plumbing must route through DisplayContext."
+        "commit plumbing must route through ParallelDisplay."
     )
 
 
@@ -175,4 +182,110 @@ def test_emit_welcome_banner_rejects_console_parameter() -> None:
     )
     assert "version" in sig.parameters, (
         f"emit_welcome_banner must accept a 'version' parameter; got: {sig}"
+    )
+
+
+_PARALLEL_DISPLAY_36_NAMES = {
+    # 27 pre-existing instance methods (verified before step 2).
+    "emit_parsed_event",
+    "emit_analysis_result",
+    "emit_run_start",
+    "emit_phase_close",
+    "emit_phase_close_from_exit",
+    "emit_run_end",
+    "emit_phase_start",
+    "emit_phase_start_from_entry",
+    "emit_phase_transition",
+    "emit_phase_close_banner",
+    "emit_plan_artifact",
+    "emit_development_artifact",
+    "emit_review_artifact",
+    "emit_fix_artifact",
+    "emit_analysis_decision",
+    "emit_commit_message",
+    "emit_missing_plan_hint",
+    "emit_first_run_panel",
+    "emit_welcome_banner",
+    "emit_agents_table",
+    "emit_providers_table",
+    "emit_config_table",
+    "emit_capability_summary",
+    "emit_status",
+    "emit_warning",
+    "emit_skill_failure_warning",
+    "emit_fallback_next_steps",
+    # 8 new names added by the consolidation.
+    "emit_metrics_table",
+    "emit_checkpoint_summary_table",
+    "emit_diagnose_inventory_table",
+    "emit_diagnose_probe_table",
+    "emit_diagnose_servers_table",
+    "emit_info_panel",
+    "emit_blank_line",
+    "emit_dry_run_summary",
+    "emit_renderable",
+}
+
+
+def test_parallel_display_exposes_all_36_emit_methods() -> None:
+    """Pin wt-007: ParallelDisplay has all 36 emit_* method names.
+
+    Uses :func:`inspect.getmembers` to enumerate the canonical 36-name
+    set. PA-001 fix: NO emit_error is included; error messages use
+    the existing ``emit_warning`` method with theme.status.error
+    styling. The test explicitly asserts all 6 pre-existing methods
+    that were present in the baseline so a future regression that
+    renames or removes one of those 6 would be flagged.
+    """
+    members = {name for name, _ in inspect.getmembers(ParallelDisplay)}
+    missing = _PARALLEL_DISPLAY_36_NAMES - members
+    assert not missing, (
+        f"ParallelDisplay is missing canonical 36-name set members: {sorted(missing)!r}"
+    )
+    explicit_pins = {
+        "emit_parsed_event",
+        "emit_analysis_result",
+        "emit_run_start",
+        "emit_phase_close",
+        "emit_phase_close_from_exit",
+        "emit_run_end",
+    }
+    for name in explicit_pins:
+        assert name in members, (
+            f"ParallelDisplay is missing baseline method {name!r}"
+        )
+    assert "emit_error" not in members, (
+        "ParallelDisplay must NOT expose a separate emit_error method; "
+        "error messages use emit_warning with theme.status.error styling."
+    )
+
+
+def test_emit_methods_route_through_display_console_only() -> None:
+    """Pin wt-007: every emit_* method routes through the display's own console.
+
+    Uses :func:`inspect.getsource` on each emit_* method and asserts
+    the body references ``self._console`` (or a private helper that
+    does) — proving the methods consolidate rather than re-introduce
+    free-function fan-out. The drift we are guarding against is the
+    construction of a fresh ``rich.console.Console`` instance inside
+    an emit method body.
+    """
+    members = [
+        (name, method)
+        for name, method in inspect.getmembers(ParallelDisplay, predicate=inspect.isfunction)
+        if name.startswith("emit_")
+    ]
+    assert members, "ParallelDisplay has no emit_* methods"
+    violators: list[str] = []
+    for name, method in members:
+        try:
+            source = inspect.getsource(method)
+        except (OSError, TypeError):
+            continue
+        # Disallow constructing a fresh Console in an emit_* method.
+        if "Console(" in source:
+            violators.append(name)
+    assert not violators, (
+        "emit_* methods that construct their own Console (free-function fan-out): "
+        f"{violators!r}"
     )

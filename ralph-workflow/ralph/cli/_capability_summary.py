@@ -1,32 +1,38 @@
 """Public capability summary helpers used by `ralph --init` and `ralph --force-init-skills`.
 
-Both the print and the row-collector are public so they can be imported by
-``ralph.cli.main`` without the private-symbol anti-pattern flagged by the
-prior planning pass. The module deliberately lives at ``ralph.cli._`` (with
-a leading underscore on the filename) so the underscore-prefix convention
-still signals "CLI-internal helper", but the imported names are public
-(no leading underscore) so the importer does not have to reach into a
+The print side is a 2-line forwarder around
+:func:`ralph.display.parallel_display.ParallelDisplay.emit_capability_summary`,
+which owns the canonical implementation. The pure helper
+:func:`collect_skill_root_rows` stays in this module so it remains
+importable by both ``ParallelDisplay.emit_capability_summary`` and the
+test suite.
+
+The module deliberately lives at ``ralph.cli._`` (with a leading
+underscore on the filename) so the underscore-prefix convention still
+signals "CLI-internal helper", but the imported names are public (no
+leading underscore) so the importer does not have to reach into a
 private namespace.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from rich.table import Table
 from rich.text import Text
 
+from ralph.display.parallel_display import resolve_active_display
 from ralph.skills._agent_paths import (
     agent_skill_roots,
     project_sibling_skill_roots,
 )
-from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
 from ralph.skills._content import BASELINE_SKILL_NAMES
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from rich.console import Console
 
+    from ralph.display.context import DisplayContext
     from ralph.skills._capability_state import CapabilityState
 
 
@@ -81,62 +87,28 @@ def collect_skill_root_rows(
 
 
 def print_capability_summary(
-    console: Console, state: CapabilityState, *, workspace_root: Path | None = None
+    console: Console,
+    state: CapabilityState,
+    *,
+    workspace_root: Path | None = None,
+    display_context: DisplayContext | None = None,
 ) -> None:
     """Print the baseline capabilities summary table.
 
-    ``workspace_root`` defaults to the current working directory when None.
-    The Skill root coverage table gains a new 'Scope' column when project
-    rows are present; the user-global and project rows are separated by a
-    blank row when both groups render.
+    Thin 2-line forwarder that delegates to
+    :meth:`ParallelDisplay.emit_capability_summary`, which owns the
+    canonical implementation. The ``console`` argument is accepted for
+    backward compatibility and is intentionally unused — the resolved
+    display owns its own console via the supplied ``DisplayContext``.
+    When ``display_context`` is None the active display is built
+    from the in-scope ``_cli_ctx`` singleton.
     """
-    from ralph.skills._capability_status import CapabilityStatus
+    del console
+    from ralph.cli.main import _get_cli_context
 
-    resolved_workspace = Path.cwd() if workspace_root is None else workspace_root
-
-    table = Table(title="Baseline Capabilities", show_header=True)
-    table.add_column("Capability", style="theme.cat.meta")
-    table.add_column("Type")
-    table.add_column("Status")
-    for cap in STATIC_BUILTIN_CAPABILITIES:
-        table.add_row(
-            cap.name.replace("_", " ").title(),
-            "Built-in",
-            Text("OK — always available", style="theme.status.success"),
-        )
-    managed_rows = [
-        ("Web search (DuckDuckGo)", state.web_search),
-        ("Page retrieval (visit_url)", state.visit_url),
-        ("Docs MCP (localhost:6280)", state.docs_mcp),
-        ("Skill bundles", state.skills),
-    ]
-    for label, entry in managed_rows:
-        if entry.status == CapabilityStatus.INSTALLED_HEALTHY:
-            status_text = Text("OK", style="theme.status.success")
-        elif entry.update_available:
-            status_text = Text(
-                "Update available — run `ralph --init` to update",
-                style="theme.status.warning",
-            )
-        else:
-            status_text = Text(
-                f"{entry.status.value} — run `ralph --init` or check config",
-                style="theme.status.warning",
-            )
-        table.add_row(label, "Managed", status_text)
-    console.print(table)
-
-    if state.skills.status != CapabilityStatus.NOT_INSTALLED:
-        console.print(Text("Skill root coverage", style="theme.cat.meta"))
-        skill_rows = collect_skill_root_rows(workspace_root=resolved_workspace)
-        skill_table = Table(show_header=True)
-        skill_table.add_column("Agent", style="theme.cat.meta")
-        skill_table.add_column("Skill root", style="theme.text.muted")
-        skill_table.add_column("Scope", style="theme.cat.meta")
-        skill_table.add_column("Status")
-        for agent_label, skill_root, scope, status_text in skill_rows:
-            skill_table.add_row(agent_label, skill_root, scope, status_text)
-        console.print(skill_table)
+    ctx = display_context if display_context is not None else _get_cli_context()
+    display = resolve_active_display(None, ctx)
+    display.emit_capability_summary(state, workspace_root=workspace_root)
 
 
 __all__ = ["collect_skill_root_rows", "print_capability_summary"]

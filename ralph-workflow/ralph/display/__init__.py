@@ -9,14 +9,25 @@ views used by CLI diagnostics and listing commands.
    of ``Console``, ``Theme``, terminal width, color policy, display mode, and
    adaptive character limits. No renderer may construct its own ``rich.Console``.
 
-   **DI requirement:** Every public renderer function requires a
-   ``display_context: DisplayContext`` argument. There are no silent
-   ``Console``-only fallbacks. Callers must construct a ``DisplayContext``
-   via ``make_display_context()`` before invoking renderers.
+   **Single display owner:** ``ParallelDisplay`` is the single source of truth
+   for all user-facing display logic in Ralph Workflow. All 36 consolidated
+   ``emit_*`` methods (35 instance methods on ``ParallelDisplay`` plus the
+   module-level ``emit_activity_line``) own every banner, table, panel, and
+   status surface. There are no separate free-function renderers; the legacy
+   ``ralph.display.phase_banner``, ``ralph.display.artifact_renderer``,
+   ``ralph.display.first_run_panel``, ``ralph.display.tables``,
+   ``ralph.banner``, and ``ralph.cli.options`` modules have been deleted.
+
+   **DI requirement:** Every public emit method on ``ParallelDisplay`` is
+   reachable through a ``DisplayContext``; callers resolve an active display
+   via ``resolve_active_display(display_context)`` and call
+   ``display.emit_*``. There are no silent ``Console``-only fallbacks in
+   production code. Callers must construct a ``DisplayContext`` via
+   ``make_display_context()`` before invoking renderers.
 
    **Invariant enforcement:** ``tests/display/test_di_invariants.py`` scans
-   every file under ``ralph/display/`` and ``ralph/banner.py`` to assert that
-   ``Console(`` and ``Theme(`` only appear in ``theme.py``, and that
+   every file under ``ralph/display/`` to assert that ``Console(`` and
+   ``Theme(`` only appear in ``theme.py``, and that
    ``os.environ``/``os.getenv`` only appear in ``context.py`` and
    ``content_condenser.py``.
 

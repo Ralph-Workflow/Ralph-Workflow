@@ -20,8 +20,7 @@ The DI invariant
 ----------------
 
 The following rules are enforced by ``tests/display/test_di_invariants.py``,
-which scans every ``*.py`` under ``ralph/display/`` and ``ralph/banner.py``
-at test time:
+which scans every ``*.py`` under ``ralph/display/`` at test time:
 
 - ``Console(`` may only appear in ``ralph/display/theme.py``.
 - ``Theme(`` may only appear in ``ralph/display/theme.py``.
@@ -50,11 +49,11 @@ exactly one module (``ralph/display/parallel_display.py`` or
      - ``ralph/display/parallel_display.py``
    * - :func:`~ralph.display.parallel_display.emit_activity_line`
      - ``ralph/display/parallel_display.py``
-   * - :func:`~ralph.display.parallel_display.resolve_display`
-     - ``ralph/display/parallel_display.py``
    * - :func:`~ralph.display.parallel_display.resolve_active_display`
      - ``ralph/display/parallel_display.py``
    * - :func:`~ralph.display.parallel_display.get_display_context`
+     - ``ralph/display/parallel_display.py``
+   * - :func:`~ralph.display.parallel_display.phase_style_for_phase`
      - ``ralph/display/parallel_display.py``
    * - :func:`~ralph.display.parallel_display.status_text`
      - ``ralph/display/parallel_display.py``
@@ -62,8 +61,87 @@ exactly one module (``ralph/display/parallel_display.py`` or
      - ``ralph/display/parallel_display.py``
    * - :func:`~ralph.display.parallel_display.strip_markup`
      - ``ralph/display/parallel_display.py``
-   * - :func:`~ralph.display.parallel_display.build_default_display_legacy_bridge`
-     - ``ralph/display/parallel_display.py``
+
+The 36 consolidated ``emit_*`` methods on ``ParallelDisplay`` (35
+instance methods + the module-level ``emit_activity_line``) own every
+user-facing banner, table, panel, and status surface. They are grouped
+by surface below.
+
+Run lifecycle
+~~~~~~~~~~~~~
+
+- ``emit_run_start`` — start-of-run banner with mode-aware title and
+  project root.
+- ``emit_run_end`` — end-of-run recap line with status symbol.
+- ``emit_parsed_event`` — turn one parsed transcript event into a log
+  line and (optionally) a banner.
+- ``emit_analysis_result`` — render the analysis-cycle result.
+
+Phase banners
+~~~~~~~~~~~~
+
+- ``emit_phase_start`` — show a phase-start banner from explicit
+  parameters.
+- ``emit_phase_start_from_entry`` — show a phase-start banner from a
+  lifecycle entry model.
+- ``emit_phase_transition`` — show a phase-transition banner between
+  two phases.
+- ``emit_phase_close`` — show a phase-close banner from explicit
+  parameters.
+- ``emit_phase_close_from_exit`` — show a phase-close banner from a
+  lifecycle exit model.
+- ``emit_phase_close_banner`` — show the rich, model-based phase-close
+  banner.
+
+Artifact renderers
+~~~~~~~~~~~~~~~~~~
+
+- ``emit_plan_artifact`` — render the plan artifact.
+- ``emit_development_artifact`` — render the development artifact.
+- ``emit_review_artifact`` — render the review artifact.
+- ``emit_fix_artifact`` — render the fix artifact.
+- ``emit_analysis_decision`` — render the analysis-decision artifact.
+- ``emit_commit_message`` — render the generated commit message.
+- ``emit_missing_plan_hint`` — emit the missing-plan hint.
+
+Tables and panels
+~~~~~~~~~~~~~~~~~
+
+- ``emit_agents_table`` — render the agents table.
+- ``emit_providers_table`` — render the providers table.
+- ``emit_config_table`` — render the config table.
+- ``emit_metrics_table`` — render the pipeline-metrics table.
+- ``emit_checkpoint_summary_table`` — render the checkpoint-summary
+  table.
+- ``emit_diagnose_inventory_table`` — render the diagnose inventory
+  table.
+- ``emit_diagnose_probe_table`` — render the diagnose probe table.
+- ``emit_diagnose_servers_table`` — render the diagnose servers table.
+- ``emit_capability_summary`` — render the skill capability summary.
+- ``emit_info_panel`` — render a titled info panel.
+
+Status and warnings
+~~~~~~~~~~~~~~~~~~
+
+- ``emit_status`` — emit a one-line status message.
+- ``emit_warning`` — emit a one-line warning (also the error path; uses
+  ``theme.status.error`` styling for error text).
+- ``emit_skill_failure_warning`` — emit the skills-auto-install failure
+  hint.
+- ``emit_fallback_next_steps`` — emit a numbered fallback next-steps
+  list.
+
+First-run and welcome
+~~~~~~~~~~~~~~~~~~~~~
+
+- ``emit_welcome_banner`` — emit the welcome ASCII banner.
+- ``emit_first_run_panel`` — emit the first-run panel.
+
+Helpers
+~~~~~~~
+
+- ``emit_blank_line`` — emit a single blank line.
+- ``emit_dry_run_summary`` — emit the dry-run-mode recap block.
 
 This contract is enforced by two test classes:
 
@@ -102,16 +180,23 @@ fallback otherwise) between run-start, phase-close, and run-end blocks.
 The rule glyph is sourced from ``ralph/display/theme.py`` via
 :meth:`~ralph.display.context.DisplayContext.glyph_for` so it is
 substitutable per the existing Okabe-Ito discipline. Quiet mode
-(``is_quiet=True``) short-circuits the eight short-circuit-capable emit
-methods (``emit``, ``emit_run_start``, ``begin_phase``, ``emit_phase_close``,
-``emit_phase_close_from_exit``, ``emit_run_end``, ``set_status``,
-``record_artifact_outcome``) so no banner or log line leaks when
-:func:`~ralph.display.parallel_display.resolve_display` is called with
-``is_quiet=True``. Log-line tag markers emitted by ``PlainLogRenderer``
-(``[run-start]``, ``[phase-close]``, ``[run-end]``, the inlined
-``[{tag}][{unit_id}]`` substring) are preserved byte-for-byte; see
-``tests/test_parallel_display_preserves_log_tags.py`` for the AC-09
-regression pin.
+(``is_quiet=True``) short-circuits every emit method that owns a banner
+so no banner or log line leaks when
+:func:`~ralph.display.parallel_display.resolve_active_display` is called
+with ``is_quiet=True``.
+
+The section-rule contract is enforced by
+``tests/display/test_parallel_display_visual_hierarchy.py``:
+
+- Every emit method that opens a section calls
+  ``self._emit_section_rule(tag)`` in non-compact mode and is silent
+  in compact mode.
+- Headers use the ``theme.banner.title`` style; body cells use
+  ``theme.text.muted``.
+- Output is markup-free: callers do not need to escape ``[brackets]``
+  or rich markup.
+- Wide-mode emit methods emit a trailing ``Rule`` for visual symmetry
+  around the section block.
 
 Environment variables
 ---------------------
