@@ -114,12 +114,16 @@
 # max_inline_bytes = 5242880  # 5 MiB default; increase for larger inline images
 # @EXAMPLE-END
 
-# Task MCP server (opt-in). Many AI agent runtimes (Claude Code, OpenCode,
-# Codex, etc.) ship a built-in sub-agent / task tool that already supports
-# parallel plan execution. This block is only needed when the runtime
-# exposes its task tooling as a separate MCP server. Most users can ignore
-# it; parallel execution is delegated to the agent's native tooling
-# regardless.
+# Task MCP server (only when the runtime lacks built-in task tooling).
+# Many AI agent runtimes (Claude Code, OpenCode, Codex, AGY, etc.) ship a
+# built-in sub-agent / task tool that already supports parallel plan
+# execution. For supported agents, the agent's native sub-agent / task
+# tooling is enabled by default via `[agents.<name>] subagent_capability`
+# in `ralph-workflow.toml` and NO MCP-server config is needed.
+# This example block is only for runtimes that expose their task tooling
+# as a separate MCP server (rare; e.g. legacy third-party runtimes that
+# do not advertise a built-in task tool). Most users can ignore it;
+# parallel execution is delegated to the agent's native tooling.
 # @EXAMPLE-START
 # [mcp_servers.task]
 # transport = "stdio"

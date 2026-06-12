@@ -1,10 +1,11 @@
 """Audit that Ralph-managed fan-out is dormant and the agent-driven model is wired.
 
-Enforces six non-vacuous invariants across the planning prompt, the bundled
-plan format doc, the effect-router WARNING, the bundled pipeline.toml, and
-the planning_analysis.jinja rubric. Every check uses a real, current-state
-phrase so the audit cannot be vacuously satisfied by strings that never
-appear in the codebase.
+Enforces seven non-vacuous invariants across the planning prompt, the
+continuation template, the bundled plan format doc, the effect-router
+WARNING, the bundled pipeline.toml, and the planning_analysis.jinja
+rubric. Every check uses a real, current-state phrase so the audit
+cannot be vacuously satisfied by strings that never appear in the
+codebase.
 
 Checks (the literals are the verified-real current strings):
   1. ``planning.jinja`` MUST contain ``## Agent-Driven Parallel Execution``
@@ -13,6 +14,10 @@ Checks (the literals are the verified-real current strings):
   4. ``effect_router.py`` MUST contain ``Ralph-managed fan-out is dormant in this build``
   5. ``pipeline.toml`` MUST contain ``dispatch_mode = agent_subagents``
   6. ``planning_analysis.jinja`` MUST contain ``### 9. PARALLEL EXECUTION (AGENT-DRIVEN)``
+  7. ``developer_iteration_continuation.jinja`` MUST contain the new
+     ``## PARALLEL EXECUTION (when the plan declares`` heading AND MUST
+     NOT contain the legacy ``fan-out`` (Ralph-managed) wording, so
+     continuation runs cannot regress to Ralph-managed fan-out.
 
 The existing ``### 7. PARALLELIZATION SAFETY - MEDIUM`` heading in
 ``planning_analysis.jinja`` is part of the existing rubric and is NOT
@@ -87,6 +92,11 @@ _INVARIANTS: tuple[Invariant, ...] = (
         rel_path="prompts/templates/planning_analysis.jinja",
         present=("### 9. PARALLEL EXECUTION (AGENT-DRIVEN)",),
     ),
+    Invariant(
+        rel_path="prompts/templates/developer_iteration_continuation.jinja",
+        present=("## PARALLEL EXECUTION (when the plan declares",),
+        absent=("fan-out",),
+    ),
 )
 
 
@@ -129,12 +139,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(
-        "All 6 invariants OK (parallelization-dormant audit): "
+        "All 7 invariants OK (parallelization-dormant audit): "
         "planning.jinja new heading present + old heading absent, "
         "plan.md agent-managed sub-agents + fan-out is dormant, "
         "effect_router.py WARNING, "
         "pipeline.toml dispatch_mode, "
-        "planning_analysis.jinja ninth rubric dimension."
+        "planning_analysis.jinja ninth rubric dimension, "
+        "continuation.jinja new heading present + fan-out absent."
     )
     return 0
 

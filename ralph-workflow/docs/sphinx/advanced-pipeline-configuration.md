@@ -147,12 +147,23 @@ Example:
 
 ```toml
 [phases.development.parallelization]
+dispatch_mode = "agent_subagents"
 mode = "same_workspace"
 max_parallel_workers = 8
 max_work_units = 50
 require_allowed_directories = true
 post_fanout_verification = false
 ```
+
+`dispatch_mode = "agent_subagents"` is the bundled default: under this value
+the executing agent dispatches its own sub-agents per the plan's `work_units`
+or `parallel_plan` (see the [planning prompt](../prompts/planning.jinja)
+`## Agent-Driven Parallel Execution` guidance and the
+[Parallel Mode](parallel-mode.md) page for the long-form contract).
+Ralph-managed fan-out is dormant. To opt back into the legacy worker flow,
+override with `dispatch_mode = "ralph_fan_out"` and the pipeline falls back
+to the same-workspace worker model with the coordination tool and per-worker
+artifact namespaces.
 
 Use this when you want a planning artifact to split work into multiple development units.
 

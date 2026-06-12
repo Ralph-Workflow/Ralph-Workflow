@@ -51,6 +51,10 @@ The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. B
 
 {% endif %}
 
+## PARALLEL EXECUTION (when the plan declares `work_units` or `parallel_plan`)
+
+When the EXECUTION PLAN above declares `work_units` or `parallel_plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within the `allowed_directories` of each work unit, and producing the matching `plan_items_proven` evidence for each unit. Do NOT call `ralph coordinate claim` / `ralph coordinate release` to execute plan work. If your agent runtime does not support sub-agents, execute the same plan sequentially in `unit_id` order.
+
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 
 You MUST submit a `development_result` artifact before declaring completion. The artifact must include proof for every plan step and every prior analysis how_to_fix item:
