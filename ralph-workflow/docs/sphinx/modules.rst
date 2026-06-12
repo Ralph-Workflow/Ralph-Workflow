@@ -3060,6 +3060,13 @@ ralph.testing.audit_di_seam
    :members:
    :show-inheritance:
 
+ralph.testing.audit_parallelization_dormant
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_parallelization_dormant
+   :members:
+   :show-inheritance:
+
 ralph.telemetry
 ~~~~~~~~~~~~~~~
 

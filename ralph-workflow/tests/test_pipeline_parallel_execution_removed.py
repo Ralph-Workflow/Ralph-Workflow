@@ -2,10 +2,15 @@
 
 import textwrap
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
+from ralph.pipeline.effect_router import determine_effect_from_policy
+from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
+from ralph.pipeline.state import PipelineState
+from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseParallelization, PipelinePolicy
 from ralph.policy.validation import PolicyValidationError
@@ -60,3 +65,56 @@ def test_default_pipeline_only_declares_parallelization_on_development() -> None
             assert phase_def.parallelization is None, (
                 f"phase {phase_name!r} must not declare parallelization"
             )
+
+
+def test_default_pipeline_bundles_agent_subagents_dispatch_mode() -> None:
+    """The bundled default sets ``dispatch_mode='agent_subagents'`` on the
+    development phase so parallel execution is delegated to the AI agent's
+    sub-agents. Ralph-managed fan-out is dormant.
+    """
+    bundle = _load_default_bundle()
+    parallelization = bundle.pipeline.phases["development"].parallelization
+    assert parallelization is not None
+    assert parallelization.dispatch_mode == "agent_subagents"
+
+
+def test_default_pipeline_dormant_default_falls_through_to_invoke_agent(tmp_path: Path) -> None:
+    """The bundled default routes work_units through ``InvokeAgentEffect``
+    (NOT ``FanOutEffect``) so the executing agent can dispatch its own
+    sub-agents. ``test_pipeline_parallel_execution_removed.py`` is the
+    canonical regression for this routing change.
+    """
+    bundle = _load_default_bundle()
+    state = PipelineState(
+        phase="development",
+        work_units=(
+            WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
+            WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
+        ),
+    )
+    config = MagicMock()
+    config.agent_chains = {"developer": ["claude"]}
+    config.agent_drains = {"development": "developer"}
+
+    effect = determine_effect_from_policy(state, bundle, config=config)
+    assert not isinstance(effect, FanOutEffect), (
+        "Bundled default must NOT emit FanOutEffect when dispatch_mode="
+        "'agent_subagents'; the executing agent dispatches its own sub-agents."
+    )
+    assert isinstance(effect, InvokeAgentEffect)
+    assert effect.phase == "development"
+
+
+def test_model_field_default_keeps_ralph_fan_out_for_backward_compat() -> None:
+    """The ``PhaseParallelization`` model default is ``ralph_fan_out`` for
+    backward compatibility with the 6 existing routing-test files (12
+    positive isinstance assertions per PA-016) that build ``PolicyBundle``
+    programmatically and assert ``FanOutEffect``. The bundled
+    ``pipeline.toml`` overrides it to ``agent_subagents`` for production.
+    """
+    para = PhaseParallelization()
+    assert para.dispatch_mode == "ralph_fan_out"
+    para_explicit = PhaseParallelization(dispatch_mode="ralph_fan_out")
+    assert para_explicit.dispatch_mode == "ralph_fan_out"
+    para_subagents = PhaseParallelization(dispatch_mode="agent_subagents")
+    assert para_subagents.dispatch_mode == "agent_subagents"

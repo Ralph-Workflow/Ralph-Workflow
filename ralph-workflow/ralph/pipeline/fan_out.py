@@ -1,4 +1,10 @@
-"""Fan-out parallel execution for the pipeline runner."""
+"""Fan-out parallel execution for the pipeline runner.
+
+Dormant since the parallelization rework; not invoked by the effect router
+when ``dispatch_mode='agent_subagents'`` (the bundled default). Retained for
+future use. Re-arm by setting ``[phases.<phase>.parallelization] dispatch_mode
+= 'ralph_fan_out'`` on the relevant phase in pipeline.toml.
+"""
 
 from __future__ import annotations
 

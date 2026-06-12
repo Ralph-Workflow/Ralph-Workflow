@@ -60,6 +60,30 @@ def _load_default_policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
+def _legacy_fan_out_policy_bundle() -> PolicyBundle:
+    """Bundle that opts into the legacy ``ralph_fan_out`` dispatch mode.
+
+    The bundled default in ``ralph/policy/defaults/pipeline.toml`` sets
+    ``dispatch_mode = 'agent_subagents'`` on the development phase, so
+    the existing routing tests that assert ``FanOutEffect`` must opt
+    into the legacy path explicitly on their policy fixture.
+    """
+    bundle = _load_default_policy_bundle()
+    dev_phase = bundle.pipeline.phases["development"]
+    assert dev_phase.parallelization is not None
+    legacy_parallelization = dev_phase.parallelization.model_copy(
+        update={"dispatch_mode": "ralph_fan_out"}
+    )
+    legacy_dev_phase = dev_phase.model_copy(
+        update={"parallelization": legacy_parallelization}
+    )
+    legacy_phases = dict(bundle.pipeline.phases)
+    legacy_phases["development"] = legacy_dev_phase
+    return bundle.model_copy(
+        update={"pipeline": bundle.pipeline.model_copy(update={"phases": legacy_phases})}
+    )
+
+
 def _registry_factory(return_value: object) -> object:
     class Registry:
         @classmethod
@@ -457,7 +481,7 @@ class TestDetermineEffect:
         assert (tmp_path / ".agent" / "PLAN.md").exists() is False
 
     def test_development_phase_with_work_units_uses_fan_out_effect(self) -> None:
-        bundle = _load_default_policy_bundle()
+        bundle = _legacy_fan_out_policy_bundle()
         state = PipelineState(
             phase="development",
             work_units=(

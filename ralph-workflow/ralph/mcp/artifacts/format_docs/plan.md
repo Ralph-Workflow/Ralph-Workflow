@@ -20,9 +20,13 @@ last_updated: 2026-06-10
 
 The new symbols and the renamed heading are: `EvidenceRef`, `PlanConstraints`, `noop`, `timeout_seconds`, `cwd`, `SE-opinionated design surfaces` (the renamed "Universal SE bias" subsection).
 
+**Parallel execution delegated to the AI agent.** Plans that want to express parallelization intent for the executing agent's sub-agents should declare `work_units` (same-workspace) or `parallel_plan` (read-mostly chunks). Both are **agent-facing parallelization intent** in this build — Ralph-managed fan-out is dormant. The executing agent dispatches its own sub-agents (or runs sequentially when no sub-agent capability is available). Plans that do not declare either field remain valid and run sequentially.
+
 ## What you are doing
 
 You are describing the implementation plan for a coding task. The plan captures the problem context, the executor-ready steps, the critical files to touch, the risks and mitigations, and the verification strategy. A development agent will read the plan and execute it without re-planning.
+
+Parallel execution is delegated to the executing AI agent's native sub-agent tooling. Ralph does not run parallel workers in the bundled default: when a plan declares `work_units` or `parallel_plan`, the executing agent dispatches its own sub-agents (or runs sequentially when no sub-agent capability is available). Ralph-managed fan-out is **dormant** in this build and is retained only for future re-arming.
 
 ## How to submit
 
@@ -96,7 +100,7 @@ Every plan must satisfy the following per-step and cross-section rules or it wil
 - **`step.satisfies` is rejected when the plan has no `design.acceptance_criteria`.** Set the design sub-section first, then link steps to it.
 - **`AC.satisfied_by_steps` entries must reference real step numbers.** Each entry must be an integer ≥1 that appears in the plan's `steps[*].number`. Orphan references raise `PlanArtifactValidationError("acceptance criterion 'X' references unknown step number N")`.
 - **`AC.satisfied_by_steps` cannot reference a `research` or `verify` step.** Only `file_change` and `action` steps can satisfy an AC. References to `step_type="research"` or `step_type="verify"` raise `PlanArtifactValidationError("satisfied_by_steps cannot reference a research or verify step")`.
-- **`parallel_plan` and `work_units` are mutually exclusive.** A plan that declares BOTH sections is rejected with `PlanArtifactValidationError("plan cannot declare both parallel_plan and work_units; pick one")`. Pick the section that fits the work shape — `parallel_plan` for safe-to-parallelize read-mostly chunks, `work_units` for same-workspace parallel fan-out.
+- **`parallel_plan` and `work_units` are mutually exclusive.** A plan that declares BOTH sections is rejected with `PlanArtifactValidationError("plan cannot declare both parallel_plan and work_units; pick one")`. Pick the section that fits the work shape — `parallel_plan` for safe-to-parallelize read-mostly chunks, `work_units` for same-workspace parallelization intent consumed by the executing agent's sub-agents. Both fields are **agent-facing parallelization intent**, NOT Ralph fan-out instructions.
 - **`verification_strategy[*].method` must not invoke a shell interpreter directly.** Methods that start with `bash -c ` (note the trailing space), `sh -c `, or `eval ` are rejected with `PlanArtifactValidationError("verification method must not invoke a shell interpreter directly; use the executable path")`. Legitimate invocations like `bash ./scripts/check.sh` (prefix `bash `, not `bash -c `) are NOT blocked.
 
 ### Design sub-section
@@ -357,6 +361,7 @@ is over-engineered for trivial edits.
 
 - Do NOT wrap the atomic payload in `{"type":"plan","content":...}` — only the step-wise flow accepts that envelope; atomic `content` must be the raw plan payload as a JSON string.
 - Do NOT use `ralph_submit_artifact` with `artifact_type="plan"` for a long plan — prefer the step-wise flow (`ralph_submit_plan_section` + `ralph_finalize_plan`) so each section validates independently.
+- Do NOT instruct the executor to invoke Ralph-managed fan-out — fan-out is dormant in this build. Do NOT use `ralph coordinate claim` / `ralph coordinate release` to execute plan work. The executing agent dispatches its own sub-agents per the plan's `work_units` / `parallel_plan`.
 - Do NOT leave `step_type` blank — set it to one of `file_change`, `action`, `research`, or `verify`.
 - Do NOT use `step_type: "test"` (or `"check"` / `"run"` / any ad-hoc label) — the closed set is `file_change`, `action`, `research`, `verify`. For test-running steps use `step_type: "verify"` with `verify_command: "pytest tests/test_x.py -q"`.
 - Do NOT set `summary.scope_items` to fewer than 3 entries — `_summary.py` requires `min_length=3`.
@@ -602,6 +607,7 @@ instead.
 - Single-file features and bugfixes.
 - Doc-only changes.
 - Test-only changes.
+- Plans that want to express parallelization intent for agent-managed sub-agents via `work_units` (same-workspace) or `parallel_plan` (read-mostly chunks).
 
 **Does NOT fit:**
 

@@ -221,6 +221,26 @@ required by the task.
 - **Clear rationale**: critical files and major steps explain why they matter when non-obvious
 - **Handoff quality**: the transition from planning to development is explicit and usable
 
+### 9. PARALLEL EXECUTION (AGENT-DRIVEN) — HIGH
+
+- **Sub-agent dispatch model**: when a plan declares `work_units` or `parallel_plan`, the
+  parallelization is delegated to the executing AI agent's sub-agents, not to
+  Ralph-managed fan-out. The plan must phrase each unit's `description` /
+  `edit_area` so a sub-agent can execute it as a self-contained spec.
+- **Per-step evidence**: steps that live inside a work unit declare
+  `expected_evidence` (and, when relevant, `verify_command`) so the executing
+  agent can prove completion by matching `plan_items_proven` entries to
+  `unit_id`.
+- **No parallelizable work declared**: a plan with no `work_units` and no
+  `parallel_plan` is just as valid; the executing agent runs the steps
+  sequentially in step order.
+- **Fan-out**: confirm the plan uses `work_units` / `parallel_plan` as
+  agent-facing parallelization intent, NOT as Ralph fan-out instructions.
+  Plans MUST NOT instruct the executor to use `ralph coordinate claim` /
+  `ralph coordinate release` to drive parallel plan work; the bundled
+  default sets `dispatch_mode = 'agent_subagents'` and Ralph-managed
+  fan-out is dormant.
+
 ---
 
 ## DECISION ARTIFACT

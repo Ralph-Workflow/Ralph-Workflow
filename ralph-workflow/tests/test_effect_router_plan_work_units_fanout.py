@@ -33,6 +33,30 @@ def _default_policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
+def _legacy_fan_out_policy_bundle() -> PolicyBundle:
+    """Bundle that opts into the legacy ``ralph_fan_out`` dispatch mode.
+
+    The bundled default in ``ralph/policy/defaults/pipeline.toml`` sets
+    ``dispatch_mode = 'agent_subagents'`` on the development phase, so
+    the existing routing tests that assert ``FanOutEffect`` must opt
+    into the legacy path explicitly on their policy fixture.
+    """
+    bundle = _default_policy_bundle()
+    dev_phase = bundle.pipeline.phases["development"]
+    assert dev_phase.parallelization is not None
+    legacy_parallelization = dev_phase.parallelization.model_copy(
+        update={"dispatch_mode": "ralph_fan_out"}
+    )
+    legacy_dev_phase = dev_phase.model_copy(
+        update={"parallelization": legacy_parallelization}
+    )
+    legacy_phases = dict(bundle.pipeline.phases)
+    legacy_phases["development"] = legacy_dev_phase
+    return bundle.model_copy(
+        update={"pipeline": bundle.pipeline.model_copy(update={"phases": legacy_phases})}
+    )
+
+
 def _config_with_development_agent() -> UnifiedConfig:
     config = MagicMock()
     config.agent_chains = {"developer": ["claude"]}
@@ -80,17 +104,18 @@ def _two_disjoint_units() -> list[dict[str, object]]:
 def test_development_phase_fans_out_from_plan_artifact_work_units(tmp_path: Path) -> None:
     _write_plan_artifact(tmp_path, _plan_content(_two_disjoint_units()))
     state = PipelineState(phase="development")
+    legacy_bundle = _legacy_fan_out_policy_bundle()
 
     effect = determine_effect_from_policy(
         state,
-        _default_policy_bundle(),
+        legacy_bundle,
         WorkspaceScope(tmp_path),
         config=_config_with_development_agent(),
     )
 
     assert isinstance(effect, FanOutEffect)
     assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
-    parallelization = _default_policy_bundle().pipeline.phases["development"].parallelization
+    parallelization = legacy_bundle.pipeline.phases["development"].parallelization
     assert parallelization is not None
     assert effect.max_workers == parallelization.max_parallel_workers
 
@@ -197,7 +222,7 @@ def test_legacy_bare_work_units_plan_payload_fans_out(tmp_path: Path) -> None:
 
     effect = determine_effect_from_policy(
         state,
-        _default_policy_bundle(),
+        _legacy_fan_out_policy_bundle(),
         WorkspaceScope(tmp_path),
         config=_config_with_development_agent(),
     )
@@ -236,7 +261,7 @@ def test_resume_with_recorded_worker_states_still_fans_out(tmp_path: Path) -> No
 
     effect = determine_effect_from_policy(
         state,
-        _default_policy_bundle(),
+        _legacy_fan_out_policy_bundle(),
         WorkspaceScope(tmp_path),
         config=_config_with_development_agent(),
     )
@@ -246,6 +271,13 @@ def test_resume_with_recorded_worker_states_still_fans_out(tmp_path: Path) -> No
 
 
 def test_overlapping_plan_work_unit_directories_are_rejected(tmp_path: Path) -> None:
+    """The pre-flight overlap rejection only runs on the legacy
+    ``ralph_fan_out`` path. Under the bundled default
+    (``dispatch_mode='agent_subagents'``) the router falls through to
+    ``InvokeAgentEffect`` so the executing agent can validate the
+    work-unit directories itself. This test exercises the legacy
+    path's overlap rejection.
+    """
     _write_plan_artifact(
         tmp_path,
         _plan_content(
@@ -259,7 +291,7 @@ def test_overlapping_plan_work_unit_directories_are_rejected(tmp_path: Path) -> 
 
     effect = determine_effect_from_policy(
         state,
-        _default_policy_bundle(),
+        _legacy_fan_out_policy_bundle(),
         WorkspaceScope(tmp_path),
         config=_config_with_development_agent(),
     )

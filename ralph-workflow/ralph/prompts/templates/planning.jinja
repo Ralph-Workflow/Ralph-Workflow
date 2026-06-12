@@ -128,7 +128,7 @@ Default submission flow:
 4. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `critical_files`.
 5. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `risks_mitigations`.
 6. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `verification_strategy`.
-7. Stage optional sections like `parallel_plan` only when they add real value.
+7. Stage optional sections like `parallel_plan` (read-mostly chunks) or `work_units` (same-workspace parallelization intent for agent-managed sub-agents) only when they add real value — see ## Agent-Driven Parallel Execution below.
 8. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
 
 ## INTENT & INTENT_VERB (cheap-model shortcut)
@@ -309,12 +309,14 @@ Hard requirements for the payload:
 
 ---
 
-## Same-Workspace Parallel Worker Rules
+## Agent-Driven Parallel Execution
 
-When you include `work_units` in your plan, these rules apply. Violating them causes policy validation to reject the plan before any worker launches.
+Parallel plan execution is delegated to the executing AI agent. When a plan declares parallel work, the executing agent — not Ralph Workflow — is responsible for dispatching its own sub-agents (or running the plan sequentially if it has no sub-agent capability). Ralph-managed fan-out is **dormant** in the bundled default and is retained only for future re-arming.
+
+When you include `work_units` (or `parallel_plan`) in your plan, follow these rules. They describe how the agent should consume the plan, not how Ralph should run it.
 
 **1. Every work unit must declare `allowed_directories`.**
-Each unit lists the specific subdirectories it may edit. Units with an empty list are rejected.
+Each unit lists the specific subdirectories the sub-agent may edit. Units with an empty list are rejected when fan-out is re-armed.
 ```json
 { "unit_id": "backend", "allowed_directories": ["src/api/", "tests/api/"] }
 ```
@@ -330,12 +332,17 @@ These paths are always rejected as `allowed_directories`:
 - `.git` (version control)
 - `.` or empty string (entire repo — too broad)
 
-**4. Worker state is namespaced per unit.**
-Each worker writes its prompt payloads, logs, and artifacts under `.agent/workers/<unit_id>/`.
+**4. Sub-agent state is namespaced per unit.**
+Each sub-agent writes its prompt payloads, logs, and artifacts under `.agent/workers/<unit_id>/` so results are isolated and reviewable.
 
-**5. Use 2+ work units to enable parallel fan-out.**
-A single work unit falls through to the serial development path. Parallel fan-out only activates with 2 or more units.
+**5. Phrase per-unit work so a sub-agent can execute it.**
+Each work unit's `description` and `edit_area` must be self-contained: scope, target files, expected outcomes. The executing agent hands each unit to a sub-agent as a complete spec.
 
-**Choosing between splitting and merging:**
-- If two areas of work are truly independent (different directories, no shared state), split them into separate units.
-- If two areas overlap or share files, merge them into a single unit rather than risk overlap rejection.
+**6. Annotate per-step evidence so the executing agent can prove completion.**
+Every step that lives inside a work unit should declare `expected_evidence` and (when relevant) `verify_command` so a sub-agent can run the same checks Ralph would have run and surface `plan_items_proven` entries that match the unit's `unit_id`.
+
+**7. Omit `work_units` and `parallel_plan` when no parallelizable work exists.**
+A plan with no parallel work must remain just as valid: declare neither field and the executing agent runs the steps sequentially in `unit_id` / step order.
+
+**8. Ralph-managed fan-out is dormant in this build.**
+MUST NOT instruct the executor to use `ralph coordinate claim` / `ralph coordinate release` to drive parallel plan work. The sub-agent dispatch model is the only active path for parallel plan execution in the bundled default. Re-arm by setting `[phases.<phase>.parallelization] dispatch_mode = 'ralph_fan_out'` in pipeline.toml.

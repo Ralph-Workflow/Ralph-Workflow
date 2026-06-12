@@ -4,11 +4,36 @@ Ralph Workflow is a free and open-source AI agent orchestrator built around a si
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-This document describes Ralph's parallel development fan-out system: how a single development phase executes across N parallel workers using structured concurrency in same-workspace mode.
+This document describes how parallel plan execution is delegated to the executing AI agent in the bundled default. The Ralph-managed fan-out machinery documented below is **dormant** in this build: it is retained for future use and re-arming but is not the path that runs in the bundled default. See `## Dormant fan-out` below for the trigger and the re-arming mechanism.
+
+The rest of this document (Data Flow, Ports and Adapters, Concurrency Model, State Ownership, Invariants) is preserved verbatim as a **reference-only** description of the dormant machinery. Sections below the divider are marked `(dormant - reference only)` and describe the legacy `ralph_fan_out` dispatch mode; the bundled default is `agent_subagents` and falls through to a single `InvokeAgentEffect` so the executing agent can dispatch its own sub-agents per the plan's `work_units` / `parallel_plan`.
+
+## Dormant fan-out
+
+The bundled default sets `parallelism.dispatch_mode = 'agent_subagents'` on the development phase (see `ralph/policy/defaults/pipeline.toml`). The effect router (`ralph/pipeline/effect_router.py`) reads that flag and falls through to `InvokeAgentEffect` while logging a WARNING. The WARNING string is:
+
+> Ralph-managed fan-out is dormant in this build; the executing AI agent is expected to dispatch its own sub-agents per the plan. The declared work_units are informational; the agent will read them as parallelization intent.
+
+The dormant marker is enforced by an audit at `ralph/testing/audit_parallelization_dormant.py` that runs under `make verify` and checks for the new wording in `planning.jinja`, the format doc, the effect-router WARNING, the bundled `pipeline.toml`, and the new ninth rubric dimension in `planning_analysis.jinja`.
+
+To re-enable Ralph-managed fan-out on a phase, set:
+
+```toml
+[blocks.development.phase.parallelization]
+mode = "same_workspace"
+dispatch_mode = "ralph_fan_out"   # the legacy path; the bundled default is "agent_subagents"
+max_parallel_workers = 8
+```
+
+The fan-out machinery below is unchanged and re-armable: `FanOutEffect` (in `ralph/pipeline/effects.py`), `ralph/pipeline/fan_out.py`, and `ralph/pipeline/parallel/` are kept intact and are re-invoked the moment `dispatch_mode` flips back to `ralph_fan_out`.
+
+---
+
+(dormant - reference only) The rest of this document describes the legacy Ralph-managed fan-out path. It is preserved here as a reference for future re-arming and for historical context; the bundled default does not invoke it.
+
+## (dormant - reference only) Data Flow
 
 For the end-to-end pipeline lifecycle, see `pipeline-lifecycle.md`. For the event loop and reducer architecture, see `event-loop-and-reducers.md`.
-
-## Data Flow
 
 The parallel fan-out executes a wave-based DAG across N workers. Each wave respects dependency ordering and a configurable concurrency cap. Workers run against the shared checkout, isolated by path restrictions and per-worker artifact namespaces only — same-workspace v1 uses a single shared checkout with state aggregation as the only post-development coordination.
 
@@ -63,7 +88,7 @@ Before fan-out starts, `validate_for_same_workspace()` rejects any plan that wou
 - Ready units are sorted by `unit_id` for deterministic ordering
 - Only `max_workers` units run concurrently (cap enforced by the coordinator)
 
-## Ports and Adapters
+## (dormant - reference only) Ports and Adapters
 
 ### AgentExecutor Protocol
 
@@ -136,7 +161,7 @@ def for_same_workspace_worker(
 
 Each worker is assigned a `WorkspaceScope` that keeps `root=repo_root` (the shared checkout) while restricting `allowed_roots` to the declared directories plus the per-worker namespace path. This constrains filesystem access without creating a new checkout.
 
-## Concurrency Model
+## (dormant - reference only) Concurrency Model
 
 ### Top-Level Event Loop
 
@@ -215,7 +240,7 @@ except asyncio.CancelledError:
 
 This ensures the entire process tree of the worker is killed, not just the immediate subprocess.
 
-## State Ownership
+## (dormant - reference only) State Ownership
 
 ### PipelineState is Immutable
 
@@ -272,7 +297,7 @@ EffectHandler (effect --> I/O) --> PipelineEvent --> Reducer
 
 Handlers never write to state. Display updates happen after reducer transitions are complete.
 
-## Invariants
+## (dormant - reference only) Invariants
 
 ### max_parallel_workers Cap
 
@@ -316,7 +341,7 @@ return current
 
 Each worker declares non-overlapping `allowed_directories`. The pre-flight `validate_for_same_workspace()` enforces this before any worker starts. Workers never read from each other's edit areas.
 
-## Hard-Kill Flow
+## (dormant - reference only) Hard-Kill Flow
 
 ### Signal Handler Registration
 

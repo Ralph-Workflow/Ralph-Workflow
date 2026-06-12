@@ -114,7 +114,22 @@ def _parallel_or_agent_effect(
         scope = workspace_scope or resolve_workspace_scope()
         work_units = _work_units_from_plan_artifact(scope.root)
     if len(work_units) >= MIN_WORK_UNITS_FOR_PARALLELIZATION:
-        return _fan_out_effect(state, phase_def, work_units)
+        phase_para = phase_def.parallelization
+        if phase_para is not None and phase_para.dispatch_mode == "agent_subagents":
+            logger.warning(
+                "Ralph-managed fan-out is dormant in this build; the executing AI agent is "
+                "expected to dispatch its own sub-agents per the plan. The declared "
+                "work_units are informational; the agent will read them as parallelization "
+                "intent."
+            )
+            logger.debug(
+                "Falling through to InvokeAgentEffect for phase={phase} (dispatch_mode="
+                "agent_subagents, work_units={count})",
+                phase=state.phase,
+                count=len(work_units),
+            )
+        else:
+            return _fan_out_effect(state, phase_def, work_units)
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")

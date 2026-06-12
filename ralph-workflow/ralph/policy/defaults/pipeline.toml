@@ -117,6 +117,7 @@ enabled = true
 clear_on_fresh_entry = true
 [blocks.development.phase.parallelization]
 mode = "same_workspace"
+dispatch_mode = "agent_subagents"
 max_parallel_workers = 8
 max_work_units = 50
 require_allowed_directories = true

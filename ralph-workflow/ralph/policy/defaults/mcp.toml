@@ -114,6 +114,19 @@
 # max_inline_bytes = 5242880  # 5 MiB default; increase for larger inline images
 # @EXAMPLE-END
 
+# Task MCP server (opt-in). Many AI agent runtimes (Claude Code, OpenCode,
+# Codex, etc.) ship a built-in sub-agent / task tool that already supports
+# parallel plan execution. This block is only needed when the runtime
+# exposes its task tooling as a separate MCP server. Most users can ignore
+# it; parallel execution is delegated to the agent's native tooling
+# regardless.
+# @EXAMPLE-START
+# [mcp_servers.task]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-task"]
+# @EXAMPLE-END
+
 # Crawl4AI upstream MCP server for advanced web crawling (multi-page, JS-rendered).
 # Install and start: pip install crawl4ai && crawl4ai-mcp  (default port 11235)
 # See https://docs.crawl4ai.com/mcp/server/ for full setup and security notes.

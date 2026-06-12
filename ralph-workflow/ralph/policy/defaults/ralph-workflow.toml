@@ -115,6 +115,24 @@
 # can_commit = true
 # display_name = "Claude"
 
+[agents.claude]
+cmd = "claude"
+transport = "claude_interactive"
+# Use skip-permissions here because Ralph Workflow confines interactive Claude
+# through the Ralph Workflow MCP/tool allowlist; MCP remains the real
+# permission boundary.
+yolo_flag = "--dangerously-skip-permissions"
+verbose_flag = "--verbose"
+json_parser = "claude"
+session_flag = "--resume {}"
+can_commit = true
+display_name = "Claude"
+# Claude Code's native sub-agent / task tooling is enabled by default in
+# this build. Plans that declare work_units / parallel_plan are
+# dispatched to the executing agent's sub-agents; Ralph-managed fan-out
+# stays dormant. Set to false to force sequential execution.
+subagent_capability = true
+
 # [agents.opencode]
 # cmd = "opencode"
 # output_flag = "--output-format=stream-json"

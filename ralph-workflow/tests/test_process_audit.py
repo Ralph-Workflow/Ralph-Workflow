@@ -48,6 +48,8 @@ TESTS_ALLOWLIST: set[str] = {
     "test_skills_package_sync_script.py",  # node packaging sync coverage uses a subprocess
     "test_audit_test_policy.py",  # contains subprocess.run literals as test-fixture code strings
     "test_audit_mcp_timeout.py",  # subprocess.run/Popen literals as audit-fixture code strings
+    "test_audit_parallelization_dormant.py",
+    # invokes the audit module as a subprocess in test_audit_executable_invocation_returns_zero
     "test_verify_budget_real_time.py",  # tests process-level timeout behavior via subprocess
     "test_verify_invariants.py",  # spawns patched subprocesses to verify import-time invariants
 }

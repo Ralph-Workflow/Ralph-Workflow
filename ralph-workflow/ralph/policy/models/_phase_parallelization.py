@@ -16,6 +16,19 @@ class PhaseParallelization(_FrozenPolicyModel):
         default="same_workspace",
         description="Parallelization mode; only 'same_workspace' is supported in v1",
     )
+    dispatch_mode: Literal["ralph_fan_out", "agent_subagents"] = Field(
+        default="ralph_fan_out",
+        description=(
+            "How parallel work is dispatched at runtime. 'ralph_fan_out' uses the "
+            "Ralph-managed same-workspace fan-out machinery (kept dormant in the "
+            "bundled default). 'agent_subagents' logs a warning and falls through to "
+            "the single InvokeAgentEffect path so the executing AI agent can dispatch "
+            "its own sub-agents per the plan's work_units / parallel_plan. The model "
+            "default is 'ralph_fan_out' for backward compatibility with the existing "
+            "6 routing-test files; the bundled pipeline.toml overrides it to "
+            "'agent_subagents' on the development phase."
+        ),
+    )
     max_parallel_workers: int = Field(
         default=8,
         ge=1,

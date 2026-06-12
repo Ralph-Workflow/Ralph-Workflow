@@ -34,6 +34,10 @@ ralph                         # 4. run the unattended workflow
 
 This also auto-symlinks the bundled skill bundle into the supported agent roots and seeds a batteries-included .gitignore covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns.
 
+## Parallel execution model
+
+Parallel plan execution is delegated to the executing AI agent. Plans declare `work_units` or `parallel_plan` to signal parallelization intent; the executing agent dispatches its own sub-agents to carry the work out. Ralph-managed fan-out is dormant in the bundled default and retained only for future use.
+
 ## What an overnight run leaves you
 
 Here is the actual finish-receipt from the bundled [empty-name-validation example](examples/first-review-bundle/) — a real, unedited handoff, not a mock-up. You read this in the morning instead of a transcript:

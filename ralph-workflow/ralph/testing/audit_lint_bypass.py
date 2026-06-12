@@ -87,6 +87,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("_metrics", "PLW0603"),
     ("_renderers", "PLR0912"),
     ("parallel_display", "PLR0912"),
+    ("pydantic_validation_errors", "PLR0911"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

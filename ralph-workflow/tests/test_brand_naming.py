@@ -64,6 +64,35 @@ _ALLOWLIST: list[tuple[str, str]] = [
     ("Ralph loop", "historical concept reference: the Ralph loop"),
     ("Ralph-loop", "historical concept reference: the Ralph-loop (hyphenated)"),
     ("original Ralph", "historical lineage reference: original Ralph"),
+    # Parallelization rework (wt-011): the audit at
+    # ralph/testing/audit_parallelization_dormant.py enforces the literal
+    # 'Ralph-managed fan-out is dormant in this build' string in
+    # effect_router.py, planning.jinja, and planning_analysis.jinja.
+    # The compound noun 'Ralph-managed' is the canonical product term for
+    # the (now-dormant) parallel-execution machinery. The bare 'Ralph' in
+    # this compound refers to the Ralph Workflow project; the term is
+    # scoped to a single technical concept and does not collide with the
+    # 'Ralph Workflow' brand.
+    (
+        "Ralph-managed",
+        "parallelization rework: 'Ralph-managed' is the canonical product term "
+        "for the dormant fan-out machinery",
+    ),
+    (
+        "Ralph coordinate",
+        "parallelization rework: 'ralph coordinate' is the legacy CLI command name; "
+        "bare 'Ralph' here refers to the project CLI namespace",
+    ),
+    ("Ralph fan-out", "parallelization rework: 'Ralph fan-out' is the legacy dispatch mode name"),
+    (
+        "Ralph should run",
+        "parallelization rework: contraction of 'Ralph Workflow should run' in planning prompt",
+    ),
+    (
+        "Ralph would have run",
+        "parallelization rework: contraction of 'Ralph Workflow would have run' in planning prompt",
+    ),
+
     # ASCII art logo lines — the banner spells out 'Ralph' as visual art
     ("|  _ \\", "ASCII art banner line"),
     ("| |_) /", "ASCII art banner line"),
