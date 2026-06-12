@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.policy.models import (
     ArtifactsPolicy,
     LoopCounterConfig,
@@ -26,6 +28,14 @@ from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+# Most tests in this module exercise real git operations against the
+# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
+# Wall-clock cost under parallel xdist load is regularly > 1 s on busy
+# machines, so the default 1-second per-test ceiling is unsafe. The few
+# tests that do not touch the fixture complete in < 1 s and tolerate
+# the elevated ceiling as a no-op.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def test_commit_cleanup_diff_includes_untracked_binary(tmp_git_repo: Path) -> None:
