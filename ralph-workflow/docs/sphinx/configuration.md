@@ -344,13 +344,39 @@ When set, this style string is used instead of the role-based default. Without `
 The main config also supports deeper transport-specific and workflow-authoring sections such as:
 
 - `[ccs]` / `[ccs_aliases]` for explicitly-headless Claude Code Switch defaults
-- `[agents.*]` for agent defaults, including `transport = 'claude_interactive'` on the built-in `claude` path
 - loop counters and budget counters
 - review-role bypass routes
 - recovery policy tuning
 - parallel fan-out controls
 
 Those sections are useful when you are customizing Ralph Workflow deeply, but many operators never need to touch them. Use `claude-headless` or CCS when you explicitly want the documented non-interactive Claude path.
+
+### `[agents.*] subagent_capability`
+
+Each entry under `[agents.<name>]` accepts an optional `subagent_capability` switch that controls whether the agent's native sub-agent / task tooling is used to dispatch parallel work declared in a plan's `work_units` / `parallel_plan` block. When the switch is `true`, the executing agent decides how to fan work out across its own sub-agents; when it is `false`, the same plan runs sequentially. The bundled `ralph-workflow.toml` ships with `[agents.claude] subagent_capability = true` so parallel plans are dispatched to Claude Code's native sub-agents out of the box.
+
+The default value depends on the resolved transport (see `ralph/config/agent_config.py:_resolve_subagent_capability` and the surrounding `model_post_init` method):
+
+| Agent transport | Default `subagent_capability` |
+|-----------------|-------------------------------|
+| `claude` | `true` |
+| `claude_interactive` | `true` |
+| `codex` | `None` — agent decides at runtime |
+| `opencode` | `None` — agent decides at runtime |
+| `nanocoder` | `None` — agent decides at runtime |
+| `agy` | `None` — agent decides at runtime |
+| `generic` | `None` — agent decides at runtime |
+
+The override precedence is the same as every other Ralph Workflow setting: **CLI flags > project-local `.agent/ralph-workflow.toml` > user-global `~/.config/ralph-workflow.toml` > bundled defaults** (see the precedence list at the top of this page). Set the switch explicitly when you want to override the transport-inferred default — for example, to force a Claude Code run to be sequential without changing every other Claude setting:
+
+```toml
+[agents.claude]
+subagent_capability = false
+```
+
+This is the documented escape hatch: Ralph-managed fan-out stays dormant in this build, and the bundled default never falls back to it automatically. See [Parallel Mode](parallel-mode.md) for the full agent-driven parallelism model and [Advanced Pipeline Configuration](advanced-pipeline-configuration.md) for the `[phases.<name>.parallelization].dispatch_mode` override that pins the dispatch policy at the phase level.
+
+The dormant-fanout audit (`ralph.testing.audit_parallelization_dormant`) pins the literal strings in this section, so a future cleanup cannot silently remove them without breaking `make verify`.
 
 ## When to read further
 

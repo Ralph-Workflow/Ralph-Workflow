@@ -1,11 +1,12 @@
 """Audit that Ralph-managed fan-out is dormant and the agent-driven model is wired.
 
-Enforces seven non-vacuous invariants across the planning prompt, the
+Enforces eight non-vacuous invariants across the planning prompt, the
 continuation template, the bundled plan format doc, the effect-router
-WARNING, the bundled pipeline.toml, and the planning_analysis.jinja
-rubric. Every check uses a real, current-state phrase so the audit
-cannot be vacuously satisfied by strings that never appear in the
-codebase.
+WARNING, the bundled pipeline.toml, the planning_analysis.jinja
+rubric, the user-facing configuration docs, and the advanced
+pipeline-configuration doc. Every check uses a real, current-state
+phrase so the audit cannot be vacuously satisfied by strings that
+never appear in the codebase.
 
 Checks (the literals are the verified-real current strings):
   1. ``planning.jinja`` MUST contain ``## Agent-Driven Parallel Execution``
@@ -18,6 +19,14 @@ Checks (the literals are the verified-real current strings):
      ``## PARALLEL EXECUTION (when the plan declares`` heading AND MUST
      NOT contain the legacy ``fan-out`` (Ralph-managed) wording, so
      continuation runs cannot regress to Ralph-managed fan-out.
+  8. ``configuration.md`` MUST contain ``subagent_capability`` (the
+     ``[agents.*]`` default-resolution doc-pinned to prevent silent
+     removal of the new H3 subsection that documents the bundled
+     Claude sub-agent default)
+  9. ``advanced-pipeline-configuration.md`` MUST contain ``dispatch_mode``
+     (the ``[phases.<name>.parallelization]`` H3 already covers it; this
+     invariant pins the existing surface so it cannot drift away from
+     the bundled default)
 
 The existing ``### 7. PARALLELIZATION SAFETY - MEDIUM`` heading in
 ``planning_analysis.jinja`` is part of the existing rubric and is NOT
@@ -97,6 +106,14 @@ _INVARIANTS: tuple[Invariant, ...] = (
         present=("## PARALLEL EXECUTION (when the plan declares",),
         absent=("fan-out",),
     ),
+    Invariant(
+        rel_path="../docs/sphinx/configuration.md",
+        present=("subagent_capability",),
+    ),
+    Invariant(
+        rel_path="../docs/sphinx/advanced-pipeline-configuration.md",
+        present=("dispatch_mode",),
+    ),
 )
 
 
@@ -139,13 +156,15 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print(
-        "All 7 invariants OK (parallelization-dormant audit): "
+        "All 8 invariants OK (parallelization-dormant audit): "
         "planning.jinja new heading present + old heading absent, "
         "plan.md agent-managed sub-agents + fan-out is dormant, "
         "effect_router.py WARNING, "
         "pipeline.toml dispatch_mode, "
         "planning_analysis.jinja ninth rubric dimension, "
-        "continuation.jinja new heading present + fan-out absent."
+        "continuation.jinja new heading present + fan-out absent, "
+        "configuration.md subagent_capability doc-pinned, "
+        "advanced-pipeline-configuration.md dispatch_mode doc-pinned."
     )
     return 0
 
