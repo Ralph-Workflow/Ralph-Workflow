@@ -124,6 +124,7 @@ Do not make transient .agent handoff files part of the revised plan's execution 
 {% include 'shared/_plan_quality_rubric.j2' %}
 
 Before `{{FINALIZE_PLAN_TOOL_NAME}}`, perform this self-audit:
+- Continuation gate: this continuation exists because the prior planning pass failed. If your runtime provides a subagent gate, you MUST use it as a hard stop against ## PLAN QUALITY RUBRIC and this self-audit. Until a subagent review reports no remaining rubric-grounded findings, you MUST NOT finalize or submit the revised plan artifact.
 - Feedback closure: every currently known analyzer finding has been resolved in the revised draft or forced a broader section replacement; no known issue is left partially addressed
 - Issue-to-section mapping: every analyzer issue is tied to concrete revised sections or to an explicit verified reason that no section change was necessary
 - Closure ledger complete: you have accounted for analyzer-cited issues, the adjacent or implied issues your own analysis discovered, the revised sections that close them, and any dependent sections that had to move with them

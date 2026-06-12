@@ -87,6 +87,12 @@ PLANNING_EDIT_ISSUE_MAPPING_TEXT = (
 )
 PLANNING_EDIT_CLOSURE_LEDGER_TEXT = "Build a closure ledger before finalizing the revised draft"
 PLANNING_EDIT_ADJACENT_ISSUES_TEXT = "the adjacent or implied issues your own analysis discovered"
+PLANNING_EDIT_CONTINUATION_GATE_TEXT = (
+    "If your runtime provides a subagent gate, you MUST use it as a hard stop"
+)
+PLANNING_EDIT_NO_SUBMISSION_BEFORE_GATE_TEXT = (
+    "you MUST NOT finalize or submit the revised plan artifact"
+)
 PLANNING_ANALYSIS_CORE_WORKFLOW_TEXT = (
     "Infer the core user-facing workflows and prerequisite actions that must exist"
 )
@@ -164,6 +170,12 @@ DEVELOPER_NARROW_INTERFACES_TEXT = (
 )
 DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT = (
     "Add dependencies, abstractions, or layers only when they clearly reduce complexity"
+)
+DEVELOPER_CONTINUATION_GATE_TEXT = (
+    "you MUST use at least one sub-agent as a hard gate before artifact submission"
+)
+DEVELOPER_CONTINUATION_NO_SUBMIT_TEXT = (
+    "you MUST NOT submit the artifact or declare completion"
 )
 
 
@@ -243,6 +255,8 @@ def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work
     assert DEVELOPER_CLEAR_OVER_CLEVER_TEXT in prompt
     assert DEVELOPER_NARROW_INTERFACES_TEXT in prompt
     assert DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT in prompt
+    assert DEVELOPER_CONTINUATION_GATE_TEXT in prompt
+    assert DEVELOPER_CONTINUATION_NO_SUBMIT_TEXT in prompt
 
 
 def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
@@ -348,6 +362,8 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> 
     assert PLANNING_EDIT_ISSUE_MAPPING_TEXT in prompt
     assert PLANNING_EDIT_CLOSURE_LEDGER_TEXT in prompt
     assert PLANNING_EDIT_ADJACENT_ISSUES_TEXT in prompt
+    assert PLANNING_EDIT_CONTINUATION_GATE_TEXT in prompt
+    assert PLANNING_EDIT_NO_SUBMISSION_BEFORE_GATE_TEXT in prompt
     assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
     assert PLANNING_STABLE_ID_TEXT in prompt
@@ -421,6 +437,8 @@ def test_planning_edit_fallback_teaches_holistic_replanning_contract(tmp_path: P
     assert PLANNING_EDIT_FALLBACK_SCOUT_TEXT in prompt
     assert PLANNING_EDIT_FALLBACK_HISTORY_TEXT in prompt
     assert PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_TEXT in prompt
+    assert PLANNING_EDIT_CONTINUATION_GATE_TEXT in prompt
+    assert PLANNING_EDIT_NO_SUBMISSION_BEFORE_GATE_TEXT in prompt
 
 
 def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path: Path) -> None:

@@ -87,3 +87,12 @@ def test_continuation_template_new_section_warns_about_fan_out() -> None:
     source = _read_continuation_template()
     assert "dispatching your own sub-agents" in source
     assert "unit_id" in source
+
+
+def test_continuation_template_requires_subagent_gate_before_submission() -> None:
+    """A failed continuation must not allow artifact submission before a
+    sub-agent gate clears the remaining work when that capability exists.
+    """
+    source = _read_continuation_template()
+    assert "you MUST use at least one sub-agent as a hard gate" in source
+    assert "you MUST NOT submit the artifact or declare completion" in source
