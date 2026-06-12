@@ -86,6 +86,7 @@ The full set of files that prove the engine's Pro contract:
 | `tests/test_pro_support_hooks.py` | `ProPipelineHooks` exposes 5 factory kwargs + 1 policy_bundle_override + 1 snapshot_registry; all wired into `run()`. |
 | `tests/test_pro_support_state_query.py` | `PipelineStateSnapshot` is a frozen, read-only view of the live state; published on each reduce. |
 | `tests/test_pro_support_cross_repo_marker.py` | The forward-looking engine-capability section in this file lists the three new engine surfaces by canonical name. |
+| `tests/test_pro_support_end_to_end.py` | One black-box `run()` invocation exercises all 3 user-prompt bullets end-to-end: late-marker adoption via `ProMarkerWatcher`, snapshot observability via `SnapshotRegistry` + `PipelineStateSnapshot`, and custom-pipeline DI via `policy_bundle_override`. |
 
 ## Drift detection (CI-level)
 
@@ -124,15 +125,24 @@ binding on the Pro product.
 - `ProMarkerWatcher` — late marker adoption daemon thread;
   engine adopts the marker on first appearance. See
   `ralph/pro_support/watcher.py` and
-  `tests/test_pro_support_watcher.py`.
+  `tests/test_pro_support_watcher.py`. The `ProMarkerWatcher`
+  is wired into `ralph/pipeline/run_loop.py:run` via
+  `_start_pro_marker_watcher` and stops during
+  `_cleanup_pipeline`.
 - `ProPipelineHooks` — custom pipeline DI seam; 5 factory
   kwargs + 1 policy_bundle_override + 1 snapshot_registry
   = 7 fields total. See `ralph/pro_support/hooks.py` and
-  `tests/test_pro_support_hooks.py`.
+  `tests/test_pro_support_hooks.py`. The `ProPipelineHooks`
+  dataclass is consumed in `ralph/pipeline/run_loop.py:run`
+  through the `pro_hooks` keyword argument and per-field
+  short-circuits.
 - `PipelineStateSnapshot` — read-only state observability;
   a frozen dataclass published on each reduce step. See
   `ralph/pro_support/state_query.py` and
-  `tests/test_pro_support_state_query.py`.
+  `tests/test_pro_support_state_query.py`. The
+  `PipelineStateSnapshot` is published from
+  `ralph/pipeline/run_loop.py:_run_inner_loop` after
+  `state = step_result` and before the next iteration.
 
 Until the upstream contract is amended, these engine
 capabilities are documented in the engine-side
