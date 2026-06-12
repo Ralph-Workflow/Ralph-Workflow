@@ -31,9 +31,11 @@ from ralph.policy.models import (
     PolicyBundle,
     RecoveryPolicy,
 )
+from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from types import ModuleType
 
     import pytest
@@ -374,3 +376,103 @@ class _RecordingHeartbeat:
 
     def is_running(self) -> bool:
         return self.started and not self.stopped
+
+
+class _LateMarkerWatcher:
+    """In-process watcher that adopts the marker only after N polls.
+
+    Mirrors the public ``ProMarkerWatcher`` surface that the run
+    loop touches (``heartbeat_client``, ``stop()``) so the test
+    can be exercised end-to-end without a real watcher thread.
+    """
+
+    def __init__(
+        self,
+        workspace_root: Path,
+        *_args: object,
+        poll_results: list[dict[str, object] | None],
+        heartbeat_factory: Callable[[dict[str, object]], object],
+        poll_interval_seconds: float = 0.001,
+    ) -> None:
+        self._workspace_root = workspace_root
+        self._poll_results = list(poll_results)
+        self._heartbeat_factory = heartbeat_factory
+        self._poll_interval = poll_interval_seconds
+        self._stopped = False
+        self.is_heartbeat_started = False
+        self.heartbeat_client: object | None = None
+        self.poll_count = 0
+
+    def start(self) -> None:
+        # Drive polls synchronously so the test stays deterministic.
+        for result in self._poll_results:
+            if self._stopped:
+                return
+            self.poll_count += 1
+            if result is not None:
+                self.heartbeat_client = self._heartbeat_factory(result)
+                self.is_heartbeat_started = True
+                return
+
+    def stop(self) -> None:
+        self._stopped = True
+
+
+def test_late_marker_adoption_starts_heartbeat_after_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A late-arriving marker is adopted by the watcher; heartbeat is still cleaned up."""
+    run_loop_module = _load_run_loop()
+    monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
+    _seed_workspace(tmp_path)
+
+    state = PipelineState(phase="complete")
+    bundle = _make_fake_bundle()
+    _patch_runner_dependencies(monkeypatch, tmp_path, state, bundle)
+
+    recording = _RecordingHeartbeat()
+
+    def _heartbeat_factory(payload: dict[str, object]) -> _RecordingHeartbeat:
+        if isinstance(payload, dict):
+            recording.start()
+        return recording
+
+    def _watcher_factory(_ws_root: Path) -> _LateMarkerWatcher:
+        return _LateMarkerWatcher(
+            tmp_path,
+            poll_results=[None, None, {"run_id": "r", "token": "t", "port": 7432}],
+            heartbeat_factory=_heartbeat_factory,
+        )
+
+    monkeypatch.setattr(
+        run_loop_module,
+        "_setup_active_display",
+        lambda *_a, **_kw: (
+            ParallelDisplay(
+                workspace_root=Path("/tmp"),
+                display_context=make_display_context(),
+                is_quiet=True,
+            ),
+            make_display_context(),
+            lambda: None,
+        ),
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_run_inner_loop",
+        lambda _state, _ctx, _prev: (state, "complete", None),
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_build_recovery_controller",
+        lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
+    )
+
+    config = _build_config(tmp_path)
+    hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
+    exit_code = cast(
+        "Callable[..., int]", run_loop_module.run
+    )(config, initial_state=state, pro_hooks=hooks)
+    assert exit_code == 0
+    assert recording.started, "late marker should have started the heartbeat"
+    assert recording.stopped, "cleanup should have stopped the heartbeat"

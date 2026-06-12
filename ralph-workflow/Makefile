@@ -227,9 +227,34 @@ verify-drift:
 	    fi; \
 	  if grep -RIn --include="*.py" ralph/ ".ralph/run.json" \
 	    | grep -v "ralph/pro_support/marker.py" \
+	    | grep -v "ralph/pro_support/watcher.py" \
 	    | grep -v "pro_support_inventory.md" \
 	    ; then \
 	      echo "drift: .ralph/run.json referenced outside ralph/pro_support/marker.py" >&2; \
+	      exit 1; \
+	    fi; \
+	  if grep -RIn --include="*.py" ralph/pro_support/ "time\.sleep" \
+	    ; then \
+	      echo "drift: ralph/pro_support must not use time.sleep" >&2; \
+	      exit 1; \
+	    fi; \
+	  if grep -RIn --include="*.py" ralph/ "RALPH_" \
+	    | grep -v -E "RALPH_(WORKFLOW_PRO|WORKSPACE|PROMPT_PATH)\b" \
+	    | grep -v "ralph/pro_support/env.py" \
+	    | grep -v "ralph/pro_support/__init__.py" \
+	    | grep -v "tests/test_pro_support" \
+	    | grep -v "tests/test_audit_mcp_timeout" \
+	    | grep -v "tests/test_run_loop_pro_integration" \
+	    | grep -v "tests/test_audit_lint_bypass" \
+	    | grep -v "tests/test_audit_test_policy" \
+	    | grep -v "tests/test_audit_typecheck_bypass" \
+	    | grep -v "tests/test_audit_di_seam" \
+	    | grep -v "tests/test_pro_support_contract" \
+	    | grep -v "tests/test_pro_support_cross_repo_marker" \
+	    | grep -v "tests/test_no_dead_code" \
+	    | grep -v "tests/test_opencode_mcp_config_drift" \
+	    ; then \
+	      echo "drift: ralph/ uses a RALPH_* env var outside the canonical three" >&2; \
 	      exit 1; \
 	    fi; \
 	  echo "verify-drift: OK"'

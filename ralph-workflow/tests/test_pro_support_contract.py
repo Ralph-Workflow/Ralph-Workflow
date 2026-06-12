@@ -30,7 +30,7 @@ import json
 import re
 import sys
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 from loguru import logger as loguru_logger
@@ -67,12 +67,14 @@ from ralph.pro_support import (
     marker as marker_module,
 )
 from ralph.pro_support.heartbeat import ProHeartbeatClient
+from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.marker import read_marker_file
 from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.pro_support.workspace import resolve_pro_workspace
 from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     import pytest
@@ -788,3 +790,146 @@ def test_section_8_heartbeat_client_does_not_log_payload_as_bare_json(
 
     text = captured.getvalue()
     _assert_no_bare_json_log_line(text)
+
+
+# ---------------------------------------------------------------------------
+# Section 7 (extended) \u2014 Late-marker adoption
+#
+# Contract extension: the engine MUST adopt a marker that appears
+# AFTER the engine has already started. This is the new
+# "late-marker adoption" behaviour wired up by
+# ``ralph.pro_support.watcher.ProMarkerWatcher``.
+# ---------------------------------------------------------------------------
+
+
+def test_section_7_heartbeat_adopts_late_marker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Setting ``RALPH_WORKFLOW_PRO`` + late marker triggers watcher adoption."""
+    run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
+    runner_module = importlib.import_module("ralph.pipeline.runner")
+    monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
+    _seed_pro_workspace(tmp_path, run_id="late", token="late-tok")
+
+    state_in = PipelineState(phase="complete")
+    bundle = PolicyBundle(
+        pipeline=PipelinePolicy(
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="development",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+            },
+            entry_phase="planning",
+            terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
+        ),
+        agents=AgentsPolicy(
+            agent_chains={
+                "planning": AgentChainConfig(agents=["claude"], max_retries=1),
+                "development": AgentChainConfig(agents=["claude"], max_retries=1),
+            },
+            agent_drains={
+                "planning": AgentDrainConfig(chain="planning"),
+                "development": AgentDrainConfig(chain="development"),
+            },
+        ),
+        artifacts=ArtifactsPolicy(
+            artifacts={
+                "plan": ArtifactContract(
+                    drain="planning",
+                    artifact_type="plan",
+                    json_path=".agent/artifacts/plan.json",
+                )
+            }
+        ),
+    )
+
+    config = MagicMock()
+    config.general = MagicMock()
+    config.general.verbosity = 0
+    config.general.developer_iters = 1
+    config.general.workflow = MagicMock()
+    config.general.workflow.checkpoint_enabled = True
+    config.general.max_same_agent_retries = 1
+    config.general.checkpoint = MagicMock()
+    config.general.parallel_max_workers = None
+
+    monkeypatch.setattr(
+        runner_module,
+        "resolve_workspace_scope",
+        lambda: MagicMock(root=tmp_path, allowed_roots=[tmp_path]),
+    )
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
+    monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle)
+    monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
+    monkeypatch.setattr(
+        runner_module,
+        "AgentRegistry",
+        MagicMock(from_config=MagicMock(return_value=MagicMock())),
+    )
+    monkeypatch.setattr(runner_module, "create_initial_state", lambda *_a, **_kw: state_in)
+    monkeypatch.setattr(
+        run_loop_module,
+        "_build_recovery_controller",
+        lambda _state, _pp, _cfg: (
+            MagicMock(
+                spec=RecoveryController,
+                event_bus=MagicMock(subscribe=lambda _cb: lambda: None),
+            ),
+            1,
+        ),
+    )
+    ctx = make_display_context()
+    monkeypatch.setattr(runner_module, "make_display_context", lambda **_kw: ctx)
+    display = ParallelDisplay(workspace_root=tmp_path, display_context=ctx, is_quiet=True)
+    monkeypatch.setattr(
+        run_loop_module,
+        "_setup_active_display",
+        lambda *_a, **_kw: (display, ctx, lambda: None),
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_run_inner_loop",
+        lambda _state, _ctx, _prev: (state_in, "complete", None),
+    )
+
+    marker_dir = tmp_path / ".ralph"
+
+    class _SynchronousLateWatcher:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.heartbeat_client: _RecordingHeartbeat | None = None
+            self.is_heartbeat_started = False
+            self._stopped = False
+            self._polls: list[bool] = []
+            if not (marker_dir / "run.json").exists():
+                self._polls.append(False)
+            self._polls.append(True)
+
+        def start(self) -> None:
+            for marker_present in self._polls:
+                if self._stopped:
+                    return
+                if marker_present:
+                    recording = _RecordingHeartbeat()
+                    recording.start()
+                    self.heartbeat_client = recording
+                    self.is_heartbeat_started = True
+                    return
+
+        def stop(self) -> None:
+            self._stopped = True
+
+    def _watcher_factory(_ws_root: Path) -> _SynchronousLateWatcher:
+        return _SynchronousLateWatcher()
+
+    hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
+    exit_code = cast(
+        "Callable[..., int]", run_loop_module.run
+    )(config, initial_state=state_in, pro_hooks=hooks)
+    assert exit_code == 0

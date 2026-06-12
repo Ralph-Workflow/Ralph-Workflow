@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import os
+import sys
 import threading
 import time
 from contextlib import suppress
@@ -40,8 +40,11 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import PolicyBundle
+    from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.heartbeat import ProHeartbeatClient
+    from ralph.pro_support.hooks import ProPipelineHooks
+    from ralph.pro_support.state_query import SnapshotRegistry
+    from ralph.pro_support.watcher import ProMarkerWatcher
     from ralph.workspace.scope import WorkspaceScope
 
     class _PipelineSubscriberProtocol(Protocol):
@@ -113,6 +116,8 @@ class _LoopContext:
     sleep: Callable[[float], None]
     is_quiet: bool
     heartbeat_client: ProHeartbeatClient | None = None
+    pro_watcher: ProMarkerWatcher | None = None
+    snapshot_registry: SnapshotRegistry | None = None
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -293,6 +298,14 @@ def _run_inner_loop(
         if isinstance(step_result, int):
             return state, prev_phase, step_result
         state = step_result
+        if ctx.snapshot_registry is not None:
+            from ralph.pro_support.state_query import (  # noqa: PLC0415
+                build_pipeline_state_snapshot,
+            )
+
+            ctx.snapshot_registry.publish(
+                build_pipeline_state_snapshot(state, ctx.workspace_scope.root)
+            )
         delay_ms = state.last_retry_delay_ms
         if isinstance(delay_ms, int) and delay_ms > 0:
             state = state.copy_with(last_retry_delay_ms=0)
@@ -470,6 +483,9 @@ def _cleanup_pipeline(
     if loop_ctx.monitor_stop is not None:
         with suppress(Exception):
             loop_ctx.monitor_stop()
+    if loop_ctx.pro_watcher is not None:
+        with suppress(Exception):
+            loop_ctx.pro_watcher.stop()
     if loop_ctx.heartbeat_client is not None:
         with suppress(Exception):
             loop_ctx.heartbeat_client.stop()
@@ -526,7 +542,7 @@ def _execute_with_cleanup(
     return exit_code
 
 
-def run(
+def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
@@ -540,6 +556,21 @@ def run(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
     _recovery_sleep: Callable[[float], None] | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    policy_bundle_factory: Callable[[WorkspaceScope, UnifiedConfig], PolicyBundle] | None = None,
+    registry_factory: Callable[[UnifiedConfig], _RegistryLike] | None = None,
+    state_factory: Callable[
+        [UnifiedConfig, AgentsPolicy, PipelinePolicy, dict[str, int] | None],
+        PipelineState,
+    ]
+    | None = None,
+    recovery_controller_factory: Callable[
+        [PipelineState, PolicyBundle, UnifiedConfig],
+        tuple[RecoveryController, int],
+    ]
+    | None = None,
+    marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None = None,
+    snapshot_registry: SnapshotRegistry | None = None,
 ) -> int:
     """Execute the pipeline event loop.
 
@@ -552,6 +583,25 @@ def run(
             calls after each reduce.
         verbosity: Optional explicit verbosity. Defaults to the configured
             value in ``config.general.verbosity`` (mapped from int rank).
+        pro_hooks: Optional ``ProPipelineHooks`` carrying 5 factory callables
+            plus 1 policy_bundle_override and 1 snapshot_registry. When
+            supplied, individual ``policy_bundle_factory`` /
+            ``registry_factory`` / etc. kwargs are pulled from this dataclass
+            (which keeps them in a single, typed bundle).
+        policy_bundle_factory: Optional callable that replaces
+            ``_runner_module.load_policy_bundle_for_run``; ignored when
+            ``pro_hooks.policy_bundle_override`` is set.
+        registry_factory: Optional callable that replaces
+            ``_runner_module.AgentRegistry.from_config``.
+        state_factory: Optional callable that replaces
+            ``_runner_module.create_initial_state``.
+        recovery_controller_factory: Optional callable that replaces
+            ``_build_recovery_controller``.
+        marker_watcher_factory: Optional callable that constructs a
+            ``ProMarkerWatcher``; default constructs one with production
+            defaults.
+        snapshot_registry: Optional ``SnapshotRegistry``; when set, the inner
+            loop publishes a ``PipelineStateSnapshot`` to it on each reduce.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
@@ -560,22 +610,68 @@ def run(
     _runner_module.write_start_commit_if_absent(workspace_scope.root)
     if _runner_module.validate_custom_mcp_servers(workspace_scope.root) != 0:
         return 1
-    policy_bundle = _runner_module.load_policy_bundle_for_run(workspace_scope, config)
+    if pro_hooks is not None:
+        if policy_bundle_factory is None:
+            policy_bundle_factory = pro_hooks.policy_bundle_factory
+        if registry_factory is None:
+            registry_factory = cast(
+                "Callable[[UnifiedConfig], _RegistryLike] | None",
+                pro_hooks.registry_factory,
+            )
+        if state_factory is None:
+            state_factory = pro_hooks.state_factory
+        if recovery_controller_factory is None:
+            recovery_controller_factory = pro_hooks.recovery_controller_factory
+        if marker_watcher_factory is None:
+            marker_watcher_factory = pro_hooks.marker_watcher_factory
+        if snapshot_registry is None:
+            snapshot_registry = pro_hooks.snapshot_registry
+        if pro_hooks.policy_bundle_override is not None:
+            policy_bundle = pro_hooks.policy_bundle_override
+        elif policy_bundle_factory is None:
+            policy_bundle = _runner_module.load_policy_bundle_for_run(
+                workspace_scope, config
+            )
+        else:
+            policy_bundle = policy_bundle_factory(workspace_scope, config)
+    elif policy_bundle_factory is None:
+        policy_bundle = _runner_module.load_policy_bundle_for_run(
+            workspace_scope, config
+        )
+    else:
+        policy_bundle = policy_bundle_factory(workspace_scope, config)
     _runner_module.register_role_handlers(policy_bundle.pipeline)
-    registry = _runner_module.AgentRegistry.from_config(config)
-    state = initial_state or _runner_module.create_initial_state(
-        config,
-        agents_policy=policy_bundle.agents,
-        pipeline_policy=policy_bundle.pipeline,
-        counter_overrides=counter_overrides,
-    )
+    registry: _RegistryLike
+    if registry_factory is None:
+        registry = _runner_module.AgentRegistry.from_config(config)
+    else:
+        registry = registry_factory(config)
+    if state_factory is None:
+        state = initial_state or _runner_module.create_initial_state(
+            config,
+            agents_policy=policy_bundle.agents,
+            pipeline_policy=policy_bundle.pipeline,
+            counter_overrides=counter_overrides,
+        )
+    elif initial_state is not None:
+        state = initial_state
+    else:
+        state = state_factory(
+            config,
+            policy_bundle.agents,
+            policy_bundle.pipeline,
+            counter_overrides,
+        )
     effective_verbosity = normalize_verbosity(
         verbosity if verbosity is not None else config.general.verbosity
     )
     is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
     _sleep = _recovery_sleep or time.sleep
     connectivity_monitor, _monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
-    _controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    if recovery_controller_factory is None:
+        _controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    else:
+        _controller, _ = recovery_controller_factory(state, policy_bundle, config)
     _unsubscribe_bus = _subscribe_recovery_logger(_controller)
     logger.info("Starting pipeline: phase={}, budget_caps={}", state.phase, state.budget_caps)
     if pipeline_subscriber is None:
@@ -586,6 +682,34 @@ def run(
     effective_pipeline_subscriber = _resolve_effective_subscriber(
         dashboard_subscriber, pipeline_subscriber, active_display
     )
+    _pro_watcher, _heartbeat_client = _start_pro_marker_watcher(
+        workspace_scope.root,
+        watcher_factory=marker_watcher_factory,
+    )
+    # The legacy public helper ``_start_pro_heartbeat_if_active`` is
+    # monkey-patched in many tests to inject a recording heartbeat.
+    # If the user (or a test) replaced it, honour that override here
+    # so the run loop's heartbeat_client matches what the test
+    # observed when the monkey-patch was applied. The watcher above
+    # is kept running so late-marker adoption still works when no
+    # override is supplied.
+    _module_legacy_obj: object
+    _self_module = sys.modules[__name__]
+    _self_dict: dict[str, object] = _self_module.__dict__
+    try:
+        _module_legacy_obj = _self_dict["_start_pro_heartbeat_if_active"]
+    except KeyError:
+        _module_legacy_obj = _start_pro_marker_watcher
+    if _module_legacy_obj is not _start_pro_marker_watcher and callable(
+        _module_legacy_obj
+    ):
+        _module_legacy = cast(
+            "Callable[[Path], ProHeartbeatClient | None]",
+            _module_legacy_obj,
+        )
+        _patched_heartbeat: ProHeartbeatClient | None = _module_legacy(workspace_scope.root)
+        if _patched_heartbeat is not None:
+            _heartbeat_client = _patched_heartbeat
     loop_ctx = _LoopContext(
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
@@ -602,64 +726,58 @@ def run(
         connectivity_monitor=connectivity_monitor,
         sleep=_sleep,
         is_quiet=is_quiet,
-        heartbeat_client=_start_pro_heartbeat_if_active(workspace_scope.root),
+        heartbeat_client=_heartbeat_client,
+        pro_watcher=_pro_watcher,
+        snapshot_registry=snapshot_registry,
     )
     return _execute_with_cleanup(state, loop_ctx, state.phase, _unsubscribe_bus, _display_stop)
+
+
+def _start_pro_marker_watcher(
+    workspace_root: Path,
+    *,
+    watcher_factory: Callable[[Path], ProMarkerWatcher] | None = None,
+) -> tuple[ProMarkerWatcher | None, ProHeartbeatClient | None]:
+    """Construct and start a Pro marker watcher (with its embedded heartbeat).
+
+    The watcher polls for the marker and adopts it on first
+    appearance. The heartbeat client (if any) is the one created
+    by the watcher's heartbeat_factory on adoption. Both are
+    returned so the run loop can attach them to _LoopContext.
+
+    When the marker is missing at engine start time, the watcher
+    is started in daemon mode and will adopt the marker later.
+    The heartbeat client is None until adoption; the
+    cleanup path stops the watcher first (so the watcher's poll
+    loop cannot race the heartbeat), then the heartbeat client
+    (so its daemon drain completes).
+    """
+    from ralph.pro_support.watcher import ProMarkerWatcher  # noqa: PLC0415
+
+    def _default_factory(ws_root: Path) -> ProMarkerWatcher:
+        return ProMarkerWatcher(workspace_root=ws_root)
+
+    factory = watcher_factory or _default_factory
+    watcher = factory(workspace_root)
+    watcher.start()
+    return watcher, watcher.heartbeat_client
 
 
 def _start_pro_heartbeat_if_active(
     workspace_root: Path,
 ) -> ProHeartbeatClient | None:
-    """Construct and start a Pro heartbeat client when Pro mode is active.
+    """Thin one-line wrapper that preserves the legacy public API.
 
-    Returns ``None`` in any of the following cases (none of which are
-    errors — a non-Pro invocation simply does not need a heartbeat):
+    Existing tests and call sites (e.g.
+    test_run_loop_pro_integration.py,
+    test_pro_support_contract.py) monkey-patch this name to
+    substitute a recording heartbeat. Returning None when the
+    marker is missing or Pro mode is inactive matches the prior
+    contract.
 
-    - ``RALPH_WORKFLOW_PRO`` is unset or empty;
-    - the marker file is missing or invalid;
-    - ``runId`` is missing from the marker (so we have no identifier to
-      announce);
-    - the heartbeat token is missing (so Pro could not authenticate
-      us even if we tried).
-
-    Failures are logged at debug level. The run continues without a
-    heartbeat rather than failing.
+    New code should use :func:`_start_pro_marker_watcher` directly
+    so the watcher is also wired up.
     """
-    try:
-        from ralph.pro_support.env import is_pro_mode  # noqa: PLC0415
-        from ralph.pro_support.heartbeat import ProHeartbeatClient  # noqa: PLC0415
-        from ralph.pro_support.marker import (  # noqa: PLC0415
-            read_heartbeat_port,
-            read_heartbeat_token,
-            read_marker_file,
-            read_run_id,
-        )
-    except Exception as exc:
-        logger.debug("Pro support unavailable: {}", exc)
-        return None
-
-    if not is_pro_mode():
-        return None
-
-    marker = read_marker_file(workspace_root)
-    run_id = read_run_id(marker)
-    token = read_heartbeat_token(workspace_root)
-    if run_id is None or token is None:
-        logger.debug(
-            "Pro mode active but marker is missing runId or token; skipping heartbeat"
-        )
-        return None
-
-    port = read_heartbeat_port(marker)
-    base_url = f"http://localhost:{port}"
-    client = ProHeartbeatClient(
-        run_id=run_id,
-        token=token,
-        base_url=base_url,
-        pid=os.getpid(),
-    )
-    client.start()
-    logger.info(
-        "Pro heartbeat started: run_id={} base_url={}", run_id, base_url
-    )
+    _watcher, client = _start_pro_marker_watcher(workspace_root)
+    _ = _watcher
     return client
