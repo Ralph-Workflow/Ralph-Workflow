@@ -78,11 +78,6 @@ _ALLOWLIST: list[tuple[str, str]] = [
         "parallelization rework: 'Ralph-managed' is the canonical product term "
         "for the dormant fan-out machinery",
     ),
-    (
-        "Ralph coordinate",
-        "parallelization rework: 'ralph coordinate' is the legacy CLI command name; "
-        "bare 'Ralph' here refers to the project CLI namespace",
-    ),
     ("Ralph fan-out", "parallelization rework: 'Ralph fan-out' is the legacy dispatch mode name"),
     (
         "Ralph should run",

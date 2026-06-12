@@ -54,7 +54,7 @@ Do not preserve the prior target cluster as the starting scope in that case.
 If a canonical verification command or repo-wide audit already surfaces a blocker during replanning, that blocker immediately becomes in-scope plan work and must be reflected in the revised draft.
 When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example or the currently edited file cluster.
 Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before deciding the draft is ready.
-If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before deciding the draft is ready.
+If your runtime provides a subagent mechanism, fan out read-only scouts to verify each analyzer finding's closure and review the draft from independent angles before deciding it is ready; otherwise run the same checks sequentially yourself.
 Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
 If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files.
 When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.

@@ -16,6 +16,11 @@ from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
 
+# Smoke-turn tests stream long synthetic agent output; under full-suite
+# worksteal parallelism the default 1s wall-clock alarm intermittently
+# fires on a loaded machine even though each test normally finishes fast.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
     stream = StringIO()

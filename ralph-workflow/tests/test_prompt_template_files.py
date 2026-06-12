@@ -161,8 +161,8 @@ PLANNING_FIRST_PASS_APPROVAL_GUIDANCE = (
     "Your target is to submit a plan that planning analysis can approve on the first pass"
 )
 PLANNING_SELF_CRITIQUE_GUIDANCE = (
-    "Before finalizing, use parallel agents for the planning-analysis pass when possible; "
-    "otherwise do the next best thing and simulate it yourself"
+    "Before finalizing, run the pre-finalize review fan-out from ## PLANNING WITH SUBAGENTS "
+    "(or its sequential equivalent) against every rubric dimension above"
 )
 PLANNING_CORE_WORKFLOW_PLANNING_GUIDANCE = (
     "Infer the core user-facing workflows and prerequisite actions that must exist"
@@ -281,9 +281,11 @@ PLANNING_PARALLEL_ANALYSIS_GUIDANCE = (
     "If multiple independent analysis or discovery threads would reduce uncertainty, "
     "use parallel agents"
 )
-PLANNING_FIRST_PASS_RISK_AUDIT_GUIDANCE = (
-    "Before finalizing, verify the draft also covers concrete risks, safe parallelization, "
-    "and handoff quality"
+PLANNING_SUBAGENTS_PARTIAL_GUIDANCE = "{% include 'shared/_planning_subagents.j2' %}"
+PLAN_QUALITY_RUBRIC_PARTIAL_GUIDANCE = "{% include 'shared/_plan_quality_rubric.j2' %}"
+PLANNING_EDIT_FINDING_CLOSURE_SCOUT_GUIDANCE = "fan out one scout per analyzer finding"
+PLANNING_EDIT_FALLBACK_SCOUT_GUIDANCE = (
+    "fan out read-only scouts to verify each analyzer finding's closure"
 )
 PLANNING_ANALYSIS_FORMAT_GUIDANCE = (
     "Use this exact string format for each `what_came_up_short` entry"
@@ -435,8 +437,8 @@ def test_planning_prompt_requires_verified_low_research_executor_handoff() -> No
     assert PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE in planning
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE in planning
     assert PLANNING_STABLE_ID_GUIDANCE in planning
-    assert PLANNING_PARALLEL_ANALYSIS_GUIDANCE in planning
-    assert PLANNING_FIRST_PASS_RISK_AUDIT_GUIDANCE in planning
+    assert PLANNING_SUBAGENTS_PARTIAL_GUIDANCE in planning
+    assert PLAN_QUALITY_RUBRIC_PARTIAL_GUIDANCE in planning
 
 
 def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_patching() -> None:
@@ -471,7 +473,9 @@ def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_pat
     assert PLANNING_SHARED_DEFECT_VOCAB_GUIDANCE in planning_edit
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE in planning_edit
     assert PLANNING_STABLE_ID_GUIDANCE in planning_edit
-    assert PLANNING_PARALLEL_ANALYSIS_GUIDANCE in planning_edit
+    assert PLANNING_SUBAGENTS_PARTIAL_GUIDANCE in planning_edit
+    assert PLAN_QUALITY_RUBRIC_PARTIAL_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_FINDING_CLOSURE_SCOUT_GUIDANCE in planning_edit
     assert 'artifact_type="plan"' not in planning_edit
     assert "Not submitting the revised plan is a FAILURE." in planning_edit
 
@@ -517,7 +521,7 @@ def test_planning_edit_fallback_stays_aligned_with_main_replanning_contract() ->
     assert PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE in planning_edit_fallback
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_GUIDANCE in planning_edit_fallback
     assert PLANNING_STABLE_ID_GUIDANCE in planning_edit_fallback
-    assert PLANNING_PARALLEL_ANALYSIS_GUIDANCE in planning_edit_fallback
+    assert PLANNING_EDIT_FALLBACK_SCOUT_GUIDANCE in planning_edit_fallback
     assert PLANNING_EDIT_FALLBACK_HISTORY_GUIDANCE in planning_edit_fallback
     assert PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_GUIDANCE in planning_edit_fallback
 

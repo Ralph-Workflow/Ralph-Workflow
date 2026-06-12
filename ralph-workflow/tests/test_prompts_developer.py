@@ -97,8 +97,8 @@ PLANNING_FIRST_PASS_APPROVAL_TEXT = (
     "Your target is to submit a plan that planning analysis can approve on the first pass"
 )
 PLANNING_SELF_CRITIQUE_TEXT = (
-    "Before finalizing, use parallel agents for the planning-analysis pass when possible; "
-    "otherwise do the next best thing and simulate it yourself"
+    "Before finalizing, run the pre-finalize review fan-out from ## PLANNING WITH SUBAGENTS "
+    "(or its sequential equivalent) against every rubric dimension above"
 )
 PLANNING_SHARED_DEFECT_VOCAB_TEXT = (
     "Use this shared defect vocabulary in both analysis findings and replanning fixes"
@@ -113,9 +113,13 @@ PLANNING_PARALLEL_ANALYSIS_TEXT = (
     "If multiple independent analysis or discovery threads would reduce uncertainty, "
     "use parallel agents"
 )
-PLANNING_FIRST_PASS_RISK_AUDIT_TEXT = (
-    "Before finalizing, verify the draft also covers concrete risks, safe parallelization, "
-    "and handoff quality"
+PLANNING_SUBAGENT_REVIEW_FANOUT_TEXT = "dispatch one reviewer per rubric dimension"
+PLANNING_RUBRIC_RISK_AUDIT_TEXT = (
+    "**Risk Coverage** — concrete failure modes with actionable mitigations"
+)
+PLANNING_EDIT_FINDING_CLOSURE_SCOUT_TEXT = "fan out one scout per analyzer finding"
+PLANNING_EDIT_FALLBACK_SCOUT_TEXT = (
+    "fan out read-only scouts to verify each analyzer finding's closure"
 )
 PLANNING_ANALYSIS_FORMAT_TEXT = "Use this exact string format for each `what_came_up_short` entry"
 PLANNING_EDIT_FALLBACK_HISTORY_TEXT = (
@@ -264,8 +268,8 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path: Path) -> None:
     assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
     assert PLANNING_STABLE_ID_TEXT in prompt
-    assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
-    assert PLANNING_FIRST_PASS_RISK_AUDIT_TEXT in prompt
+    assert PLANNING_SUBAGENT_REVIEW_FANOUT_TEXT in prompt
+    assert PLANNING_RUBRIC_RISK_AUDIT_TEXT in prompt
     assert "## SHIPPED SKILLS" in prompt
     assert "discovers them automatically" in prompt
 
@@ -347,7 +351,8 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> 
     assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
     assert PLANNING_STABLE_ID_TEXT in prompt
-    assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
+    assert PLANNING_SUBAGENT_REVIEW_FANOUT_TEXT in prompt
+    assert PLANNING_EDIT_FINDING_CLOSURE_SCOUT_TEXT in prompt
     assert "Use `ralph_discard_plan_draft` only when the existing plan is unsalvageable" in prompt
     assert (
         "Do not make transient .agent handoff files part of the revised plan's execution inputs"
@@ -413,7 +418,7 @@ def test_planning_edit_fallback_teaches_holistic_replanning_contract(tmp_path: P
     assert PLANNING_SHARED_DEFECT_VOCAB_TEXT in prompt
     assert PLANNING_DEPENDENT_SECTION_CLOSURE_TEXT in prompt
     assert PLANNING_STABLE_ID_TEXT in prompt
-    assert PLANNING_PARALLEL_ANALYSIS_TEXT in prompt
+    assert PLANNING_EDIT_FALLBACK_SCOUT_TEXT in prompt
     assert PLANNING_EDIT_FALLBACK_HISTORY_TEXT in prompt
     assert PLANNING_EDIT_FALLBACK_SCOPE_CONDITIONAL_TEXT in prompt
 

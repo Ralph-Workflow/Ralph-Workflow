@@ -361,7 +361,7 @@ is over-engineered for trivial edits.
 
 - Do NOT wrap the atomic payload in `{"type":"plan","content":...}` — only the step-wise flow accepts that envelope; atomic `content` must be the raw plan payload as a JSON string.
 - Do NOT use `ralph_submit_artifact` with `artifact_type="plan"` for a long plan — prefer the step-wise flow (`ralph_submit_plan_section` + `ralph_finalize_plan`) so each section validates independently.
-- Do NOT instruct the executor to invoke Ralph-managed fan-out — fan-out is dormant in this build. Do NOT use `ralph coordinate claim` / `ralph coordinate release` to execute plan work. The executing agent dispatches its own sub-agents per the plan's `work_units` / `parallel_plan`.
+- Do NOT instruct the executor to invoke Ralph-managed fan-out — fan-out is dormant in this build and the bundled CLI exposes no coordination command for plan work. The executing agent dispatches its own sub-agents per the plan's `work_units` / `parallel_plan`.
 - Do NOT leave `step_type` blank — set it to one of `file_change`, `action`, `research`, or `verify`.
 - Do NOT use `step_type: "test"` (or `"check"` / `"run"` / any ad-hoc label) — the closed set is `file_change`, `action`, `research`, `verify`. For test-running steps use `step_type: "verify"` with `verify_command: "pytest tests/test_x.py -q"`.
 - Do NOT set `summary.scope_items` to fewer than 3 entries — `_summary.py` requires `min_length=3`.

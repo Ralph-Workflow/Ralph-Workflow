@@ -49,6 +49,8 @@ so you do not repeat prior mistakes or revisit already-ruled-out approaches.
 
 Not submitting the revised plan is a FAILURE.
 
+{% include 'shared/_planning_subagents.j2' %}
+
 Your job is to revise the existing plan, not start from a blank slate unless the feedback proves the plan is unsalvageable.
 Preserve still-valid sections only after you have re-validated them against the ORIGINAL REQUEST, repository reality, and the full analysis feedback set.
 Do not localize your revision pass to only the sections explicitly cited by the analyzer.
@@ -90,7 +92,7 @@ Recommended edit flow:
 3. If a canonical verification command or repo-wide audit already surfaces a blocker during replanning, that blocker immediately becomes in-scope plan work and must be reflected in the revised draft.
 4. When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example or the currently edited file cluster.
 5. Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before you decide the draft is ready.
-6. If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before you decide the draft is ready.
+6. When subagents are available, fan out one scout per analyzer finding to verify its closure against the repository, plus one reviewer per rubric dimension to hunt for the next rejection (see ## PLANNING WITH SUBAGENTS); without subagents, run the same checks sequentially yourself.
 7. If the defect scope is `repo_wide` or `cross_section`, re-derive the full plan first, then replace every affected section with {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} using `mode="replace"`.
 8. Use `mode="append"` only when intentionally extending list sections such as `steps` after you have confirmed append is still globally coherent.
 9. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} only after the revised draft passes the self-audit below.
@@ -118,6 +120,8 @@ If the feedback says the plan is missing detail, add that detail.
 If the feedback says verification is weak, replace vague checks with exact commands and expected outcomes.
 If the feedback says the structure is unsound, revise the affected sections systematically rather than patching around the problem.
 Do not make transient .agent handoff files part of the revised plan's execution inputs unless the original request is explicitly about Ralph Workflow's own planning or artifact plumbing.
+
+{% include 'shared/_plan_quality_rubric.j2' %}
 
 Before `{{FINALIZE_PLAN_TOOL_NAME}}`, perform this self-audit:
 - Feedback closure: every currently known analyzer finding has been resolved in the revised draft or forced a broader section replacement; no known issue is left partially addressed

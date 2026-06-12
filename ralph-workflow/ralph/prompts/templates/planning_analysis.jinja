@@ -236,10 +236,10 @@ required by the task.
   sequentially in step order.
 - **Fan-out**: confirm the plan uses `work_units` / `parallel_plan` as
   agent-facing parallelization intent, NOT as Ralph fan-out instructions.
-  Plans MUST NOT instruct the executor to use `ralph coordinate claim` /
-  `ralph coordinate release` to drive parallel plan work; the bundled
-  default sets `dispatch_mode = 'agent_subagents'` and Ralph-managed
-  fan-out is dormant.
+  Plans MUST NOT route parallel plan work through Ralph-managed
+  coordination — the bundled CLI exposes no coordination command for
+  plan work; the bundled default sets `dispatch_mode = 'agent_subagents'`
+  and Ralph-managed fan-out is dormant.
 
 ---
 

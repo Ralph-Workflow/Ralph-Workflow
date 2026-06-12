@@ -40,7 +40,10 @@ def test_planning_prompt_new_section_warns_about_fan_out() -> None:
     source = _read_planning_template()
     assert "Ralph-managed fan-out is dormant" in source
     assert "sub-agents" in source
-    assert "ralph coordinate claim" in source
+    assert "ralph coordinate" not in source, (
+        "planning prompt must not reference the nonexistent ralph coordinate "
+        "command, even as a prohibition"
+    )
 
 
 def test_planning_prompt_keeps_unchanged_sections() -> None:

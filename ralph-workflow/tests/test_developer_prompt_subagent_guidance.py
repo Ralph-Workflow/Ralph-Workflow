@@ -30,7 +30,15 @@ def test_developer_prompt_includes_parallel_execution_section() -> None:
     assert "## PARALLEL EXECUTION" in source
     assert "work_units" in source
     assert "sub-agents" in source
-    assert "ralph coordinate claim" in source
+
+
+def test_developer_prompt_never_references_phantom_coordinate_command() -> None:
+    """``ralph coordinate`` does not exist in the Python CLI; prompts must not
+    mention it, even as a prohibition — agents should instead be told that no
+    coordination command exists at all."""
+    source = _read_developer_template()
+    assert "ralph coordinate" not in source
+    assert "no coordination command" in source
 
 
 def test_developer_prompt_section_tells_executor_to_dispatch_subagents() -> None:
@@ -38,6 +46,17 @@ def test_developer_prompt_section_tells_executor_to_dispatch_subagents() -> None
     assert "responsible for dispatching your own sub-agents" in source
     assert "If your agent runtime does not support sub-agents" in source
     assert "execute the same plan sequentially" in source
+
+
+def test_developer_prompt_encourages_proactive_subagent_use() -> None:
+    """Sub-agents are not limited to declared work units: the developer may
+    parallelize information gathering and naturally concurrent steps."""
+    source = _read_developer_template()
+    assert "not limited to declared work units" in source
+    assert "Information gathering" in source
+    assert "Naturally concurrent steps" in source
+    assert "When to stay sequential" in source
+    assert "Never let two sub-agents edit the same file" in source
 
 
 def test_developer_prompt_keeps_development_result_block_intact() -> None:

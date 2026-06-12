@@ -1,0 +1,24 @@
+## PLANNING WITH SUBAGENTS
+
+You are the lead planner. If your agent runtime provides a subagent or task mechanism (a tool that dispatches parallel worker agents), use it to plan from evidence instead of guesses. This section is about subagents serving the PLANNING phase itself — separate from the executor-facing parallelization declared in `work_units` / `parallel_plan`.
+
+Three planner-side uses, in order of value:
+
+1. **Parallel discovery scouts** — before drafting any section, fan out read-only scouts. Recommended lenses (adapt freely; merge or drop lenses for small tasks):
+   - *structure and ownership*: map the directories, modules, and entry points the PROMPT touches
+   - *requirement-to-file mapping*: for each concrete requirement, find the exact files, functions, and tests that must change
+   - *verification inventory*: enumerate the real test/lint/build commands that exist and currently pass, so verification cites commands that actually run
+   - *risk scan*: find fragile areas, hidden couplings, and (when present) prior attempts in the artifact history
+
+   Each scout returns a concise structured summary. Keep bulk file contents out of your own context; synthesize from the summaries.
+
+2. **Parallel section drafting (optional)** — when the work decomposes cleanly, a subagent may draft a plan section from a scout's evidence (for example `steps` for one subsystem, or `risks_mitigations`). Treat drafts as input, not output: review, reconcile, and rewrite them into one coherent plan before staging anything. Cross-section consistency is yours alone.
+
+3. **Pre-finalize review fan-out** — before finalizing, dispatch one reviewer per rubric dimension (see ## PLAN QUALITY RUBRIC), each instructed to refute the draft: find the missing requirement, the invalid path, the vague verification, the contradiction. Fix every confirmed finding in the same planning pass.
+
+Hard rules:
+- Subagents are read-only against the workspace, exactly like you. They may use their native read/search tools for discovery.
+- Only you, in the main session, call the plan MCP tools. Never delegate staging, finalization, or artifact submission to a subagent.
+- Scale to the task: a one-file fix needs no fan-out; a repo-wide or multi-subsystem task usually justifies all three uses.
+
+If your runtime has no subagent mechanism, run the same lenses sequentially yourself — same discovery lenses, same drafting discipline, same per-dimension review. The quality bar is identical either way.

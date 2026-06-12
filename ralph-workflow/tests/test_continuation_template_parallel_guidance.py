@@ -45,18 +45,29 @@ def test_continuation_template_mentions_sub_agents() -> None:
     assert "sub-agents" in source
 
 
-def test_continuation_template_forbids_ralph_coordinate_claim() -> None:
-    """The continuation template must keep the ``ralph coordinate claim``
-    guard (in its forbidden form) so the agent is told not to drive
-    parallel work through the coordination tool. This is the same
-    substring the new audit invariant locks in via the source-text
-    contract.
+def test_continuation_template_never_references_phantom_coordinate_command() -> None:
+    """``ralph coordinate`` does not exist in the Python CLI; the template
+    must not mention it even as a prohibition. Instead it tells the agent
+    that no coordination command exists and dispatch is the agent's job.
     """
     source = _read_continuation_template()
-    assert "ralph coordinate claim" in source, (
-        "continuation template must explicitly forbid ralph coordinate claim "
-        "as a parallel-execution mechanism"
+    assert "ralph coordinate" not in source, (
+        "continuation template must not reference the nonexistent "
+        "ralph coordinate command"
     )
+    assert "no coordination command" in source
+
+
+def test_continuation_template_encourages_proactive_subagent_use() -> None:
+    """The continuation template must allow parallel sub-agents for common
+    tasks (information gathering, naturally concurrent steps) even when the
+    plan declares no work units.
+    """
+    source = _read_continuation_template()
+    assert "not limited to declared work units" in source
+    assert "Information gathering" in source
+    assert "Naturally concurrent steps" in source
+    assert "When to stay sequential" in source
 
 
 def test_continuation_template_keeps_allowed_directories_contract() -> None:

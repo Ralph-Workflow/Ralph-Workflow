@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.policy.models import (
     ArtifactsPolicy,
     LoopCounterConfig,
@@ -26,6 +28,11 @@ from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+# Real-git tests fork `git` subprocesses; under full-suite worksteal
+# parallelism the default 1s wall-clock alarm intermittently fires on a
+# loaded machine even though each test normally finishes in ~100ms.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def test_commit_cleanup_diff_includes_untracked_binary(tmp_git_repo: Path) -> None:

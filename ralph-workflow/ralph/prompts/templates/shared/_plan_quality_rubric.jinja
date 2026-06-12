@@ -1,0 +1,13 @@
+## PLAN QUALITY RUBRIC
+
+Planning analysis judges the finalized plan on exactly these dimensions. Self-audit against every one before finalizing — a plan that fails any dimension is sent back for revision:
+
+1. **Prompt Compliance** — every requirement and acceptance criterion in the PROMPT maps to concrete steps and verification
+2. **Executor Readiness** — ordered, literally executable steps; precise targets; no hidden prerequisites or executor research burden
+3. **Gap Analysis and Consistency** — no missing implementation, migration, cleanup, or verification work; no contradictions between sections
+4. **Repository Accuracy** — every referenced file, pattern, command, and integration point is real in the current repository
+5. **Risk Coverage** — concrete failure modes with actionable mitigations; relevant edge cases acknowledged
+6. **Verification Quality** — exact commands with expected outcomes, covering the plan's biggest claims rather than a safe subset
+7. **Parallelization Safety** — declared work units are disjoint and independently executable
+8. **Maintainability of the Plan** — concise, no dead steps, clear rationale, explicit development handoff
+9. **Parallel Execution (Agent-Driven)** — `work_units` / `parallel_plan` are phrased for the executing agent's sub-agents with per-step evidence, never as Ralph-managed fan-out instructions

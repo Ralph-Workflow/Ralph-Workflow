@@ -28,6 +28,7 @@ Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml im
 
 Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools.
 If you have not verified something yet, do not present it as settled fact — add an explicit discovery step instead.
+If your runtime provides a subagent mechanism, fan out read-only discovery scouts before drafting and a per-dimension review pass before finalizing; otherwise run the same checks sequentially yourself.
 
 Fallback still needs an executor-grade plan. Include:
 - summary context and scope items

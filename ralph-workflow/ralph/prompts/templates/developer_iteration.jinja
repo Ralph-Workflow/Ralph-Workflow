@@ -54,7 +54,14 @@ The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. B
 
 ## PARALLEL EXECUTION (when the plan declares `work_units` or `parallel_plan`)
 
-When the EXECUTION PLAN above declares `work_units` or `parallel_plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within the `allowed_directories` of each work unit, and producing the matching `plan_items_proven` evidence for each unit. Do NOT call `ralph coordinate claim` / `ralph coordinate release` to execute plan work. If your agent runtime does not support sub-agents, execute the same plan sequentially in `unit_id` order.
+When the EXECUTION PLAN above declares `work_units` or `parallel_plan`, you (the executing agent) are responsible for dispatching your own sub-agents to carry the parallel work out, in dependency order, within the `allowed_directories` of each work unit, and producing the matching `plan_items_proven` evidence for each unit. Ralph Workflow exposes no coordination command for plan work — dispatching, supervising, and reconciling sub-agents is entirely your job. If your agent runtime does not support sub-agents, execute the same plan sequentially in `unit_id` order.
+
+Sub-agents are not limited to declared work units. Even when the plan declares neither field, use them whenever it genuinely helps:
+- **Information gathering**: fan out read-only sub-agents to locate code, map call sites, or research APIs instead of reading file after file in your own context.
+- **Naturally concurrent steps**: plan steps with no dependency between them and disjoint target files may run as separate sub-agents at the same time.
+- **Independent checks**: investigations or verifications that do not depend on each other can run concurrently while you continue the next step.
+
+When to stay sequential: steps that touch the same files, steps ordered by `depends_on`, and any work whose outcome decides what the next step should do. Never let two sub-agents edit the same file. Integration, final verification, and artifact submission always happen in your main session.
 
 ## DEVELOPMENT RESULT ARTIFACT — PROOF REQUIREMENTS
 

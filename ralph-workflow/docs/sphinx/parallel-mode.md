@@ -57,9 +57,9 @@ correctness loss.
 
 The planning prompt (`planning.jinja`) carries the new
 `## Agent-Driven Parallel Execution` block that tells the planner to write
-agent-facing intent (work units, dependencies, scope) and forbids the
-Ralph-managed coordination primitives (`ralph coordinate claim` /
-`ralph coordinate release`) in the plan instructions. The continuation
+agent-facing intent (work units, dependencies, scope) and forbids routing
+parallel plan work through Ralph-managed coordination (the bundled CLI
+exposes no coordination command for plan work). The continuation
 template (`developer_iteration_continuation.jinja`) carries the matching
 `## PARALLEL EXECUTION` block so non-initial-iteration runs still receive the
 sub-agent dispatch guidance.

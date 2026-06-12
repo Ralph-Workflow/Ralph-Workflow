@@ -29,6 +29,11 @@ from ralph.git.operations import (
 )
 from ralph.git.subprocess_runner import run_git
 
+# Real-git tests fork `git` subprocesses; under full-suite worksteal
+# parallelism the default 1s wall-clock alarm intermittently fires on a
+# loaded machine even though each test normally finishes in ~100ms.
+pytestmark = pytest.mark.timeout_seconds(5)
+
 FULL_SHA_LENGTH = 40
 INITIAL_OCCURRENCE_COUNT = 1
 DEFAULT_BRANCHES = {"main", "master"}

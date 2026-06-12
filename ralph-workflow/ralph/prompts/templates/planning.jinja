@@ -83,6 +83,8 @@ Before you commit to a file path, pattern, dependency, or verification command, 
 Check the repository structure, read the referenced files, and confirm the commands or tests actually exist.
 If you have not verified something yet, do not present it as settled fact — add an explicit discovery step instead.
 
+{% include 'shared/_planning_subagents.j2' %}
+
 {% if HAS_DOCS_MCP %}
 
 ## DOCUMENTATION LOOKUP
@@ -117,9 +119,10 @@ Use this shared defect vocabulary in both analysis findings and replanning fixes
 Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
 If one section change would invalidate another section, revise any dependent sections that must also change for the plan to become coherent before you finalize the draft.
 Your target is to submit a plan that planning analysis can approve on the first pass, not a draft that relies on a later repair cycle to become executor-ready.
-Before finalizing, use parallel agents for the planning-analysis pass when possible; otherwise do the next best thing and simulate it yourself. In either case, look for missing explicit requirements, missing implied workflows or prerequisites, weak verification, fake repo references, cross-section inconsistencies, and executor research burden, then fix those issues in the same planning pass.
-Before finalizing, verify the draft also covers concrete risks, safe parallelization, and handoff quality.
-If multiple independent analysis or discovery threads would reduce uncertainty, use parallel agents to inspect the plan from different angles before you finalize it.
+
+{% include 'shared/_plan_quality_rubric.j2' %}
+
+Before finalizing, run the pre-finalize review fan-out from ## PLANNING WITH SUBAGENTS (or its sequential equivalent) against every rubric dimension above, then fix every confirmed finding in the same planning pass.
 
 Default submission flow:
 1. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`.
@@ -345,4 +348,4 @@ Every step that lives inside a work unit should declare `expected_evidence` and 
 A plan with no parallel work must remain just as valid: declare neither field and the executing agent runs the steps sequentially in `unit_id` / step order.
 
 **8. Ralph-managed fan-out is dormant in this build.**
-MUST NOT instruct the executor to use `ralph coordinate claim` / `ralph coordinate release` to drive parallel plan work. The sub-agent dispatch model is the only active path for parallel plan execution in the bundled default. Re-arm by setting `[phases.<phase>.parallelization] dispatch_mode = 'ralph_fan_out'` in pipeline.toml.
+MUST NOT instruct the executor to route parallel plan work through Ralph-managed coordination — the bundled CLI exposes no coordination command for plan work. The executing agent's own sub-agents are the only active path for parallel plan execution in the bundled default. Re-arm by setting `[phases.<phase>.parallelization] dispatch_mode = 'ralph_fan_out'` in pipeline.toml.
