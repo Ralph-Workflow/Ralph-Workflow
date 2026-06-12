@@ -177,9 +177,21 @@ def is_repo_clean(repo_root: Path | str) -> bool:
     Returns:
         True if repository is clean (no uncommitted changes).
     """
+    repo_root_path = Path(repo_root)
+    try:
+        result = run_git(
+            ("status", "--porcelain", "--untracked-files=no"),
+            cwd=repo_root_path,
+            label="git-status",
+        )
+        if result.returncode == 0:
+            return not bool(result.stdout.splitlines())
+    except OSError:
+        pass
+
     repo: Repo | None = None
     try:
-        repo = Repo(repo_root)
+        repo = Repo(repo_root_path)
         return not repo.is_dirty()
     finally:
         _close_repo(repo)
@@ -216,9 +228,21 @@ def has_commits_since(repo_root: Path | str, baseline_sha: str | None) -> bool:
     """
     if baseline_sha is None:
         return True
+    repo_root_path = Path(repo_root)
+    try:
+        result = run_git(
+            ("rev-list", "--max-count=1", f"{baseline_sha}..HEAD"),
+            cwd=repo_root_path,
+            label="git-rev-list",
+        )
+        if result.returncode == 0:
+            return bool(result.stdout.strip())
+    except OSError:
+        pass
+
     repo: Repo | None = None
     try:
-        repo = Repo(repo_root)
+        repo = Repo(repo_root_path)
         return any(True for _ in repo.iter_commits(f"{baseline_sha}..HEAD"))
     except Exception:
         return True

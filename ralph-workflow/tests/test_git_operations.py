@@ -27,6 +27,7 @@ from ralph.git.operations import (
     push,
     stage_all,
 )
+from ralph.git.subprocess_runner import run_git
 
 FULL_SHA_LENGTH = 40
 INITIAL_OCCURRENCE_COUNT = 1
@@ -72,6 +73,28 @@ def test_is_repo_clean(tmp_git_repo: Path) -> None:
     readme.write_text("updated content")
 
     assert is_repo_clean(tmp_git_repo) is False
+
+
+def test_is_repo_clean_prefers_bounded_subprocess_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ralph.git.operations.run_git",
+        lambda args, *, cwd, label: GitRunResult(
+            args=("git", *args),
+            returncode=0,
+            stdout=" M README.md\n",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        "ralph.git.operations.Repo",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Repo fallback should not run")
+        ),
+    )
+
+    assert is_repo_clean(Path("/tmp/repo")) is False
 
 
 def test_has_staged_changes() -> None:
@@ -140,15 +163,39 @@ def test_has_commits_since_head_equals_baseline_returns_false(tmp_git_repo: Path
     assert has_commits_since(tmp_git_repo, head) is False
 
 
+def test_has_commits_since_prefers_bounded_subprocess_rev_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ralph.git.operations.run_git",
+        lambda args, *, cwd, label: GitRunResult(
+            args=("git", *args),
+            returncode=0,
+            stdout="",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        "ralph.git.operations.Repo",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Repo fallback should not run")
+        ),
+    )
+
+    assert has_commits_since(Path("/tmp/repo"), "abc123") is False
+
+
 def test_has_commits_since_new_commit_returns_true(tmp_git_repo: Path) -> None:
     baseline = get_head_sha(tmp_git_repo)
-    repo = Repo(tmp_git_repo)
-    try:
-        (tmp_git_repo / "extra.txt").write_text("more")
-        repo.index.add(["extra.txt"])
-        repo.index.commit("another commit")
-    finally:
-        repo.close()
+    (tmp_git_repo / "extra.txt").write_text("more")
+    add_result = run_git(("add", "extra.txt"), cwd=tmp_git_repo, label="git-add-test")
+    assert add_result.returncode == 0
+    commit_result = run_git(
+        ("commit", "-m", "another commit"),
+        cwd=tmp_git_repo,
+        label="git-commit-test",
+    )
+    assert commit_result.returncode == 0
     assert has_commits_since(tmp_git_repo, baseline) is True
 
 
