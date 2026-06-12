@@ -20,6 +20,30 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 
 ---
 
+## SUBAGENTS AND PARALLEL WORK
+
+If your runtime provides a subagent, task, or parallel-agent mechanism, use it extensively
+whenever it improves evidence quality or reduces time to verified evidence.
+
+Your first priority is retrieving and checking the real analysis inputs: PROMPT, PLAN, and the latest artifact,
+plus the diff, changed files, surrounding integration points, existing tests, and any verification output you run.
+
+Fan out read-only subagents to inspect different files, subsystems, tests, risk areas, and
+verification paths in parallel when those threads are independent. For non-trivial changes,
+run independent analysis or verification work in parallel from multiple angles instead of doing
+all inspection serially in one thread.
+
+Useful fan-out patterns include: one scout checking whether the review covered plan compliance,
+one scout reading broader code context around changed files, one scout checking tests and
+verification evidence, and additional scouts hunting for security, correctness, performance,
+maintainability, or review-quality gaps.
+
+If your runtime has no such mechanism, perform the same retrieval and analysis work sequentially
+yourself. The evidence bar is identical either way.
+
+Only you, in the main session, may submit the final analysis artifact or declare completion.
+Subagents may gather evidence, but they must not make the final decision for you.
+
 ## RUN COMMANDS YOURSELF
 
 Any time a decision requires running a command — to verify behavior, check output, confirm a test

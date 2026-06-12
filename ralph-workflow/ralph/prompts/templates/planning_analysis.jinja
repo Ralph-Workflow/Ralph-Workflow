@@ -35,6 +35,31 @@ The `arabold/docs-mcp-server` is configured and reachable at `localhost:6280`. W
 
 ---
 
+## SUBAGENTS AND PARALLEL WORK
+
+If your runtime provides a subagent, task, or parallel-agent mechanism, use it extensively
+whenever it improves evidence quality or reduces time to verified evidence.
+
+Your first priority is retrieving and checking the real analysis inputs: PROMPT and the current finalized plan or staged draft,
+plus the referenced repository files, representative verification commands, relevant policy/config files,
+and surrounding code or tests needed to confirm the plan is real and executable.
+
+Fan out read-only subagents to inspect different plan sections, repository references, risk areas,
+and verification paths in parallel when those threads are independent. For non-trivial plans,
+run independent analysis or verification work in parallel from multiple angles instead of doing
+all inspection serially in one thread.
+
+Useful fan-out patterns include: one scout tracing prompt coverage through the plan, one scout
+checking referenced files and repository accuracy, one scout validating tests and verification
+commands, and additional scouts hunting for executor-readiness, consistency, risk, or
+parallelization gaps.
+
+If your runtime has no such mechanism, perform the same retrieval and analysis work sequentially
+yourself. The evidence bar is identical either way.
+
+Only you, in the main session, may submit the final analysis artifact or declare completion.
+Subagents may gather evidence, but they must not make the final decision for you.
+
 ## RUN COMMANDS YOURSELF
 
 Any time a decision requires running a command — to verify a referenced path exists, confirm a
