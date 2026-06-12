@@ -43,6 +43,6 @@ and what development-analysis feedback they received.
 
 If the EXECUTION PLAN declares `work_units` or `parallel_plan`, dispatch your own sub-agents to carry out the parallel work in dependency order within each unit's `allowed_directories`; if your runtime has no sub-agents, execute the same units sequentially in `unit_id` order. Ralph Workflow exposes no coordination command for plan work — dispatch is entirely your job. Even without declared work units, you may fan out read-only sub-agents for information gathering and run independent, non-overlapping steps concurrently; never let two sub-agents edit the same file.
 
-Native agent tools are disabled in this brokered fallback. Use `{{EXEC_TOOL_NAME}}` for shell commands and `{{REPORT_PROGRESS_TOOL_NAME}}` to report status instead of native tools like `bash`.
+Native file and shell tools are disabled in this brokered fallback; native orchestration tools (sub-agents/tasks, skills, todo tracking, web fetch/search) remain enabled — use them whenever they help. Use `{{EXEC_TOOL_NAME}}` for shell commands and `{{REPORT_PROGRESS_TOOL_NAME}}` to report status instead of native tools like `bash`.
 
 {% include 'shared/_developer_iteration_guidance.j2' %}

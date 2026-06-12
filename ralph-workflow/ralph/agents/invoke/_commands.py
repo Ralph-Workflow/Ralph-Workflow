@@ -14,6 +14,7 @@ from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._process_reader import _agent_command_name
 from ralph.agents.invoke._types import _BuildCommandOptions
 from ralph.config.enums import AgentTransport
+from ralph.mcp.tools.names import CLAUDE_NATIVE_TOOLS_TO_KEEP
 from ralph.mcp.transport.claude import claude_mcp_config
 
 if TYPE_CHECKING:
@@ -221,10 +222,16 @@ def _extend_claude_transport_flags(
     ):
         return
 
-    # Claude/CCS non-interactive MCP mode is brittle around `--tools ""` combined
-    # with `--allowedTools`. We only emit the tool restriction flags when live MCP
-    # tool discovery succeeds and yields a non-empty allowlist; otherwise we keep the
-    # strict MCP server isolation but avoid the known empty-tool edge case entirely.
+    # Claude/CCS non-interactive MCP mode is brittle when `--tools` is combined with
+    # `--allowedTools`. We only emit the tool restriction flags when live MCP tool
+    # discovery succeeds and yields a non-empty allowlist; otherwise we keep the
+    # strict MCP server isolation but avoid the known tool-restriction edge cases.
+    #
+    # `--tools` restricts the BUILT-IN toolset (MCP tools are unaffected) and
+    # `--allowedTools` only grants permissions — it cannot re-enable a tool that
+    # `--tools` removed. Native orchestration tools (sub-agents, skills, todos, web)
+    # must therefore be listed in `--tools` to stay available; only filesystem/exec
+    # built-ins are dropped in favor of Ralph's MCP surface.
     cmd.extend(
         [
             "--mcp-config",
@@ -240,9 +247,11 @@ def _extend_claude_transport_flags(
         cmd.extend(
             [
                 "--tools",
-                "",
+                ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP),
                 "--allowedTools",
-                ",".join(build_options.allowed_mcp_tool_names),
+                ",".join(
+                    (*build_options.allowed_mcp_tool_names, *CLAUDE_NATIVE_TOOLS_TO_KEEP)
+                ),
             ]
         )
 

@@ -168,6 +168,10 @@ ALL_RALPH_TOOLS: tuple[str, ...] = tuple(str(member) for member in RalphToolName
 
 # Authoritative source: https://opencode.ai/config.json schema PermissionConfig keys
 # Setting each to false physically removes the tool (unlike permission which is allow-by-default).
+# Only filesystem/exec primitives are disabled — they are funneled through Ralph's MCP
+# surface. Orchestration tools (sub-agents, skills, todos, web access) stay native; see
+# OPENCODE_NATIVE_TOOLS_TO_KEEP. ``question`` stays disabled: it prompts the user and
+# wedges headless runs.
 OPENCODE_NATIVE_TOOLS_TO_DISABLE: tuple[str, ...] = (
     "bash",
     "codesearch",
@@ -179,22 +183,43 @@ OPENCODE_NATIVE_TOOLS_TO_DISABLE: tuple[str, ...] = (
     "patch",
     "question",
     "read",
+    "write",
+)
+
+# Native orchestration tools that MUST stay enabled when Ralph wires its MCP surface:
+# sub-agent dispatch, skills, todo tracking, and web access. They are auto-allowed in
+# the generated permission section so they cannot wedge a headless run on approval.
+OPENCODE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
     "skill",
     "task",
     "todowrite",
     "webfetch",
     "websearch",
-    "write",
+)
+
+# Claude Code built-in tools kept available via ``--tools`` when Ralph restricts the
+# native toolset (all other built-ins are funneled through Ralph's MCP surface).
+# ``Task`` was renamed ``Agent`` in claude v2.1.63; unknown names in ``--tools`` are
+# silently ignored, so listing both keeps every CLI version covered.
+CLAUDE_NATIVE_TOOLS_TO_KEEP: tuple[str, ...] = (
+    "Agent",
+    "Task",
+    "Skill",
+    "TodoWrite",
+    "WebFetch",
+    "WebSearch",
 )
 
 # Authoritative source: https://developers.openai.com/codex/config-reference
 # apply_patch and core editing primitives are NOT disableable — documented limitation.
-CODEX_NATIVE_FEATURES_TO_DISABLE: tuple[tuple[str, str], ...] = (
+# shell/undo/apps are funneled through Ralph's MCP surface; multi_agent (sub-agents)
+# is explicitly enabled. web_search is intentionally absent: it is left at Codex's
+# native default rather than force-disabled.
+CODEX_NATIVE_FEATURE_OVERRIDES: tuple[tuple[str, str], ...] = (
     ("features.shell_tool", "false"),
-    ("features.multi_agent", "false"),
+    ("features.multi_agent", "true"),
     ("features.undo", "false"),
     ("features.apps", "false"),
-    ("web_search", '"disabled"'),
 )
 
 

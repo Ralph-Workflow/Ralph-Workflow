@@ -21,8 +21,9 @@ from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
-    CODEX_NATIVE_FEATURES_TO_DISABLE,
+    CODEX_NATIVE_FEATURE_OVERRIDES,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
+    OPENCODE_NATIVE_TOOLS_TO_KEEP,
     RALPH_MCP_SERVER_NAME,
 )
 from ralph.mcp.transport.codex import prepare_codex_home
@@ -395,6 +396,22 @@ def test_opencode_config_disables_all_native_tools_when_mcp_wired() -> None:
     tools = cast("dict[str, object]", parsed["tools"])
     for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
         assert tools[name] is False, f"Expected {name} to be False"
+
+
+def test_opencode_config_keeps_orchestration_tools_enabled_when_mcp_wired() -> None:
+    result = merge_opencode_config_content(None, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    tools = cast("dict[str, object]", parsed["tools"])
+    permission = cast("dict[str, object]", parsed["permission"])
+    for name in ("task", "skill", "todowrite", "webfetch", "websearch"):
+        assert name in OPENCODE_NATIVE_TOOLS_TO_KEEP
+        assert name not in OPENCODE_NATIVE_TOOLS_TO_DISABLE
+        assert tools.get(name) is not False, f"Expected {name} to stay enabled"
+        assert permission[name] == "allow", f"Expected {name} to be auto-allowed"
+
+
+def test_opencode_config_keep_and_disable_lists_are_disjoint() -> None:
+    assert not set(OPENCODE_NATIVE_TOOLS_TO_KEEP) & set(OPENCODE_NATIVE_TOOLS_TO_DISABLE)
 
 
 def test_opencode_config_tools_disable_overrides_user_enables() -> None:
@@ -896,7 +913,7 @@ def test_invoke_agent_preserves_existing_codex_home_state(
     assert copied_auth == ['{"token":"secret"}']
 
 
-def test_codex_config_toml_disables_all_features_when_mcp_wired(tmp_path: Path) -> None:
+def test_codex_config_toml_applies_feature_overrides_when_mcp_wired(tmp_path: Path) -> None:
     home = prepare_codex_home(
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
@@ -905,14 +922,13 @@ def test_codex_config_toml_disables_all_features_when_mcp_wired(tmp_path: Path) 
     )
     config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
     parsed = _toml_object(config_text)
-    for key, _value in CODEX_NATIVE_FEATURES_TO_DISABLE:
-        if "." in key:
-            section, subkey = key.split(".", 1)
-            nested = cast("dict[str, object]", parsed[section])
-            assert nested[subkey] is False, f"Expected {key} = false"
-        else:
-            assert parsed[key] == "disabled", f"Expected {key} = disabled"
     features = cast("dict[str, object]", parsed["features"])
+    for key, value in CODEX_NATIVE_FEATURE_OVERRIDES:
+        section, subkey = key.split(".", 1)
+        nested = cast("dict[str, object]", parsed[section])
+        assert nested[subkey] is (value == "true"), f"Expected {key} = {value}"
+    assert features["multi_agent"] is True, "Sub-agents must stay enabled"
+    assert "web_search" not in parsed, "web_search must not be force-disabled"
     assert "web_search" not in features
 
 
@@ -949,6 +965,6 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
     features = cast("dict[str, object]", parsed["features"])
     assert features["foo"] is True, "Existing feature should be preserved"
     assert features["shell_tool"] is False
-    assert features["multi_agent"] is False
+    assert features["multi_agent"] is True
     assert features["undo"] is False
     assert features["apps"] is False

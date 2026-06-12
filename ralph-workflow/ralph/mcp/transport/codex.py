@@ -13,7 +13,7 @@ from typing import cast
 from loguru import logger
 
 from ralph.mcp.tools.names import (
-    CODEX_NATIVE_FEATURES_TO_DISABLE,
+    CODEX_NATIVE_FEATURE_OVERRIDES,
     RALPH_MCP_SERVER_NAME,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
@@ -68,12 +68,9 @@ def prepare_codex_home_with_upstreams(
             base_config = _remove_all_toml_mcp_server_tables(base_config)
         features_in_base = "[features]" in base_config
         feature_lines = [
-            f"{key.split('.', 1)[1]} = {value}"
-            for key, value in CODEX_NATIVE_FEATURES_TO_DISABLE
-            if "." in key
+            f"{key.split('.', 1)[1]} = {value}" for key, value in CODEX_NATIVE_FEATURE_OVERRIDES
         ]
         feature_block = "\n".join(feature_lines) + "\n"
-        prefix_sections.append('web_search = "disabled"\n')
         if features_in_base:
             base_config = base_config.replace("[features]\n", "[features]\n" + feature_block, 1)
         appended_sections.append(

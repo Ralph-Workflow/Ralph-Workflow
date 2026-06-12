@@ -570,7 +570,9 @@ def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(
             session_caps=session_caps,
         )
 
-    assert "Native agent tools are disabled" in prompt
+    assert "Native file and shell tools are disabled" in prompt
+    assert "sub-agents" in prompt
+    assert "skills" in prompt
     assert "mcp__ralph__exec" in prompt
     assert "mcp__ralph__report_progress" in prompt
     assert "mcp__ralph__ralph_submit_artifact" not in prompt

@@ -22,6 +22,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.tools.names import (
+    CLAUDE_NATIVE_TOOLS_TO_KEEP,
     claude_tool_name,
 )
 from ralph.mcp.upstream.config import (
@@ -385,12 +386,13 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     assert cmd[10:] == [
         "--strict-mcp-config",
         "--tools",
-        "",
+        ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP),
         "--allowedTools",
         ",".join(
             [
                 claude_tool_name("read_file"),
                 claude_tool_name("ralph_submit_artifact"),
+                *CLAUDE_NATIVE_TOOLS_TO_KEEP,
             ]
         ),
         "--model",
@@ -524,11 +526,15 @@ def test_claude_builtin_command_preserves_login_capable_mode(tmp_path: Path) -> 
     assert "--mcp-config" in cmd
     allowed_index = cmd.index("--allowedTools")
     assert cmd[allowed_index + 1] == ",".join(
-        [claude_tool_name("read_file"), claude_tool_name("report_progress")]
+        [
+            claude_tool_name("read_file"),
+            claude_tool_name("report_progress"),
+            *CLAUDE_NATIVE_TOOLS_TO_KEEP,
+        ]
     )
 
 
-def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired(
+def test_build_command_claude_keeps_native_orchestration_tools_when_mcp_endpoint_wired(
     tmp_path: Path,
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
@@ -551,9 +557,14 @@ def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired(
         ),
     )
     tools_idx = cmd.index("--tools")
-    assert cmd[tools_idx + 1] == ""
+    assert cmd[tools_idx + 1] == ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP)
+    assert "Task" in cmd[tools_idx + 1]
+    assert "Agent" in cmd[tools_idx + 1]
+    assert "Skill" in cmd[tools_idx + 1]
     allowed_index = cmd.index("--allowedTools")
-    assert cmd[allowed_index + 1] == claude_tool_name("read_file")
+    assert cmd[allowed_index + 1] == ",".join(
+        [claude_tool_name("read_file"), *CLAUDE_NATIVE_TOOLS_TO_KEEP]
+    )
 
 
 def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(

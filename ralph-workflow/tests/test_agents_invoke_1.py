@@ -31,6 +31,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV
 from ralph.mcp.tools.names import (
+    CLAUDE_NATIVE_TOOLS_TO_KEEP,
     claude_tool_name,
 )
 from ralph.process.liveness import FakeLivenessProbe
@@ -753,6 +754,7 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
         [
             claude_tool_name("read_file"),
             claude_tool_name("report_progress"),
+            *CLAUDE_NATIVE_TOOLS_TO_KEEP,
         ]
     )
     assert cmd[-2:] == ["--", prompt_content]
@@ -814,7 +816,9 @@ def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp(
 
     assert "--mcp-config" in cmd
     allowed_index = cmd.index("--allowedTools")
-    assert cmd[allowed_index + 1] == claude_tool_name("read_file")
+    assert cmd[allowed_index + 1] == ",".join(
+        [claude_tool_name("read_file"), *CLAUDE_NATIVE_TOOLS_TO_KEEP]
+    )
     assert cmd[-2:] == ["--", prompt_content]
 
 

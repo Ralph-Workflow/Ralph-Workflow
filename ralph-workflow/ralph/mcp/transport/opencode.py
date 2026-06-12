@@ -8,6 +8,7 @@ from typing import cast
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
+    OPENCODE_NATIVE_TOOLS_TO_KEEP,
     claude_tool_name,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
@@ -85,6 +86,10 @@ def build_opencode_provider_config(
         bare_name = str(tool_name)
         permission_section[bare_name] = "allow"
         permission_section[claude_tool_name(bare_name)] = "allow"
+    # Native orchestration tools (sub-agents, skills, todos, web) stay enabled and
+    # must be auto-allowed so they cannot wedge a headless run on an approval prompt.
+    for native_name in OPENCODE_NATIVE_TOOLS_TO_KEEP:
+        permission_section[native_name] = "allow"
 
     existing_tools = config_obj.get("tools", {})
     if not isinstance(existing_tools, dict):

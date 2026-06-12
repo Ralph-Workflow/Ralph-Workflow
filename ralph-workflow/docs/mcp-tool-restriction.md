@@ -1,16 +1,18 @@
 # MCP Tool Restriction Guarantees
 
-Ralph Workflow enforces MCP-only tooling by disabling native agent tools at the CLI and config layer. This document describes how that enforcement works for each supported CLI, known limitations, and how to verify it is active.
+Ralph Workflow enforces MCP-only **file and shell** tooling by disabling the native filesystem/exec tools at the CLI and config layer, while keeping each agent's native **orchestration** tools — sub-agents/tasks, skills, todo tracking, and web fetch/search — enabled. This document describes how that enforcement works for each supported CLI, known limitations, and how to verify it is active.
 
 ## 1. Overview
 
-Ralph Workflow is designed as an opinionated AI agent orchestration framework rooted in the Ralph Workflow loop, where every tool call should produce an auditable action with a traceable identity. Native agent tools like `Read`, `Write`, `Edit`, and `Bash` bypass the MCP bridge and therefore break Ralph Workflow's audit trail, capability mapping, and policy enforcement.
+Ralph Workflow is designed as an opinionated AI agent orchestration framework rooted in the Ralph Workflow loop, where every tool call should produce an auditable action with a traceable identity. Native file and shell tools like `Read`, `Write`, `Edit`, and `Bash` bypass the MCP bridge and therefore break Ralph Workflow's audit trail, capability mapping, and policy enforcement.
 
-Ralph Workflow's prompts claim "Native agent tools are DISABLED". This document describes how the CLI and config layer enforces that claim at invocation time for each supported backend, and where config preservation is separate from strict policy enforcement:
+Native orchestration tools do not write to the workspace directly, so they stay enabled: sub-agent/task dispatch (required for parallel plan execution), skills, todo tracking, and web fetch/search. Sub-agents spawned inside a Ralph-wired session inherit the same tool restriction and the same Ralph MCP surface, so their file and shell operations remain brokered.
 
-- **Claude Code** receives `--tools ""` plus a strict-MCP-config that contains only the Ralph Workflow MCP server.
-- **OpenCode** receives a config payload that explicitly sets each native tool to `false`.
-- **Codex** receives a TOML config that preserves existing sections and disables several built-in features, but core editing primitives cannot be fully removed.
+Ralph Workflow's prompts claim "Native file and shell tools are DISABLED". This document describes how the CLI and config layer enforces that claim at invocation time for each supported backend, and where config preservation is separate from strict policy enforcement:
+
+- **Claude Code** receives `--tools "Agent,Task,Skill,TodoWrite,WebFetch,WebSearch"` (the orchestration keep-list; every other built-in is removed) plus a strict-MCP-config that contains only the Ralph Workflow MCP server.
+- **OpenCode** receives a config payload that explicitly sets each native filesystem/exec tool to `false` and auto-allows the orchestration keep-list.
+- **Codex** receives a TOML config that preserves existing sections, disables filesystem/exec-adjacent features, and explicitly enables `multi_agent`; core editing primitives cannot be fully removed.
 - **Google Anti Gravity** uses the Ralph-owned MCP proxy contract and reads existing user config files for upstream discovery, but does not have a documented environment-variable home override.
 
 ### Strict Ralph Workflow Authority Mode
@@ -21,21 +23,29 @@ In strict Ralph Workflow authority mode, provider CLIs receive only the Ralph Wo
 
 ### Claude Code - Full Enforcement
 
-Claude Code supports CLI flags that together remove all native tools from a session:
+Claude Code supports CLI flags that together restrict the native toolset of a session:
 
-- `--tools ""` - An empty allowlist disables every native tool. The empty string is not a wildcard; it means "allow nothing".
+- `--tools "Agent,Task,Skill,TodoWrite,WebFetch,WebSearch"` - Restricts the built-in toolset to the orchestration keep-list (`CLAUDE_NATIVE_TOOLS_TO_KEEP` in `ralph/mcp/tools/names.py`); every filesystem/exec built-in (`Read`, `Write`, `Edit`, `Bash`, `Grep`, `Glob`, …) is removed. MCP tools are unaffected by `--tools`. The sub-agent dispatcher was renamed `Task` → `Agent` in claude v2.1.63; unknown names in `--tools` are silently ignored, so listing both keeps every CLI version covered. Sub-agents inherit the parent session's tool restriction and MCP servers unless their own definition overrides them.
 - `--strict-mcp-config` - Ignores Claude's default global and workspace MCP config discovery. Ralph Workflow reads supported user config files (`~/.claude.json`, workspace `.mcp.json`, workspace `.claude.json`) to extract upstream MCP server definitions, but does **not** pass those definitions to Claude as MCP servers. Instead, Ralph Workflow loads those upstream servers itself and re-exposes their tools as Ralph Workflow-owned proxied aliases. The generated `--mcp-config` contains only the Ralph Workflow MCP server entry.
 
-Ralph Workflow passes `--allowedTools` for Claude using the exact live Ralph Workflow MCP tool names reported by the runtime endpoint. This keeps built-in tools disabled via `--tools ""` while pre-approving only Ralph Workflow-owned MCP tools for the current session. Ralph Workflow still remains the real policy boundary: provider approval only removes Claude-side prompts, while `ToolBridge` metadata and session capabilities decide whether the forwarded call is actually allowed.
+Ralph Workflow passes `--allowedTools` for Claude using the exact live Ralph Workflow MCP tool names reported by the runtime endpoint, plus the orchestration keep-list. `--allowedTools` only grants permissions — it cannot re-enable a tool that `--tools` removed — so the keep-list must appear in `--tools` to stay available and in `--allowedTools` to run without approval prompts. Ralph Workflow still remains the real policy boundary: provider approval only removes Claude-side prompts, while `ToolBridge` metadata and session capabilities decide whether the forwarded call is actually allowed.
 
 Reference: https://docs.anthropic.com/en/docs/claude-code/cli-reference
 
 ### OpenCode - Full Enforcement
 
-OpenCode reads configuration from a JSON object passed via the `OPENCODE_CONFIG_CONTENT` environment variable. Ralph Workflow builds this object in `_merge_opencode_config_content()` and disables all 16 native tools by setting each to `false`:
+OpenCode reads configuration from a JSON object passed via the `OPENCODE_CONFIG_CONTENT` environment variable. Ralph Workflow builds this object in `_merge_opencode_config_content()` and disables the 11 native filesystem/exec tools by setting each to `false`:
 
 ```
-bash, codesearch, edit, glob, grep, list, lsp, patch, question, read, skill, task, todowrite, webfetch, websearch, write
+bash, codesearch, edit, glob, grep, list, lsp, patch, question, read, write
+```
+
+(`question` is disabled because it prompts the user and wedges headless runs.)
+
+The orchestration keep-list stays enabled and is auto-allowed in the generated `permission` section so it cannot wedge a headless run on an approval prompt (`OPENCODE_NATIVE_TOOLS_TO_KEEP` in `ralph/mcp/tools/names.py`):
+
+```
+skill, task, todowrite, webfetch, websearch
 ```
 
 The key mechanism is dict-spread merge:
@@ -53,20 +63,19 @@ Reference: https://opencode.ai/docs
 
 ### Codex - Best-Effort Only
 
-Codex is configured via a `config.toml` file. Ralph Workflow prepares this file in `_prepare_codex_home()` by preserving the user's existing `config.toml`, replacing any stale `[mcp_servers.ralph]` block with the live run-scoped endpoint, and setting the following in the `[features]` block:
+Codex is configured via a `config.toml` file. Ralph Workflow prepares this file in `_prepare_codex_home()` by preserving the user's existing `config.toml`, replacing any stale `[mcp_servers.ralph]` block with the live run-scoped endpoint, and setting the following in the `[features]` block (`CODEX_NATIVE_FEATURE_OVERRIDES` in `ralph/mcp/tools/names.py`):
 
 ```
 features.shell_tool = false
-features.multi_agent = false
+features.multi_agent = true
 features.undo = false
 features.apps = false
-web_search = "disabled"
 ```
 
-These settings reduce the attack surface, but **`apply_patch` and core file-editing primitives cannot be disabled**. Codex has no comprehensive MCP-only mode and no `--tools` CLI flag equivalent. When an MCP endpoint is wired to Codex, Ralph Workflow logs a WARNING at every invocation:
+`multi_agent` is explicitly **enabled** so Codex keeps its native sub-agent dispatch. `web_search` is no longer force-disabled; it is left at Codex's native default. These settings reduce the attack surface, but **`apply_patch` and core file-editing primitives cannot be disabled**. Codex has no comprehensive MCP-only mode and no `--tools` CLI flag equivalent. When an MCP endpoint is wired to Codex, Ralph Workflow logs a WARNING at every invocation:
 
 ```
-Codex MCP wiring is best-effort; disabling built-in features for <endpoint>
+Codex MCP tool restriction is best-effort: apply_patch and core editing primitives cannot be disabled.
 ```
 
 In strict Ralph Workflow authority mode, the provider-visible `[mcp_servers]` section contains only the run-scoped `ralph` entry for the Ralph Workflow MCP server. User upstream MCP server definitions are extracted and passed to Ralph Workflow separately; they are not included in the provider-visible config. Ralph Workflow re-exposes upstream tools as Ralph Workflow-owned proxied aliases.
@@ -85,9 +94,9 @@ AGY participates fully in Ralph's upstream proxy model, capability-gated MCP mod
 
 ### Claude Code
 
-- **Bug #25589**: `--disallowedTools` ignores MCP tools when combined with `--mcp-config`. Ralph Workflow avoids this by using `--tools ""` instead of a disallowed-list approach.
+- **Bug #25589**: `--disallowedTools` ignores MCP tools when combined with `--mcp-config`. Ralph Workflow avoids this by using a `--tools` keep-list instead of a disallowed-list approach.
 - **Bug #13077**: `--allowedTools` wildcards do not match MCP tools. Ralph Workflow avoids wildcard-based Claude approvals and instead derives an exact per-session Ralph Workflow MCP allowlist from the live runtime endpoint.
-- **Bug #32079**: `--tools ""` combined with `--mcp-config` and a system prompt larger than 18 KB causes Claude Code to exit silently. Ralph Workflow's system prompt is under 1 KB. If the prompt ever grows beyond 18 KB, this document must be updated and a mitigation applied.
+- **Bug #32079**: `--tools ""` combined with `--mcp-config` and a system prompt larger than 18 KB causes Claude Code to exit silently. Ralph Workflow now passes a non-empty `--tools` keep-list, which sidesteps the empty-string variant of this bug; the prompt-size caveat is retained here in case the restriction is ever tightened back to `--tools ""`. Ralph Workflow's system prompt is under 1 KB.
 
 ### OpenCode
 
@@ -97,7 +106,6 @@ AGY participates fully in Ralph's upstream proxy model, capability-gated MCP mod
 
 - No `--tools` CLI flag or equivalent exists for Codex. There is no native-tool-free mode.
 - `apply_patch` and core editing primitives remain active regardless of `[features]` settings.
-- The `web_search = "disabled"` string literal is required because Codex TOML interprets bare `disabled` as an identifier, not a string.
 
 ### Google Anti Gravity
 
