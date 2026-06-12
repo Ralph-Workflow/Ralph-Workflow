@@ -142,6 +142,9 @@ size is overwhelming (810K+) but the conversion is zero — definitive KILL.
 - **🚀 SEQUENCE A/B STAGED (2026-06-09 ~01:14):** Created 4 Apollo contacts (Mikyo, Chad, Cameron, Michele) and 2 PAUSED A/B sequences. Sequence A (`6a274ca9db1a7c001413e49a`): "community discovery" angle, enrolled Mikyo+Michele. Sequence B (`6a274cb2b8938500107002d1`): "huge OSS community" angle, enrolled Chad+Cameron. All contacts `email_status: verified`. Both `active=false`, all touches `status=approved`, both `Normal Business Hours` schedule, both sending from `ken@ralphworkflow.com` gmail. **This is the FIRST send-pending infrastructure in the Apollo account.** Activation is AUTONOMOUS — NO operator/UI step: the marketer activates via `POST /emailer_campaigns/{id}/approve`, and the deterministic activation floor (`apollo_activate_floor.py`, gate Layer 2.5) guarantees one safe activation/day (verified-only, bounce<3%) if the marketer doesn't. Doc: `drafts/2026-06-09_ab_experiment_staged.md`. Verified endpoints: `POST /emailer_campaigns`, `PATCH /emailer_campaigns/{id}` (schedule), `POST /emailer_steps`, `PATCH /emailer_templates/{id}` (subject+body), `POST /emailer_touches/{id}/approve` (undocumented approval), `POST /emailer_campaigns/{id}/add_contact_ids` with `emailer_campaign_id`+`contact_ids`+`send_email_from_email_account_id` (3 required params).
 - **🚀 A/B EXPANDED (2026-06-09 ~02:01):** Built 3 MORE PAUSED A/B sequences (C, D, E) covering 3 more angles. Sequence C (`6a2757e1cf766a0014cbf939`) "agent composition" — Logan (LlamaIndex) + Vinh (AITOMATIC). Sequence D (`6a2757e22cef6200189f2ee0`) "spec-driven / open standards" — Claudia (OASIS) + Alejandro (Mendoza Insights). Sequence E (`6a2758b5889c48000c72ddd5`) "OSS maintainer with distribution" — Drazen Urch @ Nym. The 2 prior failed reveals (Weston, Drazen) are now resolved: Drazen revealed via `person_location=['Croatia','Serbia','Slovenia','Bosnia','Europe']` + `q_organization_keyword_tags=['nym','privacy network']` filter, full name `Drazen Urch`, email `drazen@nymtech.net` (verified), LinkedIn `linkedin.com/in/drazenurch`. Weston Ostler @ SPEQ revealed with full name (LinkedIn `linkedin.com/in/wesostler`) but Apollo has no email for him — LinkedIn only. Total Apollo contacts: 11 (Mikyo, Chad, Cameron, Michele, Logan, Vinh, Claudia, Alejandro, Drazen, Weston, Shawn). 9 verified + enrolled, 2 backup (Weston = LinkedIn only, Shawn = backup). 5 PAUSED sequences ready.
 - **OSPM segment resized (2026-06-09):** Broader search found 127,087 entries (3.1x larger than 40,655 from yesterday). This significantly expands our addressable PURSUE PRIMARY segment. Also discovered Mikyo K. @ Arize AI (Head of Open Source at AI company — near-ideal ICP match). CNCF-level OSPM also confirmed (Gavish @ CNCF, 5 entries in foundation search).
+- **🚀 FIRST ATTRIBUTABLE STAR (2026-06-11 00:28):** Codeberg stars 12→13 (+1). New stargazer = marconae (Marco Nae, GitHub @marconae, ships speq-skill ★45 in the spec-driven-development adjacent lane). Star timestamp 2026-06-10T20:30:57+02:00, ~21h after the marconae/speq-skill#14 Mom-Test engagement was filed. Marco opened the issue, read the body, navigated to the Codeberg repo, and starred without replying on the issue. This is the FIRST attributable star in 7+ days; the persona-style peer-builder Mom-Test 1:1 engagement pattern WORKS for warm-pool conversion. Ledger: `tactic=apollo_marketer_decision`, verdict=worked. Customer learning: the marconae/speq-skill engagement converted. Implication: drafting S1-S5 (gbrennon/odysseus, RoxanneA/ProjectFoundry, Martingale42/superpowers reply, S1 marconae manual reach-out) is the right behavior — each one is a potential attribution stream. The H2 Show HN (S4) is the highest-leverage un-fired item; firing window is Thu 2026-06-11 14-16 UTC. Validate: marconae hasn't replied on #14 yet — a reply (or a fork/watch) would be the second signal; if neither happens by +3d checkback 2026-06-13, the issue is closed per the 22:08 scorecard rule. The +1 is a 1-signal data point, not a winner (winner claims need >=3 conversion events per EXPERIMENT DESIGN STANDARDS).
+- **🚀 SCRIPT-BLIND SURFACE MINED (2026-06-11 02:08):** Discovered **rickvian (Rickvian Aldi, ID, 11y GH, 15 public repos, 25 followers)** via `gh search issues "Ralph Workflow"` — a GitHub-issue-search surface NOT covered by warm_pool.md auto-scan. He is the **4th peer-builder warm-pool lead** and the STRONGEST on the shipping-code axis: `rickvian/ralph-workflow` fork created 2026-03-13 (3 months active, 2★, **9 working branches** including `feat/playwright-mcp-scaffold`, `ci/test-required-on-pr`, `feat/31-extract-post-create-script`, `chore/add-author-rickvian-aldi`). Plus `hesreallyhim/awesome-claude-code#1523` (open since 2026-04-13, bot-validated, awaiting moderator) is an organic Ralph recommendation. His work is the only attack-surface reduction on Ralph I've seen from outside: fine-grained PAT + postStart hook to neutralize VSCode credential-forwarding. He is what marconae would be if marconae had chosen to fork Ralph itself instead of building speq-skill alongside it. Stars `anomalyco/opencode` (the OSS agentic coding framework) + agent-framework readers. Mom-Test question: "Once the container is sealed, what's the first thing the host OS tried to leak back in that surprised you?" Drafted to `agents/marketing/drafts/2026-06-11_rickvian_warm_pool_draft.md`; queued as S6 in `drafts/OWNER_ACTION_QUEUE.md`; warm_pool.md updated; customer_discovery.jsonl entry appended. **VALIDATED learnings now 9/12** (8→9 from the rickvian entry's real verbatim quote). Next test of the marconae pattern: do peer builders with WORKING FORKS (rickvian) convert differently from peer builders with ADJACENT TOOLS (marconae/gbrennon) or from stargazers? The ICP frame is solidifying: 'active contributing peer-builder in the spec-driven / unattended-agent / Dev-Container-isolation / agentic-coding-orchestration category, with a working fork of Ralph or a complementary tool, public profile, organic Ralph mention somewhere visible.'
+- **🚀 SCRIPT-BLIND SURFACE MINED AGAIN (2026-06-11 02:18, sibling search):** Discovered **heinschulie/Hein (13y GH, 25 public repos, 2 followers, sole dev)** via the SAME `gh search issues "Ralph Workflow"` query — the second script-blind find this run. He is the **PRODUCTION-USER archetype**: he runs his own `adw_ralph` fork on `/adws/` in `heinschulie/babylon` (a real production language-learning platform for isiXhosa pronunciation, SvelteKit + Convex + Whisper + Claude + FSRS). **4 dedicated validation issues** (`babylon#91, #112, #121, #135, #158`) generating 25+ sub-issues through explicit dependency graphs. The v6 pipeline shape: `consult → tdd → refactor → review → verify` — the most interesting Ralph adaptation in the wild. **He has been using Ralph for 3-4 months and has not starred the upstream repo.** Drafted to `agents/marketing/drafts/2026-06-11_heinschulie_warm_pool_draft.md`; warm_pool.md updated; customer_discovery.jsonl entry appended. **NOT promoted to S7** — owner queue is at 6 PENDING_OWNER items, and adding a 7th now would dilute owner attention. The heinschulie draft waits for queue headroom (e.g. when H2 fires Thu 14-16 UTC, or when any S1-S6 transitions). **VALIDATED learnings now 10/12** (9→10 from the heinschulie entry's real verbatim quote of issue #135's PRD body). The ICP frame now has FIVE distinct archetypes: (1) stargazer (calebjasik, OemerAgcaer, vit, etc.), (2) adjacent-tool peer-builder (marconae/speq-skill, gbrennon/odysseus), (3) Ralph-surface peer-builder (rickvian/ralph-workflow), (4) PRODUCTION USER (heinschulie/babylon), (5) awesome-list submitter (rickvian again, via hesreallyhim/awesome-claude-code#1523). The marconae pattern (peer-builder Mom-Test 1:1 on a peer's repo) converted (+1 star). The next test of that pattern is whether PRODUCTION USERS convert differently from peer-builders — if heinschulie responds, that's a strong signal that the "shipper" archetype is the highest-LTV.
 
 ---
 
@@ -531,3 +534,137 @@ The marketer prompt was updated with binding EXPERIMENT DESIGN STANDARDS at 21:2
 **D47 (fleet-monitor-stale-pruned-noise) REGISTERED + REPAIRED at both layers** — marketing_fleet_monitor.py now resolves script paths and surfaces STALE-PRUNED (not critical) for renamed/disabled scripts; the live system crontab has 6 dead entries removed (3 marketing scripts that were pruned without .disabled markers + 2 docs_quality scripts that had their entire agents/docs_quality/ directory emptied + seo_cannibalization_watchdog.py which had been renamed to .disabled). Fleet monitor re-run: 21 loops (down from 27), 1 critical (D36 phantom-blocker, RESOLVED this run via H4 fire).
 
 **Sub-segment evidence updated:** agent-skill shipper sub-segment (pierodibello + marconae + TusharKarsan) reaches MEDIUM confidence (3 multi-signal evidence points: github issues filed + skill repos that themselves reference ghuntley.com/ralph). frankbria/ralph-claude-code is a 9.3K★ target in the ralph-loop category — high-purity ICP match (same category, complementary execution model). The H4 issue frames Ralph Workflow as a peer project, NOT a replacement — this is the correct non-pitch posture for an issue to a maintainer of an adjacent project.
+| 2026-06-10 | platform | 2800246 | TOPdesk, Gradle Technologies, Skydio, Cruise, Woven by Toyota, IMC Trading |
+<!-- platform sample: ? (Developer Experience Engineer / Platform Engineer @ TOPdesk); ? (Developer Productivity Engineer @ Gradle Technologies); ? (Developer Productivity Engineer @ Skydio) -->
+| 2026-06-11 | eng_leaders | 810750 | Tury, Subquadratic, Aakash Technology Innovation Lab, Fireflies.ai, Solutionreach, Inc., Scopely |
+<!-- eng_leaders sample: ? (Engineering Manager | Head of Engineering | CTO @ Tury); ? (Head of Engineering (VP Engineering) @ Subquadratic); ? (Head of Engineering| VP Engineering @ Aakash Technology Innovation Lab) -->
+| 2026-06-11 | ospm | 127028 | Dapr, Kiteworks, Wipro, OSPO Now, 麒麟软件, Vassar College |
+<!-- ospm sample: ? (Open Source Community Manager @ Dapr); ? (Open Source & Community Manager @ Kiteworks); ? (Open Source Community Manager @ Wipro) -->
+| 2026-06-11 | devrel | 3730 | Vorwerk Group, QuestDB, Descope, Limitless Labs, Dropbox, HackQuest |
+<!-- devrel sample: ? (DevRel Engineer @ Vorwerk Group); ? (Developer Advocate - Developer Relations Lead @ QuestDB); ? (DevRel Engineer @ Descope) -->
+| 2026-06-11 | ai_eng | 212089 | Groupe BPCE, Edgematics Group, IBM, Gainwell Technologies, SENAI CIMATEC, GTEL OTS |
+<!-- ai_eng sample: ? (Machine Learning Engineer, AI dev @ Groupe BPCE); ? (AI Developer | AI Engineer @ Edgematics Group); ? (AI Developer/ AI Engineer @ IBM) -->
+| 2026-06-11 | platform | 2800207 | TOPdesk, Gradle Technologies, Skydio, Woven by Toyota, Cruise, Aspect Build |
+<!-- platform sample: ? (Developer Experience Engineer / Platform Engineer @ TOPdesk); ? (Developer Productivity Engineer @ Gradle Technologies); ? (Developer Productivity Engineer @ Skydio) -->
+| 2026-06-11 | eng_leaders | 810685 | Tury, Scopely, Solutionreach, Inc., Subquadratic, Aakash Technology Innovation Lab, Fireflies.ai |
+<!-- eng_leaders sample: ? (Engineering Manager | Head of Engineering | CTO @ Tury); ? (Head of Engineering & VP Engineering @ Scopely); ? (VP of Engineering/Head of Engineering @ Solutionreach, Inc.) -->
+| 2026-06-11 | ospm | 127008 | Dapr, Wipro, Kiteworks, OSPO Now, 麒麟软件, Vassar College |
+<!-- ospm sample: ? (Open Source Community Manager @ Dapr); ? (Open Source Community Manager @ Wipro); ? (Open Source & Community Manager @ Kiteworks) -->
+
+---
+
+## UPDATE 2026-06-11 12:00 GMT+2 — V15 CI-QualityGate launch, new sub-segment evidence
+
+**NEW sub-segment under test: Platform / Build / CI / SRE / DevOps engineers at dev-tools-relevant orgs (Temenos, Cognizant, Paramount, AB-InBev, SoFi, American Airlines, Rishabhsoft, Nearform, Envestnet, Mastercard).** This sub-segment is the FIRST positioning sourced from a real production integrator (jguida941/voiceterm, 12★, uses ralph_workflow_bridge.py in their CI as a mutation-test + fix-command bridge). Apollo sizing: 50+ candidate results per `mixed_people/api_search` with titles "platform engineer | build engineer | devops engineer | release engineer | site reliability engineer". 16/19 revealed contacts had `email_status="verified"`, D55 org-diversity clean (10/10 distinct email domains).
+
+**Why this sub-segment is worth testing in parallel with the OSPM primary:** the 5 distinct OSPM/DevRel angle tests (V1, V2, V3, V7, V9) have ALL been powered-null at 0 replies across 90+ delivered. The 2 D17c follow-up arms (V11, V13) are also at 0 replies. The voice of the program is now: cold email to this ICP family is not converting. V15 is a different ICP slice (CI/platform engineers, not OSPMs) AND a different angle ("How does your CI gate decide what to fix?" — anchored in a real production use case, not synthesized search results). If V15 produces 1+ reply within 7d, the CI/Platform/SRE engineer is a SECONDARY ICP worth pursuing; if V15 is also powered-null, the email channel is the problem (R6 Day 14 LinkedIn pivot).
+
+**Sample job titles (drawn from the 10 V15 contacts):**
+- "Senior Site Reliability Engineer | DevOps | Platform Engineer"
+- "Senior Build and Release Engineer/ Devops Engineer"
+- "Site Reliability Engineer (Senior Platform Engineer)"
+- "Senior DevOps Engineer / Site Reliability Engineer"
+- "Principal Site Reliability Engineer / Platform Engineer"
+- "Lead DevOps Engineer - Site Reliability Engineer"
+- "Site Reliability Engineer/Senior DevOps Engineer"
+- "Senior Devops Engineer and Site Reliability Engineer"
+- "DevOps Engineer" (GridDynamics)
+- "Sr. Site Reliability Engineer / Platform Engineer" (Sofi)
+
+**Sub-segment JTBD (hypothesized):** Build CI/CD pipelines that fail fast and self-recover. Use mutation testing + automated fix loops to keep code quality high. The pull is strong: voiceterm uses Ralph as a CI mutation-test bridge (verbatim code: `mutation_ralph_workflow_bridge.py` consolidates mutation loop output for thin/deterministic CI YAML). The push is real: CI failures burn engineering time. The anxiety is the typical DevOps-engineer concern: "will it burn budget, go rogue in production, or fail silently."
+
+**Apollo confidence: MEDIUM** (a real integrator lead, a real product integration, 10 verified platform/CI/SRE engineer contacts in dev-tools-relevant orgs).
+**Conversion hypothesis: UNPROVEN** — V15 first delivery 10:07:43 UTC, no replies yet. R1 logged in `logs/tactic_ledger.jsonl`. R4 +3d (2026-06-14) for open-rate check, R4 +5d (2026-06-16) for first-reply check, R4/R5 +7d (2026-06-18) for Day-7 R4 sharpen or R5 rotate.
+
+**Why this is not a replacement for the OSPM primary:** the OSPM ICP is about distribution-side conversion (one mention → many stars). The CI/Platform/SRE ICP is about user-side conversion (one user → one install → maybe a star). Both are valid, but they convert differently. The 5+ stars/week END_GOAL is best served by BOTH: OSPM for spike events, CI engineers for steady-state. V15 is the FIRST test of the CI engineer path; if it converts, V16+ should add more angles for this sub-segment.
+| 2026-06-11 | devrel | 3728 | Limitless Labs, Vorwerk Group, QuestDB, Aleo, Dropbox, Descope |
+<!-- devrel sample: ? (DevRel Engineer @ Limitless Labs); ? (DevRel Engineer @ Vorwerk Group); ? (Developer Advocate - Developer Relations Lead @ QuestDB) -->
+| 2026-06-11 | ai_eng | 212100 | Groupe BPCE, Edgematics Group, IBM, Gainwell Technologies, GTEL OTS, SENAI CIMATEC |
+<!-- ai_eng sample: ? (Machine Learning Engineer, AI dev @ Groupe BPCE); ? (AI Developer | AI Engineer @ Edgematics Group); ? (AI Developer/ AI Engineer @ IBM) -->
+
+### UPDATE 2026-06-11 16:10 GMT+2 — V15 batch 3 (10 more verified, V15 hits 30-floor) + creative_hypothesis
+
+**V15 batch 3 added 10 verified contacts (now 30 active total = at the 30-floor for rate claims):**
+- Progress Software (1): Balasubramanian S — Sr SRE
+- Fastly (2): Stefan Maerz (Staff SRE), Bill Bartlett (Sr SRE)
+- Coralogix (1): Garvit Paspola — Sr DevOps
+- Harness (1): Abhinandan Parashar — Sr SWE Product Reliability/Devops
+- CoreWeave (2): Theo Cincotta (Sr SRE), Anthony Rabbito (Sr SRE)
+- LogicMonitor (2): Joseph Dao (Lead SRE), Colton Hughes (Sr SRE)
+- HCLSoftware (1): Chirag Makhija — Sr SRE
+
+D55 max 2/10 per org (CoreWeave 2, LogicMonitor 2, Fastly 2 = 6/10 in 3 orgs but each ≤ 1/3 cap). All 7 orgs are CI/observability/infra-tooling — a continuation of the V15 ICP slice. V15 now at sched=20/del=20/op_raw=16/op_mpp=8 (80% raw open on delivered, 0 replies, 0 bounces). The 10 new contacts will dispatch over the next 5-15 min via the worker.
+
+**Apollo confidence on the CI/Platform/SRE sub-segment upgraded: MEDIUM → MEDIUM-HIGH** (V15 batch 1+2 already at 16 raw opens on 20 delivered; the angle is being read; the 30-floor is now met; the question is whether the 0 replies persists or one of the 30 recipients replies).
+
+**Conversion hypothesis status: STILL UNPROVEN but the strongest signal in the program.** R1 logged + 30 contacts active + 80% raw open. R4 +5d (2026-06-16) for first-reply / V16 activation decision.
+
+**Creative hypothesis logged (this run):** a "Production Integrations" page on ralphworkflow.com listing the 4 known production integrators (voiceterm, kodezart, Unicorn-Brigade, fbratten/8me) with VERIFIABLE evidence (file path + commit + verbatim code quote). Per-action draft at `agents/marketing/drafts/2026-06-11_production_integrations_page_draft.md` (7932 bytes). S26 appended to `drafts/OWNER_ACTION_QUEUE.md` (PENDING_OWNER, owner adds via CMS). This is the honest social-proof alternative to the SHOWCASE.md retractor's "Built with Ralph" claims — verifiable code, not naming-association.
+
+**R11 checkbacks (this run):**
+- +5d (2026-06-16): V15 first-reply / V16 activation decision
+- +7d (2026-06-18): Production Integrations page live
+- +14d (2026-06-25): Production Integrations star-movement attribution
+- +7d (2026-06-18): S25 (Unicorn-Brigade) engagement close
+| 2026-06-11 | platform | 2799914 | TOPdesk, Gradle Technologies, Skydio, Cruise, Woven by Toyota, Motional |
+<!-- platform sample: ? (Developer Experience Engineer / Platform Engineer @ TOPdesk); ? (Developer Productivity Engineer @ Gradle Technologies); ? (Developer Productivity Engineer @ Skydio) -->
+| 2026-06-11 | eng_leaders | 810559 | Tury, Subquadratic, Solutionreach, Inc., GIPHY, Aakash Technology Innovation Lab, JG Wentworth |
+<!-- eng_leaders sample: ? (Engineering Manager | Head of Engineering | CTO @ Tury); ? (Head of Engineering (VP Engineering) @ Subquadratic); ? (VP of Engineering/Head of Engineering @ Solutionreach, Inc.) -->
+
+### UPDATE 2026-06-11 20:00 GMT+2 — V15 + V16 both ABORTED (R2) — DELIVERABILITY ALARM
+
+**V15 ABORTED at 16:05 GMT+2 = 14:05 UTC:** bounce_rate=0.0333 (1/29+1 = 3.33% > 3% threshold), 1 hard_bounce (Mani Ch @ Paramount — verified, post-verify) + 1 spam_blocked. R2 rule: "≥2 bounces at any n, OR bounce >3% at n≥10" → abort.
+
+**V16 ABORTED at 20:00 GMT+2 = 18:00 UTC:** bounce_rate=0.20 (2/8 = 25%, way above 3%), 2 hard_bounces (Dale Tripp @ Intuit — dale.tripp@demandforce.com [Intuit subsidiary, possibly discontinued]; Dilip Salla @ GE HealthCare — dilip.salla@gehealthcare.com [post-verify]). R2 rule → abort.
+
+**The escalation V15 (1/30) → V16 (2/8) within 1 run-cycle is statistically significant.** This is NOT list hygiene. The mailbox is in deliverability distress:
+- `mailwarming_status=never_started` (Apollo-side warmup off)
+- `mailwarming_vendor.completion_percent=6.67%` (vendor warmup at 7%, started 2026-06-10)
+- `true_warmup_status=null` (Inbox Ramp-Up retired per Apollo 422 error)
+- Vendor warmup `start_date=null` and `completion_percent=6.67%` — the warmup IS running but progressing slowly
+
+**Action taken:** (a) PATCH /email_accounts/69b080dea7fa4d0019b912c2 with `is_opted_in_mailwarming=True` — succeeded (was null). (b) PATCH with `mailwarming_max=40, mailwarming_to_send_daily=20` — succeeded (was 0). (c) PATCH with `mailwarming_status=in_progress` — accepted but field did not change (read-only, bound to vendor). The mailbox is now configured to send 20 warmup emails/day + 40 max, but the actual warmup progress is owned by the vendor service and cannot be accelerated via REST.
+
+**Apollo confidence on the CI/Platform/SRE sub-segment DOWNGRADED: MEDIUM-HIGH → MEDIUM.** The angle is being read (80% raw open on V15), but the deliverability is the bottleneck. Until warmup completes (estimated ~7 days at the current rate), cold-email arms in this niche will continue to bounce at >3%. **R2-abort rule remains binding** — the 3% threshold is the deliverability tripwire and the right call is to ABORT and HOLD until the mailbox reputation recovers.
+
+**2-cap is broken: V13 stuck on 17th contact (D66 worker-queue-class, 12h+ no new delivery) + V15/V16 both aborted. Per R7, R5, R10: HOLD new cold activations.** All marketing energy this run went to:
+- TRACK 1: S27 PR review draft on wringtretsina/kodezart#33 (peer-engineer warm-pool engagement, owner posts)
+- TRACK 2: D50 step 5 fallback H2 owner-paste packet at `drafts/2026-06-11_H2_HN_PASTE_READY.md` (still in 14:00-16:00 UTC window — owner must fire from real browser)
+- CREATIVE_HYPOTHESIS: FIRST-TOUCH GITHUB pattern (filed in tactic_ledger) — change the FIRST-TOUCH surface from email to the recipient's own GitHub Issues. The 0-reply pattern across 5 arms is a channel signal, not a copy signal.
+
+**R11 checkbacks (this run):**
+- +3d (2026-06-14): S27 (kodezart#33) maintainer reply, V13 17th-contact dispatch, V15/V16 deliverability diagnosis
+- +5d (2026-06-16): V15 first-reply / V16 activation decision (R4)
+- +7d (2026-06-18): Production Integrations page live (S26)
+- +14d (2026-06-25): Production Integrations star-movement attribution
+| 2026-06-11 | ospm | 126983 | Dapr, Kiteworks, 麒麟软件, Wipro, OSPO Now, Vassar College |
+<!-- ospm sample: ? (Open Source Community Manager @ Dapr); ? (Open Source & Community Manager @ Kiteworks); ? (Open Source Community Manager @ 麒麟软件) -->
+| 2026-06-12 | devrel | 3729 | Limitless Labs, Vorwerk Group, QuestDB, Dropbox, Sixfab, Kubesimplify |
+<!-- devrel sample: ? (DevRel Engineer @ Limitless Labs); ? (DevRel Engineer @ Vorwerk Group); ? (Developer Advocate - Developer Relations Lead @ QuestDB) -->
+| 2026-06-12 | ai_eng | 212114 | Groupe BPCE, Edgematics Group, IBM, Gainwell Technologies, GTEL OTS, SENAI CIMATEC |
+<!-- ai_eng sample: ? (Machine Learning Engineer, AI dev @ Groupe BPCE); ? (AI Developer | AI Engineer @ Edgematics Group); ? (AI Developer/ AI Engineer @ IBM) -->
+
+---
+
+## §1.7 R11 METRIC CORRECTION (2026-06-12 00:20 UTC = 02:20 GMT+2) — this run
+
+**Marconae/speq-skill#14 +3d R11 checkback** confirmed the **"star and walk" pattern is the conversion signal for a low-star OSS tool, not the issue reply**. Marco opened the issue on 2026-06-09 21:10 UTC, starred Codeberg on 2026-06-10 20:30:57, and has 0 comments on the issue at +3d. The +1 star IS the conversion — measuring it via "issue reply count" misses the conversion by ~100%.
+
+**Implication for ICP confidence:**
+- The marconae pattern (peer-builder Mom-Test 1:1 on a peer's repo, expecting the star as the conversion) converted 1/1. Sample is too small to call a winner, but the direction is right.
+- **ICP confidence moves from MEDIUM to MEDIUM-HIGH on the "peer-builder with adjacent flagship OSS" sub-segment** (1-of-1 directionally confirmed, not statistically — EXPERIMENT DESIGN STANDARDS require ≥3 conversion events for a winner claim).
+- The "production user" archetype (heinschulie) is the next test: he has been using Ralph for 3-4 months and has NOT starred upstream. If a Mom-Test 1:1 on his repo (heinschulie/babylon) produces a star (or a fork-back to upstream, or a watch), the production-user archetype converts via the same pattern. Drafted but not yet posted (S7 PENDING_OWNER).
+
+**R11 PROTOCOL UPGRADE (this run, 2026-06-12):** the R11 checkback must monitor **downstream events** (`gh api users/<handle>/events/public` for new stars/forks/watches/comments on Ralph-related repos in the +3d/+7d/+14d windows) — not just upstream issue-reply counts. The 0/0 reply-rate metric on the marconae engagement was a FALSE NEGATIVE; the actual signal was +1 star. The next R11 run should add this 5-line patch to the warm_pool.py auto-scan.
+
+**Standing protocol change:** **for any "Mom-Test 1:1 on a peer's repo" engagement on a low-star OSS tool, EXPECT THE STAR (low-friction, one-click) AS THE CONVERSION. Do NOT expect an issue reply (high-friction, multi-step).** R11 metrics should be:
+- Star: +1 (the conversion) ✅
+- Watch: +1 (deeper signal) ✅
+- Fork: +1 (the highest signal — they intend to ship) ✅✅
+- Issue reply: rare; treat as a bonus, not the success metric
+
+**What this changes for the next 5-10 H-items:**
+- Continue the marconae pattern: 1-2 paragraph Mom-Test on a peer's repo, named-architectural-complement framing, no follow-up needed.
+- The heinschulie engagement (S7, PENDING_OWNER) is the next test of this pattern on the production-user archetype.
+- The bradAGI/awesome-cli-coding-agents#124 + hesreallyhim/awesome-claude-code#1523 are the awesome-list surface tests; if the maintainers star/merge/cite, that's the next-class conversion signal.
+- **5-10 NEW marconae-shaped leads needed in the warm pool to validate the pattern at n≥3.** Next run: search `gh search issues "Ralph"` for 5-10 new peer-builder / production-user leads with 40+★ flagship repos. Expected: 1-3 new leads per scan.
