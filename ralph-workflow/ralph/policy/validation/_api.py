@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -36,6 +37,7 @@ from ralph.policy.validation._pipeline_validators import (
     _validate_tracked_counters_have_positive_max,
 )
 from ralph.policy.validation._policy_validation_error import PolicyValidationError
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 
 _BLOCK_BASED_POLICY_FORMAT_VERSION = 2
 
@@ -351,10 +353,17 @@ def validate_required_inputs(
     workspace_scope: WorkspaceScope,
     inline_prompt: str | None = None,
 ) -> None:
-    """Validate that required input files exist and are readable."""
+    """Validate that required input files exist and are readable.
+
+    The source-prompt path is resolved through
+    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
+    ``PROMPT_PATH`` env var is honoured in Pro mode. When
+    ``inline_prompt`` is supplied the check is skipped entirely
+    (the inline prompt supersedes the file on disk).
+    """
     if inline_prompt is not None:
         return
-    prompt_path = workspace_scope.root / "PROMPT.md"
+    prompt_path = resolve_effective_prompt_path(workspace_scope.root, os.environ)
     if not prompt_path.exists():
         raise PolicyValidationError(
             f"Required input file not found: {prompt_path}. " + missing_prompt_validation_hint()

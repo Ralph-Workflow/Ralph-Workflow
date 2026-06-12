@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 import time
 from contextlib import suppress
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
+    from ralph.pro_support.heartbeat import ProHeartbeatClient
     from ralph.workspace.scope import WorkspaceScope
 
     class _PipelineSubscriberProtocol(Protocol):
@@ -110,6 +112,7 @@ class _LoopContext:
     connectivity_monitor: _ConnectivityMonitorLike
     sleep: Callable[[float], None]
     is_quiet: bool
+    heartbeat_client: ProHeartbeatClient | None = None
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -467,6 +470,9 @@ def _cleanup_pipeline(
     if loop_ctx.monitor_stop is not None:
         with suppress(Exception):
             loop_ctx.monitor_stop()
+    if loop_ctx.heartbeat_client is not None:
+        with suppress(Exception):
+            loop_ctx.heartbeat_client.stop()
     emit_final_summary(
         state,
         loop_ctx.workspace_scope.root,
@@ -596,5 +602,64 @@ def run(
         connectivity_monitor=connectivity_monitor,
         sleep=_sleep,
         is_quiet=is_quiet,
+        heartbeat_client=_start_pro_heartbeat_if_active(workspace_scope.root),
     )
     return _execute_with_cleanup(state, loop_ctx, state.phase, _unsubscribe_bus, _display_stop)
+
+
+def _start_pro_heartbeat_if_active(
+    workspace_root: Path,
+) -> ProHeartbeatClient | None:
+    """Construct and start a Pro heartbeat client when Pro mode is active.
+
+    Returns ``None`` in any of the following cases (none of which are
+    errors — a non-Pro invocation simply does not need a heartbeat):
+
+    - ``RALPH_WORKFLOW_PRO`` is unset or empty;
+    - the marker file is missing or invalid;
+    - ``runId`` is missing from the marker (so we have no identifier to
+      announce);
+    - the heartbeat token is missing (so Pro could not authenticate
+      us even if we tried).
+
+    Failures are logged at debug level. The run continues without a
+    heartbeat rather than failing.
+    """
+    try:
+        from ralph.pro_support.env import is_pro_mode  # noqa: PLC0415
+        from ralph.pro_support.heartbeat import ProHeartbeatClient  # noqa: PLC0415
+        from ralph.pro_support.marker import (  # noqa: PLC0415
+            read_heartbeat_port,
+            read_heartbeat_token,
+            read_marker_file,
+            read_run_id,
+        )
+    except Exception as exc:
+        logger.debug("Pro support unavailable: {}", exc)
+        return None
+
+    if not is_pro_mode():
+        return None
+
+    marker = read_marker_file(workspace_root)
+    run_id = read_run_id(marker)
+    token = read_heartbeat_token(workspace_root)
+    if run_id is None or token is None:
+        logger.debug(
+            "Pro mode active but marker is missing runId or token; skipping heartbeat"
+        )
+        return None
+
+    port = read_heartbeat_port(marker)
+    base_url = f"http://localhost:{port}"
+    client = ProHeartbeatClient(
+        run_id=run_id,
+        token=token,
+        base_url=base_url,
+        pid=os.getpid(),
+    )
+    client.start()
+    logger.info(
+        "Pro heartbeat started: run_id={} base_url={}", run_id, base_url
+    )
+    return client

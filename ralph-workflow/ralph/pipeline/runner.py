@@ -134,7 +134,6 @@ from ralph.pipeline.prompt_prep import (
     prompt_session_drain_for_phase,
 )
 from ralph.pipeline.reducer import reduce as reducer_reduce
-from ralph.pipeline.run_loop import run
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.state_init import create_initial_state
 from ralph.policy.loader import (
@@ -211,7 +210,6 @@ __all__ = [
     "repo_has_commit_work",
     "resolve_display",
     "resolve_workspace_scope",
-    "run",
     "run_process_async",
     "shutdown_mcp_server",
     "skipped_exhausted_analysis_info",
@@ -219,6 +217,27 @@ __all__ = [
     "terminal_width",
     "truncate",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Lazy attribute proxy that breaks the runner <-> run_loop import cycle.
+
+    ``ralph.pipeline.run_loop`` historically imports this module as
+    ``_runner_module`` to reach the orchestration helpers, while this
+    module historically re-exported the ``run`` entry point from
+    ``run_loop``. Importing both eagerly produces a circular import
+    error in some test-collection orders. Proxying the cross-module
+    symbol via :pep:`562` ``__getattr__`` defers the resolution until
+    the consumer actually needs it, eliminating the cycle while
+    preserving the public re-export contract.
+    """
+    if name == "run":
+        from ralph.pipeline.run_loop import run as _run_loop_entry  # noqa: PLC0415
+
+        module_globals: dict[str, object] = globals()
+        module_globals["run"] = _run_loop_entry
+        return _run_loop_entry
+    raise AttributeError(f"module 'ralph.pipeline.runner' has no attribute {name!r}")
 
 
 if TYPE_CHECKING:

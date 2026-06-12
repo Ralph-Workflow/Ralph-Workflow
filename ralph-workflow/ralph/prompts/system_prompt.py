@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.prompts.template_registry import packaged_template_root
 
 if TYPE_CHECKING:
@@ -48,12 +50,19 @@ def _sync_current_prompt_file(
     default_current_prompt: str | None,
     worker_namespace: Path | None = None,
 ) -> Path:
+    """Mirror the operator-visible prompt into the engine-owned CURRENT_PROMPT.md.
+
+    The source is resolved through
+    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
+    ``PROMPT_PATH`` env var is honoured in Pro mode. The destination
+    remains the engine-owned materialised file under ``.agent/``.
+    """
     current_prompt_path = (
         worker_current_prompt_path(worker_namespace)
         if worker_namespace is not None
         else workspace_root / ".agent" / "CURRENT_PROMPT.md"
     )
-    source_prompt_path = workspace_root / "PROMPT.md"
+    source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
     if source_prompt_path.exists():
         prompt_text = source_prompt_path.read_text(encoding="utf-8")

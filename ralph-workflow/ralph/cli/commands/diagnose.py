@@ -39,6 +39,7 @@ from ralph.policy.validation import (
     validate_agent_chains_satisfiable,
     validate_recovery_config,
 )
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.skills._baseline_catalog import STATIC_BUILTIN_CAPABILITIES
 from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._state_store import load_capability_state
@@ -101,7 +102,7 @@ def diagnose_command(
     )
 
     # Build and print next steps
-    prompt_path = workspace_scope.root / "PROMPT.md"
+    prompt_path = resolve_effective_prompt_path(workspace_scope.root, ctx.env)
     prompt_exists = prompt_path.exists()
     prompt_has_sentinel = False
     if prompt_exists:

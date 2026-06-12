@@ -5,6 +5,7 @@ This module implements the main pipeline execution command.
 
 from __future__ import annotations
 
+import os
 import shutil
 from contextlib import ExitStack
 from importlib import import_module
@@ -44,6 +45,7 @@ from ralph.policy.validation import (
     validate_recovery_config,
     validate_required_inputs,
 )
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.skills._installer import (
     _project_skills_need_install,
     install_project_baseline_skills,
@@ -157,7 +159,15 @@ class RunPipelineRequest(NamedTuple):
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
-    prompt_path = workspace_root / "PROMPT.md"
+    """Return True when the operator-visible prompt differs from the materialised one.
+
+    The operator-visible prompt is resolved through
+    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so
+    the ``PROMPT_PATH`` env var is honoured in Pro mode. The
+    materialised ``.agent/CURRENT_PROMPT.md`` remains engine-owned
+    and is the second operand of the comparison.
+    """
+    prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
     if not prompt_path.exists() or not current_prompt_path.exists():
         return False
@@ -325,7 +335,9 @@ def _run_preflight_checks(
     # validate_required_inputs requires workspace_scope
     if request.workspace_scope is not None and request.inline_prompt is None:
         # Fresh-state detection: workspace has neither PROMPT.md nor .agent
-        prompt_path = request.workspace_scope.root / "PROMPT.md"
+        prompt_path = resolve_effective_prompt_path(
+            request.workspace_scope.root, os.environ
+        )
         agent_dir = request.workspace_scope.root / ".agent"
         if not prompt_path.exists() and not agent_dir.exists():
             _print_not_initialized_panel(display_context=display_context)

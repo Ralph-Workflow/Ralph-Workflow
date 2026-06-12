@@ -12,6 +12,7 @@ from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.effect_router import agents_for_phase
 from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.handoffs import resolve_phase_drain
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.prompts.materialize import (
     collect_media_entries_for_phase,
     materialize_prompt_for_phase,
@@ -128,7 +129,15 @@ def session_capabilities_for_agent_phase(
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
-    prompt_path = workspace_root / "PROMPT.md"
+    """Return True when the operator-visible prompt differs from the last materialised one.
+
+    The operator-visible prompt is resolved through
+    :func:`ralph.pro_support.prompt.resolve_effective_prompt_path` so the
+    ``PROMPT_PATH`` env var is honoured in Pro mode. The materialised
+    ``.agent/CURRENT_PROMPT.md`` remains engine-owned and is checked as
+    the second operand of the comparison.
+    """
+    prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
     if not prompt_path.exists() or not current_prompt_path.exists():
         return False

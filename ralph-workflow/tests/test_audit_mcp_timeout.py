@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from ralph.testing.audit_mcp_timeout import (
     McpTimeoutViolation,
+    _default_roots,
     audit_mcp_directory,
     audit_mcp_file,
     main,
@@ -211,3 +212,40 @@ def test_main_returns_nonzero_on_violation(tmp_path: Path) -> None:
 def test_main_returns_zero_when_clean(tmp_path: Path) -> None:
     (tmp_path / "d.py").write_text("proc.communicate(timeout=5)\n", encoding="utf-8")
     assert main([str(tmp_path)]) == 0
+
+
+# --- pro_support regression coverage -----------------------------------------
+
+
+def test_audit_flags_unbounded_httpx_in_pro_support(tmp_path: Path) -> None:
+    """An unbounded ``httpx.post`` under ralph/pro_support must be flagged.
+
+    Mirrors the production layout (``ralph/pro_support/`` is one of the
+    default audit roots) and proves the new root is wired correctly:
+    a regression that would let an unbounded heartbeat escape the audit
+    is caught by this test.
+    """
+    pro_dir = tmp_path / "pro_support"
+    pro_dir.mkdir()
+    (pro_dir / "heartbeat.py").write_text(
+        "import httpx\nhttpx.post('http://localhost/api/heartbeat', json={})\n",
+        encoding="utf-8",
+    )
+    violations, _checked = audit_mcp_directory(pro_dir)
+    network_violations = [v for v in violations if v.category == "network"]
+    assert network_violations, (
+        "expected at least one network violation in pro_support/heartbeat.py"
+    )
+
+
+def test_default_roots_includes_pro_support() -> None:
+    """``_default_roots()`` MUST include the pro_support package.
+
+    Regression test for a future refactor that drops the pro_support
+    entry: that would silently disable audit coverage of the Pro
+    heartbeat client and let an unbounded httpx call escape.
+    """
+    roots = _default_roots()
+    assert any(str(r).endswith("ralph/pro_support") for r in roots), (
+        f"_default_roots() must include ralph/pro_support; got {roots}"
+    )
