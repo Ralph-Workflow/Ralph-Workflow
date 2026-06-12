@@ -256,3 +256,15 @@ If you are changing Ralph Workflow itself, start with [`CONTRIBUTING.md`](CONTRI
 ```bash
 make verify
 ```
+
+## Pro support (optional GUI layer)
+
+[Ralph-Workflow-Pro](https://codeberg.org/RalphWorkflow/Ralph-Workflow-Pro)
+is an optional GUI layer that runs the engine as a subprocess. The
+engine exposes a small, read-only, bounded surface so Pro can
+monitor and (in advanced uses) inject custom pipeline
+collaborators.
+
+- Engine-side contract page: [`docs/sphinx/pro-support.md`](docs/sphinx/pro-support.md).
+- Engine-side engine-capability traceability: [`docs/agents/pro-contract.md`](docs/agents/pro-contract.md).
+- Upstream contract (authoritative source of truth): `Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`.

@@ -9,7 +9,7 @@ the engine that reads ``PROMPT.md`` (rather than the materialised
 :func:`resolve_effective_prompt_path`.
 
 Callers operating on the engine-owned materialised
-``.agent/CURRENT_PROMPT.md` MUST NOT use this resolver — that path is
+``.agent/CURRENT_PROMPT.md`` MUST NOT use this resolver — that path is
 engine-owned and is never overridden by ``PROMPT_PATH``.
 """
 
@@ -36,9 +36,11 @@ def resolve_effective_prompt_path(
     Resolution order:
 
     1. If ``PROMPT_PATH`` is set and non-empty in the supplied ``env``:
+
        - when absolute, return it resolved through :meth:`Path.resolve`;
        - when relative, resolve it relative to ``workspace_root`` and
          return the result through :meth:`Path.resolve`.
+
     2. Otherwise return ``<workspace_root>/PROMPT.md`` resolved through
        :meth:`Path.resolve`.
 

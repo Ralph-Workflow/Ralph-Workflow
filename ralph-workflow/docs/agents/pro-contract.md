@@ -2,7 +2,7 @@
 
 > **Audience:** Ralph Workflow contributors maintaining the engine
 > side of the Ralph-Workflow-Pro integration.
-> **Last cross-checked:** 2026-06-11 against
+> **Last cross-checked:** 2026-06-12 against
 > `Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`
 > (the authoritative source of truth, outside this repo).
 

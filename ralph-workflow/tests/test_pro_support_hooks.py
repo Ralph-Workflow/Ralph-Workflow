@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import MagicMock
+
+import pytest
 
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
@@ -33,8 +36,6 @@ from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    import pytest
 
     from ralph.config.models import UnifiedConfig
 
@@ -474,3 +475,99 @@ def test_custom_pipeline_artifact_type_end_to_end(
     )
     assert exit_code == 0
     assert captured_bundle[0] is custom_bundle
+
+
+def test_pro_pipeline_hooks_to_runner_kwargs_shape() -> None:
+    """Pin the shape of :meth:`ProPipelineHooks.to_runner_kwargs` and the dataclass guards.
+
+    Contract pinned by this test (from the engine-side handoff
+    in ``docs/agents/pro-contract.md`` and the public docstring
+    of :class:`ralph.pro_support.hooks.ProPipelineHooks`):
+
+    1. ``to_runner_kwargs()`` returns a dict with EXACTLY six
+       entries — one per factory or passthrough, but never the
+       ``policy_bundle_override`` field.
+    2. The six forwarded values are the same objects the
+       constructor received (identity-equality, not just equality).
+    3. ``policy_bundle_override`` is NOT in the returned dict
+       (the engine inspects it separately to short-circuit
+       ``policy_bundle_factory``).
+    4. The dataclass is ``frozen=True`` and ``slots=True``:
+       direct attribute assignment (``hooks.x = y``) and direct
+       attribute deletion (``del hooks.x``) both raise
+       :class:`dataclasses.FrozenInstanceError`.
+
+    NOTE: We use direct attribute mutation, NOT
+    ``dataclasses.replace``. ``dataclasses.replace`` constructs
+    a new instance via ``__init__`` and therefore bypasses the
+    ``frozen=True`` guard, so it would not detect a regression
+    in which someone removed ``frozen=True`` from the dataclass.
+    """
+    sentinel_bundle = cast("PolicyBundle", object())
+    sentinel_policy = MagicMock(name="policy_bundle_factory")
+    sentinel_registry = MagicMock(name="registry_factory")
+    sentinel_state = MagicMock(name="state_factory")
+    sentinel_recovery = MagicMock(name="recovery_controller_factory")
+    sentinel_marker = MagicMock(name="marker_watcher_factory")
+    sentinel_registry_holder = MagicMock(name="snapshot_registry")
+
+    hooks = ProPipelineHooks(
+        policy_bundle_factory=sentinel_policy,
+        registry_factory=sentinel_registry,
+        state_factory=sentinel_state,
+        recovery_controller_factory=sentinel_recovery,
+        marker_watcher_factory=sentinel_marker,
+        policy_bundle_override=sentinel_bundle,
+        snapshot_registry=sentinel_registry_holder,
+    )
+
+    # (1) Exactly six entries.
+    kwargs = hooks.to_runner_kwargs()
+    assert isinstance(kwargs, dict)
+    assert len(kwargs) == 6, (
+        f"to_runner_kwargs() must forward exactly 6 entries; got {sorted(kwargs)}"
+    )
+
+    # (2) Each forwarded value is identity-equal to the constructor argument.
+    expected_keys = {
+        "policy_bundle_factory",
+        "registry_factory",
+        "state_factory",
+        "recovery_controller_factory",
+        "marker_watcher_factory",
+        "snapshot_registry",
+    }
+    assert set(kwargs) == expected_keys, (
+        f"to_runner_kwargs() keys drifted; expected {sorted(expected_keys)} "
+        f"got {sorted(kwargs)}"
+    )
+    assert kwargs["policy_bundle_factory"] is sentinel_policy
+    assert kwargs["registry_factory"] is sentinel_registry
+    assert kwargs["state_factory"] is sentinel_state
+    assert kwargs["recovery_controller_factory"] is sentinel_recovery
+    assert kwargs["marker_watcher_factory"] is sentinel_marker
+    assert kwargs["snapshot_registry"] is sentinel_registry_holder
+
+    # (3) policy_bundle_override is NOT forwarded via to_runner_kwargs.
+    assert "policy_bundle_override" not in kwargs, (
+        "to_runner_kwargs() must NOT forward policy_bundle_override; "
+        "run() inspects it separately to short-circuit policy_bundle_factory"
+    )
+
+    # (4) frozen=True: direct attribute assignment raises FrozenInstanceError.
+    # Cast to a mutable object so the test compiles without inline ignore
+    # markers (test files must have zero suppressions per
+    # tests/test_type_ignore_policy.py::test_zero_test_file_suppressions).
+    mutable_hooks: Any = hooks
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        mutable_hooks.policy_bundle_factory = MagicMock(name="replacement")
+
+    # (4b) frozen=True: direct attribute deletion raises FrozenInstanceError.
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        del mutable_hooks.policy_bundle_factory
+
+    # (4c) slots=True: the dataclass has __slots__ defined (the field set is fixed).
+    assert dataclasses.fields(ProPipelineHooks) is not None
+    assert hasattr(ProPipelineHooks, "__slots__"), (
+        "ProPipelineHooks must use slots=True to keep the field set closed"
+    )

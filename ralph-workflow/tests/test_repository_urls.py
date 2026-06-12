@@ -57,6 +57,7 @@ def test_project_urls_module_defines_canonical_repo_constants() -> None:
     assert getattr(module, "CODEBERG_REPOSITORY_URL", "")
     assert getattr(module, "GITHUB_MIRROR_URL", "")
     assert getattr(module, "CODEBERG_ISSUES_URL", "")
+    assert getattr(module, "RALPH_WORKFLOW_PRO_REPOSITORY_URL", "")
 
 
 def test_pyproject_project_urls_match_shared_constants() -> None:
@@ -94,7 +95,9 @@ def test_maintained_docs_only_use_canonical_repo_urls() -> None:
         module.CODEBERG_ISSUES_URL,
         f"{module.CODEBERG_REPOSITORY_URL}.git",
         f"{module.GITHUB_MIRROR_URL}.git",
+        getattr(module, "RALPH_WORKFLOW_PRO_REPOSITORY_URL", ""),
     }
+    allowed_urls = {u for u in allowed_urls if u}
     mismatches: list[str] = []
 
     for root in _MAINTAINED_DOC_ROOTS:
@@ -108,10 +111,12 @@ def test_maintained_docs_only_use_canonical_repo_urls() -> None:
                 is_github_repo_url = "Ralph-Workflow/Ralph-Workflow" in url
                 if not is_codeberg_repo_url and not is_github_repo_url:
                     continue
+                pro_url = getattr(module, "RALPH_WORKFLOW_PRO_REPOSITORY_URL", "")
                 is_allowed = (
                     url in allowed_urls
                     or url.startswith(f"{module.CODEBERG_REPOSITORY_URL}/")
                     or url.startswith(f"{module.GITHUB_MIRROR_URL}/")
+                    or (pro_url and url.startswith(f"{pro_url}/"))
                 )
                 if not is_allowed:
                     mismatches.append(f"{path.relative_to(WORKSPACE_ROOT)} -> {url}")

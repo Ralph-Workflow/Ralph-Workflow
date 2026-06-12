@@ -112,6 +112,9 @@ _ALLOWLIST: list[tuple[str, str]] = [
     ("gitdb.net/Ralph-Workflow/Ralph-Workflow", "gitdb mirror path"),
     # Line-wrapped "Ralph\nWorkflow" in RST source (text wrapping, not a violation)
     ("or watch Ralph\nWorkflow", "rst line-wrapped Ralph Workflow"),
+    # Third-party product name (optional GUI layer) — Ralph-Workflow-Pro is a different
+    # product name from Ralph Workflow, not a project name usage of bare 'Ralph'.
+    ("Ralph-Workflow-Pro", "third-party product name"),
 ]
 
 # Pattern: a capital-R 'Ralph' word that is NOT followed by ' Workflow'
