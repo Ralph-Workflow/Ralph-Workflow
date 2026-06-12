@@ -273,16 +273,19 @@ def _default_roots() -> list[Path]:
     """Roots audited when no explicit root is given.
 
     Covers ``ralph/mcp`` (the MCP server thread), ``ralph/git`` (git invoked
-    outside the MCP layer — operations, rebase, vendor-drift checks), and
-    ``ralph/process/manager`` (the subprocess layer the MCP/git paths call into
-    synchronously). An unbounded call in any of these can hang the agent just as
-    badly, so all are held to the same bounded-subprocess contract.
+    outside the MCP layer — operations, rebase, vendor-drift checks),
+    ``ralph/process/manager`` (the subprocess layer the MCP/git paths call
+    into synchronously), and ``ralph/pro_support`` (the bounded Pro
+    heartbeat client that performs network I/O). An unbounded call in any
+    of these can hang the agent just as badly, so all are held to the
+    same bounded-subprocess contract.
     """
     package_root = Path(__file__).parent.parent
     return [
         package_root / "mcp",
         package_root / "git",
         package_root / "process" / "manager",
+        package_root / "pro_support",
     ]
 
 

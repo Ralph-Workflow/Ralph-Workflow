@@ -14,7 +14,7 @@ def test_verify_prompt_integrity_accepts_existing_prompt() -> None:
     workspace = MemoryWorkspace()
     workspace.write("PROMPT.md", "# Prompt\n")
 
-    result = integrity.verify_prompt_integrity(workspace)
+    result = integrity.verify_prompt_integrity(workspace, prompt_path="PROMPT.md")
 
     assert result.ok is True
     assert result.restored is False
@@ -30,6 +30,7 @@ def test_ensure_prompt_integrity_restores_missing_prompt_from_backup() -> None:
         workspace,
         phase="development",
         iteration=2,
+        prompt_path="PROMPT.md",
     )
 
     assert result.ok is True
@@ -44,7 +45,9 @@ def test_ensure_prompt_integrity_restores_empty_prompt_from_backup() -> None:
     workspace.write("PROMPT.md", "   \n")
     workspace.write(".agent/prompt.backup.md", "# Backup\n")
 
-    result = integrity.ensure_prompt_integrity(workspace, phase="review", iteration=1)
+    result = integrity.ensure_prompt_integrity(
+        workspace, phase="review", iteration=1, prompt_path="PROMPT.md"
+    )
 
     assert result.ok is True
     assert result.restored is True
@@ -55,7 +58,9 @@ def test_ensure_prompt_integrity_reports_failure_without_backup() -> None:
     """Missing prompt without a backup should return a failure result."""
     workspace = MemoryWorkspace()
 
-    result = integrity.ensure_prompt_integrity(workspace, phase="development", iteration=3)
+    result = integrity.ensure_prompt_integrity(
+        workspace, phase="development", iteration=3, prompt_path="PROMPT.md"
+    )
 
     assert result.ok is False
     assert result.restored is False

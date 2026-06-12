@@ -11,11 +11,18 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from ralph.diagnostics import (
     AgentDiagnostics,
     DiagnosticReport,
     SystemInfo,
 )
+
+# SystemInfo.gather() executes real git subprocesses (rev-parse, branch,
+# status). Wall-clock cost under parallel xdist load is regularly > 1 s
+# on busy machines, so the default 1-second per-test ceiling is unsafe.
+pytestmark = pytest.mark.timeout_seconds(5)
 
 MULTI_AGENT_COUNT = 2
 

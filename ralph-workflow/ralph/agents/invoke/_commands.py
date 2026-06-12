@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import shutil
 import sys
@@ -16,6 +17,7 @@ from ralph.agents.invoke._types import _BuildCommandOptions
 from ralph.config.enums import AgentTransport
 from ralph.mcp.tools.names import CLAUDE_NATIVE_TOOLS_TO_KEEP
 from ralph.mcp.transport.claude import claude_mcp_config
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 
 if TYPE_CHECKING:
     from ralph.config.models import AgentConfig
@@ -121,9 +123,25 @@ def _interactive_stop_hook_settings(sentinel_path: Path) -> str:
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
+    """Resolve a prompt path string into a concrete :class:`Path`.
+
+    Resolution order:
+
+    1. If ``prompt_file`` is already absolute, return it resolved
+       through :meth:`Path.resolve`.
+    2. If ``workspace_path`` is ``None``, return the prompt file as a
+       relative path (the caller chose to opt out of resolution).
+    3. If ``prompt_file`` is the legacy literal ``"PROMPT.md"``,
+       delegate to
+       :func:`ralph.pro_support.prompt.resolve_effective_prompt_path`
+       so the ``PROMPT_PATH`` env var is honoured.
+    4. Otherwise join ``workspace_path`` and ``prompt_file``.
+    """
     prompt_path = Path(prompt_file)
     if prompt_path.is_absolute() or workspace_path is None:
         return prompt_path
+    if prompt_file == "PROMPT.md":
+        return resolve_effective_prompt_path(workspace_path, os.environ)
     return workspace_path / prompt_path
 
 

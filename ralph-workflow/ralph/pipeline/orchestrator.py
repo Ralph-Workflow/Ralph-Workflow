@@ -5,11 +5,20 @@ in the reducer's match arms. Given the current PipelineState and the loaded
 PipelinePolicy + AgentsPolicy, determine_next_effect() returns the next
 Effect to execute.
 
-No I/O, no side effects — fully deterministic and testable.
+The orchestrator is purely deterministic and has no side effects of its
+own. To support the Pro contract (see
+``ralph-workflow-pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md``
+§3 — PROMPT_PATH env var) the optional ``workspace_scope`` argument is
+read by :func:`ralph.pro_support.prompt.resolve_effective_prompt_path`
+when an :class:`InvokeAgentEffect` is emitted. The legacy default
+behaviour (``prompt_file="PROMPT.md"``) is preserved when
+``workspace_scope`` is ``None`` so existing callers and tests are
+unaffected.
 """
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -21,6 +30,7 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
 )
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 
 if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
@@ -30,6 +40,7 @@ if TYPE_CHECKING:
         PhaseDefinition,
         PipelinePolicy,
     )
+    from ralph.workspace.scope import WorkspaceScope
 
 
 class PhaseHandlerNotFoundError(Exception):
@@ -55,6 +66,7 @@ def determine_next_effect(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
     agents_policy: AgentsPolicy,
+    workspace_scope: WorkspaceScope | None = None,
 ) -> Effect:
     """Pure function: derive next effect from current state and policy.
 
@@ -69,6 +81,12 @@ def determine_next_effect(
         state: Current pipeline state.
         pipeline_policy: Loaded pipeline policy (phase graph from pipeline.toml).
         agents_policy: Loaded agents policy (chains and drain bindings).
+        workspace_scope: Optional workspace scope used to resolve the
+            operator-visible source prompt path (PROMPT_PATH or
+            ``<workspace>/PROMPT.md``). When ``None`` the legacy literal
+            ``"PROMPT.md"`` is preserved on emitted
+            :class:`InvokeAgentEffect` instances, matching the pre-Pro
+            contract.
 
     Returns:
         The next Effect to execute.
@@ -106,7 +124,9 @@ def determine_next_effect(
     chain = agents_policy.agent_chains[chain_name]
 
     # Routing based on phase type and state flags
-    return _derive_effect_for_phase(state, phase_def, chain, chain_name, pipeline_policy)
+    return _derive_effect_for_phase(
+        state, phase_def, chain, chain_name, pipeline_policy, workspace_scope
+    )
 
 
 def _derive_effect_for_phase(
@@ -115,6 +135,7 @@ def _derive_effect_for_phase(
     chain: AgentChainConfig,
     chain_name: str,
     pipeline_policy: PipelinePolicy,
+    workspace_scope: WorkspaceScope | None = None,
 ) -> Effect:
     """Derive the next effect for a known phase.
 
@@ -124,6 +145,12 @@ def _derive_effect_for_phase(
         chain: Agent chain config for the current drain.
         chain_name: Name of the agent chain.
         pipeline_policy: Loaded pipeline policy for terminal state resolution.
+        workspace_scope: Optional workspace scope. When supplied, the
+            emitted :class:`InvokeAgentEffect` carries a prompt file path
+            resolved through
+            :func:`ralph.pro_support.prompt.resolve_effective_prompt_path`,
+            honouring the ``PROMPT_PATH`` env var. When ``None`` the
+            legacy literal ``"PROMPT.md"`` is preserved.
 
     Returns:
         Next Effect to execute.
@@ -143,10 +170,15 @@ def _derive_effect_for_phase(
             previous_phase=state.previous_phase,
         )
 
+    if workspace_scope is None:
+        prompt_file = "PROMPT.md"
+    else:
+        prompt_file = str(resolve_effective_prompt_path(workspace_scope.root, os.environ))
+
     return InvokeAgentEffect(
         agent_name=_current_agent_name(state, chain),
         phase=phase,
-        prompt_file="PROMPT.md",
+        prompt_file=prompt_file,
         drain=phase_def.drain,
         chain_name=chain_name,
     )

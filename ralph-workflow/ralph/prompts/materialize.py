@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import typing
 from contextlib import suppress
 from dataclasses import dataclass
@@ -44,6 +45,8 @@ from ralph.pipeline.phase_entry_cleaner import (
     is_fresh_phase_entry,
 )
 from ralph.policy.models import ROLE_REVIEW
+from ralph.pro_support.env import PROMPT_PATH as _PROMPT_PATH_ENV
+from ralph.pro_support.prompt import resolve_effective_prompt_path
 from ralph.prompts._commit_diff import _UNTRACKED_HEADER
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
@@ -263,7 +266,20 @@ def _render_prompt_for_phase(
     previous_phase = options.previous_phase
     tmpl_ctx = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
-    prompt_content = _read_optional(workspace, "PROMPT.md")
+    workspace_root_for_resolver = Path(workspace.absolute_path("."))
+    raw_prompt_path = os.environ.get(_PROMPT_PATH_ENV, "")
+    if raw_prompt_path:
+        # PROMPT_PATH is set: use the resolved absolute path (it
+        # must be looked up via the real filesystem).
+        source_prompt_path = resolve_effective_prompt_path(
+            workspace_root_for_resolver, os.environ
+        )
+        prompt_content = _read_optional(workspace, str(source_prompt_path))
+    else:
+        # No PROMPT_PATH: keep the legacy "PROMPT.md" relative path
+        # so workspace abstractions like MemoryWorkspace (which do not
+        # understand symlink-resolved absolute paths) keep working.
+        prompt_content = _read_optional(workspace, "PROMPT.md")
     _clear_accepted_analysis_history_if_needed(
         workspace_root=workspace_root,
         pipeline_policy=pipeline_policy,

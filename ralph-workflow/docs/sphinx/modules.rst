@@ -3072,3 +3072,82 @@ ralph.telemetry
 
 .. automodule:: ralph.telemetry
    :no-members:
+
+----
+
+Integrations
+------------
+
+ralph.pro_support
+~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.pro_support is the engine-side half of the Ralph-Workflow-Pro
+   contract. The detailed contract page is :doc:`pro-support`; this entry
+   exposes the package and its public API for sphinx cross-references.
+
+.. automodule:: ralph.pro_support
+   :no-members:
+
+ralph.pro_support.env
+~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pro_support.env
+   :members:
+   :show-inheritance:
+
+ralph.pro_support.workspace
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pro_support.workspace
+   :members:
+   :show-inheritance:
+
+ralph.pro_support.prompt
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pro_support.prompt
+   :members:
+   :show-inheritance:
+
+ralph.pro_support.marker
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pro_support.marker
+   :members:
+   :show-inheritance:
+
+ralph.pro_support.heartbeat
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pro_support.heartbeat
+   :members:
+   :show-inheritance:
+
+ralph.pro_support.watcher
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pro_support.watcher
+   :members:
+   :show-inheritance:
+
+ralph.pro_support.hooks
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pro_support.hooks
+   :members:
+   :show-inheritance:
+
+ralph.pro_support.state_query
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pro_support.state_query
+   :members:
+   :show-inheritance:
+
+Pro support
+~~~~~~~~~~~
+
+.. toctree::
+   :maxdepth: 1
+
+   Pro support <pro-support>

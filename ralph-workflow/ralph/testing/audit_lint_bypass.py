@@ -75,12 +75,18 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("audit_typecheck_bypass", "PLR0912"),
     ("audit_lint_bypass", "PLR0912"),
     ("commit_executor", "PLC0415"),
+    ("runner", "PLC0415"),  # lazy import in module __getattr__ breaks runner<->run_loop cycle
     ("worker_runtime", "PLC0415"),
     ("commit_cleanup", "PLC0415"),
     ("materialize", "PLC0415"),
     ("supervising", "PLC0415"),
     ("pytest_timeout_plugin", "PLC0415"),
     ("_event_classification", "PLC0415"),
+    ("run_loop", "PLC0415"),
+    ("run_loop", "PLR0912"),
+    ("run_loop", "PLR0915"),
+    ("heartbeat", "PLC0415"),
+    ("pydantic_validation_errors", "PLR0911"),  # exhaustive error-type dispatch
     ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),
     ("claude_interactive_transcript_parser", "PLR0912"),

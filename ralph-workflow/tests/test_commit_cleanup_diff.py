@@ -29,9 +29,11 @@ from ralph.workspace.memory import MemoryWorkspace
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Real-git tests fork `git` subprocesses; under full-suite worksteal
-# parallelism the default 1s wall-clock alarm intermittently fires on a
-# loaded machine even though each test normally finishes in ~100ms.
+# Most tests in this module exercise real git operations against the
+# ``tmp_git_repo`` fixture (per-test process-isolated git repository).
+# Under parallel xdist load, the default 1-second ceiling intermittently
+# fires on busy machines even though individual tests normally complete
+# quickly, so this module uses a slightly higher per-test timeout.
 pytestmark = pytest.mark.timeout_seconds(5)
 
 

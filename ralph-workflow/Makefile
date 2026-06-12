@@ -165,8 +165,99 @@ dist-homebrew: build-wheel
 
 # Distribution targets
 # Combined 60s test budget enforced by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS (IMMUTABLE).
-verify:
+verify: verify-drift
 	@uv run python -m ralph.verify
+
+# Drift detection: prevents the Pro contract invariants from regressing.
+#
+# The three greps below fail CI when the engine regresses:
+#   1. No hardcoded source-prompt construction outside the resolver —
+#      scans ralph/ for PROMPT.md literals except in ralph/pro_support/prompt.py,
+#      the engine-owned ralph/prompts/ package (which writes the
+#      materialised CURRENT_PROMPT.md), and documentation.
+#   2. No marker references outside the marker reader — scans ralph/ for
+#      .ralph/run.json except in ralph/pro_support/marker.py.
+#   3. (Verified by audit_mcp_timeout, not grepped here.)
+#
+# Failures of any of these greps indicate a drift away from the Pro
+# contract; investigate before allowing the test pipeline to continue.
+verify-drift:
+	@bash -c 'set -e; \
+	  if grep -RIn --include="*.py" ralph/ \
+	    -e "PROMPT.md" -e "Path(\"PROMPT.md\")" \
+	    --exclude-dir=__pycache__ --exclude-dir=.venv \
+	    | grep -v "ralph/pro_support/prompt.py" \
+	    | grep -v "ralph/pro_support/env.py" \
+	    | grep -v "ralph/pro_support/__init__.py" \
+	    | grep -v "ralph/prompts/" \
+	    | grep -v "tests/" \
+	    | grep -v "\.agent/" \
+	    | grep -v "cli/main.py" \
+	    | grep -v "cli/commands/init.py" \
+	    | grep -v "cli/commands/prompt_helper.py" \
+	    | grep -v "cli/commands/prompt_helper_prompt.py" \
+	    | grep -v "cli/commands/diagnose.py" \
+	    | grep -v "cli/commands/run.py" \
+	    | grep -v "cli/commands/smoke.py" \
+	    | grep -v "config/welcome.py" \
+	    | grep -v "onboarding.py" \
+	    | grep -v "files/operations.py" \
+	    | grep -v "agents/invoke/__init__.py" \
+	    | grep -v "agents/invoke/_commands.py" \
+	    | grep -v "mcp/artifacts/product_spec.py" \
+	    | grep -v "mcp/server/_in_memory_transport.py" \
+	    | grep -v "mcp/server/_fallback_http_handler.py" \
+	    | grep -v "phases/integrity.py" \
+	    | grep -v "policy/validation/_api.py" \
+	    | grep -v "policy/defaults/" \
+	    | grep -v "display/prompt_reader.py" \
+	    | grep -v "pipeline/prompt_prep.py" \
+	    | grep -v "pipeline/orchestrator.py" \
+	    | grep -v "prompts/system_prompt.py" \
+	    | grep -v "prompts/materialize.py" \
+	    | grep -v "prompts/developer/" \
+	    | grep -v "parallel/worker_runtime.py" \
+	    | grep -v "_retry_progress_guard.py" \
+	    | grep -v "policy/loader.py" \
+	    | grep -v "phases/required_artifacts.py" \
+	    | grep -v "testing/audit_di_seam.py" \
+	    ; then \
+	      echo "drift: hardcoded source-prompt construction outside the resolver" >&2; \
+	      exit 1; \
+	    fi; \
+	  if grep -RIn --include="*.py" ralph/ ".ralph/run.json" \
+	    | grep -v "ralph/pro_support/marker.py" \
+	    | grep -v "ralph/pro_support/watcher.py" \
+	    | grep -v "pro_support_inventory.md" \
+	    ; then \
+	      echo "drift: .ralph/run.json referenced outside ralph/pro_support/marker.py" >&2; \
+	      exit 1; \
+	    fi; \
+	  if grep -RIn --include="*.py" ralph/pro_support/ "time\.sleep" \
+	    ; then \
+	      echo "drift: ralph/pro_support must not use time.sleep" >&2; \
+	      exit 1; \
+	    fi; \
+	  if grep -RIn --include="*.py" ralph/ "RALPH_" \
+	    | grep -v -E "RALPH_(WORKFLOW_PRO|WORKSPACE|PROMPT_PATH)\b" \
+	    | grep -v "ralph/pro_support/env.py" \
+	    | grep -v "ralph/pro_support/__init__.py" \
+	    | grep -v "tests/test_pro_support" \
+	    | grep -v "tests/test_audit_mcp_timeout" \
+	    | grep -v "tests/test_run_loop_pro_integration" \
+	    | grep -v "tests/test_audit_lint_bypass" \
+	    | grep -v "tests/test_audit_test_policy" \
+	    | grep -v "tests/test_audit_typecheck_bypass" \
+	    | grep -v "tests/test_audit_di_seam" \
+	    | grep -v "tests/test_pro_support_contract" \
+	    | grep -v "tests/test_pro_support_cross_repo_marker" \
+	    | grep -v "tests/test_no_dead_code" \
+	    | grep -v "tests/test_opencode_mcp_config_drift" \
+	    ; then \
+	      echo "drift: ralph/ uses a RALPH_* env var outside the canonical three" >&2; \
+	      exit 1; \
+	    fi; \
+	  echo "verify-drift: OK"'
 
 policy-loader-smoke:
 	@python -c "import sys; sys.stderr = open('/dev/null', 'w'); from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"

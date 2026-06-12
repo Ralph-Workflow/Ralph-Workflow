@@ -38,8 +38,10 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 from ralph.git.operations import GitOperationError, find_main_worktree_root, find_repo_root
+from ralph.pro_support.workspace import resolve_pro_workspace
 
 CONFIG_DIR_NAME = ".agent"
+_PRO_WORKSPACE_RESOLVER = "ralph.pro_support.workspace.resolve_pro_workspace"
 WORKSPACE_CONFIG_NAME = "ralph-workflow.toml"
 _WORKSPACE_AGENT_FILENAMES = (
     "ralph-workflow.toml",
@@ -203,7 +205,13 @@ def resolve_workspace_scope(start: Path | str | None = None) -> WorkspaceScope:
     an explicit local override file.
     """
 
-    candidate = Path.cwd() if start is None else Path(start)
+    if start is None:
+        try:
+            candidate = resolve_pro_workspace()
+        except Exception:  # import-time failure of pro_support must not break scope resolution
+            candidate = Path.cwd()
+    else:
+        candidate = Path(start)
     try:
         repo_root = find_repo_root(candidate)
         main_root = find_main_worktree_root(candidate)
