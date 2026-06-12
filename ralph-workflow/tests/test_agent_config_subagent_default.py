@@ -15,6 +15,7 @@ the prompt's "no manual configuration required" requirement.
 from __future__ import annotations
 
 import textwrap
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.config.agent_config import AgentConfig
@@ -23,8 +24,6 @@ from ralph.config.loader import GLOBAL_CONFIG_PATH, load_config
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from pytest import MonkeyPatch
 
 
@@ -113,3 +112,50 @@ def test_partial_override_inherits_subagent_capability_default_for_claude(
     config = load_config(workspace_scope=_scope_for(tmp_path))
     assert "claude" in config.agents
     assert config.agents["claude"].subagent_capability is True
+
+
+def test_bundled_ralph_workflow_toml_shipped_with_subagent_capability_true() -> None:
+    """The bundled ``ralph/policy/defaults/ralph-workflow.toml`` MUST ship
+    with ``[agents.claude] subagent_capability = true`` uncommented.
+
+    This pins the bundled default end-to-end: the model_post_init default is
+    covered by ``test_subagent_capability_defaults_true_for_claude_command``,
+    the partial-override merge path is covered by
+    ``test_partial_override_inherits_subagent_capability_default_for_claude``,
+    and this test covers the third leg of requirement 3 ("Task MCP enabled by
+    default") by reading the shipped file directly. A future edit that
+    re-comments the line (or moves it out of the ``[agents.claude]`` block)
+    would break PROMPT.md requirement 3 and would now fail this test.
+
+    Implementation note: this is a black-box, path-anchored source-text check
+    (same pattern as ``test_continuation_template_parallel_guidance.py``) so
+    it stays under the 60s combined test budget — no Ralph imports, no
+    fixture overhead, no parser invocation.
+    """
+    repo_root = Path(__file__).resolve().parents[1]
+    bundled = repo_root / "ralph" / "policy" / "defaults" / "ralph-workflow.toml"
+    assert bundled.is_file(), f"bundled default not found at {bundled}"
+
+    content = bundled.read_text(encoding="utf-8")
+
+    assert "subagent_capability = true" in content, (
+        f"bundled {bundled} is missing the uncommented "
+        "`subagent_capability = true` line under [agents.claude]"
+    )
+
+    lines = content.splitlines()
+    claude_block_lines: list[str] = []
+    in_claude_block = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            in_claude_block = stripped == "[agents.claude]"
+            continue
+        if in_claude_block:
+            claude_block_lines.append(stripped)
+
+    assert any("subagent_capability = true" in line for line in claude_block_lines), (
+        "`subagent_capability = true` must appear inside the [agents.claude] "
+        "block of the bundled ralph-workflow.toml, not in some other [agents.*] "
+        "block or above all section headers"
+    )

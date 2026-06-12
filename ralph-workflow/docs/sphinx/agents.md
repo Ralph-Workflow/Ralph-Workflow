@@ -92,6 +92,8 @@ That keeps media, artifacts, and tool output aligned with the capabilities of th
 
 ## Dedicated parallel worker bootstrap
 
+Ralph-managed parallel worker bootstrap is dormant in the bundled default (see [Parallel Mode](parallel-mode.md)). This section documents the opt-in contract for the `ralph_fan_out` dispatch mode.
+
 When Ralph Workflow fans out parallel workers for a multi-unit execution, each worker enters through a dedicated bootstrap path that short-circuits the shared pipeline startup loop.
 
 ### What each worker receives

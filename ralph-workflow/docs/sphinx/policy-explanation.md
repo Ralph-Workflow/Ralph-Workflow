@@ -49,6 +49,8 @@ Exit codes: 0 = valid, 2 = `PolicyValidationError`, 1 = other error.
 invalid policy before starting a run. Accepts `--explain-policy-dir` for a custom
 directory.
 
+> **Heads up:** in this build, parallel execution is delegated to the executing AI agent's sub-agents (see [Parallel Mode](parallel-mode.md)). Ralph-managed fan-out is dormant in the bundled default; the FAN_OUT/REJOIN glyphs and the PARALLEL EXECUTION block below describe the dormant opt-in mode, not the active default.
+
 ## What the output shows
 
 The explanation covers all policy-declared elements:

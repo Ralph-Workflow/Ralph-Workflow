@@ -237,6 +237,8 @@ callable. The capability strings are:
 | `web.visit` | `visit_url` (default-enabled; non-commit drains) |
 | `media.read` | `read_media` (primary, default-on; opt-out via `mcp.toml`), `read_image` (compatibility alias) |
 
+Ralph-managed same-workspace parallel workers are dormant in the bundled default (see [Parallel Mode](parallel-mode.md)). The note below describes the opt-in contract for the `ralph_fan_out` dispatch mode.
+
 **Same-workspace parallel workers** — Parallel workers in same-workspace mode inherit the parent phase's `SessionMcpPlan` contract, which includes the resolved capability profile, model identity, and drain. This means workers expose the same multimodal capability surface as serial execution: delivery verdicts (inline image, typed block, resource reference replay, explicit unsupported) are provider-specific and consistent with the serial path, and worker-produced media artifacts are written under the worker's namespace with the phase-scoped handoff path.
 
 See `ralph.mcp.protocol.capability_mapping` for the full capability-to-tool mapping and

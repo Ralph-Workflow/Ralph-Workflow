@@ -61,6 +61,8 @@ Commit drains are strictly read-only: they receive only base read capabilities p
 
 ### Same-workspace parallel worker session contract
 
+Ralph-managed same-workspace parallel workers are dormant in the bundled default (see [Parallel Mode](parallel-mode.md)). This section documents the opt-in contract for the `ralph_fan_out` dispatch mode.
+
 Same-workspace parallel workers inherit the parent phase's session contract verbatim. The contract includes the drain, capabilities, resolved `MultimodalModelIdentity`, and `ResolvedCapabilityProfile`. This ensures that parallel workers expose the same multimodal capability surface as serial execution:
 
 - `read_media` and `read_image` are available by default when the parent phase has `media.read` capability
