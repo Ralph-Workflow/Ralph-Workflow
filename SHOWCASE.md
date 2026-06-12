@@ -16,97 +16,69 @@ If you'd rather add your project to the page, see the
 
 ## ⭐ Confirmed builders — running Ralph in production
 
-### 1. 🌙 Nightcrawler — thebasedcapital
+> **Status as of 2026-06-12: this list is empty.** No public project on the open web currently
+> credits Ralph Workflow in a way that we have *verified* with the evidence gate below. This is
+> the honest state of the project. It is the correct state, and it is the only state we will
+> publish.
+>
+> The previous version of this section listed 7 "Confirmed builders" (Nightcrawler, kodezart,
+> voiceterm, pr-review-agent-skill, speq-skill, unattended-loop, ralph-claude-code). All 7 were
+> added based on naming-association ("the project uses the word Ralph") rather than
+> artifact-verification ("the project's `pyproject.toml` / `requirements.txt` / source code
+> imports `ralph-workflow`, or its README contains a credit line"). Per-entry verification
+> (cloned each repo, grepped for `ralph-workflow` / `RalphWorkflow` / `from ralph` / PyPI dep /
+> README credit) returned **0 of 7** as actually using Ralph Workflow. That failure is the
+> reason this page is being rewritten — and the reason the evidence gate below is mandatory.
+>
+> If you maintain a project that *actually uses* Ralph Workflow, the path is the
+> [Adding your project](#-adding-your-project-60-seconds) section at the bottom. The first
+> verified entry goes here.
 
-- **What it is:** An autonomous coding orchestrator (the project that kicked off this page).
-- **What they built with it:** A multi-step agent loop inspired directly by Ralph's hand-off-a-spec /
-  come-back-to-commits model — the same "babysit prompt-by-prompt → hand off the spec" shift that
-  Ralph Workflow exists to enable.
-- **Why it matters:** Nightcrawler is the project that **first publicly credited Ralph Workflow as
-  its inspiration** in its own README. That single credit line has done more for Ralph's
-  discoverability than every cold email and blog post in the program combined. It is the canonical
-  example of the **organic-word-of-mouth** pattern this project was designed to enable.
-- **Maintainer:** https://github.com/thebasedcapital (the maintainer's primary public repo, the
-  successor to the original Nightcrawler project that first credited Ralph)
+### Evidence gate (binding on every entry that goes above this line)
 
-### 2. 🧠 kodezart — YalDan / wringtretsina
+Every "Built with Ralph Workflow" / "Confirmed builder" / "Powered by Ralph" claim MUST include
+a `verify: <evidence>` line in the same row. Acceptable evidence:
 
-- **What it is:** An AI code orchestration service that uses **Ralph Workflow as its underlying
-  loop engine** — Claude agents for iterative code generation with quality gates.
-- **What they built with it:** A production system that composes Ralph's loop primitives
-  (`RalphLoop._execute_node`, `_run_ralph_loop_node`, `_fix_code_node`, `_route_after_review`,
-  `_route_after_fix`) into an external product. The maintainer filed
-  [PR #33](https://github.com/YalDan/kodezart/pull/33) extending Ralph's
-  `_fix_code_node` to reuse the existing `_run_quality_gate` helper — the first PR-level
-  architectural contribution from a downstream project.
-- **Why it matters:** First Ralph-downstream product to **ship a code-level extension back to the
-  parent loop**. They treat Ralph as code they can improve, not just a dependency they consume.
-- **Repository:** https://github.com/YalDan/kodezart
+- **(a) PyPI / lockfile pin:** a literal `ralph-workflow==X.Y.Z` line from the project's
+  `pyproject.toml`, `requirements*.txt`, `poetry.lock`, `uv.lock`, or `Pipfile`, with the file
+  path. Not "depends on Ralph" — the actual line.
+- **(b) Source import:** a quoted `import ralph` / `from ralph ...` statement with file path
+  and line range, from the project's actual repo at a specific commit SHA.
+- **(c) README credit:** a quoted credit line + URL to the README of the project, at a
+  specific commit SHA.
 
-### 3. 🛠️ voiceterm — jguida941
+No other form of evidence is acceptable. Specifically, the following do NOT count as
+verification, ever:
 
-- **What it is:** A Rust-based terminal overlay for Claude Code/Codex with voice/STT/macros.
-  Ships with a TDD'd Ralph integration that uses Ralph as a **CI quality-gate + fix-command**
-  in the mutation-test bridge (`mutation_ralph_workflow_bridge.py`,
-  `test_check_coderabbit_ralph_gate.py`, `test_autonomy_workflow_bridge.py`).
-- **What they built with it:** A real production CI that wires CodeRabbit + Ralph as **parallel
-  quality gates**, with Ralph as the default fix-command when the mutation loop finds a defect.
-- **Why it matters:** First evidence of a **CI-integration use case** for Ralph — a positioning
-  angle (single-task / CI-quality-gate mode) distinct from the overnight-loop use case. voiceterm
-  is also the **highest-purity integrator** in the showcase (12★, active, TDD'd test suite).
-- **Repository:** https://github.com/jguida941/voiceterm
+- GitHub stars, traffic, or repo size.
+- "Same ICP," "composes cleanly," "the maintainer follows us," or "they're in our space."
+- Naming association (the word "Ralph" or "loop" or "agent" in a project name or README).
+- Maintainer self-report without an attached artifact (no PR, no commit, no quoted line).
+- Maintainer intent ("they told us on a call they'd add a credit") — only the published
+  artifact counts.
 
-### 4. 📚 pr-review-agent-skill — pierodibello (Pietro Di Bello)
+If the `verify:` line is missing, weak, or stale, the claim is **unverified and MUST NOT be
+published.** Default action: leave the project off the page until evidence exists.
 
-- **What it is:** A Claude Code / Codex agent skill that ships a `ralph-wiggum-loop` (the
-  ghuntley.com/ralph/ pattern) for unattended PR-comment triage. Each agent invocation does
-  exactly one unit of work; the shell loop handles repetition. Stateless agent, stateful files.
-- **What they built with it:** A small, focused skill that solves the same problem Ralph solves
-  (review a PR unattended without context-exhausting a single session) on the PR-review surface
-  instead of the spec-execution surface.
-- **Why it matters:** Piero is a **multi-signal warm-pool match** (Codeberg star+watch on
-  Ralph-Workflow, ships Ralph-pattern code) and his work is the cleanest demonstration of the
-  "small focused agent skill + outer shell loop" pattern that Ralph formalizes.
-- **Repository:** https://github.com/xpepper/pr-review-agent-skill
+### Auto-rejection patterns (enforced by `scripts/verify_social_proof.py`)
 
-### 5. 🪶 speq-skill — marconae (Marco Nae)
+The following patterns in any public-facing markdown file (`README.md`, `*.md` under
+`content/blog/`, `docs/`, landing pages, comparison pages) will cause the social-proof
+verifier to fail the build. Each is a pattern that has been used to publish a false claim
+in the past, and each is now banned at the source.
 
-- **What it is:** A spec-driven-development skill for Claude Code/Codex (45★, MIT, Rust). A
-  permanent + semantically-searchable spec library (via snowflake-arctic-embed-xs) with
-  semantic anchors (TDD/BLUF/ADR) and an "ask me instead of assuming" pattern.
-- **What it is NOT:** A competitor. speq-skill is the **SPEC layer** of the stack; Ralph is the
-  **EXECUTION layer**. A user can drop a spec into speq-skill, then hand it off to Ralph for the
-  overnight loop — the two compose cleanly. The adjacent-tool callout in speq-skill's README
-  (OpenSpec/BMAD/SpecKit) is the natural place for Ralph to appear as a complement.
-- **Repository:** https://github.com/marconae/speq-skill
-- **Blog:** https://deliberate.codes
+- `"Nightcrawler credits Ralph Workflow as its inspiration"` — FALSE; Nightcrawler credits
+  `ghuntley.com/ralph` (Geoffrey Huntley's Ralph-loop pattern), not Ralph Workflow.
+- `"~1,300 installs/month on PyPI"` and any close variant — STALE/WRONG; pepy.tech
+  2026-06-12 reports 4,047 in the last 30 days. Use the sourced, date-stamped line in
+  `RALPH_WORKFLOW_POSITIONING.md`; re-verify before any change.
+- Any "X credits Ralph Workflow" / "X built with Ralph" claim in the README hero or
+  social-proof line that does not have a corresponding `verify: <evidence>` line in the file.
+- Any installer / download / star count not paired with a `(source, date)` annotation.
 
-### 6. 🌙 unattended-loop — endario
-
-- **What it is:** A Claude Code skill for running Claude Code **unattended** on a planned work
-  track — overnight, day-trip, multi-hour meeting block. Wraps Claude Code's native `/loop`
-  primitive with a 4-file harness and a baked-in engineering playbook (TDD, `/review` on
-  meaningful PRs, PR-first workflow, 3-strike failure budget, no-stop policy).
-- **What it is NOT:** A competitor. Same ICP (builders who want Claude Code to work overnight),
-  same positioning (hand off + walk away), different execution (Claude Code skill + 4-file
-  harness vs. Ralph framework).
-- **Why it matters:** First peer project in the **"unattended Claude Code"** category with
-  similar positioning. Co-mention in awesome-lists would amplify the entire category.
-- **Repository:** https://github.com/endario/unattended-loop
-
-### 7. 🤖 ralph-claude-code — frankbria (★9.3K)
-
-- **What it is:** The highest-traffic ralph-family project — a Claude-Code-specific ralph loop
-  orchestrator with badges, monorepo awareness, sandbox integration, token cost tracking, and
-  Windows/Nix support. 9.3K★, 705 forks, 16 open issues, actively maintained.
-- **What they built with it:** A reference implementation that 9.3K★ worth of Claude Code users
-  have already adopted. The **"Related projects / See also"** section in this README is the
-  highest-leverage surface for cross-project discoverability in the ralph family.
-- **Why it matters:** Same archetype as Nightcrawler (peer ralph-family project), at 23× the
-  reach. A single `See also` block naming the 3 peer ralph projects (Ralph Workflow +
-  speq-skill + endario/unattended-loop) is the single highest-leverage act available for
-  star-mover in the program.
-- **Repository:** https://github.com/frankbria/ralph-claude-code
+If a future legitimate claim is blocked by a false-positive pattern, update the script — do
+not delete the script and do not weaken the gate. The gate is the only thing standing between
+this project and a repeat of the 2026-06-11 SHOWCASE.md failure.
 
 ---
 

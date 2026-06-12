@@ -8,7 +8,7 @@ Ralph Workflow is a free, open-source composable loop framework that runs the co
 
 ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
 
-*Nightcrawler credits Ralph Workflow as its inspiration · ~1,300 installs/month on PyPI.*
+*10,700+ lifetime PyPI downloads · 4,000+ in the last 30 days (pepy.tech, 2026-06-12).*
 
 > **Built something with Ralph?** See the [Showcase](SHOWCASE.md) — add a credit line to your README and you're on the page (60-second task).
 

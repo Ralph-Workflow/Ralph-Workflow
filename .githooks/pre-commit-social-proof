@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Pre-commit: run the social-proof verifier against staged markdown.
+# Install: git config core.hooksPath .githooks
+set -euo pipefail
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+STAGED=$(git diff --cached --name-only --diff-filter=ACM -- '*.md' || true)
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+echo "social-proof verifier: scanning $(echo "$STAGED" | wc -l | tr -d ' ') staged .md file(s)"
+cd "$REPO_ROOT"
+python3 scripts/verify_social_proof.py $STAGED

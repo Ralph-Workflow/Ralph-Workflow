@@ -11,7 +11,7 @@ Ralph Workflow is a free, open-source composable loop framework that runs the co
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-*Nightcrawler credits Ralph Workflow as its inspiration · ~1,300 installs/month on PyPI.*
+*10,700+ lifetime PyPI downloads · 4,000+ in the last 30 days (pepy.tech, 2026-06-12).*
 
 Run the coding agents you already use — Claude Code, Codex, OpenCode, Nanocoder, and Google Anti Gravity — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
 
