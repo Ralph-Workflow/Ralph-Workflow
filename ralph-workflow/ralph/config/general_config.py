@@ -8,10 +8,12 @@ from pydantic import ConfigDict, Field, model_validator
 from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.pydantic_compat import RalphBaseModel
 from ralph.timeout_defaults import (
+    AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
     CHILD_PROGRESS_TTL_SECONDS,
     CHILD_STALE_LABEL_TTL_SECONDS,
+    DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
     DESCENDANT_WAIT_POLL_SECONDS,
     DESCENDANT_WAIT_TIMEOUT_SECONDS,
     DRAIN_WINDOW_SECONDS,
@@ -157,9 +159,7 @@ class GeneralConfig(RalphBaseModel):
     agent_repeated_error_window_seconds: float | None = Field(
         default=REPEATED_ERROR_WINDOW_SECONDS,
         gt=0.0,
-        description=(
-            "Rolling window in seconds for agent_repeated_error_window_count."
-        ),
+        description=("Rolling window in seconds for agent_repeated_error_window_count."),
     )
     agent_waiting_status_interval_seconds: float = Field(
         default=WAITING_STATUS_INTERVAL_SECONDS,
@@ -233,6 +233,47 @@ class GeneralConfig(RalphBaseModel):
             " preserved."
         ),
     )
+    agent_idle_activity_evidence_ttl_seconds: float = Field(
+        default=AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
+        ge=0.0,
+        description=(
+            "Per-channel activity evidence TTL in seconds. When set,"
+            " the watchdog defers a NO_OUTPUT_DEADLINE fire (returning"
+            " CONTINUE) while ANY non-stdout channel (MCP tool call,"
+            " subagent work, workspace file change) is fresher than"
+            " this TTL. The default of 30.0s is well under the 300s"
+            " idle-timeout default, so a silent subagent (or silent"
+            " MCP path) is detected at the regular idle deadline once"
+            " its own channel goes stale. SESSION_CEILING and"
+            " CHILDREN_PERSIST_TOO_LONG ceilings are checked BEFORE"
+            " this deferral, so they remain absolute. Setting this"
+            " to 0.0 disables the activity-aware verdict and restores"
+            " the legacy stdout-only NO_OUTPUT_DEADLINE behavior."
+            " Must be >= 0."
+        ),
+    )
+    agent_workspace_change_weights: dict[str, float] = Field(
+        default_factory=lambda: dict(DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS),
+        description=(
+            "Per-kind workspace file-change weights. Each value is"
+            " BINARY: 0.0 drops the change (it does NOT defer the"
+            " NO_OUTPUT_DEADLINE verdict); 1.0 means full activity."
+            " The five kinds are 'source' (source code /"
+            " documentation), 'log' (*.log / *.tmp / *.bak / *.swp /"
+            " *~ / *.pyc / *.pyo), 'cache' (.git / __pycache__ /"
+            " .pytest_cache / .mypy_cache / .ruff_cache / node_modules"
+            " / .venv / .agent/tmp / .agent/raw / completion_seen_*.json),"
+            " 'artifact' (.agent/artifacts), and 'other' (anything that"
+            " does not match a specific rule). The default policy is"
+            " conservative: only 'source' is weighted 1.0; all other"
+            " kinds are weighted 0.0. Operators who relied on log-file"
+            " activity to defer the verdict can opt in by setting"
+            " ``agent_workspace_change_weights = { source = 1.0,"
+            " log = 1.0 }`` in the [general] section of"
+            " ralph-workflow.toml. See docs/agents/timeout-policy.md"
+            " for the full migration note and example."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_session_ceiling(self) -> Self:
@@ -294,7 +335,25 @@ class GeneralConfig(RalphBaseModel):
                 f" > {self.agent_idle_max_waiting_on_child_seconds})"
             )
             raise ValueError(msg)
+        self._validate_workspace_change_weights()
         return self
+
+    def _validate_workspace_change_weights(self) -> None:
+        allowed_keys = frozenset({"source", "log", "cache", "artifact", "other"})
+        allowed_values = frozenset({0.0, 1.0})
+        for key, value in self.agent_workspace_change_weights.items():
+            if key not in allowed_keys:
+                msg = (
+                    f"agent_workspace_change_weights[{key!r}] is not a valid"
+                    f" WorkspaceChangeKind; allowed: {sorted(allowed_keys)}"
+                )
+                raise ValueError(msg)
+            if value not in allowed_values:
+                msg = (
+                    f"agent_workspace_change_weights[{key!r}]={value!r}"
+                    f" is not a binary weight; allowed: {{0.0, 1.0}}"
+                )
+                raise ValueError(msg)
 
 
 __all__ = ["GeneralConfig", "GeneralWorkflowFlags"]

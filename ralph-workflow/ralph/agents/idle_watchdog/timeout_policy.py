@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from ralph.agents.idle_watchdog._workspace_change_kind import (
+    DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
+    WorkspaceChangeKind,
+)
 from ralph.timeout_defaults import (
+    AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
     DESCENDANT_WAIT_POLL_SECONDS,
     DESCENDANT_WAIT_TIMEOUT_SECONDS,
     DRAIN_WINDOW_SECONDS,
@@ -21,6 +26,11 @@ from ralph.timeout_defaults import (
     WAITING_STATUS_INTERVAL_SECONDS,
 )
 
+_VALID_WORKSPACE_CHANGE_WEIGHT_KEYS: frozenset[str] = frozenset(
+    {kind.value for kind in WorkspaceChangeKind}
+)
+_VALID_WORKSPACE_CHANGE_WEIGHT_VALUES: frozenset[float] = frozenset({0.0, 1.0})
+
 
 @dataclass(frozen=True)
 class TimeoutPolicy:
@@ -33,9 +43,17 @@ class TimeoutPolicy:
     Precedence of fire conditions (in evaluation order):
 
     1. SESSION_CEILING_EXCEEDED — absolute wall-clock cap; activity cannot reset it.
-    2. NO_OUTPUT_DEADLINE (+ drain window) — idle deadline since last output.
-    3. CHILDREN_PERSIST_TOO_LONG — cumulative WAITING_ON_CHILD ceiling; this is an
-       absolute ceiling across the session and never decays.
+    2. CHILDREN_PERSIST_TOO_LONG — cumulative WAITING_ON_CHILD ceiling; this is an
+       absolute ceiling across the session and never decays. Checked before
+       NO_OUTPUT_DEADLINE so the cumulative ceiling fires even while
+       non-stdout activity channels are still fresh.
+    3. NO_OUTPUT_DEADLINE (+ drain window) — idle deadline since last output.
+       When ``activity_evidence_ttl_seconds`` is set and any non-stdout
+       evidence channel (MCP tool call, subagent work, workspace file
+       change) is fresher than that TTL, the fire is deferred and the
+       watchdog returns CONTINUE. The SESSION_CEILING and
+       CHILDREN_PERSIST_TOO_LONG checks run before this so absolute
+       ceilings remain absolute.
     4. PROCESS_EXIT_HANG — subprocess closed stdout but did not exit within budget.
     5. DESCENDANT_HANG — descendant-wait deadline elapsed with persistent WAITING_ON_CHILD
        (post-exit only, owned by PostExitWatchdog).
@@ -117,9 +135,7 @@ class TimeoutPolicy:
     # 95th-percentile tool-result-to-output-line latency in
     # production while still detecting the wedge in ~120s rather
     # than waiting for the 300s default.
-    post_tool_result_progression_seconds: float | None = (
-        POST_TOOL_RESULT_PROGRESSION_SECONDS
-    )
+    post_tool_result_progression_seconds: float | None = POST_TOOL_RESULT_PROGRESSION_SECONDS
     # Repeated-error circuit breaker thresholds. The watchdog fires
     # REPEATED_ERROR_LOOP when an agent re-emits the same error fingerprint
     # either ``repeated_error_consecutive_threshold`` times in a row with no
@@ -129,6 +145,34 @@ class TimeoutPolicy:
     repeated_error_consecutive_threshold: int | None = REPEATED_ERROR_CONSECUTIVE_THRESHOLD
     repeated_error_window_count: int | None = REPEATED_ERROR_WINDOW_COUNT
     repeated_error_window_seconds: float | None = REPEATED_ERROR_WINDOW_SECONDS
+    # Per-channel activity evidence TTL (seconds). When set, the watchdog
+    # defers a NO_OUTPUT_DEADLINE fire (returning CONTINUE) while ANY
+    # non-stdout channel is fresher than this TTL. Each non-stdout channel
+    # (MCP tool call, subagent work, workspace file change) records its own
+    # last_at timestamp; the watchdog computes the channel age relative to
+    # the injected clock and returns CONTINUE when at least one channel
+    # age is below the TTL. The default of 30.0s is well under the 300s
+    # idle-timeout default, so a silent subagent (or silent MCP path) is
+    # detected at the regular idle deadline once its own channel goes
+    # stale. The SESSION_CEILING and CHILDREN_PERSIST_TOO_LONG ceilings are
+    # checked BEFORE this deferral, so they remain absolute. Setting this
+    # to None OR 0.0 disables the activity-aware verdict and restores the
+    # legacy stdout-only NO_OUTPUT_DEADLINE behavior. Must be >= 0 when
+    # not None.
+    activity_evidence_ttl_seconds: float | None = AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS
+    # Per-kind workspace file-change weights. Each value is BINARY:
+    # weight==0.0 means the change is dropped (does not defer the
+    # NO_OUTPUT_DEADLINE verdict); weight==1.0 means the change
+    # counts as full activity. Intermediate values are rejected
+    # by ``_validate_workspace_change_weights``; the binary-only
+    # semantics are reserved for a future fractional-TTL feature.
+    # The default policy is conservative: only source-code
+    # changes count. Operators can opt kinds in (e.g.
+    # ``{"source": 1.0, "log": 1.0}``) to restore the legacy
+    # ``every file change counts`` behavior on a per-kind basis.
+    workspace_change_weights: dict[str, float] | None = field(
+        default_factory=lambda: dict(DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS)
+    )
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()
@@ -136,6 +180,8 @@ class TimeoutPolicy:
         self._validate_waiting_status_fields()
         self._validate_post_tool_result_progression()
         self._validate_repeated_error_fields()
+        self._validate_activity_evidence_ttl()
+        self._validate_workspace_change_weights()
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
@@ -217,10 +263,7 @@ class TimeoutPolicy:
         ):
             msg = "repeated_error_consecutive_threshold must be positive when set"
             raise ValueError(msg)
-        if (
-            self.repeated_error_window_count is not None
-            and self.repeated_error_window_count <= 0
-        ):
+        if self.repeated_error_window_count is not None and self.repeated_error_window_count <= 0:
             msg = "repeated_error_window_count must be positive when set"
             raise ValueError(msg)
         if (
@@ -229,3 +272,28 @@ class TimeoutPolicy:
         ):
             msg = "repeated_error_window_seconds must be positive when set"
             raise ValueError(msg)
+
+    def _validate_activity_evidence_ttl(self) -> None:
+        if self.activity_evidence_ttl_seconds is None:
+            return
+        if self.activity_evidence_ttl_seconds < 0:
+            msg = "activity_evidence_ttl_seconds must be >= 0 when set"
+            raise ValueError(msg)
+
+    def _validate_workspace_change_weights(self) -> None:
+        if self.workspace_change_weights is None:
+            return
+        for key, value in self.workspace_change_weights.items():
+            if key not in _VALID_WORKSPACE_CHANGE_WEIGHT_KEYS:
+                msg = (
+                    f"workspace_change_weights[{key!r}] is not a valid"
+                    f" WorkspaceChangeKind value; allowed:"
+                    f" {sorted(_VALID_WORKSPACE_CHANGE_WEIGHT_KEYS)}"
+                )
+                raise ValueError(msg)
+            if value not in _VALID_WORKSPACE_CHANGE_WEIGHT_VALUES:
+                msg = (
+                    f"workspace_change_weights[{key!r}]={value!r}"
+                    f" is not a binary weight; allowed: {{0.0, 1.0}}"
+                )
+                raise ValueError(msg)

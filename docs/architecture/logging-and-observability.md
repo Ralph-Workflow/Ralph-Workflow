@@ -248,7 +248,75 @@ The following files remain in their original locations (not under the run log di
 
 ## Idle Timeout Activity Detection
 
-Idle-timeout decisions use a **two-layer** model to avoid false positive timeouts for active runs while still terminating stuck agents promptly.
+Idle-timeout decisions use a **three-layer** model to avoid false positive timeouts for active runs while still terminating stuck agents promptly.
+
+### Layer 0: Per-Channel Activity Evidence
+
+The watchdog tracks four independent evidence channels and consults the
+per-channel timestamps on every evaluate() call:
+
+| Channel | Source | Recorder (where invoked) |
+|---|---|---|
+| `stdout` | Agent stdout output (the baseline) | `IdleWatchdog.record_activity()` / `record_lifecycle_activity()` |
+| `mcp_tool` | Ralph Workflow MCP `tools/call` invocations and completions | `IdleWatchdog.record_mcp_tool_call()` (invoked from the MCP server's tools/call dispatch path `_handle_tools_call` via the module-level helper `ralph.mcp.server._activity_sink.invoke_active_sink`) |
+| `subagent` | Delegated child progress / heartbeat / tool-call signals | `IdleWatchdog.record_subagent_work()` (invoked from `OpenCodeExecutionStrategy.observe_line` via `ralph.mcp.server._activity_sink.invoke_subagent_sink` on `CHILD_PROGRESS` and `CHILD_HEARTBEAT` signals) |
+| `workspace` | Workspace file change events from `WorkspaceMonitor` | `IdleWatchdog.record_workspace_event()` (invoked from `WorkspaceMonitor.record_event` after the late `set_on_event` binding installed by the PTY/process readers' `read_lines` generators) |
+
+The three non-stdout recorders update per-channel `_last_at` timestamps
+and counters WITHOUT touching `_last_activity` (the stdout baseline);
+the existing 'stdout only resets idle baseline' invariant is preserved.
+
+evaluate()'s control flow: after the SESSION_CEILING and
+REPEATED_ERROR_LOOP early-exit checks, the watchdog checks the drain
+window, then the post-tool-result wedge, then `classify_quiet()` to
+choose between the WAITING_ON_CHILD branch (which may fire
+CHILDREN_PERSIST_TOO_LONG) and the ACTIVE branch (which may fire
+NO_OUTPUT_DEADLINE after the drain window). Layer 0's deferral is
+consulted INSIDE the ACTIVE branch ONLY: when the idle deadline has
+elapsed, the drain window has elapsed, the post-tool-result wedge has
+not fired, AND `classify_quiet()` returns `ACTIVE` (no children
+visible), the verdict hook consults
+`IdleWatchdog._channel_evidence_active(now)`. If ANY non-stdout
+channel is fresher than `agent_idle_activity_evidence_ttl_seconds`
+(default 30.0s, tunable in `ralph-workflow.toml`; `0.0` or `None`
+disables the feature and restores the legacy stdout-only behavior),
+the watchdog defers the NO_OUTPUT_DEADLINE fire and returns
+`WatchdogVerdict.CONTINUE` with a debug log naming the active channel
+and its age. The four channels are independent: a session that is
+quiet on stdout but actively making MCP tool calls, delegating to a
+live subagent, or writing files is not killed as idle. The opposite
+is also true: a subagent that exists but has produced no tool calls,
+no progress signals, and no file changes for the configured TTL is
+NOT evidence of progress — the channel goes stale and the watchdog
+returns to the regular idle path.
+
+The SESSION_CEILING and CHILDREN_PERSIST_TOO_LONG ceilings are checked
+BEFORE the per-channel deferral (CHILDREN_PERSIST_TOO_LONG inside its
+own branch, SESSION_CEILING in the early-exit block), so activity
+cannot reset or extend either ceiling. The absolute ceiling contract
+is preserved.
+
+Diagnostic scope: every reader-level fire diagnostic
+(`_IdleStreamTimeoutError.diagnostic` raised by
+`_pty_line_reader._check_fire` and `_process_reader._check_fire`)
+embeds the per-channel `evidence_summary` from
+`watchdog.last_evidence_summary(now)`, so an on-call operator or
+post-mortem reader can see exactly which channels were fresh and
+which were stale at the moment the fire was raised — regardless of
+which branch produced it. The CHILDREN_PERSIST_TOO_LONG HARD_STOP
+event also embeds the per-channel evidence_summary via
+`_build_evidence_summary_diag` so listener subscribers see the same
+surface. The watchdog's own `log.warning()` lines (in `evaluate()`
+and the branch handlers) include the relevant scalar context
+(idle_elapsed, session_elapsed, cumulative_waiting, channel age on
+the deferral path) but do not embed the full per-channel
+evidence_summary in the log line. See `## Idle watchdog — per-channel
+activity evidence model` in `docs/agents/verification.md` for the
+operator-facing description and the test coverage in
+`ralph-workflow/tests/agents/test_idle_watchdog_3.py` (21 cases),
+`ralph-workflow/tests/mcp/test_mcp_activity_sink.py` (7 cases), and
+`ralph-workflow/tests/agents/test_subagent_activity_wiring.py`
+(7 cases).
 
 ### Layer 1: Output Idle Deadline
 
@@ -475,11 +543,15 @@ constructed once per invocation from operator-supplied config and passed to
 
 Fire conditions are evaluated in this order:
 
-1. **SESSION_CEILING_EXCEEDED** — absolute wall-clock cap; activity cannot reset it.
-2. **NO_OUTPUT_DEADLINE** — idle timeout since last agent output (+ drain window).
-3. **CHILDREN_PERSIST_TOO_LONG** — cumulative `WAITING_ON_CHILD` ceiling; never decays.
-4. **PROCESS_EXIT_HANG** — subprocess closed stdout but did not exit within budget.
-5. **DESCENDANT_HANG** — descendant-wait deadline elapsed post-exit.
+1. **SESSION_CEILING_EXCEEDED** — absolute wall-clock cap; checked first on every tick; activity cannot reset it.
+2. **REPEATED_ERROR_LOOP** — repeated-error circuit breaker (consecutive-identical-error streak OR windowed-count rule); checked after the session ceiling so it fires ahead of the idle deadline for fast retry storms.
+3. **STALLED_AFTER_TOOL_RESULT** — fires when a TOOL_RESULT activity was observed and no follow-up STREAM_DELTA/OUTPUT_LINE/TOOL_USE/LIFECYCLE activity arrives within `post_tool_result_progression_seconds` (default 120s). Catches the post-tool-result wedge before the 300s idle default.
+4. **CHILDREN_PERSIST_TOO_LONG** — cumulative `WAITING_ON_CHILD` ceiling; never decays; uses the no-progress ceiling when corroboration shows non-progress evidence (heartbeat-only / stale-label / OS-descendant-only) and the full ceiling when corroboration shows fresh progress. This is the fire that the WAITING_ON_CHILD branch can produce; it is checked BEFORE the per-channel evidence deferral so a productive-but-silent subagent still hits the cumulative ceiling at its deadline.
+5. **NO_OUTPUT_DEADLINE** — idle timeout since last agent output (+ drain window). Fires in the ACTIVE branch only (after `classify_quiet()` returns ACTIVE). Deferrable by the per-channel evidence layer (Layer 0 above) when a non-stdout channel is fresher than `agent_idle_activity_evidence_ttl_seconds`.
+6. **PROCESS_EXIT_HANG** — subprocess closed stdout but did not exit within budget (post-exit, owned by PostExitWatchdog).
+7. **DESCENDANT_HANG** — descendant-wait deadline elapsed post-exit (owned by PostExitWatchdog).
+
+Suspicion (`SUSPECTED_FROZEN`) is purely informational and does NOT affect any fire condition; crossing `suspect_waiting_on_child_seconds` only emits an elevated warning event before the hard stop.
 
 ### Child Liveness Evidence (AliveBy)
 

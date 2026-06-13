@@ -56,7 +56,7 @@ def test_agy_invoke_uses_pty_not_subprocess(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
         fake_run_subprocess_and_read_lines,
     )
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
 
     list(
@@ -91,7 +91,7 @@ def test_agy_invoke_writes_workspace_mcp_config_when_endpoint_present(
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_and_read_lines)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
 
     list(
@@ -202,7 +202,7 @@ def test_agy_invoke_completes_when_completion_signal_present(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
         fake_run_subprocess_and_read_lines,
     )
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
 
     list(
@@ -245,7 +245,7 @@ def test_agy_invoke_skips_mcp_context_when_no_endpoint(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
         fake_run_subprocess_and_read_lines,
     )
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
 
     list(
@@ -285,7 +285,7 @@ def test_agy_invoke_uses_run_id_as_expected_session_id(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
         fake_run_subprocess_and_read_lines,
     )
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr("ralph.agents.invoke.load_existing_agy_upstream_servers", lambda _path: ())
 
     list(

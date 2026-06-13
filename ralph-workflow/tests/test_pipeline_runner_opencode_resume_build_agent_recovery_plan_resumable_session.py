@@ -443,7 +443,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
             "ralph.agents.invoke.subprocess.Popen",
             lambda *args, **kwargs: proc,
         )
-        monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+        monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
         clock = FakeClock()
         opts = InvokeOptions(

@@ -16,7 +16,11 @@ DESCENDANT_HANG. See ralph.agents.post_exit_watchdog for the post-exit family.
 
 from ralph.process.child_liveness import AliveBy
 
-from .corroboration_snapshot import CorroborationSnapshot, WaitingCorroborator
+from .corroboration_snapshot import (
+    ChannelEvidenceSummary,
+    CorroborationSnapshot,
+    WaitingCorroborator,
+)
 from .idle_watchdog import IdleWatchdog
 from .timeout_policy import TimeoutPolicy
 from .waiting_status_event import WaitingStatusEvent, WaitingStatusListener
@@ -26,6 +30,7 @@ from .watchdog_verdict import WatchdogVerdict
 
 __all__ = [
     "AliveBy",
+    "ChannelEvidenceSummary",
     "CorroborationSnapshot",
     "IdleWatchdog",
     "TimeoutPolicy",

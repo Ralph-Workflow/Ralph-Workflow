@@ -162,6 +162,47 @@ Both the in-stream idle-timeout path (`classify_quiet` in `execution_state.py`) 
 post-exit path (`classify_exit` / `_evidence_precedence`) must call this function rather
 than reimplementing the precedence rules independently.
 
+**Per-channel activity evidence model (idle watchdog):** The idle watchdog treats
+real work happening on any of four channels as evidence the session is NOT idle:
+
+| Channel | Source | Recorder |
+|---|---|---|
+| `stdout` | The agent's stdout output (the baseline) | `record_activity()` / `record_lifecycle_activity()` |
+| `mcp_tool` | An MCP `tools/call` invocation/completion (Ralph Workflow MCP server) | `record_mcp_tool_call()` via `ralph/mcp/server/_activity_sink.py` |
+| `subagent` | A subagent progress / heartbeat / tool_call signal routed through `OpenCodeExecutionStrategy.observe_line` | `record_subagent_work()` via the parallel subagent contextvar |
+| `workspace` | A workspace file change captured by `WorkspaceMonitor.record_event` | `record_workspace_event()` |
+
+While ANY non-stdout channel age is below `activity_evidence_ttl_seconds`
+(default 30.0s, tunable via `agent_idle_activity_evidence_ttl_seconds` in
+`ralph-workflow.toml` or `None` / `0.0` to disable), the watchdog defers a
+`NO_OUTPUT_DEADLINE` fire and returns `WatchdogVerdict.CONTINUE` with a debug
+log. The absolute `SESSION_CEILING_EXCEEDED` and `CHILDREN_PERSIST_TOO_LONG`
+ceilings are checked BEFORE the deferral, so they remain absolute (activity
+cannot reset either ceiling). The diagnostic embedded in every watchdog fire
+carries the per-channel `evidence_summary` (channel name, last_at, age_seconds,
+counter) so an on-call operator or post-mortem can see exactly which channels
+were fresh and which were stale at the moment the watchdog fired.
+
+The three recorders are additive on top of `record_activity()`: they update
+per-channel `_last_at` timestamps and counters WITHOUT touching `_last_activity`
+(the stdout baseline). The existing 'stdout only resets idle baseline'
+invariant is preserved; the activity-aware verdict is layered on top without
+perturbing the existing semantics. See `tests/agents/test_idle_watchdog_3.py`,
+`tests/mcp/test_mcp_activity_sink.py`, and
+`tests/agents/test_subagent_activity_wiring.py` for the black-box regression
+suite covering this contract.
+
+**Scope note — upstream MCP servers are not tracked by the `mcp_tool` channel.**
+The `mcp_tool` channel covers the in-process Ralph Workflow MCP server only;
+upstream (third-party) MCP servers configured via `[mcp] upstreams` or the
+`general.workflow.unsafe_mode` merge path are NOT tracked by the activity-sink
+protocol, so operators who rely on upstream MCP servers for sub-agent work
+should either leave the watchdog's stdout-only behavior in place (set
+`agent_idle_activity_evidence_ttl_seconds = 0.0`) or extend the activity-sink
+protocol to cover the upstream transport. This is a documented known
+limitation; a follow-up TODO is tracked in `CHANGELOG.md` under the
+[Unreleased] / Added block.
+
 See `ralph/agents/post_exit_watchdog.py` for the full post-exit transition matrix and
 verdict semantics.
 

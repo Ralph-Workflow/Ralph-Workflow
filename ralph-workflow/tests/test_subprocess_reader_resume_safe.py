@@ -178,7 +178,7 @@ def test_subprocess_reader_wires_resume_safe_on_children_persist_too_long(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: proc,
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
     opts = _make_invocation_options(tmp_path=tmp_path)
@@ -225,7 +225,7 @@ def test_subprocess_reader_uses_expected_session_id_when_no_capture(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: proc,
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
     opts = _make_invocation_options(tmp_path=tmp_path, session_id="sess-expected")
@@ -268,7 +268,7 @@ def test_subprocess_reader_captured_session_id_wins_over_expected(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: proc,
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
     opts = _make_invocation_options(tmp_path=tmp_path, session_id="sess-expected")
@@ -359,7 +359,7 @@ def test_subprocess_reader_session_resume_safe_only_for_resume_eligible_reasons(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: proc,
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
     opts = opts_factory(tmp_path)
@@ -423,7 +423,7 @@ def test_subprocess_reader_session_resume_safe_for_no_output_deadline(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: proc,
     )
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
     opts = InvokeOptions(

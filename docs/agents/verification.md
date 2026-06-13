@@ -247,3 +247,9 @@ Recovery tests cover:
 - User interrupt (first SIGINT → ordered shutdown; second → os._exit(130))
 
 All recovery tests run in under 10 seconds each with injectable fake clocks, fake sleep, and fake probes — no real network I/O.
+
+## Idle watchdog — per-channel activity evidence model
+
+The idle watchdog in `ralph-workflow/ralph/agents/idle_watchdog/` decides whether a session is stuck by looking at four independent evidence channels: the agent's `stdout` output (the original baseline), MCP `tools/call` activity against the Ralph Workflow MCP server, subagent progress / heartbeat / tool-call signals routed through `OpenCodeExecutionStrategy.observe_line`, and workspace file-change events captured by `WorkspaceMonitor`. While ANY non-stdout channel is fresher than `agent_idle_activity_evidence_ttl_seconds` (default 30.0 s, tunable in `ralph-workflow.toml`; set to `0.0` to disable and restore the legacy stdout-only behavior), the watchdog defers a `NO_OUTPUT_DEADLINE` fire and returns `CONTINUE` instead. The `SESSION_CEILING_EXCEEDED` and `CHILDREN_PERSIST_TOO_LONG` absolute ceilings are checked BEFORE the deferral, so they remain absolute — activity evidence cannot reset or defer either ceiling. Every watchdog fire embeds an `evidence_summary` (channel name, last_at, age_seconds, counter) in its diagnostic so an on-call operator or post-mortem can see exactly which channels were fresh and which were stale at the moment the watchdog fired. The feature is covered by the black-box suites in `ralph-workflow/tests/agents/test_idle_watchdog_3.py`, `ralph-workflow/tests/mcp/test_mcp_activity_sink.py`, and `ralph-workflow/tests/agents/test_subagent_activity_wiring.py`.
+
+**Upstream coverage:** the `mcp_tool` channel also covers upstream (third-party) MCP tool calls proxied through `UpstreamProxyHandler`; the `mcp_tool` evidence is now end-to-end across both the in-process Ralph Workflow MCP server and configured upstream servers.

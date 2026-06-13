@@ -94,6 +94,8 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("_renderers", "PLR0912"),
     ("parallel_display", "PLR0912"),
     ("pydantic_validation_errors", "PLR0911"),
+    # lazy import breaks ralph.mcp.server <-> tools.bridge cycle
+    ("_upstream_proxy_handler", "PLC0415"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

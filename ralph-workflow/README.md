@@ -235,6 +235,39 @@ This README intentionally leaves out deeper implementation details and defers to
 - **Developer Reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — maintained contributor and architecture reference
 - **Modules Index:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — API/module entry points for deeper internals
 
+## Idle watchdog
+
+The agent session watchdog judges whether a session is stuck. It used to
+base that verdict entirely on stdout output, which is no longer a reliable
+proxy: real work now happens through channels that don't emit stdout — Ralph Workflow
+MCP tool calls, subagent delegation, and workspace file changes. A session
+that was demonstrably working could be killed as idle; a session waiting on a
+dead subagent could survive until a much larger ceiling.
+
+The watchdog now considers **four evidence channels**:
+
+- `stdout` — agent stdout output (the baseline)
+- `mcp_tool` — Ralph Workflow MCP tool calls / completions
+- `subagent` — delegated child progress / tool calls
+- `workspace` — workspace file changes from `WorkspaceMonitor`
+
+While any non-stdout channel is fresher than the new
+`agent_idle_activity_evidence_ttl_seconds` knob (under `[general]`, default
+`30.0`), the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns
+`CONTINUE`. Set the knob to `0.0` (or `None`) to opt out and restore the
+legacy stdout-only behaviour.
+
+Every HARD_STOP diagnostic and every deferred `CONTINUE` carries a
+per-channel `evidence_summary` array with `{channel, last_at, age_seconds,
+counter}` entries and an `active_channel` label, so a post-mortem reader
+can see exactly which channels were fresh and which were stale at the moment
+the verdict was reached.
+
+The absolute `SESSION_CEILING_EXCEEDED` and `CHILDREN_PERSIST_TOO_LONG`
+ceilings are checked BEFORE the deferral and remain absolute — no activity
+can extend the maximum session duration or the cumulative waiting-on-child
+ceiling.
+
 ## Privacy & Error Reporting
 
 Ralph Workflow sends anonymous crash reports and performance metrics to help fix bugs and improve reliability. No personal data is collected.

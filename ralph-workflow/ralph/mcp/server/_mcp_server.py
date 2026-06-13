@@ -12,6 +12,7 @@ from ralph import __version__
 from ralph.agents.system_clock import SystemClock
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.resources import parse_media_uri
+from ralph.mcp.server._activity_sink import get_active_sink, invoke_active_sink
 from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
 from ralph.mcp.server._server_state import ServerState
@@ -148,6 +149,7 @@ class McpServer:
         expose_mcp_aliases: bool = True,
         wrapup_provider: Callable[[], str | None] | None = None,
         metrics: McpMetrics | None = None,
+        mcp_activity_sink: Callable[[str], None] | None = None,
     ) -> None:
         self._session = session
         self._workspace = workspace
@@ -165,6 +167,16 @@ class McpServer:
         # get_default_metrics() singleton is consulted lazily inside
         # handle_request.
         self._metrics = metrics
+        # Optional per-server activity sink. When set, ``_handle_tools_call``
+        # invokes it once per call (after the tool name is resolved and
+        # validated) so the idle watchdog's MCP-tool-channel evidence
+        # surface can defer a NO_OUTPUT_DEADLINE fire while the agent is
+        # actively using the MCP. The default is None (legacy) for tests
+        # that do not exercise the activity channel; production wiring
+        # goes through the per-task contextvar registered in
+        # ``_activity_sink`` (set_active_sink) so concurrent agent runs
+        # do not stomp on each other.
+        self._mcp_activity_sink = mcp_activity_sink
 
     def reset_session_budget(self) -> None:
         """Re-arm the soft wrap-up nag (and the hard ceiling) for a fresh attempt.
@@ -210,9 +222,7 @@ class McpServer:
         try:
             return self._dispatch_request(request, state)
         except Exception as exc:
-            logger.error(
-                "MCP request handler crashed for method={}: {}", request.method, exc
-            )
+            logger.error("MCP request handler crashed for method={}: {}", request.method, exc)
             metrics = self._metrics if self._metrics is not None else get_default_metrics()
             metrics.record_post_header_failure(
                 request_id=request.msg_id,
@@ -304,9 +314,7 @@ class McpServer:
         # silently break the strict-MCP client contract.
         names = [entry["name"] for entry in tools]
         if len(names) != len(set(names)):
-            raise RuntimeError(
-                f"_handle_tools_list emitted duplicate tool names: {names}"
-            )
+            raise RuntimeError(f"_handle_tools_list emitted duplicate tool names: {names}")
         return (
             JsonRpcResponse(jsonrpc="2.0", result={"tools": tools}, msg_id=request.msg_id),
             ServerState.RUNNING,
@@ -344,7 +352,7 @@ class McpServer:
         prefix = f"mcp__{RALPH_MCP_SERVER_NAME}__"
         if not name.startswith(prefix):
             return None
-        raw = name[len(prefix):]
+        raw = name[len(prefix) :]
         try:
             return str(RalphToolName(raw))
         except ValueError:
@@ -470,6 +478,14 @@ class McpServer:
         if resolved_name is not None:
             tool_name = resolved_name
 
+        # Notify the activity sink BEFORE dispatch so the channel is
+        # recorded on the same logical call (success or error) — the
+        # watchdog treats both as evidence of demonstrable work. The
+        # per-server sink takes precedence when set (tests use this
+        # path); the contextvar sink is the production path so concurrent
+        # agent runs do not stomp on each other.
+        self._invoke_activity_sinks(tool_name)
+
         try:
             raw_result = self._registry.dispatch(
                 tool_name, dict(arguments_value), host_session=self._session
@@ -500,6 +516,36 @@ class McpServer:
             cast("list[object]", content).append(block)
         else:
             payload["content"] = [block]
+
+    def _invoke_activity_sinks(self, tool_name: str) -> None:
+        """Notify the activity sinks of a tools/call invocation.
+
+        Two sinks are consulted:
+
+        1. The per-server ``mcp_activity_sink`` (set in ``__init__``). Used
+           by tests that need a sink bound to a specific McpServer
+           instance; the canonical example is the test in
+           tests/mcp/test_mcp_activity_sink.py that asserts the sink is
+           called when a tools/call is processed.
+        2. The per-task contextvar sink (set via
+           ``_activity_sink.set_active_sink``). This is the production
+           path: the per-run watchdog registers itself before its lines
+           loop starts and unregisters in a finally block, so concurrent
+           agent runs in the same process do not stomp on each other.
+
+        A buggy sink must not crash the JSON-RPC dispatch path, so the
+        per-server sink is invoked in a try/except. The contextvar sink
+        is already exception-swallowing in ``invoke_active_sink``.
+        """
+        if self._mcp_activity_sink is not None:
+            try:
+                self._mcp_activity_sink(tool_name)
+            except Exception:
+                logger.opt(exception=True).debug(
+                    "MCP server: per-server activity sink raised (suppressed)"
+                )
+        if get_active_sink() is not None:
+            invoke_active_sink(tool_name)
 
     def _build_tools_call_payload(self, payload_source: object) -> dict[str, object]:
         if isinstance(payload_source, dict):

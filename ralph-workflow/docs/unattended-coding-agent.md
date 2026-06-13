@@ -57,3 +57,22 @@ If this matches the kind of unattended coding agent you actually want, keep the 
 - **Star / watch Ralph Workflow on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+
+## Operator tunables for unattended watchdog behavior
+
+Ralph Workflow's idle watchdog judges whether an agent is stuck from
+**all observable evidence of work**, not just stdout. The four channels
+are: `stdout` (the baseline), `mcp_tool` (Ralph MCP tool calls),
+`subagent` (delegated child progress), and `workspace` (file changes
+detected by `WorkspaceMonitor`). The workspace channel is class-aware:
+each file change is classified into one of five kinds (`source`,
+`log`, `cache`, `artifact`, `other`) and weighted BINARY (`0.0` =
+drop, `1.0` = full activity). The default policy is conservative:
+only `source` is weighted `1.0`; all other kinds are dropped by
+default. To opt a kind in, set the new `agent_workspace_change_weights`
+key under `[general]` in `ralph-workflow.toml` (e.g.
+`{ source = 1.0, log = 1.0, cache = 0.0, artifact = 0.0, other = 0.0 }`
+to count log files as activity). See
+[`docs/agents/timeout-policy.md`](agents/timeout-policy.md) for the
+full migration note, the worked example, and the per-kind breakdown
+that appears in the watchdog fire diagnostic.

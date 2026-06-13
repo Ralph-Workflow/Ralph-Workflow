@@ -59,6 +59,12 @@ from ralph.agents.invoke._session import (
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
+from ralph.mcp.server._activity_sink import (
+    reset_active_sink,
+    reset_subagent_sink,
+    set_active_sink,
+    set_subagent_sink,
+)
 from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
@@ -72,8 +78,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
+    from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
     from ralph.agents.timeout_clock import Clock
+
+type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
 
 
 class PtyLineReader:
@@ -152,6 +161,9 @@ class PtyLineReader:
         workspace_event_count: int | None = (
             self._monitor.event_count if self._monitor is not None else None
         )
+        last_workspace_event_at: float | None = (
+            self._monitor.last_event_at if self._monitor is not None else None
+        )
         oldest_child_seconds: float | None = None
         scoped_child_active: bool | None = None
         scoped_child_count: int | None = None
@@ -182,6 +194,7 @@ class PtyLineReader:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
         return CorroborationSnapshot(
             workspace_event_count=workspace_event_count,
+            last_workspace_event_at=last_workspace_event_at,
             oldest_child_seconds=oldest_child_seconds,
             scoped_child_active=scoped_child_active,
             scoped_child_count=scoped_child_count,
@@ -350,10 +363,29 @@ class PtyLineReader:
             pending_lines = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
+        # Always merge the watchdog's per-channel evidence summary into
+        # the diagnostic so a post-mortem (or the on-call operator) can
+        # see exactly which evidence channels were fresh and which
+        # were stale at the moment the watchdog fired. The watchdog's
+        # own ``last_evidence_summary`` produces a list of
+        # ``ChannelEvidenceSummary.to_dict()`` entries; we surface that
+        # under ``evidence_summary`` alongside any existing diagnostic
+        # (HARD_STOP or post-tool-result). ``diagnostic`` is mutable in
+        # the post-tool-result rewrite above, so this merge is
+        # deliberately applied AFTER that rewrite.
+        merged_diag: dict[str, object] = {
+            "evidence_summary": [
+                entry.to_dict() for entry in watchdog.last_evidence_summary(self._clock.monotonic())
+            ],
+        }
+        if diagnostic is not None:
+            for key, value in diagnostic.items():
+                if key not in merged_diag:
+                    merged_diag[key] = value
         return pending_lines, _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
-            diagnostic=diagnostic,
+            diagnostic=cast("_MergedDiagType", merged_diag),
         )
 
     def _run_drain_window(
@@ -473,8 +505,7 @@ class PtyLineReader:
             with contextlib.suppress(OSError):
                 _write_pty_input(self._input_writer_fd, "\r", lock=self._input_writer_lock)
                 logger.warning(
-                    "Ralph auto-answered unknown prompt with Enter. "
-                    "Prompt text: {}",
+                    "Ralph auto-answered unknown prompt with Enter. Prompt text: {}",
                     repr(prompt_text[:200]),
                 )
             self._pending_permission_prompt_line = None
@@ -530,9 +561,7 @@ class PtyLineReader:
                 if activity_signal.kind == AgentActivityKind.TOOL_USE:
                     self._awaiting_post_tool_result_progress = False
                     raw = activity_signal.raw.strip()
-                    self._last_tool_use_name = (
-                        raw.split(":", 1)[-1].strip() if ":" in raw else raw
-                    )
+                    self._last_tool_use_name = raw.split(":", 1)[-1].strip() if ":" in raw else raw
                 elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
                     self._awaiting_post_tool_result_progress = True
                     self._last_tool_result_at = self._clock.monotonic()
@@ -592,6 +621,47 @@ class PtyLineReader:
             listener=self._on_waiting_event,
             corroborator=self._corroborate,
         )
+
+        # Register the watchdog's workspace channel recorder as the
+        # on-event callback on the WorkspaceMonitor so every file
+        # change in the monitored workspace is visible to the
+        # activity-aware verdict as a fresh workspace channel signal.
+        # The monitor is constructed in invoke_agent BEFORE the
+        # watchdog is created (the watchdog lives inside this
+        # generator), so we cannot bind the recorder at monitor
+        # construction time; the late ``set_on_event`` binding
+        # happens here, immediately after the watchdog exists. The
+        # binding is cleared in the finally block below so a stale
+        # callback can never fire after the run ends.
+        if self._monitor is not None:
+            # Forward (kind, weight) so the watchdog's per-kind
+            # counter receives the real classification; the
+            # 0-arg bound method form would always yield
+            # (OTHER, 1.0) and miss the AC #7 contract.
+            def _forward_event(
+                kind: WorkspaceChangeKind, weight: float
+            ) -> None:
+                watchdog.record_workspace_event(kind=kind, weight=weight)
+
+            self._monitor.set_on_event(_forward_event)
+
+        # Register the watchdog's MCP activity recorder as the active sink
+        # for the in-process Ralph MCP server so each tools/call invocation
+        # defers a NO_OUTPUT_DEADLINE fire while the agent is actively
+        # using the MCP. The contextvar isolates concurrent agent runs
+        # in the same process so a sibling run's MCP calls never feed
+        # this watchdog's evidence surface. The recorder accepts a
+        # `now: float | None` argument; the sink protocol passes a
+        # `tool_name: str`, so we wrap the recorder in a thin closure
+        # that ignores the string and forwards to the recorder.
+        def _mcp_sink(_tool_name: str) -> None:
+            watchdog.record_mcp_tool_call()
+
+        def _subagent_sink(_line: str) -> None:
+            watchdog.record_subagent_work()
+
+        sink_token = set_active_sink(_mcp_sink)
+        subagent_token = set_subagent_sink(_subagent_sink)
         unsubscribe = get_process_manager().register_listener(self._on_process_event)
         interrupted = [False]
         try:
@@ -619,4 +689,8 @@ class PtyLineReader:
             self._on_interrupt()
             raise
         finally:
+            reset_active_sink(sink_token)
+            reset_subagent_sink(subagent_token)
+            if self._monitor is not None:
+                self._monitor.set_on_event(None)
             self._cleanup([reader, transcript_reader, sentinel_reader], unsubscribe, interrupted[0])

@@ -42,7 +42,7 @@ _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 @pytest.fixture(autouse=True)
 def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
 
 def _json_object(raw: str) -> dict[str, object]:
@@ -263,7 +263,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setattr(
         "ralph.agents.invoke.provider_allowed_mcp_tool_names",
         lambda config, endpoint: (
@@ -689,7 +689,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -797,7 +797,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
