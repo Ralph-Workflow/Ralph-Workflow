@@ -25,7 +25,6 @@ from __future__ import annotations
 import importlib
 import os
 import signal
-import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -344,13 +343,33 @@ class InterruptDispatcher:
         progress_poll_interval_s: float | None = None,
         max_wait_s: float | None = None,
     ) -> None:
-        """Run the early-escalation poll for the first SIGINT path.
+        """Public utility: run the CPU-progress early-escalation poll.
 
-        Polls the matched active records (whose label starts with the
-        dispatcher's ``kill_label``) and SIGKILLs them on no-progress.
-        Bounded by ``max_wait_s`` (defaults to
-        ``self.hard_kill_budget_s``). Mirrors the prior inline helper
-        in ``_runner_interrupt._sigint_early_escalation_poll``.
+        This method is a public utility kept for backward compatibility
+        but is NOT used by the production seam. The production seam in
+        ``run_shutdown_block`` uses ``begin_interrupt(block=True)``
+        which routes through the dispatcher's liveness-based
+        ``_wait_for_list_active_empty`` (waiting for
+        ``process_manager.list_active()`` to drain or the grace
+        deadline to elapse). The liveness-based path does NOT use
+        CPU-progress detection; an alive-but-zero-CPU long-running
+        agent (writing a checkpoint, releasing a lock, draining a
+        queue) is given the full ``grace_period_s`` to die naturally
+        before the dispatcher escalates via ``force_exit``.
+
+        This CPU-progress-based method is retained for callers that
+        need it. The method polls the matched active records (whose
+        label starts with the dispatcher's ``kill_label``) and
+        SIGKILLs them on no-progress. Bounded by ``max_wait_s``
+        (defaults to ``self.hard_kill_budget_s``). Mirrors the prior
+        inline helper in
+        ``_runner_interrupt._sigint_early_escalation_poll``. The
+        method's dedicated tests in
+        ``tests/test_interrupt_dispatcher.py``
+        (``test_early_escalation_poll_kills_when_no_cpu_progress_within_budget``,
+        ``test_early_escalation_poll_does_not_kill_when_cpu_progresses``,
+        ``test_early_escalation_poll_exits_when_process_dies``)
+        still pass against the public method.
         """
         poll = (
             progress_poll_interval_s
@@ -488,27 +507,41 @@ def run_shutdown_block(
     ``"Interrupt shutdown block raised"`` (preserved for the
     same reason).
 
-    The body is byte-for-byte equivalent to the prior inline
-    bodies. The only behavioral deltas are:
+    The body is a single call to
+    ``dispatcher.begin_interrupt(grace_period_s=grace_period_s,
+    block=True)`` only — no daemon thread, no ``threading.Thread.join``.
+    The dispatcher uses its liveness-based
+    ``_wait_for_list_active_empty`` (via ``block=True``) to wait for
+    the process manager's active-record list to drain, escalating
+    via ``force_exit`` only when the grace deadline elapses with
+    records still active. This replaces the prior CPU-progress-based
+    ``run_early_escalation_poll`` daemon thread, which SIGKILLed
+    alive-but-zero-CPU long-running agents (writing checkpoints,
+    releasing locks, draining queues) prematurely. The
+    ``run_early_escalation_poll`` method is kept on the dispatcher
+    as a public utility NOT used by the production seam (see its
+    docstring); the method's dedicated tests still pass against the
+    public method.
 
-    * ``error_log_message`` parameter (the only difference between
-      the two paths).
-    * ``join_timeout_s`` is a named parameter (default
-      ``INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1``) so the bound is
-      a single source of truth rather than a duplicated literal.
+    The ``join_timeout_s`` parameter is now unused and is kept for
+    backward compatibility with the prior call shape. The two call
+    sites (``ralph/pipeline/_runner_interrupt.py`` and
+    ``ralph/interrupt/asyncio_bridge.py``) do not pass the kwarg
+    and the helper is byte-for-byte equivalent at those sites.
 
     The helper is added to ``__all__`` so ``from
     ralph.interrupt.dispatcher import *`` exposes it. See
     ADR-0001 D7 and D8.
     """
+    # ``join_timeout_s`` is no longer used by the production seam:
+    # the dispatcher's begin_interrupt(block=True) waits via the
+    # liveness-based _wait_for_list_active_empty path, which polls
+    # list_active() on the dispatcher's clock/sleep seams. The
+    # parameter is kept (defaulted) for backward compatibility so
+    # existing callers do not have to change.
+    del join_timeout_s
     try:
-        dispatcher.begin_interrupt(grace_period_s=grace_period_s)
-        poll_thread = threading.Thread(
-            target=dispatcher.run_early_escalation_poll,
-            daemon=True,
-        )
-        poll_thread.start()
-        poll_thread.join(timeout=join_timeout_s)
+        dispatcher.begin_interrupt(grace_period_s=grace_period_s, block=True)
     except Exception:
         logger.warning(error_log_message)
 

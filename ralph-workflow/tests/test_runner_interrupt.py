@@ -267,6 +267,51 @@ class _NotAnException(BaseException):
         self.message = message
 
 
+class _DrainOnBeginDispatcher(_RecordingDispatcher):
+    """Wrapper that drains the records on the first ``begin_interrupt`` call.
+
+    Under the NEW production seam (``begin_interrupt(block=True)``),
+    the first SIGINT body waits for the records to drain before
+    returning. If the records never drain, the wait would escalate
+    via ``force_exit`` and kill the records, breaking tests that
+    need the records to be present for the second-SIGINT force-kill
+    handler.
+
+    This wrapper drains the records on the first ``begin_interrupt``
+    call (so the liveness-based wait returns early without killing
+    the records) and re-adds them after ``begin_interrupt`` returns
+    (so the second SIGINT handler sees the records). The
+    ``(pid, pgid)`` pairs passed at construction time are used to
+    re-add the records with the same identity.
+    """
+
+    def __init__(
+        self,
+        real: InterruptDispatcher,
+        manager: FakeProcessManager,
+        pids_pgids: list[tuple[int, int]],
+    ) -> None:
+        super().__init__(real)
+        self._manager = manager
+        self._pids_pgids = pids_pgids
+        self._drained = False
+
+    def begin_interrupt(
+        self,
+        grace_period_s: float | None = None,
+        *,
+        block: bool = False,
+    ) -> None:
+        if not self._drained:
+            self._drained = True
+            self._manager.drain()
+        super().begin_interrupt(grace_period_s=grace_period_s, block=block)
+        for pid, pgid in self._pids_pgids:
+            self._manager.add_active(
+                pid=pid, pgid=pgid, label="invoke:fake"
+            )
+
+
 def test_handle_keyboard_interrupt_uses_injected_poll_interval_for_polling() -> None:
     """Pins contract 1: the entry point's busy-wait timeout uses the
     injected ``poll_interval_s`` (via the ``poll_interval_s=`` kwarg),
@@ -360,14 +405,24 @@ def test_handle_keyboard_interrupt_rejects_monitor_stop_with_pre_built_dispatche
 
 
 def test_handle_keyboard_interrupt_runs_early_escalation_poll_after_begin_interrupt() -> None:
-    """Pins contract 4: ``begin_interrupt`` is called once with the
-    process manager's default grace period, then
-    ``run_early_escalation_poll`` is called once with
-    ``INTERRUPT_HARD_KILL_BUDGET_SECONDS``, and the controller's
-    label-targeted shutdown runs with the dispatcher's kill_label.
+    """Pins contract 4: ``begin_interrupt`` is called once with
+    ``block=True`` (NEW contract — routes through the dispatcher's
+    liveness-based ``_wait_for_list_active_empty``) and the
+    controller's label-targeted shutdown runs with the dispatcher's
+    kill_label. ``run_early_escalation_poll`` is NOT called from the
+    production seam (it is a public utility kept for backward
+    compatibility, NOT used by the production seam).
+
+    No active records are added to the manager so the
+    ``_wait_for_list_active_empty`` wait (which polls
+    ``process_manager.list_active()`` until empty or the deadline
+    elapses) returns immediately. The test is about the call shape
+    (the recorder captures ``begin_calls`` and ``poll_calls``), not
+    the wait behavior; the wait is exercised by
+    ``test_dispatcher_begin_interrupt_block_true_blocks_until_list_active_empty``
+    in ``test_interrupt_dispatcher.py``.
     """
     manager = FakeProcessManager()
-    manager.add_active(pid=_PID, pgid=9999, label="invoke:fake")
     real_dispatcher = _build_dispatcher(manager)
     recorder = _RecordingDispatcher(real_dispatcher)
     getter, setter, _set_calls, _previous_handler = _make_signal_fakes()
@@ -383,13 +438,31 @@ def test_handle_keyboard_interrupt_runs_early_escalation_poll_after_begin_interr
         ("invoke:", manager.policy.default_grace_period_s)
     ], manager.shutdown_all_for_label_calls
     assert len(recorder.begin_calls) == 1, recorder.begin_calls
-    assert recorder.poll_calls == [()], recorder.poll_calls
+    # NEW contract: begin_interrupt is called with block=True so the
+    # dispatcher's _wait_for_list_active_empty does the wait.
+    assert recorder.begin_calls[0]["block"] is True, recorder.begin_calls
+    # NEW contract: run_early_escalation_poll is NOT called from the
+    # production seam. The CPU-poll daemon is gone; the public method
+    # is kept for backward compatibility but is NOT wired into
+    # run_shutdown_block.
+    assert recorder.poll_calls == [], recorder.poll_calls
 
 
 def test_handle_keyboard_interrupt_second_sigint_force_exit_uses_active_pgids() -> None:
     """Pins contract 5: the second-SIGINT force-kill handler routes
     through ``dispatcher.force_exit`` with ``bridge_pgids`` from
     ``process_manager.list_active()`` (in PGID order).
+
+    Under the NEW production seam (``begin_interrupt(block=True)``),
+    the first SIGINT body waits for the records to drain before
+    returning. If the records never drain, the wait would escalate
+    via ``force_exit`` and kill the records, so the second SIGINT
+    handler's ``list_active()`` would return ``[]``. The test
+    therefore uses a ``_DrainOnBeginDispatcher`` wrapper that
+    drains the records on the first ``begin_interrupt`` call (so
+    the liveness-based wait returns early without killing the
+    records) and re-adds them after ``begin_interrupt`` returns
+    (so the second SIGINT handler sees the records).
     """
     manager = FakeProcessManager()
     manager.add_active(pid=101, pgid=9101, label="invoke:fake")
@@ -399,7 +472,11 @@ def test_handle_keyboard_interrupt_second_sigint_force_exit_uses_active_pgids() 
         manager,
         hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
     )
-    recorder = _RecordingDispatcher(real_dispatcher)
+    recorder = _DrainOnBeginDispatcher(
+        real_dispatcher,
+        manager,
+        [(101, 9101), (202, 9202)],
+    )
     getter, setter, set_calls, _previous_handler = _make_signal_fakes()
 
     handle_keyboard_interrupt(

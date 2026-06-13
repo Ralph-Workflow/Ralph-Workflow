@@ -39,6 +39,7 @@ from ralph.interrupt.controller import (
 from ralph.interrupt.dispatcher import (
     InterruptDispatcher,
     dispatcher_from_process_manager,
+    run_shutdown_block,
 )
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt
 from ralph.process.manager import ProcessManagerPolicy, ProcessRecord, ProcessStatus
@@ -396,7 +397,16 @@ def test_early_escalation_poll_kills_when_no_cpu_progress_within_budget(
 ) -> None:
     """The early-escalation poll must send SIGKILL to the matched
     record's PGID when no CPU-time progress is detected within the
-    hard-kill budget. Stubs psutil via ``import_module`` patching."""
+    hard-kill budget. Stubs psutil via ``import_module`` patching.
+
+    NOTE: ``run_early_escalation_poll`` is a public utility kept for
+    backward compatibility but is NOT used by the production seam.
+    The production seam in ``run_shutdown_block`` uses
+    ``begin_interrupt(block=True)`` which routes through the
+    dispatcher's liveness-based ``_wait_for_list_active_empty``.
+    This test pins the public-method contract so a future regression
+    in the method body is caught.
+    """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:claude")
     manager.kill_process_group_calls = []
@@ -421,7 +431,16 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When CPU time INCREASES across polls, the agent is making
-    progress; the poll must NOT send SIGKILL."""
+    progress; the poll must NOT send SIGKILL.
+
+    NOTE: ``run_early_escalation_poll`` is a public utility kept for
+    backward compatibility but is NOT used by the production seam.
+    The production seam in ``run_shutdown_block`` uses
+    ``begin_interrupt(block=True)`` which routes through the
+    dispatcher's liveness-based ``_wait_for_list_active_empty``.
+    This test pins the public-method contract so a future regression
+    in the method body is caught.
+    """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:claude")
     manager.kill_process_group_calls = []
@@ -446,7 +465,16 @@ def test_early_escalation_poll_exits_when_process_dies(monkeypatch: pytest.Monke
     """When the matched process is no longer alive at the OS level
     from the first poll, the function must return without blocking
     for the full budget. Pins the early-return path on liveness check
-    failure (no SIGKILL sent)."""
+    failure (no SIGKILL sent).
+
+    NOTE: ``run_early_escalation_poll`` is a public utility kept for
+    backward compatibility but is NOT used by the production seam.
+    The production seam in ``run_shutdown_block`` uses
+    ``begin_interrupt(block=True)`` which routes through the
+    dispatcher's liveness-based ``_wait_for_list_active_empty``.
+    This test pins the public-method contract so a future regression
+    in the method body is caught.
+    """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:claude")
     manager.kill_process_group_calls = []
@@ -1262,3 +1290,111 @@ def test_async_install_signal_handlers_3arg_call_path_controller_none_branch(
     with contextlib.suppress(SystemExit):
         loop._handlers[1]()
     assert os_exit_calls == [(INTERRUPT_EXIT_CODE,)]
+
+
+def test_run_shutdown_block_does_not_sigkill_alive_but_zero_cpu_long_running_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TDD-first regression pin for the I/O-bound alive-but-zero-CPU bug.
+
+    The PROMPT reports 'broken at times... when the task is long
+    running'. The architecture-internal root cause: the production seam
+    in ``run_shutdown_block`` (the helper used by both the SYNC
+    ``handle_keyboard_interrupt`` and the asyncio
+    ``install_signal_handlers`` paths) deliberately routes through
+    ``run_early_escalation_poll`` in a daemon thread, which uses
+    CPU-progress detection. An I/O-bound long-running agent that is
+    alive and gracefully shutting down (writing a checkpoint,
+    releasing a lock, draining a queue) frequently has
+    ``current_cpu == previous_cpu`` across two consecutive polls, so
+    ``_records_show_no_progress`` returns True and the daemon thread
+    SIGKILLs the agent prematurely.
+
+    The fix routes the production seam through
+    ``begin_interrupt(block=True)``, which uses the dispatcher's
+    liveness-based ``_wait_for_list_active_empty`` to wait for the
+    records to drain naturally. The alive-but-zero-CPU agent is given
+    the full ``grace_period_s`` to die on its own; no SIGKILL is
+    sent unless the grace deadline elapses with records still
+    active.
+
+    Test scenario:
+
+    1. Build a ``FakeProcessManager`` with
+       ``default_grace_period_s=1.0`` and add one active record
+       ``(pid=201, pgid=9999, label='invoke:fake')``.
+    2. Build a ``_FakeClock`` and a fake sleep that advances the
+       clock by 0.001 on every call AND calls ``manager.drain()``
+       after exactly 3 iterations (the agent's natural completion).
+    3. Patch psutil so ``_psutil_pid_cpu_time`` returns 0.0 on
+       every call (the agent is alive but not using the CPU). Patch
+       ``os.kill`` so ``_pid_is_alive`` returns True (the agent is
+       alive at the OS level).
+    4. Build a dispatcher via the factory with ``poll_interval_s=0.001``
+       and the fake clock + fake sleep.
+    5. Call ``run_shutdown_block(dispatcher, grace_period_s=1.0,
+       join_timeout_s=0.05)`` from the canonical production seam.
+    6. Assert ``manager.kill_process_group_calls == []`` — the
+       alive-but-zero-CPU agent is NOT SIGKILLed.
+    7. Assert ``manager._active_records == []`` — the records were
+       drained naturally by the fake sleep, not killed by
+       ``force_exit``.
+
+    Behaviour:
+
+    * Under the OLD code, the daemon thread SIGKILLs the agent at
+      iteration 2 (two consecutive 0-CPU polls trigger
+      ``_records_show_no_progress`` to return True; the daemon
+      thread then calls ``_dispatch_kill`` which records the kill in
+      ``kill_process_group_calls``). The assertion FAILS.
+    * Under the NEW code, ``begin_interrupt(block=True)`` routes
+      through ``_wait_for_list_active_empty`` (liveness-based) which
+      waits for the records to drain. The fake sleep drains the
+      records at iteration 3; the wait returns. No SIGKILL is sent.
+      The assertion PASSES.
+
+    Wall-clock: < 100ms (uses ``_FakeClock`` and a fake sleep; the
+    ``join_timeout_s=0.05`` keeps the OLD-code main-thread join
+    fast even when the daemon thread races). The test does NOT use
+    ``time.sleep`` and does NOT use real subprocesses.
+    """
+    clock = _FakeClock()
+    sleep_iterations = 0
+    captured_manager: list[FakeProcessManager] = []
+
+    def _fake_sleep(s: float) -> None:
+        nonlocal sleep_iterations
+        sleep_iterations += 1
+        clock.advance(s)
+        if sleep_iterations == 3 and captured_manager:
+            captured_manager[0].drain()
+
+    _patch_psutil(monkeypatch, lambda _n: 0.0)
+    _patch_pid_alive(monkeypatch, alive=True)
+
+    manager, dispatcher = _build_dispatcher(
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+        poll_interval_s=0.001,
+    )
+    captured_manager.append(manager)
+    manager.add_active(pid=201, pgid=9999, label="invoke:fake")
+    manager.policy = ProcessManagerPolicy(default_grace_period_s=1.0)
+
+    run_shutdown_block(
+        dispatcher,
+        grace_period_s=1.0,
+        join_timeout_s=0.05,
+    )
+
+    # The alive-but-zero-CPU agent is NOT SIGKILLed under the fix.
+    assert manager.kill_process_group_calls == [], (
+        f"alive-but-zero-CPU agent was SIGKILLed; "
+        f"kill_process_group_calls={manager.kill_process_group_calls}"
+    )
+    # The records were drained naturally by the fake sleep, not killed
+    # by force_exit.
+    assert manager._active_records == [], (
+        f"records should be drained naturally by the fake sleep; "
+        f"got _active_records={manager._active_records}"
+    )

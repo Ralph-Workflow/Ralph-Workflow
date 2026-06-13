@@ -253,11 +253,25 @@ many seconds to return (the `grace_period_s` plus the
 second time while the first-SIGINT body is still in flight, the
 contract is:
 
+* **Long-running I/O-bound agents (NEW):** the production seam
+  uses the dispatcher's liveness-based
+  `_wait_for_list_active_empty` (via `begin_interrupt(block=True)`)
+  instead of the CPU-progress-based `run_early_escalation_poll`.
+  An I/O-bound long-running agent that is alive but not using the
+  CPU (writing a checkpoint, releasing a lock, draining a queue)
+  is NOT SIGKILLed during the wait; it is given the full
+  `grace_period_s` to die naturally. The contract is pinned by
+  the regression test
+  `tests/test_interrupt_dispatcher.py::test_run_shutdown_block_does_not_sigkill_alive_but_zero_cpu_long_running_agent`,
+  which proves the alive-but-zero-CPU agent is NOT SIGKILLed
+  under the liveness-based seam.
+
 1. The second-SIGINT handler synchronously escalates via
    `dispatcher.force_exit(bridge_pgids=...)`. The dispatcher's
    `_force_exit_called` flag is set synchronously by the
    `force_exit` body (before the `hard_exit` callable runs), so
    any subsequent `force_exit` call is a no-op.
+
 2. The first-SIGINT body, when it eventually completes, must NOT
    call `force_exit` a second time. The body's eventual
    completion is the entry point's `_begin_interrupt` returning
@@ -311,10 +325,9 @@ production paths.
 
 ### D8. `run_shutdown_block` as the canonical shutdown-block seam
 
-The first-SIGINT shutdown block — `begin_interrupt` plus the
-early-escalation poll in a daemon thread, plus a
-`threading.Thread.join` with a bounded timeout — is
-byte-for-byte equivalent in two places:
+The first-SIGINT shutdown block — `begin_interrupt(block=True)`
+(via the dispatcher's liveness-based `_wait_for_list_active_empty`)
+— is byte-for-byte equivalent in two places:
 
 * `ralph/pipeline/_runner_interrupt.py:_begin_interrupt` (the
   SYNC entry point).
@@ -324,9 +337,16 @@ byte-for-byte equivalent in two places:
 The two call sites were duplicated and could drift. A new
 module-level helper `run_shutdown_block` in
 `ralph/interrupt/dispatcher.py` is the canonical seam; both
-call sites route through it. The body is byte-for-byte
-equivalent to the prior inline bodies. The 7th architectural
-seam is `error_log_message`:
+call sites route through it. The body is now a single call to
+`dispatcher.begin_interrupt(grace_period_s=grace_period_s,
+block=True)` only — no daemon thread, no
+`threading.Thread.join`. The dispatcher's
+`_wait_for_list_active_empty` polls
+`process_manager.list_active()` on the dispatcher's
+`clock`/`sleep` seams and escalates via `force_exit` only
+when the grace deadline elapses with records still active.
+
+The 7th architectural seam is `error_log_message`:
 
 * The SYNC path passes
   `"Interrupt controller raised during KeyboardInterrupt"`
@@ -335,10 +355,22 @@ seam is `error_log_message`:
   (preserved for the same reason).
 
 No other difference exists between the two paths. The helper
-also extracts the `join_timeout_s` bound (default
-`INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1`) into a single
-named parameter so the bound is a single source of truth
-rather than a duplicated literal at the two call sites.
+also accepts the `join_timeout_s` bound (default
+`INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1`) as a named
+parameter; the bound is now UNUSED and is kept for backward
+compatibility with the prior call shape. The two call sites
+do not pass the kwarg and the helper is byte-for-byte
+equivalent at those sites.
+
+The public `InterruptDispatcher.run_early_escalation_poll`
+method is NOT used by the production seam; it is kept on the
+dispatcher as a public utility for backward compatibility
+with its dedicated tests
+(`tests/test_interrupt_dispatcher.py::test_early_escalation_poll_kills_when_no_cpu_progress_within_budget`,
+`::test_early_escalation_poll_does_not_kill_when_cpu_progresses`,
+`::test_early_escalation_poll_exits_when_process_dies`). The
+method's docstring notes that it is a public utility NOT used
+by the production seam.
 
 Reference: `ralph/interrupt/dispatcher.py:run_shutdown_block`
 (the canonical seam), `ralph/pipeline/_runner_interrupt.py:_begin_interrupt`
@@ -350,9 +382,8 @@ ralph.interrupt.dispatcher import *` exposes it. The existing
 black-box tests in `tests/test_runner_interrupt.py` and
 `tests/test_asyncio_bridge_install_signal_handlers.py` continue
 to pass against the helper because they invoke the recorded
-`begin_interrupt` + `run_early_escalation_poll` calls (the
-helper's body) and assert on the recorded call shape, not on
-the call site.
+`begin_interrupt(block=True)` call (the helper's body) and
+assert on the recorded call shape, not on the call site.
 
 ## Consequences
 
@@ -461,3 +492,26 @@ bridge path (e.g. for a new event loop) MUST follow them.
     (not a hardcoded literal) and that `run_early_escalation_poll`
     uses the dataclass field `self.hard_kill_budget_s` (not a
     module-level constant).
+
+6. **Long-running I/O-bound agents are NOT SIGKILLed during the
+   wait (D7 + D8 NEW).** The production seam in
+   `run_shutdown_block` uses the dispatcher's liveness-based
+   `_wait_for_list_active_empty` (via `begin_interrupt(block=True)`)
+   instead of the CPU-progress-based `run_early_escalation_poll`
+   that previously ran in a daemon thread. The CPU-progress
+   detector SIGKILLed alive-but-zero-CPU long-running agents
+   (writing checkpoints, releasing locks, draining queues)
+   prematurely because two consecutive 0-CPU polls triggered
+   `_records_show_no_progress` to return `True`. The
+   liveness-based wait gives the agent the full `grace_period_s`
+   to die naturally; only an actually-stuck agent (still alive
+   after the grace deadline elapses) is escalated via
+   `force_exit`. The public
+   `InterruptDispatcher.run_early_escalation_poll` method is kept
+   for backward compatibility with its dedicated tests but is
+   NOT wired into the production seam. The contract is pinned by
+   the regression test
+   `tests/test_interrupt_dispatcher.py::test_run_shutdown_block_does_not_sigkill_alive_but_zero_cpu_long_running_agent`.
+   A future contributor who adds a CPU-progress-based escalation
+   back to the production seam re-introduces the
+   "broken at times... when the task is long running" bug.

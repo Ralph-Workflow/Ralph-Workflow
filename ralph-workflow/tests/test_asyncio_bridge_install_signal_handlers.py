@@ -349,14 +349,28 @@ class TestInstallSignalHandlers:
         # or (synchronously dispatched) executor body path.
         assert manager.kill_process_group_calls == []
 
-    def test_asyncio_bridge_first_sigint_does_not_pass_block_true(self) -> None:
-        """The first-SIGINT path in the asynchro_bridge must call
-        ``active_dispatcher.begin_interrupt(...)`` WITHOUT
-        ``block=True`` (intentional — the bridge relies on
-        ``root_task.cancel()`` to wake the event loop instead of
-        blocking). A regression that flips this to ``block=True``
-        would deadlock the asyncio event loop waiting for a process
-        manager that is never drained.
+    def test_asyncio_bridge_first_sigint_passes_block_true_via_shutdown_block(
+        self,
+    ) -> None:
+        """NEW CONTRACT: the first-SIGINT path in the asynchro_bridge
+        routes through ``run_shutdown_block`` which calls
+        ``active_dispatcher.begin_interrupt(..., block=True)``. The
+        liveness-based ``_wait_for_list_active_empty`` polls
+        ``process_manager.list_active()`` on the dispatcher's
+        ``clock``/``sleep`` seams so the asyncio event loop is NOT
+        blocked on real wall-clock time. The first-SIGINT path
+        dispatches the shutdown block off the event loop via
+        ``loop.run_in_executor``, so the event loop keeps spinning
+        while the executor body runs the shutdown block in a worker
+        thread.
+
+        The OLD contract (which pinned ``block=False``) was broken
+        for long-running I/O-bound agents: the production seam used
+        ``run_early_escalation_poll`` in a daemon thread, which
+        SIGKILLed alive-but-zero-CPU agents prematurely. The NEW
+        contract routes through ``_wait_for_list_active_empty``
+        (liveness-based) which gives the agent the full
+        ``grace_period_s`` to die naturally.
 
         The test monkeypatches ``InterruptDispatcher.begin_interrupt``
         on the CLASS (via setattr on the class object) with a wrapper
@@ -387,11 +401,12 @@ class TestInstallSignalHandlers:
             first_handler()
         finally:
             InterruptDispatcher.begin_interrupt = cast("Any", original_begin)
-        # The first-SIGINT path passes no ``block`` kwarg, so the
-        # default ``block=False`` is recorded.
+        # NEW contract: the first-SIGINT path passes block=True via
+        # run_shutdown_block.
         assert block_kwargs, "begin_interrupt was not called"
-        assert block_kwargs == [False], (
-            f"asynchro_bridge first-SIGINT must NOT pass block=True; "
+        assert block_kwargs == [True], (
+            f"asynchro_bridge first-SIGINT must pass block=True via "
+            f"run_shutdown_block (NEW contract); "
             f"got block_kwargs={block_kwargs}"
         )
 
