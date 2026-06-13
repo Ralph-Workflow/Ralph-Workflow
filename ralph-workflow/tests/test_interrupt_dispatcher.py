@@ -816,6 +816,126 @@ def test_dispatcher_waits_until_empty_or_escalates_when_stuck() -> None:
     assert (_PGID, signal.SIGKILL) in manager.kill_process_group_calls
 
 
+def test_begin_interrupt_with_slow_body_still_escalates_after_body_returns() -> None:
+    """NEW BEHAVIOR PIN: when ``begin_interrupt``'s body itself
+    (the controller's ``record_interrupt`` + ``shutdown_all_for_label``)
+    takes a long time to return, the dispatcher's
+    ``_wait_for_list_active_empty`` escalation still fires once
+    the body returns and the new grace deadline (measured from
+    when ``_wait_for_list_active_empty`` starts) elapses.
+
+    The existing tests
+    (``test_dispatcher_waits_until_empty_or_escalates_when_stuck``,
+    ``test_dispatcher_block_wait_sleep_never_exceeds_remaining_deadline``)
+    assume the body returns instantaneously; they cannot detect
+    a regression where the dispatcher forgets to subtract body
+    time from the grace budget. The new test pins the body-time
+    invariant via a ``threading.Event`` coordination primitive
+    (the same pattern as
+    ``test_dispatcher_begin_interrupt_block_true_blocks_until_list_active_empty``).
+
+    Mechanism:
+
+    1. Build a ``FakeProcessManager`` with one active record that
+       NEVER drains (the FakeProcessManager default).
+    2. Build a ``_FakeClock`` and a ``fake_sleep`` that advances
+       the clock on every call.
+    3. Define ``body_event`` and ``body_started`` threading
+       events. Build ``_slow_record_interrupt`` that sets
+       ``body_started`` and blocks on ``body_event.wait``.
+    4. Build the dispatcher with ``poll_interval_s=0.001`` and
+       ``grace_period_s=0.05`` and the ``_slow_record_interrupt``
+       injection.
+    5. Start a worker thread that calls
+       ``dispatcher.begin_interrupt(block=True, grace_period_s=0.05)``.
+       The thread blocks inside ``_slow_record_interrupt``.
+    6. Wait on ``body_started`` to confirm the body is blocked.
+    7. Advance the clock past the original grace deadline
+       (0.5s) — the dispatcher's escalation would fire if the
+       body had returned; the worker is still inside
+       ``_slow_record_interrupt``.
+    8. Set ``body_event`` so the body returns. The worker
+       continues through ``shutdown_all_for_label`` into
+       ``_wait_for_list_active_empty``.
+    9. Join the worker thread.
+    10. Assert ``hard_exit`` was called exactly once
+        (idempotency survives body delay) and
+        ``shutdown_all_for_label`` was called with the expected
+        label + grace.
+    """
+    manager = FakeProcessManager()
+    manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
+
+    clock = _FakeClock()
+    sleep_calls: list[float] = []
+    exit_calls: list[tuple[int, ...]] = []
+    kill_calls: list[tuple[int, int]] = []
+
+    body_event = threading.Event()
+    body_started = threading.Event()
+
+    def _slow_record_interrupt() -> None:
+        body_started.set()
+        body_event.wait(timeout=1.0)
+
+    def _fake_sleep(s: float) -> None:
+        sleep_calls.append(s)
+        clock.advance(s)
+
+    dispatcher = dispatcher_from_process_manager(
+        process_manager=manager,
+        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        kill_process_group=cast(
+            "Callable[[int, int], None]", lambda pgid, sig: kill_calls.append((pgid, sig))
+        ),
+        record_interrupt=_slow_record_interrupt,
+        poll_interval_s=0.001,
+        hard_kill_budget_s=0.05,
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+    )
+
+    def _worker() -> None:
+        dispatcher.begin_interrupt(block=True, grace_period_s=0.05)
+
+    worker = threading.Thread(target=_worker, daemon=True)
+    worker.start()
+
+    # The body must be blocked in _slow_record_interrupt before we
+    # advance the clock.
+    assert body_started.wait(timeout=0.5), (
+        "worker thread did not enter _slow_record_interrupt in 0.5s"
+    )
+
+    # Advance the clock past the original grace deadline while the
+    # body is still blocked.
+    clock.advance(0.5)
+
+    # Release the body. The worker continues through
+    # shutdown_all_for_label into _wait_for_list_active_empty.
+    body_event.set()
+
+    # The worker thread should complete (the dispatcher escalates
+    # after the body returns and the new grace deadline elapses).
+    worker.join(timeout=1.0)
+    assert not worker.is_alive(), (
+        f"worker thread did not complete in 1.0s; "
+        f"sleep_calls={sleep_calls}, exit_calls={exit_calls}"
+    )
+
+    # hard_exit called exactly once (idempotency survives body delay).
+    assert exit_calls == [(INTERRUPT_EXIT_CODE,)], (
+        f"hard_exit should be called exactly once; got {exit_calls}"
+    )
+
+    # The body did call the label-targeted shutdown before
+    # _wait_for_list_active_empty was entered.
+    assert manager.shutdown_all_for_label_calls == [("invoke:", 0.05)], (
+        f"shutdown_all_for_label should be called once with the dispatcher's "
+        f"kill_label and grace_period_s; got {manager.shutdown_all_for_label_calls}"
+    )
+
+
 def test_handle_keyboard_interrupt_force_kill_handler_restores_previous() -> None:
     """``handle_keyboard_interrupt`` must install and then RESTORE the
     previous SIGINT handler when called with injected signal_getter/

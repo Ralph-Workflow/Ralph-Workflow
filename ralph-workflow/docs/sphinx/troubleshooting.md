@@ -308,6 +308,48 @@ failure mode is no longer silent. The helper is the single owner of the
 CLI catch contract; both call sites use the same function so a regression
 in one is a regression in both.
 
+## Long-running task interruption
+
+**Symptom:** When the agent runs for many minutes, pressing `Ctrl+C`
+once may not appear to interrupt the run immediately. The first
+SIGINT begins the graceful shutdown; a second SIGINT force-kills.
+
+**Cause:** The first SIGINT starts a two-phase shutdown: graceful
+SIGTERM via `shutdown_all_for_label`, followed by the
+`_wait_for_list_active_empty` block (which polls until the tracked
+process group drains OR the grace deadline expires). On multi-minute
+runs, the pipeline may still be in the middle of `begin_interrupt`'s
+body when the user presses `Ctrl+C` a second time, which is why a
+single `Ctrl+C` can look like it was ignored — the body is in flight.
+
+A second `Ctrl+C` is a hard escalation: the second-SIGINT handler
+reads `pm.list_active()` PGIDs and calls `dispatcher.force_exit`
+directly, which SIGKILLs the active records and exits with code 130
+(even if the first-SIGINT executor body is still running). This is
+the design: the first SIGINT is cooperative, the second SIGINT is
+authoritative.
+
+### What if the process refuses to die?
+
+If the agent's process group ignores SIGTERM, the dispatcher's
+`_wait_for_list_active_empty` escalates via `self.force_exit(bridge_pgids=...)`
+when the grace deadline expires with active records still present.
+The escalation is idempotent: a subsequent `force_exit` (e.g. from
+a second SIGINT, or from the body eventually completing and trying
+to escalate again) is a no-op. The `hard_exit` callable is invoked
+exactly once across the two SIGINTs and the body's eventual
+completion, so a frozen pipeline is never silent.
+
+The two long-running-task invariants — (1) second SIGINT while the
+first-SIGINT executor body is still in flight, and (2) slow
+`begin_interrupt` body that takes longer than the grace period to
+return — are pinned by black-box tests in
+`tests/test_asyncio_bridge_install_signal_handlers.py` and
+`tests/test_interrupt_dispatcher.py`. The full architectural
+contract (controller / dispatcher split, clock + sleep seams,
+PGID routing, Strategy A propagation) is documented in
+[`adr-0001-interrupt-architecture`](../../architecture/adr-0001-interrupt-architecture.md).
+
 ## Session-resume flag drift
 
 **Symptom:** After a retry, Claude behaves like a fresh session — it

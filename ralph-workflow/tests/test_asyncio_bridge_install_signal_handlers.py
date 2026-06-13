@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import ralph.interrupt.dispatcher as dispatcher_mod
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
-from ralph.interrupt.controller import InterruptController
+from ralph.interrupt.controller import INTERRUPT_EXIT_CODE, InterruptController
 from ralph.interrupt.dispatcher import (
     InterruptDispatcher,
     dispatcher_from_process_manager,
@@ -730,3 +730,135 @@ def test_install_signal_handlers_returns_idempotent_teardown_callable() -> None:
     # The remove_signal_handler count may stay the same (idempotent
     # short-circuit) or grow (re-remove); both are acceptable. The
     # important contract is no exception.
+
+
+# =====================================================================
+# Long-running-task pin: second SIGINT during first SIGINT executor body
+# =====================================================================
+
+
+class _PausingExecutorLoop(_SynchronousExecutorLoop):
+    """Loop whose ``run_in_executor`` records the callable but does
+    NOT invoke it; returns a done ``_SyncFuture`` so the
+    production code's done callback is a no-op.
+
+    Subclasses :class:`_SynchronousExecutorLoop` to reuse the
+    handler-capturing mechanics. Overrides only ``run_in_executor``
+    so the executor body is paused; the test invokes the recorded
+    callable manually after the second-SIGINT handler has fired.
+    """
+
+    def run_in_executor(
+        self, executor: object, fn: object, *args: object
+    ) -> object:
+        self._executor_calls.append((fn, args))
+        return _SyncFuture(result=None)
+
+
+def test_second_sigint_during_first_sigint_executor_body() -> None:
+    """NEW BEHAVIOR PIN: when the second SIGINT arrives while the
+    first SIGINT's ``_shutdown_block`` executor body is still in
+    flight, the second handler synchronously invokes
+    ``force_exit``, and the executor body, when it eventually
+    runs, does NOT trigger a second ``force_exit`` (the
+    ``_force_exit_called`` idempotency guard fires correctly).
+
+    The existing tests
+    (``test_second_sigint_force_kills_uses_pgid_not_pid``,
+    ``test_injected_controller_handles_graceful_then_forced_sigint``)
+    assume the first-SIGINT executor body has already completed
+    before the second handler fires. This test pins the
+    body-still-in-flight scenario.
+
+    Mechanism:
+
+    1. Subclass :class:`_SynchronousExecutorLoop` with
+       :class:`_PausingExecutorLoop` whose ``run_in_executor``
+       records the ``(fn, args)`` but does NOT invoke ``fn(*args)``;
+       returns a done ``_SyncFuture`` so the production code's
+       done callback is a no-op.
+    2. Invoke the first handler. Assert: ``root_task.cancel_calls
+       == 1``, ``len(loop._handlers) == 2``,
+       ``len(loop._executor_calls) == 1``, the executor body has
+       NOT yet been invoked.
+    3. Invoke the second handler. Assert: ``hard_exit`` was
+       called exactly once (the second handler's ``force_exit``
+       fires).
+    4. Manually invoke the recorded executor body. Assert:
+       ``hard_exit`` count remains 1 (the executor body
+       completed normally; the idempotency guard is verified by
+       an explicit second ``force_exit`` call after the body
+       completes).
+    5. Invoke the teardown callable twice and assert it does
+       not raise.
+
+    The test must run in under 200ms using only fakes. The
+    dispatcher's ``hard_kill_budget_s`` is set to ``0.05`` so the
+    early-escalation poll thread (which ``_shutdown_block``
+    starts in a daemon thread) terminates within ~50ms.
+    """
+    manager = _FakeProcessManager()
+    manager.add_active(pid=_PID_FOR_PGID_TEST, pgid=_PGID_FOR_PGID_TEST)
+
+    exit_calls: list[tuple[int, ...]] = []
+    kill_calls: list[tuple[int, int]] = []
+    dispatcher = dispatcher_from_process_manager(
+        process_manager=manager,
+        hard_exit=cast("Any", lambda code: exit_calls.append((code,))),
+        kill_process_group=cast("Any", lambda pgid, sig: kill_calls.append((pgid, sig))),
+        hard_kill_budget_s=0.05,
+        poll_interval_s=0.01,
+    )
+
+    bridge = SignalBridge()
+    loop = _PausingExecutorLoop()
+    root_task = _CancellableTask()
+    teardown_fn = install_signal_handlers(loop, root_task, bridge, dispatcher)
+
+    # First handler fires: cancel + install second handler + record
+    # executor body (but do NOT invoke it).
+    loop._handlers[0]()
+    assert root_task.cancel_calls == 1
+    assert len(loop._handlers) == 2
+    assert len(loop._executor_calls) == 1
+
+    # Second handler fires while the executor body is still paused.
+    with contextlib.suppress(SystemExit):
+        loop._handlers[1]()
+
+    # hard_exit was called exactly once (by the second handler's
+    # force_exit).
+    assert exit_calls == [(INTERRUPT_EXIT_CODE,)], (
+        f"second handler should call hard_exit({INTERRUPT_EXIT_CODE}) once; "
+        f"got {exit_calls}"
+    )
+
+    # Now manually invoke the executor body that was recorded. The
+    # body calls _shutdown_block, which calls begin_interrupt
+    # (no block=True) + the early-escalation poll in a daemon
+    # thread. It completes normally without raising.
+    fn, args = loop._executor_calls[0]
+    fn(*args)
+
+    # The executor body did NOT trigger a second force_exit; hard_exit
+    # was still called exactly once.
+    assert exit_calls == [(INTERRUPT_EXIT_CODE,)], (
+        f"executor body must NOT trigger a second hard_exit call; "
+        f"got {exit_calls}"
+    )
+
+    # Explicit idempotency check: invoking force_exit a second
+    # time after the executor body completed must NOT call
+    # hard_exit again. The _force_exit_called guard fires
+    # correctly.
+    dispatcher.force_exit(bridge_pgids=[_PGID_FOR_PGID_TEST])
+    assert exit_calls == [(INTERRUPT_EXIT_CODE,)], (
+        f"idempotency guard should prevent a second hard_exit call; "
+        f"got {exit_calls}"
+    )
+
+    # The teardown callable is safe to invoke after the second
+    # handler has fired (no exception raised).
+    assert teardown_fn is not None
+    teardown_fn()
+    teardown_fn()
