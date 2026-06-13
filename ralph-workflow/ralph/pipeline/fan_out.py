@@ -78,7 +78,9 @@ if TYPE_CHECKING:
         def notify(self, state: PipelineState) -> None: ...
 
     class _InstallSignalHandlersFn(Protocol):
-        def __call__(self, *args: object, **kwargs: object) -> None: ...
+        def __call__(
+            self, *args: object, **kwargs: object
+        ) -> Callable[[], None] | None: ...
 
     class _ExecutorFactory(Protocol):
         def __call__(self, *args: object, **kwargs: object) -> AgentExecutor: ...
@@ -503,6 +505,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
         if ctx.install_signal_handlers_fn is not None
         else cast("_InstallSignalHandlersFn", install_signal_handlers)
     )
+    teardown_fn: Callable[[], None] | None = None
     try:
         loop = asyncio.get_running_loop()
         bridge = SignalBridge()
@@ -510,7 +513,7 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             bridge._connectivity_stop = ctx.monitor_stop_cb
         root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
         assert root_task is not None
-        _install(loop, root_task, bridge)
+        teardown_fn = _install(loop, root_task, bridge)
 
         try:
             validate_for_same_workspace(WorkUnitsPlan(work_units=list(ctx.effect.work_units)))
@@ -635,6 +638,12 @@ async def _run_fan_out_async(ctx: _FanOutCtx) -> PipelineState:
             ),
         )
         return recovered
+    finally:
+        if teardown_fn is not None:
+            try:
+                teardown_fn()
+            except Exception:
+                logger.debug("install_signal_handlers teardown raised")
 
 
 def execute_fan_out_sync(

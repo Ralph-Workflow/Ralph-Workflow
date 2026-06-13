@@ -30,6 +30,8 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, cast
 
+from loguru import logger
+
 from ralph.interrupt.controller import (
     INTERRUPT_EXIT_CODE,
     InterruptController,
@@ -257,16 +259,21 @@ class InterruptDispatcher:
                     return
             except Exception:
                 return
-            self.sleep(min(self.poll_interval_s, 0.01))
+            remaining = max(deadline - self.clock(), 0.0)
+            self.sleep(min(self.poll_interval_s, remaining))
         # Deadline elapsed with records still active: escalate to force_exit.
         try:
             active = self.process_manager.list_active()
         except Exception:
             return
         if active:
-            self.force_exit(bridge_pids=[r.pgid for r in active])
+            self.force_exit(bridge_pgids=[r.pgid for r in active])
 
-    def force_exit(self, bridge_pids: Iterable[int] = ()) -> None:
+    def force_exit(
+        self,
+        bridge_pgids: Iterable[int] = (),
+        **kwargs: object,
+    ) -> None:
         """Escalate to immediate tracked-process termination and exit.
 
         Idempotent: repeated calls are no-ops. The first call sets the
@@ -277,15 +284,27 @@ class InterruptDispatcher:
         field is preferred; if it is None, the controller's
         ``force_exit`` is invoked so the controller's injected exit
         callable is the one that runs (PA-019 thread-through).
+
+        The ``bridge_pids`` keyword is accepted for backward
+        compatibility; it is deprecated and emits a single loguru
+        warning when used. New callers MUST pass ``bridge_pgids``.
         """
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
+        if bridge_pids_legacy:
+            logger.warning(
+                "bridge_pids is deprecated; pass bridge_pgids instead"
+            )
+        pgids: Iterable[int] = (
+            list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
+        )
         if self._force_exit_called:
             return
         object.__setattr__(self, "_force_exit_called", True)
-        self.controller.force_interrupt(bridge_pids=bridge_pids)
+        self.controller.force_interrupt(bridge_pgids=pgids)
         if self.hard_exit is not None:
             self.hard_exit(INTERRUPT_EXIT_CODE)
         else:
-            self.controller.force_exit(bridge_pids=bridge_pids)
+            self.controller.force_exit(bridge_pgids=pgids)
 
     def run_early_escalation_poll(
         self,

@@ -66,8 +66,8 @@ def handle_keyboard_interrupt(
 
     def _force_exit() -> None:
         active_records = list(process_manager.list_active())
-        bridge_pids = [r.pgid for r in active_records]
-        dispatcher.force_exit(bridge_pids=bridge_pids)
+        bridge_pgids = [r.pgid for r in active_records]
+        dispatcher.force_exit(bridge_pgids=bridge_pgids)
 
     def _begin_interrupt() -> None:
         try:
