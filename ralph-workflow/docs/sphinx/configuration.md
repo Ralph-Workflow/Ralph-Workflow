@@ -142,6 +142,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `max_backoff_ms` | `60000` | Maximum retry backoff delay |
 | `max_cycles` | `3` | Maximum full fallback cycles through a drain |
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
+| `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel (`mcp_tool`, `subagent`, `workspace`) is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. See the `## Idle watchdog` section in the README for the four-channel model. |
 
 ### Example: change verbosity globally
 
