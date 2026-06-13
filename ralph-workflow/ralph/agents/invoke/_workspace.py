@@ -142,11 +142,6 @@ def _can_bind_n(signature_obj: inspect.Signature, n: int) -> bool:
     return True
 
 
-def _is_required_positional(parameter_obj: object) -> bool:
-    """Unused placeholder removed; arity is now computed via __code__."""
-    return False
-
-
 class WorkspaceMonitor:
     """Monitors workspace directory for file changes during agent execution.
 

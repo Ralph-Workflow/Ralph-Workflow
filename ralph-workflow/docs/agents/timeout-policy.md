@@ -168,6 +168,6 @@ ceiling.
 - ``ralph-workflow/ralph/timeout_defaults.py`` — the
   ``DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS`` constant
 - ``ralph-workflow/tests/agents/test_workspace_change_classifier.py`` —
-  classifier unit tests (38 tests)
+  classifier unit tests (47 tests)
 - ``ralph-workflow/tests/agents/test_idle_watchdog_workspace_smart_filter.py`` —
   end-to-end AC #7 tests (12 tests)
