@@ -43,6 +43,7 @@ class InvokeOptions:
     repeated_error_window_count: int | None = None
     repeated_error_window_seconds: float | None = None
     activity_evidence_ttl_seconds: float | None = None
+    workspace_change_weights: dict[str, float] | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None

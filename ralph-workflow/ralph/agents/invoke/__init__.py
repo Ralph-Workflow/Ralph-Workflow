@@ -88,6 +88,7 @@ from ralph.agents.invoke._types import (
     _PtyExtras,
 )
 from ralph.agents.invoke._workspace import WorkspaceMonitor
+from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
 from ralph.api.opencode import validate_local_model_support
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
@@ -163,11 +164,27 @@ def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
     )
 
 
-def _start_workspace_monitor(workspace_path: Path | None) -> WorkspaceMonitor | None:
-    """Start workspace monitoring if path provided."""
+def _start_workspace_monitor(
+    workspace_path: Path | None,
+    classifier: WorkspaceChangeClassifier | None = None,
+) -> WorkspaceMonitor | None:
+    """Start workspace monitoring if path provided.
+
+    Args:
+        workspace_path: Workspace directory to monitor.
+        classifier: Optional ``WorkspaceChangeClassifier`` used to
+            classify each file change into a ``WorkspaceChangeKind``
+            and a binary weight. When ``None`` (or omitted), the
+            monitor uses the legacy behavior: every file change is
+            recorded as ``OTHER / 1.0`` activity. When provided,
+            events with weight ``0.0`` are dropped before the
+            ``on_event`` callback fires; events with weight ``1.0``
+            are passed to the callback together with their
+            ``(kind, weight)`` tuple.
+    """
     if workspace_path is None:
         return None
-    monitor = WorkspaceMonitor(workspace_path)
+    monitor = WorkspaceMonitor(workspace_path, classifier=classifier)
     monitor.start()
     return monitor
 
@@ -276,7 +293,12 @@ def invoke_agent(
         registry=registry,
     )
     liveness_probe = DefaultLivenessProbe(registry=registry)
-    monitor = _start_workspace_monitor(opts.workspace_path if opts.show_progress else None)
+    monitor = _start_workspace_monitor(
+        opts.workspace_path if opts.show_progress else None,
+        classifier=WorkspaceChangeClassifier(weights=dict(opts.workspace_change_weights))
+        if opts.workspace_change_weights is not None
+        else None,
+    )
     policy = _policy_from_options(opts)
 
     ctx = _AgentRunCtx(

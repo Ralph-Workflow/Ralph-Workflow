@@ -4,7 +4,7 @@ Ensures that docs/README.md explicitly maps current-vs-archival status
 for all guide families and is the authoritative file-level map.
 """
 
-from tests.doc_roots import REPO_ROOT_DOCS_DIR
+from tests.doc_roots import PACKAGE_DOCS_DIR, PACKAGE_ROOT, REPO_ROOT_DOCS_DIR
 
 
 def test_docs_readme_exists() -> None:
@@ -69,3 +69,52 @@ def test_docs_readme_covers_performance_family() -> None:
     content = path.read_text()
     # Must reference performance family
     assert "performance" in content.lower(), "docs/README.md should cover docs/performance family"
+
+
+# ---------------------------------------------------------------------------
+# ralph-workflow/docs/agents/timeout-policy.md (idle-watchdog workspace weights)
+# ---------------------------------------------------------------------------
+
+_PACKAGE_TIMEOUT_POLICY = PACKAGE_DOCS_DIR / "agents" / "timeout-policy.md"
+_PACKAGE_UNATTENDED_DOC = PACKAGE_DOCS_DIR / "unattended-coding-agent.md"
+_PACKAGE_CHANGELOG = PACKAGE_ROOT / "CHANGELOG.md"
+
+
+def test_package_timeout_policy_doc_exists() -> None:
+    """The new idle-watchdog timeout-policy doc must exist."""
+    assert _PACKAGE_TIMEOUT_POLICY.exists(), (
+        f"ralph-workflow/docs/agents/timeout-policy.md must exist ({_PACKAGE_TIMEOUT_POLICY})"
+    )
+
+
+def test_package_timeout_policy_doc_lists_all_five_kinds() -> None:
+    """The timeout-policy doc must mention every WorkspaceChangeKind value."""
+    content = _PACKAGE_TIMEOUT_POLICY.read_text()
+    for kind in ("source", "log", "cache", "artifact", "other"):
+        assert f"`{kind}`" in content, (
+            f"timeout-policy.md must mention the `{kind}` WorkspaceChangeKind"
+        )
+
+
+def test_package_timeout_policy_doc_mentions_new_config_key() -> None:
+    """The timeout-policy doc must mention the new config key name."""
+    content = _PACKAGE_TIMEOUT_POLICY.read_text()
+    assert "agent_workspace_change_weights" in content, (
+        "timeout-policy.md must mention the agent_workspace_change_weights key"
+    )
+
+
+def test_package_changelog_unreleased_section_calls_out_behavior_change() -> None:
+    """CHANGELOG.md [Unreleased] must call out the behavior change explicitly."""
+    content = _PACKAGE_CHANGELOG.read_text()
+    assert "Behavior change:" in content, (
+        "CHANGELOG.md [Unreleased] must include the explicit 'Behavior change:' callout"
+    )
+
+
+def test_package_unattended_doc_mentions_new_config_key() -> None:
+    """The operator-facing unattended doc must cross-reference the new key."""
+    content = _PACKAGE_UNATTENDED_DOC.read_text()
+    assert "agent_workspace_change_weights" in content, (
+        "unattended-coding-agent.md must mention the agent_workspace_change_weights key"
+    )

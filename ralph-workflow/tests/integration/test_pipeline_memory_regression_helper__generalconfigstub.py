@@ -25,6 +25,7 @@ class _GeneralConfigStub:
     agent_repeated_error_consecutive_threshold: int | None = 5
     agent_repeated_error_window_count: int | None = 8
     agent_repeated_error_window_seconds: float | None = 600.0
+    agent_workspace_change_weights: dict[str, float] | None = None
     agent_child_progress_ttl_seconds: float = 300.0
     agent_child_heartbeat_ttl_seconds: float = 60.0
     agent_child_stale_label_ttl_seconds: float = 120.0

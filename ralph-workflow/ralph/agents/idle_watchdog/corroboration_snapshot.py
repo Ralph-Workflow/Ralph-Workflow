@@ -39,6 +39,17 @@ class ChannelEvidenceSummary:
             (and post-mortems) a coarse confidence signal: a channel with
             counter=10 and age=5s is more likely to be alive than a channel
             with counter=1 and age=5s.
+        kind_breakdown: Per-kind breakdown of the channel counter. Only
+            populated for the ``workspace`` channel (the only channel
+            that classifies events by kind today). ``None`` when the
+            channel has no kind breakdown (e.g. ``stdout``, ``mcp_tool``,
+            ``subagent``) or when the watchdog has not yet observed any
+            workspace activity. The dict is keyed by the five
+            ``WorkspaceChangeKind`` string values (``source``, ``log``,
+            ``cache``, ``artifact``, ``other``); kinds that have never
+            been observed are absent from the dict. Omitted from
+            ``to_dict()`` when ``None`` to preserve backward-compat
+            with consumers that assert on the dict shape.
 
     The dataclass is frozen so callers cannot mutate the summary, and it
     exposes a ``to_dict()`` helper for diagnostic embedding (the watchdog
@@ -50,19 +61,26 @@ class ChannelEvidenceSummary:
     last_at: float | None
     age_seconds: float | None
     counter: int | None
+    kind_breakdown: dict[str, int] | None = None
 
     def to_dict(self) -> dict[str, object]:
         """Render the summary as a dict for diagnostic embedding.
 
         Always returns a fresh dict (never the frozen internal mapping) so
         callers can merge it into other dicts without aliasing concerns.
+        The ``kind_breakdown`` key is omitted when ``None`` so existing
+        consumers that assert on the dict shape (and do not consult the
+        new field) continue to work unchanged.
         """
-        return {
+        result: dict[str, object] = {
             "channel": self.channel_name,
             "last_at": self.last_at,
             "age_seconds": self.age_seconds,
             "counter": self.counter,
         }
+        if self.kind_breakdown is not None:
+            result["kind_breakdown"] = dict(self.kind_breakdown)
+        return result
 
 
 @dataclass(frozen=True)

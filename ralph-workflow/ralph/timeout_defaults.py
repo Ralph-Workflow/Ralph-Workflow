@@ -46,6 +46,27 @@ POST_TOOL_RESULT_PROGRESSION_SECONDS: float | None = 120.0
 #: legacy stdout-only NO_OUTPUT_DEADLINE behavior.
 AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS: float = 30.0
 
+#: Default per-kind workspace file-change weights. Each value is
+#: BINARY: weight==0.0 means the change is dropped (does not defer
+#: the NO_OUTPUT_DEADLINE verdict); weight==1.0 means the change
+#: counts as full activity. Intermediate weights are rejected by
+#: the validator today and reserved for a future fractional-TTL
+#: feature.
+#:
+#: The default policy is conservative: only source-code changes
+#: count. Operators who relied on log-file activity to defer the
+#: verdict can opt in by overriding this dict (see
+#: ``GeneralConfig.agent_workspace_change_weights`` and the
+#: ``[general] agent_workspace_change_weights = {...}`` key in
+#: ``ralph-workflow.toml``).
+DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS: dict[str, float] = {
+    "source": 1.0,
+    "log": 0.0,
+    "cache": 0.0,
+    "artifact": 0.0,
+    "other": 0.0,
+}
+
 #: Default hard ceiling on cumulative WAITING_ON_CHILD time.
 MAX_WAITING_ON_CHILD_SECONDS: float = 1800.0
 

@@ -48,7 +48,7 @@ _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 @pytest.fixture(autouse=True)
 def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
 
 def _json_object(raw: str) -> dict[str, object]:
@@ -86,7 +86,7 @@ def _run_agy_transport_proxy_payload_check(
         yield "Task declared complete: session_id=test, summary=done, timestamp=1\n"
 
     monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_agy)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     agy_config_dir = fake_home / ".gemini" / "antigravity-cli"
     agy_config_dir.mkdir(parents=True)
     (agy_config_dir / "mcp_config.json").write_text(
@@ -183,7 +183,7 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(
@@ -464,7 +464,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -540,7 +540,7 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
         json.dumps(
@@ -642,7 +642,7 @@ def test_codex_strict_mode_only_exposes_ralph_server(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(
@@ -675,7 +675,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
 
-    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     seen_envs: dict[str, dict[str, str]] = {}
 
     class FakeProcess:
@@ -734,7 +734,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_claude)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("HOME", str(fake_home))
     list(
         invoke_agent(

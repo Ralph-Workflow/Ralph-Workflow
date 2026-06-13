@@ -45,7 +45,7 @@ _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
 @pytest.fixture(autouse=True)
 def _disable_workspace_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
 
 def _json_object(raw: str) -> dict[str, object]:
@@ -192,7 +192,7 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
 
     list(
@@ -481,7 +481,7 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
         json.dumps(
@@ -684,7 +684,7 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
@@ -757,7 +757,7 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
 
     list(
         invoke_agent(
@@ -894,7 +894,7 @@ def test_invoke_agent_preserves_existing_codex_home_state(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda _path: None)
+    monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.setenv("CODEX_HOME", str(source_home))
 
     list(

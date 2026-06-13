@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.process.child_liveness import AliveBy
 
 from .corroboration_snapshot import (
@@ -121,6 +122,12 @@ class IdleWatchdog:
     _last_subagent_progress_at: float | None = field(default=None, init=False)
     _workspace_event_count_internal: int = field(default=0, init=False)
     _last_workspace_event_at: float | None = field(default=None, init=False)
+    # Per-kind workspace event counter. The watchdog tracks how many
+    # file changes have been observed for each WorkspaceChangeKind
+    # (source / log / cache / artifact / other) so the post-mortem
+    # can see WHICH kinds were most active at the moment of a fire.
+    # The workspace_kind_counts property returns a defensive copy.
+    _workspace_kind_counts: dict[str, int] = field(default_factory=dict, init=False)
 
     def __init__(
         self,
@@ -152,6 +159,7 @@ class IdleWatchdog:
         self._last_subagent_progress_at = None
         self._workspace_event_count_internal = 0
         self._last_workspace_event_at = None
+        self._workspace_kind_counts = {}
         self._entry_corroboration: CorroborationSnapshot | None = None
         self._repetition_tracker = RepetitionTracker(
             clock,
@@ -322,7 +330,13 @@ class IdleWatchdog:
         self._subagent_progress_count += 1
         self._last_subagent_progress_at = timestamp
 
-    def record_workspace_event(self, now: float | None = None) -> None:
+    def record_workspace_event(
+        self,
+        now: float | None = None,
+        *,
+        kind: WorkspaceChangeKind = WorkspaceChangeKind.OTHER,
+        weight: float = 1.0,
+    ) -> None:
         """Record a workspace file-change activity signal (new channel).
 
         Increments the workspace channel counter and updates the per-channel
@@ -331,18 +345,52 @@ class IdleWatchdog:
         NO_OUTPUT_DEADLINE fire while this channel is fresher than the
         configured ``activity_evidence_ttl_seconds``.
 
+        When ``weight == 0.0`` the event is short-circuited (defense in
+        depth: the WorkspaceMonitor already drops weight-0 events before
+        invoking this recorder, but the watchdog enforces the contract
+        too so a misconfigured binding cannot accidentally record a
+        dropped event). When ``weight == 1.0`` the per-kind counter
+        ``_workspace_kind_counts[kind.value]`` is advanced so the
+        post-mortem diagnostic can show which kinds were most active.
+
         Args:
-            now: Optional monotonic timestamp override; tests use this to
-                drive FakeClock without time travel. Defaults to the
+            now: Optional monotonic timestamp override; tests use this
+                to drive FakeClock without time travel. Defaults to the
                 watchdog's injected clock.
+            kind: The ``WorkspaceChangeKind`` of the recorded event.
+                Used to advance the per-kind counter so the post-mortem
+                diagnostic can show ``{source: 10, log: 0, ...}`` at
+                the moment of a fire. Defaults to
+                ``WorkspaceChangeKind.OTHER`` (the legacy 0-arg binding
+                from the pre-fix production code).
+            weight: The binary weight of the recorded event. ``0.0``
+                means the change is dropped (no counter / no timestamp
+                update); ``1.0`` means the change counts as full
+                activity. Defaults to ``1.0`` for the legacy 0-arg
+                binding.
         """
+        if weight == 0.0:
+            return
         timestamp = now if now is not None else self._clock.monotonic()
         self._workspace_event_count_internal += 1
         self._last_workspace_event_at = timestamp
+        self._workspace_kind_counts[kind.value] = self._workspace_kind_counts.get(kind.value, 0) + 1
 
-    def last_evidence_summary(
-        self, now: float | None = None
-    ) -> tuple[ChannelEvidenceSummary, ...]:
+    @property
+    def workspace_kind_counts(self) -> dict[str, int]:
+        """Defensive copy of the per-kind workspace event counter.
+
+        Returns a fresh dict on every access so callers (the
+        post-mortem diagnostic, the operator UX) can mutate the
+        result without affecting the watchdog's internal state. The
+        keys are the five ``WorkspaceChangeKind`` string values
+        (``source``, ``log``, ``cache``, ``artifact``, ``other``);
+        kinds that have never been observed are absent from the
+        returned dict.
+        """
+        return dict(self._workspace_kind_counts)
+
+    def last_evidence_summary(self, now: float | None = None) -> tuple[ChannelEvidenceSummary, ...]:
         """Return a per-channel evidence summary at the given time.
 
         Always returns a 4-tuple in the fixed channel order
@@ -372,13 +420,39 @@ class IdleWatchdog:
                 age_seconds=stdout_age,
                 counter=None,
             ),
-            self._channel_summary("mcp_tool", self._last_mcp_tool_call_at,
-                                  self._mcp_tool_call_count, timestamp),
-            self._channel_summary("subagent", self._last_subagent_progress_at,
-                                  self._subagent_progress_count, timestamp),
-            self._channel_summary("workspace", self._last_workspace_event_at,
-                                  self._workspace_event_count_internal, timestamp),
+            self._channel_summary(
+                "mcp_tool", self._last_mcp_tool_call_at, self._mcp_tool_call_count, timestamp, None
+            ),
+            self._channel_summary(
+                "subagent",
+                self._last_subagent_progress_at,
+                self._subagent_progress_count,
+                timestamp,
+                None,
+            ),
+            self._channel_summary(
+                "workspace",
+                self._last_workspace_event_at,
+                self._workspace_event_count_internal,
+                timestamp,
+                self._workspace_kind_breakdown_for_summary(),
+            ),
         )
+
+    def _workspace_kind_breakdown_for_summary(self) -> dict[str, int] | None:
+        """Return the per-kind workspace counter snapshot for the summary.
+
+        Returns ``None`` when no workspace activity has been observed
+        yet (so the resulting ``ChannelEvidenceSummary.kind_breakdown``
+        is ``None`` and is omitted from ``to_dict()`` for
+        backward-compat with consumers that assert on the dict shape).
+        Returns a fresh defensive copy when at least one kind has
+        been observed (so the frozen dataclass invariant is preserved
+        and the watchdog's internal state is not exposed).
+        """
+        if not self._workspace_kind_counts:
+            return None
+        return dict(self._workspace_kind_counts)
 
     @staticmethod
     def _channel_summary(
@@ -386,6 +460,7 @@ class IdleWatchdog:
         last_at: float | None,
         counter: int,
         now: float,
+        kind_breakdown: dict[str, int] | None,
     ) -> ChannelEvidenceSummary:
         """Build a ChannelEvidenceSummary for a single non-stdout channel."""
         age: float | None = None if last_at is None else max(0.0, now - last_at)
@@ -395,6 +470,7 @@ class IdleWatchdog:
             last_at=last_at,
             age_seconds=age,
             counter=observed_counter,
+            kind_breakdown=kind_breakdown,
         )
 
     def _channel_evidence_active(self, now: float) -> bool:
@@ -558,14 +634,12 @@ class IdleWatchdog:
             ):
                 freshest_age = entry.age_seconds
                 active_channel = entry.channel_name
-        return (
-            {
-                "evidence_summary": flat,
-                "active_channel": active_channel,
-                "activity_evidence_ttl_seconds": ttl,
-            },
-            freshest_age,
-        )
+        diag: dict[str, object] = {
+            "evidence_summary": cast("list[object]", list(flat)),
+            "active_channel": active_channel,
+            "activity_evidence_ttl_seconds": ttl,
+        }
+        return (diag, freshest_age)
 
     def _emit(
         self,
@@ -700,11 +774,7 @@ class IdleWatchdog:
         """
         summary, freshest_age = self._build_evidence_summary_diag(now)
         active_channel_value = summary.get("active_channel", "none")
-        channel_label = (
-            active_channel_value
-            if isinstance(active_channel_value, str)
-            else "none"
-        )
+        channel_label = active_channel_value if isinstance(active_channel_value, str) else "none"
         # The 'age=' field is the age of the FRESHEST non-stdout channel
         # (i.e. the channel that is doing the deferral). When no channel
         # is fresh we fall back to idle_elapsed so the log always shows
@@ -712,14 +782,9 @@ class IdleWatchdog:
         # the log line still tells the operator why the verdict was
         # deferred (or, for 'none', that the deferral was driven by
         # some channel the helper did not enumerate).
-        age_for_log = (
-            round(freshest_age, 1)
-            if freshest_age is not None
-            else round(idle_elapsed, 1)
-        )
+        age_for_log = round(freshest_age, 1) if freshest_age is not None else round(idle_elapsed, 1)
         self._log.debug(
-            "idle watchdog: deferred via activity evidence channel={} age={}s"
-            " idle_elapsed={}s",
+            "idle watchdog: deferred via activity evidence channel={} age={}s idle_elapsed={}s",
             channel_label,
             age_for_log,
             round(idle_elapsed, 1),
@@ -782,11 +847,18 @@ class IdleWatchdog:
 
         idle_elapsed = now - self._last_activity
         self._last_fire_reason = WatchdogFireReason.NO_OUTPUT_DEADLINE
+        evidence_block, _freshest_age = self._build_evidence_summary_diag(now)
+        extra_payload: dict[str, object] = {
+            "evidence_summary": evidence_block["evidence_summary"],
+            "active_channel": evidence_block.get("active_channel", "none"),
+            "fire_reason": WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
+        }
         self._log.warning(
             "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
             WatchdogFireReason.NO_OUTPUT_DEADLINE,
             round(idle_elapsed, 1),
             round(self._cumulative_waiting_on_child_seconds, 1),
+            extra=extra_payload,
         )
         return WatchdogVerdict.FIRE
 
@@ -892,9 +964,7 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
-                diagnostic=cast(
-                    "dict[str, str | int | float | bool | list[object]]", diag
-                ),
+                diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
             )
             self._log.warning(
                 "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
@@ -923,9 +993,7 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
-                diagnostic=cast(
-                    "dict[str, str | int | float | bool | list[object]]", corr_diag_sf
-                ),
+                diagnostic=cast("dict[str, str | int | float | bool | list[object]]", corr_diag_sf),
             )
 
         assert self._last_waiting_status_at is not None
@@ -944,9 +1012,7 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
-                diagnostic=cast(
-                    "dict[str, str | int | float | bool | list[object]]", corr_diag_pr
-                ),
+                diagnostic=cast("dict[str, str | int | float | bool | list[object]]", corr_diag_pr),
             )
 
         return WatchdogVerdict.WAITING_ON_CHILD
@@ -961,11 +1027,18 @@ class IdleWatchdog:
         self._accumulate_waiting_run(now)
         if self._config.drain_window_seconds == 0.0:
             self._last_fire_reason = WatchdogFireReason.NO_OUTPUT_DEADLINE
+            evidence_block, _freshest_age = self._build_evidence_summary_diag(now)
+            extra_payload: dict[str, object] = {
+                "evidence_summary": evidence_block["evidence_summary"],
+                "active_channel": evidence_block.get("active_channel", "none"),
+                "fire_reason": WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
+            }
             self._log.warning(
                 "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
                 WatchdogFireReason.NO_OUTPUT_DEADLINE,
                 round(idle_elapsed, 1),
                 round(self._cumulative_waiting_on_child_seconds, 1),
+                extra=extra_payload,
             )
             return WatchdogVerdict.FIRE
         self._in_drain_window = True

@@ -13,6 +13,7 @@ from ralph.timeout_defaults import (
     CHILD_HEARTBEAT_TTL_SECONDS,
     CHILD_PROGRESS_TTL_SECONDS,
     CHILD_STALE_LABEL_TTL_SECONDS,
+    DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
     DESCENDANT_WAIT_POLL_SECONDS,
     DESCENDANT_WAIT_TIMEOUT_SECONDS,
     DRAIN_WINDOW_SECONDS,
@@ -251,6 +252,28 @@ class GeneralConfig(RalphBaseModel):
             " Must be >= 0."
         ),
     )
+    agent_workspace_change_weights: dict[str, float] = Field(
+        default_factory=lambda: dict(DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS),
+        description=(
+            "Per-kind workspace file-change weights. Each value is"
+            " BINARY: 0.0 drops the change (it does NOT defer the"
+            " NO_OUTPUT_DEADLINE verdict); 1.0 means full activity."
+            " The five kinds are 'source' (source code /"
+            " documentation), 'log' (*.log / *.tmp / *.bak / *.swp /"
+            " *~ / *.pyc / *.pyo), 'cache' (.git / __pycache__ /"
+            " .pytest_cache / .mypy_cache / .ruff_cache / node_modules"
+            " / .venv / .agent/tmp / .agent/raw / completion_seen_*.json),"
+            " 'artifact' (.agent/artifacts), and 'other' (anything that"
+            " does not match a specific rule). The default policy is"
+            " conservative: only 'source' is weighted 1.0; all other"
+            " kinds are weighted 0.0. Operators who relied on log-file"
+            " activity to defer the verdict can opt in by setting"
+            " ``agent_workspace_change_weights = { source = 1.0,"
+            " log = 1.0 }`` in the [general] section of"
+            " ralph-workflow.toml. See docs/agents/timeout-policy.md"
+            " for the full migration note and example."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_session_ceiling(self) -> Self:
@@ -312,7 +335,25 @@ class GeneralConfig(RalphBaseModel):
                 f" > {self.agent_idle_max_waiting_on_child_seconds})"
             )
             raise ValueError(msg)
+        self._validate_workspace_change_weights()
         return self
+
+    def _validate_workspace_change_weights(self) -> None:
+        allowed_keys = frozenset({"source", "log", "cache", "artifact", "other"})
+        allowed_values = frozenset({0.0, 1.0})
+        for key, value in self.agent_workspace_change_weights.items():
+            if key not in allowed_keys:
+                msg = (
+                    f"agent_workspace_change_weights[{key!r}] is not a valid"
+                    f" WorkspaceChangeKind; allowed: {sorted(allowed_keys)}"
+                )
+                raise ValueError(msg)
+            if value not in allowed_values:
+                msg = (
+                    f"agent_workspace_change_weights[{key!r}]={value!r}"
+                    f" is not a binary weight; allowed: {{0.0, 1.0}}"
+                )
+                raise ValueError(msg)
 
 
 __all__ = ["GeneralConfig", "GeneralWorkflowFlags"]

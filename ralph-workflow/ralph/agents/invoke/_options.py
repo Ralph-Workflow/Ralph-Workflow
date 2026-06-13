@@ -70,6 +70,7 @@ def build_invoke_options_from_config(
         repeated_error_window_count=general_config.agent_repeated_error_window_count,
         repeated_error_window_seconds=general_config.agent_repeated_error_window_seconds,
         activity_evidence_ttl_seconds=general_config.agent_idle_activity_evidence_ttl_seconds,
+        workspace_change_weights=general_config.agent_workspace_change_weights,
         child_progress_ttl_seconds=general_config.agent_child_progress_ttl_seconds,
         child_heartbeat_ttl_seconds=general_config.agent_child_heartbeat_ttl_seconds,
         child_stale_label_ttl_seconds=general_config.agent_child_stale_label_ttl_seconds,
@@ -173,6 +174,11 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.activity_evidence_ttl_seconds
             if opts.activity_evidence_ttl_seconds is not None
             else _base.activity_evidence_ttl_seconds
+        ),
+        workspace_change_weights=(
+            opts.workspace_change_weights
+            if opts.workspace_change_weights is not None
+            else _base.workspace_change_weights
         ),
     )
 

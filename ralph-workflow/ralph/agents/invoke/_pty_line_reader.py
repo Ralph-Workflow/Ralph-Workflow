@@ -78,6 +78,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
 
+    from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
     from ralph.agents.timeout_clock import Clock
 
@@ -633,7 +634,16 @@ class PtyLineReader:
         # binding is cleared in the finally block below so a stale
         # callback can never fire after the run ends.
         if self._monitor is not None:
-            self._monitor.set_on_event(watchdog.record_workspace_event)
+            # Forward (kind, weight) so the watchdog's per-kind
+            # counter receives the real classification; the
+            # 0-arg bound method form would always yield
+            # (OTHER, 1.0) and miss the AC #7 contract.
+            def _forward_event(
+                kind: WorkspaceChangeKind, weight: float
+            ) -> None:
+                watchdog.record_workspace_event(kind=kind, weight=weight)
+
+            self._monitor.set_on_event(_forward_event)
 
         # Register the watchdog's MCP activity recorder as the active sink
         # for the in-process Ralph MCP server so each tools/call invocation

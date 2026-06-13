@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from ralph.agents.idle_watchdog._workspace_change_kind import (
+    DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
+    WorkspaceChangeKind,
+)
 from ralph.timeout_defaults import (
     AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
     DESCENDANT_WAIT_POLL_SECONDS,
@@ -21,6 +25,11 @@ from ralph.timeout_defaults import (
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
+
+_VALID_WORKSPACE_CHANGE_WEIGHT_KEYS: frozenset[str] = frozenset(
+    {kind.value for kind in WorkspaceChangeKind}
+)
+_VALID_WORKSPACE_CHANGE_WEIGHT_VALUES: frozenset[float] = frozenset({0.0, 1.0})
 
 
 @dataclass(frozen=True)
@@ -126,9 +135,7 @@ class TimeoutPolicy:
     # 95th-percentile tool-result-to-output-line latency in
     # production while still detecting the wedge in ~120s rather
     # than waiting for the 300s default.
-    post_tool_result_progression_seconds: float | None = (
-        POST_TOOL_RESULT_PROGRESSION_SECONDS
-    )
+    post_tool_result_progression_seconds: float | None = POST_TOOL_RESULT_PROGRESSION_SECONDS
     # Repeated-error circuit breaker thresholds. The watchdog fires
     # REPEATED_ERROR_LOOP when an agent re-emits the same error fingerprint
     # either ``repeated_error_consecutive_threshold`` times in a row with no
@@ -152,8 +159,19 @@ class TimeoutPolicy:
     # to None OR 0.0 disables the activity-aware verdict and restores the
     # legacy stdout-only NO_OUTPUT_DEADLINE behavior. Must be >= 0 when
     # not None.
-    activity_evidence_ttl_seconds: float | None = (
-        AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS
+    activity_evidence_ttl_seconds: float | None = AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS
+    # Per-kind workspace file-change weights. Each value is BINARY:
+    # weight==0.0 means the change is dropped (does not defer the
+    # NO_OUTPUT_DEADLINE verdict); weight==1.0 means the change
+    # counts as full activity. Intermediate values are rejected
+    # by ``_validate_workspace_change_weights``; the binary-only
+    # semantics are reserved for a future fractional-TTL feature.
+    # The default policy is conservative: only source-code
+    # changes count. Operators can opt kinds in (e.g.
+    # ``{"source": 1.0, "log": 1.0}``) to restore the legacy
+    # ``every file change counts`` behavior on a per-kind basis.
+    workspace_change_weights: dict[str, float] | None = field(
+        default_factory=lambda: dict(DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS)
     )
 
     def __post_init__(self) -> None:
@@ -163,6 +181,7 @@ class TimeoutPolicy:
         self._validate_post_tool_result_progression()
         self._validate_repeated_error_fields()
         self._validate_activity_evidence_ttl()
+        self._validate_workspace_change_weights()
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
@@ -244,10 +263,7 @@ class TimeoutPolicy:
         ):
             msg = "repeated_error_consecutive_threshold must be positive when set"
             raise ValueError(msg)
-        if (
-            self.repeated_error_window_count is not None
-            and self.repeated_error_window_count <= 0
-        ):
+        if self.repeated_error_window_count is not None and self.repeated_error_window_count <= 0:
             msg = "repeated_error_window_count must be positive when set"
             raise ValueError(msg)
         if (
@@ -263,3 +279,21 @@ class TimeoutPolicy:
         if self.activity_evidence_ttl_seconds < 0:
             msg = "activity_evidence_ttl_seconds must be >= 0 when set"
             raise ValueError(msg)
+
+    def _validate_workspace_change_weights(self) -> None:
+        if self.workspace_change_weights is None:
+            return
+        for key, value in self.workspace_change_weights.items():
+            if key not in _VALID_WORKSPACE_CHANGE_WEIGHT_KEYS:
+                msg = (
+                    f"workspace_change_weights[{key!r}] is not a valid"
+                    f" WorkspaceChangeKind value; allowed:"
+                    f" {sorted(_VALID_WORKSPACE_CHANGE_WEIGHT_KEYS)}"
+                )
+                raise ValueError(msg)
+            if value not in _VALID_WORKSPACE_CHANGE_WEIGHT_VALUES:
+                msg = (
+                    f"workspace_change_weights[{key!r}]={value!r}"
+                    f" is not a binary weight; allowed: {{0.0, 1.0}}"
+                )
+                raise ValueError(msg)
