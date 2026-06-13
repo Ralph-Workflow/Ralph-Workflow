@@ -413,7 +413,7 @@ def test_early_escalation_poll_kills_when_no_cpu_progress_within_budget(
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert manager.kill_process_group_calls == [(_PGID, signal.SIGKILL)]
 
 
@@ -438,7 +438,7 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert manager.kill_process_group_calls == []
 
 
@@ -466,7 +466,7 @@ def test_early_escalation_poll_exits_when_process_dies(monkeypatch: pytest.Monke
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert manager.kill_process_group_calls == []
 
 
@@ -688,7 +688,7 @@ def test_dispatcher_early_escalation_uses_injected_clock_for_deadline() -> None:
         clock=cast("Callable[[], float]", clock.now),
         sleep=cast("Callable[[float], None]", _fake_sleep),
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert sleep_calls, "sleep must be called by run_early_escalation_poll"
     assert sleep_calls[0] == _POLL_INTERVAL
 
@@ -763,7 +763,7 @@ def test_dispatcher_early_escalation_poll_sleeps_before_matched_check() -> None:
         clock=cast("Callable[[], float]", clock.now),
         sleep=cast("Callable[[float], None]", _fake_sleep),
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     sleep_indices = [i for i, e in enumerate(event_order) if e.startswith("sleep(")]
     list_indices = [i for i, e in enumerate(event_order) if e == "list_active"]
     assert sleep_indices and list_indices

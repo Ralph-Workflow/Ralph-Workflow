@@ -25,6 +25,7 @@ from __future__ import annotations
 import importlib
 import os
 import signal
+import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -72,6 +73,37 @@ if not (
         "SIGINT_PROGRESS_POLL_INTERVAL_SECONDS must be in (0,"
         f" {INTERRUPT_HARD_KILL_BUDGET_SECONDS}) seconds"
         f" (got {SIGINT_PROGRESS_POLL_INTERVAL_SECONDS})"
+    )
+
+# Tighter exact-value pin: the canonical values are 1.5 seconds
+# for INTERRUPT_HARD_KILL_BUDGET_SECONDS and 0.2 seconds for
+# SIGINT_PROGRESS_POLL_INTERVAL_SECONDS. The range checks above
+# accept any value in the valid range; this exact pin ensures a
+# future regression that picks a different in-range value is
+# caught at import time (immune to ``python -O`` because the
+# check uses ``if``/``raise`` not ``assert``).
+_INTERRUPT_HARD_KILL_BUDGET_REQUIRED: float = 1.5
+_FLOAT_EPSILON: float = 1e-9
+if (
+    not abs(
+        INTERRUPT_HARD_KILL_BUDGET_SECONDS - _INTERRUPT_HARD_KILL_BUDGET_REQUIRED
+    )
+    < _FLOAT_EPSILON
+):
+    raise RuntimeError(
+        f"INTERRUPT_HARD_KILL_BUDGET_SECONDS must be "
+        f"{_INTERRUPT_HARD_KILL_BUDGET_REQUIRED} "
+        f"(got {INTERRUPT_HARD_KILL_BUDGET_SECONDS})"
+    )
+
+_SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED: float = 0.2
+if not abs(
+    SIGINT_PROGRESS_POLL_INTERVAL_SECONDS - _SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED
+) < _FLOAT_EPSILON:
+    raise RuntimeError(
+        f"SIGINT_PROGRESS_POLL_INTERVAL_SECONDS must be "
+        f"{_SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED} "
+        f"(got {SIGINT_PROGRESS_POLL_INTERVAL_SECONDS})"
     )
 
 
@@ -308,7 +340,6 @@ class InterruptDispatcher:
 
     def run_early_escalation_poll(
         self,
-        grace_period_s: float,
         *,
         progress_poll_interval_s: float | None = None,
         max_wait_s: float | None = None,
@@ -342,7 +373,6 @@ class InterruptDispatcher:
                 continue
             _dispatch_kill(self.process_manager, matched)
             return
-        del grace_period_s
 
 
 def dispatcher_from_process_manager(
@@ -437,6 +467,52 @@ def handle_keyboard_interrupt_at_cli(
     return exit_code
 
 
+def run_shutdown_block(
+    dispatcher: InterruptDispatcher,
+    *,
+    grace_period_s: float,
+    join_timeout_s: float = INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1,
+    error_log_message: str = "Interrupt shutdown block raised",
+) -> None:
+    """Canonical seam for the first-SIGINT shutdown block.
+
+    Both the SYNC ``handle_keyboard_interrupt`` entry point
+    (``ralph.pipeline._runner_interrupt._begin_interrupt``) and the
+    asyncio ``install_signal_handlers`` entry point
+    (``ralph.interrupt.asyncio_bridge._shutdown_block``) route
+    through this helper so the bodies cannot drift. The 7th
+    architectural seam is ``error_log_message``: the SYNC path
+    passes ``"Interrupt controller raised during KeyboardInterrupt"``
+    (preserved for bit-for-bit production log output) and the
+    asyncio path passes the existing
+    ``"Interrupt shutdown block raised"`` (preserved for the
+    same reason).
+
+    The body is byte-for-byte equivalent to the prior inline
+    bodies. The only behavioral deltas are:
+
+    * ``error_log_message`` parameter (the only difference between
+      the two paths).
+    * ``join_timeout_s`` is a named parameter (default
+      ``INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1``) so the bound is
+      a single source of truth rather than a duplicated literal.
+
+    The helper is added to ``__all__`` so ``from
+    ralph.interrupt.dispatcher import *`` exposes it. See
+    ADR-0001 D7 and D8.
+    """
+    try:
+        dispatcher.begin_interrupt(grace_period_s=grace_period_s)
+        poll_thread = threading.Thread(
+            target=dispatcher.run_early_escalation_poll,
+            daemon=True,
+        )
+        poll_thread.start()
+        poll_thread.join(timeout=join_timeout_s)
+    except Exception:
+        logger.warning(error_log_message)
+
+
 __all__ = [
     "INTERRUPT_HARD_KILL_BUDGET_SECONDS",
     "SIGINT_PROGRESS_POLL_INTERVAL_SECONDS",
@@ -444,4 +520,5 @@ __all__ = [
     "dispatcher_from_process_manager",
     "handle_keyboard_interrupt_at_cli",
     "install_force_kill_handler",
+    "run_shutdown_block",
 ]

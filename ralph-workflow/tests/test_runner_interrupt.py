@@ -63,7 +63,6 @@ import pytest
 from loguru import logger
 
 from ralph.interrupt.dispatcher import (
-    INTERRUPT_HARD_KILL_BUDGET_SECONDS,
     InterruptDispatcher,
     dispatcher_from_process_manager,
 )
@@ -239,14 +238,12 @@ class _RecordingDispatcher:
 
     def run_early_escalation_poll(
         self,
-        grace_period_s: float,
         *,
         progress_poll_interval_s: float | None = None,
         max_wait_s: float | None = None,
     ) -> None:
-        self.poll_calls.append((grace_period_s,))
+        self.poll_calls.append(())
         self._real.run_early_escalation_poll(
-            grace_period_s,
             progress_poll_interval_s=progress_poll_interval_s,
             max_wait_s=max_wait_s,
         )
@@ -386,7 +383,7 @@ def test_handle_keyboard_interrupt_runs_early_escalation_poll_after_begin_interr
         ("invoke:", manager.policy.default_grace_period_s)
     ], manager.shutdown_all_for_label_calls
     assert len(recorder.begin_calls) == 1, recorder.begin_calls
-    assert recorder.poll_calls == [(INTERRUPT_HARD_KILL_BUDGET_SECONDS,)], recorder.poll_calls
+    assert recorder.poll_calls == [()], recorder.poll_calls
 
 
 def test_handle_keyboard_interrupt_second_sigint_force_exit_uses_active_pgids() -> None:
@@ -500,6 +497,198 @@ def test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher() ->
     assert not any(
         "Interrupt controller raised" in str(record) for record in sink
     ), sink
+
+
+class _SlowBeginDispatcher:
+    """Dispatcher wrapper that blocks ``begin_interrupt`` on a
+    ``threading.Event`` so the test can interleave a second SIGINT
+    while the first-SIGINT body is still in flight.
+
+    Mirrors the long-running-body contract the user reports as
+    'broken at times... when the task is long running': the
+    dispatcher's ``begin_interrupt`` can take a long time on a
+    long-running agent (grace_period_s plus block=True), and the
+    user hits Ctrl+C a second time while the body is still
+    mid-flight. This wrapper blocks the body so the test can
+    reliably drive the second-SIGINT-during-first-body scenario
+    without depending on real wall-clock waits.
+
+    The wrapper delegates ``force_exit`` and
+    ``run_early_escalation_poll`` to the real dispatcher (so the
+    production ``_force_exit_called`` idempotency guard is
+    exercised) and overrides ``begin_interrupt`` to wait on
+    ``_begin_done`` before delegating. The test releases
+    ``_begin_done`` after the second-SIGINT handler has fired.
+    """
+
+    def __init__(self, real: InterruptDispatcher, begin_done: threading.Event) -> None:
+        self._real = real
+        self._begin_done = begin_done
+
+    def begin_interrupt(
+        self,
+        grace_period_s: float | None = None,
+        *,
+        block: bool = False,
+    ) -> None:
+        self._begin_done.wait(timeout=5.0)
+        self._real.begin_interrupt(grace_period_s=grace_period_s, block=block)
+
+    def run_early_escalation_poll(self, *args: object, **kwargs: object) -> None:
+        # The entry-point call site is updated in step 2 to drop
+        # the positional ``grace_period_s``; this wrapper accepts
+        # both the old and new call shapes so the test continues
+        # to pin the contract across the API transition.
+        self._real.run_early_escalation_poll(*args, **kwargs)
+
+    def force_exit(self, *, bridge_pgids: object = ()) -> None:
+        self._real.force_exit(bridge_pgids=cast("list[int]", bridge_pgids))
+
+
+def test_second_sigint_during_first_sigint_interrupt_thread() -> None:
+    """Pins the long-running-body contract for the SYNC entry point.
+
+    SYNC-path equivalent of
+    ``test_second_sigint_during_first_sigint_executor_body`` in
+    ``tests/test_asyncio_bridge_install_signal_handlers.py``. The
+    asyncio test pins the second-SIGINT-during-first-SIGINT-executor-body
+    contract for the async path; this test pins the same contract
+    for the SYNC ``handle_keyboard_interrupt`` entry point, which
+    is the seam a real Ctrl+C reaches inside the pipeline loop on
+    unattended runs (the user's reported scenario).
+
+    Contract: when a second SIGINT arrives while the first SIGINT's
+    interrupt thread is still mid-flight (its ``begin_interrupt``
+    body is still executing, blocked on a long-running agent's
+    graceful shutdown), ``force_exit`` is invoked exactly once, and
+    the interrupt thread's later completion does NOT call
+    ``hard_exit`` a second time. The ``_force_exit_called``
+    idempotency guard fires correctly across the body delay.
+
+    Mechanism (mirrors the AC-01 long-running-body test pattern in
+    the async file but for the SYNC entry point):
+
+    1. Build a real factory-built ``InterruptDispatcher`` via
+       ``_build_dispatcher(manager, hard_exit=hard_exit)`` with a
+       recording ``hard_exit`` so ``os._exit(130)`` is NOT invoked
+       by the test. Add an active record so the second-SIGINT path
+       routes through the real ``force_exit`` chain.
+    2. Wrap the real dispatcher in ``_SlowBeginDispatcher`` so
+       ``begin_interrupt`` blocks on ``_begin_done``. The wrapper
+       delegates ``force_exit`` to the real dispatcher so the
+       production ``_force_exit_called`` guard is exercised.
+    3. Use a custom signal_setter that records the call AND
+       signals a ``threading.Event`` when the force-kill handler
+       is installed, so the test can deterministically wait
+       without busy-waiting or ``time.sleep``.
+    4. Start ``handle_keyboard_interrupt`` in a background
+       ``threading.Thread`` with ``poll_interval_s=0.001`` so the
+       entry-point busy-wait exits in <1ms. Wait for the
+       force-kill handler to be installed via the event (1.0s
+       timeout).
+    5. Invoke the installed force-kill handler manually
+       (``set_calls[0][1](signal.SIGINT, None)``) to simulate the
+       second SIGINT arriving while ``begin_interrupt`` is still
+       blocked. Assert ``exit_calls == [(130,)]`` (one hard_exit
+       call) and that the dispatcher's ``_force_exit_called`` flag
+       is ``True``.
+    6. Release ``_begin_done.set()``. Join the entry-point thread
+       with a 2.0s timeout. Assert the thread is no longer alive
+       (the interrupt thread completed normally and the
+       main-thread busy-wait exited).
+    7. Assert ``exit_calls == [(130,)]`` (still exactly one — the
+       interrupt thread's eventual completion must NOT trigger a
+       second ``force_exit``).
+    8. As an explicit idempotency check, call the real
+       dispatcher's ``force_exit`` directly one more time and
+       assert ``exit_calls == [(130,)]`` (the ``_force_exit_called``
+       guard fires).
+
+    Wall-clock: < 200ms (the test does NOT use ``time.sleep`` and
+    uses the dispatcher's ``poll_interval_s=0.001`` override for
+    the entry-point busy-wait). See ADR-0001 D7.
+    """
+    manager = FakeProcessManager()
+    manager.add_active(pid=101, pgid=9999, label="invoke:fake")
+    exit_calls: list[tuple[int, ...]] = []
+    real_dispatcher = _build_dispatcher(
+        manager,
+        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+    )
+    begin_done = threading.Event()
+    slow_dispatcher = _SlowBeginDispatcher(real_dispatcher, begin_done)
+    set_calls: list[tuple[int, object]] = []
+
+    def _previous_handler(_signum: int, _frame: object) -> None:
+        return None
+
+    previous_handler: object = _previous_handler
+    handler_installed = threading.Event()
+
+    def _getter(_signum: int) -> object:
+        return previous_handler
+
+    def _setter(signum: int, handler: object) -> object:
+        set_calls.append((signum, handler))
+        if signum == signal.SIGINT and len(set_calls) == 1:
+            handler_installed.set()
+        return handler
+
+    def _entry_point() -> None:
+        handle_keyboard_interrupt(
+            dispatcher=cast("InterruptDispatcher", slow_dispatcher),
+            process_manager=cast("object", manager),
+            signal_getter=cast("Callable[[int], object]", _getter),
+            signal_setter=cast("Callable[[int, object], object]", _setter),
+            poll_interval_s=_POLL_INTERVAL,
+        )
+
+    thread = threading.Thread(target=_entry_point, daemon=True)
+    thread.start()
+    try:
+        # Wait for the force-kill handler to be installed.
+        assert handler_installed.wait(timeout=1.0), (
+            "force-kill handler was not installed within 1.0s; "
+            "set_calls did not grow to len==1"
+        )
+        # The dispatcher's begin_interrupt is now blocked on
+        # _begin_done. Invoke the installed force-kill handler
+        # manually to simulate the second SIGINT arriving while
+        # the first-SIGINT body is mid-flight.
+        set_calls[0][1](signal.SIGINT, None)
+        assert exit_calls == [(130,)], (
+            f"second SIGINT should call hard_exit(130) exactly once; "
+            f"got {exit_calls}"
+        )
+        assert getattr(real_dispatcher, "_force_exit_called", None) is True, (
+            "real dispatcher's _force_exit_called guard must be set "
+            "synchronously by the second-SIGINT handler"
+        )
+    finally:
+        # Always release the slow dispatcher so the test does not
+        # hang on a failure.
+        begin_done.set()
+        thread.join(timeout=2.0)
+    assert not thread.is_alive(), (
+        "entry-point thread must complete within 2.0s of releasing "
+        "_begin_done; the interrupt thread's eventual completion "
+        "must NOT hang the main thread"
+    )
+    # The interrupt thread's eventual completion must NOT trigger
+    # a second force_exit. exit_calls is still exactly one entry.
+    assert exit_calls == [(130,)], (
+        f"interrupt thread's eventual completion must NOT call "
+        f"hard_exit a second time; got {exit_calls}"
+    )
+    # Explicit idempotency check: invoking force_exit on the real
+    # dispatcher directly one more time after the body completed
+    # must NOT add a second entry to exit_calls. The
+    # _force_exit_called guard fires correctly.
+    real_dispatcher.force_exit(bridge_pgids=[9999])
+    assert exit_calls == [(130,)], (
+        f"_force_exit_called guard must prevent a second hard_exit "
+        f"call; got {exit_calls}"
+    )
 
 
 if __name__ == "__main__":

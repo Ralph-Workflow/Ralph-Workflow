@@ -244,6 +244,116 @@ Exception` clause with the inline policy-source comment).
 
 Test pin: `tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher`
 
+### D7. Long-running-body contract for the SYNC entry point
+
+The user's reported scenario is "broken at times... when the task is
+long running". A long-running agent's `begin_interrupt` body may take
+many seconds to return (the `grace_period_s` plus the
+`_wait_for_list_active_empty` block). When the user hits `Ctrl+C` a
+second time while the first-SIGINT body is still in flight, the
+contract is:
+
+1. The second-SIGINT handler synchronously escalates via
+   `dispatcher.force_exit(bridge_pgids=...)`. The dispatcher's
+   `_force_exit_called` flag is set synchronously by the
+   `force_exit` body (before the `hard_exit` callable runs), so
+   any subsequent `force_exit` call is a no-op.
+2. The first-SIGINT body, when it eventually completes, must NOT
+   call `force_exit` a second time. The body's eventual
+   completion is the entry point's `_begin_interrupt` returning
+   normally (the `try/except Exception` block logged the recovery
+   warning, if any, and the thread set `interrupt_done`). The
+   dispatcher's `force_exit` was already invoked by the second
+   SIGINT; the `_force_exit_called` guard fires on any subsequent
+   call from any path (the body, the early-escalation poll, or
+   an explicit second invocation by the test).
+3. The `_force_exit_called` idempotency guard is the canonical
+   surface that closes the double-invocation gap. Without it,
+   the second-SIGINT force-exit AND the body's eventual
+   escalation would each invoke `hard_exit(130)`, terminating
+   the process twice (or re-entering the SIGINT handler with a
+   second `os._exit` that defeats the cleanup the first one
+   already did).
+
+The contract is pinned by the SYNC-path black-box test
+`tests/test_runner_interrupt.py::test_second_sigint_during_first_sigint_interrupt_thread`,
+which uses a `_SlowBeginDispatcher` wrapper to block the
+`begin_interrupt` body on a `threading.Event` so the test can
+interleave the second SIGINT with the in-flight body without
+depending on real wall-clock waits. The test asserts:
+
+* `force_exit` is invoked exactly once (the second-SIGINT
+  handler is the only caller).
+* The dispatcher's `_force_exit_called` flag is set to `True`
+  synchronously by the second-SIGINT handler.
+* The interrupt thread's eventual completion does NOT call
+  `hard_exit` a second time.
+* An explicit `dispatcher.force_exit(bridge_pgids=[9999])`
+  after the body completed does NOT add a second `hard_exit`
+  call (the idempotency guard fires).
+
+The test wall-clock is < 200ms; the dispatcher's
+`poll_interval_s=0.001` override keeps the entry-point busy-wait
+exiting in <1ms per cycle. The test does NOT use `time.sleep`
+and does NOT depend on real subprocesses, real signals, or real
+wall-clock waits.
+
+Reference: `tests/test_runner_interrupt.py::test_second_sigint_during_first_sigint_interrupt_thread`
+(the new test pin) and
+`ralph/interrupt/dispatcher.py:281-303` (the `force_exit` method
+with the `_force_exit_called` idempotency guard).
+
+The corresponding async-path test pin
+(`tests/test_asyncio_bridge_install_signal_handlers.py::test_second_sigint_during_first_sigint_executor_body`)
+covers the same contract for the asyncio entry point. The two
+tests together close the long-running-body contract for both
+production paths.
+
+### D8. `run_shutdown_block` as the canonical shutdown-block seam
+
+The first-SIGINT shutdown block — `begin_interrupt` plus the
+early-escalation poll in a daemon thread, plus a
+`threading.Thread.join` with a bounded timeout — is
+byte-for-byte equivalent in two places:
+
+* `ralph/pipeline/_runner_interrupt.py:_begin_interrupt` (the
+  SYNC entry point).
+* `ralph/interrupt/asyncio_bridge.py:_shutdown_block` (the
+  asyncio entry point).
+
+The two call sites were duplicated and could drift. A new
+module-level helper `run_shutdown_block` in
+`ralph/interrupt/dispatcher.py` is the canonical seam; both
+call sites route through it. The body is byte-for-byte
+equivalent to the prior inline bodies. The 7th architectural
+seam is `error_log_message`:
+
+* The SYNC path passes
+  `"Interrupt controller raised during KeyboardInterrupt"`
+  (preserved for bit-for-bit production log output).
+* The asyncio path passes `"Interrupt shutdown block raised"`
+  (preserved for the same reason).
+
+No other difference exists between the two paths. The helper
+also extracts the `join_timeout_s` bound (default
+`INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1`) into a single
+named parameter so the bound is a single source of truth
+rather than a duplicated literal at the two call sites.
+
+Reference: `ralph/interrupt/dispatcher.py:run_shutdown_block`
+(the canonical seam), `ralph/pipeline/_runner_interrupt.py:_begin_interrupt`
+(the SYNC call site), and `ralph/interrupt/asyncio_bridge.py:_shutdown_block`
+(the asyncio call site).
+
+The helper is added to `__all__` so `from
+ralph.interrupt.dispatcher import *` exposes it. The existing
+black-box tests in `tests/test_runner_interrupt.py` and
+`tests/test_asyncio_bridge_install_signal_handlers.py` continue
+to pass against the helper because they invoke the recorded
+`begin_interrupt` + `run_early_escalation_poll` calls (the
+helper's body) and assert on the recorded call shape, not on
+the call site.
+
 ## Consequences
 
 The four decisions above produce the following durable rules for
@@ -320,3 +430,34 @@ bridge path (e.g. for a new event loop) MUST follow them.
     recovered. The recovery branch's `"Interrupt controller raised
     during KeyboardInterrupt"` warning fires only for `Exception`
     subclasses (non-fatal dispatcher failures).
+
+5c. **Long-running-body idempotency (D7 + D8).** The sync and async
+    paths both route through `run_shutdown_block` (D8); the
+    second-SIGINT force-kill handler is the same code in both paths
+    (the installed `force_kill_handler` callable from
+    `install_force_kill_handler`); the interrupt thread's eventual
+    completion cannot trigger a second `force_exit` because the
+    dispatcher's `_force_exit_called` flag is set synchronously by
+    the second handler (D7). A future contributor who adds a third
+    bridge path MUST route through `run_shutdown_block` and MUST
+    rely on the `_force_exit_called` guard for double-invocation
+    safety; bypassing either breaks the long-running-body contract
+    pinned by the SYNC and async test pins.
+
+5d. **Import-time invariant pin.** `INTERRUPT_EXIT_CODE = 130`,
+    `INTERRUPT_HARD_KILL_BUDGET_SECONDS = 1.5`, and
+    `SIGINT_PROGRESS_POLL_INTERVAL_SECONDS = 0.2` are pinned by
+    `if`/`raise RuntimeError` invariants in
+    `ralph/interrupt/controller.py` and
+    `ralph/interrupt/dispatcher.py` (immune to `python -O`). A future
+    change that picks a different in-range value (the existing
+    range checks at the top of `dispatcher.py` accept any value in
+    the valid range) is caught at import time, so the change is
+    noticed by CI before the production code can run with the
+    wrong budget. The public-surface tests in
+    `tests/test_interrupt_constants.py` re-derive the constants
+    from both import paths and assert the dispatcher's
+    `force_exit` references the `INTERRUPT_EXIT_CODE` symbol
+    (not a hardcoded literal) and that `run_early_escalation_poll`
+    uses the dataclass field `self.hard_kill_budget_s` (not a
+    module-level constant).

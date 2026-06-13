@@ -35,16 +35,15 @@ handler. The teardown is safe to invoke twice.
 from __future__ import annotations
 
 import signal
-import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.interrupt.dispatcher import (
-    INTERRUPT_HARD_KILL_BUDGET_SECONDS,
     InterruptDispatcher,
     dispatcher_from_process_manager,
+    run_shutdown_block,
 )
 from ralph.process.manager import get_process_manager
 
@@ -119,19 +118,11 @@ def install_signal_handlers(
         active_dispatcher = wrapped
 
     def _shutdown_block() -> None:
-        try:
-            active_dispatcher.begin_interrupt(
-                grace_period_s=pm.policy.default_grace_period_s,
-            )
-            pm_thread = threading.Thread(
-                target=active_dispatcher.run_early_escalation_poll,
-                args=(INTERRUPT_HARD_KILL_BUDGET_SECONDS,),
-                daemon=True,
-            )
-            pm_thread.start()
-            pm_thread.join(timeout=INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1)
-        except Exception:
-            logger.warning("Interrupt shutdown block raised")
+        run_shutdown_block(
+            active_dispatcher,
+            grace_period_s=pm.policy.default_grace_period_s,
+            error_log_message="Interrupt shutdown block raised",
+        )
 
     def _first_sigint() -> None:
         bridge._interrupt_count += 1

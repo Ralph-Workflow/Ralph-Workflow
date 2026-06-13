@@ -11,9 +11,9 @@ from loguru import logger
 
 from ralph.interrupt.controller import install_force_kill_handler
 from ralph.interrupt.dispatcher import (
-    INTERRUPT_HARD_KILL_BUDGET_SECONDS,
     InterruptDispatcher,
     dispatcher_from_process_manager,
+    run_shutdown_block,
 )
 from ralph.process.manager import get_process_manager
 
@@ -90,16 +90,11 @@ def handle_keyboard_interrupt(
 
     def _begin_interrupt() -> None:
         try:
-            dispatcher.begin_interrupt(
+            run_shutdown_block(
+                dispatcher,
                 grace_period_s=resolved_pm.policy.default_grace_period_s,
+                error_log_message="Interrupt controller raised during KeyboardInterrupt",
             )
-            poll_thread = threading.Thread(
-                target=dispatcher.run_early_escalation_poll,
-                args=(INTERRUPT_HARD_KILL_BUDGET_SECONDS,),
-                daemon=True,
-            )
-            poll_thread.start()
-            poll_thread.join(timeout=INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1)
         except Exception as exc:
             # Exception not BaseException: KeyboardInterrupt and SystemExit
             # must propagate. See AGENTS.md and ADR-0001 D6.

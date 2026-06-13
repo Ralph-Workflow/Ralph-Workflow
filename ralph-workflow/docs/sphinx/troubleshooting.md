@@ -345,10 +345,16 @@ first-SIGINT executor body is still in flight, and (2) slow
 `begin_interrupt` body that takes longer than the grace period to
 return — are pinned by black-box tests in
 `tests/test_asyncio_bridge_install_signal_handlers.py` and
-`tests/test_interrupt_dispatcher.py`. The full architectural
+`tests/test_interrupt_dispatcher.py`. The SYNC-path equivalent
+(`tests/test_runner_interrupt.py::test_second_sigint_during_first_sigint_interrupt_thread`)
+pins the same contract for the `handle_keyboard_interrupt` entry
+point that a real Ctrl+C reaches inside the pipeline loop on
+unattended runs. The full architectural
 contract (controller / dispatcher split, clock + sleep seams,
-PGID routing, Strategy A propagation) is documented in
-[`adr-0001-interrupt-architecture`](../../architecture/adr-0001-interrupt-architecture.md).
+PGID routing, Strategy A propagation, long-running-body
+idempotency, `run_shutdown_block` seam) is documented in
+[`adr-0001-interrupt-architecture`](../../architecture/adr-0001-interrupt-architecture.md)
+sections D1–D8.
 
 ### Entry-point testability — the `handle_keyboard_interrupt` seams
 
@@ -386,6 +392,16 @@ first-SIGINT contract, the second-SIGINT contract, and the
 `run_loop._handle_keyboard_interrupt` wrapper. See
 [`adr-0001-interrupt-architecture`](../../architecture/adr-0001-interrupt-architecture.md)
 D5 and D6.
+
+Both the SYNC entry point (`handle_keyboard_interrupt`) and the
+asyncio entry point (`install_signal_handlers`) route through the
+shared `ralph.interrupt.dispatcher.run_shutdown_block` helper, so
+the first-SIGINT shutdown block (begin_interrupt + early-escalation
+poll in a daemon thread + bounded join) cannot drift between the
+two paths. The 7th architectural seam — `error_log_message` — is
+the only delta between them: the SYNC path passes
+`"Interrupt controller raised during KeyboardInterrupt"` and the
+asyncio path passes `"Interrupt shutdown block raised"`.
 
 ## Session-resume flag drift
 

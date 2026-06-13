@@ -33,6 +33,12 @@ _DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
 _DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
 
 INTERRUPT_EXIT_CODE = 130
+_INTERRUPT_EXIT_CODE_REQUIRED: int = 130
+if INTERRUPT_EXIT_CODE != _INTERRUPT_EXIT_CODE_REQUIRED:
+    raise RuntimeError(
+        f"INTERRUPT_EXIT_CODE must be {_INTERRUPT_EXIT_CODE_REQUIRED} "
+        f"(got {INTERRUPT_EXIT_CODE})"
+    )
 
 
 @dataclass(frozen=True)
