@@ -53,6 +53,7 @@
 # agent_waiting_status_interval_seconds = 30.0      # periodic status emission cadence while WAITING_ON_CHILD (>0)
 # agent_suspect_waiting_on_child_seconds = 600.0    # suspicion threshold; emits a warning but does not stop the run (<max_waiting_on_child_seconds)
 # agent_idle_no_progress_waiting_on_child_seconds = 600.0  # no-progress ceiling; fires when child alive but not making progress (<=max_waiting_on_child_seconds)
+# agent_idle_activity_evidence_ttl_seconds = 30.0   # per-channel activity TTL; defers NO_OUTPUT_DEADLINE while MCP tool calls, subagent work, or workspace events are fresher than this TTL. Set to 0.0 to disable and restore legacy stdout-only behavior. (>=0)
 
 # [general.provider_fallback] — Provider/model fallbacks keyed by agent name
 # Uncomment and list agents as keys; each value is an ordered list of fallback models/providers

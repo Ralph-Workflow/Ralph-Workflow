@@ -140,3 +140,39 @@ def test_no_progress_ceiling_propagates_explicit_value() -> None:
     policy = policy_from_options(opts)
 
     assert policy.max_waiting_on_child_no_progress_seconds == _CUSTOM_NO_PROGRESS_CEILING
+
+
+_CUSTOM_ACTIVITY_TTL = 45.0
+
+
+def test_activity_evidence_ttl_propagates_explicit_value() -> None:
+    """Explicit activity_evidence_ttl_seconds reaches TimeoutPolicy via InvokeOptions."""
+    opts = InvokeOptions(
+        idle_timeout_seconds=_IDLE_TIMEOUT,
+        activity_evidence_ttl_seconds=_CUSTOM_ACTIVITY_TTL,
+    )
+    policy = policy_from_options(opts)
+
+    assert policy.activity_evidence_ttl_seconds == _CUSTOM_ACTIVITY_TTL
+
+
+def test_activity_evidence_ttl_uses_default_when_not_set() -> None:
+    """When activity_evidence_ttl_seconds is not set, TimeoutPolicy uses the default 30.0s."""
+    opts = InvokeOptions(
+        idle_timeout_seconds=_IDLE_TIMEOUT,
+        # activity_evidence_ttl_seconds not set -> defaults to None in InvokeOptions
+    )
+    policy = policy_from_options(opts)
+
+    assert policy.activity_evidence_ttl_seconds == 30.0
+
+
+def test_activity_evidence_ttl_zero_disables_feature() -> None:
+    """activity_evidence_ttl_seconds=0.0 reaches TimeoutPolicy as 0.0 (legacy disable)."""
+    opts = InvokeOptions(
+        idle_timeout_seconds=_IDLE_TIMEOUT,
+        activity_evidence_ttl_seconds=0.0,
+    )
+    policy = policy_from_options(opts)
+
+    assert policy.activity_evidence_ttl_seconds == 0.0

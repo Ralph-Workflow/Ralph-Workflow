@@ -3,14 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.process.child_liveness import AliveBy
 
-from .corroboration_snapshot import CorroborationSnapshot, WaitingCorroborator
+from .corroboration_snapshot import (
+    ChannelEvidenceSummary,
+    ChannelName,
+    CorroborationSnapshot,
+    WaitingCorroborator,
+)
 from .repetition_tracker import RepetitionTracker
 from .waiting_status_event import WaitingStatusEvent, WaitingStatusListener
 from .waiting_status_kind import WaitingStatusKind
@@ -53,6 +58,25 @@ class IdleWatchdog:
     - HARD_STOP immediately before returning FIRE for CHILDREN_PERSIST_TOO_LONG.
 
     Listener exceptions are caught and logged at DEBUG; they never propagate.
+
+    Per-channel activity evidence (NEW): the watchdog tracks three non-stdout
+    channels in addition to the stdout baseline:
+      - mcp_tool: MCP tools/call invocations/completions routed via the
+        Ralph MCP server. Updated by ``record_mcp_tool_call``.
+      - subagent: subagent progress signals (heartbeat, phase change) routed
+        from the opencode child_liveness registry. Updated by
+        ``record_subagent_work``.
+      - workspace: workspace file change events captured by
+        WorkspaceMonitor. Updated by ``record_workspace_event``.
+
+    The three recorders do NOT touch ``_last_activity`` (the stdout baseline);
+    the existing "stdout only resets idle baseline" invariant is preserved.
+    Instead, they update per-channel ``_last_at`` timestamps and counters. The
+    verdict hook in ``evaluate()`` defers a NO_OUTPUT_DEADLINE fire when ANY
+    non-stdout channel is fresher than ``activity_evidence_ttl_seconds``,
+    returning CONTINUE with a debug log. Absolute ceilings
+    (SESSION_CEILING_EXCEEDED, CHILDREN_PERSIST_TOO_LONG) are checked before
+    the deferral hook and remain absolute.
     """
 
     _config: TimeoutPolicy
@@ -77,6 +101,19 @@ class IdleWatchdog:
     # which let the post-tool-result wedge linger for ~300s.
     _last_tool_result_at: float | None = field(default=None, init=False)
     _awaiting_post_tool_result_progression: bool = field(default=False, init=False)
+    # Per-channel activity evidence state (NEW). The three recorders
+    # ``record_mcp_tool_call``, ``record_subagent_work``, and
+    # ``record_workspace_event`` only update these fields; they do NOT
+    # touch ``_last_activity`` (the stdout baseline) or the cumulative
+    # waiting-on-child ceiling. The verdict hook in ``evaluate()``
+    # consults these fields via ``_channel_evidence_active`` and
+    # ``last_evidence_summary``.
+    _mcp_tool_call_count: int = field(default=0, init=False)
+    _last_mcp_tool_call_at: float | None = field(default=None, init=False)
+    _subagent_progress_count: int = field(default=0, init=False)
+    _last_subagent_progress_at: float | None = field(default=None, init=False)
+    _workspace_event_count_internal: int = field(default=0, init=False)
+    _last_workspace_event_at: float | None = field(default=None, init=False)
 
     def __init__(
         self,
@@ -102,6 +139,12 @@ class IdleWatchdog:
         self._suspicion_announced_for_run = False
         self._last_tool_result_at = None
         self._awaiting_post_tool_result_progression = False
+        self._mcp_tool_call_count = 0
+        self._last_mcp_tool_call_at = None
+        self._subagent_progress_count = 0
+        self._last_subagent_progress_at = None
+        self._workspace_event_count_internal = 0
+        self._last_workspace_event_at = None
         self._entry_corroboration: CorroborationSnapshot | None = None
         self._repetition_tracker = RepetitionTracker(
             clock,
@@ -229,6 +272,151 @@ class IdleWatchdog:
         self._awaiting_post_tool_result_progression = True
         self._repetition_tracker.note_progress()
 
+    def record_mcp_tool_call(self, now: float | None = None) -> None:
+        """Record an MCP tool-call activity signal (new channel).
+
+        Increments the mcp_tool channel counter and updates the per-channel
+        ``_last_at`` timestamp. Does NOT touch ``_last_activity`` (the stdout
+        baseline) — the existing 'stdout only resets idle baseline' invariant
+        is preserved. The verdict hook in ``evaluate()`` consults the per-channel
+        ``_last_at`` via ``_channel_evidence_active`` and defers a
+        NO_OUTPUT_DEADLINE fire while the channel is fresher than the configured
+        ``activity_evidence_ttl_seconds``.
+
+        Args:
+            now: Optional monotonic timestamp override; tests use this to
+                drive FakeClock without time travel. Defaults to the
+                watchdog's injected clock.
+        """
+        timestamp = now if now is not None else self._clock.monotonic()
+        self._mcp_tool_call_count += 1
+        self._last_mcp_tool_call_at = timestamp
+
+    def record_subagent_work(self, now: float | None = None) -> None:
+        """Record a subagent work activity signal (new channel).
+
+        Increments the subagent channel counter and updates the per-channel
+        ``_last_at`` timestamp. Does NOT touch ``_last_activity`` (the stdout
+        baseline). The verdict hook in ``evaluate()`` defers a
+        NO_OUTPUT_DEADLINE fire while this channel is fresher than the
+        configured ``activity_evidence_ttl_seconds``.
+
+        A subagent that exists but has produced no tool calls, no progress
+        signals, and no file changes for the full TTL is NOT evidence of
+        progress — its channel becomes stale and the watchdog returns to
+        the normal idle path.
+
+        Args:
+            now: Optional monotonic timestamp override; tests use this to
+                drive FakeClock without time travel. Defaults to the
+                watchdog's injected clock.
+        """
+        timestamp = now if now is not None else self._clock.monotonic()
+        self._subagent_progress_count += 1
+        self._last_subagent_progress_at = timestamp
+
+    def record_workspace_event(self, now: float | None = None) -> None:
+        """Record a workspace file-change activity signal (new channel).
+
+        Increments the workspace channel counter and updates the per-channel
+        ``_last_at`` timestamp. Does NOT touch ``_last_activity`` (the stdout
+        baseline). The verdict hook in ``evaluate()`` defers a
+        NO_OUTPUT_DEADLINE fire while this channel is fresher than the
+        configured ``activity_evidence_ttl_seconds``.
+
+        Args:
+            now: Optional monotonic timestamp override; tests use this to
+                drive FakeClock without time travel. Defaults to the
+                watchdog's injected clock.
+        """
+        timestamp = now if now is not None else self._clock.monotonic()
+        self._workspace_event_count_internal += 1
+        self._last_workspace_event_at = timestamp
+
+    def last_evidence_summary(
+        self, now: float | None = None
+    ) -> tuple[ChannelEvidenceSummary, ...]:
+        """Return a per-channel evidence summary at the given time.
+
+        Always returns a 4-tuple in the fixed channel order
+        (stdout, mcp_tool, subagent, workspace). Each ChannelEvidenceSummary
+        carries the channel name, the last observed monotonic timestamp
+        (``last_at``), the age in seconds (``age_seconds``; None when
+        ``last_at`` is None), and the per-channel counter (``counter``; None
+        when the channel has never been observed).
+
+        The summary is consumed by the watchdog's own verdict hook
+        (via ``_channel_evidence_active``) and by the post-mortem
+        diagnostic threading in the readers (the ``_check_fire`` path
+        embeds the summary into the ``evidence_summary`` key of the
+        watchdog fire diagnostic).
+
+        Args:
+            now: Optional monotonic timestamp override; tests use this to
+                drive FakeClock without time travel. Defaults to the
+                watchdog's injected clock.
+        """
+        timestamp = now if now is not None else self._clock.monotonic()
+        stdout_age = max(0.0, timestamp - self._last_activity)
+        return (
+            ChannelEvidenceSummary(
+                channel_name="stdout",
+                last_at=self._last_activity,
+                age_seconds=stdout_age,
+                counter=None,
+            ),
+            self._channel_summary("mcp_tool", self._last_mcp_tool_call_at,
+                                  self._mcp_tool_call_count, timestamp),
+            self._channel_summary("subagent", self._last_subagent_progress_at,
+                                  self._subagent_progress_count, timestamp),
+            self._channel_summary("workspace", self._last_workspace_event_at,
+                                  self._workspace_event_count_internal, timestamp),
+        )
+
+    @staticmethod
+    def _channel_summary(
+        channel_name: ChannelName,
+        last_at: float | None,
+        counter: int,
+        now: float,
+    ) -> ChannelEvidenceSummary:
+        """Build a ChannelEvidenceSummary for a single non-stdout channel."""
+        age: float | None = None if last_at is None else max(0.0, now - last_at)
+        observed_counter: int | None = counter if counter > 0 else None
+        return ChannelEvidenceSummary(
+            channel_name=channel_name,
+            last_at=last_at,
+            age_seconds=age,
+            counter=observed_counter,
+        )
+
+    def _channel_evidence_active(self, now: float) -> bool:
+        """Return True when any non-stdout channel is fresher than the TTL.
+
+        Used by the verdict hook in ``evaluate()`` to defer a
+        NO_OUTPUT_DEADLINE fire while a non-stdout channel is still showing
+        activity. Returns False when the TTL is None (legacy behavior — but
+        the verdict hook guards on this already), or when no channel has been
+        observed, or when every observed channel is older than the TTL.
+
+        The stdout channel is intentionally excluded: a quiet stdout is the
+        NORMAL state we are trying to detect, so it cannot itself defer the
+        verdict.
+        """
+        ttl = self._config.activity_evidence_ttl_seconds
+        if ttl is None or ttl <= 0.0:
+            return False
+        for last_at in (
+            self._last_mcp_tool_call_at,
+            self._last_subagent_progress_at,
+            self._last_workspace_event_at,
+        ):
+            if last_at is None:
+                continue
+            if (now - last_at) < ttl:
+                return True
+        return False
+
     def _accumulate_waiting_run(self, now: float) -> None:
         """Add elapsed time from the current WAITING run to the cumulative total.
 
@@ -322,6 +510,43 @@ class IdleWatchdog:
             tokens.append("time_and_lifecycle_only")
         return "+".join(tokens) if tokens else "time_only"
 
+    def _build_evidence_summary_diag(
+        self,
+        now: float,
+    ) -> dict[str, object]:
+        """Build the per-channel evidence_summary diagnostic block.
+
+        Embeds the per-channel ChannelEvidenceSummary dicts under the
+        ``evidence_summary`` key, plus a flat ``active_channel`` label
+        (the name of the freshest non-stdout channel, or "none" when no
+        channel is currently active). Used by both the verdict hook (for
+        the deferred CONTINUE path) and the HARD_STOP diagnostic (for the
+        CHILDREN_PERSIST_TOO_LONG path).
+        """
+        summary = self.last_evidence_summary(now)
+        ttl = self._config.activity_evidence_ttl_seconds
+        active_channel = "none"
+        freshest_age: float | None = None
+        flat: list[dict[str, object]] = []
+        for entry in summary:
+            flat.append(entry.to_dict())
+            if entry.channel_name == "stdout":
+                continue
+            if (
+                entry.age_seconds is not None
+                and ttl is not None
+                and ttl > 0.0
+                and entry.age_seconds < ttl
+                and (freshest_age is None or entry.age_seconds < freshest_age)
+            ):
+                freshest_age = entry.age_seconds
+                active_channel = entry.channel_name
+        return {
+            "evidence_summary": flat,
+            "active_channel": active_channel,
+            "activity_evidence_ttl_seconds": ttl,
+        }
+
     def _emit(
         self,
         kind: WaitingStatusKind,
@@ -329,7 +554,7 @@ class IdleWatchdog:
         idle_elapsed: float,
         *,
         ceiling_seconds: float | None = None,
-        diagnostic: dict[str, str | int | float | bool] | None = None,
+        diagnostic: dict[str, str | int | float | bool | list[object]] | None = None,
     ) -> None:
         """Build and dispatch a WaitingStatusEvent to the listener.
 
@@ -421,10 +646,53 @@ class IdleWatchdog:
         else:
             quiet_state = classify_quiet()
             if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
+                # Cumulative ceiling path; the activity channel does NOT
+                # defer this branch (CHILDREN_PERSIST_TOO_LONG is absolute
+                # and must fire regardless of non-stdout activity).
                 verdict = self._handle_waiting_branch(now)
+            elif self._channel_evidence_active(now):
+                # Activity channel defers the ACTIVE-branch fire
+                # (NO_OUTPUT_DEADLINE) but not the cumulative ceiling.
+                verdict = self._handle_evidence_deferral(now, idle_elapsed)
             else:
                 verdict = self._handle_active_branch(now)
         return verdict
+
+    def _handle_evidence_deferral(
+        self,
+        now: float,
+        idle_elapsed: float,
+    ) -> WatchdogVerdict:
+        """Defer a NO_OUTPUT_DEADLINE fire while a non-stdout channel is fresh.
+
+        Called from ``evaluate()`` when the idle deadline has elapsed and the
+        post-tool-result wedge has NOT fired, but at least one non-stdout
+        channel (mcp_tool, subagent, workspace) is fresher than
+        ``activity_evidence_ttl_seconds``. The watchdog returns CONTINUE
+        with a debug log naming the active channel, and the cumulative
+        WAITING_ON_CHILD ceiling is NOT advanced (deferral is independent
+        of waiting-on-child state — a productive session that emits no
+        stdout but is busy on a non-stdout channel is not a 'child wait').
+
+        This is the activity-aware verdict path. The SESSION_CEILING and
+        CHILDREN_PERSIST_TOO_LONG ceilings are checked BEFORE this hook
+        in ``evaluate()`` and remain absolute.
+        """
+        summary = self._build_evidence_summary_diag(now)
+        active_channel_value = summary.get("active_channel", "none")
+        channel_label = (
+            active_channel_value
+            if isinstance(active_channel_value, str)
+            else "none"
+        )
+        self._log.debug(
+            "idle watchdog: deferred via activity evidence channel={} age={}s"
+            " idle_elapsed={}s",
+            channel_label,
+            round(idle_elapsed, 1),
+            round(idle_elapsed, 1),
+        )
+        return WatchdogVerdict.CONTINUE
 
     def _post_tool_result_stalled(self, now: float, idle_elapsed: float) -> bool:
         """Return True when post-tool-result progression has stalled long enough to fire."""
@@ -567,7 +835,7 @@ class IdleWatchdog:
             self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
             corr_diag_hs = self._build_corroboration_diag(current_corr)
             corr_diag_hs["evidence"] = self._build_evidence_string(corr_diag_hs)
-            diag: dict[str, str | int | float | bool] = {
+            diag: dict[str, object] = {
                 "cumulative": round(candidate_total, 1),
                 "run_elapsed": round(current_run_elapsed, 1),
                 "idle_elapsed": round(idle_elapsed, 1),
@@ -583,12 +851,18 @@ class IdleWatchdog:
             for key, value in corr_diag_hs.items():
                 if key not in diag:
                     diag[key] = value
+            evidence_block = self._build_evidence_summary_diag(now)
+            for ev_key, ev_value in evidence_block.items():
+                if ev_key not in diag:
+                    diag[ev_key] = ev_value
             self._emit(
                 WaitingStatusKind.HARD_STOP,
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
-                diagnostic=diag,
+                diagnostic=cast(
+                    "dict[str, str | int | float | bool | list[object]]", diag
+                ),
             )
             self._log.warning(
                 "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
@@ -617,7 +891,9 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
-                diagnostic=corr_diag_sf,
+                diagnostic=cast(
+                    "dict[str, str | int | float | bool | list[object]]", corr_diag_sf
+                ),
             )
 
         assert self._last_waiting_status_at is not None
@@ -636,7 +912,9 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
-                diagnostic=corr_diag_pr,
+                diagnostic=cast(
+                    "dict[str, str | int | float | bool | list[object]]", corr_diag_pr
+                ),
             )
 
         return WatchdogVerdict.WAITING_ON_CHILD

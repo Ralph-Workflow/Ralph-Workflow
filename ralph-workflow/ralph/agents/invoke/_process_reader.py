@@ -37,6 +37,12 @@ from ralph.agents.invoke._session import (
 from ralph.agents.invoke._types import _AgentRunCtx, _ProcessReaderCtx
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.mcp.server._activity_sink import (
+    reset_active_sink,
+    reset_subagent_sink,
+    set_active_sink,
+    set_subagent_sink,
+)
 from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
@@ -113,6 +119,9 @@ class _ProcessLineReader:
 
     def _corroborate(self) -> CorroborationSnapshot:
         ws_count: int | None = self._monitor.event_count if self._monitor is not None else None
+        last_workspace_event_at: float | None = (
+            self._monitor.last_event_at if self._monitor is not None else None
+        )
         oldest_secs: float | None = None
         scoped_active: bool | None = None
         scoped_count: int | None = None
@@ -140,6 +149,7 @@ class _ProcessLineReader:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
         return CorroborationSnapshot(
             workspace_event_count=ws_count,
+            last_workspace_event_at=last_workspace_event_at,
             oldest_child_seconds=oldest_secs,
             scoped_child_active=scoped_active,
             scoped_child_count=scoped_count,
@@ -207,10 +217,30 @@ class _ProcessLineReader:
         self._handle.terminate(grace_period_s=0.5)
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
+        # Always merge the watchdog's per-channel evidence summary into
+        # the diagnostic so a post-mortem (or the on-call operator) can
+        # see exactly which evidence channels were fresh and which
+        # were stale at the moment the watchdog fired. The watchdog's
+        # own ``last_evidence_summary`` produces a list of
+        # ``ChannelEvidenceSummary.to_dict()`` entries; we surface that
+        # under ``evidence_summary`` alongside any HARD_STOP diagnostic
+        # the watchdog already populated.
+        now = self._clock.monotonic()
+        evidence_block = {
+            "evidence_summary": [entry.to_dict() for entry in watchdog.last_evidence_summary(now)],
+        }
+        merged_diag: dict[str, object] = dict(evidence_block)
+        if hard_stop_diag is not None:
+            for key, value in hard_stop_diag.items():
+                if key not in merged_diag:
+                    merged_diag[key] = value
         return pending, _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
-            diagnostic=hard_stop_diag,
+            diagnostic=cast(
+                "dict[str, str | int | float | bool | list[object]] | None",
+                merged_diag,
+            ),
         )
 
     def _record_line_activity(self, watchdog: IdleWatchdog, queued_line: str) -> None:
@@ -261,6 +291,24 @@ class _ProcessLineReader:
             listener=self._on_waiting_event,
             corroborator=self._corroborate,
         )
+
+        # Register the watchdog's MCP activity recorder as the active sink
+        # for the in-process Ralph MCP server so each tools/call invocation
+        # defers a NO_OUTPUT_DEADLINE fire while the agent is actively
+        # using the MCP. The contextvar isolates concurrent agent runs
+        # in the same process so a sibling run's MCP calls never feed
+        # this watchdog's evidence surface. The recorder accepts a
+        # `now: float | None` argument; the sink protocol passes a
+        # `tool_name: str`, so we wrap the recorder in a thin closure
+        # that ignores the string and forwards to the recorder.
+        def _mcp_sink(_tool_name: str) -> None:
+            watchdog.record_mcp_tool_call()
+
+        def _subagent_sink(_line: str) -> None:
+            watchdog.record_subagent_work()
+
+        sink_token = set_active_sink(_mcp_sink)
+        subagent_token = set_subagent_sink(_subagent_sink)
         try:
             while True:
                 self._lines_event.clear()
@@ -313,6 +361,8 @@ class _ProcessLineReader:
 
             reader.join(timeout=10)
         finally:
+            reset_active_sink(sink_token)
+            reset_subagent_sink(subagent_token)
             self._unsubscribe()
 
 

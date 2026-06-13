@@ -8,6 +8,7 @@ from pydantic import ConfigDict, Field, model_validator
 from ralph.config._general_workflow_flags import GeneralWorkflowFlags
 from ralph.pydantic_compat import RalphBaseModel
 from ralph.timeout_defaults import (
+    AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
     CHILD_EXIT_RECONCILE_SECONDS,
     CHILD_HEARTBEAT_TTL_SECONDS,
     CHILD_PROGRESS_TTL_SECONDS,
@@ -157,9 +158,7 @@ class GeneralConfig(RalphBaseModel):
     agent_repeated_error_window_seconds: float | None = Field(
         default=REPEATED_ERROR_WINDOW_SECONDS,
         gt=0.0,
-        description=(
-            "Rolling window in seconds for agent_repeated_error_window_count."
-        ),
+        description=("Rolling window in seconds for agent_repeated_error_window_count."),
     )
     agent_waiting_status_interval_seconds: float = Field(
         default=WAITING_STATUS_INTERVAL_SECONDS,
@@ -231,6 +230,25 @@ class GeneralConfig(RalphBaseModel):
             " default instead of waiting for the 300s idle timeout."
             " When None, the legacy NO_OUTPUT_DEADLINE-only behavior is"
             " preserved."
+        ),
+    )
+    agent_idle_activity_evidence_ttl_seconds: float = Field(
+        default=AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
+        ge=0.0,
+        description=(
+            "Per-channel activity evidence TTL in seconds. When set,"
+            " the watchdog defers a NO_OUTPUT_DEADLINE fire (returning"
+            " CONTINUE) while ANY non-stdout channel (MCP tool call,"
+            " subagent work, workspace file change) is fresher than"
+            " this TTL. The default of 30.0s is well under the 300s"
+            " idle-timeout default, so a silent subagent (or silent"
+            " MCP path) is detected at the regular idle deadline once"
+            " its own channel goes stale. SESSION_CEILING and"
+            " CHILDREN_PERSIST_TOO_LONG ceilings are checked BEFORE"
+            " this deferral, so they remain absolute. Setting this"
+            " to 0.0 disables the activity-aware verdict and restores"
+            " the legacy stdout-only NO_OUTPUT_DEADLINE behavior."
+            " Must be >= 0."
         ),
     )
 

@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING, cast
 
+from ralph.agents.activity import AgentActivityKind
+from ralph.mcp.server._activity_sink import (
+    get_subagent_sink as _has_subagent_sink,
+)
+from ralph.mcp.server._activity_sink import (
+    invoke_subagent_sink as _invoke_subagent_sink,
+)
 from ralph.process.child_liveness import classify_child_snapshot
 
 from ._helpers import (
@@ -20,6 +28,8 @@ from ._helpers import (
 from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.child_liveness import ChildLivenessRegistry
@@ -52,9 +62,19 @@ class OpenCodeExecutionStrategy:
         *,
         label_scope: str | None = None,
         registry: ChildLivenessRegistry | None = None,
+        subagent_activity_sink: Callable[[str], None] | None = None,
     ) -> None:
         self._label_scope = label_scope
         self._registry = registry
+        # Optional sink invoked from ``observe_line`` when a child
+        # progress / heartbeat / tool_call signal is observed. The
+        # canonical sink is the per-run watchdog's
+        # ``record_subagent_work`` method, which updates the
+        # per-channel ``_last_subagent_progress_at`` timestamp the
+        # verdict hook consults to defer NO_OUTPUT_DEADLINE. The
+        # default is None (legacy / non-opencode transports) so
+        # existing callers and tests are unaffected.
+        self._subagent_activity_sink = subagent_activity_sink
 
     def _active_label_prefix(self) -> str | None:
         if self._label_scope is None:
@@ -75,8 +95,44 @@ class OpenCodeExecutionStrategy:
         return _non_blank_output_signal(line)
 
     def observe_line(self, line: str) -> None:
-        """Route a parsed output line into the child liveness registry."""
+        """Route a parsed output line into the child liveness registry.
+
+        When ``subagent_activity_sink`` is set, the sink is invoked once
+        per CHILD_PROGRESS or CHILD_HEARTBEAT signal so the idle
+        watchdog's per-channel evidence surface stays fresh. The
+        child_liveness registry continues to own freshness tracking;
+        this is a thin shim from "progress observed" to "activity
+        signal sent". Sink exceptions are swallowed so a buggy sink
+        cannot corrupt the registry or break the line loop.
+        """
         registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
+        # Invoke the activity sink BEFORE the registry update so a
+        # progress signal is recorded as activity regardless of whether
+        # the registry update succeeds. We only invoke on the two
+        # 'demonstrable work' kinds — CHILD_PROGRESS (phase change or
+        # tool_call) and CHILD_HEARTBEAT (live signal). Terminal and
+        # spawn signals are not forward progress: a child_complete
+        # event means the child is no longer running, and child_started
+        # is just OS-level evidence the child was launched.
+        #
+        # Two sink sources are consulted: the constructor-injected
+        # ``subagent_activity_sink`` (used by direct unit tests that
+        # construct a strategy with an explicit sink) and the
+        # per-task contextvar (production: the per-run watchdog
+        # registers itself before its lines loop starts). The
+        # constructor sink takes precedence so test fixtures can
+        # override the production wiring.
+        if self._subagent_activity_sink is not None or _has_subagent_sink():
+            signal = _classify_opencode_child_signal(line)
+            if signal is not None and signal.kind in (
+                AgentActivityKind.CHILD_PROGRESS,
+                AgentActivityKind.CHILD_HEARTBEAT,
+            ):
+                if self._subagent_activity_sink is not None:
+                    with contextlib.suppress(Exception):
+                        self._subagent_activity_sink(line)
+                else:
+                    _invoke_subagent_sink(line)
         if registry is None:
             return
         _route_opencode_line_to_registry(line, registry, self._active_label_prefix() or "")

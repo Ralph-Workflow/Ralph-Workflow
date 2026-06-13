@@ -129,7 +129,10 @@ def test_pty_line_reader_reclassifies_no_output_deadline_after_tool_result() -> 
             'claude result: {"path": "tests/test_claude_interactive_pty.py"}'
         )
 
-        watchdog = SimpleNamespace(last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE)
+        watchdog = SimpleNamespace(
+            last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+            last_evidence_summary=lambda _now: (),
+        )
 
         result = reader._check_fire(watchdog, WatchdogVerdict.FIRE)
 
@@ -160,7 +163,10 @@ def test_pty_line_reader_keeps_stalled_after_tool_result_reason_after_lifecycle_
         reader._last_tool_use_name = "read_file"
         reader._last_tool_result_at = 10.0
 
-        watchdog = SimpleNamespace(last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE)
+        watchdog = SimpleNamespace(
+            last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+            last_evidence_summary=lambda _now: (),
+        )
 
         result = reader._check_fire(watchdog, WatchdogVerdict.FIRE)
 

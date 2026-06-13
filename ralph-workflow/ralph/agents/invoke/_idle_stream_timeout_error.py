@@ -13,7 +13,7 @@ class _IdleStreamTimeoutError(RuntimeError):
         timeout_seconds: float,
         reason: WatchdogFireReason,
         *,
-        diagnostic: dict[str, str | int | float | bool] | None = None,
+        diagnostic: dict[str, str | int | float | bool | list[object]] | None = None,
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.reason = reason

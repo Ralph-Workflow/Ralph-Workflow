@@ -37,7 +37,9 @@ class WaitingStatusEvent:
     idle_elapsed_seconds: float
     ceiling_seconds: float
     suspect_threshold_seconds: float | None
-    diagnostic: dict[str, str | int | float | bool] = field(default_factory=dict)
+    diagnostic: dict[str, str | int | float | bool | list[object]] = field(
+        default_factory=dict
+    )
 
 
 WaitingStatusListener = Callable[[WaitingStatusEvent], None]

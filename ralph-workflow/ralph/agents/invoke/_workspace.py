@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import time
 from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
@@ -10,6 +11,7 @@ from loguru import logger
 from ralph.agents.invoke._has_src_path import _HasSrcPath
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 if TYPE_CHECKING:
@@ -66,16 +68,27 @@ class WorkspaceMonitor:
     work by watching for file modifications in the workspace.
     """
 
-    def __init__(self, workspace_path: Path) -> None:
+    def __init__(
+        self,
+        workspace_path: Path,
+        *,
+        now: Callable[[], float] | None = None,
+    ) -> None:
         """Initialize workspace monitor.
 
         Args:
             workspace_path: Path to the workspace directory to monitor.
+            now: Optional monotonic-clock callable. Defaults to ``time.monotonic``
+                for production. Tests inject a FakeClock-bound callable to drive
+                ``last_event_at`` deterministically (see tests in
+                tests/agents/test_idle_watchdog_3.py::test_workspace_monitor_records_last_event_at).
         """
         self._workspace = workspace_path
         self._observer: _HasStop | None = None
         self._event_count = 0
         self._seen_files: dict[str, None] = {}
+        self._now: Callable[[], float] = now if now is not None else time.monotonic
+        self._last_event_at: float | None = None
 
     def start(self) -> None:
         """Start monitoring the workspace for file changes."""
@@ -92,6 +105,13 @@ class WorkspaceMonitor:
     def record_event(self, src_path: str) -> None:
         """Record a file change event.
 
+        Updates ``last_event_at`` to the current monotonic-clock value
+        (production: ``time.monotonic``; tests: the injected fake clock).
+        The watchdog's per-channel evidence surface consumes this timestamp
+        via the ``last_workspace_event_at`` field on CorroborationSnapshot
+        so a workspace-event channel is fresh exactly as long as the
+        production clock is recent.
+
         Args:
             src_path: Path to the changed file.
         """
@@ -101,6 +121,7 @@ class WorkspaceMonitor:
             oldest = next(iter(self._seen_files))
             del self._seen_files[oldest]
         self._event_count += 1
+        self._last_event_at = self._now()
 
     def stop(self) -> None:
         """Stop monitoring the workspace."""
@@ -118,6 +139,31 @@ class WorkspaceMonitor:
     def event_count(self) -> int:
         """Number of file change events detected."""
         return self._event_count
+
+    @property
+    def last_event_at(self) -> float | None:
+        """Monotonic-clock timestamp of the most recent file change event.
+
+        Returns None when no event has been observed since the monitor was
+        constructed (or since the last ``reset_last_event_at`` call). The
+        watchdog's per-channel evidence surface consumes this value via
+        the ``last_workspace_event_at`` field on ``CorroborationSnapshot``;
+        a fresh workspace channel defers the NO_OUTPUT_DEADLINE verdict
+        while the channel age is below ``activity_evidence_ttl_seconds``.
+        """
+        return self._last_event_at
+
+    def reset_last_event_at(self) -> None:
+        """Reset ``last_event_at`` (and the event counter) to a clean state.
+
+        Intended for test isolation: a long-lived ``WorkspaceMonitor`` in
+        a test fixture may have observed events from a prior case; calling
+        this clears the timestamp so the next ``record_event`` produces a
+        fresh baseline.
+        """
+        self._last_event_at = None
+        self._event_count = 0
+        self._seen_files.clear()
 
     @property
     def changed_files(self) -> set[str]:

@@ -32,6 +32,20 @@ DRAIN_WINDOW_SECONDS: float = 0.5
 #: NO_OUTPUT_DEADLINE-only behavior.
 POST_TOOL_RESULT_PROGRESSION_SECONDS: float | None = 120.0
 
+#: Default per-channel activity evidence TTL. Governs how long after a
+#: non-stdout event (MCP tool call, subagent progress, workspace file
+#: change) the corresponding channel still counts as live activity for
+#: the NO_OUTPUT_DEADLINE verdict. While ANY non-stdout channel is
+#: fresher than this TTL, the watchdog defers the NO_OUTPUT_DEADLINE
+#: fire and returns CONTINUE so a productive session that emits little
+#: stdout is not killed as idle. The default of 30s is well under the
+#: 300s idle-timeout default and the 600s no-progress ceiling, so a
+#: silent subagent (or silent MCP path) is detected at the regular
+#: idle deadline.
+#: Set to 0.0 to disable the activity-aware verdict and restore the
+#: legacy stdout-only NO_OUTPUT_DEADLINE behavior.
+AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS: float = 30.0
+
 #: Default hard ceiling on cumulative WAITING_ON_CHILD time.
 MAX_WAITING_ON_CHILD_SECONDS: float = 1800.0
 
