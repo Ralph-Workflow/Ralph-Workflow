@@ -55,10 +55,18 @@ Pick the model tier first, then fill the fields that tier is expected to provide
 
 A plan with a `depends_on` cycle (e.g. step 1 -> 2 -> 3 -> 1) is rejected at normalize time with `PlanArtifactValidationError("plan step depends_on cycle detected at step N")`; plan a DAG, not a ring. Diamond-shaped DAGs (a node with multiple parents) are accepted — only TRUE cycles are rejected.
 
-Native file and shell tools are disabled in this brokered fallback; native orchestration tools (sub-agents/tasks, skills, todo tracking, web fetch/search) remain enabled. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}, {{GET_PLAN_DRAFT_TOOL_REFERENCE}}, {{FINALIZE_PLAN_TOOL_REFERENCE}}, {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}, and {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} exactly as named below.
+Native file and shell tools are disabled in this brokered fallback; native orchestration tools (sub-agents/tasks, skills, todo tracking, web fetch/search) remain enabled. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}, {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}}, {{INSERT_PLAN_STEP_TOOL_REFERENCE}}, {{REPLACE_PLAN_STEP_TOOL_REFERENCE}}, {{PATCH_PLAN_STEP_TOOL_REFERENCE}}, {{REMOVE_PLAN_STEP_TOOL_REFERENCE}}, {{MOVE_PLAN_STEP_TOOL_REFERENCE}}, {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}}, {{GET_PLAN_DRAFT_TOOL_REFERENCE}}, {{FINALIZE_PLAN_TOOL_REFERENCE}}, {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}, and {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} exactly as named below.
+
+Step mutation tools ({{INSERT_PLAN_STEP_TOOL_REFERENCE}}, {{REPLACE_PLAN_STEP_TOOL_REFERENCE}}, {{PATCH_PLAN_STEP_TOOL_REFERENCE}}, {{REMOVE_PLAN_STEP_TOOL_REFERENCE}}, {{MOVE_PLAN_STEP_TOOL_REFERENCE}}) echo the new step number(s), the `depends_on` reindex map, and the AC ids whose `satisfied_by_steps` were rewritten; you do not need to call {{GET_PLAN_DRAFT_TOOL_REFERENCE}} immediately after.
+
+High-quality models should populate `design.notes`, `design.drift_detection.guard_commands`, `design.testability.required_test_layers`, `design.dependency_injection.preferred/forbidden_patterns`, and `design.refactor_strategy`. Cheap models should use `planning_profile="balanced"` or `"minimal"` for bias-fill defaults.
+
+See `.agent/artifact-formats/plan.md` §`Plan size limits` for the canonical per-field and per-list caps (4 MB hard cap, steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500; string tiers short=1000 / medium=8000 / long=20000).
 
 Unless the plan is genuinely short, submit each required section separately.
 - Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`.
+- For small-to-medium plans, prefer {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} to stage every section in one batched round-trip.
+- Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalize.
 - Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if validation fails or you need to resume.
 - Use {{FINALIZE_PLAN_TOOL_REFERENCE}} once all required sections are staged.
 - Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} only if you need to throw away the draft and restart from section 1.

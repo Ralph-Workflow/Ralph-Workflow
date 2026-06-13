@@ -19,12 +19,15 @@ from ralph.mcp.tools.names import (
     GET_PLAN_DRAFT_TOOL,
     INSERT_PLAN_STEP_TOOL,
     MOVE_PLAN_STEP_TOOL,
+    PATCH_PLAN_STEP_TOOL,
     READ_ENV_TOOL,
     REMOVE_PLAN_STEP_TOOL,
     REPLACE_PLAN_STEP_TOOL,
     REPORT_PROGRESS_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
+    SUBMIT_PLAN_SECTIONS_TOOL,
+    VALIDATE_PLAN_DRAFT_TOOL,
 )
 
 
@@ -34,7 +37,14 @@ def artifact_specs() -> list[ToolSpec]:
         ToolSpec(
             metadata=_metadata(
                 name=SUBMIT_ARTIFACT_TOOL,
-                description=_SUBMIT_ARTIFACT_DESCRIPTION,
+                description=(
+                    _SUBMIT_ARTIFACT_DESCRIPTION
+                    + " For artifact_type='plan', the in-progress plan draft is deleted on success "
+                    "(the canonical plan.json is written to .agent/artifacts/plan.json and the "
+                    "markdown handoff to .agent/PLAN.md). The bundled format doc at "
+                    ".agent/artifact-formats/<type>.md is the canonical reference for the payload "
+                    "shape. On any failure the draft is preserved."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -82,7 +92,16 @@ def artifact_specs() -> list[ToolSpec]:
                     'Example: {"section": "summary", "content": '
                     + _EXAMPLE_PLAN_CONTENT
                     + ', "mode": "replace"}.'
-                    " A plan that exceeds the 4 MB total byte cap or any per-list cap "
+                    " Only the single submitted section is validated here. Cross-section "
+                    "invariants (intent_verb vs scope_item category, parallel_plan XOR "
+                    "work_units, shell-invocation guard, research/verify steps in AC "
+                    "satisfied_by_steps, depends_on cycle) run ONLY at finalize_plan. "
+                    "If you want to check the whole plan without writing, call "
+                    "ralph_validate_draft instead. mode='append' only works for list "
+                    "sections (steps, risks_mitigations, verification_strategy, "
+                    "parallel_plan); object sections (summary, skills_mcp, "
+                    "critical_files, constraints, design) only accept mode='replace'. "
+                    "A plan that exceeds the 4 MB total byte cap or any per-list cap "
                     "defined in `PlanSizeLimits.DEFAULT` is rejected with a structured "
                     "`PlanArtifactSizeError` before Pydantic runs. A plan with a cyclic "
                     "`depends_on` graph (e.g. step 1 -> 2 -> 3 -> 1) is rejected at "
@@ -132,6 +151,54 @@ def artifact_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             metadata=_metadata(
+                name=SUBMIT_PLAN_SECTIONS_TOOL,
+                description=(
+                    "Batched section submit. Accepts a list of "
+                    "{section: str, content: <json string>, mode: 'replace'|'append'} "
+                    "entries and validates ALL of them BEFORE any merge; if any entry "
+                    "fails, the entire batch is rejected and the on-disk draft is "
+                    "unchanged. On success it stages every entry and returns "
+                    "{submitted: [...section names...], staged_sections: [...], "
+                    "total_bytes: <int>}. Use this to stage every section of a "
+                    "small-to-medium plan in one round-trip instead of N calls to "
+                    "ralph_submit_plan_section. The full cross-section validator still "
+                    "runs at finalize_plan; this tool only stages sections. Capability: "
+                    "ARTIFACT_PLAN_WRITE."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "entries": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "section": {"type": "string"},
+                                    "content": {"type": "string"},
+                                    "mode": {
+                                        "type": "string",
+                                        "enum": ["replace", "append"],
+                                        "default": "replace",
+                                    },
+                                },
+                                "required": ["section", "content"],
+                            },
+                            "description": (
+                                "List of {section, content, mode} entries to stage as a "
+                                "batch. Each entry is validated BEFORE any merge; the "
+                                "entire batch is rejected on the first failure."
+                            ),
+                        },
+                    },
+                    "required": ["entries"],
+                },
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
+            ),
+            module_name="ralph.mcp.tools.artifact",
+            handler_name="handle_submit_plan_sections",
+        ),
+        ToolSpec(
+            metadata=_metadata(
                 name=INSERT_PLAN_STEP_TOOL,
                 description=(
                     "Insert one plan step at a 1-based index and automatically reindex the whole"
@@ -140,7 +207,15 @@ def artifact_specs() -> list[ToolSpec]:
                     " `depends_on` array in the surviving steps to use the new step"
                     " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
                     " the design sub-section to use the new step numbers; the provided"
-                    " `step.number` is ignored."
+                    " `step.number` is ignored. Returns an echo payload with the new"
+                    " step number, the reindex map, the list of step numbers whose"
+                    " depends_on was rewritten, the list of AC ids whose"
+                    " satisfied_by_steps was rewritten, the list of AC ids whose"
+                    " satisfied_by_steps entries were dropped (orphan references), and"
+                    " the new total step count: "
+                    "{action: 'insert', index, new_step_number, reindex_map,"
+                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
+                    " dropped_ac_satisfied_by_steps, total_steps}."
                 ),
                 input_schema={
                     "type": "object",
@@ -165,7 +240,16 @@ def artifact_specs() -> list[ToolSpec]:
                     " `depends_on` array in the surviving steps to use the new step"
                     " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
                     " the design sub-section to use the new step numbers; the provided"
-                    " `step.number` is ignored."
+                    " `step.number` is ignored. Returns an echo payload confirming the"
+                    " (unchanged) step number, the reindex map (typically a no-op for"
+                    " depends_on since the step number is preserved), the list of step"
+                    " numbers whose depends_on was rewritten, the list of AC ids whose"
+                    " satisfied_by_steps was rewritten, the list of AC ids whose"
+                    " satisfied_by_steps entries were dropped, and the new total step"
+                    " count: "
+                    "{action: 'replace', step_number, reindex_map,"
+                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
+                    " dropped_ac_satisfied_by_steps, total_steps}."
                 ),
                 input_schema={
                     "type": "object",
@@ -182,6 +266,36 @@ def artifact_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             metadata=_metadata(
+                name=PATCH_PLAN_STEP_TOOL,
+                description=(
+                    "Partial-update a single plan step. Required: step_number (integer),"
+                    " step (object with ANY SUBSET of step fields). The missing fields are"
+                    " preserved from the existing step. The provided `step.number` is"
+                    " ignored (replace_plan_step forces the number to step_number). The"
+                    " step-mutation auto-reindex of `depends_on` and `AC.satisfied_by_steps`"
+                    " runs as for `ralph_replace_plan_step`. Returns the same echo payload"
+                    " as `ralph_replace_plan_step`: "
+                    "{action: 'replace', step_number, reindex_map,"
+                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
+                    " dropped_ac_satisfied_by_steps, total_steps}. Use this instead of"
+                    " `ralph_replace_plan_step` when only one or two fields need to"
+                    " change. Capability: ARTIFACT_PLAN_WRITE."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "step_number": {"type": "integer", "minimum": 1},
+                        "step": {"type": "object"},
+                    },
+                    "required": ["step_number", "step"],
+                },
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
+            ),
+            module_name="ralph.mcp.tools.plan_draft_edit",
+            handler_name="handle_patch_step",
+        ),
+        ToolSpec(
+            metadata=_metadata(
                 name=REMOVE_PLAN_STEP_TOOL,
                 description=(
                     "Remove one plan step by its current number and automatically reindex the"
@@ -190,7 +304,19 @@ def artifact_specs() -> list[ToolSpec]:
                     " `depends_on` array in the surviving steps to use the new step"
                     " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
                     " the design sub-section to use the new step numbers; the provided"
-                    " `step.number` is ignored."
+                    " `step.number` is ignored. Fails fast with PlanArtifactValidationError"
+                    " if any other step depends on the removed step (in that case call"
+                    " replace_plan_step on the dependent step first or remove the"
+                    " dependent step too). Silently drops AC entries whose"
+                    " satisfied_by_steps reference the removed step. Returns an echo"
+                    " payload with the removed step number, the reindex map, the list of"
+                    " step numbers whose depends_on was rewritten, the list of AC ids"
+                    " whose satisfied_by_steps was rewritten, the list of AC ids whose"
+                    " satisfied_by_steps entries were dropped, and the new total step"
+                    " count: "
+                    "{action: 'remove', removed_step_number, reindex_map,"
+                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
+                    " dropped_ac_satisfied_by_steps, total_steps}."
                 ),
                 input_schema={
                     "type": "object",
@@ -217,7 +343,16 @@ def artifact_specs() -> list[ToolSpec]:
                     " `depends_on` array in the surviving steps to use the new step"
                     " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
                     " the design sub-section to use the new step numbers; the provided"
-                    " `step.number` is ignored."
+                    " `step.number` is ignored. Returns an echo payload with the source"
+                    " and target step numbers (typically identical since move preserves"
+                    " step numbers), the reindex map (typically a no-op), the list of"
+                    " step numbers whose depends_on was rewritten, the list of AC ids"
+                    " whose satisfied_by_steps was rewritten, the list of AC ids whose"
+                    " satisfied_by_steps entries were dropped, and the new total step"
+                    " count: "
+                    "{action: 'move', from_step_number, to_index, reindex_map,"
+                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
+                    " dropped_ac_satisfied_by_steps, total_steps}."
                 ),
                 input_schema={
                     "type": "object",
@@ -234,15 +369,40 @@ def artifact_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             metadata=_metadata(
+                name=VALIDATE_PLAN_DRAFT_TOOL,
+                description=(
+                    "Read-only. Runs the full PlanArtifact cross-section validator"
+                    " (depends_on cycle, intent_verb vs scope_item category, parallel_plan"
+                    " XOR work_units, shell-invocation guard, research/verify steps in AC"
+                    " satisfied_by_steps, AC id pattern, 4 MB size cap) without writing"
+                    " plan.json and without deleting the in-progress draft. Returns"
+                    " {valid: true} on success or {valid: false, errors: [...]} on"
+                    " failure. The same checks run at finalize_plan in the write path;"
+                    " ralph_validate_draft exposes them in a read-only path so the agent"
+                    " can dry-run validation before committing. Capability:"
+                    " ARTIFACT_PLAN_READ."
+                ),
+                input_schema={"type": "object", "properties": {}},
+                required_capability=Capability.ARTIFACT_PLAN_READ.value,
+            ),
+            module_name="ralph.mcp.tools.artifact",
+            handler_name="handle_validate_plan_draft",
+        ),
+        ToolSpec(
+            metadata=_metadata(
                 name=FINALIZE_PLAN_TOOL,
                 description=(
                     "Validate the staged plan draft and write .agent/artifacts/plan.json. "
-                    "Fails with an error if required sections are missing; "
-                    "the draft is preserved on failure. No parameters required. "
-                    "Example: {} validates and writes the plan. If the draft contains"
-                    " a `depends_on` cycle, finalize is rejected with"
-                    " `plan step depends_on cycle detected at step N`; the cycle entry"
-                    " is named in the error."
+                    "Fails with an error if required sections are missing or any"
+                    " cross-section invariant is violated; the draft is preserved on"
+                    " failure. No parameters required. Example: {} validates and writes"
+                    " the plan. On success, the in-progress plan draft is DELETED (the"
+                    " canonical plan.json is written to .agent/artifacts/plan.json and the"
+                    " markdown handoff to .agent/PLAN.md). To recover the draft, use"
+                    " ralph_get_plan_draft BEFORE finalize; after finalize the draft is"
+                    " gone. If the plan has a depends_on cycle, finalize is rejected with"
+                    " the named entry step in the error message:"
+                    " `plan step depends_on cycle detected at step N`."
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
@@ -256,8 +416,12 @@ def artifact_specs() -> list[ToolSpec]:
                 description=(
                     "Return the currently staged plan draft with all sections and contents. "
                     "Useful for resuming after a restart or confirming current state. "
-                    "No parameters required. "
-                    "Example: {} returns the current draft state."
+                    "No parameters required. Example: {} returns the current draft state."
+                    " If the in-progress draft is gone (e.g. after a successful finalize"
+                    " or a discarded draft) but a finalized plan.json exists on disk,"
+                    " returns the finalized plan with source='finalized_plan'. The"
+                    " response shape is {staged_sections: [...], draft: {...},"
+                    " source: 'draft'|'finalized_plan', updated_at: ...}."
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability=Capability.ARTIFACT_PLAN_READ.value,
@@ -417,3 +581,4 @@ def artifact_specs() -> list[ToolSpec]:
             handler_name="handle_coordinate",
         ),
     ]
+

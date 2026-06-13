@@ -23,7 +23,7 @@ last_updated: 2026-06-12
 
 The new symbols and the renamed heading are: `EvidenceRef`, `PlanConstraints`, `noop`, `timeout_seconds`, `cwd`, `SE-opinionated design surfaces` (the renamed "Universal SE bias" subsection).
 
-**Parallel execution delegated to the AI agent.** Plans that want to express parallelization intent for the executing agent's sub-agents should declare `work_units` (same-workspace) or `parallel_plan` (read-mostly chunks). Both are **agent-facing parallelization intent** in this build — Ralph-managed fan-out is dormant. The executing agent dispatches its own sub-agents (or runs sequentially when no sub-agent capability is available). Plans that do not declare either field remain valid and run sequentially.
+**Parallel execution delegated to the AI agent.** Plans that want to express parallelization intent for the executing agent's sub-agents should declare `work_units` (same-workspace) or `parallel_plan` (read-mostly chunks). Each work unit is dispatched to one of the **agent-managed sub-agents** in this build. Both `work_units` and `parallel_plan` are **agent-facing parallelization intent** in this build — Ralph-managed fan-out is dormant, and the bundled `fan-out is dormant` invariant is enforced by the `audit_parallelization_dormant` audit. The executing agent dispatches its own sub-agents (or runs sequentially when no sub-agent capability is available). Plans that do not declare either field remain valid and run sequentially.
 
 ## What you are doing
 
@@ -106,6 +106,29 @@ Every plan must satisfy the following per-step and cross-section rules or it wil
 - **`parallel_plan` and `work_units` are mutually exclusive.** A plan that declares BOTH sections is rejected with `PlanArtifactValidationError("plan cannot declare both parallel_plan and work_units; pick one")`. Pick the section that fits the work shape — `parallel_plan` for safe-to-parallelize read-mostly chunks, `work_units` for same-workspace parallelization intent consumed by the executing agent's sub-agents. Both fields are **agent-facing parallelization intent**, NOT Ralph fan-out instructions.
 - **`verification_strategy[*].method` must not invoke a shell interpreter directly.** Methods that start with `bash -c ` (note the trailing space), `sh -c `, or `eval ` are rejected with `PlanArtifactValidationError("verification method must not invoke a shell interpreter directly; use the executable path")`. Legitimate invocations like `bash ./scripts/check.sh` (prefix `bash `, not `bash -c `) are NOT blocked.
 
+### Step-mutation read-after-write echo
+
+The four step-mutation tools (`ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_remove_plan_step`, `ralph_move_plan_step`) auto-reindex the entire steps list AND remap `depends_on` / `AC.satisfied_by_steps` references in the design sub-section. After the mutation, the tool returns a JSON echo payload so the agent does not need to call `ralph_get_plan_draft` to learn the new numbering. The echo shape per tool:
+
+- `ralph_insert_plan_step` returns `{action: "insert", index, new_step_number, reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
+- `ralph_replace_plan_step` returns `{action: "replace", step_number, reindex_map (typically a no-op), rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
+- `ralph_remove_plan_step` returns `{action: "remove", removed_step_number, reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
+- `ralph_move_plan_step` returns `{action: "move", from_step_number, to_index, reindex_map (typically a no-op), rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
+
+`removed_step_number` / `from_step_number` are the source identifiers (pre-mutation). `reindex_map` is the `{old: new}` number mapping. `rewritten_depends_on` lists step numbers whose `depends_on` array was rewritten. `rewritten_ac_satisfied_by_steps` lists AC ids whose `satisfied_by_steps` was rewritten. `dropped_ac_satisfied_by_steps` lists AC ids whose entries were silently dropped because the referenced step is gone (the orphan-drop is the principle-of-least-surprise behavior for the executor).
+
+### Net-new step-mutation tool: `ralph_patch_step`
+
+`ralph_patch_step` is a partial-update of one step. Pass `step_number` and a step dict with ANY subset of step fields; the missing fields are preserved from the existing step. The provided `step.number` is ignored (replace_plan_step forces the number to `step_number`). The step-mutation auto-reindex of `depends_on` and `AC.satisfied_by_steps` runs as for `ralph_replace_plan_step`. The same echo payload shape is returned. Use this instead of `ralph_replace_plan_step` when only one or two fields change. Capability: `artifact.plan_write`.
+
+### Net-new read-only tool: `ralph_validate_draft`
+
+`ralph_validate_draft` runs the full `PlanArtifact` cross-section validator (depends_on cycle, intent_verb vs scope_item category, parallel_plan XOR work_units, shell-invocation guard, research/verify steps in AC.satisfied_by_steps, AC id pattern, 4 MB size cap) without writing `plan.json` and without deleting the in-progress draft. Returns `{valid: true}` on success or `{valid: false, errors: [...]}` on failure. Cross-section invariants only run at `finalize_plan` in the write path; `ralph_validate_draft` exposes the same checks in a read-only path. Capability: `artifact.plan_read`.
+
+### Net-new batched tool: `ralph_submit_plan_sections`
+
+`ralph_submit_plan_sections` accepts a list of `{section, content, mode}` entries and validates ALL of them BEFORE any merge; if any entry fails, the entire batch is rejected (`{submitted: [], failed_at: <index>, error: <message>}`) and the draft is unchanged. On success it returns `{submitted: [...], staged_sections: [...], total_bytes: <int>}`. Use this to stage every section of a small-to-medium plan in one round-trip. The full cross-section validator still runs at `finalize_plan`. Capability: `artifact.plan_write`.
+
 ### Design sub-section
 
 The `design` field is OPTIONAL. When present, it carries seven typed sub-models that bias the executor toward good Software Engineering practices:
@@ -148,6 +171,152 @@ This minimal example is the cheapest valid plan the executor can run. It uses th
 ```
 
 This example is exercised by tests/test_artifact_format_docs.py and must round-trip.
+
+## Complete example (high-quality-model plan)
+
+This example is the canonical high-quality-model plan. It exercises the full `PlanArtifact` shape (not a preset) so the executor and the format-doc reader can both see how every typed sub-section fits together. Populates:
+
+- `summary.intent` + `summary.intent_verb` + `summary.coverage_areas` (cheap-model shortcut plus the high-quality-model coverage hint).
+- `design.notes` (≥500 chars of rationale, the high-quality-model hallmark).
+- `design.drift_detection.guard_commands` (≥2 commands) + `expected_outputs` + `sources` + `on_drift_action`.
+- `design.testability.must_be_black_box` + `forbidden_in_tests` + `required_test_layers` (every layer that applies).
+- `design.dependency_injection.preferred_patterns` + `forbidden_patterns` (each populated).
+- `design.refactor_strategy.approach` + `dead_code_policy`.
+- `design.acceptance_criteria` with 3+ criteria, each with `satisfied_by_steps` populated.
+- `steps[*].depends_on` forming a 4-step diamond (1 -> 2, 1 -> 3, 2 -> 4, 3 -> 4) so the cycle guard is exercised.
+- `steps[*].expected_evidence` with 3+ entries per step using the typed `EvidenceRef` shape (`{kind, ref, note?}`).
+- The top-level `PlanConstraints` section (must_not_break + must_keep_working + performance_budget + security_posture).
+
+```json
+{
+  "summary": {
+    "intent": "Refactor src/foo.py to use constructor injection so foo() is testable in isolation.",
+    "intent_verb": "refactor",
+    "coverage_areas": ["refactor", "test"],
+    "scope_items": [
+      {"text": "Replace module-level mutable state in src/foo.py with constructor injection", "category": "refactor"},
+      {"text": "Add a unit test for the new constructor-injected foo()", "category": "test"},
+      {"text": "Wire the new foo() from src/main.py", "category": "refactor"}
+    ]
+  },
+  "skills_mcp": {
+    "skills": ["test-driven-development", "systematic-debugging"],
+    "mcps": []
+  },
+  "steps": [
+    {
+      "number": 1,
+      "title": "Audit foo() module-level state",
+      "content": "Read src/foo.py and identify every module-level mutable and the test seams it blocks.",
+      "step_type": "research",
+      "depends_on": [],
+      "expected_evidence": [
+        {"kind": "file", "ref": "src/foo.py", "note": "current module-level state"},
+        {"kind": "command_output", "ref": "grep -n '^[A-Za-z_]\\+ =' src/foo.py", "note": "all assignments at module level"}
+      ]
+    },
+    {
+      "number": 2,
+      "title": "Refactor foo() to take its dependencies as constructor parameters",
+      "content": "Add a FooConfig dataclass; convert module-level lookups to constructor params; preserve the public foo() signature for callers.",
+      "step_type": "file_change",
+      "targets": [{"path": "src/foo.py", "action": "modify"}],
+      "depends_on": [1],
+      "expected_evidence": [
+        {"kind": "file", "ref": "src/foo.py", "note": "FooConfig dataclass + injected deps"},
+        {"kind": "test_name", "ref": "tests/test_foo.py::test_foo_uses_injected_dep"}
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Wire the new foo() from main.py",
+      "content": "Construct FooConfig in main.py and pass it to foo().",
+      "step_type": "file_change",
+      "targets": [{"path": "src/main.py", "action": "modify"}],
+      "depends_on": [1],
+      "expected_evidence": [
+        {"kind": "file", "ref": "src/main.py", "note": "FooConfig construction"},
+        {"kind": "command_output", "ref": "grep -n 'FooConfig' src/main.py"}
+      ]
+    },
+    {
+      "number": 4,
+      "title": "Run ruff + mypy + pytest",
+      "content": "Run the full verification chain to prove the refactor is clean.",
+      "step_type": "verify",
+      "verify_command": "ruff check src/ && mypy src/ && pytest tests/test_foo.py -q",
+      "depends_on": [2, 3],
+      "expected_evidence": [
+        {"kind": "command_output", "ref": "ruff check src/"},
+        {"kind": "command_output", "ref": "mypy src/"},
+        {"kind": "test_name", "ref": "tests/test_foo.py::test_foo_uses_injected_dep"}
+      ]
+    }
+  ],
+  "critical_files": {
+    "primary_files": [
+      {"path": "src/foo.py", "action": "modify"},
+      {"path": "src/main.py", "action": "modify"}
+    ]
+  },
+  "risks_mitigations": [
+    {"risk": "Public foo() signature changes and breaks callers", "mitigation": "Keep foo() signature stable; only internal lookups move to constructor params.", "severity": "high"}
+  ],
+  "verification_strategy": [
+    {"method": "pytest tests/test_foo.py -q", "expected_outcome": "All tests pass"}
+  ],
+  "constraints": {
+    "must_not_break": ["public foo() signature", "CLI entry point"],
+    "must_keep_working": ["pytest tests/test_foo.py -q"],
+    "performance_budget": "foo() must stay under 1 ms in the hot loop",
+    "security_posture": "No new file reads; FooConfig values are passed by callers"
+  },
+  "design": {
+    "outcome": "foo() is testable in isolation with no module-level state.",
+    "notes": "The current foo() reads from a module-level dict that prevents isolated tests. Move the dict into a FooConfig dataclass and inject it via the constructor. The diamond-shaped depends_on graph (1->2, 1->3, 2->4, 3->4) lets the audit step 4 run only after BOTH refactor paths finish. The high-quality-model design surface (notes, drift_detection guard commands, testability, dependency_injection patterns, refactor_strategy) is populated explicitly so the executor does not need to derive any defaults.",
+    "drift_detection": {
+      "guard_commands": [
+        "ruff check src/",
+        "uv run python -m mypy src/",
+        "pytest tests/test_foo.py -q"
+      ],
+      "expected_outputs": [
+        "All checks passed",
+        "Success: no issues found",
+        "passed"
+      ],
+      "sources": ["ruff", "mypy", "pytest"],
+      "on_drift_action": "fail-verify"
+    },
+    "testability": {
+      "must_be_black_box": true,
+      "forbidden_in_tests": ["time.sleep", "subprocess.run-no-timeout"],
+      "required_test_layers": ["unit", "integration"]
+    },
+    "dependency_injection": {
+      "required_for_testability": true,
+      "preferred_patterns": ["constructor", "parameter"],
+      "forbidden_patterns": ["global-singleton", "module-level-mutable-state", "import-time-side-effects"],
+      "notes": "FooConfig is the constructor-injected seam; the module-level dict must be removed in the same commit."
+    },
+    "refactor_strategy": {
+      "approach": "incremental",
+      "dead_code_policy": "delete-immediately",
+      "allow_temporary_hacks": false
+    },
+    "acceptance_criteria": {
+      "criteria": [
+        {"id": "AC-01", "description": "foo() accepts FooConfig via constructor", "satisfied_by_steps": [2]},
+        {"id": "AC-02", "description": "main.py constructs FooConfig and passes it to foo()", "satisfied_by_steps": [3]},
+        {"id": "AC-03", "description": "pytest tests/test_foo.py -q passes", "satisfied_by_steps": [4]},
+        {"id": "AC-04", "description": "ruff and mypy are clean", "satisfied_by_steps": [4]}
+      ]
+    }
+  }
+}
+```
+
+This example round-trips through `normalize_plan_artifact_content` and is exercised by `tests/test_artifact_format_docs.py`.
 
 ## Minimal preset quickstart
 
@@ -214,6 +383,105 @@ The `steps[*].step_type` field is a closed enum. Pick exactly one:
 | `action`      | The step runs a non-mutating executor action (a command, a tool call). |
 | `research`    | The step is exploratory and may not produce a code change.             |
 | `verify`      | The step is a pure-verification step (e.g. `run ruff`, `run pytest`) with no file changes. |
+
+### Silent alias coercion for cheap-model mistakes
+
+`step_type` accepts the four canonical values above ONLY. A before-validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep._coerce_step_type_aliases` silently coerces the four common cheap-model mistakes to the canonical value with a WARNING log:
+
+| Aliases coerced  | Canonical value | Rationale                                        |
+|------------------|-----------------|--------------------------------------------------|
+| `test`, `tests`  | `verify`        | Cheap models mean a verification step.           |
+| `check`, `run`   | `verify`        | Cheap models mean a verification step.           |
+
+The closed enum is unchanged: `file_change`, `action`, `research`, `verify` are the only canonical values. The coercion is silent (no error) but logs a WARNING so the audit can flag the use of an alias. Always set `step_type` to the canonical value explicitly so the WARNING is not raised in `make verify`.
+
+## Closed enums
+
+The plan schema uses closed-string enums (Pydantic `Literal` types) for every field where the value is bounded. The closed set is enforced at the field-validator level; a value outside the set is rejected with a `ValueError` naming the closed set. This is the single source of truth — the values are also the canonical values in the format doc tables below.
+
+### `StepType` — `steps[*].step_type` (4 values)
+
+`file_change`, `action`, `research`, `verify`. See the `## StepType reference` section above for usage and the silent alias coercion table.
+
+### `ScopeCategory` — `summary.scope_items[*].category` (15 values, 3 legacy)
+
+`bugfix`, `feature`, `refactor`, `test`, `docs`, `infra`, `migration`, `security`, `performance`, `cleanup`, `research`, `unknown`, plus the legacy aliases `file_change`, `prompt`, `other` (kept for backward compatibility with test fixtures and existing plan examples). See the `## ScopeCategory reference` section for usage.
+
+### `CoverageArea` — `summary.coverage_areas[*]` (10 values)
+
+`bugfix`, `feature`, `refactor`, `test`, `docs`, `infra`, `security`, `performance`, `migration`, `release`. See the `## CoverageArea reference` section for usage.
+
+### `Summary.intent_verb` — closed 9-verb set
+
+`add`, `fix`, `refactor`, `migrate`, `document`, `investigate`, `improve`, `configure`, `remove`. Empty string (`""`) is also accepted (default) to skip the cross-section check; explicit `""` is rejected with `ValueError("intent_verb must not be empty")` to distinguish a deliberate empty from an omitted field. A before-validator lowercases the value BEFORE the closed-set check (so `Add` and `ADD` both pass). The 9-verb x 15-category cross-section mapping is documented in `## Cross-section invariants`.
+
+### `PlanStep.priority` — 4 values
+
+`critical`, `high`, `medium`, `low`. Optional; default `None`.
+
+### `RiskMitigation.severity` — 4 values
+
+`low`, `medium`, `high`, `critical`. Optional; default `None`.
+
+### `StepTarget.action` — 5 values
+
+`create`, `modify`, `delete`, `read`, `reference`. The first three are required for `critical_files.primary_files[*].action`; the last two are for read-only / reference targets on a `file_change` step that touches zero files.
+
+### `DriftDetection.sources` — 7 values
+
+`ruff`, `mypy`, `pytest`, `make`, `custom-script`, `ci`, `unknown`. List values; closed per element.
+
+### `DriftDetection.on_drift_action` — 4 values
+
+`fail-verify`, `log-only`, `open-issue`, `ignore`. Optional; default `None`.
+
+### `RefactorStrategy.approach` — 6 values
+
+`greenfield`, `incremental`, `strangler`, `branch-by-abstraction`, `rebuild-in-parallel`, `no-refactor`. Required.
+
+### `RefactorStrategy.dead_code_policy` — 4 values
+
+`delete-immediately`, `delete-after-feature`, `keep-for-trace`, `unknown`. Default `delete-immediately` (the SE-opinionated default).
+
+### `Testability.forbidden_in_tests` — 7 values
+
+`time.sleep`, `subprocess.run-no-timeout`, `real-file-IO`, `real-network`, `global-mutation`, `monkeypatch-of-prod`, `unknown`. List values; closed per element.
+
+### `Testability.required_test_layers` — 7 values
+
+`unit`, `integration`, `subprocess_e2e`, `property`, `snapshot`, `contract`, `unknown`. List values; closed per element.
+
+### `DependencyInjection.preferred_patterns` — 6 values
+
+`constructor`, `parameter`, `interface`, `service-locator`, `ambient-context`, `unknown`. List values; closed per element.
+
+### `DependencyInjection.forbidden_patterns` — 6 values
+
+`global-singleton`, `module-level-mutable-state`, `import-time-side-effects`, `subprocess-time-random`, `env-var-direct-read`, `unknown`. List values; closed per element.
+
+### `DesignConstraints.architecture_style` — 10 values
+
+`monolith`, `modular-monolith`, `microservice`, `library`, `cli`, `spa`, `mobile`, `serverless`, `embedded`, `unknown`. Optional; default `None`.
+
+### `AcceptanceCriterion.id` — regex `^[A-Z]+-\d{2,}$`
+
+Required; case-sensitive; must be unique within `design.acceptance_criteria.criteria[*].id` (case-insensitive uniqueness — `AC-01` and `ac-01` collide). The pattern is enforced at the field-validator level.
+
+### `PlanningProfile` — `design.planning_profile` (3 values)
+
+`strict`, `balanced`, `minimal`. Optional; default `None`. Each preset bias-fills the seven typed `design` sub-sections with SE-opinionated defaults (user values always win). See the `### Preset-by-preset SE-bias defaults` subsection in `## SE-opinionated design surfaces`.
+
+### `EvidenceKind` — `EvidenceRef.kind` (3 values)
+
+`file`, `command_output`, `test_name`. Required; discriminator. Bare strings passed to `expected_evidence` are coerced to `kind="file"`.
+
+### `SectionMode` — `ralph_submit_plan_section.mode` (2 values)
+
+`replace` (default), `append`. Object sections (`summary`, `skills_mcp`, `critical_files`, `constraints`, `design`) only accept `mode="replace"`; list sections (`steps`, `risks_mitigations`, `verification_strategy`, `parallel_plan`) accept both.
+
+### `StepMode` — `ralph_insert_plan_step.index` semantics
+
+1-based insert index. Range `[1, len(steps) + 1]`. Out-of-range indices are clamped (move) or rejected (insert: range error).
 
 ## Cheap-model shortcut examples
 

@@ -641,6 +641,85 @@ def test_plan_format_doc_mentions_size_limits_table() -> None:
     assert ("4_000_000" in doc) or ("4,000,000" in doc)
 
 
+def test_plan_format_doc_has_closed_enums_section() -> None:
+    """The bundled plan.md has a '## Closed enums' section enumerating all closed enums."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Closed enums" in doc
+    # Spot-check the section enumerates the major closed enums
+    for enum_label in (
+        "`StepType`",
+        "`ScopeCategory`",
+        "`CoverageArea`",
+        "`intent_verb`",
+        "`StepTarget.action`",
+        "`DriftDetection.sources`",
+        "`DriftDetection.on_drift_action`",
+        "`RefactorStrategy.approach`",
+        "`RefactorStrategy.dead_code_policy`",
+        "`Testability.forbidden_in_tests`",
+        "`Testability.required_test_layers`",
+        "`DependencyInjection.preferred_patterns`",
+        "`DependencyInjection.forbidden_patterns`",
+        "`DesignConstraints.architecture_style`",
+    ):
+        assert enum_label in doc, f"Closed enums section missing {enum_label}"
+
+
+def test_plan_format_doc_has_high_quality_model_example() -> None:
+    """The bundled plan.md has a '## Complete example (high-quality-model plan)' section."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Complete example (high-quality-model plan)" in doc
+    # The example populates design.notes (>=500 chars rationale) and drift_detection.guard_commands
+    assert "design.notes" in doc
+    assert "drift_detection.guard_commands" in doc
+    # The example uses a diamond depends_on graph
+    assert "1 -> 2" in doc or "1->2" in doc
+    # The example uses the typed EvidenceRef shape
+    assert '"kind"' in doc and '"ref"' in doc
+
+
+def test_plan_format_doc_preserves_audit_literals() -> None:
+    """The bundled plan.md contains the audit literals."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "agent-managed sub-agents" in doc, (
+        "audit_parallelization_dormant requires the literal 'agent-managed sub-agents'"
+    )
+    assert "fan-out is dormant" in doc, (
+        "audit_parallelization_dormant requires the literal 'fan-out is dormant'"
+    )
+
+
+def test_plan_format_doc_documents_step_mutation_echo_payload() -> None:
+    """The bundled plan.md documents the read-after-write echo payload."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "Step-mutation read-after-write echo" in doc
+    assert "reindex_map" in doc
+    assert "rewritten_depends_on" in doc
+    assert "rewritten_ac_satisfied_by_steps" in doc
+    assert "dropped_ac_satisfied_by_steps" in doc
+
+
+def test_plan_format_doc_documents_three_new_tools() -> None:
+    """The bundled plan.md documents the three new MCP tools."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "ralph_patch_step" in doc
+    assert "ralph_validate_draft" in doc
+    assert "ralph_submit_plan_sections" in doc
+
+
+def test_plan_format_doc_documents_step_type_alias_coercion() -> None:
+    """The bundled plan.md documents the silent alias coercion."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "Silent alias coercion" in doc or "alias coercion" in doc
+    assert "_coerce_step_type_aliases" in doc
+
+
 def test_plan_format_doc_did_not_add_duplicate_h2() -> None:
     """The bundled plan.md does NOT add the duplicate-H2 names from the prior revision.
 
@@ -659,12 +738,13 @@ def test_plan_format_doc_did_not_add_duplicate_h2() -> None:
 
 
 def test_plan_format_doc_h2_count_increased_by_one() -> None:
-    """The bundled plan.md H2 count is exactly 23 (was 22, gained 1)."""
+    """The bundled plan.md H2 count is exactly 25 (was 22, gained 3:
+    ## Plan size limits, ## Complete example (high-quality-model plan), ## Closed enums)."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     h2_count = sum(1 for line in doc.split("\n") if line.startswith("## "))
-    assert h2_count == 23, (
-        f"Expected exactly 23 H2 sections in plan format doc, got {h2_count}"
+    assert h2_count == 25, (
+        f"Expected exactly 25 H2 sections in plan format doc, got {h2_count}"
     )
 
 

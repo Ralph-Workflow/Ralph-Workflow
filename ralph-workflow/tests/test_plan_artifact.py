@@ -1147,7 +1147,7 @@ def test_summary_intent_verb_rejects_explicit_empty_string() -> None:
         )
 
 
-def test_summary_intent_max_length_200() -> None:
+def test_summary_intent_max_length_500() -> None:
     """intent is capped at 500 chars (raises ValueError with 'at most 500')."""
     with pytest.raises(ValueError, match="at most 500"):
         Summary.model_validate(
@@ -1287,7 +1287,7 @@ def test_design_section_outcome_stripped_and_dumped_as_none() -> None:
     assert "outcome" not in dumped
 
 
-def test_design_section_outcome_max_length_500() -> None:
+def test_design_section_outcome_max_length_1000() -> None:
     """outcome is capped at 1000 chars (raises with 'at most 1000' in the message)."""
     with pytest.raises(ValueError, match="at most 1000"):
         DesignSection.model_validate({"outcome": "x" * 1001})
@@ -1669,7 +1669,7 @@ def test_plan_artifact_schema_version_field_round_trip() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_intent_length_error_states_200_char_limit_and_actual_length() -> None:
+def test_intent_length_error_states_500_char_limit_and_actual_length() -> None:
     """AC-01: intent length errors name the 500-char cap and the actual length."""
     plan = copy.deepcopy(_valid_plan())
     plan["summary"] = {

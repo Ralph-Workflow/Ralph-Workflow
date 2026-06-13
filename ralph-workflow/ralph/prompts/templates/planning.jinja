@@ -32,14 +32,19 @@ You MUST submit your plan via Ralph Workflow's planning MCP tools.
 Submission protocol:
 - Unless the plan is genuinely short, submit each required section separately.
 - Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage sections one by one and validate each section as you go.
+- For small-to-medium plans, prefer {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} to stage every section in one batched round-trip; the batch validates ALL sections before any merge and the whole batch is rejected on the first failure.
 - Use {{INSERT_PLAN_STEP_TOOL_REFERENCE}} to insert a step at a specific numbered position when you are refining an existing staged draft.
 - Use {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} to replace a specific numbered step when only one executor action needs revision.
+- Use {{PATCH_PLAN_STEP_TOOL_REFERENCE}} to partial-update a single step (shallow-merge; missing fields are preserved). Prefer this over {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} when only one or two fields change.
 - Use {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} to remove a specific numbered step when the staged draft contains obsolete work.
-- The insert/remove step tools automatically reindex the full steps list; do not renumber steps manually.
+- Use {{MOVE_PLAN_STEP_TOOL_REFERENCE}} to move a step to a new position in a single round-trip (the move auto-reindexes once, so do NOT combine it with insert/remove).
+- The insert/remove/move step tools automatically reindex the full steps list; do not renumber steps manually.
+- Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to run the full PlanArtifact cross-section validator without writing plan.json and without deleting the in-progress draft. Call this BEFORE {{FINALIZE_PLAN_TOOL_REFERENCE}} if you want a dry-run check.
 - Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if you need to confirm current state after an error or resume.
-- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} only after every required section is staged and valid.
+- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} only after every required section is staged and valid. The full cross-section validator runs at finalize_plan; on success, the staged draft is deleted.
 - If the staged draft becomes unusable and you need to restart from step 1, use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}.
 - Only use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" when the plan is genuinely short and can be safely submitted in one atomic payload.
+- The MCP tool descriptions are the contract; the tool name and one-line description in the brokered tool list tell you what side effects to expect. Re-read the description of any tool you have not used before. Do NOT call a tool without first understanding its implicit side effects: {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} fails fast on dangling depends_on and silently drops orphan AC satisfied_by_steps entries; {{FINALIZE_PLAN_TOOL_REFERENCE}} deletes the draft on success; the four step-mutation tools (insert/replace/remove/move) return an echo payload with the new step number(s), the reindex map, and the list of AC ids whose satisfied_by_steps were rewritten.
 
 USER REQUIREMENTS:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
@@ -132,7 +137,10 @@ Default submission flow:
 5. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `risks_mitigations`.
 6. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `verification_strategy`.
 7. Stage optional sections like `parallel_plan` (read-mostly chunks) or `work_units` (same-workspace parallelization intent for agent-managed sub-agents) only when they add real value — see ## Agent-Driven Parallel Execution below.
-8. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
+8. Call {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalizing. (Optional but recommended for non-trivial plans.)
+9. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
+
+Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{section, content, mode}` entries and stages them all in one round-trip. Use this for small-to-medium plans where you want a single round-trip instead of N stage calls.
 
 ## INTENT & INTENT_VERB (cheap-model shortcut)
 
@@ -152,9 +160,13 @@ Every `PlanStep` is bound by a tightened contract. Plans that violate the contra
 
 These two rules are enforced by the per-step model validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep`. If you set `step_type="file_change"`, declare `targets` for every file the step will touch.
 
+The step-mutation tools ({{INSERT_PLAN_STEP_TOOL_REFERENCE}}, {{REPLACE_PLAN_STEP_TOOL_REFERENCE}}, {{PATCH_PLAN_STEP_TOOL_REFERENCE}}, {{REMOVE_PLAN_STEP_TOOL_REFERENCE}}, {{MOVE_PLAN_STEP_TOOL_REFERENCE}}) return an echo payload with the new step number(s), the `depends_on` reindex map, and the list of AC ids whose `satisfied_by_steps` were rewritten. You do NOT need to call {{GET_PLAN_DRAFT_TOOL_REFERENCE}} immediately after a step mutation to learn the new numbers.
+
 ## PLAN SIZE LIMITS
 
-Every plan must fit within the generous-but-bounded caps listed in `.agent/artifact-formats/plan.md` §`Plan size limits`. The hard cap is 4 MB total JSON; per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500) keep runaway loops detectable. A plan that exceeds any cap is rejected with a structured `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) before Pydantic runs. The cap table in §`Plan size limits` is the single source of truth — no model hard-codes a cap. The three string-length tiers (`short=1000`, `medium=8000`, `long=20000`) cover every plan-artifact string field; the per-field cap table maps each field to one of the three tiers. A detailed plan (context ~7500 chars, 150 scope items, 200 steps with 19k chars of content and 400 evidence entries, 400 acceptance criteria) normalizes cleanly under the new caps.
+Every plan must fit within the generous-but-bounded caps in `.agent/artifact-formats/plan.md` §`Plan size limits`. The hard cap is 4 MB total JSON; per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500, risks ≤ 200, verification ≤ 100, primary/reference files ≤ 200, parallel_plan ≤ 200, work_units ≤ 200, constraint_list_entries ≤ 500) keep runaway loops detectable. The three string-length tiers (`short=1000`, `medium=8000`, `long=20000`) cover every plan-artifact string field; the per-field cap table maps each field to one of the three tiers. If your plan would exceed any cap, you MUST shrink it; do NOT silently truncate fields. The bundled format doc at `.agent/artifact-formats/plan.md` §`Plan size limits` is the canonical reference; consult it before generating a long plan.
+
+A plan that exceeds any cap is rejected with a structured `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) before Pydantic runs. The cap table is the single source of truth — no model hard-codes a cap.
 
 ## CYCLE GUARD
 
@@ -213,7 +225,21 @@ The seven typed sub-sections, with the exact labels the executor will see in the
 
 **`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset also seeds a sentinel acceptance criterion `PRESET-01` that you may strip or replace. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
 
-**Model tier**: Pick the model tier first, then fill the fields that tier is expected to provide. For cheap models, set `design.planning_profile = "minimal"` (or "balanced") and let the bias-fill presets cover the seven sub-sections; cheap models should also reference the `## Plan size limits` and `## CYCLE GUARD` guidance above so the caps and the cycle-guard contract are baked into the plan from the start. For high-quality models, leave `planning_profile` unset and handcraft all seven sub-sections plus `design.outcome` and `design.notes`. The two paths converge on the same `PlanArtifact` shape, so the executor cannot tell which model tier produced the plan by inspecting the artifact alone.
+**Model tier**: Pick the model tier first, then fill the fields that tier is expected to provide.
+
+**High-quality models MUST populate**:
+- `design.notes` — rationale for the chosen design (the high-quality-model hallmark; ~500+ chars).
+- `design.drift_detection.guard_commands` (>=2 commands) + `expected_outputs` + `sources` + `on_drift_action`.
+- `design.testability.required_test_layers` (every layer that applies: `unit`, `integration`, etc.).
+- `design.dependency_injection.preferred_patterns` (every pattern the design uses: `constructor`, `parameter`, `interface`).
+- `design.dependency_injection.forbidden_patterns` (every antipattern explicitly avoided: `global-singleton`, `module-level-mutable-state`).
+- `design.refactor_strategy.approach` + `dead_code_policy="delete-immediately"` (zero-tolerance dead-code policy).
+- `design.acceptance_criteria` with 3+ criteria, each with `satisfied_by_steps` populated.
+- High-quality models SHOULD set `planning_profile="strict"` and override the bias-filled defaults with project-specific values.
+
+**Cheap models SHOULD use** `planning_profile="balanced"` or `planning_profile="minimal"` to get the SE defaults bias-filled automatically. Cheap models may leave `design.notes` unset and skip per-element sub-section population; the preset covers the gaps. Cheap models should still populate `summary.intent` + `summary.intent_verb` for the cheap-model shortcut.
+
+The two paths converge on the same `PlanArtifact` shape, so the executor cannot tell which model tier produced the plan by inspecting the artifact alone.
 
 The full reference for the design sub-section, including every enum value and the JSON shape, is at `.agent/artifact-formats/plan.md` (bundled by Ralph Workflow and materialized into the workspace). Cross-reference `AGENTS.md` §'Non-negotiables' for the canonical SE opinions the sub-sections enforce.
 
