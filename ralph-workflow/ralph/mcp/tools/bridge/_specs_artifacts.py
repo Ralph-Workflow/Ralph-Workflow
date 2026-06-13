@@ -39,11 +39,9 @@ def artifact_specs() -> list[ToolSpec]:
                 name=SUBMIT_ARTIFACT_TOOL,
                 description=(
                     _SUBMIT_ARTIFACT_DESCRIPTION
-                    + " For artifact_type='plan', the in-progress plan draft is deleted on success "
-                    "(the canonical plan.json is written to .agent/artifacts/plan.json and the "
-                    "markdown handoff to .agent/PLAN.md). The bundled format doc at "
-                    ".agent/artifact-formats/<type>.md is the canonical reference for the payload "
-                    "shape. On any failure the draft is preserved."
+                    + " For artifact_type='plan', the in-progress draft is deleted on success"
+                    " and plan.json is written. The format doc is canonical."
+                    " Draft preserved on failure."
                 ),
                 input_schema={
                     "type": "object",
@@ -84,28 +82,20 @@ def artifact_specs() -> list[ToolSpec]:
                 name=SUBMIT_PLAN_SECTION_TOOL,
                 description=(
                     "Submit one validated plan section. Required: section, content. "
-                    "Optional: mode ('replace' or 'append', default 'replace'). "
+                    "Optional: mode (replace|append, default replace). "
                     "Sections: summary, skills_mcp, steps, critical_files, "
                     "risks_mitigations, constraints, design, verification_strategy, "
                     "parallel_plan, work_units. "
                     "Call ralph_finalize_plan after staging all sections. "
                     'Example: {"section": "summary", "content": '
                     + _EXAMPLE_PLAN_CONTENT
-                    + ', "mode": "replace"}.'
-                    " Only the single submitted section is validated here. Cross-section "
-                    "invariants (intent_verb vs scope_item category, parallel_plan XOR "
-                    "work_units, shell-invocation guard, research/verify steps in AC "
-                    "satisfied_by_steps, depends_on cycle) run ONLY at finalize_plan. "
-                    "If you want to check the whole plan without writing, call "
-                    "ralph_validate_draft instead. mode='append' only works for list "
-                    "sections (steps, risks_mitigations, verification_strategy, "
-                    "parallel_plan); object sections (summary, skills_mcp, "
-                    "critical_files, constraints, design) only accept mode='replace'. "
-                    "A plan that exceeds the 4 MB total byte cap or any per-list cap "
-                    "defined in `PlanSizeLimits.DEFAULT` is rejected with a structured "
-                    "`PlanArtifactSizeError` before Pydantic runs. A plan with a cyclic "
-                    "`depends_on` graph (e.g. step 1 -> 2 -> 3 -> 1) is rejected at "
-                    "finalize time with `plan step depends_on cycle detected at step N`."
+                    + ', "mode": "replace"}. '
+                    "Only the single submitted section is validated here; cross-section "
+                    "invariants (depends_on cycle, parallel_plan XOR work_units, "
+                    "shell-invocation guard, research/verify in AC.satisfied_by_steps) "
+                    "run ONLY at finalize_plan. mode=append is list-sections only; "
+                    "object sections only accept mode=replace. Plans over the 4 MB cap "
+                    "or PlanSizeLimits per-list caps are rejected with PlanArtifactSizeError."
                 ),
                 input_schema={
                     "type": "object",
@@ -201,21 +191,16 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=INSERT_PLAN_STEP_TOOL,
                 description=(
-                    "Insert one plan step at a 1-based index and automatically reindex the whole"
-                    " steps list. Required: index (integer), step (object). The step"
-                    " mutation auto-reindexes the remaining steps, rewrites every"
-                    " `depends_on` array in the surviving steps to use the new step"
-                    " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
-                    " the design sub-section to use the new step numbers; the provided"
-                    " `step.number` is ignored. Returns an echo payload with the new"
-                    " step number, the reindex map, the list of step numbers whose"
-                    " depends_on was rewritten, the list of AC ids whose"
-                    " satisfied_by_steps was rewritten, the list of AC ids whose"
-                    " satisfied_by_steps entries were dropped (orphan references), and"
-                    " the new total step count: "
-                    "{action: 'insert', index, new_step_number, reindex_map,"
-                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
-                    " dropped_ac_satisfied_by_steps, total_steps}."
+                    "Insert one plan step at a 1-based index and reindex the whole steps list. "
+                    "Required: index (integer), step (object). The step number in the step "
+                    "object is ignored. Auto-reindexes remaining steps, rewrites every "
+                    "depends_on array, and rewrites every AC.satisfied_by_steps reference in "
+                    "the design sub-section. Returns an echo payload with the new step number, "
+                    "the reindex map, the list of rewritten depends_on step numbers, the list "
+                    "of rewritten AC ids, the list of dropped AC ids (orphan references), and "
+                    "the new total step count: {action: 'insert', index, new_step_number, "
+                    "reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
+                    "dropped_ac_satisfied_by_steps, total_steps}."
                 ),
                 input_schema={
                     "type": "object",
@@ -234,22 +219,17 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=REPLACE_PLAN_STEP_TOOL,
                 description=(
-                    "Replace one plan step by its current number and automatically reindex the"
-                    " whole steps list. Required: step_number (integer), step (object)."
-                    " The step mutation auto-reindexes the remaining steps, rewrites every"
-                    " `depends_on` array in the surviving steps to use the new step"
-                    " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
-                    " the design sub-section to use the new step numbers; the provided"
-                    " `step.number` is ignored. Returns an echo payload confirming the"
-                    " (unchanged) step number, the reindex map (typically a no-op for"
-                    " depends_on since the step number is preserved), the list of step"
-                    " numbers whose depends_on was rewritten, the list of AC ids whose"
-                    " satisfied_by_steps was rewritten, the list of AC ids whose"
-                    " satisfied_by_steps entries were dropped, and the new total step"
-                    " count: "
-                    "{action: 'replace', step_number, reindex_map,"
-                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
-                    " dropped_ac_satisfied_by_steps, total_steps}."
+                    "Replace one plan step by its current number and reindex the whole steps list. "
+                    "Required: step_number (integer), step (object). The step number in the step "
+                    "object is ignored. Auto-reindexes remaining steps, rewrites every "
+                    "depends_on array, and rewrites every AC.satisfied_by_steps reference in "
+                    "the design sub-section. The reindex map is typically a no-op since the "
+                    "step number is preserved. Returns an echo payload with the (unchanged) "
+                    "step number, the reindex map, the list of rewritten depends_on step "
+                    "numbers, the list of rewritten AC ids, the list of dropped AC ids, and "
+                    "the new total step count: {action: 'replace', step_number, reindex_map, "
+                    "rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
+                    "dropped_ac_satisfied_by_steps, total_steps}."
                 ),
                 input_schema={
                     "type": "object",
@@ -298,25 +278,18 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=REMOVE_PLAN_STEP_TOOL,
                 description=(
-                    "Remove one plan step by its current number and automatically reindex the"
-                    " whole steps list. Required: step_number (integer). The step"
-                    " mutation auto-reindexes the remaining steps, rewrites every"
-                    " `depends_on` array in the surviving steps to use the new step"
-                    " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
-                    " the design sub-section to use the new step numbers; the provided"
-                    " `step.number` is ignored. Fails fast with PlanArtifactValidationError"
-                    " if any other step depends on the removed step (in that case call"
-                    " replace_plan_step on the dependent step first or remove the"
-                    " dependent step too). Silently drops AC entries whose"
-                    " satisfied_by_steps reference the removed step. Returns an echo"
-                    " payload with the removed step number, the reindex map, the list of"
-                    " step numbers whose depends_on was rewritten, the list of AC ids"
-                    " whose satisfied_by_steps was rewritten, the list of AC ids whose"
-                    " satisfied_by_steps entries were dropped, and the new total step"
-                    " count: "
-                    "{action: 'remove', removed_step_number, reindex_map,"
-                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
-                    " dropped_ac_satisfied_by_steps, total_steps}."
+                    "Remove one plan step by its current number and reindex the whole steps list. "
+                    "Required: step_number (integer). Auto-reindexes remaining steps, rewrites "
+                    "every depends_on array, and rewrites every AC.satisfied_by_steps reference "
+                    "in the design sub-section. Fails fast with PlanArtifactValidationError if "
+                    "any other step depends on the removed step. Silently drops AC entries "
+                    "whose satisfied_by_steps reference the removed step. Returns an echo "
+                    "payload with the removed step number, the reindex map, the list of "
+                    "rewritten depends_on step numbers, the list of rewritten AC ids, the "
+                    "list of dropped AC ids, and the new total step count: "
+                    "{action: 'remove', removed_step_number, reindex_map, "
+                    "rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
+                    "dropped_ac_satisfied_by_steps, total_steps}."
                 ),
                 input_schema={
                     "type": "object",
@@ -334,25 +307,18 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=MOVE_PLAN_STEP_TOOL,
                 description=(
-                    "Move one plan step to a 1-based index in a single call. Required:"
-                    " from_step_number (integer), to_index (integer; clamped to"
-                    " [1, len(steps) + 1]). Equivalent to remove_plan_step +"
-                    " insert_plan_step but exposed as a single round-trip so the"
-                    " agent does not need to reindex twice. The step mutation"
-                    " auto-reindexes the remaining steps, rewrites every"
-                    " `depends_on` array in the surviving steps to use the new step"
-                    " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
-                    " the design sub-section to use the new step numbers; the provided"
-                    " `step.number` is ignored. Returns an echo payload with the source"
-                    " and target step numbers (typically identical since move preserves"
-                    " step numbers), the reindex map (typically a no-op), the list of"
-                    " step numbers whose depends_on was rewritten, the list of AC ids"
-                    " whose satisfied_by_steps was rewritten, the list of AC ids whose"
-                    " satisfied_by_steps entries were dropped, and the new total step"
-                    " count: "
-                    "{action: 'move', from_step_number, to_index, reindex_map,"
-                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
-                    " dropped_ac_satisfied_by_steps, total_steps}."
+                    "Move one plan step to a 1-based index in a single call. Required: "
+                    "from_step_number (integer), to_index (integer; clamped to [1, len+1]). "
+                    "Equivalent to remove_plan_step + insert_plan_step but exposed as one "
+                    "round-trip. Auto-reindexes remaining steps, rewrites every depends_on "
+                    "array, and rewrites every AC.satisfied_by_steps reference. Returns an "
+                    "echo payload with the source and target step numbers (typically "
+                    "identical since move preserves step numbers), the reindex map "
+                    "(typically a no-op), the list of rewritten depends_on step numbers, "
+                    "the list of rewritten AC ids, the list of dropped AC ids, and the new "
+                    "total step count: {action: 'move', from_step_number, to_index, "
+                    "reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
+                    "dropped_ac_satisfied_by_steps, total_steps}."
                 ),
                 input_schema={
                     "type": "object",

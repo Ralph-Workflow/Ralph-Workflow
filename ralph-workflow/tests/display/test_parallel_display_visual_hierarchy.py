@@ -34,6 +34,13 @@ from ralph.display.theme import RALPH_THEME
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 _TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?[+\-]\d{2}:\d{2}")
+# Wall-clock-based `elapsed=Ns` substring (e.g. `elapsed=0.0s`, `elapsed=12.3s`).
+# `ParallelDisplay` reads real `time.monotonic()` and rounds to 1 decimal; the
+# two display paths can emit a different rounded value when the system clock
+# is under load (e.g. `0.0s` on the TTY path, `0.1s` on the non-TTY path).
+# Normalizing the substring makes the parity assertion deterministic without
+# forcing the production code to inject a clock.
+_ELAPSED_RE = re.compile(r"elapsed=\d+(?:\.\d+)?s")
 # Pre-built ANSI prefix for theme.banner.border (#56B4E9 = sky-blue). When Rich
 # applies a hex color to a Text span it emits \x1b[38;2;86;180;233m (24-bit
 # truecolor) on a `truecolor` color_system console.
@@ -165,8 +172,14 @@ def test_visual_hierarchy_parity_tty_vs_non_tty() -> None:
     pd_no_tty, buf_no_tty = _make_display(force_terminal=False)
     _run_lifecycle(pd_tty)
     _run_lifecycle(pd_no_tty)
-    text_tty = _TIMESTAMP_RE.sub("<TS>", _ANSI_ESCAPE_RE.sub("", buf_tty.getvalue()))
-    text_no_tty = _TIMESTAMP_RE.sub("<TS>", _ANSI_ESCAPE_RE.sub("", buf_no_tty.getvalue()))
+    text_tty = _ELAPSED_RE.sub(
+        "elapsed=<T>",
+        _TIMESTAMP_RE.sub("<TS>", _ANSI_ESCAPE_RE.sub("", buf_tty.getvalue())),
+    )
+    text_no_tty = _ELAPSED_RE.sub(
+        "elapsed=<T>",
+        _TIMESTAMP_RE.sub("<TS>", _ANSI_ESCAPE_RE.sub("", buf_no_tty.getvalue())),
+    )
     assert text_tty == text_no_tty, (
         "TTY and non-TTY output must match modulo ANSI escape codes.\n"
         f"--- TTY ---\n{text_tty!r}\n--- non-TTY ---\n{text_no_tty!r}\n"
