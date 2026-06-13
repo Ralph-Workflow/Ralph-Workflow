@@ -24,6 +24,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from loguru import logger as loguru_logger
+
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     ChannelEvidenceSummary,
@@ -573,3 +575,153 @@ def test_handle_evidence_deferral_returns_continue() -> None:
     wd.record_mcp_tool_call()
     verdict = wd._handle_evidence_deferral(clock.monotonic(), 0.5)
     assert verdict == WatchdogVerdict.CONTINUE
+
+
+# ---------------------------------------------------------------------------
+# (q) Deferral debug log names the channel age, NOT idle_elapsed
+# ---------------------------------------------------------------------------
+
+
+def test_handle_evidence_deferral_debug_log_names_channel_age() -> None:
+    """The deferral debug log's ``age=`` field must reflect the FRESHEST
+    non-stdout channel age, not the stdout ``idle_elapsed``.
+
+    This is the regression test for the Plan Compliance finding
+    described in the development analysis: the pre-fix
+    ``_handle_evidence_deferral`` passed ``round(idle_elapsed, 1)``
+    twice, so the log claimed the freshest non-stdout channel age
+    equalled the stdout idle elapsed (which is only true when stdout
+    is the only channel and the active channel label is "none").
+
+    Scenario:
+      - stdout idle for 60s (well past the 0.1s idle deadline)
+      - a subagent work event at t=5s (age = 55s at evaluate-time)
+      - evaluate -> deferred (subagent channel is fresh under the
+        default 30s TTL? NO - age 55s is over the 30s TTL)
+
+    To force a real deferral we must keep the channel within the TTL,
+    so the scenario is:
+      - record_subagent_work at t=0
+      - advance 50s of stdout silence (idle = 50s, channel age = 50s,
+        still fresh under a 1000s TTL)
+      - _handle_evidence_deferral with idle_elapsed=50.0
+
+    The 'age=' field must equal 50.0 (the channel age), and the
+    'idle_elapsed=' field must also equal 50.0 (which happens to
+    match because there is no other activity; the test still proves
+    the log line is well-formed and consistent with the
+    _build_evidence_summary_diag helper).
+    """
+    wd, clock = _make_watchdog(activity_ttl=1000.0)
+    wd.record_subagent_work()  # at t=0
+    clock.advance(50.0)  # both stdout and subagent age = 50s
+    captured = []
+
+    def _sink(message: object) -> None:
+        captured.append(str(message.record["message"]))
+
+    handler_id = loguru_logger.add(_sink, level="DEBUG")
+    try:
+        wd._handle_evidence_deferral(clock.monotonic(), 50.0)
+    finally:
+        loguru_logger.remove(handler_id)
+
+    deferral_lines = [m for m in captured if "deferred via activity evidence" in m]
+    assert deferral_lines, f"expected a 'deferred via activity evidence' debug log, got: {captured}"
+    line = deferral_lines[0]
+    # Both ages happen to be 50.0 in this scenario; the test confirms
+    # the log line is well-formed and the channel label is 'subagent'.
+    assert "channel=subagent" in line, f"channel label must be 'subagent', got: {line}"
+    assert "age=50.0s" in line, f"age= field must be 50.0s, got: {line}"
+    assert "idle_elapsed=50.0s" in line, f"idle_elapsed= field must be 50.0s, got: {line}"
+
+
+def test_handle_evidence_deferral_debug_log_age_differs_from_idle_elapsed() -> None:
+    """The deferral debug log's ``age=`` field must DIFFER from
+    ``idle_elapsed=`` when the freshest non-stdout channel is fresher
+    than the stdout baseline.
+
+    Scenario:
+      - watchdog starts at t=0 with idle=0.1s, ttl=1000s
+      - record_activity at t=0 (sets stdout baseline)
+      - advance 60s of stdout silence
+      - record_mcp_tool_call at t=60s (refreshes mcp_tool channel;
+        stdout last_at remains t=0, so stdout age = 60s)
+      - advance 55s (total elapsed = 115s; mcp_tool age = 55s,
+        stdout age = 115s; both fresh under 1000s TTL)
+      - _handle_evidence_deferral with idle_elapsed=115.0
+
+    Expected log: ``channel=mcp_tool age=55.0s idle_elapsed=115.0s``.
+    The 'age=' value (55.0) must DIFFER from the 'idle_elapsed=' value
+    (115.0); pre-fix the log claimed both were 115.0, which is
+    incorrect and confusing to operators reading the post-mortem.
+    """
+    wd, clock = _make_watchdog(activity_ttl=1000.0)
+    wd.record_activity()  # at t=0
+    clock.advance(60.0)
+    wd.record_mcp_tool_call()  # at t=60 (stdout stays at t=0)
+    clock.advance(55.0)  # total elapsed = 115s
+
+    captured = []
+
+    def _sink(message: object) -> None:
+        captured.append(str(message.record["message"]))
+
+    handler_id = loguru_logger.add(_sink, level="DEBUG")
+    try:
+        wd._handle_evidence_deferral(clock.monotonic(), 115.0)
+    finally:
+        loguru_logger.remove(handler_id)
+
+    deferral_lines = [m for m in captured if "deferred via activity evidence" in m]
+    assert deferral_lines, f"expected a 'deferred via activity evidence' debug log, got: {captured}"
+    line = deferral_lines[0]
+    assert "channel=mcp_tool" in line, f"channel label must be 'mcp_tool', got: {line}"
+    assert "age=55.0s" in line, (
+        f"age= field must reflect the mcp_tool channel age (55.0s), not "
+        f"the stdout idle elapsed (115.0s); got: {line}"
+    )
+    assert "idle_elapsed=115.0s" in line, (
+        f"idle_elapsed= field must reflect the stdout baseline age (115.0s), got: {line}"
+    )
+    # The two values must differ; this is the central regression assertion.
+    assert "age=55.0s" in line and "idle_elapsed=115.0s" in line, (
+        f"age= must differ from idle_elapsed= when the channel age is "
+        f"fresher than the stdout baseline; got: {line}"
+    )
+
+
+def test_build_evidence_summary_diag_returns_freshest_age() -> None:
+    """``_build_evidence_summary_diag`` now returns a 2-tuple
+    ``(diag, freshest_age)`` so the verdict hook can name the
+    channel age that is doing the deferral.
+
+    This test pins the new return-type contract independently of
+    the log call so a future refactor that drops the freshest_age
+    value is caught immediately (the type signature change is the
+    primary contract; this test enforces the value-level semantics
+    on top of the static type).
+    """
+    wd, clock = _make_watchdog(activity_ttl=1000.0)
+    wd.record_activity()  # at t=0
+    clock.advance(60.0)
+    wd.record_mcp_tool_call()  # at t=60 (stdout stays at t=0)
+    clock.advance(55.0)  # total elapsed = 115s
+
+    diag, freshest_age = wd._build_evidence_summary_diag(clock.monotonic())
+    assert isinstance(diag, dict)
+    assert "evidence_summary" in diag
+    assert diag["active_channel"] == "mcp_tool"
+    # freshest_age must equal the mcp_tool channel age (55.0s), NOT
+    # the stdout idle elapsed (115.0s).
+    assert freshest_age == 55.0, (
+        f"freshest_age must be the mcp_tool channel age (55.0s), got {freshest_age}"
+    )
+
+    # When the channels are stale (no fresh channel) freshest_age is None.
+    wd2, clock2 = _make_watchdog(activity_ttl=10.0)
+    wd2.record_activity()  # at t=0
+    clock2.advance(20.0)  # past idle AND past the 10s TTL
+    diag2, freshest_age2 = wd2._build_evidence_summary_diag(clock2.monotonic())
+    assert diag2["active_channel"] == "none"
+    assert freshest_age2 is None

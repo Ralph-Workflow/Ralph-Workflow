@@ -192,6 +192,17 @@ perturbing the existing semantics. See `tests/agents/test_idle_watchdog_3.py`,
 `tests/agents/test_subagent_activity_wiring.py` for the black-box regression
 suite covering this contract.
 
+**Scope note — upstream MCP servers are not tracked by the `mcp_tool` channel.**
+The `mcp_tool` channel covers the in-process Ralph Workflow MCP server only;
+upstream (third-party) MCP servers configured via `[mcp] upstreams` or the
+`general.workflow.unsafe_mode` merge path are NOT tracked by the activity-sink
+protocol, so operators who rely on upstream MCP servers for sub-agent work
+should either leave the watchdog's stdout-only behavior in place (set
+`agent_idle_activity_evidence_ttl_seconds = 0.0`) or extend the activity-sink
+protocol to cover the upstream transport. This is a documented known
+limitation; a follow-up TODO is tracked in `CHANGELOG.md` under the
+[Unreleased] / Added block.
+
 See `ralph/agents/post_exit_watchdog.py` for the full post-exit transition matrix and
 verdict semantics.
 

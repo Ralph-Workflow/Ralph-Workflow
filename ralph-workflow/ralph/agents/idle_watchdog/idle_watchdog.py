@@ -520,15 +520,25 @@ class IdleWatchdog:
     def _build_evidence_summary_diag(
         self,
         now: float,
-    ) -> dict[str, object]:
+    ) -> tuple[dict[str, object], float | None]:
         """Build the per-channel evidence_summary diagnostic block.
 
-        Embeds the per-channel ChannelEvidenceSummary dicts under the
+        Returns a 2-tuple ``(diag, freshest_age)`` where ``diag`` embeds
+        the per-channel ChannelEvidenceSummary dicts under the
         ``evidence_summary`` key, plus a flat ``active_channel`` label
         (the name of the freshest non-stdout channel, or "none" when no
-        channel is currently active). Used by both the verdict hook (for
-        the deferred CONTINUE path) and the HARD_STOP diagnostic (for the
-        CHILDREN_PERSIST_TOO_LONG path).
+        channel is currently active) and the configured
+        ``activity_evidence_ttl_seconds``. ``freshest_age`` is the age
+        in seconds of the freshest non-stdout channel currently below
+        the TTL (i.e. the channel that is doing the deferral), or
+        ``None`` when no non-stdout channel is currently fresh.
+
+        Used by both the verdict hook (for the deferred CONTINUE path)
+        and the HARD_STOP diagnostic (for the CHILDREN_PERSIST_TOO_LONG
+        path). The freshest_age is surfaced separately so the
+        ``_handle_evidence_deferral`` debug log can name the actual
+        channel age (not the stdout idle elapsed) as the reason for
+        the deferral.
         """
         summary = self.last_evidence_summary(now)
         ttl = self._config.activity_evidence_ttl_seconds
@@ -548,11 +558,14 @@ class IdleWatchdog:
             ):
                 freshest_age = entry.age_seconds
                 active_channel = entry.channel_name
-        return {
-            "evidence_summary": flat,
-            "active_channel": active_channel,
-            "activity_evidence_ttl_seconds": ttl,
-        }
+        return (
+            {
+                "evidence_summary": flat,
+                "active_channel": active_channel,
+                "activity_evidence_ttl_seconds": ttl,
+            },
+            freshest_age,
+        )
 
     def _emit(
         self,
@@ -685,18 +698,30 @@ class IdleWatchdog:
         CHILDREN_PERSIST_TOO_LONG ceilings are checked BEFORE this hook
         in ``evaluate()`` and remain absolute.
         """
-        summary = self._build_evidence_summary_diag(now)
+        summary, freshest_age = self._build_evidence_summary_diag(now)
         active_channel_value = summary.get("active_channel", "none")
         channel_label = (
             active_channel_value
             if isinstance(active_channel_value, str)
             else "none"
         )
+        # The 'age=' field is the age of the FRESHEST non-stdout channel
+        # (i.e. the channel that is doing the deferral). When no channel
+        # is fresh we fall back to idle_elapsed so the log always shows
+        # a finite number; in that case the channel label is 'none' and
+        # the log line still tells the operator why the verdict was
+        # deferred (or, for 'none', that the deferral was driven by
+        # some channel the helper did not enumerate).
+        age_for_log = (
+            round(freshest_age, 1)
+            if freshest_age is not None
+            else round(idle_elapsed, 1)
+        )
         self._log.debug(
             "idle watchdog: deferred via activity evidence channel={} age={}s"
             " idle_elapsed={}s",
             channel_label,
-            round(idle_elapsed, 1),
+            age_for_log,
             round(idle_elapsed, 1),
         )
         return WatchdogVerdict.CONTINUE
@@ -858,7 +883,7 @@ class IdleWatchdog:
             for key, value in corr_diag_hs.items():
                 if key not in diag:
                     diag[key] = value
-            evidence_block = self._build_evidence_summary_diag(now)
+            evidence_block, _freshest_age = self._build_evidence_summary_diag(now)
             for ev_key, ev_value in evidence_block.items():
                 if ev_key not in diag:
                     diag[ev_key] = ev_value
