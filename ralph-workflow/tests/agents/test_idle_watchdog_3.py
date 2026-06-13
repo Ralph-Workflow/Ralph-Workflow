@@ -32,6 +32,8 @@ from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
     IdleWatchdog,
     TimeoutPolicy,
+    WaitingStatusEvent,
+    WaitingStatusKind,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -295,15 +297,25 @@ def test_activity_evidence_ttl_zero_disables_feature() -> None:
 
 
 def test_evidence_summary_in_hard_stop_diagnostic() -> None:
-    """When the watchdog fires CHILDREN_PERSIST_TOO_LONG, the HARD_STOP
-    diagnostic carries the per-channel evidence summary under the
-    ``evidence_summary`` key.
+    """When the watchdog fires CHILDREN_PERSIST_TOO_LONG, the emitted
+    HARD_STOP event's diagnostic carries the per-channel evidence summary
+    under the ``evidence_summary`` key.
 
     The post-mortem (or the on-call operator) can see exactly which
     channels were fresh and which were stale at the moment the
     watchdog fired.
     """
-    wd, clock = _make_watchdog(idle_timeout=0.1, max_waiting=2.0, activity_ttl=30.0)
+    events: list[WaitingStatusEvent] = []
+    config = TimeoutPolicy(
+        idle_timeout_seconds=0.1,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=2.0,
+        suspect_waiting_on_child_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        activity_evidence_ttl_seconds=30.0,
+    )
+    clock = FakeClock(start=0.0)
+    wd = IdleWatchdog(config, clock, listener=events.append)
     wd.record_activity()
     # Record some activity on multiple channels to make the summary
     # interesting.
@@ -314,6 +326,7 @@ def test_evidence_summary_in_hard_stop_diagnostic() -> None:
     # activity channel does NOT defer the cumulative ceiling, so the
     # CHILDREN_PERSIST_TOO_LONG branch fires as soon as the cumulative
     # exceeds the 2.0s ceiling.
+    verdict = WatchdogVerdict.CONTINUE
     for _ in range(25):
         verdict = wd.evaluate(classify_quiet=_waiting_classifier())
         if verdict == WatchdogVerdict.FIRE:
@@ -322,10 +335,135 @@ def test_evidence_summary_in_hard_stop_diagnostic() -> None:
     assert verdict == WatchdogVerdict.FIRE
     assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
-    summary = wd.last_evidence_summary(clock.monotonic())
-    assert len(summary) == 4
-    channel_names = {s.channel_name for s in summary}
+    hard_stops = [e for e in events if e.kind == WaitingStatusKind.HARD_STOP]
+    assert hard_stops, "no HARD_STOP event captured"
+    diag = hard_stops[0].diagnostic
+    assert "evidence_summary" in diag
+    assert isinstance(diag["evidence_summary"], list)
+    assert len(diag["evidence_summary"]) == 4
+    channel_names = {entry["channel"] for entry in diag["evidence_summary"]}
     assert channel_names == {"stdout", "mcp_tool", "subagent", "workspace"}
+
+
+# ---------------------------------------------------------------------------
+# (i2-i4) Per-channel evidence summary in fire-log extra for every reason
+# ---------------------------------------------------------------------------
+
+
+def test_session_ceiling_fire_carries_evidence_summary() -> None:
+    """SESSION_CEILING_EXCEEDED fire log embeds per-channel evidence_summary."""
+    wd, clock = _make_watchdog(max_session=5.0, start=0.0)
+    wd.record_activity()
+    wd.record_mcp_tool_call()
+    wd.record_subagent_work()
+    wd.record_workspace_event()
+    clock.advance(6.0)
+
+    captured: list[object] = []
+
+    def _sink(message: object) -> None:
+        captured.append(message)
+
+    handler_id = loguru_logger.add(_sink, level="WARNING")
+    try:
+        verdict = wd.evaluate(classify_quiet=_active_classifier())
+    finally:
+        loguru_logger.remove(handler_id)
+
+    assert verdict == WatchdogVerdict.FIRE
+    assert wd.last_fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+
+    fire_records = [
+        m for m in captured if "FIRE reason=session_ceiling_exceeded" in str(m.record["message"])
+    ]
+    assert fire_records, "no SESSION_CEILING_EXCEEDED fire log captured"
+    extra_dict = fire_records[0].record["extra"]
+    bound_extra = extra_dict.get("extra", extra_dict)
+    assert "evidence_summary" in bound_extra
+    assert isinstance(bound_extra["evidence_summary"], list)
+    assert len(bound_extra["evidence_summary"]) == 4
+    assert "active_channel" in bound_extra
+    assert bound_extra["fire_reason"] == "session_ceiling_exceeded"
+
+
+def test_repeated_error_loop_fire_carries_evidence_summary() -> None:
+    """REPEATED_ERROR_LOOP fire log embeds per-channel evidence_summary."""
+    wd, clock = _make_watchdog(idle_timeout=300.0, max_waiting=600.0, start=0.0)
+    msg = "MCP error -32001: Request timed out"
+    for _ in range(4):
+        wd.record_error_activity(msg)
+        clock.advance(34.0)
+
+    captured: list[object] = []
+
+    def _sink(message: object) -> None:
+        captured.append(message)
+
+    handler_id = loguru_logger.add(_sink, level="WARNING")
+    try:
+        wd.record_error_activity(msg)
+        verdict = wd.evaluate(classify_quiet=_active_classifier())
+    finally:
+        loguru_logger.remove(handler_id)
+
+    assert verdict == WatchdogVerdict.FIRE
+    assert wd.last_fire_reason == WatchdogFireReason.REPEATED_ERROR_LOOP
+
+    fire_records = [
+        m for m in captured if "FIRE reason=repeated_error_loop" in str(m.record["message"])
+    ]
+    assert fire_records, "no REPEATED_ERROR_LOOP fire log captured"
+    extra_dict = fire_records[0].record["extra"]
+    bound_extra = extra_dict.get("extra", extra_dict)
+    assert "evidence_summary" in bound_extra
+    assert isinstance(bound_extra["evidence_summary"], list)
+    assert len(bound_extra["evidence_summary"]) == 4
+    assert "active_channel" in bound_extra
+    assert bound_extra["fire_reason"] == "repeated_error_loop"
+
+
+def test_stalled_after_tool_result_fire_carries_evidence_summary() -> None:
+    """STALLED_AFTER_TOOL_RESULT fire log embeds per-channel evidence_summary."""
+    config = TimeoutPolicy(
+        idle_timeout_seconds=0.1,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=100.0,
+        post_tool_result_progression_seconds=0.1,
+        suspect_waiting_on_child_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        activity_evidence_ttl_seconds=30.0,
+    )
+    clock = FakeClock(start=0.0)
+    wd = IdleWatchdog(config, clock)
+    wd.record_activity()
+    wd.record_tool_result_activity()
+    clock.advance(1.0)
+
+    captured: list[object] = []
+
+    def _sink(message: object) -> None:
+        captured.append(message)
+
+    handler_id = loguru_logger.add(_sink, level="WARNING")
+    try:
+        verdict = wd.evaluate(classify_quiet=_active_classifier())
+    finally:
+        loguru_logger.remove(handler_id)
+
+    assert verdict == WatchdogVerdict.FIRE
+    assert wd.last_fire_reason == WatchdogFireReason.STALLED_AFTER_TOOL_RESULT
+
+    fire_records = [
+        m for m in captured if "FIRE reason=stalled_after_tool_result" in str(m.record["message"])
+    ]
+    assert fire_records, "no STALLED_AFTER_TOOL_RESULT fire log captured"
+    extra_dict = fire_records[0].record["extra"]
+    bound_extra = extra_dict.get("extra", extra_dict)
+    assert "evidence_summary" in bound_extra
+    assert isinstance(bound_extra["evidence_summary"], list)
+    assert len(bound_extra["evidence_summary"]) == 4
+    assert "active_channel" in bound_extra
+    assert bound_extra["fire_reason"] == "stalled_after_tool_result"
 
 
 # ---------------------------------------------------------------------------

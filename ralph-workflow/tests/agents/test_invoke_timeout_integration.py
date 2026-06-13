@@ -152,6 +152,44 @@ def test_session_ceiling_fires_under_continuous_output() -> None:
     assert exc_info.value.timeout_seconds == _MAX_SESSION_SECONDS
 
 
+def test_reader_fire_exception_carries_evidence_summary() -> None:
+    """IdleStreamTimeoutError raised by read_lines_from_process carries
+    per-channel evidence_summary in its diagnostic.
+
+    Mirrors test_session_ceiling_fires_under_continuous_output and adds
+    assertions on the exception payload's diagnostic.
+    """
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=_MAX_SESSION_SECONDS,
+        max_session_seconds=_MAX_SESSION_SECONDS,
+        idle_poll_interval_seconds=0.01,
+        drain_window_seconds=0.0,
+    )
+    clock = FakeClock(start=0.0)
+
+    def _stdout_gen() -> Iterator[str]:
+        for i in range(_TOTAL_LINES_IN_STDOUT):
+            clock.advance(_CLOCK_ADVANCE_PER_LINE)
+            yield f"line {i}\n"
+
+    handle = _FakeManagedHandle(_stdout_gen())
+
+    with pytest.raises(IdleStreamTimeoutError) as exc_info:
+        for _ in _read_lines(handle, policy=policy, _clock=clock):
+            pass
+
+    assert exc_info.value.reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+    assert exc_info.value.timeout_seconds == _MAX_SESSION_SECONDS
+
+    diag = exc_info.value.diagnostic
+    assert diag is not None
+    assert "evidence_summary" in diag
+    assert isinstance(diag["evidence_summary"], list)
+    assert len(diag["evidence_summary"]) == 4
+    channels = {entry["channel"] for entry in diag["evidence_summary"]}
+    assert channels == {"stdout", "mcp_tool", "subagent", "workspace"}
+
+
 def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
     """CHILDREN_PERSIST_TOO_LONG fires when classify_quiet raises repeatedly.
 

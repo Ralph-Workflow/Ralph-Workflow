@@ -641,6 +641,32 @@ class IdleWatchdog:
         }
         return (diag, freshest_age)
 
+    def _emit_fire_log(
+        self,
+        reason: WatchdogFireReason,
+        *,
+        now: float,
+        idle_elapsed: float,
+        message_suffix: str = '',
+        **extra_fields: object,
+    ) -> None:
+        """Emit a fire log with per-channel evidence_summary in loguru extra."""
+        evidence_block, _freshest_age = self._build_evidence_summary_diag(now)
+        extra_payload: dict[str, object] = {
+            "evidence_summary": evidence_block["evidence_summary"],
+            "active_channel": evidence_block.get("active_channel", "none"),
+            "fire_reason": reason.value,
+        }
+        extra_payload.update(extra_fields)
+        self._log.warning(
+            "idle watchdog: FIRE reason={}{} idle_elapsed={}s cumulative_waiting={}s",
+            reason,
+            message_suffix,
+            round(idle_elapsed, 1),
+            round(self._cumulative_waiting_on_child_seconds, 1),
+            extra=extra_payload,
+        )
+
     def _emit(
         self,
         kind: WaitingStatusKind,
@@ -703,24 +729,21 @@ class IdleWatchdog:
             if session_elapsed >= self._config.max_session_seconds:
                 self._last_fire_reason = WatchdogFireReason.SESSION_CEILING_EXCEEDED
                 idle_elapsed = now - self._last_activity
-                self._log.warning(
-                    "idle watchdog: FIRE reason={} session_elapsed={}s"
-                    " idle_elapsed={}s cumulative_waiting={}s",
+                self._emit_fire_log(
                     WatchdogFireReason.SESSION_CEILING_EXCEEDED,
-                    round(session_elapsed, 1),
-                    round(idle_elapsed, 1),
-                    round(self._cumulative_waiting_on_child_seconds, 1),
+                    now=now,
+                    idle_elapsed=idle_elapsed,
+                    message_suffix=f' session_elapsed={round(session_elapsed, 1)}s',
                 )
                 return WatchdogVerdict.FIRE
 
         if self._repetition_tracker.tripped():
             self._last_fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
             idle_elapsed = now - self._last_activity
-            self._log.warning(
-                "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
+            self._emit_fire_log(
                 WatchdogFireReason.REPEATED_ERROR_LOOP,
-                round(idle_elapsed, 1),
-                round(self._cumulative_waiting_on_child_seconds, 1),
+                now=now,
+                idle_elapsed=idle_elapsed,
             )
             return WatchdogVerdict.FIRE
 
@@ -803,13 +826,11 @@ class IdleWatchdog:
         if since_tool_result < self._config.post_tool_result_progression_seconds:
             return False
         self._last_fire_reason = WatchdogFireReason.STALLED_AFTER_TOOL_RESULT
-        self._log.warning(
-            "idle watchdog: FIRE reason={} since_tool_result={}s"
-            " idle_elapsed={}s cumulative_waiting={}s",
+        self._emit_fire_log(
             WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
-            round(since_tool_result, 1),
-            round(idle_elapsed, 1),
-            round(self._cumulative_waiting_on_child_seconds, 1),
+            now=now,
+            idle_elapsed=idle_elapsed,
+            message_suffix=f' since_tool_result={round(since_tool_result, 1)}s',
         )
         return True
 
@@ -847,18 +868,10 @@ class IdleWatchdog:
 
         idle_elapsed = now - self._last_activity
         self._last_fire_reason = WatchdogFireReason.NO_OUTPUT_DEADLINE
-        evidence_block, _freshest_age = self._build_evidence_summary_diag(now)
-        extra_payload: dict[str, object] = {
-            "evidence_summary": evidence_block["evidence_summary"],
-            "active_channel": evidence_block.get("active_channel", "none"),
-            "fire_reason": WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
-        }
-        self._log.warning(
-            "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
+        self._emit_fire_log(
             WatchdogFireReason.NO_OUTPUT_DEADLINE,
-            round(idle_elapsed, 1),
-            round(self._cumulative_waiting_on_child_seconds, 1),
-            extra=extra_payload,
+            now=now,
+            idle_elapsed=idle_elapsed,
         )
         return WatchdogVerdict.FIRE
 
@@ -1027,18 +1040,10 @@ class IdleWatchdog:
         self._accumulate_waiting_run(now)
         if self._config.drain_window_seconds == 0.0:
             self._last_fire_reason = WatchdogFireReason.NO_OUTPUT_DEADLINE
-            evidence_block, _freshest_age = self._build_evidence_summary_diag(now)
-            extra_payload: dict[str, object] = {
-                "evidence_summary": evidence_block["evidence_summary"],
-                "active_channel": evidence_block.get("active_channel", "none"),
-                "fire_reason": WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
-            }
-            self._log.warning(
-                "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
+            self._emit_fire_log(
                 WatchdogFireReason.NO_OUTPUT_DEADLINE,
-                round(idle_elapsed, 1),
-                round(self._cumulative_waiting_on_child_seconds, 1),
-                extra=extra_payload,
+                now=now,
+                idle_elapsed=idle_elapsed,
             )
             return WatchdogVerdict.FIRE
         self._in_drain_window = True
