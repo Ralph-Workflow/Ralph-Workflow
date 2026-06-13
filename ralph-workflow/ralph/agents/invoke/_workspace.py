@@ -73,6 +73,7 @@ class WorkspaceMonitor:
         workspace_path: Path,
         *,
         now: Callable[[], float] | None = None,
+        on_event: Callable[[], None] | None = None,
     ) -> None:
         """Initialize workspace monitor.
 
@@ -82,6 +83,13 @@ class WorkspaceMonitor:
                 for production. Tests inject a FakeClock-bound callable to drive
                 ``last_event_at`` deterministically (see tests in
                 tests/agents/test_idle_watchdog_3.py::test_workspace_monitor_records_last_event_at).
+            on_event: Optional callable invoked at the end of ``record_event``
+                after the timestamp and counter are updated. Production readers
+                bind this to ``watchdog.record_workspace_event`` (via
+                ``set_on_event`` after the watchdog is constructed) so the
+                activity-aware verdict can defer ``NO_OUTPUT_DEADLINE`` while
+                the workspace is changing. Exceptions raised by ``on_event`` are
+                swallowed so a buggy callback cannot break the file-event path.
         """
         self._workspace = workspace_path
         self._observer: _HasStop | None = None
@@ -89,6 +97,7 @@ class WorkspaceMonitor:
         self._seen_files: dict[str, None] = {}
         self._now: Callable[[], float] = now if now is not None else time.monotonic
         self._last_event_at: float | None = None
+        self._on_event: Callable[[], None] | None = on_event
 
     def start(self) -> None:
         """Start monitoring the workspace for file changes."""
@@ -112,6 +121,13 @@ class WorkspaceMonitor:
         so a workspace-event channel is fresh exactly as long as the
         production clock is recent.
 
+        When an ``on_event`` callback has been registered (via the
+        constructor or ``set_on_event``), it is invoked AFTER the
+        timestamp and counter are updated so the watchdog observes a
+        fully-consistent state. The callback is invoked in a
+        ``try/except`` so a buggy callback cannot break the
+        file-event path; the failure is logged at DEBUG.
+
         Args:
             src_path: Path to the changed file.
         """
@@ -122,6 +138,13 @@ class WorkspaceMonitor:
             del self._seen_files[oldest]
         self._event_count += 1
         self._last_event_at = self._now()
+        if self._on_event is not None:
+            try:
+                self._on_event()
+            except Exception:
+                logger.opt(exception=True).debug(
+                    "workspace monitor: on_event callback raised (suppressed)"
+                )
 
     def stop(self) -> None:
         """Stop monitoring the workspace."""
@@ -164,6 +187,31 @@ class WorkspaceMonitor:
         self._last_event_at = None
         self._event_count = 0
         self._seen_files.clear()
+
+    def set_on_event(self, on_event: Callable[[], None] | None) -> None:
+        """Register (or clear) the per-event callback invoked at the end of
+        ``record_event``.
+
+        Production readers construct the ``WorkspaceMonitor`` BEFORE the
+        per-run watchdog is created (the monitor is built in
+        ``invoke_agent`` while the watchdog lives inside the reader's
+        ``read_lines`` generator), so the constructor cannot bind the
+        watchdog's ``record_workspace_event`` directly. The reader
+        registers the callback here, immediately after the watchdog is
+        created, so every subsequent file change is visible to the
+        activity-aware verdict as workspace channel evidence.
+
+        Pass ``None`` to clear the callback (e.g. when the per-run
+        watchdog is torn down at run end).
+
+        Args:
+            on_event: Callable invoked with no arguments at the end of
+                ``record_event``, after the timestamp and counter are
+                updated. Exceptions raised by the callback are
+                suppressed by ``record_event`` so a buggy callback
+                cannot break the file-event path.
+        """
+        self._on_event = on_event
 
     @property
     def changed_files(self) -> set[str]:

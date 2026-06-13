@@ -360,6 +360,83 @@ def test_workspace_monitor_records_last_event_at(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# (j2) WorkspaceMonitor -> watchdog integration (end-to-end)
+# ---------------------------------------------------------------------------
+
+
+def test_workspace_monitor_to_watchdog_integration(tmp_path: Path) -> None:
+    """``WorkspaceMonitor`` end-to-end integration: when the monitor's
+    ``on_event`` callback is wired to the watchdog's
+    ``record_workspace_event``, a recorded file change updates the
+    watchdog's per-channel ``_last_workspace_event_at`` timestamp.
+
+    This is the production wiring: the readers receive the
+    ``WorkspaceMonitor`` via ``ctx.monitor`` and register
+    ``watchdog.record_workspace_event`` as the on-event callback after
+    the watchdog is created. A file change in the monitored workspace
+    is then visible to the watchdog as a workspace channel event,
+    and the activity-aware verdict can defer ``NO_OUTPUT_DEADLINE``
+    while the workspace is changing.
+
+    Pre-fix, the production code path did not wire this up: the
+    monitor's ``record_event`` updated its own internal
+    ``last_event_at`` but never called the watchdog, so the watchdog's
+    ``_last_workspace_event_at`` was always None and the workspace
+    channel could never defer a fire. This test would fail in that
+    case; after the fix it must pass.
+    """
+    wd, clock = _make_watchdog()
+    # Use the watchdog's FakeClock as the monitor's clock source so
+    # the two clocks stay synchronized (production uses time.monotonic
+    # for both; the test mirrors that with a shared fake).
+    monitor = WorkspaceMonitor(tmp_path, now=clock.monotonic)
+    # Pre-condition: watchdog has not observed any workspace activity yet.
+    assert wd._last_workspace_event_at is None
+    assert wd._workspace_event_count_internal == 0
+    # Wire the production-style callback: the monitor's on_event fires
+    # the watchdog's recorder whenever a file change is observed.
+    monitor.set_on_event(wd.record_workspace_event)
+    # Advance both clocks together and trigger a file change.
+    clock.advance(100.5)
+    monitor.record_event("/tmp/foo.py")
+    # The watchdog's per-channel state must now reflect the event.
+    assert wd._last_workspace_event_at == 100.5
+    assert wd._workspace_event_count_internal == 1
+
+
+def test_workspace_monitor_to_watchdog_defers_verdict(tmp_path: Path) -> None:
+    """End-to-end: with WorkspaceMonitor wired to the watchdog, an
+    active workspace defers ``NO_OUTPUT_DEADLINE`` while the channel
+    is fresher than ``activity_evidence_ttl_seconds``.
+
+    This is the AC-01 corollary for the workspace channel: a session
+    that is quiet on stdout but actively writing files is not killed
+    as idle, even past the regular idle deadline.
+    """
+    wd, clock = _make_watchdog(activity_ttl=1000.0)
+    # Use the watchdog's FakeClock as the monitor's clock source so
+    # both clocks stay synchronized (production uses time.monotonic
+    # for both; the test mirrors that with a shared fake).
+    monitor = WorkspaceMonitor(tmp_path, now=clock.monotonic)
+    monitor.set_on_event(wd.record_workspace_event)
+    # Quiet stdout for 5s of watchdog time. The monitor's clock is the
+    # same as the watchdog's, so a single advance moves both.
+    clock.advance(5.0)
+    # A workspace event is recorded at watchdog-t=5.0; the watchdog
+    # workspace channel is now fresh.
+    monitor.record_event("/tmp/foo.py")
+    verdict = wd.evaluate(classify_quiet=_active_classifier())
+    assert verdict == WatchdogVerdict.CONTINUE, (
+        f"expected CONTINUE (deferred via workspace channel), got {verdict}"
+    )
+    # Advance watchdog past the TTL with no new workspace activity.
+    clock.advance(2000.0)
+    verdict = wd.evaluate(classify_quiet=_active_classifier())
+    assert verdict == WatchdogVerdict.FIRE
+    assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
+
+
+# ---------------------------------------------------------------------------
 # (k) last_evidence_summary returns 4-tuple in fixed channel order
 # ---------------------------------------------------------------------------
 

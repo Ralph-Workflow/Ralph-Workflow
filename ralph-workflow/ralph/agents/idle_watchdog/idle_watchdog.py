@@ -67,7 +67,14 @@ class IdleWatchdog:
         from the opencode child_liveness registry. Updated by
         ``record_subagent_work``.
       - workspace: workspace file change events captured by
-        WorkspaceMonitor. Updated by ``record_workspace_event``.
+        WorkspaceMonitor. Updated by ``record_workspace_event``, which is
+        invoked by the readers' ``on_event`` callback passed to
+        ``WorkspaceMonitor.set_on_event`` (the monitor is constructed in
+        ``invoke_agent`` before the per-run watchdog exists, so the
+        readers register the callback on the monitor immediately after
+        the watchdog is created in ``read_lines``; the binding is
+        cleared in the ``finally`` block so a stale callback can never
+        fire after the run ends).
 
     The three recorders do NOT touch ``_last_activity`` (the stdout baseline);
     the existing "stdout only resets idle baseline" invariant is preserved.

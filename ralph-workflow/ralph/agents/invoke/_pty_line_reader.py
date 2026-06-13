@@ -621,6 +621,20 @@ class PtyLineReader:
             corroborator=self._corroborate,
         )
 
+        # Register the watchdog's workspace channel recorder as the
+        # on-event callback on the WorkspaceMonitor so every file
+        # change in the monitored workspace is visible to the
+        # activity-aware verdict as a fresh workspace channel signal.
+        # The monitor is constructed in invoke_agent BEFORE the
+        # watchdog is created (the watchdog lives inside this
+        # generator), so we cannot bind the recorder at monitor
+        # construction time; the late ``set_on_event`` binding
+        # happens here, immediately after the watchdog exists. The
+        # binding is cleared in the finally block below so a stale
+        # callback can never fire after the run ends.
+        if self._monitor is not None:
+            self._monitor.set_on_event(watchdog.record_workspace_event)
+
         # Register the watchdog's MCP activity recorder as the active sink
         # for the in-process Ralph MCP server so each tools/call invocation
         # defers a NO_OUTPUT_DEADLINE fire while the agent is actively
@@ -667,4 +681,6 @@ class PtyLineReader:
         finally:
             reset_active_sink(sink_token)
             reset_subagent_sink(subagent_token)
+            if self._monitor is not None:
+                self._monitor.set_on_event(None)
             self._cleanup([reader, transcript_reader, sentinel_reader], unsubscribe, interrupted[0])
