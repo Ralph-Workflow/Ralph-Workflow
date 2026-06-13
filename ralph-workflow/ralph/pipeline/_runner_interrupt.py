@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from ralph.interrupt.signal_getter import SignalGetter
     from ralph.interrupt.signal_setter import SignalSetter
+    from ralph.process.manager import ProcessManager
 
 
 _DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
@@ -32,6 +33,8 @@ def handle_keyboard_interrupt(
     monitor_stop: Callable[[], None] | None = None,
     *,
     dispatcher: InterruptDispatcher | None = None,
+    process_manager: ProcessManager | None = None,
+    poll_interval_s: float = 0.05,
     signal_getter: SignalGetter | None = None,
     signal_setter: SignalSetter | None = None,
 ) -> None:
@@ -52,11 +55,27 @@ def handle_keyboard_interrupt(
     test seam: production callers omit them and the module defaults
     (``signal.getsignal``/``signal.signal``) are used; tests pass
     fakes to assert handler install/restore.
+
+    The optional ``process_manager`` and ``poll_interval_s`` kwargs
+    close the entry-point seam a real Ctrl+C reaches inside the
+    pipeline loop. ``process_manager`` replaces the
+    ``get_process_manager()`` singleton (production callers omit it
+    and the singleton is used; tests inject a fake). ``poll_interval_s``
+    replaces the literal ``0.05`` busy-wait timeout; the default is
+    unchanged from production behavior. See ADR-0001 D5.
     """
-    process_manager = get_process_manager()
+    if dispatcher is not None and monitor_stop is not None:
+        raise RuntimeError(
+            "handle_keyboard_interrupt: monitor_stop is ignored when dispatcher "
+            "is pre-built; pass monitor_stop only when dispatcher is None. "
+            "See ralph/pipeline/_runner_interrupt.py."
+        )
+    resolved_pm: ProcessManager = (
+        process_manager if process_manager is not None else get_process_manager()
+    )
     if dispatcher is None:
         dispatcher = dispatcher_from_process_manager(
-            process_manager=process_manager,
+            process_manager=resolved_pm,
             stop_connectivity=monitor_stop,
         )
     resolved_getter: SignalGetter = signal_getter or _DEFAULT_SIGNAL_GETTER
@@ -65,14 +84,14 @@ def handle_keyboard_interrupt(
     interrupt_error: list[BaseException] = []
 
     def _force_exit() -> None:
-        active_records = list(process_manager.list_active())
+        active_records = list(resolved_pm.list_active())
         bridge_pgids = [r.pgid for r in active_records]
         dispatcher.force_exit(bridge_pgids=bridge_pgids)
 
     def _begin_interrupt() -> None:
         try:
             dispatcher.begin_interrupt(
-                grace_period_s=process_manager.policy.default_grace_period_s,
+                grace_period_s=resolved_pm.policy.default_grace_period_s,
             )
             poll_thread = threading.Thread(
                 target=dispatcher.run_early_escalation_poll,
@@ -81,7 +100,9 @@ def handle_keyboard_interrupt(
             )
             poll_thread.start()
             poll_thread.join(timeout=INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1)
-        except BaseException as exc:
+        except Exception as exc:
+            # Exception not BaseException: KeyboardInterrupt and SystemExit
+            # must propagate. See AGENTS.md and ADR-0001 D6.
             interrupt_error.append(exc)
         finally:
             interrupt_done.set()
@@ -94,7 +115,7 @@ def handle_keyboard_interrupt(
     interrupt_thread = threading.Thread(target=_begin_interrupt, daemon=True)
     interrupt_thread.start()
     try:
-        while not interrupt_done.wait(timeout=0.05):
+        while not interrupt_done.wait(timeout=poll_interval_s):
             continue
     finally:
         with suppress(Exception):

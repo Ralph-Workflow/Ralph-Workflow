@@ -1,7 +1,7 @@
 # ADR-0001: Interrupt subsystem architecture
 
 * Status: Accepted
-* Date: 2026-06-12
+* Date: 2026-06-12 (updated 2026-06-13)
 
 ## Context
 
@@ -147,6 +147,103 @@ Reference: ralph/interrupt/dispatcher.py:394-422
 
 Test pin: tests/test_interrupt_cli_helper.py::test_handle_keyboard_interrupt_at_cli_propagates_dispatcher_failures
 
+### D5. handle_keyboard_interrupt process_manager and poll_interval_s seams
+
+The sync entry point `handle_keyboard_interrupt` in
+`ralph/pipeline/_runner_interrupt.py` is the seam a real Ctrl+C reaches
+inside the pipeline loop. Before the refactor it had a 50 ms hard-coded
+busy-wait (`interrupt_done.wait(timeout=0.05)` at
+`ralph/pipeline/_runner_interrupt.py:116`), caught `BaseException`
+(anti-pattern at line 103), depended on the global
+`get_process_manager()` singleton at line 74, and silently ignored
+`monitor_stop` when a pre-built dispatcher was passed (the
+`dispatcher_from_process_manager` call at lines 77-81 only forwarded
+`stop_connectivity` when `dispatcher is None`). The refactor closes
+all four gaps with the minimum seam surface:
+
+- **`process_manager: ProcessManager | None = None`** replaces the
+  hard-coded `get_process_manager()` call. Production callers omit the
+  kwarg and the singleton is used; tests inject a fake.
+- **`poll_interval_s: float = 0.05`** replaces the literal `0.05` in
+  the busy-wait. The default is unchanged from production behavior;
+  tests inject `0.001` so the busy-wait returns in <1ms.
+- **RuntimeError guard** at the top of the function body (lines 67-72)
+  raises `RuntimeError` when both `dispatcher` and `monitor_stop` are
+  passed. The prior silent-ignore was a footgun that hid a real
+  contract violation.
+- **Exception not BaseException** (line 103) — see D6 below.
+
+Clock and sleep seams are **NOT** added to the entry point because
+the entry point only uses `threading.Event` coordination, not
+`time.monotonic()` or `time.sleep()`. The dispatcher's clock and
+sleep seams (D2) are sufficient for the timing tests.
+
+The contract for every test in
+`tests/test_runner_interrupt.py` and
+`tests/pipeline/test_run_loop_interrupt.py` is:
+
+- Pass `signal_getter` and `signal_setter` fakes so the test does NOT
+  touch the real process SIGINT handler.
+- Build a real factory-built `InterruptDispatcher` via
+  `_build_dispatcher(poll_interval_s=0.001, process_manager=manager)`
+  (the `poll_interval_s=0.001` override is MANDATORY so the
+  dispatcher's per-iteration sleep is <1ms; the default
+  `SIGINT_PROGRESS_POLL_INTERVAL_SECONDS = 0.2` would add 200ms to
+  each test wall-clock because `run_early_escalation_poll` does
+  `self.sleep(self.poll_interval_s)` before the first liveness check).
+- Wrap the real dispatcher in a thin `_RecordingDispatcher` class
+  (local to the test file) that records `begin_calls` and `poll_calls`
+  (the real frozen `InterruptDispatcher` at
+  `ralph/interrupt/dispatcher.py:188` cannot be monkey-patched).
+- For tests that simulate a second SIGINT, inject a recording
+  `hard_exit` callable so the test process is not killed by
+  `os._exit(130)`.
+
+Reference: `ralph/pipeline/_runner_interrupt.py:32-46` (new
+signature), `ralph/pipeline/_runner_interrupt.py:67-72` (RuntimeError
+guard), `ralph/pipeline/_runner_interrupt.py:73-81` (process_manager
+injection), `ralph/pipeline/_runner_interrupt.py:116` (poll_interval_s
+busy-wait).
+
+Test pin: `tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_uses_injected_poll_interval_for_polling`
+
+### D6. Exception not BaseException in handle_keyboard_interrupt
+
+The recovery block in `_begin_interrupt` at
+`ralph/pipeline/_runner_interrupt.py:103` uses `except Exception` (not
+`except BaseException`). The prior `except BaseException` silently
+swallowed `KeyboardInterrupt` and `SystemExit` that must propagate so
+the user's Ctrl+C still kills a hung process; the local
+`interrupt_error` list is the recovery surface for non-fatal
+dispatcher failures (`RuntimeError`, `ValueError`, `OSError`, etc.).
+
+A single broken dispatch logs a warning via the existing
+`"Interrupt controller raised during KeyboardInterrupt"` message at
+`ralph/pipeline/_runner_interrupt.py:103` and recovers the SIGINT
+handler instead of swallowing the user's Ctrl+C. Any future dispatcher
+call that raises a `BaseException` subclass that is NOT an
+`Exception` subclass (e.g. `KeyboardInterrupt`, `SystemExit`) is NOT
+caught and propagates to `threading.excepthook`; this is the correct
+behavior because the dispatcher is the only place that exits the
+process (per D4), so a dispatcher raising `KeyboardInterrupt` is
+itself a bug that should crash, not be recovered.
+
+The discriminator for the `Exception`-not-`BaseException` change is
+`tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher`
+(test 6): a custom `BaseException` subclass that is NOT an
+`Exception` subclass (`_NotAnException`) is raised from the
+dispatcher's `begin_interrupt`. The NEW `except Exception` code does
+NOT catch it, so it propagates to `threading.excepthook`; the OLD
+`except BaseException` code would silently catch it and the excepthook
+would never fire. Test 2 (RuntimeError) is INSUFFICIENT: `RuntimeError`
+is caught by both `except BaseException` and `except Exception`, so
+test 2 would pass against the unmodified code.
+
+Reference: `ralph/pipeline/_runner_interrupt.py:103` (the `except
+Exception` clause with the inline policy-source comment).
+
+Test pin: `tests/test_runner_interrupt.py::test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher`
+
 ## Consequences
 
 The four decisions above produce the following durable rules for
@@ -201,3 +298,25 @@ bridge path (e.g. for a new event loop) MUST follow them.
    (idempotency survives body delay). These two invariants are
    pinned by the long-running-task black-box tests added in
    the same commit as this ADR.
+
+5a. **Entry-point minimum seam surface.** `handle_keyboard_interrupt`
+    exposes exactly two new kwargs (`process_manager`,
+    `poll_interval_s`) and one `RuntimeError` guard. Clock and sleep
+    seams are NOT added because the entry point only uses
+    `threading.Event` coordination. Tests MUST build a real
+    factory-built `InterruptDispatcher` with `poll_interval_s=0.001`
+    override and wrap it in a thin `_RecordingDispatcher` class for
+    call-argument capture, so the per-test wall-clock stays under
+    100ms without monkeypatching `INTERRUPT_HARD_KILL_BUDGET_SECONDS`
+    or `SIGINT_PROGRESS_POLL_INTERVAL_SECONDS`.
+
+5b. **Exception not BaseException.** Any future dispatcher call that
+    raises a `BaseException` subclass that is NOT an `Exception`
+    subclass (`KeyboardInterrupt`, `SystemExit`) propagates to
+    `threading.excepthook` and crashes the background thread; this is
+    the correct behavior because the dispatcher is the only place
+    that exits the process (per D4), so a dispatcher raising
+    `KeyboardInterrupt` is itself a bug that should crash, not be
+    recovered. The recovery branch's `"Interrupt controller raised
+    during KeyboardInterrupt"` warning fires only for `Exception`
+    subclasses (non-fatal dispatcher failures).

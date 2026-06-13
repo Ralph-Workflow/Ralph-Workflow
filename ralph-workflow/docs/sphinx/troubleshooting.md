@@ -350,6 +350,43 @@ contract (controller / dispatcher split, clock + sleep seams,
 PGID routing, Strategy A propagation) is documented in
 [`adr-0001-interrupt-architecture`](../../architecture/adr-0001-interrupt-architecture.md).
 
+### Entry-point testability — the `handle_keyboard_interrupt` seams
+
+The sync entry point
+`ralph.pipeline._runner_interrupt.handle_keyboard_interrupt` is the
+seam a real Ctrl+C reaches inside the pipeline loop. It is now
+black-box testable end-to-end via the minimum seam surface of two
+new kwargs and one guard. The entry point accepts:
+
+- `process_manager: ProcessManager | None = None` — replaces the
+  hard-coded `get_process_manager()` singleton. Production callers
+  omit the kwarg and the singleton is used; tests inject a fake.
+- `poll_interval_s: float = 0.05` — replaces the literal `0.05` in
+  the `while not interrupt_done.wait(timeout=...)` busy-wait. The
+  default is unchanged from production behavior; tests inject
+  `0.001` so the busy-wait returns in <1ms. Clock and sleep seams
+  are intentionally NOT added because the entry point only uses
+  `threading.Event` coordination, not `time.monotonic()` or
+  `time.sleep()` — the dispatcher's clock + sleep seams are
+  sufficient for the timing tests.
+- A `RuntimeError` is raised when both a pre-built `dispatcher` and
+  a `monitor_stop` callable are passed. The prior silent-ignore
+  was a footgun that hid a real contract violation. Callers that
+  previously relied on the silent-ignore behavior must now thread
+  `monitor_stop` only when `dispatcher is None`.
+
+The 6 black-box tests in `tests/test_runner_interrupt.py` pin
+these contracts: the `poll_interval` seam, the `RuntimeError`
+guard, the recovery from non-fatal dispatcher failures (the
+`except Exception` recovery block in `_begin_interrupt`), the
+first-SIGINT contract, the second-SIGINT contract, and the
+`_NotAnException(BaseException)` discriminator that proves the
+`Exception`-not-`BaseException` change. The 4 black-box tests in
+`tests/pipeline/test_run_loop_interrupt.py` pin the
+`run_loop._handle_keyboard_interrupt` wrapper. See
+[`adr-0001-interrupt-architecture`](../../architecture/adr-0001-interrupt-architecture.md)
+D5 and D6.
+
 ## Session-resume flag drift
 
 **Symptom:** After a retry, Claude behaves like a fresh session — it
