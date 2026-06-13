@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from ralph.agents.completion_signals import CompletionSignals
@@ -37,6 +38,7 @@ class _AgentRunCtx:
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
     liveness_probe: LivenessProbe | None = None
     waiting_listener: WaitingStatusListener | None = None
+    pre_output_listener: Callable[[], None] | None = None
     monitor: WorkspaceMonitor | None = None
     required_artifact: RequiredArtifact | None = None
     clock: Clock | None = None

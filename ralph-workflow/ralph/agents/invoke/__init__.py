@@ -310,6 +310,7 @@ def invoke_agent(
         execution_strategy=execution_strategy,
         liveness_probe=liveness_probe,
         waiting_listener=opts.waiting_listener,
+        pre_output_listener=opts.pre_output_listener,
         monitor=monitor,
         required_artifact=opts.required_artifact,
         clock=_clock,

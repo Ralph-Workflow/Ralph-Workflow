@@ -31,6 +31,7 @@ class InvokeRuntimeOptions:
     session_id: str | None = None
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
+    pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
     required_artifact: RequiredArtifact | None = None
 
@@ -51,6 +52,7 @@ def build_invoke_options_from_config(
         session_id=rt.session_id,
         system_prompt_file=rt.system_prompt_file,
         waiting_listener=rt.waiting_listener,
+        pre_output_listener=rt.pre_output_listener,
         permission_prompt_listener=rt.permission_prompt_listener,
         required_artifact=rt.required_artifact,
         idle_timeout_seconds=general_config.agent_idle_timeout_seconds,

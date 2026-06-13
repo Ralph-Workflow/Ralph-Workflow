@@ -47,6 +47,7 @@ class InvokeOptions:
     pure: bool = False
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
+    pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
     required_artifact: RequiredArtifact | None = None
     explicit_completion_seen: bool = False

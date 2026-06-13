@@ -104,3 +104,43 @@ def test_record_activity_updates_snapshot_fields() -> None:
     assert snap.active_workdir == "/tmp/project"
     assert snap.active_command == "python -m pytest tests/test_foo.py"
     assert snap.last_activity_line == "I am editing foo.py"
+
+
+def test_emit_updates_subscriber_snapshot_for_unit_scoped_raw_activity() -> None:
+    """Unit-scoped raw emits must update the subscriber state as well as the console."""
+    console = Console(file=io.StringIO(), force_terminal=True, width=120)
+    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="medium"))
+
+    pd.emit("unit-1", "[green]hello[/green]")
+
+    snap = pd.subscriber.build_snapshot(PipelineState(phase="development"))
+    assert snap is not None
+    assert snap.active_agent == "unit-1"
+    assert snap.last_activity_line == "hello"
+
+
+def test_long_unit_id_does_not_hide_payload_content() -> None:
+    """Long unit ids are elided so the payload remains visible."""
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False, width=120, color_system=None)
+    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="wide"))
+
+    pd.emit("opencode/minimax/MiniMax-M3", "Invoking agent: opencode/minimax/MiniMax-M3")
+
+    out = buf.getvalue()
+    assert "Invoking agent:" in out
+    assert "[content][opencode/minimax/Mini..." in out
+
+
+def test_emit_refreshes_visible_activity_when_line_changes_but_unit_is_same() -> None:
+    """Later activity lines for the same unit must still render when the payload changes."""
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False, width=160, color_system=None)
+    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="wide"))
+
+    pd.emit("unit-1", "Invoking agent: dev")
+    pd.emit("unit-1", "Agent process started; waiting for first output")
+
+    out = buf.getvalue()
+    assert "Invoking agent: dev" in out
+    assert "Agent process started; waiting for first output" in out

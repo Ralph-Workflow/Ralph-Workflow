@@ -197,10 +197,10 @@ def _recent_activity(snapshot: PipelineSnapshot) -> tuple[str, ...]:
         if reason:
             parts.append(reason)
         lines.append(" | ".join(parts))
+    if snapshot.last_activity_line is not None:
+        lines.append(snapshot.last_activity_line)
     if snapshot.waiting_status_line is not None:
         lines.append(snapshot.waiting_status_line)
-    elif snapshot.last_activity_line is not None:
-        lines.append(snapshot.last_activity_line)
     return tuple(lines)
 
 

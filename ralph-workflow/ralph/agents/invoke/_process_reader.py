@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -92,6 +93,7 @@ class _ProcessLineReader:
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe = ctx.liveness_probe or DefaultLivenessProbe()
         self._waiting_listener = ctx.waiting_listener
+        self._pre_output_listener = ctx.pre_output_listener
         self._monitor = ctx.monitor
         self._clock = clock
         self._lines_queue: list[str] = []
@@ -166,6 +168,8 @@ class _ProcessLineReader:
                 self._reader_done[0] = True
             self._lines_event.set()
             return
+
+        self._announce_pre_output_progress()
         try:
             for line in stdout_pipe:
                 with self._lines_lock:
@@ -177,6 +181,11 @@ class _ProcessLineReader:
             with self._lines_lock:
                 self._reader_done[0] = True
             self._lines_event.set()
+
+    def _announce_pre_output_progress(self) -> None:
+        if self._pre_output_listener is not None:
+            with contextlib.suppress(Exception):
+                self._pre_output_listener()
 
     def _classify_quiet(self) -> AgentExecutionState:
         try:
@@ -432,6 +441,7 @@ def _run_subprocess_and_read_lines(
             execution_strategy=ctx.execution_strategy,
             liveness_probe=ctx.liveness_probe,
             waiting_listener=ctx.waiting_listener,
+            pre_output_listener=ctx.pre_output_listener,
             monitor=ctx.monitor,
             expected_session_id=ctx.expected_session_id,
         )

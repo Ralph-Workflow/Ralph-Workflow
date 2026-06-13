@@ -14,6 +14,8 @@ from ralph.agents.invoke._pty_extras import _PtyExtras
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from ralph.agents.execution_state import GenericExecutionStrategy, OpenCodeExecutionStrategy
     from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
     from ralph.agents.invoke._workspace import WorkspaceMonitor
@@ -26,6 +28,7 @@ class _ProcessReaderCtx:
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
     liveness_probe: LivenessProbe | None = None
     waiting_listener: WaitingStatusListener | None = None
+    pre_output_listener: Callable[[], None] | None = None
     monitor: WorkspaceMonitor | None = None
     expected_session_id: str | None = None
 

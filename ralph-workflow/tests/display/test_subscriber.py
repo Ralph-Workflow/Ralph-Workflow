@@ -254,6 +254,19 @@ def test_progress_event_with_alive_by_includes_it_in_line(tmp_path: Path) -> Non
     assert "alive_by=fresh_progress" in line
 
 
+def test_waiting_status_line_keeps_agent_visibility_when_agent_known(tmp_path: Path) -> None:
+    """Waiting status line must keep the active agent visible during child waits."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(_EventOptions(kind=WaitingStatusKind.PROGRESS)),
+        agent_name="opencode/minimax/MiniMax-M3",
+    )
+
+    line = _last_line(sub)
+    assert line is not None
+    assert "agent=opencode/minimax/MiniMax-M3" in line
+
+
 def test_suspected_frozen_event_with_stale_label_includes_alive_by(tmp_path: Path) -> None:
     """SUSPECTED_FROZEN with alive_by=stale_label_only includes it in the status line."""
     sub = _make_subscriber(tmp_path)

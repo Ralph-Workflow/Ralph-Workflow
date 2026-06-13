@@ -15,6 +15,8 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from loguru import logger
+
 from ralph.interrupt.state import request_user_interrupt
 from ralph.process.manager import get_process_manager
 
@@ -31,6 +33,12 @@ _DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
 _DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
 
 INTERRUPT_EXIT_CODE = 130
+_INTERRUPT_EXIT_CODE_REQUIRED: int = 130
+if INTERRUPT_EXIT_CODE != _INTERRUPT_EXIT_CODE_REQUIRED:
+    raise RuntimeError(
+        f"INTERRUPT_EXIT_CODE must be {_INTERRUPT_EXIT_CODE_REQUIRED} "
+        f"(got {INTERRUPT_EXIT_CODE})"
+    )
 
 
 @dataclass(frozen=True)
@@ -80,21 +88,58 @@ class InterruptController:
         else:
             self.shutdown_all(grace_period_s)
 
-    def force_interrupt(self, *, bridge_pids: Iterable[int] = ()) -> None:
-        """Escalate to immediate tracked-process termination."""
+    def force_interrupt(
+        self,
+        *,
+        bridge_pgids: Iterable[int] = (),
+        **kwargs: object,
+    ) -> None:
+        """Escalate to immediate tracked-process termination.
+
+        The ``bridge_pgids`` parameter is the new canonical name; it
+        is forwarded to ``kill_process_group`` as PGIDs. The legacy
+        ``bridge_pids`` keyword is accepted via ``**kwargs`` for
+        backward compatibility and emits a single loguru warning
+        when used. The per-pgid kill loop has been dropped: the
+        real :class:`ProcessManager`'s ``shutdown_all(0)`` already
+        escalates to SIGKILL every active record, so the
+        per-pgid loop was redundant. Callers MUST pass
+        ``bridge_pgids`` in new code.
+        """
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
+        if bridge_pids_legacy:
+            logger.warning(
+                "bridge_pids is deprecated; pass bridge_pgids instead"
+            )
+        del bridge_pgids, bridge_pids_legacy
         self.record_interrupt()
         if self.stop_connectivity is not None:
             with suppress(Exception):
                 self.stop_connectivity()
         self.shutdown_all(0)
-        kill_process_group = self.kill_process_group or os.killpg
-        for pid in bridge_pids:
-            with suppress(ProcessLookupError, PermissionError):
-                kill_process_group(pid, signal.SIGKILL)
 
-    def force_exit(self, *, bridge_pids: Iterable[int] = ()) -> None:
-        """Force-kill tracked work and exit with the canonical interrupt code."""
-        self.force_interrupt(bridge_pids=bridge_pids)
+    def force_exit(
+        self,
+        *,
+        bridge_pgids: Iterable[int] = (),
+        **kwargs: object,
+    ) -> None:
+        """Force-kill tracked work and exit with the canonical interrupt code.
+
+        The ``bridge_pgids`` parameter is the new canonical name;
+        the legacy ``bridge_pids`` keyword is accepted via
+        ``**kwargs`` for backward compatibility and emits a single
+        loguru warning when used.
+        """
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
+        if bridge_pids_legacy:
+            logger.warning(
+                "bridge_pids is deprecated; pass bridge_pgids instead"
+            )
+        pgids: Iterable[int] = (
+            list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
+        )
+        self.force_interrupt(bridge_pgids=pgids)
         hard_exit = self.hard_exit or os._exit
         hard_exit(INTERRUPT_EXIT_CODE)
 

@@ -177,10 +177,18 @@ _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
 _MAX_OVERFLOW_FILE_BYTES: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
+_MAX_RENDERED_UNIT_ID_CHARS = 24
 
 # A tool activity is "repeated" (coalesced with a "xN" count in the live status)
 # starting from the second consecutive identical call.
 _MIN_COALESCE_REPEAT = 2
+
+
+def _render_unit_id(unit_id: str) -> str:
+    """Bound visible unit ids so prefixes cannot hide the activity payload."""
+    if len(unit_id) <= _MAX_RENDERED_UNIT_ID_CHARS:
+        return unit_id
+    return f"{unit_id[:_MAX_RENDERED_UNIT_ID_CHARS - 3]}..."
 
 # ASCII banner art inlined from the deleted ralph.banner module so
 # emit_welcome_banner does not need a separate module-level import for
@@ -426,6 +434,7 @@ class ParallelDisplay:
                 str | None,
                 str | None,
                 str | None,
+                str | None,
                 int,
             ]
             | None
@@ -545,6 +554,7 @@ class ParallelDisplay:
             )
         opts = options
         timestamp = self._format_timestamp(self._clock())
+        rendered_unit_id = _render_unit_id(unit_id)
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
         cat = TAG_CATEGORY.get(base_tag, "META")
@@ -586,10 +596,11 @@ class ParallelDisplay:
         self._emit_activity_supplements(unit_id, timestamp, tag, cat, opts)
 
         self._console.print(
-            self._build_line(timestamp, level, cat, f"[{tag}][{unit_id}] {sanitized}"),
+            self._build_line(timestamp, level, cat, f"[{tag}][{rendered_unit_id}] {sanitized}"),
             markup=False,
             highlight=False,
-            no_wrap=True,
+            no_wrap=False,
+            overflow="fold",
         )
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
@@ -599,11 +610,18 @@ class ParallelDisplay:
         """Emit a status line with the same TIMESTAMP LEVEL CAT badge as other lines."""
         timestamp = self._format_timestamp(self._clock())
         sanitized = _sanitize(status)
+        rendered_unit_id = _render_unit_id(unit_id)
         self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[status][{unit_id}] {sanitized}"),
+            self._build_line(
+                timestamp,
+                "INFO",
+                "META",
+                f"[status][{rendered_unit_id}] {sanitized}",
+            ),
             markup=False,
             highlight=False,
-            no_wrap=True,
+            no_wrap=False,
+            overflow="fold",
         )
 
     def emit_artifact(self, kind: str, summary: str) -> None:
@@ -626,11 +644,18 @@ class ParallelDisplay:
         """Emit a WARN META line for a specific tag."""
         timestamp = self._format_timestamp(self._clock())
         cat = TAG_CATEGORY.get(tag, "META")
+        rendered_unit_id = _render_unit_id(unit_id)
         self._console.print(
-            self._build_line(timestamp, "WARN", cat, f"[{tag}][{unit_id}] {message}"),
+            self._build_line(
+                timestamp,
+                "WARN",
+                cat,
+                f"[{tag}][{rendered_unit_id}] {message}",
+            ),
             markup=False,
             highlight=False,
-            no_wrap=True,
+            no_wrap=False,
+            overflow="fold",
         )
 
     # -- Streaming block helpers (inlined from PlainLogRenderer) -----------
@@ -663,6 +688,7 @@ class ParallelDisplay:
         opts: _ActivityLineOptions,
     ) -> None:
         """Emit optional summary and ai-summary lines before the main activity line."""
+        rendered_unit_id = _render_unit_id(unit_id)
         if opts.summary_line is not None:
             if opts.summary_line:
                 summary_text = _sanitize(opts.summary_line)
@@ -671,11 +697,12 @@ class ParallelDisplay:
                         timestamp,
                         "INFO",
                         cat,
-                        f"[{tag}][{unit_id}] \u21b3 summary: {summary_text}",
+                        f"[{tag}][{rendered_unit_id}] \u21b3 summary: {summary_text}",
                     ),
                     markup=False,
                     highlight=False,
-                    no_wrap=True,
+                    no_wrap=False,
+                    overflow="fold",
                 )
             elif opts.condensed_flag:
                 self._console.print(
@@ -683,27 +710,33 @@ class ParallelDisplay:
                         timestamp,
                         "INFO",
                         cat,
-                        f"[{tag}][{unit_id}] \u21b3 summary: (no headline available)",
+                        f"[{tag}][{rendered_unit_id}] \u21b3 summary: (no headline available)",
                     ),
                     markup=False,
                     highlight=False,
-                    no_wrap=True,
+                    no_wrap=False,
+                    overflow="fold",
                 )
         if opts.ai_summary_line:
             ai_text = _sanitize(opts.ai_summary_line)
             self._console.print(
                 self._build_line(
-                    timestamp, "INFO", cat, f"[{tag}][{unit_id}] \u21b3 ai-summary: {ai_text}"
+                    timestamp,
+                    "INFO",
+                    cat,
+                    f"[{tag}][{rendered_unit_id}] \u21b3 ai-summary: {ai_text}",
                 ),
                 markup=False,
                 highlight=False,
-                no_wrap=True,
+                no_wrap=False,
+                overflow="fold",
             )
 
     def _close_block(self, unit_id: str, timestamp: str) -> None:
         """Close an active streaming block, emitting the end-line and optional AI summary."""
         if unit_id not in self._active_block:
             return
+        rendered_unit_id = _render_unit_id(unit_id)
         base_tag, accumulated = self._active_block.pop(unit_id)
         self._last_checkpoint_chars.pop(unit_id, None)
         block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
@@ -719,21 +752,25 @@ class ParallelDisplay:
                 timestamp,
                 "INFO",
                 "CONT",
-                f"[{end_tag}][{unit_id}] ({n} fragments, {chars} chars) {headline}",
+                f"[{end_tag}][{rendered_unit_id}] ({n} fragments, {chars} chars) {headline}",
             ),
             markup=False,
             highlight=False,
-            no_wrap=True,
+            no_wrap=False,
+            overflow="fold",
         )
 
         if base_tag == "thinking":
             preview = build_headline_or_placeholder(joined, max_chars=self._ctx.headline_max_chars)
-            preview_suffix = f"[{end_tag}][{unit_id}] \u21b3 preview: {_sanitize(preview)}"
+            preview_suffix = (
+                f"[{end_tag}][{rendered_unit_id}] \u21b3 preview: {_sanitize(preview)}"
+            )
             self._console.print(
                 self._build_line(timestamp, "INFO", "CONT", preview_suffix),
                 markup=False,
                 highlight=False,
-                no_wrap=True,
+                no_wrap=False,
+                overflow="fold",
             )
 
         ai_summary = build_ai_summary(joined, self._ctx.env)
@@ -744,11 +781,12 @@ class ParallelDisplay:
                     timestamp,
                     "INFO",
                     "CONT",
-                    f"[{end_tag}][{unit_id}] \u21b3 ai-summary: {ai_text}",
+                    f"[{end_tag}][{rendered_unit_id}] \u21b3 ai-summary: {ai_text}",
                 ),
                 markup=False,
                 highlight=False,
-                no_wrap=True,
+                no_wrap=False,
+                overflow="fold",
             )
 
     def flush_blocks(self) -> None:
@@ -797,31 +835,35 @@ class ParallelDisplay:
             )
             if emit_checkpoint:
                 self._last_checkpoint_chars[ctx.unit_id] = total_chars
+                rendered_unit_id = _render_unit_id(ctx.unit_id)
                 headline = build_headline_or_placeholder(
                     " ".join(accumulated), max_chars=self._ctx.headline_max_chars
                 )
                 cp_tag = f"{ctx.base_tag}-checkpoint#{seq}"
                 cp_suffix = (
-                    f"[{cp_tag}][{ctx.unit_id}] ({seq} fragments, {total_chars} chars) {headline}"
+                    f"[{cp_tag}][{rendered_unit_id}] "
+                    f"({seq} fragments, {total_chars} chars) {headline}"
                 )
                 self._console.print(
                     self._build_line(ctx.timestamp, "INFO", "CONT", cp_suffix),
                     markup=False,
                     highlight=False,
-                    no_wrap=True,
+                    no_wrap=False,
+                    overflow="fold",
                 )
                 if ctx.kind == "thinking":
                     preview = build_headline_or_placeholder(
                         " ".join(accumulated), max_chars=self._ctx.headline_max_chars
                     )
                     preview_suffix = (
-                        f"[{cp_tag}][{ctx.unit_id}] \u21b3 preview: {_sanitize(preview)}"
+                        f"[{cp_tag}][{rendered_unit_id}] \u21b3 preview: {_sanitize(preview)}"
                     )
                     self._console.print(
                         self._build_line(ctx.timestamp, "INFO", "CONT", preview_suffix),
                         markup=False,
                         highlight=False,
-                        no_wrap=True,
+                        no_wrap=False,
+                        overflow="fold",
                     )
         thinking_min = self._ctx.thinking_preview_min_chars
         if ctx.kind == "thinking" and len(ctx.content) >= thinking_min:
@@ -987,6 +1029,9 @@ class ParallelDisplay:
             snapshot.active_workdir,
             snapshot.active_command,
             snapshot.active_pattern,
+            snapshot.last_activity_line
+            if snapshot.active_tool is None and snapshot.active_path is None
+            else None,
             structured_text,
             repeat,
         )
@@ -1287,6 +1332,13 @@ class ParallelDisplay:
             return
         if _is_bare_lifecycle(line):
             return
+        if unit_id is not None:
+            with contextlib.suppress(Exception):
+                self._subscriber.record_activity(
+                    unit_id=unit_id,
+                    line=strip_markup(line),
+                    agent_name=unit_id,
+                )
         self.emit_log_line(unit_id or "run", line)
 
     def emit_parsed_event(
@@ -3087,7 +3139,7 @@ def emit_activity_line(
         if unit_id is None:
             console.print(line)
             return
-        console.print(f"[{unit_id}] {line}")
+        console.print(f"[{_render_unit_id(unit_id)}] {line}")
         return
     display.emit(unit_id, line)
 

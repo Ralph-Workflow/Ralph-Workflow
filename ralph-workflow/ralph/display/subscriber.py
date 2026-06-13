@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from queue import Full, Queue
 from typing import TYPE_CHECKING, Protocol, cast
@@ -29,6 +30,20 @@ if TYPE_CHECKING:
 
 
 _DECISION_LOG_MAX = 16
+
+
+@dataclass
+class _VisibleActivityState:
+    active_agent: str | None = None
+    active_tool: str | None = None
+    active_path: str | None = None
+    active_unit_id: str | None = None
+    active_workdir: str | None = None
+    active_command: str | None = None
+    active_pattern: str | None = None
+    active_tool_repeat: int = 0
+    last_activity_line: str | None = None
+    waiting_status_line: str | None = None
 
 
 class _WaitingEventLike(Protocol):
@@ -106,6 +121,15 @@ def _format_waiting_status_line(event: object) -> str:
     )
 
 
+def _with_agent_visibility(line: str, agent_name: str | None) -> str:
+    """Append active agent identity to waiting-status breadcrumbs when known."""
+    if not agent_name or f"agent={agent_name}" in line:
+        return line
+    if line.endswith(")"):
+        return f"{line[:-1]}, agent={agent_name})"
+    return f"{line} (agent={agent_name})"
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -154,16 +178,7 @@ class PipelineSubscriber:
         self._last_plan_refresh_marker: int | None = self._plan_refresh_marker()
 
         self._previous_phase: str | None = None
-        self._active_agent: str | None = None
-        self._active_tool: str | None = None
-        self._active_path: str | None = None
-        self._active_unit_id: str | None = None
-        self._active_workdir: str | None = None
-        self._active_command: str | None = None
-        self._active_pattern: str | None = None
-        self._active_tool_repeat: int = 0
-        self._last_activity_line: str | None = None
-        self._waiting_status_line: str | None = None
+        self._activity = _VisibleActivityState()
         self._analysis_phase: str | None = None
         self._analysis_decision: str | None = None
         self._analysis_reason: str | None = None
@@ -212,19 +227,59 @@ class PipelineSubscriber:
     def last_tool_name(self) -> str | None:
         """The most recently recorded tool name."""
         with self._lock:
-            return self._active_tool
+            return self._activity.active_tool
 
     @property
     def last_tool_path(self) -> str | None:
         """The most recently recorded tool path argument."""
         with self._lock:
-            return self._active_path
+            return self._activity.active_path
 
     @property
     def waiting_status_line(self) -> str | None:
         """The current waiting-status line for debug breadcrumbs."""
         with self._lock:
-            return self._waiting_status_line
+            return self._activity.waiting_status_line
+
+    @property
+    def _active_agent(self) -> str | None:
+        return self._activity.active_agent
+
+    @property
+    def _active_tool(self) -> str | None:
+        return self._activity.active_tool
+
+    @property
+    def _active_path(self) -> str | None:
+        return self._activity.active_path
+
+    @property
+    def _active_unit_id(self) -> str | None:
+        return self._activity.active_unit_id
+
+    @property
+    def _active_workdir(self) -> str | None:
+        return self._activity.active_workdir
+
+    @property
+    def _active_command(self) -> str | None:
+        return self._activity.active_command
+
+    @property
+    def _active_pattern(self) -> str | None:
+        return self._activity.active_pattern
+
+    @property
+    def _active_tool_repeat(self) -> int:
+        return self._activity.active_tool_repeat
+
+    @property
+    def _last_activity_line(self) -> str | None:
+        return self._activity.last_activity_line
+
+    @property
+    def _waiting_status_line(self) -> str | None:
+        return self._activity.waiting_status_line
 
     def notify(self, state: PipelineState) -> None:
         """Build a PipelineSnapshot from state and enqueue it non-blocking.
@@ -244,7 +299,7 @@ class PipelineSubscriber:
             else:
                 self._record_state_transitions_locked(state)
                 self._refresh_analysis_for_phase_change_locked(state)
-                self._active_agent = state.current_agent() or self._active_agent
+                self._activity.active_agent = state.current_agent() or self._activity.active_agent
                 self._last_state = state
                 snapshot = self._build_snapshot_locked(state)
         if snapshot is not None:
@@ -274,43 +329,43 @@ class PipelineSubscriber:
     ) -> None:
         with self._lock:
             self._invalidate_snapshot_cache_locked()
-            self._active_unit_id = unit_id
-            self._active_agent = agent_name or self._active_agent
+            self._activity.active_unit_id = unit_id
+            self._activity.active_agent = agent_name or self._activity.active_agent
             # Snapshot the prior tool identity BEFORE applying updates so we can
             # detect a consecutive identical call and keep the live status fresh.
             prior_identity = (
-                self._active_tool,
-                self._active_path,
-                self._active_workdir,
-                self._active_command,
-                self._active_pattern,
+                self._activity.active_tool,
+                self._activity.active_path,
+                self._activity.active_workdir,
+                self._activity.active_command,
+                self._activity.active_pattern,
             )
             if tool_name is not None:
-                self._active_tool = tool_name
+                self._activity.active_tool = tool_name
             if path:
-                self._active_path = path
+                self._activity.active_path = path
             if workdir:
-                self._active_workdir = workdir
+                self._activity.active_workdir = workdir
             if command:
-                self._active_command = command
+                self._activity.active_command = command
             if pattern:
-                self._active_pattern = pattern
+                self._activity.active_pattern = pattern
             if tool_name is not None:
                 new_identity = (
-                    self._active_tool,
-                    self._active_path,
-                    self._active_workdir,
-                    self._active_command,
-                    self._active_pattern,
+                    self._activity.active_tool,
+                    self._activity.active_path,
+                    self._activity.active_workdir,
+                    self._activity.active_command,
+                    self._activity.active_pattern,
                 )
                 if new_identity == prior_identity and prior_identity[0] is not None:
-                    self._active_tool_repeat += 1
+                    self._activity.active_tool_repeat += 1
                 else:
-                    self._active_tool_repeat = 1
+                    self._activity.active_tool_repeat = 1
             # Never store bare lifecycle markers as the last activity line —
             # they carry no user payload and would overwrite a richer previous value.
             if line and not is_bare_lifecycle(line):
-                self._last_activity_line = line
+                self._activity.last_activity_line = line
             snapshot = self._build_snapshot_locked(self._last_state)
         if snapshot is not None:
             self._publish(snapshot)
@@ -327,15 +382,18 @@ class PipelineSubscriber:
         if not isinstance(event, waiting_event_cls):
             return
         cast_event = event
-        line = _format_waiting_status_line(event)
         snapshots_to_publish: list[PipelineSnapshot] = []
         with self._lock:
             self._invalidate_snapshot_cache_locked()
             if unit_id is not None:
-                self._active_unit_id = unit_id
+                self._activity.active_unit_id = unit_id
             if agent_name is not None:
-                self._active_agent = agent_name
-            self._waiting_status_line = line
+                self._activity.active_agent = agent_name
+            line = _with_agent_visibility(
+                _format_waiting_status_line(event),
+                self._activity.active_agent,
+            )
+            self._activity.waiting_status_line = line
             if cast_event.kind in (waiting_kind_cls.SUSPECTED_FROZEN, waiting_kind_cls.HARD_STOP):
                 self._append_decision_log_locked(
                     phase=self._previous_phase or "unknown",
@@ -346,7 +404,7 @@ class PipelineSubscriber:
             if snapshot is not None:
                 snapshots_to_publish.append(snapshot)
             if cast_event.kind == waiting_kind_cls.EXITED:
-                self._waiting_status_line = None
+                self._activity.waiting_status_line = None
                 cleared = self._build_snapshot_locked(self._last_state)
                 if cleared is not None:
                     snapshots_to_publish.append(cleared)
@@ -388,8 +446,8 @@ class PipelineSubscriber:
         line = f"Ralph auto-answered permission prompt: {prompt_summary} → {selected_option}"
         with self._lock:
             self._invalidate_snapshot_cache_locked()
-            self._active_agent = agent_name or self._active_agent
-            self._last_activity_line = line
+            self._activity.active_agent = agent_name or self._activity.active_agent
+            self._activity.last_activity_line = line
             self._append_decision_log_locked(
                 phase=self._previous_phase or "unknown",
                 decision="permission_prompt_auto_answered",
@@ -523,16 +581,16 @@ class PipelineSubscriber:
                 plan_scope_items=self._plan_scope_items,
                 plan_total_steps=self._plan_total_steps,
                 plan_risks=self._plan_risks,
-                active_agent=self._active_agent,
-                active_tool=self._active_tool,
-                active_path=self._active_path,
-                active_unit_id=self._active_unit_id,
-                active_workdir=self._active_workdir,
-                active_command=self._active_command,
-                active_pattern=self._active_pattern,
-                active_tool_repeat=self._active_tool_repeat,
-                last_activity_line=self._last_activity_line,
-                waiting_status_line=self._waiting_status_line,
+                active_agent=self._activity.active_agent,
+                active_tool=self._activity.active_tool,
+                active_path=self._activity.active_path,
+                active_unit_id=self._activity.active_unit_id,
+                active_workdir=self._activity.active_workdir,
+                active_command=self._activity.active_command,
+                active_pattern=self._activity.active_pattern,
+                active_tool_repeat=self._activity.active_tool_repeat,
+                last_activity_line=self._activity.last_activity_line,
+                waiting_status_line=self._activity.waiting_status_line,
                 analysis_phase=self._analysis_phase,
                 analysis_decision=self._analysis_decision,
                 analysis_reason=self._analysis_reason,

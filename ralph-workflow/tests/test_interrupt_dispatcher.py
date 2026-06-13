@@ -39,6 +39,7 @@ from ralph.interrupt.controller import (
 from ralph.interrupt.dispatcher import (
     InterruptDispatcher,
     dispatcher_from_process_manager,
+    run_shutdown_block,
 )
 from ralph.pipeline._runner_interrupt import handle_keyboard_interrupt
 from ralph.process.manager import ProcessManagerPolicy, ProcessRecord, ProcessStatus
@@ -92,7 +93,17 @@ class FakeProcessManager:
         self._active_records.clear()
 
     def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
-        self.shutdown_all_calls.append(grace_period_s if grace_period_s is not None else 0.0)
+        resolved = grace_period_s if grace_period_s is not None else 0.0
+        self.shutdown_all_calls.append(resolved)
+        # AC-11 contract: manager.shutdown_all(0) is the only kill path
+        # in the post-fix controller. The fake mirrors the real
+        # ProcessManager's escalation behaviour: grace_period_s == 0
+        # SIGKILLs every active record so the test can assert the
+        # kill through kill_process_group_calls.
+        if resolved == 0:
+            for record in self._active_records:
+                self.kill_process_group_calls.append((record.pgid, signal.SIGKILL))
+            self._active_records.clear()
 
     def shutdown_all_for_label(
         self, label_prefix: str, *, grace_period_s: float | None = None
@@ -153,9 +164,13 @@ def test_dispatcher_begin_interrupt_calls_label_targeted_shutdown() -> None:
 
 
 def test_dispatcher_force_exit_calls_shutdown_zero_and_hard_exit_with_pgid() -> None:
-    """force_exit with bridge_pids (PGIDs) must call shutdown_all(0),
-    the injected kill_process_group with each PGID + SIGKILL, and
-    hard_exit(INTERRUPT_EXIT_CODE). PGIDs are recorded, not PIDs."""
+    """force_exit with bridge_pgids must call shutdown_all(0) and
+    hard_exit(INTERRUPT_EXIT_CODE). The kill is recorded by the
+    FakePM's ``shutdown_all(grace=0)`` (the AC-11 contract:
+    ``manager.shutdown_all(0)`` is the only kill path). The
+    dispatcher's force_exit routes through the controller's
+    ``force_interrupt``, which now drops the per-pgid loop.
+    """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID)
     kill_calls: list[tuple[int, int]] = []
@@ -168,10 +183,12 @@ def test_dispatcher_force_exit_calls_shutdown_zero_and_hard_exit_with_pgid() -> 
         hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
     )
 
-    dispatcher.force_exit(bridge_pids=[_PGID])
+    dispatcher.force_exit(bridge_pgids=[_PGID])
 
     assert manager.shutdown_all_calls == [0]
-    assert kill_calls == [(_PGID, signal.SIGKILL)]
+    # FakePM.shutdown_all(0) records kills in kill_process_group_calls
+    # to mirror the real ProcessManager's escalation.
+    assert manager.kill_process_group_calls == [(_PGID, signal.SIGKILL)]
     assert exit_calls == [(INTERRUPT_EXIT_CODE,)]
 
 
@@ -201,8 +218,8 @@ def test_dispatcher_force_exit_is_idempotent_on_repeat_bridge_pids() -> None:
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID)
     _, dispatcher = _build_dispatcher(process_manager=manager)
-    dispatcher.force_exit(bridge_pids=[_PID])
-    dispatcher.force_exit(bridge_pids=[_PID])
+    dispatcher.force_exit(bridge_pgids=[_PID])
+    dispatcher.force_exit(bridge_pgids=[_PID])
     assert manager.shutdown_all_calls == [0]
 
 
@@ -217,8 +234,8 @@ def test_controller_force_exit_has_no_idempotency_guarantee() -> None:
         record_interrupt=lambda: None,
         hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
     )
-    controller.force_exit(bridge_pids=[_PID])
-    controller.force_exit(bridge_pids=[_PID])
+    controller.force_exit(bridge_pgids=[_PID])
+    controller.force_exit(bridge_pgids=[_PID])
     assert exit_calls == [(INTERRUPT_EXIT_CODE,), (INTERRUPT_EXIT_CODE,)]
 
 
@@ -252,7 +269,7 @@ def test_dispatcher_force_exit_calls_record_interrupt_exactly_once() -> None:
         process_manager=manager,
         record_interrupt=cast("Callable[[], None]", lambda: record_calls.append(None)),
     )
-    dispatcher.force_exit(bridge_pids=[_PID])
+    dispatcher.force_exit(bridge_pgids=[_PID])
     assert record_calls == [None]
 
 
@@ -380,7 +397,16 @@ def test_early_escalation_poll_kills_when_no_cpu_progress_within_budget(
 ) -> None:
     """The early-escalation poll must send SIGKILL to the matched
     record's PGID when no CPU-time progress is detected within the
-    hard-kill budget. Stubs psutil via ``import_module`` patching."""
+    hard-kill budget. Stubs psutil via ``import_module`` patching.
+
+    NOTE: ``run_early_escalation_poll`` is a public utility kept for
+    backward compatibility but is NOT used by the production seam.
+    The production seam in ``run_shutdown_block`` uses
+    ``begin_interrupt(block=True)`` which routes through the
+    dispatcher's liveness-based ``_wait_for_list_active_empty``.
+    This test pins the public-method contract so a future regression
+    in the method body is caught.
+    """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:claude")
     manager.kill_process_group_calls = []
@@ -397,7 +423,7 @@ def test_early_escalation_poll_kills_when_no_cpu_progress_within_budget(
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert manager.kill_process_group_calls == [(_PGID, signal.SIGKILL)]
 
 
@@ -405,7 +431,16 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When CPU time INCREASES across polls, the agent is making
-    progress; the poll must NOT send SIGKILL."""
+    progress; the poll must NOT send SIGKILL.
+
+    NOTE: ``run_early_escalation_poll`` is a public utility kept for
+    backward compatibility but is NOT used by the production seam.
+    The production seam in ``run_shutdown_block`` uses
+    ``begin_interrupt(block=True)`` which routes through the
+    dispatcher's liveness-based ``_wait_for_list_active_empty``.
+    This test pins the public-method contract so a future regression
+    in the method body is caught.
+    """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:claude")
     manager.kill_process_group_calls = []
@@ -422,7 +457,7 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert manager.kill_process_group_calls == []
 
 
@@ -430,7 +465,16 @@ def test_early_escalation_poll_exits_when_process_dies(monkeypatch: pytest.Monke
     """When the matched process is no longer alive at the OS level
     from the first poll, the function must return without blocking
     for the full budget. Pins the early-return path on liveness check
-    failure (no SIGKILL sent)."""
+    failure (no SIGKILL sent).
+
+    NOTE: ``run_early_escalation_poll`` is a public utility kept for
+    backward compatibility but is NOT used by the production seam.
+    The production seam in ``run_shutdown_block`` uses
+    ``begin_interrupt(block=True)`` which routes through the
+    dispatcher's liveness-based ``_wait_for_list_active_empty``.
+    This test pins the public-method contract so a future regression
+    in the method body is caught.
+    """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:claude")
     manager.kill_process_group_calls = []
@@ -450,7 +494,7 @@ def test_early_escalation_poll_exits_when_process_dies(monkeypatch: pytest.Monke
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert manager.kill_process_group_calls == []
 
 
@@ -554,7 +598,74 @@ def test_dispatcher_uses_injected_clock_for_block_wait_deadline() -> None:
     )
     dispatcher.begin_interrupt(block=True, grace_period_s=_INVOKE_GRACE)
     assert len(sleep_calls) >= 1
-    assert sleep_calls[0] <= 0.01
+    # AC-07 contract: every sleep is bounded by BOTH poll_interval_s
+    # AND grace_period_s. The unfixed code used a hard-coded 0.01s
+    # clamp, so this assertion is contract-level (does NOT codify
+    # the implementation). The bound is min(poll, grace).
+    import_dispatcher_poll = 0.2  # SIGINT_PROGRESS_POLL_INTERVAL_SECONDS
+    expected_bound = min(import_dispatcher_poll, _INVOKE_GRACE)
+    assert sleep_calls[0] <= expected_bound
+    assert sleep_calls[0] <= _INVOKE_GRACE
+
+
+def test_dispatcher_block_wait_sleep_never_exceeds_remaining_deadline() -> None:
+    """AC-02 (step 2): the block-wait sleep bound must be
+    ``min(poll_interval_s, max(deadline - clock(), 0.0))``. Every
+    sleep is bounded by BOTH ``poll_interval_s`` AND the remaining
+    time before the deadline.
+
+    With ``grace_period_s=1.0`` and ``poll_interval_s=0.2``, the
+    contract pins:
+
+    * every sleep call is ``<= poll_interval_s``,
+    * every sleep call is ``<= grace_period_s``, and
+    * the total sleep count is in ``[4, 6]`` (not 50-100).
+
+    The unfixed code calls
+    ``self.sleep(min(self.poll_interval_s, 0.01))`` every tick, so
+    ``sleep_calls[0] == 0.01`` and the count is ~100. The test
+    FAILS under the unfixed code (count is out of range,
+    ``sleep_calls[0] <= 0.01`` is below ``poll_interval_s``) and
+    PASSES under the fixed code (sleep count is ~5).
+    """
+    manager = FakeProcessManager()
+    # Record that NEVER drains; the dispatcher must rely on the deadline.
+    manager.add_active(
+        pid=_PID, pgid=_PGID, label="invoke:fake"
+    )
+    clock = _FakeClock()
+    sleep_calls: list[float] = []
+    exit_calls: list[tuple[int, ...]] = []
+
+    def _fake_sleep(s: float) -> None:
+        sleep_calls.append(s)
+        clock.advance(s)
+
+    _, dispatcher = _build_dispatcher(
+        process_manager=manager,
+        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        poll_interval_s=0.2,
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+    )
+    dispatcher.begin_interrupt(block=True, grace_period_s=1.0)
+
+    # Contract: every sleep is bounded by BOTH poll_interval_s AND
+    # grace_period_s. This is contract-level (not implementation-level)
+    # and does not assume the specific ``min()`` formula.
+    assert sleep_calls, "block-wait must call sleep at least once"
+    for s in sleep_calls:
+        assert s <= 0.2, (
+            f"sleep {s} exceeds poll_interval_s 0.2"
+        )
+        assert s <= 1.0, (
+            f"sleep {s} exceeds grace_period_s 1.0"
+        )
+    # Sleep count must reflect grace / poll, not grace / 0.01.
+    assert 4 <= len(sleep_calls) <= 6, (
+        f"sleep count {len(sleep_calls)} out of expected range [4, 6]; "
+        f"sleep_calls={sleep_calls}"
+    )
 
 
 def test_dispatcher_block_wait_does_not_sleep_when_already_empty() -> None:
@@ -605,7 +716,7 @@ def test_dispatcher_early_escalation_uses_injected_clock_for_deadline() -> None:
         clock=cast("Callable[[], float]", clock.now),
         sleep=cast("Callable[[float], None]", _fake_sleep),
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert sleep_calls, "sleep must be called by run_early_escalation_poll"
     assert sleep_calls[0] == _POLL_INTERVAL
 
@@ -680,7 +791,7 @@ def test_dispatcher_early_escalation_poll_sleeps_before_matched_check() -> None:
         clock=cast("Callable[[], float]", clock.now),
         sleep=cast("Callable[[float], None]", _fake_sleep),
     )
-    dispatcher.run_early_escalation_poll(grace_period_s=_QUICK_BUDGET)
+    dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     sleep_indices = [i for i, e in enumerate(event_order) if e.startswith("sleep(")]
     list_indices = [i for i, e in enumerate(event_order) if e == "list_active"]
     assert sleep_indices and list_indices
@@ -725,9 +836,132 @@ def test_dispatcher_waits_until_empty_or_escalates_when_stuck() -> None:
     dispatcher.begin_interrupt(block=True, grace_period_s=0.05)
     # force_exit was called with INTERRUPT_EXIT_CODE
     assert exit_calls == [(INTERRUPT_EXIT_CODE,)]
-    # force_exit routed through controller.force_interrupt, which calls
-    # kill_process_group for each registered pid in bridge_pids.
-    assert (_PGID, signal.SIGKILL) in kill_calls
+    # force_exit routed through controller.force_interrupt →
+    # shutdown_all(0). FakePM.shutdown_all(0) records kills in
+    # kill_process_group_calls to mirror the real ProcessManager's
+    # escalation (AC-11 contract: manager.shutdown_all(0) is the
+    # only kill path).
+    assert (_PGID, signal.SIGKILL) in manager.kill_process_group_calls
+
+
+def test_begin_interrupt_with_slow_body_still_escalates_after_body_returns() -> None:
+    """NEW BEHAVIOR PIN: when ``begin_interrupt``'s body itself
+    (the controller's ``record_interrupt`` + ``shutdown_all_for_label``)
+    takes a long time to return, the dispatcher's
+    ``_wait_for_list_active_empty`` escalation still fires once
+    the body returns and the new grace deadline (measured from
+    when ``_wait_for_list_active_empty`` starts) elapses.
+
+    The existing tests
+    (``test_dispatcher_waits_until_empty_or_escalates_when_stuck``,
+    ``test_dispatcher_block_wait_sleep_never_exceeds_remaining_deadline``)
+    assume the body returns instantaneously; they cannot detect
+    a regression where the dispatcher forgets to subtract body
+    time from the grace budget. The new test pins the body-time
+    invariant via a ``threading.Event`` coordination primitive
+    (the same pattern as
+    ``test_dispatcher_begin_interrupt_block_true_blocks_until_list_active_empty``).
+
+    Mechanism:
+
+    1. Build a ``FakeProcessManager`` with one active record that
+       NEVER drains (the FakeProcessManager default).
+    2. Build a ``_FakeClock`` and a ``fake_sleep`` that advances
+       the clock on every call.
+    3. Define ``body_event`` and ``body_started`` threading
+       events. Build ``_slow_record_interrupt`` that sets
+       ``body_started`` and blocks on ``body_event.wait``.
+    4. Build the dispatcher with ``poll_interval_s=0.001`` and
+       ``grace_period_s=0.05`` and the ``_slow_record_interrupt``
+       injection.
+    5. Start a worker thread that calls
+       ``dispatcher.begin_interrupt(block=True, grace_period_s=0.05)``.
+       The thread blocks inside ``_slow_record_interrupt``.
+    6. Wait on ``body_started`` to confirm the body is blocked.
+    7. Advance the clock past the original grace deadline
+       (0.5s) — the dispatcher's escalation would fire if the
+       body had returned; the worker is still inside
+       ``_slow_record_interrupt``.
+    8. Set ``body_event`` so the body returns. The worker
+       continues through ``shutdown_all_for_label`` into
+       ``_wait_for_list_active_empty``.
+    9. Join the worker thread.
+    10. Assert ``hard_exit`` was called exactly once
+        (idempotency survives body delay) and
+        ``shutdown_all_for_label`` was called with the expected
+        label + grace.
+    """
+    manager = FakeProcessManager()
+    manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
+
+    clock = _FakeClock()
+    sleep_calls: list[float] = []
+    exit_calls: list[tuple[int, ...]] = []
+    kill_calls: list[tuple[int, int]] = []
+
+    body_event = threading.Event()
+    body_started = threading.Event()
+
+    def _slow_record_interrupt() -> None:
+        body_started.set()
+        body_event.wait(timeout=1.0)
+
+    def _fake_sleep(s: float) -> None:
+        sleep_calls.append(s)
+        clock.advance(s)
+
+    dispatcher = dispatcher_from_process_manager(
+        process_manager=manager,
+        hard_exit=cast("Callable[[int], None]", lambda code: exit_calls.append((code,))),
+        kill_process_group=cast(
+            "Callable[[int, int], None]", lambda pgid, sig: kill_calls.append((pgid, sig))
+        ),
+        record_interrupt=_slow_record_interrupt,
+        poll_interval_s=0.001,
+        hard_kill_budget_s=0.05,
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+    )
+
+    def _worker() -> None:
+        dispatcher.begin_interrupt(block=True, grace_period_s=0.05)
+
+    worker = threading.Thread(target=_worker, daemon=True)
+    worker.start()
+
+    # The body must be blocked in _slow_record_interrupt before we
+    # advance the clock.
+    assert body_started.wait(timeout=0.5), (
+        "worker thread did not enter _slow_record_interrupt in 0.5s"
+    )
+
+    # Advance the clock past the original grace deadline while the
+    # body is still blocked.
+    clock.advance(0.5)
+
+    # Release the body. The worker continues through
+    # shutdown_all_for_label into _wait_for_list_active_empty.
+    body_event.set()
+
+    # The worker thread should complete (the dispatcher escalates
+    # after the body returns and the new grace deadline elapses).
+    worker.join(timeout=1.0)
+    assert not worker.is_alive(), (
+        f"worker thread did not complete in 1.0s; "
+        f"sleep_calls={sleep_calls}, exit_calls={exit_calls}"
+    )
+
+    # hard_exit called exactly once (idempotency survives body delay).
+    assert exit_calls == [(INTERRUPT_EXIT_CODE,)], (
+        f"hard_exit should be called exactly once; got {exit_calls}"
+    )
+
+    # The body did call the label-targeted shutdown before
+    # _wait_for_list_active_empty was entered.
+    assert manager.shutdown_all_for_label_calls == [("invoke:", 0.05)], (
+        f"shutdown_all_for_label should be called once with the dispatcher's "
+        f"kill_label and grace_period_s; got {manager.shutdown_all_for_label_calls}"
+    )
 
 
 def test_handle_keyboard_interrupt_force_kill_handler_restores_previous() -> None:
@@ -863,7 +1097,13 @@ def test_async_first_sigint_propagates_kill_label_to_controller(
     """The async SIGINT path must call the controller's begin_interrupt
     with ``kill_label='invoke:'`` (the dispatcher's default), so the
     label-targeted shutdown_all_for_label path is taken on the first
-    SIGINT."""
+    SIGINT.
+
+    The first-SIGINT handler dispatches ``begin_interrupt`` +
+    ``run_early_escalation_poll`` via ``loop.run_in_executor``. The
+    loop shim runs the executor body synchronously so the test can
+    observe the controller's ``shutdown_all_for_label`` call.
+    """
     manager = FakeProcessManager()
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
     _, dispatcher = _build_dispatcher(process_manager=manager)
@@ -873,13 +1113,40 @@ def test_async_first_sigint_propagates_kill_label_to_controller(
     )
 
     bridge = SignalBridge()
-    loop = _HandlerCapturingLoop()
+    loop = _SyncExecutorHandlerLoop()
     root_task = _CancellableTask()
     install_signal_handlers(loop, root_task, bridge, dispatcher)
     assert len(loop._handlers) == 1
     loop._handlers[0]()
     assert root_task.cancel_calls == 1
     assert manager.shutdown_all_for_label_calls == [("invoke:", _FAKE_DEFAULT_GRACE)]
+
+
+class _SyncExecutorHandlerLoop(_HandlerCapturingLoop):
+    """Variant of ``_HandlerCapturingLoop`` that exposes a
+    synchronous ``run_in_executor`` so the first-SIGINT handler's
+    executor dispatch can be exercised end-to-end. The returned
+    handle supports ``add_done_callback`` (invoked synchronously).
+    """
+
+    def run_in_executor(
+        self, executor: object, fn: object, *args: object
+    ) -> object:
+        fn(*args)
+        return _SyncDoneHandle()
+
+
+class _SyncDoneHandle:
+    """Minimal handle with ``add_done_callback`` for AC-04-style tests."""
+
+    def add_done_callback(self, callback: object) -> None:
+        callback(self)
+
+    def cancelled(self) -> bool:
+        return False
+
+    def exception(self) -> object:
+        return None
 
 
 def test_cli_catch_uses_dispatcher_with_block_true() -> None:
@@ -972,8 +1239,7 @@ def test_async_dispatcher_synthesis_threads_kill_process_group_and_hard_exit(
     )
 
     bridge = SignalBridge()
-    bridge.register_pid(_PGID)
-    loop = _HandlerCapturingLoop()
+    loop = _SyncExecutorHandlerLoop()
     root_task = _CancellableTask()
     install_signal_handlers(loop, root_task, bridge, controller)
     assert len(loop._handlers) == 1
@@ -991,18 +1257,30 @@ def test_async_install_signal_handlers_3arg_call_path_controller_none_branch(
 ) -> None:
     """PA-017 PINNED CONTRACT: the 3-arg call path (``controller=None``)
     must synthesize a working dispatcher without raising. Mirrors
-    ``test_user_interrupt.py:124``'s calling convention."""
+    ``test_user_interrupt.py:124``'s calling convention.
+
+    The 3-arg path builds an internal dispatcher via
+    ``dispatcher_from_process_manager`` (without an explicit
+    process_manager), which routes through the singleton. The
+    test monkeypatches the singleton getter so the test does NOT
+    touch the real ProcessManager; the singleton is replaced with
+    a FakeProcessManager that owns the active record.
+    """
     os_exit_calls: list[tuple[int, ...]] = []
+    manager = FakeProcessManager()
+    manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
 
     def _fake_os_exit(code: int) -> None:
         os_exit_calls.append((code,))
         raise SystemExit(code)
 
     monkeypatch.setattr(os, "_exit", _fake_os_exit)
+    monkeypatch.setattr(
+        "ralph.interrupt.asyncio_bridge.get_process_manager", lambda: manager
+    )
 
     bridge = SignalBridge()
-    bridge.register_pid(_PGID)
-    loop = _HandlerCapturingLoop()
+    loop = _SyncExecutorHandlerLoop()
     root_task = _CancellableTask()
     install_signal_handlers(loop, root_task, bridge)
     assert len(loop._handlers) == 1
@@ -1012,3 +1290,111 @@ def test_async_install_signal_handlers_3arg_call_path_controller_none_branch(
     with contextlib.suppress(SystemExit):
         loop._handlers[1]()
     assert os_exit_calls == [(INTERRUPT_EXIT_CODE,)]
+
+
+def test_run_shutdown_block_does_not_sigkill_alive_but_zero_cpu_long_running_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TDD-first regression pin for the I/O-bound alive-but-zero-CPU bug.
+
+    The PROMPT reports 'broken at times... when the task is long
+    running'. The architecture-internal root cause: the production seam
+    in ``run_shutdown_block`` (the helper used by both the SYNC
+    ``handle_keyboard_interrupt`` and the asyncio
+    ``install_signal_handlers`` paths) deliberately routes through
+    ``run_early_escalation_poll`` in a daemon thread, which uses
+    CPU-progress detection. An I/O-bound long-running agent that is
+    alive and gracefully shutting down (writing a checkpoint,
+    releasing a lock, draining a queue) frequently has
+    ``current_cpu == previous_cpu`` across two consecutive polls, so
+    ``_records_show_no_progress`` returns True and the daemon thread
+    SIGKILLs the agent prematurely.
+
+    The fix routes the production seam through
+    ``begin_interrupt(block=True)``, which uses the dispatcher's
+    liveness-based ``_wait_for_list_active_empty`` to wait for the
+    records to drain naturally. The alive-but-zero-CPU agent is given
+    the full ``grace_period_s`` to die on its own; no SIGKILL is
+    sent unless the grace deadline elapses with records still
+    active.
+
+    Test scenario:
+
+    1. Build a ``FakeProcessManager`` with
+       ``default_grace_period_s=1.0`` and add one active record
+       ``(pid=201, pgid=9999, label='invoke:fake')``.
+    2. Build a ``_FakeClock`` and a fake sleep that advances the
+       clock by 0.001 on every call AND calls ``manager.drain()``
+       after exactly 3 iterations (the agent's natural completion).
+    3. Patch psutil so ``_psutil_pid_cpu_time`` returns 0.0 on
+       every call (the agent is alive but not using the CPU). Patch
+       ``os.kill`` so ``_pid_is_alive`` returns True (the agent is
+       alive at the OS level).
+    4. Build a dispatcher via the factory with ``poll_interval_s=0.001``
+       and the fake clock + fake sleep.
+    5. Call ``run_shutdown_block(dispatcher, grace_period_s=1.0,
+       join_timeout_s=0.05)`` from the canonical production seam.
+    6. Assert ``manager.kill_process_group_calls == []`` — the
+       alive-but-zero-CPU agent is NOT SIGKILLed.
+    7. Assert ``manager._active_records == []`` — the records were
+       drained naturally by the fake sleep, not killed by
+       ``force_exit``.
+
+    Behaviour:
+
+    * Under the OLD code, the daemon thread SIGKILLs the agent at
+      iteration 2 (two consecutive 0-CPU polls trigger
+      ``_records_show_no_progress`` to return True; the daemon
+      thread then calls ``_dispatch_kill`` which records the kill in
+      ``kill_process_group_calls``). The assertion FAILS.
+    * Under the NEW code, ``begin_interrupt(block=True)`` routes
+      through ``_wait_for_list_active_empty`` (liveness-based) which
+      waits for the records to drain. The fake sleep drains the
+      records at iteration 3; the wait returns. No SIGKILL is sent.
+      The assertion PASSES.
+
+    Wall-clock: < 100ms (uses ``_FakeClock`` and a fake sleep; the
+    ``join_timeout_s=0.05`` keeps the OLD-code main-thread join
+    fast even when the daemon thread races). The test does NOT use
+    ``time.sleep`` and does NOT use real subprocesses.
+    """
+    clock = _FakeClock()
+    sleep_iterations = 0
+    captured_manager: list[FakeProcessManager] = []
+
+    def _fake_sleep(s: float) -> None:
+        nonlocal sleep_iterations
+        sleep_iterations += 1
+        clock.advance(s)
+        if sleep_iterations == 3 and captured_manager:
+            captured_manager[0].drain()
+
+    _patch_psutil(monkeypatch, lambda _n: 0.0)
+    _patch_pid_alive(monkeypatch, alive=True)
+
+    manager, dispatcher = _build_dispatcher(
+        clock=cast("Callable[[], float]", clock.now),
+        sleep=cast("Callable[[float], None]", _fake_sleep),
+        poll_interval_s=0.001,
+    )
+    captured_manager.append(manager)
+    manager.add_active(pid=201, pgid=9999, label="invoke:fake")
+    manager.policy = ProcessManagerPolicy(default_grace_period_s=1.0)
+
+    run_shutdown_block(
+        dispatcher,
+        grace_period_s=1.0,
+        join_timeout_s=0.05,
+    )
+
+    # The alive-but-zero-CPU agent is NOT SIGKILLed under the fix.
+    assert manager.kill_process_group_calls == [], (
+        f"alive-but-zero-CPU agent was SIGKILLed; "
+        f"kill_process_group_calls={manager.kill_process_group_calls}"
+    )
+    # The records were drained naturally by the fake sleep, not killed
+    # by force_exit.
+    assert manager._active_records == [], (
+        f"records should be drained naturally by the fake sleep; "
+        f"got _active_records={manager._active_records}"
+    )

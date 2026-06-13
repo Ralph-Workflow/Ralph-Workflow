@@ -30,6 +30,8 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, cast
 
+from loguru import logger
+
 from ralph.interrupt.controller import (
     INTERRUPT_EXIT_CODE,
     InterruptController,
@@ -70,6 +72,37 @@ if not (
         "SIGINT_PROGRESS_POLL_INTERVAL_SECONDS must be in (0,"
         f" {INTERRUPT_HARD_KILL_BUDGET_SECONDS}) seconds"
         f" (got {SIGINT_PROGRESS_POLL_INTERVAL_SECONDS})"
+    )
+
+# Tighter exact-value pin: the canonical values are 1.5 seconds
+# for INTERRUPT_HARD_KILL_BUDGET_SECONDS and 0.2 seconds for
+# SIGINT_PROGRESS_POLL_INTERVAL_SECONDS. The range checks above
+# accept any value in the valid range; this exact pin ensures a
+# future regression that picks a different in-range value is
+# caught at import time (immune to ``python -O`` because the
+# check uses ``if``/``raise`` not ``assert``).
+_INTERRUPT_HARD_KILL_BUDGET_REQUIRED: float = 1.5
+_FLOAT_EPSILON: float = 1e-9
+if (
+    not abs(
+        INTERRUPT_HARD_KILL_BUDGET_SECONDS - _INTERRUPT_HARD_KILL_BUDGET_REQUIRED
+    )
+    < _FLOAT_EPSILON
+):
+    raise RuntimeError(
+        f"INTERRUPT_HARD_KILL_BUDGET_SECONDS must be "
+        f"{_INTERRUPT_HARD_KILL_BUDGET_REQUIRED} "
+        f"(got {INTERRUPT_HARD_KILL_BUDGET_SECONDS})"
+    )
+
+_SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED: float = 0.2
+if not abs(
+    SIGINT_PROGRESS_POLL_INTERVAL_SECONDS - _SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED
+) < _FLOAT_EPSILON:
+    raise RuntimeError(
+        f"SIGINT_PROGRESS_POLL_INTERVAL_SECONDS must be "
+        f"{_SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED} "
+        f"(got {SIGINT_PROGRESS_POLL_INTERVAL_SECONDS})"
     )
 
 
@@ -257,16 +290,21 @@ class InterruptDispatcher:
                     return
             except Exception:
                 return
-            self.sleep(min(self.poll_interval_s, 0.01))
+            remaining = max(deadline - self.clock(), 0.0)
+            self.sleep(min(self.poll_interval_s, remaining))
         # Deadline elapsed with records still active: escalate to force_exit.
         try:
             active = self.process_manager.list_active()
         except Exception:
             return
         if active:
-            self.force_exit(bridge_pids=[r.pgid for r in active])
+            self.force_exit(bridge_pgids=[r.pgid for r in active])
 
-    def force_exit(self, bridge_pids: Iterable[int] = ()) -> None:
+    def force_exit(
+        self,
+        bridge_pgids: Iterable[int] = (),
+        **kwargs: object,
+    ) -> None:
         """Escalate to immediate tracked-process termination and exit.
 
         Idempotent: repeated calls are no-ops. The first call sets the
@@ -277,30 +315,61 @@ class InterruptDispatcher:
         field is preferred; if it is None, the controller's
         ``force_exit`` is invoked so the controller's injected exit
         callable is the one that runs (PA-019 thread-through).
+
+        The ``bridge_pids`` keyword is accepted for backward
+        compatibility; it is deprecated and emits a single loguru
+        warning when used. New callers MUST pass ``bridge_pgids``.
         """
+        bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
+        if bridge_pids_legacy:
+            logger.warning(
+                "bridge_pids is deprecated; pass bridge_pgids instead"
+            )
+        pgids: Iterable[int] = (
+            list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
+        )
         if self._force_exit_called:
             return
         object.__setattr__(self, "_force_exit_called", True)
-        self.controller.force_interrupt(bridge_pids=bridge_pids)
+        self.controller.force_interrupt(bridge_pgids=pgids)
         if self.hard_exit is not None:
             self.hard_exit(INTERRUPT_EXIT_CODE)
         else:
-            self.controller.force_exit(bridge_pids=bridge_pids)
+            self.controller.force_exit(bridge_pgids=pgids)
 
     def run_early_escalation_poll(
         self,
-        grace_period_s: float,
         *,
         progress_poll_interval_s: float | None = None,
         max_wait_s: float | None = None,
     ) -> None:
-        """Run the early-escalation poll for the first SIGINT path.
+        """Public utility: run the CPU-progress early-escalation poll.
 
-        Polls the matched active records (whose label starts with the
-        dispatcher's ``kill_label``) and SIGKILLs them on no-progress.
-        Bounded by ``max_wait_s`` (defaults to
-        ``self.hard_kill_budget_s``). Mirrors the prior inline helper
-        in ``_runner_interrupt._sigint_early_escalation_poll``.
+        This method is a public utility kept for backward compatibility
+        but is NOT used by the production seam. The production seam in
+        ``run_shutdown_block`` uses ``begin_interrupt(block=True)``
+        which routes through the dispatcher's liveness-based
+        ``_wait_for_list_active_empty`` (waiting for
+        ``process_manager.list_active()`` to drain or the grace
+        deadline to elapse). The liveness-based path does NOT use
+        CPU-progress detection; an alive-but-zero-CPU long-running
+        agent (writing a checkpoint, releasing a lock, draining a
+        queue) is given the full ``grace_period_s`` to die naturally
+        before the dispatcher escalates via ``force_exit``.
+
+        This CPU-progress-based method is retained for callers that
+        need it. The method polls the matched active records (whose
+        label starts with the dispatcher's ``kill_label``) and
+        SIGKILLs them on no-progress. Bounded by ``max_wait_s``
+        (defaults to ``self.hard_kill_budget_s``). Mirrors the prior
+        inline helper in
+        ``_runner_interrupt._sigint_early_escalation_poll``. The
+        method's dedicated tests in
+        ``tests/test_interrupt_dispatcher.py``
+        (``test_early_escalation_poll_kills_when_no_cpu_progress_within_budget``,
+        ``test_early_escalation_poll_does_not_kill_when_cpu_progresses``,
+        ``test_early_escalation_poll_exits_when_process_dies``)
+        still pass against the public method.
         """
         poll = (
             progress_poll_interval_s
@@ -323,7 +392,6 @@ class InterruptDispatcher:
                 continue
             _dispatch_kill(self.process_manager, matched)
             return
-        del grace_period_s
 
 
 def dispatcher_from_process_manager(
@@ -418,6 +486,66 @@ def handle_keyboard_interrupt_at_cli(
     return exit_code
 
 
+def run_shutdown_block(
+    dispatcher: InterruptDispatcher,
+    *,
+    grace_period_s: float,
+    join_timeout_s: float = INTERRUPT_HARD_KILL_BUDGET_SECONDS + 0.1,
+    error_log_message: str = "Interrupt shutdown block raised",
+) -> None:
+    """Canonical seam for the first-SIGINT shutdown block.
+
+    Both the SYNC ``handle_keyboard_interrupt`` entry point
+    (``ralph.pipeline._runner_interrupt._begin_interrupt``) and the
+    asyncio ``install_signal_handlers`` entry point
+    (``ralph.interrupt.asyncio_bridge._shutdown_block``) route
+    through this helper so the bodies cannot drift. The 7th
+    architectural seam is ``error_log_message``: the SYNC path
+    passes ``"Interrupt controller raised during KeyboardInterrupt"``
+    (preserved for bit-for-bit production log output) and the
+    asyncio path passes the existing
+    ``"Interrupt shutdown block raised"`` (preserved for the
+    same reason).
+
+    The body is a single call to
+    ``dispatcher.begin_interrupt(grace_period_s=grace_period_s,
+    block=True)`` only — no daemon thread, no ``threading.Thread.join``.
+    The dispatcher uses its liveness-based
+    ``_wait_for_list_active_empty`` (via ``block=True``) to wait for
+    the process manager's active-record list to drain, escalating
+    via ``force_exit`` only when the grace deadline elapses with
+    records still active. This replaces the prior CPU-progress-based
+    ``run_early_escalation_poll`` daemon thread, which SIGKILLed
+    alive-but-zero-CPU long-running agents (writing checkpoints,
+    releasing locks, draining queues) prematurely. The
+    ``run_early_escalation_poll`` method is kept on the dispatcher
+    as a public utility NOT used by the production seam (see its
+    docstring); the method's dedicated tests still pass against the
+    public method.
+
+    The ``join_timeout_s`` parameter is now unused and is kept for
+    backward compatibility with the prior call shape. The two call
+    sites (``ralph/pipeline/_runner_interrupt.py`` and
+    ``ralph/interrupt/asyncio_bridge.py``) do not pass the kwarg
+    and the helper is byte-for-byte equivalent at those sites.
+
+    The helper is added to ``__all__`` so ``from
+    ralph.interrupt.dispatcher import *`` exposes it. See
+    ADR-0001 D7 and D8.
+    """
+    # ``join_timeout_s`` is no longer used by the production seam:
+    # the dispatcher's begin_interrupt(block=True) waits via the
+    # liveness-based _wait_for_list_active_empty path, which polls
+    # list_active() on the dispatcher's clock/sleep seams. The
+    # parameter is kept (defaulted) for backward compatibility so
+    # existing callers do not have to change.
+    del join_timeout_s
+    try:
+        dispatcher.begin_interrupt(grace_period_s=grace_period_s, block=True)
+    except Exception:
+        logger.warning(error_log_message)
+
+
 __all__ = [
     "INTERRUPT_HARD_KILL_BUDGET_SECONDS",
     "SIGINT_PROGRESS_POLL_INTERVAL_SECONDS",
@@ -425,4 +553,5 @@ __all__ = [
     "dispatcher_from_process_manager",
     "handle_keyboard_interrupt_at_cli",
     "install_force_kill_handler",
+    "run_shutdown_block",
 ]

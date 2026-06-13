@@ -107,6 +107,10 @@ class PtyLineReader:
         )
         self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
         self._waiting_listener = ctx.waiting_listener
+        self._pre_output_listener = cast(
+            "Callable[[], None] | None",
+            getattr(ctx, "pre_output_listener", None),
+        )
         self._expected_session_id = _extras.expected_session_id
         self._stop_sentinel_path = _extras.stop_sentinel_path
         self._permission_prompt_listener = _extras.permission_prompt_listener
@@ -206,6 +210,9 @@ class PtyLineReader:
     def _read_thread(self) -> None:
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         pending = ""
+        if self._pre_output_listener is not None:
+            with contextlib.suppress(Exception):
+                self._pre_output_listener()
         try:
             while True:
                 if self._handle.poll() is not None and not wait_for_master_readable(

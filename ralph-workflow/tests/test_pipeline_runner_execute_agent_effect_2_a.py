@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
+from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -19,6 +20,7 @@ from ralph.config.enums import (
 from ralph.config.mcp_loader import McpConfigError
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline import _runner_session as runner_session_module
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
@@ -211,6 +213,160 @@ class TestExecuteAgentEffectA:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
+
+    def test_invoke_start_records_visible_activity_on_display_subscriber(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+        monkeypatch.setattr(
+            effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+        )
+
+        console = Console(file=StringIO(), force_terminal=False, width=120, color_system=None)
+        display = ParallelDisplay(
+            make_display_context(console=console, env={"CI": "1"}, force_mode="medium"),
+            workspace_root=tmp_path,
+            run_id="run-invoke-start",
+        )
+
+        result = runner_module.execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module.AgentExecutionDeps(
+                invoke_agent=lambda *_args, options=None, **_kwargs: (
+                    options.pre_output_listener() if options is not None else None,
+                    iter(()),
+                )[1],
+                agent_invocation_error=AgentError,
+                agent_registry=registry,
+            ),
+            WorkspaceScope(tmp_path),
+            display=display,
+            display_context=display.display_context,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        snapshot = display.subscriber.build_snapshot(PipelineState(phase="development"))
+        assert snapshot is not None
+        assert snapshot.active_agent == "dev"
+        assert snapshot.last_activity_line in {
+            "Invoking agent: dev",
+            "Agent process started; waiting for first output",
+        }
+
+    def test_phase_banner_renders_before_invoke_start_activity(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+        monkeypatch.setattr(
+            effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+        )
+
+        console = Console(
+            file=StringIO(),
+            force_terminal=False,
+            width=160,
+            color_system=None,
+            record=True,
+        )
+        display = ParallelDisplay(
+            make_display_context(console=console, env={"CI": "1"}, force_mode="medium"),
+            workspace_root=tmp_path,
+            run_id="run-phase-order",
+        )
+        state = PipelineState(phase="development", budget_caps={"iteration": 1})
+        policy_bundle = _load_default_policy_bundle()
+
+        result = runner_module.execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module.AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(()),
+                agent_invocation_error=AgentError,
+                agent_registry=registry,
+                show_phase_start_cb=runner_module.show_phase_start_with_context,
+            ),
+            WorkspaceScope(tmp_path),
+            display=display,
+            display_context=display.display_context,
+            state=state,
+            policy_bundle=policy_bundle,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        out = console.export_text()
+        assert "Development" in out
+        assert "Invoking agent: dev" in out
+        assert out.index("Development") < out.index("Invoking agent: dev")
+
+    def test_pre_output_progress_renders_when_agent_has_not_emitted_output_yet(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+        registry = _registry_factory(MagicMock())
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+        monkeypatch.setattr(
+            effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+        )
+
+        console = Console(
+            file=StringIO(),
+            force_terminal=False,
+            width=160,
+            color_system=None,
+            record=True,
+        )
+        display = ParallelDisplay(
+            make_display_context(console=console, env={"CI": "1"}, force_mode="medium"),
+            workspace_root=tmp_path,
+            run_id="run-pre-output",
+        )
+
+        result = runner_module.execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module.AgentExecutionDeps(
+                invoke_agent=lambda *_args, options=None, **_kwargs: (
+                    options.pre_output_listener() if options is not None else None,
+                    iter(()),
+                )[1],
+                agent_invocation_error=AgentError,
+                agent_registry=registry,
+            ),
+            WorkspaceScope(tmp_path),
+            display=display,
+            display_context=display.display_context,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        out = console.export_text()
+        assert "Invoking agent: dev" in out
+        assert "Agent process started; waiting for first output" in out
 
     def test_development_session_gets_expected_mcp_capabilities(
         self, monkeypatch: pytest.MonkeyPatch

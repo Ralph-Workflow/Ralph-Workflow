@@ -59,8 +59,11 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
     with suppress(InvalidGitRepositoryError):
         repo = Repo(repo_root_path)
         try:
-            with suppress(Exception):
-                repo.git.rm("--cached", "--", relative_path)
+            tracked_in_index = any(
+                entry_path == relative_path for entry_path, _stage in repo.index.entries
+            )
+            if tracked_in_index:
+                repo.git.rm("-f", "--cached", "--", relative_path)
         finally:
             repo.close()
 

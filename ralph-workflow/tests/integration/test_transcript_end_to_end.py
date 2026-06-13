@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 import ralph.display.parallel_display as pd_module
@@ -58,11 +59,12 @@ def _install_runner_stubs(
     ) -> PipelineEvent:
         if isinstance(effect, InvokeAgentEffect):
             invoked_phases.append(effect.phase)
-            # Emit sample streaming content through the display so transcript has content markers
-            # Iterate over captured displays and emit on each (normally there's just one)
-            for display in captured_displays:
+            # Emit sample streaming content through the active display so the
+            # transcript has content markers without duplicating blocks across
+            # multiple captured display instances.
+            if captured_displays:
+                display = captured_displays[-1]
                 unit_id = "dev-1"
-                # Emit text content that will be grouped into a streaming block.
                 display._emit_activity_event(
                     unit_id,
                     ActivityEventKind.TEXT,
@@ -123,6 +125,7 @@ def _install_runner_stubs(
     return invoked_phases, captured_console, captured_displays
 
 
+@pytest.mark.timeout_seconds(3)
 def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_completion(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,

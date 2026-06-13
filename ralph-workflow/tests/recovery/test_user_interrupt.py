@@ -5,9 +5,17 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import signal as _sig
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
+from ralph.interrupt.dispatcher import dispatcher_from_process_manager
+from ralph.process.manager import (
+    ProcessManagerPolicy,
+    ProcessRecord,
+    ProcessStatus,
+)
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.testing import FakeConnectivityMonitor
 
@@ -95,7 +103,6 @@ def test_first_interrupt_saves_state_second_exits() -> None:
     two-interrupt contract is captured by the existing asyncio_bridge logic.
     """
     bridge = SignalBridge()
-    assert hasattr(bridge, "pids")
     assert hasattr(bridge, "_interrupt_count")
     assert callable(install_signal_handlers)
 
@@ -189,19 +196,125 @@ def test_signal_bridge_interrupt_count() -> None:
     assert bridge._interrupt_count == 2
 
 
-def test_signal_bridge_pid_tracking() -> None:
-    """SignalBridge tracks PIDs for process cleanup."""
+def test_signal_bridge_pgid_routing_uses_list_active() -> None:
+    """The second-SIGINT path MUST route the kill through PGIDs read
+    from ``pm.list_active()``, NOT through a bridge-local pids set.
+
+    With pid=42 and pgid=9999 (pid != pgid), the second-SIGINT
+    handler must invoke ``kill_process_group(9999, SIGKILL)`` and
+    NOT ``kill_process_group(42, SIGKILL)``. This is the
+    regression pin for the pid-vs-pgid mis-routing bug.
+    """
+    class _FakePM:
+        def __init__(self) -> None:
+            self.policy = ProcessManagerPolicy(default_grace_period_s=0.1)
+            self._active_records: list[ProcessRecord] = []
+            self.kill_process_group_calls: list[tuple[int, int]] = []
+            self.shutdown_all_calls: list[float] = []
+
+        def add_active(self, pid: int, pgid: int) -> ProcessRecord:
+            record = ProcessRecord(
+                pid=pid,
+                pgid=pgid,
+                command=("fake",),
+                cwd=None,
+                started_at=datetime.now(tz=UTC),
+                status=ProcessStatus.RUNNING,
+                label="invoke:fake",
+            )
+            self._active_records.append(record)
+            return record
+
+        def list_active(self) -> list[ProcessRecord]:
+            return list(self._active_records)
+
+        def kill_process_group(self, pgid: int, sig: int) -> None:
+            self.kill_process_group_calls.append((pgid, sig))
+
+        def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
+            resolved = grace_period_s if grace_period_s is not None else 0.0
+            self.shutdown_all_calls.append(resolved)
+            if resolved == 0:
+                for r in self._active_records:
+                    self.kill_process_group_calls.append((r.pgid, _sig.SIGKILL))
+                self._active_records.clear()
+
+        def shutdown_all_for_label(
+            self, label_prefix: str, *, grace_period_s: float | None = None
+        ) -> None:
+            return None
+
+        def register_listener(self, callback: object) -> object:
+            del callback
+            return lambda: None
+
+    class _CancellableTask:
+        def __init__(self) -> None:
+            self.cancel_calls = 0
+
+        def cancel(self) -> None:
+            self.cancel_calls += 1
+
+    class _CapturingLoop:
+        def __init__(self) -> None:
+            self._handlers: list[object] = []
+
+        def add_signal_handler(self, sig_num: int, cb: object, *args: object) -> None:
+            del args
+            self._handlers.append(cb)
+
+        def remove_signal_handler(self, sig_num: int) -> bool:
+            del sig_num
+            return True
+
+        def run_in_executor(self, executor: object, fn: object, *args: object) -> object:
+            fn(*args)
+            return _SyncFuture()
+
+    class _SyncFuture:
+        def __init__(self) -> None:
+            self._cancelled = False
+            self._callbacks: list[object] = []
+
+        def add_done_callback(self, callback: object) -> None:
+            self._callbacks.append(callback)
+            callback(self)
+
+        def cancel(self) -> bool:
+            self._cancelled = True
+            return True
+
+        def cancelled(self) -> bool:
+            return self._cancelled
+
+        def done(self) -> bool:
+            return True
+
+        def exception(self) -> object:
+            return None
+
+        def result(self) -> object:
+            return None
+
+    pm = _FakePM()
+    pm.add_active(pid=42, pgid=9999)
+    kill_calls: list[tuple[int, int]] = []
+    exit_calls: list[tuple[int, ...]] = []
+    dispatcher = dispatcher_from_process_manager(
+        process_manager=pm,
+        hard_exit=lambda c: exit_calls.append((c,)),
+        kill_process_group=lambda p, s: kill_calls.append((p, s)),
+    )
     bridge = SignalBridge()
-
-    bridge.register_pid(123)
-    bridge.register_pid(456)
-
-    assert 123 in bridge.pids
-    assert 456 in bridge.pids
-
-    bridge.deregister_pid(123)
-    assert 123 not in bridge.pids
-    assert 456 in bridge.pids
+    loop = _CapturingLoop()
+    task = _CancellableTask()
+    install_signal_handlers(loop, task, bridge, dispatcher)
+    with contextlib.suppress(SystemExit):
+        loop._handlers[0]()
+    with contextlib.suppress(SystemExit):
+        loop._handlers[1]()
+    assert (9999, _sig.SIGKILL) in pm.kill_process_group_calls
+    assert not any(call[0] == 42 for call in pm.kill_process_group_calls)
 
 
 def test_fake_monitor_default_state_online() -> None:

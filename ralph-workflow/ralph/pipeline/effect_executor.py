@@ -130,11 +130,6 @@ def execute_agent_effect(
     state = cast("PipelineState | None", opts.get("state"))
     policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
     resolved_display_context = get_display_context(display, display_context)
-    emit_activity_line(
-        display,
-        None,
-        status_text("Invoking agent", effect.agent_name, "cyan"),
-    )
     registry = deps.agent_registry.from_config(config)
     agent_config = registry.get(effect.agent_name)
     if agent_config is None:
@@ -152,6 +147,15 @@ def execute_agent_effect(
             resolved_display_context,
             state,
             pipeline_policy=policy_bundle.pipeline,
+        )
+    invoke_line = status_text("Invoking agent", effect.agent_name, "cyan")
+    if display is not None:
+        display.emit(effect.agent_name, invoke_line)
+    else:
+        emit_activity_line(
+            display,
+            None,
+            invoke_line,
         )
     display_subscriber = subscriber_for_display(display)
 
@@ -469,6 +473,14 @@ def _build_attempt_invoke_options(
         if ctx.policy_bundle is not None
         else None
     )
+
+    def _emit_pre_output_progress() -> None:
+        if ctx.display is not None:
+            ctx.display.emit(
+                ctx.effect.agent_name,
+                "Agent process started; waiting for first output",
+            )
+
     return build_invoke_options_from_config(
         ctx.config.general,
         InvokeRuntimeOptions(
@@ -483,6 +495,7 @@ def _build_attempt_invoke_options(
             session_id=resume_session_id,
             system_prompt_file=bridge_ctx.system_prompt_file,
             waiting_listener=ctx.waiting_listener,
+            pre_output_listener=_emit_pre_output_progress,
             permission_prompt_listener=_make_permission_prompt_listener(ctx),
             required_artifact=required_artifact,
         ),

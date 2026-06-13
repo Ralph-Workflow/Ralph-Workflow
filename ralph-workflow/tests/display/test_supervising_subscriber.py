@@ -128,6 +128,42 @@ def test_tracker_on_snapshot_view_contains_recent_activity_after_record_activity
     assert any("running mypy checks" in activity for activity in tracker.view.recent_activity)
 
 
+def test_tracker_view_keeps_activity_visible_during_waiting_state(tmp_path: Path) -> None:
+    """Waiting status must not hide the last meaningful activity in tracker view."""
+    tracker = WorkflowInstanceTracker(instance_id="work-wait-activity")
+    subscriber = _make_subscriber(
+        tmp_path,
+        run_id="run-wait-activity",
+        on_snapshot=tracker.update_from_snapshot,
+    )
+    subscriber.notify(_make_state("development"))
+    subscriber.record_activity(
+        unit_id="u1",
+        line="tool output that broke",
+        agent_name="opencode/minimax/MiniMax-M3",
+    )
+    subscriber.record_waiting_status(
+        WaitingStatusEvent(
+            kind=WaitingStatusKind.PROGRESS,
+            cumulative_seconds=120.0,
+            current_run_seconds=60.0,
+            idle_elapsed_seconds=15.0,
+            ceiling_seconds=1800.0,
+            suspect_threshold_seconds=600.0,
+            diagnostic={},
+        ),
+        agent_name="opencode/minimax/MiniMax-M3",
+    )
+
+    assert tracker.view.lifecycle_status == InstanceStatus.WAITING
+    assert tracker.view.recent_activity[-2:] == (
+        "tool output that broke",
+        "Background child work still active "
+        "(run=60s, cumulative=120s, ceiling=1800s, "
+        "agent=opencode/minimax/MiniMax-M3)",
+    )
+
+
 def test_tracker_on_snapshot_exception_does_not_propagate_to_notify(tmp_path: Path) -> None:
     """Callback exceptions are isolated and do not propagate to notify()."""
 

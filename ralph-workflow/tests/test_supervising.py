@@ -232,7 +232,7 @@ def test_recent_activity_keeps_last_five_decisions() -> None:
 
 
 def test_recent_activity_prefers_waiting_status_line() -> None:
-    """Recent activity uses waiting_status_line when present."""
+    """Waiting state is appended after the most recent activity line."""
     view = instance_view_from_snapshot(
         _snap(
             decision_log=(("p0", "d0", "r0", "t0"),),
@@ -240,7 +240,18 @@ def test_recent_activity_prefers_waiting_status_line() -> None:
             waiting_status_line="waiting now",
         )
     )
-    assert view.recent_activity[-1] == "waiting now"
+    assert view.recent_activity[-2:] == ("last activity", "waiting now")
+
+
+def test_recent_activity_keeps_waiting_and_last_activity_line() -> None:
+    """Waiting state must not hide the most recent output/activity line."""
+    view = instance_view_from_snapshot(
+        _snap(
+            last_activity_line="tool output that broke",
+            waiting_status_line="waiting now",
+        )
+    )
+    assert view.recent_activity[-2:] == ("tool output that broke", "waiting now")
 
 
 def test_recent_activity_falls_back_to_last_activity_line() -> None:
