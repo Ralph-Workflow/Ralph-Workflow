@@ -298,7 +298,7 @@ Explanation: when reached, the run terminates because the workflow policy declar
 LOOP COUNTERS
 ----------------------------------------------------------------------
   development_analysis_iteration: max=10 — Development analysis loop iteration counter
-  planning_analysis_iteration: max=3 — Planning analysis loop iteration counter
+  planning_analysis_iteration: max=1 — Planning analysis loop iteration counter
 
 ----------------------------------------------------------------------
 BUDGET COUNTERS

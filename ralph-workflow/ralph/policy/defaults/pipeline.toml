@@ -15,7 +15,7 @@ default_max = 10
 description = "Development analysis loop iteration counter"
 
 [loop_counters.planning_analysis_iteration]
-default_max = 3
+default_max = 1
 description = "Planning analysis loop iteration counter"
 
 [loop_counters.commit_cleanup_iteration]
