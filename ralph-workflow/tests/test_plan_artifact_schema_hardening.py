@@ -111,9 +111,9 @@ def test_evidence_ref_rejects_unknown_kind() -> None:
 
 
 def test_evidence_ref_max_length() -> None:
-    """EvidenceRef.ref max_length is 200, NOT 500."""
+    """EvidenceRef.ref max_length is 1000, NOT 200."""
     with pytest.raises(ValueError):
-        EvidenceRef.model_validate({"kind": "file", "ref": "x" * 201})
+        EvidenceRef.model_validate({"kind": "file", "ref": "x" * 1001})
 
 
 # ---------------------------------------------------------------------------

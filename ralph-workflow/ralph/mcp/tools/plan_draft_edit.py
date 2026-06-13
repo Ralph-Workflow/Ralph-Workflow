@@ -7,6 +7,7 @@ from typing import cast
 from ralph.mcp.artifacts.plan import (
     PlanArtifactValidationError,
     insert_plan_step,
+    move_plan_step,
     remove_plan_step,
     replace_plan_step,
 )
@@ -36,7 +37,14 @@ def handle_insert_plan_step(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Insert a single plan step and reindex the draft deterministically."""
+    """Insert a single plan step and reindex the draft deterministically.
+
+    Auto-reindexes the remaining steps, rewrites every ``depends_on``
+    array in the surviving steps to use the new step numbers, and
+    rewrites every ``AC.satisfied_by_steps`` reference in the design
+    sub-section to use the new step numbers; the provided
+    ``step.number`` is ignored.
+    """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step insertion")
     index = _required_int(params, "index")
     step_payload = params.get("step")
@@ -68,7 +76,14 @@ def handle_replace_plan_step(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Replace a single plan step and reindex the draft deterministically."""
+    """Replace a single plan step and reindex the draft deterministically.
+
+    Auto-reindexes the remaining steps, rewrites every ``depends_on``
+    array in the surviving steps to use the new step numbers, and
+    rewrites every ``AC.satisfied_by_steps`` reference in the design
+    sub-section to use the new step numbers; the provided
+    ``step.number`` is ignored.
+    """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step replacement")
     step_number = _required_int(params, "step_number")
     step_payload = params.get("step")
@@ -100,7 +115,14 @@ def handle_remove_plan_step(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Remove a single plan step and reindex the draft deterministically."""
+    """Remove a single plan step and reindex the draft deterministically.
+
+    Auto-reindexes the remaining steps, rewrites every ``depends_on``
+    array in the surviving steps to use the new step numbers, and
+    rewrites every ``AC.satisfied_by_steps`` reference in the design
+    sub-section to use the new step numbers; the provided
+    ``step.number`` is ignored.
+    """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step removal")
     step_number = _required_int(params, "step_number")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
@@ -120,6 +142,47 @@ def handle_remove_plan_step(
     )
 
 
+def handle_move_plan_step(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+    params: dict[str, object],
+    *,
+    deps: ArtifactHandlerDeps | None = None,
+) -> ToolResult:
+    """Move a single plan step to a new index and reindex the draft deterministically.
+
+    Auto-reindexes the surviving steps, rewrites every ``depends_on``
+    array in the surviving steps to use the new step numbers, and
+    rewrites every ``AC.satisfied_by_steps`` reference in the design
+    sub-section to use the new step numbers; the provided
+    ``step.number`` is ignored.
+    """
+    require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step move")
+    from_step_number = _required_int(params, "from_step_number")
+    to_index = _required_int(params, "to_index")
+    resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+
+    artifact_dir = _resolve_artifact_dir(session, workspace)
+    draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
+    current_sections = cast("dict[str, object]", draft.get("sections", {}))
+    try:
+        updated_sections = move_plan_step(
+            current_sections,
+            from_step_number=from_step_number,
+            to_index=to_index,
+        )
+    except PlanArtifactValidationError as exc:
+        raise InvalidParamsError(str(exc)) from exc
+    draft["sections"] = updated_sections
+    _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
+    return ToolResult(
+        content=[ToolContent.text_content(
+            f"Plan step {from_step_number} moved to index {to_index}."
+        )],
+        is_error=False,
+    )
+
+
 def _required_int(params: dict[str, object], name: str) -> int:
     value = params.get(name)
     if not isinstance(value, int):
@@ -129,6 +192,7 @@ def _required_int(params: dict[str, object], name: str) -> int:
 
 __all__ = [
     "handle_insert_plan_step",
+    "handle_move_plan_step",
     "handle_remove_plan_step",
     "handle_replace_plan_step",
 ]

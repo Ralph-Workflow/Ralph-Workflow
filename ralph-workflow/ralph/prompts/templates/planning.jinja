@@ -152,6 +152,14 @@ Every `PlanStep` is bound by a tightened contract. Plans that violate the contra
 
 These two rules are enforced by the per-step model validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep`. If you set `step_type="file_change"`, declare `targets` for every file the step will touch.
 
+## PLAN SIZE LIMITS
+
+Every plan must fit within the generous-but-bounded caps listed in `.agent/artifact-formats/plan.md` §`Plan size limits`. The hard cap is 4 MB total JSON; per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500) keep runaway loops detectable. A plan that exceeds any cap is rejected with a structured `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) before Pydantic runs. The cap table in §`Plan size limits` is the single source of truth — no model hard-codes a cap. The three string-length tiers (`short=1000`, `medium=8000`, `long=20000`) cover every plan-artifact string field; the per-field cap table maps each field to one of the three tiers. A detailed plan (context ~7500 chars, 150 scope items, 200 steps with 19k chars of content and 400 evidence entries, 400 acceptance criteria) normalizes cleanly under the new caps.
+
+## CYCLE GUARD
+
+A plan with a `depends_on` cycle (e.g. step 1 -> 2 -> 3 -> 1) is rejected at normalize time with `PlanArtifactValidationError("plan step depends_on cycle detected at step N")`; plan a DAG, not a ring. The cycle detector runs as the FIRST check inside `PlanArtifact._validate_step_ac_cross_references` (a `@model_validator(mode='after')`) BEFORE the existing AC<->step cross-reference scan. The pattern mirrors `ralph.pipeline.work_units._validate_acyclic` at `ralph/pipeline/work_units.py:158`. Diamond-shaped DAGs (a node with multiple parents, e.g. 1 -> 2, 1 -> 3, 2 -> 4, 3 -> 4) are accepted — only TRUE cycles (a node revisits itself in the DFS `visiting` set) are rejected.
+
 ## MODULE FAMILY
 
 The plan artifact is implemented as a focused module family under `ralph/mcp/artifacts/plan/`. The public `ralph.mcp.artifacts.plan` package is a thin re-export surface (under 60 lines) that re-exports every public symbol from the seven submodules below, with two leaf-model submodules (`_evidence_ref`, `_plan_constraints`) imported through `_section_models`. Reading order for a new contributor: `_evidence_ref` → `_plan_constraints` → `_section_models` → `_section_registry` → `_validation` → `_step_edit` → `_renderers` → `_draft_io` → `_step_contract` → `_noop`.
@@ -204,6 +212,8 @@ The seven typed sub-sections, with the exact labels the executor will see in the
 **`design.outcome` (top-level design outcome)**: The optional `outcome` field (≤500 chars, distinct from `notes`) is a one-line top-level design outcome that the executor surfaces as a `### Outcome` sub-block at the TOP of the Design section, before the seven sub-section headings. Cheap models can populate `design.outcome` and skip `design.notes` for the same level of executor signal. Stripped empty values are dropped from the dump.
 
 **`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset also seeds a sentinel acceptance criterion `PRESET-01` that you may strip or replace. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
+
+**Model tier**: Pick the model tier first, then fill the fields that tier is expected to provide. For cheap models, set `design.planning_profile = "minimal"` (or "balanced") and let the bias-fill presets cover the seven sub-sections; cheap models should also reference the `## Plan size limits` and `## CYCLE GUARD` guidance above so the caps and the cycle-guard contract are baked into the plan from the start. For high-quality models, leave `planning_profile` unset and handcraft all seven sub-sections plus `design.outcome` and `design.notes`. The two paths converge on the same `PlanArtifact` shape, so the executor cannot tell which model tier produced the plan by inspecting the artifact alone.
 
 The full reference for the design sub-section, including every enum value and the JSON shape, is at `.agent/artifact-formats/plan.md` (bundled by Ralph Workflow and materialized into the workspace). Cross-reference `AGENTS.md` §'Non-negotiables' for the canonical SE opinions the sub-sections enforce.
 

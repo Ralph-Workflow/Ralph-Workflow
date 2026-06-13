@@ -43,6 +43,18 @@ Do not use phrases like "follow the existing pattern" unless you name the exact 
 Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
 If the executor would need to stop and research basic repository structure, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
 
+## Plan size limits
+
+Every plan must fit within the generous-but-bounded caps in `.agent/artifact-formats/plan.md` §`Plan size limits`. The hard cap is 4 MB total JSON; per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500) keep runaway loops detectable. A plan that exceeds any cap is rejected with a structured `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) before Pydantic runs. The cap table in §`Plan size limits` is the single source of truth — no model hard-codes a cap.
+
+## Model tier
+
+Pick the model tier first, then fill the fields that tier is expected to provide. For cheap models, set `design.planning_profile = "minimal"` (or "balanced") and let the bias-fill presets cover the seven sub-sections; under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`). For high-quality models, leave `planning_profile` unset and handcraft all seven sub-sections plus `design.outcome` and `design.notes`. The two paths converge on the same `PlanArtifact` shape.
+
+## Cycle guard
+
+A plan with a `depends_on` cycle (e.g. step 1 -> 2 -> 3 -> 1) is rejected at normalize time with `PlanArtifactValidationError("plan step depends_on cycle detected at step N")`; plan a DAG, not a ring. Diamond-shaped DAGs (a node with multiple parents) are accepted — only TRUE cycles are rejected.
+
 Native file and shell tools are disabled in this brokered fallback; native orchestration tools (sub-agents/tasks, skills, todo tracking, web fetch/search) remain enabled. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}, {{GET_PLAN_DRAFT_TOOL_REFERENCE}}, {{FINALIZE_PLAN_TOOL_REFERENCE}}, {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}, and {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} exactly as named below.
 
 Unless the plan is genuinely short, submit each required section separately.

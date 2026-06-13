@@ -68,13 +68,13 @@ class Summary(RalphBaseModel):
 
     context: str = Field(
         default="",
-        max_length=2000,
-        description="Free-form context (max 2000 chars).",
+        max_length=8000,
+        description="Free-form context (max 8000 chars; medium tier).",
     )
     intent: str = Field(
         default="",
-        max_length=200,
-        description="One-line user-facing outcome (max 200 chars).",
+        max_length=500,
+        description="One-line user-facing outcome (max 500 chars; short tier).",
     )
     intent_verb: str = Field(
         default="",
@@ -83,11 +83,13 @@ class Summary(RalphBaseModel):
     scope_items: list[ScopeItem] = Field(
         ...,
         min_length=3,
-        description="At least 3 scope items; see ScopeItem.",
+        max_length=200,
+        description="At least 3 scope items (max 200); see ScopeItem.",
     )
     coverage_areas: list[CoverageArea] = Field(
         default_factory=list,
-        description="Optional CoverageArea enum list; see CoverageArea literal.",
+        max_length=50,
+        description="Optional CoverageArea enum list (max 50); see CoverageArea literal.",
     )
 
     @field_validator("intent")

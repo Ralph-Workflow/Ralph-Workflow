@@ -36,16 +36,18 @@ class DependencyInjection(RalphBaseModel):
     )
     preferred_patterns: list[PreferredPattern] = Field(
         default_factory=list,
-        description="PreferredPattern enum list; see PreferredPattern literal.",
+        max_length=20,
+        description="PreferredPattern enum list (max 20); see PreferredPattern literal.",
     )
     forbidden_patterns: list[ForbiddenPattern] = Field(
         default_factory=list,
-        description="ForbiddenPattern enum list; see ForbiddenPattern literal.",
+        max_length=50,
+        description="ForbiddenPattern enum list (max 50); see ForbiddenPattern literal.",
     )
     notes: str | None = Field(
         default=None,
-        max_length=2000,
-        description="Optional free-form notes (max 2000 chars).",
+        max_length=8000,
+        description="Optional free-form notes (max 8000 chars; medium tier).",
     )
 
 

@@ -24,6 +24,7 @@ import inspect
 import pytest
 
 import ralph.mcp.artifacts.plan as plan_pkg
+from ralph.mcp.artifacts.plan._size_limits import PlanSizeLimits
 from ralph.mcp.artifacts.plan._validation import (
     parse_plan_payload_lenient,
     parse_plan_payload_strict,
@@ -39,6 +40,7 @@ SUBMODULES: tuple[str, ...] = (
     "_step_contract",
     "_noop",
     "_plan_step",
+    "_size_limits",
 )
 
 OWNED_SYMBOLS: dict[str, tuple[str, ...]] = {
@@ -49,6 +51,12 @@ OWNED_SYMBOLS: dict[str, tuple[str, ...]] = {
     "_step_contract": ("StepType", "requires_targets", "requires_verify_handle"),
     "_noop": ("PlanArtifactValidationError", "is_noop_plan"),
     "_validation": ("PlanArtifact", "parse_plan_payload_strict"),
+    "_size_limits": (
+        "PLAN_SIZE_LIMITS",
+        "PlanSizeLimits",
+        "PlanArtifactSizeError",
+        "check_plan_size",
+    ),
 }
 
 
@@ -60,7 +68,9 @@ def test_submodule_imports_in_isolation(submodule_name: str) -> None:
 
 def test_all_public_symbols_still_importable() -> None:
     names = set(plan_pkg.__all__)
-    assert len(names) >= 45, f"expected >=45 public symbols, got {len(names)}"
+    # 56 baseline + 4 new (PLAN_SIZE_LIMITS, PlanSizeLimits,
+    # PlanArtifactSizeError, check_plan_size) = 60.
+    assert len(names) >= 60, f"expected >=60 public symbols, got {len(names)}"
     missing = [n for n in names if not hasattr(plan_pkg, n)]
     assert not missing, f"public symbols missing from package: {missing}"
 
@@ -86,3 +96,38 @@ def test_parse_plan_payload_envelope_aware() -> None:
     assert parse_plan_payload_strict(envelope) == bare
     assert parse_plan_payload_lenient(envelope) == bare
     assert parse_plan_payload_lenient("{not json") is None
+
+
+def test_size_limits_submodule_owners() -> None:
+    """The new _size_limits submodule owns the 4 cap-related public symbols."""
+    mod = importlib.import_module("ralph.mcp.artifacts.plan._size_limits")
+    for name in (
+        "PLAN_SIZE_LIMITS",
+        "PlanSizeLimits",
+        "PlanArtifactSizeError",
+        "check_plan_size",
+    ):
+        assert hasattr(mod, name), f"_size_limits is expected to own {name!r}"
+
+
+def test_size_limits_invariants_runtime_checks() -> None:
+    """PlanSizeLimits rejects bad values at construction time (not via Pydantic)."""
+    # max_total_bytes=0 must raise RuntimeError
+    with pytest.raises(RuntimeError, match="must be positive"):
+        PlanSizeLimits(max_total_bytes=0)
+
+    # max_total_bytes > 64 MB must raise RuntimeError
+    with pytest.raises(RuntimeError, match="must be <= 64000000"):
+        PlanSizeLimits(max_total_bytes=10**9)
+
+    # Non-positive cap must raise
+    with pytest.raises(RuntimeError, match="max_steps must be positive"):
+        PlanSizeLimits(max_steps=0)
+
+    # Non-monotonic string tiers must raise
+    with pytest.raises(RuntimeError, match="non-decreasing sequence"):
+        PlanSizeLimits(
+            max_string_short=2000,
+            max_string_medium=1000,
+            max_string_long=20000,
+        )

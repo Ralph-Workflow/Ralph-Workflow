@@ -213,8 +213,54 @@ def remove_plan_step(
     return updated_sections
 
 
+def move_plan_step(
+    sections: PlanArtifactDict,
+    *,
+    from_step_number: int,
+    to_index: int,
+) -> PlanArtifactDict:
+    """Move a plan step to a new position in a single call.
+
+    ``from_step_number`` identifies the source step by its current
+    ``number`` field. ``to_index`` is 1-based; a value of ``1`` moves
+    the step to the front of the list, and a value of ``len(steps) + 1``
+    appends it to the end. Out-of-range indices are clamped to the
+    valid range so the call is total.
+
+    The function reuses the same ``_reindex_plan_steps`` and
+    ``_remap_ac_step_refs`` helpers that ``insert_plan_step``,
+    ``replace_plan_step``, and ``remove_plan_step`` use, so the four
+    step-mutation tools share one proven reindex/depends_on/AC-remap
+    implementation. The function is a hand-rolled single-reindex
+    implementation (not a thin wrapper around
+    ``remove_plan_step`` + ``insert_plan_step``) so the reindex is
+    performed exactly once per call.
+    """
+    steps = _steps_from_sections(sections)
+    source_idx = next(
+        (idx for idx, step in enumerate(steps) if step["number"] == from_step_number),
+        None,
+    )
+    if source_idx is None:
+        raise PlanArtifactValidationError(f"step {from_step_number} does not exist")
+
+    moved_step = steps[source_idx]
+    remaining_steps = [step for step in steps if step["number"] != from_step_number]
+    upper = len(remaining_steps) + 1
+    clamped_index = max(1, min(int(to_index), upper))
+    new_steps = list(remaining_steps)
+    new_steps.insert(clamped_index - 1, moved_step)
+
+    reindexed_steps, number_map = _reindex_plan_steps(new_steps)
+    updated_sections: PlanArtifactDict = dict(sections)
+    updated_sections["steps"] = reindexed_steps
+    updated_sections = _remap_ac_step_refs(updated_sections, number_map)
+    return updated_sections
+
+
 __all__ = [
     "insert_plan_step",
+    "move_plan_step",
     "remove_plan_step",
     "replace_plan_step",
 ]

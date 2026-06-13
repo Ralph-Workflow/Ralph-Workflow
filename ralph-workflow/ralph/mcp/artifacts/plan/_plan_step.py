@@ -30,8 +30,12 @@ from ralph.mcp.artifacts.plan._step_target import StepTarget
 from ralph.pydantic_compat import RalphBaseModel
 
 _ACCEPTANCE_CRITERION_ID_PATTERN = re.compile(r"^[A-Z]+-\d{2,}$")
-_MAX_EVIDENCE_ENTRIES = 50
-_MAX_EVIDENCE_ENTRY_LENGTH = 200
+# Generous-but-bounded caps. The old _MAX_EVIDENCE_ENTRIES=50 was tight
+# for a detailed plan; the new 500 mirrors the PlanSizeLimits.default
+# max_evidence_per_step cap. The per-entry length is enforced inside
+# _evidence_ref.EvidenceRef.
+_MAX_EVIDENCE_ENTRIES = 500
+_MAX_EVIDENCE_ENTRY_LENGTH = 1000
 
 _STEP_TYPE_ALIASES: dict[str, str] = {
     "test": "verify",
@@ -45,8 +49,18 @@ class PlanStep(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     number: int = Field(..., ge=1, description="1-based step number.")
-    title: str = Field(..., min_length=1, description="Short step title (non-empty).")
-    content: str = Field(..., min_length=1, description="Step body / detailed content (non-empty).")
+    title: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Short step title (non-empty, max 500 chars).",
+    )
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=20000,
+        description="Step body / detailed content (non-empty, max 20000 chars).",
+    )
     step_type: StepType = Field(
         default=StepType.ACTION,
         description="StepType; see StepType literal. file_change needs targets.",
@@ -57,28 +71,40 @@ class PlanStep(RalphBaseModel):
     )
     targets: list[StepTarget] = Field(
         default_factory=list,
-        description="Required for file_change; list of {path, action} entries.",
+        max_length=100,
+        description="Required for file_change; list of {path, action} entries (max 100).",
     )
     location: str | None = Field(
         default=None,
+        max_length=500,
         description="Optional location; required for verify steps when verify_command is absent.",
     )
-    rationale: str | None = Field(default=None, description="Optional rationale for the step.")
+    rationale: str | None = Field(
+        default=None,
+        max_length=8000,
+        description="Optional rationale for the step (max 8000 chars).",
+    )
     depends_on: list[int] = Field(
         default_factory=list,
-        description="Optional list of step numbers this step depends on.",
+        max_length=50,
+        description="Optional list of step numbers this step depends on (max 50).",
     )
     satisfies: list[str] = Field(
         default_factory=list,
-        description="Optional list of AC ids (^[A-Z]+-\\d{2,}$) this step satisfies.",
+        max_length=50,
+        description="Optional list of AC ids (^[A-Z]+-\\d{2,}$) this step satisfies (max 50).",
     )
     expected_evidence: list[EvidenceRef] = Field(
         default_factory=list,
-        description="Optional list of evidence references (max 50).",
+        description="Optional list of evidence references (max 500 entries).",
     )
     verify_command: str | None = Field(
         default=None,
-        description="Optional verify command; required for verify steps when location is absent.",
+        max_length=2000,
+        description=(
+            "Optional verify command (max 2000 chars); required for verify steps when "
+            "location is absent."
+        ),
     )
 
     @field_validator("step_type", mode="before")
@@ -161,6 +187,7 @@ class PlanStep(RalphBaseModel):
         if len(cleaned) > _MAX_EVIDENCE_ENTRIES:
             msg = f"expected_evidence has more than {_MAX_EVIDENCE_ENTRIES} entries"
             raise ValueError(msg)
+        _ = _MAX_EVIDENCE_ENTRY_LENGTH  # per-entry cap enforced inside EvidenceRef
         return cleaned
 
     @field_validator("verify_command")

@@ -82,8 +82,8 @@ class DesignSection(RalphBaseModel):
     testability: Testability | None = None
     refactor_strategy: RefactorStrategy | None = None
     acceptance_criteria: AcceptanceCriteria | None = None
-    outcome: str | None = Field(default=None, max_length=500)
-    notes: str | None = Field(default=None)
+    outcome: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=20000)
 
     @field_validator("outcome")
     @classmethod

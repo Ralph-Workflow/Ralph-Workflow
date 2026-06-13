@@ -25,6 +25,12 @@ from ralph.mcp.artifacts.plan._renderers import (
     render_plan_markdown,
     write_plan_markdown,
 )
+from ralph.mcp.artifacts.plan._size_limits import (
+    PLAN_SIZE_LIMITS,
+    PlanArtifactSizeError,
+    PlanSizeLimits,
+    check_plan_size,
+)
 from ralph.mcp.artifacts.plan._section_models import (
     AcceptanceCriteria,
     AcceptanceCriterion,
@@ -63,6 +69,7 @@ from ralph.mcp.artifacts.plan._step_contract import (
 )
 from ralph.mcp.artifacts.plan._step_edit import (
     insert_plan_step,
+    move_plan_step,
     remove_plan_step,
     replace_plan_step,
 )
@@ -96,10 +103,13 @@ __all__ = [
     "PLAN_SECTION_LIST_ITEM_MODELS",
     "PLAN_SECTION_NAMES",
     "PLAN_SECTION_OBJECT_MODELS",
+    "PLAN_SIZE_LIMITS",
     "PlanArtifact",
     "PlanArtifactDict",
+    "PlanArtifactSizeError",
     "PlanArtifactValidationError",
     "PlanConstraints",
+    "PlanSizeLimits",
     "PlanStep",
     "PlanningProfile",
     "ReferenceFile",
@@ -112,6 +122,7 @@ __all__ = [
     "StepType",
     "Summary",
     "VerificationStep",
+    "check_plan_size",
     "delete_plan_draft",
     "extract_plan_payload",
     "extract_plan_skill_names",
@@ -122,6 +133,7 @@ __all__ = [
     "load_plan_artifact_sections",
     "load_plan_draft",
     "merge_plan_section",
+    "move_plan_step",
     "new_plan_draft",
     "normalize_plan_artifact_content",
     "parse_plan_payload_lenient",

@@ -18,6 +18,7 @@ from ralph.mcp.tools.names import (
     FINALIZE_PLAN_TOOL,
     GET_PLAN_DRAFT_TOOL,
     INSERT_PLAN_STEP_TOOL,
+    MOVE_PLAN_STEP_TOOL,
     READ_ENV_TOOL,
     REMOVE_PLAN_STEP_TOOL,
     REPLACE_PLAN_STEP_TOOL,
@@ -81,6 +82,11 @@ def artifact_specs() -> list[ToolSpec]:
                     'Example: {"section": "summary", "content": '
                     + _EXAMPLE_PLAN_CONTENT
                     + ', "mode": "replace"}.'
+                    " A plan that exceeds the 4 MB total byte cap or any per-list cap "
+                    "defined in `PlanSizeLimits.DEFAULT` is rejected with a structured "
+                    "`PlanArtifactSizeError` before Pydantic runs. A plan with a cyclic "
+                    "`depends_on` graph (e.g. step 1 -> 2 -> 3 -> 1) is rejected at "
+                    "finalize time with `plan step depends_on cycle detected at step N`."
                 ),
                 input_schema={
                     "type": "object",
@@ -129,8 +135,12 @@ def artifact_specs() -> list[ToolSpec]:
                 name=INSERT_PLAN_STEP_TOOL,
                 description=(
                     "Insert one plan step at a 1-based index and automatically reindex the whole"
-                    " steps list. Required: index (integer), step (object). The provided"
-                    " step.number is ignored; numbering is recomputed deterministically."
+                    " steps list. Required: index (integer), step (object). The step"
+                    " mutation auto-reindexes the remaining steps, rewrites every"
+                    " `depends_on` array in the surviving steps to use the new step"
+                    " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
+                    " the design sub-section to use the new step numbers; the provided"
+                    " `step.number` is ignored."
                 ),
                 input_schema={
                     "type": "object",
@@ -151,7 +161,11 @@ def artifact_specs() -> list[ToolSpec]:
                 description=(
                     "Replace one plan step by its current number and automatically reindex the"
                     " whole steps list. Required: step_number (integer), step (object)."
-                    " The provided step.number is ignored."
+                    " The step mutation auto-reindexes the remaining steps, rewrites every"
+                    " `depends_on` array in the surviving steps to use the new step"
+                    " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
+                    " the design sub-section to use the new step numbers; the provided"
+                    " `step.number` is ignored."
                 ),
                 input_schema={
                     "type": "object",
@@ -171,7 +185,12 @@ def artifact_specs() -> list[ToolSpec]:
                 name=REMOVE_PLAN_STEP_TOOL,
                 description=(
                     "Remove one plan step by its current number and automatically reindex the"
-                    " whole steps list. Required: step_number (integer)."
+                    " whole steps list. Required: step_number (integer). The step"
+                    " mutation auto-reindexes the remaining steps, rewrites every"
+                    " `depends_on` array in the surviving steps to use the new step"
+                    " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
+                    " the design sub-section to use the new step numbers; the provided"
+                    " `step.number` is ignored."
                 ),
                 input_schema={
                     "type": "object",
@@ -187,12 +206,43 @@ def artifact_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             metadata=_metadata(
+                name=MOVE_PLAN_STEP_TOOL,
+                description=(
+                    "Move one plan step to a 1-based index in a single call. Required:"
+                    " from_step_number (integer), to_index (integer; clamped to"
+                    " [1, len(steps) + 1]). Equivalent to remove_plan_step +"
+                    " insert_plan_step but exposed as a single round-trip so the"
+                    " agent does not need to reindex twice. The step mutation"
+                    " auto-reindexes the remaining steps, rewrites every"
+                    " `depends_on` array in the surviving steps to use the new step"
+                    " numbers, and rewrites every `AC.satisfied_by_steps` reference in"
+                    " the design sub-section to use the new step numbers; the provided"
+                    " `step.number` is ignored."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "from_step_number": {"type": "integer", "minimum": 1},
+                        "to_index": {"type": "integer", "minimum": 1},
+                    },
+                    "required": ["from_step_number", "to_index"],
+                },
+                required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
+            ),
+            module_name="ralph.mcp.tools.plan_draft_edit",
+            handler_name="handle_move_plan_step",
+        ),
+        ToolSpec(
+            metadata=_metadata(
                 name=FINALIZE_PLAN_TOOL,
                 description=(
                     "Validate the staged plan draft and write .agent/artifacts/plan.json. "
                     "Fails with an error if required sections are missing; "
                     "the draft is preserved on failure. No parameters required. "
-                    "Example: {} validates and writes the plan."
+                    "Example: {} validates and writes the plan. If the draft contains"
+                    " a `depends_on` cycle, finalize is rejected with"
+                    " `plan step depends_on cycle detected at step N`; the cycle entry"
+                    " is named in the error."
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,

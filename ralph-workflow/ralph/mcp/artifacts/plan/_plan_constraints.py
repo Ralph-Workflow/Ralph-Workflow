@@ -27,8 +27,8 @@ from pydantic import ConfigDict, Field, StringConstraints, field_validator
 
 from ralph.pydantic_compat import RalphBaseModel
 
-_MAX_CONSTRAINT_ENTRY_LENGTH = 200
-_MAX_CONSTRAINT_LIST_ENTRIES = 50
+_MAX_CONSTRAINT_ENTRY_LENGTH = 1000
+_MAX_CONSTRAINT_LIST_ENTRIES = 500
 
 ConstraintEntry = Annotated[
     str,
@@ -41,8 +41,16 @@ class PlanConstraints(RalphBaseModel):
 
     must_not_break: list[ConstraintEntry] = Field(default_factory=list)
     must_keep_working: list[ConstraintEntry] = Field(default_factory=list)
-    performance_budget: str | None = Field(default=None, max_length=_MAX_CONSTRAINT_ENTRY_LENGTH)
-    security_posture: str | None = Field(default=None, max_length=_MAX_CONSTRAINT_ENTRY_LENGTH)
+    performance_budget: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional performance budget (max 2000 chars; medium tier).",
+    )
+    security_posture: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional security posture (max 2000 chars; medium tier).",
+    )
 
     @field_validator("must_not_break", "must_keep_working", mode="before")
     @classmethod

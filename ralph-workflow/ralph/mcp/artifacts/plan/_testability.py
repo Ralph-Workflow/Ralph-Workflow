@@ -38,11 +38,13 @@ class Testability(RalphBaseModel):
     )
     forbidden_in_tests: list[ForbiddenInTest] = Field(
         default_factory=list,
-        description="ForbiddenInTest enum list; see ForbiddenInTest literal.",
+        max_length=50,
+        description="ForbiddenInTest enum list (max 50); see ForbiddenInTest literal.",
     )
     required_test_layers: list[TestLayer] = Field(
         default_factory=list,
-        description="TestLayer enum list; see TestLayer literal.",
+        max_length=20,
+        description="TestLayer enum list (max 20); see TestLayer literal.",
     )
     clock_injection_required: bool | None = Field(
         default=None,

@@ -23,7 +23,10 @@ _SUBMIT_ARTIFACT_DESCRIPTION = (
     'Example: {"artifact_type": "plan", "content": "{\\"summary\\": {}}"} '
     "submits a plan artifact. On error, read the format doc at "
     ".agent/artifact-formats/<type>.md (or .agent/artifact-formats/artifact_formats_index.md "
-    "if artifact_type is unknown) before retrying."
+    "if artifact_type is unknown) before retrying. Artifact submissions are "
+    "validated against the artifact's Pydantic model; plans additionally run "
+    "the 4 MB byte cap check and the depends_on cycle detector before Pydantic "
+    "validation."
 )
 
 

@@ -88,6 +88,7 @@ def test_planning_prompt_mentions_step_edit_tools(tmp_path: Path) -> None:
     assert "ralph_insert_plan_step" in rendered
     assert "ralph_replace_plan_step" in rendered
     assert "ralph_remove_plan_step" in rendered
+    assert "ralph_move_plan_step" in rendered
 
 
 # ---------------------------------------------------------------------------

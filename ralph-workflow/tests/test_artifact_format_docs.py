@@ -620,3 +620,95 @@ def test_format_doc_has_step_wise_quickstart_and_worked_example_subheadings() ->
     assert doc is not None
     assert "### Step-wise quickstart (cheap-model baseline)" in doc
     assert "### Worked example: 3-section short plan" in doc
+
+
+# ---------------------------------------------------------------------------
+# Step 12: size-limits, model-tier, project shape coverage
+# ---------------------------------------------------------------------------
+
+
+def test_plan_format_doc_mentions_size_limits_table() -> None:
+    """The bundled plan.md has a '## Plan size limits' section with the cap table."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Plan size limits" in doc
+    assert "max_total_bytes" in doc
+    assert "max_steps" in doc
+    assert "max_scope_items" in doc
+    assert "max_acceptance_criteria" in doc
+    assert "max_evidence_per_step" in doc
+    # The byte value appears in one of the two accepted formats
+    assert ("4_000_000" in doc) or ("4,000,000" in doc)
+
+
+def test_plan_format_doc_did_not_add_duplicate_h2() -> None:
+    """The bundled plan.md does NOT add the duplicate-H2 names from the prior revision.
+
+    Guards against regressions of the bug where '## Model tier guidance' (no hyphen)
+    and '## Universal project coverage' were added as siblings of the existing
+    '## Model-tier guidance' and '## Planning for any coding project' sections.
+    """
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Model tier guidance" not in doc, (
+        "Duplicate H2 '## Model tier guidance' (no hyphen) must NOT be added"
+    )
+    assert "## Universal project coverage" not in doc, (
+        "Duplicate H2 '## Universal project coverage' must NOT be added"
+    )
+
+
+def test_plan_format_doc_h2_count_increased_by_one() -> None:
+    """The bundled plan.md H2 count is exactly 23 (was 22, gained 1)."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    h2_count = sum(1 for line in doc.split("\n") if line.startswith("## "))
+    assert h2_count == 23, (
+        f"Expected exactly 23 H2 sections in plan format doc, got {h2_count}"
+    )
+
+
+def test_plan_format_doc_extends_existing_model_tier_guidance() -> None:
+    """The '## Model-tier guidance' section is extended in place with 'Size-cap awareness'."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Model-tier guidance" in doc
+    # The new H4 subsection added in place
+    assert "Size-cap awareness" in doc
+
+
+def test_plan_format_doc_extends_existing_planning_for_any_coding_project() -> None:
+    """The '## Planning for any coding project' section is extended in place
+    with 'Project shape coverage' plus all 8 project shapes."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Planning for any coding project" in doc
+    assert "Project shape coverage" in doc
+    for shape in (
+        "CLI",
+        "Libraries",
+        "Refactors",
+        "Migrations",
+        "Infra",
+        "Security",
+        "Performance",
+        "Multi-stack",
+    ):
+        assert shape in doc, f"Project shape {shape!r} missing from doc"
+
+
+def test_plan_format_doc_module_family_lists_size_limits() -> None:
+    """The '## Module family' section lists '_size_limits' and 'PlanSizeLimits'."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Module family" in doc
+    assert "_size_limits" in doc
+    assert "PlanSizeLimits" in doc
+
+
+def test_plan_format_doc_dumb_proof_checklist_has_size_limit_bullet() -> None:
+    """The '## Dumb-proof checklist' section contains the new size-limit bullet."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "## Dumb-proof checklist" in doc
+    assert "Did you verify the plan fits within the size limits" in doc

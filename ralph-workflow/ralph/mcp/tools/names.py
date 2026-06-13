@@ -42,6 +42,7 @@ class RalphToolName(StrEnum):
     INSERT_PLAN_STEP = "ralph_insert_plan_step"
     REPLACE_PLAN_STEP = "ralph_replace_plan_step"
     REMOVE_PLAN_STEP = "ralph_remove_plan_step"
+    MOVE_PLAN_STEP = "ralph_move_plan_step"
     FINALIZE_PLAN = "ralph_finalize_plan"
     GET_PLAN_DRAFT = "ralph_get_plan_draft"
     DISCARD_PLAN_DRAFT = "ralph_discard_plan_draft"
@@ -106,6 +107,7 @@ SUBMIT_PLAN_SECTION_TOOL = RalphToolName.SUBMIT_PLAN_SECTION
 INSERT_PLAN_STEP_TOOL = RalphToolName.INSERT_PLAN_STEP
 REPLACE_PLAN_STEP_TOOL = RalphToolName.REPLACE_PLAN_STEP
 REMOVE_PLAN_STEP_TOOL = RalphToolName.REMOVE_PLAN_STEP
+MOVE_PLAN_STEP_TOOL = RalphToolName.MOVE_PLAN_STEP
 FINALIZE_PLAN_TOOL = RalphToolName.FINALIZE_PLAN
 GET_PLAN_DRAFT_TOOL = RalphToolName.GET_PLAN_DRAFT
 DISCARD_PLAN_DRAFT_TOOL = RalphToolName.DISCARD_PLAN_DRAFT
@@ -153,6 +155,7 @@ PLAN_DRAFT_WRITE_TOOLS: tuple[str, ...] = (
     INSERT_PLAN_STEP_TOOL,
     REPLACE_PLAN_STEP_TOOL,
     REMOVE_PLAN_STEP_TOOL,
+    MOVE_PLAN_STEP_TOOL,
     FINALIZE_PLAN_TOOL,
     DISCARD_PLAN_DRAFT_TOOL,
 )

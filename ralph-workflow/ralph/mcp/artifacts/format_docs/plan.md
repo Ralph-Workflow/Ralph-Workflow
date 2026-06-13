@@ -2,11 +2,14 @@
 
 ## Version
 
-version: 0.8.9
-last_updated: 2026-06-10
+version: 0.9.0
+last_updated: 2026-06-12
 
 ## New in this revision
 
+- **Generous-but-bounded plan size limits.** New `PlanSizeLimits` frozen dataclass (`max_total_bytes=4_000_000`, `max_steps=500`, `max_scope_items=200`, `max_acceptance_criteria=500`, `max_evidence_per_step=500`, `max_risks=200`, `max_verification_steps=100`, `max_primary_files=200`, `max_reference_files=200`, `max_parallel_plan_items=200`, `max_work_units=200`, `max_constraint_list_entries=500`) plus three string-length tiers (`max_string_short=1000`, `max_string_medium=8000`, `max_string_long=20000`) replace the previous tight caps. The new per-field cap table lives in the `## Plan size limits` section below and is the single source of truth — no model hard-codes a cap.
+- **`depends_on` cycle detector.** `PlanArtifact._validate_depends_on_acyclic` (a new `@model_validator(mode='after')`) runs BEFORE the existing AC<->step cross-reference scan and rejects cyclic `steps[*].depends_on` graphs (e.g. step 1 -> 2 -> 3 -> 1) with the stable message `plan step depends_on cycle detected at step N`. Diamond-shaped DAGs (a node with multiple parents) are accepted. The pattern mirrors `ralph.pipeline.work_units._validate_acyclic` at `ralph/pipeline/work_units.py:158`.
+- **Pure-return size guard.** `check_plan_size(content, *, limits=PlanSizeLimits.DEFAULT)` is a PURE helper that NEVER raises. It returns the FIRST violation as a `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) or `None`. The caller (`normalize_plan_artifact_content` in `_validation.py`) is the single point that raises `PlanArtifactValidationError` when the helper returns a non-`None` error. The 4 MB hard byte cap runs FIRST so a runaway payload is rejected in < 100 ms before Pydantic ever touches it.
 - **Typed `EvidenceRef`** for `PlanStep.expected_evidence`. Each entry is a `{kind, ref, note?}` object with `kind` in `{file, command_output, test_name}`. A string-coercion before-validator accepts bare strings (treated as `kind='file'`) so legacy fixtures keep working.
 - **Top-level `PlanConstraints`** section. Optional `must_not_break` / `must_keep_working` lists (each 1-200 chars, deduped case-insensitively) plus `performance_budget` and `security_posture` strings (1-200 chars). Submitted via `ralph_submit_plan_section` with `section="constraints"` in `mode="replace"`. Rendered as `## Project Constraints` between `## Critical Files` and `## Risks and Mitigations`.
 - **Typed `VerificationStep.timeout_seconds` and `cwd`.** `timeout_seconds: int | None` with `gt=0, le=3600`; `cwd: str | None` with `max_length=200`. Both are optional; defaults to platform / workspace root.
@@ -357,6 +360,24 @@ firing, or (c) the user feedback mentions a missed `dependency_injection`
 or `testability` default. Step down to a lower preset when the plan
 is over-engineered for trivial edits.
 
+### Project shape coverage
+
+The artifact covers eight project shapes out of the box. The same
+`PlanArtifact` shape works for every shape; only the preset depth
+differs. Pick a preset based on the project shape, not the project
+domain.
+
+- **CLI tools** — single-binary, subcommand-based, or plugin systems. Use `minimal` for one-line CLI tweaks; `strict` for multi-binary CLIs with a published API contract.
+- **Libraries** — single-package, multi-package, monorepo. Use `balanced` for single-package work; `strict` for any change that has a documented public API.
+- **Refactors** — single-file, multi-file, cross-stack. Use `strict` for any refactor that touches > 3 `file_change` steps or that preserves a public API.
+- **Migrations** — data, schema, code, dependency, platform. Use `strict` for any migration with a rollback path; `balanced` for one-off dependency bumps.
+- **Infra** — CI/CD, build, deployment, repository configuration. Use `balanced` for typical CI tweaks; `strict` for production deploy changes with a runbook.
+- **Security** — hardening or CVE remediation. Always use `strict` so the executor populates the full design surface and the drift detection locks the verify command.
+- **Performance** — profiling, optimization, caching. Use `strict` for any change with a measurable latency budget; `balanced` for one-off cleanup.
+- **Multi-stack** — one codepath change across stacks. Use `strict` when the codepath change touches > 1 language or > 1 runtime.
+
+The Preset table above maps each shape to the right preset depth.
+
 ## Common mistakes
 
 - Do NOT wrap the atomic payload in `{"type":"plan","content":...}` — only the step-wise flow accepts that envelope; atomic `content` must be the raw plan payload as a JSON string.
@@ -393,6 +414,7 @@ is over-engineered for trivial edits.
 - Did you use exactly one of `file_change`, `action`, `research`, `verify` for `step_type` (never `test`, `check`, `run`, or any other label)?
 - Did you set `summary.intent_verb` to one of the 9 closed values (or leave it blank), and `summary.intent` to a ≤200-char one-line outcome (or leave it blank)?
 - Did you stringify the content object into a JSON string for the `content` field (atomic flow only)?
+- Did you verify the plan fits within the size limits in `## Plan size limits`? (4 MB total, 500 steps max, 200 scope_items max, 500 AC max, 500 evidence per step max)
 
 ## Module family
 
@@ -489,6 +511,104 @@ is NOT in the verb's allowed set is REJECTED at
 `normalize_plan_artifact_content` time. Leave `intent_verb` empty to
 skip this check.
 
+## Plan size limits
+
+The plan artifact is bounded so a multi-page plan fits but a runaway
+loop is detected. The hard caps are defined in the `PlanSizeLimits`
+frozen dataclass (single source of truth — no model hard-codes a
+cap). `check_plan_size` is a PURE helper that runs BEFORE Pydantic
+validation in `normalize_plan_artifact_content` and returns the FIRST
+violation as a `PlanArtifactSizeError` (with `.field`, `.actual`,
+`.cap` attributes populated) or `None`. The caller raises
+`PlanArtifactValidationError` only when the helper returns a
+non-`None` error. The 4 MB hard cap and the per-list caps keep
+runaway loops detectable; any plan that hits the 4 MB hard cap is
+unambiguously runaway (10x the realistic worst case).
+
+### Hard caps (top-level)
+
+| Cap | Value | Purpose |
+| --- | --- | --- |
+| `max_total_bytes` | 4_000_000 (4 MB) | Hard cap on the JSON-serialized plan payload. A 5 MB payload fails in < 100 ms before Pydantic ever touches it. |
+| `max_steps` | 500 | Maximum number of steps in a single plan. |
+| `max_scope_items` | 200 | Maximum number of `summary.scope_items`. |
+| `max_acceptance_criteria` | 500 | Maximum number of `design.acceptance_criteria.criteria`. |
+| `max_evidence_per_step` | 500 | Maximum number of `steps[*].expected_evidence`. |
+| `max_risks` | 200 | Maximum number of `risks_mitigations`. |
+| `max_verification_steps` | 100 | Maximum number of `verification_strategy`. |
+| `max_primary_files` | 200 | Maximum number of `critical_files.primary_files`. |
+| `max_reference_files` | 200 | Maximum number of `critical_files.reference_files`. |
+| `max_parallel_plan_items` | 200 | Maximum number of `parallel_plan`. |
+| `max_work_units` | 200 | Maximum number of `work_units`. |
+| `max_constraint_list_entries` | 500 | Maximum length of `constraints.must_not_break` and `constraints.must_keep_working`. |
+
+### String-length tiers
+
+Three tiers cover every string field in the artifact: `short=1000`
+(for titles, ids, names), `medium=8000` (for descriptions, rationale,
+risk text, expected_outcome), and `long=20000` (for step content,
+design notes). The tiers form a strictly non-decreasing sequence
+(`short <= medium <= long`) and the per-field cap table below maps
+every plan-artifact string field to one of the three tiers. A
+contributor who flips the tiers or the per-field caps must update
+both `PlanSizeLimits` (in `ralph/mcp/artifacts/plan/_size_limits.py`)
+and this section in lockstep.
+
+### Per-field cap table
+
+| field | tier | new cap |
+| --- | --- | --- |
+| `PlanStep.title` | short | 500 |
+| `PlanStep.content` | long | 20000 |
+| `PlanStep.rationale` | medium | 8000 |
+| `PlanStep.location` | short | 500 |
+| `PlanStep.verify_command` | medium | 2000 |
+| `PlanStep.targets[*]` (list) | short | 100 |
+| `PlanStep.depends_on` (list) | short | 50 |
+| `PlanStep.satisfies` (list) | short | 50 |
+| `StepTarget.path` | short | 1000 |
+| `Summary.context` | medium | 8000 |
+| `Summary.intent` | short | 500 |
+| `Summary.scope_items` (list) | short | 200 |
+| `Summary.coverage_areas` (list) | short | 50 |
+| `ScopeItem.text` | short | 1000 |
+| `ScopeItem.count` | short | 200 |
+| `PlanConstraints.performance_budget` | medium | 2000 |
+| `PlanConstraints.security_posture` | medium | 2000 |
+| `PlanConstraints.must_not_break[*]` | short | 1000 |
+| `PlanConstraints.must_keep_working[*]` | short | 1000 |
+| `SkillsMcp.skills` (list) | short | 100 |
+| `SkillsMcp.mcps` (list) | short | 50 |
+| `RiskMitigation.risk` | medium | 8000 |
+| `RiskMitigation.mitigation` | medium | 8000 |
+| `RiskMitigation.risks_mitigations` (list) | short | 200 |
+| `CriticalPrimaryFile.path` | short | 1000 |
+| `CriticalPrimaryFile.estimated_changes` | short | 500 |
+| `ReferenceFile.path` | short | 1000 |
+| `ReferenceFile.purpose` | medium | 2000 |
+| `VerificationStep.method` | medium | 2000 |
+| `VerificationStep.expected_outcome` | medium | 8000 |
+| `VerificationStep.cwd` | short | 500 |
+| `AcceptanceCriterion.description` | medium | 8000 |
+| `AcceptanceCriterion.verification_step` | medium | 2000 |
+| `AcceptanceCriterion.evidence_path` | short | 1000 |
+| `AcceptanceCriterion.satisfied_by_steps` (list) | short | 50 |
+| `EvidenceRef.ref` | short | 1000 |
+| `EvidenceRef.note` | short | 1000 |
+| `DesignSection.outcome` | short | 1000 |
+| `DesignSection.notes` | long | 20000 |
+| `DesignConstraints.text` | long | 10000 |
+| `DesignConstraints.invariants[*]` | medium | 2000 |
+| `NonGoals.items[*]` | medium | 2000 |
+| `DependencyInjection.notes` | medium | 8000 |
+| `DependencyInjection.preferred_patterns` (list) | short | 20 |
+| `DependencyInjection.forbidden_patterns` (list) | short | 50 |
+| `DriftDetection.guard_commands[*]` | short | 500 |
+| `DriftDetection.expected_outputs[*]` | medium | 2000 |
+| `DriftDetection.sources` (list) | short | 20 |
+| `Testability.forbidden_in_tests` (list) | short | 50 |
+| `Testability.required_test_layers` (list) | short | 20 |
+
 ## Model-tier guidance
 
 The plan artifact is model-tier-aware: cheap models can submit a
@@ -537,6 +657,22 @@ model):
 2. `intent_verb` casing (`Add` -> `add`) before the closed-set check.
 3. Empty `skills_mcp.skills` under `planning_profile='minimal'` (auto-filled).
 4. `EvidenceRef` bare-string coercion (`"src/foo.py"` -> `{kind: 'file', ref: 'src/foo.py'}`).
+
+#### Size-cap awareness
+
+The hard 4 MB cap and the per-list caps in `## Plan size limits` are
+checked BEFORE Pydantic validation by `check_plan_size`. A plan that
+exceeds any cap is rejected in < 100 ms with a structured
+`PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes
+populated). The cap table in `## Plan size limits` is the single
+source of truth — no model hard-codes a cap. The three string-length
+tiers (`short=1000`, `medium=8000`, `long=20000`) cover every
+plan-artifact string field; the per-field cap table maps each field
+to one of the three tiers. The cycle detector (see
+`## Cross-section invariants`) rejects cyclic `depends_on` graphs
+(e.g. step 1 -> 2 -> 3 -> 1) with the stable message
+`plan step depends_on cycle detected at step N`; diamond-shaped DAGs
+are accepted.
 
 ## SE-opinionated design surfaces
 

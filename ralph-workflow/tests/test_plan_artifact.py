@@ -1148,12 +1148,12 @@ def test_summary_intent_verb_rejects_explicit_empty_string() -> None:
 
 
 def test_summary_intent_max_length_200() -> None:
-    """intent is capped at 200 chars (raises ValueError with 'at most 200')."""
-    with pytest.raises(ValueError, match="at most 200"):
+    """intent is capped at 500 chars (raises ValueError with 'at most 500')."""
+    with pytest.raises(ValueError, match="at most 500"):
         Summary.model_validate(
             {
                 "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
-                "intent": "x" * 201,
+                "intent": "x" * 501,
             }
         )
 
@@ -1288,9 +1288,9 @@ def test_design_section_outcome_stripped_and_dumped_as_none() -> None:
 
 
 def test_design_section_outcome_max_length_500() -> None:
-    """outcome is capped at 500 chars (raises with 'at most 500' in the message)."""
-    with pytest.raises(ValueError, match="at most 500"):
-        DesignSection.model_validate({"outcome": "x" * 501})
+    """outcome is capped at 1000 chars (raises with 'at most 1000' in the message)."""
+    with pytest.raises(ValueError, match="at most 1000"):
+        DesignSection.model_validate({"outcome": "x" * 1001})
 
 
 # ---------------------------------------------------------------------------
@@ -1670,19 +1670,19 @@ def test_plan_artifact_schema_version_field_round_trip() -> None:
 
 
 def test_intent_length_error_states_200_char_limit_and_actual_length() -> None:
-    """AC-01: intent length errors name the 200-char cap and the actual length."""
+    """AC-01: intent length errors name the 500-char cap and the actual length."""
     plan = copy.deepcopy(_valid_plan())
     plan["summary"] = {
         "context": "x",
-        "intent": "x" * 250,
+        "intent": "x" * 600,
         "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
     }
     with pytest.raises(PlanArtifactValidationError) as exc_info:
         normalize_plan_artifact_content(plan)
     message = str(exc_info.value)
     assert "intent" in message
-    assert "200" in message
-    assert "250" in message
+    assert "500" in message
+    assert "600" in message
 
 
 def test_scope_items_category_error_lists_all_valid_values() -> None:

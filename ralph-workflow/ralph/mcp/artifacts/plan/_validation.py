@@ -46,6 +46,7 @@ from ralph.mcp.artifacts.plan._section_registry import (
     PLAN_SECTION_OBJECT_MODELS,
     SectionMode,
 )
+from ralph.mcp.artifacts.plan._size_limits import check_plan_size
 from ralph.mcp.artifacts.plan._step_contract import StepType
 from ralph.mcp.artifacts.plan.plan_artifact_validation_error import (
     PlanArtifactValidationError,
@@ -137,6 +138,48 @@ class PlanArtifact(RalphBaseModel):
     verification_strategy: list[VerificationStep] = Field(..., min_length=1)
     parallel_plan: list[ParallelPlanItem] = Field(default_factory=list)
     work_units: "list[WorkUnit]" = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_depends_on_acyclic(self) -> PlanArtifact:
+        """Reject plans whose ``steps[*].depends_on`` graph contains a cycle.
+
+        Mirrors the cycle-detector pattern in
+        :func:`ralph.pipeline.work_units._validate_acyclic` (line 158 of
+        ``ralph/pipeline/work_units.py``): DFS with two sets
+        (``visiting`` = current DFS stack, ``visited`` = fully explored).
+        A node that re-enters the ``visiting`` set is on a cycle; a node
+        that re-enters the ``visited`` set is fine (it is a diamond / DAG
+        with multiple parents).
+
+        Runs FIRST inside the cross-reference validator (Pydantic v2
+        calls ``@model_validator(mode='after')`` methods in source
+        declaration order), so a cyclic graph is rejected before any
+        other cross-section scan.
+
+        Error message is stable: ``plan step depends_on cycle detected
+        at step N`` where ``N`` is the step number that re-entered the
+        DFS stack.
+        """
+        graph: dict[int, list[int]] = {step.number: list(step.depends_on) for step in self.steps}
+        visiting: set[int] = set()
+        visited: set[int] = set()
+
+        def dfs(node: int) -> None:
+            if node in visited:
+                return
+            if node in visiting:
+                raise PlanArtifactValidationError(
+                    f"plan step depends_on cycle detected at step {node!r}"
+                )
+            visiting.add(node)
+            for dependency in graph.get(node, []):
+                dfs(dependency)
+            visiting.remove(node)
+            visited.add(node)
+
+        for node in graph:
+            dfs(node)
+        return self
 
     @model_validator(mode="after")
     def _validate_step_ac_cross_references(self) -> PlanArtifact:
@@ -272,10 +315,20 @@ def is_noop_plan(artifact: Mapping[str, object]) -> bool:
 
 
 def normalize_plan_artifact_content(content: PlanArtifactDict) -> PlanArtifactDict:
-    """Validate and normalize a raw plan artifact content dict."""
+    """Validate and normalize a raw plan artifact content dict.
+
+    The size guard (``check_plan_size``) runs FIRST after the noop
+    short-circuit so a runaway payload is rejected in < 100 ms before
+    Pydantic ever touches it. The helper is PURE — it never raises —
+    so the call site is a single ``if error is not None: raise`` with
+    no try/except.
+    """
     _ensure_plan_artifact_rebuilt()
     if is_noop_plan(content):
         return {"noop": True}
+    size_error = check_plan_size(content)
+    if size_error is not None:
+        raise PlanArtifactValidationError(f"plan size violation: {size_error}")
     try:
         validated = PlanArtifact.model_validate(content)
         return validated.model_dump(

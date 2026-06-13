@@ -52,6 +52,8 @@ TESTS_ALLOWLIST: set[str] = {
     # invokes the audit module as a subprocess in test_audit_executable_invocation_returns_zero
     "test_verify_budget_real_time.py",  # tests process-level timeout behavior via subprocess
     "test_verify_invariants.py",  # spawns patched subprocesses to verify import-time invariants
+    # spawns python -O to verify size-limit import-time invariants
+    "test_plan_artifact_size_limits.py",
 }
 
 _MCP_FIXTURE_FILES = {

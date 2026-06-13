@@ -22,6 +22,7 @@ from ralph.mcp.tools.names import (
     INSERT_PLAN_STEP_TOOL,
     LIST_DIRECTORY_RECURSIVE_TOOL,
     LIST_DIRECTORY_TOOL,
+    MOVE_PLAN_STEP_TOOL,
     REMOVE_PLAN_STEP_TOOL,
     REPLACE_PLAN_STEP_TOOL,
     REPORT_PROGRESS_TOOL,
@@ -195,6 +196,12 @@ def capability_template_variables(
         ),
         tool_name_var(
             visible_tools,
+            "MOVE_PLAN_STEP_TOOL_NAME",
+            MOVE_PLAN_STEP_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_var(
+            visible_tools,
             "DECLARE_COMPLETE_TOOL_NAME",
             DECLARE_COMPLETE_TOOL,
             tool_name_prefix=tool_name_prefix,
@@ -311,6 +318,12 @@ def capability_template_variables(
             visible_tools,
             "REMOVE_PLAN_STEP_TOOL_REFERENCE",
             REMOVE_PLAN_STEP_TOOL,
+            tool_name_prefix=tool_name_prefix,
+        ),
+        tool_name_reference_var(
+            visible_tools,
+            "MOVE_PLAN_STEP_TOOL_REFERENCE",
+            MOVE_PLAN_STEP_TOOL,
             tool_name_prefix=tool_name_prefix,
         ),
         tool_name_reference_var(

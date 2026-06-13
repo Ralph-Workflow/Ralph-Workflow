@@ -27,6 +27,7 @@ ARTIFACT SUBMISSION:
 {% if INSERT_PLAN_STEP_TOOL_NAME %}- Use {{INSERT_PLAN_STEP_TOOL_REFERENCE}} to insert a numbered plan step and automatically reindex the steps list{% endif %}
 {% if REPLACE_PLAN_STEP_TOOL_NAME %}- Use {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} to replace a numbered plan step without rewriting the whole section{% endif %}
 {% if REMOVE_PLAN_STEP_TOOL_NAME %}- Use {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} to remove a numbered plan step and automatically reindex the remaining steps{% endif %}
+{% if MOVE_PLAN_STEP_TOOL_NAME %}- Use {{MOVE_PLAN_STEP_TOOL_REFERENCE}} to move a plan step to a new index in a single call (auto-reindex, depends_on rewrite, AC remap){% endif %}
 {% if FINALIZE_PLAN_TOOL_NAME %}- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} to finalize a staged plan draft{% endif %}
 {% if GET_PLAN_DRAFT_TOOL_NAME %}- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect a staged plan draft{% endif %}
 {% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} to discard a staged plan draft and restart{% endif %}

@@ -21,7 +21,7 @@ ArchitectureStyle = Literal[
     "unknown",
 ]
 
-_MAX_ENTRY_LENGTH = 500
+_MAX_ENTRY_LENGTH = 2000
 
 
 class DesignConstraints(RalphBaseModel):
@@ -30,12 +30,16 @@ class DesignConstraints(RalphBaseModel):
     text: str = Field(
         ...,
         min_length=1,
-        max_length=2000,
-        description="Required design constraints text (1-2000 chars).",
+        max_length=10000,
+        description="Required design constraints text (1-10000 chars; long tier).",
     )
     invariants: list[str] = Field(
         default_factory=list,
-        description="Optional list of design invariants (max 500 chars each after dedup).",
+        max_length=100,
+        description=(
+            "Optional list of design invariants "
+            "(max 100 entries, max 2000 chars each after dedup; medium tier)."
+        ),
     )
     architecture_style: ArchitectureStyle | None = Field(
         default=None,

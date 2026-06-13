@@ -22,6 +22,7 @@ DriftSource = Literal[
 OnDriftAction = Literal["fail-verify", "log-only", "open-issue", "ignore"]
 
 _SAFE_COMMAND_REGEX = re.compile(r"^[A-Za-z0-9 _./\-:=+]+$")
+_MAX_EXPECTED_OUTPUT_LENGTH = 2000
 
 
 class DriftDetection(RalphBaseModel):
@@ -29,15 +30,18 @@ class DriftDetection(RalphBaseModel):
 
     guard_commands: list[str] = Field(
         default_factory=list,
-        description="Guard command strings; restricted punctuation per validator.",
+        max_length=50,
+        description="Guard command strings (max 50); restricted punctuation per validator.",
     )
     expected_outputs: list[str] = Field(
         default_factory=list,
-        description="Expected guard command output substrings.",
+        max_length=50,
+        description="Expected guard command output substrings (max 50).",
     )
     sources: list[DriftSource] = Field(
         default_factory=list,
-        description="DriftSource enum list; see DriftSource literal.",
+        max_length=20,
+        description="DriftSource enum list (max 20); see DriftSource literal.",
     )
     on_drift_action: OnDriftAction | None = Field(
         default=None,
@@ -66,7 +70,7 @@ class DriftDetection(RalphBaseModel):
         cleaned: list[str] = []
         for entry in expected_outputs:
             stripped = entry.strip()
-            if stripped:
+            if stripped and len(stripped) <= _MAX_EXPECTED_OUTPUT_LENGTH:
                 cleaned.append(stripped)
         return cleaned
 

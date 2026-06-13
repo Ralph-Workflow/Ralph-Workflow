@@ -41,8 +41,8 @@ class EvidenceRef(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: EvidenceKind
-    ref: str = Field(..., min_length=1, max_length=200)
-    note: str | None = Field(default=None, max_length=200)
+    ref: str = Field(..., min_length=1, max_length=1000)
+    note: str | None = Field(default=None, max_length=1000)
 
     @field_validator("ref", "note", mode="before")
     @classmethod

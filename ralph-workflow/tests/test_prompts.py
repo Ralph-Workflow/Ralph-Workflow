@@ -95,6 +95,7 @@ def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     assert variables["INSERT_PLAN_STEP_TOOL_NAME"] == "ralph_insert_plan_step"
     assert variables["REPLACE_PLAN_STEP_TOOL_NAME"] == "ralph_replace_plan_step"
     assert variables["REMOVE_PLAN_STEP_TOOL_NAME"] == "ralph_remove_plan_step"
+    assert variables["MOVE_PLAN_STEP_TOOL_NAME"] == "ralph_move_plan_step"
     assert variables["MCP_TOOLS_LIST"] == format_mcp_tools_list(
         visible_mcp_tool_names(capabilities)
     )

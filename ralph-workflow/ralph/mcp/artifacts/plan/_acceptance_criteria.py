@@ -11,10 +11,23 @@ class AcceptanceCriterion(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(..., min_length=1, pattern=r"^[A-Z]+-\d{2,}$")
-    description: str = Field(..., min_length=1, max_length=1000)
-    verification_step: str | None = None
-    evidence_path: str | None = None
-    satisfied_by_steps: list[int] = Field(default_factory=list)
+    description: str = Field(
+        ...,
+        min_length=1,
+        max_length=8000,
+        description="Description (max 8000 chars; medium tier).",
+    )
+    verification_step: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional verification step (max 2000 chars; medium tier).",
+    )
+    evidence_path: str | None = Field(
+        default=None,
+        max_length=1000,
+        description="Optional evidence path (max 1000 chars; short tier).",
+    )
+    satisfied_by_steps: list[int] = Field(default_factory=list, max_length=50)
 
     @field_validator("id")
     @classmethod
@@ -61,7 +74,7 @@ class AcceptanceCriterion(RalphBaseModel):
 class AcceptanceCriteria(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    criteria: list[AcceptanceCriterion] = Field(..., min_length=1)
+    criteria: list[AcceptanceCriterion] = Field(..., min_length=1, max_length=500)
 
     @field_validator("criteria")
     @classmethod

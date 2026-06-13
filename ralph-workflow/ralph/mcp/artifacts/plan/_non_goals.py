@@ -6,13 +6,13 @@ from pydantic import ConfigDict, Field, field_validator
 
 from ralph.pydantic_compat import RalphBaseModel
 
-_MAX_ENTRY_LENGTH = 500
+_MAX_ENTRY_LENGTH = 2000
 
 
 class NonGoals(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    items: list[str] = Field(..., min_length=1)
+    items: list[str] = Field(..., min_length=1, max_length=200)
 
     @field_validator("items")
     @classmethod

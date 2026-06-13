@@ -9,9 +9,16 @@ from ralph.pydantic_compat import RalphBaseModel
 class ScopeItem(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    text: str = Field(..., min_length=1, description="Required scope item text (non-empty).")
+    text: str = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description="Required scope item text (non-empty, max 1000 chars).",
+    )
     count: str | None = Field(
-        default=None, description="Optional count or size hint (e.g. '3 files')."
+        default=None,
+        max_length=200,
+        description="Optional count or size hint (e.g. '3 files', max 200 chars).",
     )
     category: ScopeCategory | None = Field(
         default=None,

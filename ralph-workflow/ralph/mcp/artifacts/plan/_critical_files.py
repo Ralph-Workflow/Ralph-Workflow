@@ -10,5 +10,5 @@ from ralph.pydantic_compat import RalphBaseModel
 class CriticalFiles(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    primary_files: list[CriticalPrimaryFile] = Field(..., min_length=1)
-    reference_files: list[ReferenceFile] = Field(default_factory=list)
+    primary_files: list[CriticalPrimaryFile] = Field(..., min_length=1, max_length=200)
+    reference_files: list[ReferenceFile] = Field(default_factory=list, max_length=200)

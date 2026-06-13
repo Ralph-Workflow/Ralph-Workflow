@@ -7,6 +7,7 @@
           "items": {
             "$ref": "#/$defs/AcceptanceCriterion"
           },
+          "maxItems": 500,
           "minItems": 1,
           "title": "Criteria",
           "type": "array"
@@ -28,7 +29,8 @@
           "type": "string"
         },
         "description": {
-          "maxLength": 1000,
+          "description": "Description (max 8000 chars; medium tier).",
+          "maxLength": 8000,
           "minLength": 1,
           "title": "Description",
           "type": "string"
@@ -36,6 +38,7 @@
         "verification_step": {
           "anyOf": [
             {
+              "maxLength": 2000,
               "type": "string"
             },
             {
@@ -43,11 +46,13 @@
             }
           ],
           "default": null,
+          "description": "Optional verification step (max 2000 chars; medium tier).",
           "title": "Verification Step"
         },
         "evidence_path": {
           "anyOf": [
             {
+              "maxLength": 1000,
               "type": "string"
             },
             {
@@ -55,12 +60,14 @@
             }
           ],
           "default": null,
+          "description": "Optional evidence path (max 1000 chars; short tier).",
           "title": "Evidence Path"
         },
         "satisfied_by_steps": {
           "items": {
             "type": "integer"
           },
+          "maxItems": 50,
           "title": "Satisfied By Steps",
           "type": "array"
         }
@@ -79,6 +86,7 @@
           "items": {
             "$ref": "#/$defs/CriticalPrimaryFile"
           },
+          "maxItems": 200,
           "minItems": 1,
           "title": "Primary Files",
           "type": "array"
@@ -87,6 +95,7 @@
           "items": {
             "$ref": "#/$defs/ReferenceFile"
           },
+          "maxItems": 200,
           "title": "Reference Files",
           "type": "array"
         }
@@ -101,6 +110,7 @@
       "additionalProperties": false,
       "properties": {
         "path": {
+          "maxLength": 1000,
           "minLength": 1,
           "title": "Path",
           "type": "string"
@@ -117,6 +127,7 @@
         "estimated_changes": {
           "anyOf": [
             {
+              "maxLength": 500,
               "type": "string"
             },
             {
@@ -143,7 +154,7 @@
           "type": "boolean"
         },
         "preferred_patterns": {
-          "description": "PreferredPattern enum list; see PreferredPattern literal.",
+          "description": "PreferredPattern enum list (max 20); see PreferredPattern literal.",
           "items": {
             "enum": [
               "constructor",
@@ -155,11 +166,12 @@
             ],
             "type": "string"
           },
+          "maxItems": 20,
           "title": "Preferred Patterns",
           "type": "array"
         },
         "forbidden_patterns": {
-          "description": "ForbiddenPattern enum list; see ForbiddenPattern literal.",
+          "description": "ForbiddenPattern enum list (max 50); see ForbiddenPattern literal.",
           "items": {
             "enum": [
               "global-singleton",
@@ -171,13 +183,14 @@
             ],
             "type": "string"
           },
+          "maxItems": 50,
           "title": "Forbidden Patterns",
           "type": "array"
         },
         "notes": {
           "anyOf": [
             {
-              "maxLength": 2000,
+              "maxLength": 8000,
               "type": "string"
             },
             {
@@ -185,7 +198,7 @@
             }
           ],
           "default": null,
-          "description": "Optional free-form notes (max 2000 chars).",
+          "description": "Optional free-form notes (max 8000 chars; medium tier).",
           "title": "Notes"
         }
       },
@@ -199,17 +212,18 @@
       "additionalProperties": false,
       "properties": {
         "text": {
-          "description": "Required design constraints text (1-2000 chars).",
-          "maxLength": 2000,
+          "description": "Required design constraints text (1-10000 chars; long tier).",
+          "maxLength": 10000,
           "minLength": 1,
           "title": "Text",
           "type": "string"
         },
         "invariants": {
-          "description": "Optional list of design invariants (max 500 chars each after dedup).",
+          "description": "Optional list of design invariants (max 100 entries, max 2000 chars each after dedup; medium tier).",
           "items": {
             "type": "string"
           },
+          "maxItems": 100,
           "title": "Invariants",
           "type": "array"
         },
@@ -345,7 +359,7 @@
         "outcome": {
           "anyOf": [
             {
-              "maxLength": 500,
+              "maxLength": 1000,
               "type": "string"
             },
             {
@@ -358,6 +372,7 @@
         "notes": {
           "anyOf": [
             {
+              "maxLength": 20000,
               "type": "string"
             },
             {
@@ -375,23 +390,25 @@
       "additionalProperties": false,
       "properties": {
         "guard_commands": {
-          "description": "Guard command strings; restricted punctuation per validator.",
+          "description": "Guard command strings (max 50); restricted punctuation per validator.",
           "items": {
             "type": "string"
           },
+          "maxItems": 50,
           "title": "Guard Commands",
           "type": "array"
         },
         "expected_outputs": {
-          "description": "Expected guard command output substrings.",
+          "description": "Expected guard command output substrings (max 50).",
           "items": {
             "type": "string"
           },
+          "maxItems": 50,
           "title": "Expected Outputs",
           "type": "array"
         },
         "sources": {
-          "description": "DriftSource enum list; see DriftSource literal.",
+          "description": "DriftSource enum list (max 20); see DriftSource literal.",
           "items": {
             "enum": [
               "ruff",
@@ -404,6 +421,7 @@
             ],
             "type": "string"
           },
+          "maxItems": 20,
           "title": "Sources",
           "type": "array"
         },
@@ -465,7 +483,7 @@
           "type": "string"
         },
         "ref": {
-          "maxLength": 200,
+          "maxLength": 1000,
           "minLength": 1,
           "title": "Ref",
           "type": "string"
@@ -473,7 +491,7 @@
         "note": {
           "anyOf": [
             {
-              "maxLength": 200,
+              "maxLength": 1000,
               "type": "string"
             },
             {
@@ -498,6 +516,7 @@
           "items": {
             "type": "string"
           },
+          "maxItems": 200,
           "minItems": 1,
           "title": "Items",
           "type": "array"
@@ -547,7 +566,7 @@
       "properties": {
         "must_not_break": {
           "items": {
-            "maxLength": 200,
+            "maxLength": 1000,
             "minLength": 1,
             "type": "string"
           },
@@ -556,7 +575,7 @@
         },
         "must_keep_working": {
           "items": {
-            "maxLength": 200,
+            "maxLength": 1000,
             "minLength": 1,
             "type": "string"
           },
@@ -566,7 +585,7 @@
         "performance_budget": {
           "anyOf": [
             {
-              "maxLength": 200,
+              "maxLength": 2000,
               "type": "string"
             },
             {
@@ -574,12 +593,13 @@
             }
           ],
           "default": null,
+          "description": "Optional performance budget (max 2000 chars; medium tier).",
           "title": "Performance Budget"
         },
         "security_posture": {
           "anyOf": [
             {
-              "maxLength": 200,
+              "maxLength": 2000,
               "type": "string"
             },
             {
@@ -587,6 +607,7 @@
             }
           ],
           "default": null,
+          "description": "Optional security posture (max 2000 chars; medium tier).",
           "title": "Security Posture"
         }
       },
@@ -603,13 +624,15 @@
           "type": "integer"
         },
         "title": {
-          "description": "Short step title (non-empty).",
+          "description": "Short step title (non-empty, max 500 chars).",
+          "maxLength": 500,
           "minLength": 1,
           "title": "Title",
           "type": "string"
         },
         "content": {
-          "description": "Step body / detailed content (non-empty).",
+          "description": "Step body / detailed content (non-empty, max 20000 chars).",
+          "maxLength": 20000,
           "minLength": 1,
           "title": "Content",
           "type": "string"
@@ -639,16 +662,18 @@
           "title": "Priority"
         },
         "targets": {
-          "description": "Required for file_change; list of {path, action} entries.",
+          "description": "Required for file_change; list of {path, action} entries (max 100).",
           "items": {
             "$ref": "#/$defs/StepTarget"
           },
+          "maxItems": 100,
           "title": "Targets",
           "type": "array"
         },
         "location": {
           "anyOf": [
             {
+              "maxLength": 500,
               "type": "string"
             },
             {
@@ -662,6 +687,7 @@
         "rationale": {
           "anyOf": [
             {
+              "maxLength": 8000,
               "type": "string"
             },
             {
@@ -669,27 +695,29 @@
             }
           ],
           "default": null,
-          "description": "Optional rationale for the step.",
+          "description": "Optional rationale for the step (max 8000 chars).",
           "title": "Rationale"
         },
         "depends_on": {
-          "description": "Optional list of step numbers this step depends on.",
+          "description": "Optional list of step numbers this step depends on (max 50).",
           "items": {
             "type": "integer"
           },
+          "maxItems": 50,
           "title": "Depends On",
           "type": "array"
         },
         "satisfies": {
-          "description": "Optional list of AC ids (^[A-Z]+-\\d{2,}$) this step satisfies.",
+          "description": "Optional list of AC ids (^[A-Z]+-\\d{2,}$) this step satisfies (max 50).",
           "items": {
             "type": "string"
           },
+          "maxItems": 50,
           "title": "Satisfies",
           "type": "array"
         },
         "expected_evidence": {
-          "description": "Optional list of evidence references (max 50).",
+          "description": "Optional list of evidence references (max 500 entries).",
           "items": {
             "$ref": "#/$defs/EvidenceRef"
           },
@@ -699,6 +727,7 @@
         "verify_command": {
           "anyOf": [
             {
+              "maxLength": 2000,
               "type": "string"
             },
             {
@@ -706,7 +735,7 @@
             }
           ],
           "default": null,
-          "description": "Optional verify command; required for verify steps when location is absent.",
+          "description": "Optional verify command (max 2000 chars); required for verify steps when location is absent.",
           "title": "Verify Command"
         }
       },
@@ -776,11 +805,13 @@
       "additionalProperties": false,
       "properties": {
         "path": {
+          "maxLength": 1000,
           "minLength": 1,
           "title": "Path",
           "type": "string"
         },
         "purpose": {
+          "maxLength": 2000,
           "minLength": 1,
           "title": "Purpose",
           "type": "string"
@@ -797,11 +828,13 @@
       "additionalProperties": false,
       "properties": {
         "risk": {
+          "maxLength": 8000,
           "minLength": 1,
           "title": "Risk",
           "type": "string"
         },
         "mitigation": {
+          "maxLength": 8000,
           "minLength": 1,
           "title": "Mitigation",
           "type": "string"
@@ -836,7 +869,8 @@
       "additionalProperties": false,
       "properties": {
         "text": {
-          "description": "Required scope item text (non-empty).",
+          "description": "Required scope item text (non-empty, max 1000 chars).",
+          "maxLength": 1000,
           "minLength": 1,
           "title": "Text",
           "type": "string"
@@ -844,6 +878,7 @@
         "count": {
           "anyOf": [
             {
+              "maxLength": 200,
               "type": "string"
             },
             {
@@ -851,7 +886,7 @@
             }
           ],
           "default": null,
-          "description": "Optional count or size hint (e.g. '3 files').",
+          "description": "Optional count or size hint (e.g. '3 files', max 200 chars).",
           "title": "Count"
         },
         "category": {
@@ -898,6 +933,7 @@
           "items": {
             "type": "string"
           },
+          "maxItems": 100,
           "minItems": 1,
           "title": "Skills",
           "type": "array"
@@ -906,6 +942,7 @@
           "items": {
             "type": "string"
           },
+          "maxItems": 50,
           "title": "Mcps",
           "type": "array"
         }
@@ -920,6 +957,7 @@
       "additionalProperties": false,
       "properties": {
         "path": {
+          "maxLength": 1000,
           "minLength": 1,
           "title": "Path",
           "type": "string"
@@ -959,15 +997,15 @@
       "properties": {
         "context": {
           "default": "",
-          "description": "Free-form context (max 2000 chars).",
-          "maxLength": 2000,
+          "description": "Free-form context (max 8000 chars; medium tier).",
+          "maxLength": 8000,
           "title": "Context",
           "type": "string"
         },
         "intent": {
           "default": "",
-          "description": "One-line user-facing outcome (max 200 chars).",
-          "maxLength": 200,
+          "description": "One-line user-facing outcome (max 500 chars; short tier).",
+          "maxLength": 500,
           "title": "Intent",
           "type": "string"
         },
@@ -978,16 +1016,17 @@
           "type": "string"
         },
         "scope_items": {
-          "description": "At least 3 scope items; see ScopeItem.",
+          "description": "At least 3 scope items (max 200); see ScopeItem.",
           "items": {
             "$ref": "#/$defs/ScopeItem"
           },
+          "maxItems": 200,
           "minItems": 3,
           "title": "Scope Items",
           "type": "array"
         },
         "coverage_areas": {
-          "description": "Optional CoverageArea enum list; see CoverageArea literal.",
+          "description": "Optional CoverageArea enum list (max 50); see CoverageArea literal.",
           "items": {
             "enum": [
               "bugfix",
@@ -1003,6 +1042,7 @@
             ],
             "type": "string"
           },
+          "maxItems": 50,
           "title": "Coverage Areas",
           "type": "array"
         }
@@ -1022,7 +1062,7 @@
           "type": "boolean"
         },
         "forbidden_in_tests": {
-          "description": "ForbiddenInTest enum list; see ForbiddenInTest literal.",
+          "description": "ForbiddenInTest enum list (max 50); see ForbiddenInTest literal.",
           "items": {
             "enum": [
               "time.sleep",
@@ -1035,11 +1075,12 @@
             ],
             "type": "string"
           },
+          "maxItems": 50,
           "title": "Forbidden In Tests",
           "type": "array"
         },
         "required_test_layers": {
-          "description": "TestLayer enum list; see TestLayer literal.",
+          "description": "TestLayer enum list (max 20); see TestLayer literal.",
           "items": {
             "enum": [
               "unit",
@@ -1052,6 +1093,7 @@
             ],
             "type": "string"
           },
+          "maxItems": 20,
           "title": "Required Test Layers",
           "type": "array"
         },
@@ -1094,13 +1136,15 @@
       "additionalProperties": false,
       "properties": {
         "method": {
-          "description": "Verification method (non-empty).",
+          "description": "Verification method (non-empty, max 2000 chars; medium tier).",
+          "maxLength": 2000,
           "minLength": 1,
           "title": "Method",
           "type": "string"
         },
         "expected_outcome": {
-          "description": "Expected outcome string (non-empty).",
+          "description": "Expected outcome string (non-empty, max 8000 chars; medium tier).",
+          "maxLength": 8000,
           "minLength": 1,
           "title": "Expected Outcome",
           "type": "string"
@@ -1123,7 +1167,7 @@
         "cwd": {
           "anyOf": [
             {
-              "maxLength": 200,
+              "maxLength": 500,
               "type": "string"
             },
             {
@@ -1131,7 +1175,7 @@
             }
           ],
           "default": null,
-          "description": "Optional working directory string (max 200 chars).",
+          "description": "Optional working directory string (max 500 chars; short tier).",
           "title": "Cwd"
         }
       },
