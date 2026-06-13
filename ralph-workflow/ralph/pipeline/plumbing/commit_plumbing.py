@@ -67,16 +67,18 @@ from ralph.mcp.artifacts.commit_message import (
     normalize_commit_message_content,
     read_commit_message_artifact,
 )
-from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
-from ralph.mcp.protocol.session import AgentSession
-from ralph.mcp.server.lifecycle import (
-    McpServerExtras,
-    SessionBridgeLike,
-    start_mcp_server,
-)
-from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
+from ralph.pipeline.factory import (
+    MaterializeSystemPromptFn,
+    PipelineDeps,
+    build_default_pipeline_deps,
+)
+from ralph.pipeline.session_bridge import (
+    bridge_env_for,
+    build_session_bridge,
+    reset_tool_registry_callback,
+)
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,
@@ -88,15 +90,15 @@ from ralph.recovery.failure_classifier import (
     is_unsubmitted_artifact_failure,
     should_reset_tool_registry,
 )
-from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     import types
     from collections.abc import Iterable, Iterator
 
     from ralph.cli.commands._commit_chain_config import CommitChainConfig
-    from ralph.config.models import AgentConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.mcp.server.lifecycle import SessionBridgeLike
     from ralph.policy.models import AgentsPolicy
 
 # Late-binding reference for the test-patch surface: tests in
@@ -152,6 +154,7 @@ def run_commit_plumbing(
     repo_root: Path,
     chain_config: CommitChainConfig,
     display_context: DisplayContext,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> CommitAgentResult:
     """Iterate the commit chain, retrying through the shared recovery loop.
 
@@ -163,31 +166,39 @@ def run_commit_plumbing(
     :func:`extract_transport_session_id` — the single source of truth
     for those decisions.
 
+    ``pipeline_deps`` carries injectable collaborators. When omitted,
+    production defaults are used and the legacy late-bound bridge
+    resolver is preserved so existing test monkeypatches continue to
+    work.
+
     No inline failure-classifier construction sites live in this
     module; recovery decisions are routed exclusively through the
     shared retry loop via :func:`should_reset_tool_registry`.
     """
+    pipeline_deps_provided = pipeline_deps is not None
+    if pipeline_deps is None:
+        pipeline_deps = build_default_pipeline_deps(
+            cast("UnifiedConfig", chain_config.general_config),
+            display_context,
+        )
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
-    # The canonical owner ``_start_commit_bridge`` takes
-    # ``agents_policy=`` (the policy-aware path). The legacy
-    # one-arg version is what the test-patch surface uses; the
-    # patch substitutes a single-arg lambda, so the dispatch has
-    # to match what the patch provides. We try the policy-aware
-    # signature first; on TypeError (patched to a one-arg
-    # lambda) we fall back.
-    #
-    # We resolve ``start_commit_bridge`` from the
-    # ``ralph.cli.commands.commit`` module at call time so the
-    # test-patch surface (which monkeypatches the commit module
-    # attribute) is honored transparently. This keeps a single
-    # call site in the codebase without coupling plumbing to
-    # test internals.
-    bridge_fn = _resolve_commit_start_commit_bridge()
-    try:
-        bridge = bridge_fn(repo_root, agents_policy=chain_config.agents_policy)
-    except TypeError:
-        bridge = bridge_fn(repo_root)
+    if pipeline_deps_provided:
+        bridge = pipeline_deps.bridge_factory(
+            workspace_root=repo_root,
+            drain="commit",
+            agents_policy=chain_config.agents_policy,
+            session_id_prefix="commit",
+            model_identity=pipeline_deps.model_identity,
+        )
+    else:
+        # Preserve the legacy late-bound test-patch surface: tests
+        # monkeypatch ``ralph.cli.commands.commit.start_commit_bridge``.
+        bridge_fn = _resolve_commit_start_commit_bridge()
+        try:
+            bridge = bridge_fn(repo_root, agents_policy=chain_config.agents_policy)
+        except TypeError:
+            bridge = bridge_fn(repo_root)
     extra_env: dict[str, str] | None = _commit_bridge_env(bridge)
     # Normalize the key set so downstream consumers (and tests)
     # observe string keys, never the ``McpEnvVar`` enum.
@@ -198,6 +209,7 @@ def run_commit_plumbing(
     last_error: Exception | None = None
     output_lines: list[str] = []
 
+    materializer = pipeline_deps.system_prompt_materializer
     try:
         for agent_name in chain_config.agents:
             cfg = chain_config.registry.get(agent_name)
@@ -224,6 +236,7 @@ def run_commit_plumbing(
                 display_context=display_context,
                 prior_session_id=last_session_id,
                 output_collector=output_lines,
+                materializer=materializer,
             )
             failure_details.extend(result.failure_details)
 
@@ -315,6 +328,7 @@ def _generate_commit_message_with_agent(
     display_context: DisplayContext,
     prior_session_id: str | None = None,
     output_collector: list[str] | None = None,
+    materializer: MaterializeSystemPromptFn | None = None,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
 
@@ -340,6 +354,7 @@ def _generate_commit_message_with_agent(
         prior_session_id=prior_session_id,
         on_retry_failure=_record_retry_failure,
         output_collector=output_collector,
+        materializer=materializer,
     )
     if not initial_attempt.failure_detail:
         return _finalize_commit_attempt(initial_attempt, failure_details)
@@ -358,6 +373,7 @@ def _generate_commit_message_with_agent(
                 prior_session_id=initial_attempt.resume_session_id,
                 on_retry_failure=_record_retry_failure,
                 output_collector=output_collector,
+                materializer=materializer,
             )
             if not session_retry.failure_detail:
                 return _finalize_commit_attempt(session_retry, failure_details)
@@ -382,6 +398,7 @@ def _generate_commit_message_with_agent(
                 prior_session_id=initial_attempt.resume_session_id,
                 on_retry_failure=_record_retry_failure,
                 output_collector=output_collector,
+                materializer=materializer,
             )
             if not summary_retry.failure_detail:
                 return _finalize_commit_attempt(summary_retry, failure_details)
@@ -393,12 +410,10 @@ def _generate_commit_message_with_agent(
 def _reset_tool_registry_callback(
     bridge: object | None,
 ) -> typing.Callable[[], object] | None:
-    if bridge is None:
+    callback = reset_tool_registry_callback(bridge)
+    if callback is None:
         return None
-    reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
-    if not callable(reset_tool_registry_obj):
-        return None
-    return cast("typing.Callable[[], object]", reset_tool_registry_obj)
+    return cast("typing.Callable[[], object]", callback)
 
 
 def _run_commit_agent_attempt_with_recovery(
@@ -411,6 +426,7 @@ def _run_commit_agent_attempt_with_recovery(
     prior_session_id: str | None = None,
     on_retry_failure: typing.Callable[[list[str]], object] | None = None,
     output_collector: list[str] | None = None,
+    materializer: MaterializeSystemPromptFn | None = None,
 ) -> tuple[CommitAgentAttempt, str | None, Exception | None]:
     """Run a single commit-agent attempt with the shared retry loop.
 
@@ -435,6 +451,7 @@ def _run_commit_agent_attempt_with_recovery(
                 session_id=retry_session_id or last_session_id,
                 display_context=display_context,
                 session_id_sink=capture_session_id,
+                materializer=materializer,
             ),
             max_retries=max_retries,
             reset_tool_registry=_reset_tool_registry_callback(attempt_context.bridge),
@@ -477,6 +494,7 @@ def invoke_commit_agent_attempt(
     session_id: str | None = None,
     display_context: DisplayContext,
     session_id_sink: typing.Callable[[str], None] | None = None,
+    materializer: MaterializeSystemPromptFn | None = None,
 ) -> CommitAgentAttempt:
     """Run one commit-agent invocation attempt and return its result."""
     # Late-binding: tests patch ``ralph.cli.commands.commit.{X}``; look the
@@ -485,7 +503,9 @@ def invoke_commit_agent_attempt(
     # to satisfy PLC0415; the function-level ``getattr`` is what makes
     # the patches take effect.)
     materialize = _get_patched(
-        _commit_module, "materialize_system_prompt", materialize_system_prompt
+        _commit_module,
+        "materialize_system_prompt",
+        materializer if materializer is not None else materialize_system_prompt,
     )
     invoke = _get_patched(_commit_module, "invoke_agent", invoke_agent)
     delete_artifacts = _get_patched(
@@ -876,31 +896,16 @@ def _parsed_output_from_invocation_error(exc: AgentInvocationError) -> list[str]
 
 
 def _start_commit_bridge(repo_root: Path, *, agents_policy: AgentsPolicy) -> SessionBridgeLike:
-    session_mcp_plan = build_session_mcp_plan(
-        transport=None,
+    return build_session_bridge(
+        workspace_root=repo_root,
         drain="commit",
-        workspace_path=repo_root,
         agents_policy=agents_policy,
-    )
-    session = AgentSession(
-        session_id=f"commit-{uuid.uuid4().hex[:8]}",
-        run_id=str(uuid.uuid4()),
-        drain="commit",
-        capabilities=set(session_mcp_plan.capabilities),
-        model_identity=session_mcp_plan.model_identity,
-        stored_capability_profile=session_mcp_plan.capability_profile,
-    )
-    workspace = FsWorkspace(repo_root)
-    return start_mcp_server(
-        session, workspace, extras=McpServerExtras(extra_env=session_mcp_plan.server_env)
+        session_id_prefix="commit",
     )
 
 
 def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
-    return {
-        str(MCP_ENDPOINT_ENV): bridge.agent_endpoint_uri(),
-        str(MCP_RUN_ID_ENV): "commit-plumbing",
-    }
+    return bridge_env_for(bridge, run_id_label="commit-plumbing")
 
 
 # Module-level alias so the test-patch surface in

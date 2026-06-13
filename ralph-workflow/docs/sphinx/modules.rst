@@ -873,10 +873,24 @@ ralph.pipeline.prompt_prep
    :members:
    :show-inheritance:
 
+ralph.pipeline.factory
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.factory
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.run_loop
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.run_loop
+   :members:
+   :show-inheritance:
+
+ralph.pipeline.session_bridge
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.session_bridge
    :members:
    :show-inheritance:
 

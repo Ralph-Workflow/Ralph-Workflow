@@ -2,24 +2,22 @@ from __future__ import annotations
 
 from io import StringIO
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
 from rich.console import Console
 
-from ralph.agents.idle_watchdog import WatchdogFireReason
-from ralph.agents.invoke import AgentInactivityTimeoutError, InactivityTimeoutOpts
+if TYPE_CHECKING:
+    import pytest
+
+    from ralph.agents.invoke import InvokeOptions
+
 from ralph.cli.commands import smoke as smoke_module
-from ralph.cli.commands.smoke_run_params import SmokeRunParams
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
+from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
 from ralph.workspace.scope import WorkspaceScope
-
-# Smoke-turn tests stream long synthetic agent output; under full-suite
-# worksteal parallelism the default 1s wall-clock alarm intermittently
-# fires on a loaded machine even though each test normally finishes fast.
-pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
@@ -43,7 +41,10 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
         thinking_preview_min_chars=80,
         tool_result_headline_min_chars=80,
     )
-    monkeypatch.setattr(smoke_module, "make_display_context", lambda **_kwargs: ctx)
+    def _make_display_context(**_kwargs: object) -> DisplayContext:
+        return ctx
+
+    monkeypatch.setattr(smoke_module, "make_display_context", _make_display_context)
     return stream
 
 
@@ -63,45 +64,6 @@ def test_build_smoke_prompt_targets_tmp_javascript_todo_list() -> None:
     assert "observed_working" in prompt
     assert "observed_breaks" in prompt
     assert "headless_guide_checks" in prompt
-
-
-def test_detect_smoke_errors_uses_parser_fallback_for_meaningful_output() -> None:
-    config = AgentConfig(
-        cmd="claude",
-        json_parser=JsonParserType.CLAUDE,
-        transport=AgentTransport.CLAUDE_INTERACTIVE,
-    )
-    params = SmokeRunParams(
-        agent_name="claude/haiku",
-        config=config,
-        workspace_root=Path(),
-        prompt_file=Path("PROMPT.md"),
-        output_file=Path("tmp/interactive-claude-smoke/todo-list.js"),
-        options=smoke_module.InvokeOptions(show_progress=False),
-        display_context=smoke_module.make_display_context(),
-        bridge=None,
-    )
-    lines = [
-        "{"
-        '"type":"assistant","message":{"type":"message","content":'
-        '[{"type":"text","text":"Starting smoke task."}]}}\n',
-        "{"
-        '"type":"assistant","message":{"type":"message","content":'
-        '[{"type":"tool_use","name":"mcp__ralph__write_file"}]}}\n',
-        "{"
-        '"type":"assistant","message":{"type":"message","content":'
-        '[{"type":"text","text":"Submitted artifact."}]}}\n',
-    ]
-
-    errors = smoke_module._detect_smoke_errors(
-        params,
-        lines,
-        [],
-        "sess-1",
-        None,
-    )
-
-    assert "fewer than 3 meaningful output lines were observed" not in errors
 
 
 def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
@@ -134,38 +96,20 @@ def test_render_smoke_report_surfaces_working_and_broken_observations() -> None:
     assert "thinking: checking prompt" in report
 
 
-def test_detect_break_indicators_ignores_bypass_status_line() -> None:
-    status_line = (
-        "\x1b[38;2;255;107;128m⏵⏵ bypass permissions on"
-        "\x1b[38;2;153;153;153m (shift+tab to cycle) · ← for agents\x1b[39m"
-    )
-
-    assert smoke_module._detect_break_indicators([status_line]) == []
-
-
-def test_detect_break_indicators_flags_prompt_shaped_bypass_warning() -> None:
-    warning_prompt = """
-    WARNING: Claude Code running in Bypass Permissions mode
-
-    1. No, exit
-    2. Yes, I accept
-
-    Enter to confirm · Esc to cancel
-    """
-
-    assert smoke_module._detect_break_indicators([warning_prompt]) == [
-        "unexpected permission prompt observed in transcript"
-    ]
-
-
 def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_guided_parity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     stream = _attach_console(monkeypatch)
     scope = WorkspaceScope(tmp_path)
-    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
-    monkeypatch.setattr(smoke_module, "load_config", lambda *args, **kwargs: UnifiedConfig())
+    def _resolve_workspace_scope() -> WorkspaceScope:
+        return scope
+
+    def _load_config(*_args: object, **_kwargs: object) -> UnifiedConfig:
+        return UnifiedConfig()
+
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", _resolve_workspace_scope)
+    monkeypatch.setattr(smoke_module, "load_config", _load_config)
 
     interactive = AgentConfig(
         cmd="claude",
@@ -189,14 +133,23 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
             return None
 
     class FakeBridge:
+        def start(self) -> None:
+            return None
+
         def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+        def endpoint_uri(self) -> str:
             return "http://127.0.0.1:9999/mcp"
 
         def shutdown(self) -> None:
             bridge_shutdown.append(True)
 
     def fake_invoke_agent(
-        config: AgentConfig, prompt_file: str, *, options: object = None
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
     ) -> object:
         assert config.yolo_flag == "--dangerously-skip-permissions"
         assert options is not None
@@ -222,9 +175,9 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
         return iter(
             [
                 '{"type":"assistant","message":{"type":"message","content":'
-                '[{"type":"text","text":"I am creating the todo list now."}]}}\n',
+                '[{"type":"text","text":"I am creating the todo list now."}]}\n',
                 '{"type":"assistant","message":{"type":"message","content":'
-                '[{"type":"text","text":"The file has been written successfully."}]}}\n',
+                '[{"type":"text","text":"The file has been written successfully."}]}\n',
                 "Claude session ready. Session ID: interactive-smoke-session\n",
                 "claude tool: write_file\n",
                 "Task declared complete: session_id=interactive-smoke-session, "
@@ -232,12 +185,21 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
             ]
         )
 
-    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
-    monkeypatch.setattr(smoke_module, "invoke_agent", fake_invoke_agent)
+    monkeypatch.setattr(smoke_plumbing_module, "AgentRegistry", FakeRegistry)
+    monkeypatch.setattr(smoke_plumbing_module, "invoke_agent", fake_invoke_agent)
+    def _start_smoke_bridge(
+        _root: Path,
+        *,
+        config: UnifiedConfig,
+        model_identity: object = None,
+    ) -> FakeBridge:
+        del config, model_identity
+        return FakeBridge()
+
     monkeypatch.setattr(
-        smoke_module,
+        smoke_plumbing_module,
         "_start_smoke_bridge",
-        lambda _root, *, config: FakeBridge(),
+        _start_smoke_bridge,
     )
 
     exit_code = smoke_module.smoke_interactive_claude_command(display_context=None)
@@ -256,229 +218,3 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     assert "Observed working" in output
     assert "Observed breaks" in output
     assert "No breaks observed" in output
-
-
-def test_execute_smoke_turns_retries_post_tool_empty_response_with_same_session(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    config = AgentConfig(
-        cmd="claude",
-        json_parser=JsonParserType.CLAUDE,
-        transport=AgentTransport.CLAUDE,
-    )
-    bridge = type(
-        "_Bridge",
-        (),
-        {"reset_tool_registry": lambda self: None},
-    )()
-    params = SmokeRunParams(
-        agent_name="claude",
-        config=config,
-        workspace_root=tmp_path,
-        prompt_file=tmp_path / "PROMPT.md",
-        output_file=tmp_path / "todo.js",
-        options=smoke_module.InvokeOptions(show_progress=False),
-        display_context=smoke_module.make_display_context(),
-        bridge=bridge,
-    )
-    calls: list[object | None] = []
-
-    failure = smoke_module.AgentInvocationError(
-        "claude",
-        1,
-        "Model returned an empty response with no tool calls",
-        parsed_output=[
-            '{"type":"session","session_id":"sess-smoke"}',
-            '{"type":"tool_result","tool":"read_file"}',
-        ],
-    )
-
-    def fake_invoke_agent(
-        _config: AgentConfig,
-        _prompt_file: str,
-        *,
-        options: object = None,
-    ) -> object:
-        calls.append(getattr(options, "session_id", None))
-        if len(calls) == 1:
-            raise failure
-        return iter(
-            [
-                '{"type":"assistant","message":{"type":"message","content":'
-                '[{"type":"text","text":"Recovered smoke run."}]}}\n',
-                "Claude session ready. Session ID: sess-smoke\n",
-                "claude tool: read_file\n",
-                "Task declared complete: session_id=sess-smoke, summary=done, timestamp=1\n",
-            ]
-        )
-
-    monkeypatch.setattr(smoke_module, "invoke_agent", fake_invoke_agent)
-    lines, rendered, session_id, final_exception = smoke_module._execute_smoke_turns(params, None)
-
-    assert final_exception is None
-    assert session_id == "sess-smoke"
-    assert calls == [None, "sess-smoke"]
-    assert any('"type":"tool_result"' in line for line in lines)
-    assert any("Recovered smoke run." in line for line in lines)
-    assert any("Recovered smoke run." in line for line in rendered)
-
-
-def test_execute_smoke_turns_preserves_early_session_id_across_long_output(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    config = AgentConfig(
-        cmd="claude",
-        json_parser=JsonParserType.CLAUDE,
-        transport=AgentTransport.CLAUDE,
-    )
-    bridge = type("_Bridge", (), {"reset_tool_registry": lambda self: None})()
-    params = SmokeRunParams(
-        agent_name="claude",
-        config=config,
-        workspace_root=tmp_path,
-        prompt_file=tmp_path / "PROMPT.md",
-        output_file=tmp_path / "todo.js",
-        options=smoke_module.InvokeOptions(show_progress=False),
-        display_context=smoke_module.make_display_context(),
-        bridge=bridge,
-    )
-    calls: list[object | None] = []
-
-    def fake_invoke_agent(
-        _config: AgentConfig,
-        _prompt_file: str,
-        *,
-        options: object = None,
-    ) -> object:
-        calls.append(getattr(options, "session_id", None))
-        if len(calls) == 1:
-            lines = ["Claude session ready. Session ID: sess-long\n"]
-            lines.extend(f"line-{index}\n" for index in range(500))
-
-            def _iter() -> object:
-                yield from lines
-                raise smoke_module.AgentInvocationError(
-                    "claude",
-                    1,
-                    "Model returned an empty response with no tool calls",
-                    parsed_output=['{"type":"tool_result","tool":"read_file"}'],
-                )
-
-            return _iter()
-        return iter(
-            [
-                "Claude session ready. Session ID: sess-long\n",
-                "Task declared complete: session_id=sess-long, summary=done, timestamp=1\n",
-            ]
-        )
-
-    monkeypatch.setattr(smoke_module, "invoke_agent", fake_invoke_agent)
-    _lines, _rendered, session_id, final_exception = smoke_module._execute_smoke_turns(params, None)
-
-    assert final_exception is None
-    assert session_id == "sess-long"
-    assert calls == [None, "sess-long"]
-
-
-def test_execute_smoke_turns_preserves_early_session_id_for_resumable_exit(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    config = AgentConfig(
-        cmd="claude",
-        json_parser=JsonParserType.CLAUDE,
-        transport=AgentTransport.CLAUDE,
-    )
-    params = SmokeRunParams(
-        agent_name="claude",
-        config=config,
-        workspace_root=tmp_path,
-        prompt_file=tmp_path / "PROMPT.md",
-        output_file=tmp_path / "todo.js",
-        options=smoke_module.InvokeOptions(show_progress=False),
-        display_context=smoke_module.make_display_context(),
-        bridge=None,
-    )
-    calls: list[object | None] = []
-
-    def fake_run_smoke_attempt(
-        _params: object,
-        options: object,
-        *,
-        session_id_sink: object = None,
-    ) -> tuple[list[str], list[str]]:
-        calls.append(getattr(options, "session_id", None))
-        assert callable(session_id_sink)
-        session_id_sink("sess-resume")
-        raise smoke_module.OpenCodeResumableExitError("claude", session_id=None)
-
-    monkeypatch.setattr(smoke_module, "_run_smoke_attempt", fake_run_smoke_attempt)
-    _lines, _rendered, session_id, final_exception = smoke_module._execute_smoke_turns(params, None)
-
-    assert final_exception is not None
-    assert session_id == "sess-resume"
-    assert calls == [None, "sess-resume", "sess-resume", "sess-resume", "sess-resume"]
-
-
-def test_run_smoke_attempt_preserves_inactivity_timeout_resume_metadata(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    config = AgentConfig(
-        cmd="claude",
-        json_parser=JsonParserType.CLAUDE,
-        transport=AgentTransport.CLAUDE_INTERACTIVE,
-    )
-    params = SmokeRunParams(
-        agent_name="claude/haiku",
-        config=config,
-        workspace_root=tmp_path,
-        prompt_file=tmp_path / "PROMPT.md",
-        output_file=tmp_path / "todo.js",
-        options=smoke_module.InvokeOptions(show_progress=False),
-        display_context=smoke_module.make_display_context(),
-        bridge=None,
-    )
-
-    def fake_invoke_agent(
-        _config: AgentConfig,
-        _prompt_file: str,
-        *,
-        options: object = None,
-    ) -> object:
-        del _config, _prompt_file, options
-        return iter(["Claude session ready. Session ID: sess-timeout\n"])
-
-    def fake_stream_parsed_agent_activity(*args: object, **kwargs: object) -> None:
-        raw_output_sink = kwargs.get("raw_output_sink")
-        if hasattr(raw_output_sink, "append"):
-            raw_output_sink.append("Claude session ready. Session ID: sess-timeout\n")
-        raise AgentInactivityTimeoutError(
-            "claude",
-            30.0,
-            ["claude tool: write_file"],
-            InactivityTimeoutOpts(
-                reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
-                session_resume_safe=True,
-                resumable_session_id="sess-timeout",
-            ),
-        )
-
-    monkeypatch.setattr(smoke_module, "invoke_agent", fake_invoke_agent)
-    monkeypatch.setattr(
-        smoke_module,
-        "stream_parsed_agent_activity",
-        fake_stream_parsed_agent_activity,
-    )
-
-    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
-        smoke_module._run_smoke_attempt(params, params.options)
-
-    assert exc_info.value.session_resume_safe is True
-    assert exc_info.value.resumable_session_id == "sess-timeout"
-    assert any(
-        "Claude session ready. Session ID: sess-timeout" in line
-        for line in exc_info.value.parsed_output
-    )

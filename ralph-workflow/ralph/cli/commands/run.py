@@ -28,6 +28,7 @@ from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.protocol.env import RALPH_PARALLEL_WORKER_MANIFEST_ENV
 from ralph.onboarding import GETTING_STARTED_DOC, fresh_workspace_next_steps
 from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline.factory import build_default_pipeline_deps
 from ralph.pipeline.parallel.worker_runtime import run_parallel_worker_from_manifest
 from ralph.policy.loader import (
     load_policy as _dir_load_policy,
@@ -425,6 +426,10 @@ def _execute_pipeline(
             kwargs["config_path"] = request.config_path
         if request.cli_overrides is not None and "cli_overrides" in runner_params:
             kwargs["cli_overrides"] = request.cli_overrides
+        if "pipeline_deps" in runner_params:
+            kwargs["pipeline_deps"] = build_default_pipeline_deps(
+                request.config, display_context
+            )
         return run_func(request.config, request.initial_state, **kwargs)
     except KeyboardInterrupt:
         display.emit_warning("\nInterrupted by user")
