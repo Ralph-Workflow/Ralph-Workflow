@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.pipeline import progress
 from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
@@ -101,6 +102,8 @@ class RecoveryController:
         self._policy_bundle = opts.policy_bundle
         self._backoff_attempts: dict[str, int] = opts.backoff_attempts or {}
         self._technical_retry_cap = max(0, opts.technical_retry_cap)
+        self._unavailable_timeouts: dict[str, int] = dict(opts.unavailable_timeouts or {})
+        self._clock: Clock = opts.clock or SystemClock()
 
     @property
     def event_bus(self) -> FailureEventBus:
@@ -220,6 +223,9 @@ class RecoveryController:
             )
 
         # AGENT category: debit budget and handle chain progression
+        if failure.is_unavailable and agent is not None:
+            self._mark_agent_unavailable(phase, agent)
+
         if failure.reset_session:
             logger.warning(
                 "Stale session detected in phase={} (session id invalid): {}",
@@ -258,6 +264,32 @@ class RecoveryController:
             )
 
         return new_state, effects, failure_evt
+
+    def _mark_agent_unavailable(
+        self,
+        phase: str,
+        agent: str,
+        base_backoff_ms: int = 5_000,
+    ) -> int:
+        """Mark an agent as unavailable until the computed backoff expires.
+
+        Uses exponential backoff based on the current attempt count for the
+        phase:agent pair, capped at ``max_backoff_ms``. Returns the computed
+        backoff in milliseconds and stores the expiration timestamp (ms).
+        """
+        key = f"{phase}:{agent}"
+        attempt = self._backoff_attempts.get(key, 0)
+        backoff_ms = compute_backoff_ms(base_backoff_ms, attempt, max_ms=300_000)
+        current_time_ms = int(self._clock.monotonic() * 1000)
+        self._unavailable_timeouts[key] = current_time_ms + backoff_ms
+        return backoff_ms
+
+    def _is_agent_available(self, phase: str, agent: str) -> bool:
+        """Return True when the agent is not currently marked unavailable."""
+        key = f"{phase}:{agent}"
+        unavailable_until_ms = self._unavailable_timeouts.get(key, 0)
+        current_time_ms = int(self._clock.monotonic() * 1000)
+        return current_time_ms >= unavailable_until_ms
 
     def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
         """Increment chain.retries for the given phase without debiting the budget."""
@@ -409,9 +441,20 @@ class RecoveryController:
             if use_budget and current_agent is not None
             else None
         )
-        should_retry_in_chain = current_agent is not None and (
-            (budget_state is not None and not budget_state.exhausted)
-            or (budget_state is None and chain.retries < max_retries)
+        next_available_index = self._next_available_agent_index(chain, phase)
+        current_agent_available = current_agent is None or self._is_agent_available(
+            phase, current_agent
+        )
+        # Retry the current agent when budget allows and either the agent is
+        # available or there is no other agent to fall over to.
+        can_retry_current = current_agent_available or next_available_index is None
+        should_retry_in_chain = (
+            current_agent is not None
+            and can_retry_current
+            and (
+                (budget_state is not None and not budget_state.exhausted)
+                or (budget_state is None and chain.retries < max_retries)
+            )
         )
         if should_retry_in_chain:
             return (
@@ -419,8 +462,8 @@ class RecoveryController:
                 [],
             )
 
-        if chain.current_index + 1 < len(chain.agents):
-            next_agent = chain.agents[chain.current_index + 1]
+        if next_available_index is not None:
+            next_agent = chain.agents[next_available_index]
             from_agent = current_agent or f"agent[{chain.current_index}]"
             fallover_record = _build_fallover_record(
                 phase=phase,
@@ -436,8 +479,11 @@ class RecoveryController:
             )
             self._bus.publish(fallover_evt)
 
+            new_chain = chain
+            for _ in range(next_available_index - chain.current_index):
+                new_chain = new_chain.with_advance()
             new_state = (
-                state.with_phase_chain(phase, chain.with_advance())
+                state.with_phase_chain(phase, new_chain)
                 .copy_with(
                     last_retry_delay_ms=0,
                     last_agent_session_id=None,
@@ -450,6 +496,23 @@ class RecoveryController:
         new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
         failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
         return failed_state, []
+
+    def _next_available_agent_index(
+        self,
+        chain: AgentChainState,
+        phase: str,
+    ) -> int | None:
+        """Return the index of the next available agent after the current one.
+
+        Skips agents that are marked unavailable until their timeout expires.
+        Returns None if no subsequent agent is available.
+        """
+        index = chain.current_index + 1
+        while index < len(chain.agents):
+            if self._is_agent_available(phase, chain.agents[index]):
+                return index
+            index += 1
+        return None
 
     def _get_max_retries_for_chain(self, phase: str) -> int:
         """Get max_retries from policy for the chain used by this phase."""

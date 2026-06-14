@@ -89,6 +89,18 @@ POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS: tuple[str, ...] = (
     "empty response",
 )
 
+# Substrings that indicate an agent is temporarily unavailable (e.g. out of
+# credits). These are matched against the raw failure message.
+UNAVAILABLE_AGENT_SUBSTRINGS: frozenset[str] = frozenset(
+    {
+        "agent produced no output",
+        "no output for",
+        "empty response",
+        "timed out with no output",
+        "no tool calls",
+    }
+)
+
 POST_TOOL_ACTIVITY_MARKERS: tuple[str, ...] = (
     '"type":"tool_result"',
     '"type": "tool_result"',
@@ -266,6 +278,12 @@ def _is_post_tool_empty_response_failure(detail_parts: list[str]) -> bool:
     ) and contains_casefolded_marker(detail_parts, POST_TOOL_ACTIVITY_MARKERS)
 
 
+def _is_unavailable_agent_message(msg: str) -> bool:
+    """Return True when the raw message indicates an unavailable agent."""
+    lower = msg.casefold()
+    return any(marker.casefold() in lower for marker in UNAVAILABLE_AGENT_SUBSTRINGS)
+
+
 def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
     """Return True if the message matches Claude Code documented limit/billing families."""
     return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
@@ -355,6 +373,20 @@ class FailureClassifier:
             category = FailureCategory.AGENT
             counts = True
 
+        is_unavailable = (
+            category == FailureCategory.AGENT
+            and (
+                exc_obj is None
+                or type(exc_obj).__name__ == "AgentInvocationError"
+            )
+            and (
+                _is_unavailable_agent_message(raw_message)
+                or contains_casefolded_marker(
+                    detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+                )
+            )
+        )
+
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
                 "Ambiguous failure classification in phase={} agent={}: "
@@ -374,6 +406,7 @@ class FailureClassifier:
             raw_message=raw_message,
             reset_session=reset_session,
             reset_tool_registry=reset_tool_registry,
+            is_unavailable=is_unavailable,
         )
 
     def _is_tool_availability_failure(

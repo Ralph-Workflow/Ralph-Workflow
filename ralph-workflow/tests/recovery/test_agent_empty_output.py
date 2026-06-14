@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from ralph.agents.invoke._errors import AgentInvocationError
+from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
@@ -180,3 +181,100 @@ def test_online_timeout_with_no_output_debits_budget_in_controller() -> None:
     budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
     assert budget.consumed == 1
+
+
+def test_unavailable_agent_message_classified_with_is_unavailable_flag() -> None:
+    """Messages matching the unavailable-agent pattern set is_unavailable=True."""
+    classifier = FailureClassifier()
+
+    failure = classifier.classify(
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        phase="development",
+        agent="claude",
+    )
+
+    assert failure.category == FailureCategory.AGENT
+    assert failure.is_unavailable is True
+
+    network_failure = classifier.classify(
+        AgentInvocationError("claude", 1, "Connection reset by peer"),
+        phase="development",
+        agent="claude",
+    )
+    assert network_failure.category == FailureCategory.ENVIRONMENTAL
+    assert network_failure.is_unavailable is False
+
+
+def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
+    """An unavailable agent is skipped when selecting the next agent to try."""
+    clock = FakeClock(start=0.0)
+    registry = _make_registry_with_budget("development", "claude", max_retries=2)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            budget_registry=registry,
+            clock=clock,
+            unavailable_timeouts={"development:claude": 60_000},
+        )
+    )
+    state = _make_state(["claude", "opencode"])
+
+    new_state, _, evt = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert evt.category == "agent"
+    assert new_state.chain_for_phase("development").current_index == 1
+    assert new_state.chain_for_phase("development").agents[1] == "opencode"
+    assert controller._unavailable_timeouts["development:claude"] == 5_000
+
+    clock.advance(60)
+    assert controller._is_agent_available("development", "claude") is True
+
+    reset_state = _make_state(["claude", "opencode"])
+    retried_state, _, _ = controller.handle(
+        reset_state,
+        AgentInvocationError("claude", 1, "transient agent error"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert retried_state.chain_for_phase("development").current_index == 0
+
+
+def test_exponential_backoff_increases_across_cycles() -> None:
+    """Backoff increases exponentially with each unavailable mark and caps."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(clock=clock),
+    )
+    phase = "development"
+    agent = "claude"
+    key = f"{phase}:{agent}"
+
+    controller._backoff_attempts[key] = 0
+    backoff_1 = controller._mark_agent_unavailable(phase, agent)
+    assert backoff_1 == 5_000
+    until_1 = controller._unavailable_timeouts[key]
+    assert until_1 == 5_000
+
+    clock.advance(5)
+    controller._backoff_attempts[key] = 1
+    backoff_2 = controller._mark_agent_unavailable(phase, agent)
+    assert backoff_2 == 10_000
+    assert controller._unavailable_timeouts[key] == 15_000
+
+    clock.advance(10)
+    controller._backoff_attempts[key] = 2
+    backoff_3 = controller._mark_agent_unavailable(phase, agent)
+    assert backoff_3 == 20_000
+    assert controller._unavailable_timeouts[key] == 35_000
+
+    controller._backoff_attempts[key] = 10
+    backoff_capped = controller._mark_agent_unavailable(phase, agent)
+    assert backoff_capped == 300_000
+
+    controller.reset_backoff(phase, agent)
+    assert controller._backoff_attempts.get(key) is None
+    backoff_reset = controller._mark_agent_unavailable(phase, agent)
+    assert backoff_reset == 5_000

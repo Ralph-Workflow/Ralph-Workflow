@@ -29,3 +29,7 @@ class ClassifiedFailure:
     # post-tool-result wedge failure mode) or when a runtime
     # `ToolDispatchError` is raised with an "is not registered" message.
     reset_tool_registry: bool = field(default=False)
+    # When True, the agent is considered temporarily unavailable (e.g. out
+    # of credits) and the recovery controller should skip it with exponential
+    # backoff instead of retrying immediately.
+    is_unavailable: bool = field(default=False)
