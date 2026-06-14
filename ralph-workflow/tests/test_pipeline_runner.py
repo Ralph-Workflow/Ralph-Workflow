@@ -7,15 +7,14 @@ no real file I/O.
 from __future__ import annotations
 
 import importlib
+import time
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
+import pytest
 from rich.console import Console
-
-if TYPE_CHECKING:
-    import pytest
 
 from ralph.config.enums import Verbosity
 from ralph.display.context import DisplayContext, make_display_context
@@ -109,6 +108,10 @@ def _build_recovery_controller_mock() -> MagicMock:
         spec=RecoveryController,
         event_bus=MagicMock(subscribe=lambda _cb: lambda: None),
     )
+
+
+def _make_default_state(*_args: object, **_kwargs: object) -> PipelineState:
+    return PipelineState(phase="complete")
 
 
 def _patch_runner_dependencies(
@@ -240,7 +243,7 @@ class TestRunLoopPipelineDeps:
         fake_registry_factory.assert_called_once_with(config)
         from_config_spy.assert_not_called()
 
-    def test_run_with_pro_hooks_and_pipeline_deps_prefers_pro_hooks(
+    def test_run_with_pro_hooks_and_pipeline_deps_prefers_pipeline_deps(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         run_loop_module = _load_run_loop()
@@ -309,9 +312,688 @@ class TestRunLoopPipelineDeps:
         )
 
         assert exit_code == 0
-        pro_registry_factory.assert_called_once_with(config)
-        deps_registry_factory.assert_not_called()
+        deps_registry_factory.assert_called_once_with(config)
+        pro_registry_factory.assert_not_called()
         from_config_spy.assert_not_called()
         pro_policy_factory.assert_not_called()
         deps_policy_factory.assert_not_called()
         load_spy.assert_not_called()
+
+
+def _capture_run_ctx(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    initial_state: PipelineState | None = None,
+    provide_initial_state: bool = True,
+    **run_kwargs: object,
+) -> tuple[object, PipelineState]:
+    """Run ``run_loop.run`` with heavy dependencies stubbed and return (ctx, state)."""
+    run_loop_module = _load_run_loop()
+    runner_module = _load_runner()
+
+    state = initial_state or PipelineState(phase="complete")
+    bundle = _make_fake_bundle()
+
+    monkeypatch.setattr(
+        runner_module,
+        "resolve_workspace_scope",
+        lambda: MagicMock(root=tmp_path, allowed_roots=[tmp_path]),
+    )
+    monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
+    monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
+    monkeypatch.setattr(
+        runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle
+    )
+    monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
+    monkeypatch.setattr(
+        runner_module,
+        "AgentRegistry",
+        MagicMock(from_config=MagicMock(return_value=MagicMock())),
+    )
+    monkeypatch.setattr(runner_module, "create_initial_state", lambda *_a, **_kw: state)
+
+    monkeypatch.setattr(
+        run_loop_module,
+        "_setup_active_display",
+        lambda *_a, **_kw: (
+            ParallelDisplay(
+                workspace_root=Path("/tmp"),
+                display_context=make_display_context(),
+                is_quiet=True,
+            ),
+            make_display_context(),
+            lambda: None,
+        ),
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_build_recovery_controller",
+        lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
+    )
+    # Prevent the legacy heartbeat helper from invoking the watcher a second time.
+    monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", lambda _ws: None)
+
+    captured: list[tuple[PipelineState, object, str]] = []
+
+    def _fake_inner_loop(
+        inner_state: PipelineState, ctx: object, _prev: str
+    ) -> tuple[PipelineState, str, None]:
+        captured.append((inner_state, ctx, _prev))
+        return inner_state, "complete", None
+
+    monkeypatch.setattr(run_loop_module, "_run_inner_loop", _fake_inner_loop)
+
+    config = _build_config(tmp_path)
+    run_args: dict[str, object] = {}
+    if provide_initial_state:
+        run_args["initial_state"] = state
+    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        config,
+        **run_args,
+        **run_kwargs,
+    )
+    assert exit_code == 0
+    assert len(captured) == 1
+    return captured[0][1], captured[0][0]
+
+
+class TestInjectionPrecedence:
+    """Tests verifying injection precedence: pipeline_deps > pro_hooks > defaults."""
+
+    def test_pipeline_deps_registry_wins_over_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        pro_registry = MagicMock()
+        deps_registry = MagicMock()
+        pro_hooks = ProPipelineHooks(registry_factory=MagicMock(return_value=pro_registry))
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            registry_factory=MagicMock(return_value=deps_registry),
+        )
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
+        )
+
+        assert ctx.registry is deps_registry
+        assert not pro_hooks.registry_factory.called
+
+    def test_pro_hooks_registry_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        runner_module = _load_runner()
+        pro_registry = MagicMock()
+        pro_hooks = ProPipelineHooks(registry_factory=MagicMock(return_value=pro_registry))
+
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pro_hooks=pro_hooks)
+
+        assert ctx.registry is pro_registry
+        assert not runner_module.AgentRegistry.from_config.called
+
+    def test_registry_default_used_when_nothing_provided(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        runner_module = _load_runner()
+
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path)
+
+        assert ctx.registry is runner_module.AgentRegistry.from_config.return_value
+        assert runner_module.AgentRegistry.from_config.called
+
+    def test_pipeline_deps_policy_bundle_wins_over_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        deps_bundle = _make_fake_bundle()
+        pro_bundle = _make_fake_bundle()
+        pro_hooks = ProPipelineHooks(
+            policy_bundle_override=pro_bundle,
+            policy_bundle_factory=MagicMock(return_value=pro_bundle),
+        )
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            policy_bundle=deps_bundle,
+        )
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
+        )
+
+        assert ctx.policy_bundle is deps_bundle
+
+    def test_pipeline_deps_policy_bundle_factory_wins_over_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        deps_bundle = _make_fake_bundle()
+        pro_bundle = _make_fake_bundle()
+        deps_factory = MagicMock(return_value=deps_bundle)
+        pro_hooks = ProPipelineHooks(
+            policy_bundle_override=pro_bundle,
+            policy_bundle_factory=MagicMock(return_value=pro_bundle),
+        )
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            policy_bundle_factory=deps_factory,
+        )
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
+        )
+
+        assert ctx.policy_bundle is deps_bundle
+        deps_factory.assert_called_once()
+        assert not pro_hooks.policy_bundle_factory.called
+
+    def test_pro_hooks_policy_bundle_override_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        runner_module = _load_runner()
+        pro_bundle = _make_fake_bundle()
+        pro_hooks = ProPipelineHooks(policy_bundle_override=pro_bundle)
+        load_spy = MagicMock(return_value=_make_fake_bundle())
+        monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", load_spy)
+
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pro_hooks=pro_hooks)
+
+        assert ctx.policy_bundle is pro_bundle
+        load_spy.assert_not_called()
+
+    def test_pro_hooks_policy_bundle_factory_wins_over_kwarg_and_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        runner_module = _load_runner()
+        pro_bundle = _make_fake_bundle()
+        kwarg_bundle = _make_fake_bundle()
+        pro_hooks = ProPipelineHooks(
+            policy_bundle_factory=MagicMock(return_value=pro_bundle)
+        )
+        kwarg_factory = MagicMock(return_value=kwarg_bundle)
+        load_spy = MagicMock(return_value=_make_fake_bundle())
+        monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", load_spy)
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch,
+            tmp_path,
+            pro_hooks=pro_hooks,
+            policy_bundle_factory=kwarg_factory,
+        )
+
+        assert ctx.policy_bundle is pro_bundle
+        pro_hooks.policy_bundle_factory.assert_called_once()
+        kwarg_factory.assert_not_called()
+        load_spy.assert_not_called()
+
+    def test_policy_bundle_kwarg_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        runner_module = _load_runner()
+        kwarg_bundle = _make_fake_bundle()
+        kwarg_factory = MagicMock(return_value=kwarg_bundle)
+        load_spy = MagicMock(return_value=_make_fake_bundle())
+        monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", load_spy)
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, policy_bundle_factory=kwarg_factory
+        )
+
+        assert ctx.policy_bundle is kwarg_bundle
+        load_spy.assert_not_called()
+
+    def test_pipeline_deps_state_factory_wins_over_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        deps_state = PipelineState(phase="complete")
+        pro_state = PipelineState(phase="complete")
+        pro_hooks = ProPipelineHooks(state_factory=MagicMock(return_value=pro_state))
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            state_factory=MagicMock(return_value=deps_state),
+        )
+
+        _, state = _capture_run_ctx(
+            monkeypatch,
+            tmp_path,
+            pipeline_deps=deps,
+            pro_hooks=pro_hooks,
+            provide_initial_state=False,
+        )
+
+        assert state is deps_state
+        assert not pro_hooks.state_factory.called
+
+    def test_pro_hooks_state_factory_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        runner_module = _load_runner()
+        pro_state = PipelineState(phase="complete")
+        pro_hooks = ProPipelineHooks(state_factory=MagicMock(return_value=pro_state))
+        create_spy = MagicMock(return_value=PipelineState(phase="complete"))
+        monkeypatch.setattr(runner_module, "create_initial_state", create_spy)
+
+        _, state = _capture_run_ctx(
+            monkeypatch, tmp_path, pro_hooks=pro_hooks, provide_initial_state=False
+        )
+
+        assert state is pro_state
+        create_spy.assert_not_called()
+
+    def test_state_kwarg_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        runner_module = _load_runner()
+        kwarg_state = PipelineState(phase="complete")
+        kwarg_factory = MagicMock(return_value=kwarg_state)
+        create_spy = MagicMock(return_value=PipelineState(phase="complete"))
+        monkeypatch.setattr(runner_module, "create_initial_state", create_spy)
+
+        _, state = _capture_run_ctx(
+            monkeypatch,
+            tmp_path,
+            state_factory=kwarg_factory,
+            provide_initial_state=False,
+        )
+
+        assert state is kwarg_state
+        create_spy.assert_not_called()
+
+    def test_pipeline_deps_recovery_controller_factory_wins_over_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        run_loop_module = _load_run_loop()
+        runner_module = _load_runner()
+        pro_controller = _build_recovery_controller_mock()
+        deps_controller = _build_recovery_controller_mock()
+        pro_hooks = ProPipelineHooks(
+            recovery_controller_factory=MagicMock(return_value=(pro_controller, 1))
+        )
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            recovery_controller_factory=MagicMock(return_value=(deps_controller, 1)),
+        )
+
+        default_called = False
+
+        def _default_build(_state: object, _pp: object, _cfg: object) -> tuple[object, int]:
+            nonlocal default_called
+            default_called = True
+            return _build_recovery_controller_mock(), 1
+
+        monkeypatch.setattr(run_loop_module, "_build_recovery_controller", _default_build)
+        monkeypatch.setattr(
+            runner_module,
+            "resolve_workspace_scope",
+            lambda: MagicMock(root=tmp_path, allowed_roots=[tmp_path]),
+        )
+        monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
+        monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
+        monkeypatch.setattr(
+            runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: _make_fake_bundle()
+        )
+        monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
+        monkeypatch.setattr(
+            runner_module,
+            "AgentRegistry",
+            MagicMock(from_config=MagicMock(return_value=MagicMock())),
+        )
+        monkeypatch.setattr(
+            runner_module, "create_initial_state", _make_default_state
+        )
+        monkeypatch.setattr(
+            run_loop_module,
+            "_setup_active_display",
+            lambda *_a, **_kw: (
+                ParallelDisplay(
+                    workspace_root=Path("/tmp"),
+                    display_context=make_display_context(),
+                    is_quiet=True,
+                ),
+                make_display_context(),
+                lambda: None,
+            ),
+        )
+
+        captured_ctx: list[object] = []
+
+        def _fake_inner_loop(
+            inner_state: PipelineState, ctx: object, _prev: str
+        ) -> tuple[PipelineState, str, None]:
+            captured_ctx.append(ctx)
+            return inner_state, "complete", None
+
+        monkeypatch.setattr(run_loop_module, "_run_inner_loop", _fake_inner_loop)
+
+        config = _build_config(tmp_path)
+        exit_code = run_loop_module.run(
+            config,
+            pipeline_deps=deps,
+            pro_hooks=pro_hooks,
+        )
+
+        assert exit_code == 0
+        assert len(captured_ctx) == 1
+        assert captured_ctx[0].controller is deps_controller
+        assert not pro_hooks.recovery_controller_factory.called
+        assert not default_called
+
+    def test_pro_hooks_recovery_controller_factory_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        run_loop_module = _load_run_loop()
+        runner_module = _load_runner()
+        pro_controller = _build_recovery_controller_mock()
+        pro_hooks = ProPipelineHooks(
+            recovery_controller_factory=MagicMock(return_value=(pro_controller, 1))
+        )
+
+        default_called = False
+
+        def _default_build(_state: object, _pp: object, _cfg: object) -> tuple[object, int]:
+            nonlocal default_called
+            default_called = True
+            return _build_recovery_controller_mock(), 1
+
+        monkeypatch.setattr(run_loop_module, "_build_recovery_controller", _default_build)
+        monkeypatch.setattr(
+            runner_module,
+            "resolve_workspace_scope",
+            lambda: MagicMock(root=tmp_path, allowed_roots=[tmp_path]),
+        )
+        monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
+        monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
+        monkeypatch.setattr(
+            runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: _make_fake_bundle()
+        )
+        monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
+        monkeypatch.setattr(
+            runner_module,
+            "AgentRegistry",
+            MagicMock(from_config=MagicMock(return_value=MagicMock())),
+        )
+        monkeypatch.setattr(
+            runner_module, "create_initial_state", _make_default_state
+        )
+        monkeypatch.setattr(
+            run_loop_module,
+            "_setup_active_display",
+            lambda *_a, **_kw: (
+                ParallelDisplay(
+                    workspace_root=Path("/tmp"),
+                    display_context=make_display_context(),
+                    is_quiet=True,
+                ),
+                make_display_context(),
+                lambda: None,
+            ),
+        )
+
+        captured_ctx: list[object] = []
+
+        def _fake_inner_loop(
+            inner_state: PipelineState, ctx: object, _prev: str
+        ) -> tuple[PipelineState, str, None]:
+            captured_ctx.append(ctx)
+            return inner_state, "complete", None
+
+        monkeypatch.setattr(run_loop_module, "_run_inner_loop", _fake_inner_loop)
+
+        config = _build_config(tmp_path)
+        exit_code = run_loop_module.run(
+            config,
+            pro_hooks=pro_hooks,
+        )
+
+        assert exit_code == 0
+        assert len(captured_ctx) == 1
+        assert captured_ctx[0].controller is pro_controller
+        assert not default_called
+
+    def test_recovery_controller_kwarg_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        run_loop_module = _load_run_loop()
+        runner_module = _load_runner()
+        kwarg_controller = _build_recovery_controller_mock()
+        kwarg_factory = MagicMock(return_value=(kwarg_controller, 1))
+
+        default_called = False
+
+        def _default_build(_state: object, _pp: object, _cfg: object) -> tuple[object, int]:
+            nonlocal default_called
+            default_called = True
+            return _build_recovery_controller_mock(), 1
+
+        monkeypatch.setattr(run_loop_module, "_build_recovery_controller", _default_build)
+        monkeypatch.setattr(
+            runner_module,
+            "resolve_workspace_scope",
+            lambda: MagicMock(root=tmp_path, allowed_roots=[tmp_path]),
+        )
+        monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
+        monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
+        monkeypatch.setattr(
+            runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: _make_fake_bundle()
+        )
+        monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
+        monkeypatch.setattr(
+            runner_module,
+            "AgentRegistry",
+            MagicMock(from_config=MagicMock(return_value=MagicMock())),
+        )
+        monkeypatch.setattr(
+            runner_module, "create_initial_state", _make_default_state
+        )
+        monkeypatch.setattr(
+            run_loop_module,
+            "_setup_active_display",
+            lambda *_a, **_kw: (
+                ParallelDisplay(
+                    workspace_root=Path("/tmp"),
+                    display_context=make_display_context(),
+                    is_quiet=True,
+                ),
+                make_display_context(),
+                lambda: None,
+            ),
+        )
+
+        captured_ctx: list[object] = []
+
+        def _fake_inner_loop(
+            inner_state: PipelineState, ctx: object, _prev: str
+        ) -> tuple[PipelineState, str, None]:
+            captured_ctx.append(ctx)
+            return inner_state, "complete", None
+
+        monkeypatch.setattr(run_loop_module, "_run_inner_loop", _fake_inner_loop)
+
+        config = _build_config(tmp_path)
+        exit_code = run_loop_module.run(
+            config,
+            recovery_controller_factory=kwarg_factory,
+        )
+
+        assert exit_code == 0
+        assert len(captured_ctx) == 1
+        assert captured_ctx[0].controller is kwarg_controller
+        assert not default_called
+
+    def test_pipeline_deps_marker_watcher_factory_wins_over_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        run_loop_module = _load_run_loop()
+        deps_factory = MagicMock()
+        pro_factory = MagicMock()
+        pro_hooks = ProPipelineHooks(marker_watcher_factory=pro_factory)
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            marker_watcher_factory=deps_factory,
+        )
+
+        captured_factories: list[object] = []
+
+        def _fake_start_watcher(
+            _workspace_root: Path, *, watcher_factory: object = None
+        ) -> tuple[object, object]:
+            captured_factories.append(watcher_factory)
+            return None, None
+
+        monkeypatch.setattr(run_loop_module, "_start_pro_marker_watcher", _fake_start_watcher)
+
+        _ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
+        )
+
+        assert captured_factories == [deps_factory]
+
+    def test_pro_hooks_marker_watcher_factory_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        run_loop_module = _load_run_loop()
+        pro_factory = MagicMock()
+        pro_hooks = ProPipelineHooks(marker_watcher_factory=pro_factory)
+
+        captured_factories: list[object] = []
+
+        def _fake_start_watcher(
+            _workspace_root: Path, *, watcher_factory: object = None
+        ) -> tuple[object, object]:
+            captured_factories.append(watcher_factory)
+            return None, None
+
+        monkeypatch.setattr(run_loop_module, "_start_pro_marker_watcher", _fake_start_watcher)
+
+        _ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pro_hooks=pro_hooks)
+
+        assert captured_factories == [pro_factory]
+
+    def test_marker_watcher_kwarg_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        run_loop_module = _load_run_loop()
+        kwarg_factory = MagicMock()
+
+        captured_factories: list[object] = []
+
+        def _fake_start_watcher(
+            _workspace_root: Path, *, watcher_factory: object = None
+        ) -> tuple[object, object]:
+            captured_factories.append(watcher_factory)
+            return None, None
+
+        monkeypatch.setattr(run_loop_module, "_start_pro_marker_watcher", _fake_start_watcher)
+
+        _ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, marker_watcher_factory=kwarg_factory
+        )
+
+        assert captured_factories == [kwarg_factory]
+
+    def test_pipeline_deps_snapshot_registry_wins_over_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        deps_registry = object()
+        pro_registry = object()
+        pro_hooks = ProPipelineHooks(snapshot_registry=pro_registry)
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            snapshot_registry=deps_registry,
+        )
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
+        )
+
+        assert ctx.snapshot_registry is deps_registry
+
+    def test_pro_hooks_snapshot_registry_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        pro_registry = object()
+        pro_hooks = ProPipelineHooks(snapshot_registry=pro_registry)
+
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pro_hooks=pro_hooks)
+
+        assert ctx.snapshot_registry is pro_registry
+
+    def test_snapshot_registry_kwarg_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        kwarg_registry = object()
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, snapshot_registry=kwarg_registry
+        )
+
+        assert ctx.snapshot_registry is kwarg_registry
+
+    def test_recovery_sleep_kwarg_rejected_with_pipeline_deps(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        deps = PipelineDeps(display_context=_display_context())
+
+        with pytest.raises(ValueError, match="Passing factory kwargs alongside pipeline_deps"):
+            _capture_run_ctx(
+                monkeypatch,
+                tmp_path,
+                pipeline_deps=deps,
+                _recovery_sleep=lambda _seconds: None,
+            )
+
+    def test_recovery_sleep_kwarg_used_without_pipeline_deps(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        def _custom_sleep(_seconds: float) -> None:
+            return None
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, _recovery_sleep=_custom_sleep
+        )
+
+        assert ctx.sleep is _custom_sleep
+
+    def test_recovery_sleep_defaults_to_time_sleep(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path)
+
+        assert ctx.sleep is time.sleep
+
+    @pytest.mark.parametrize(
+        "kwarg_name, kwarg_value",
+        [
+            (
+                "policy_bundle_factory",
+                lambda _ws, _cfg: _make_fake_bundle(),
+            ),
+            ("registry_factory", lambda _cfg: MagicMock()),
+            (
+                "state_factory",
+                lambda _cfg, _agents, _pipeline, _overrides: PipelineState(
+                    phase="complete"
+                ),
+            ),
+            (
+                "recovery_controller_factory",
+                lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
+            ),
+            ("marker_watcher_factory", lambda _path: MagicMock()),
+            ("snapshot_registry", object()),
+            ("_recovery_sleep", lambda _seconds: None),
+        ],
+    )
+    def test_factory_kwarg_rejected_when_pipeline_deps_provided(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        kwarg_name: str,
+        kwarg_value: object,
+    ) -> None:
+        deps = PipelineDeps(display_context=_display_context())
+
+        with pytest.raises(ValueError, match="Passing factory kwargs alongside pipeline_deps"):
+            _capture_run_ctx(
+                monkeypatch,
+                tmp_path,
+                pipeline_deps=deps,
+                **{kwarg_name: kwarg_value},
+            )
