@@ -88,32 +88,42 @@ back to the default. Unknown keys (typos like
 ``ValueError`` at config-load time so the operator sees the bug
 immediately rather than silently dropping the kind.
 
-## Per-kind breakdown in the fire diagnostic
+## Tier-labelled per-channel evidence summary
 
-Every ``NO_OUTPUT_DEADLINE`` fire log now embeds the per-channel
-evidence summary in the loguru ``extra=`` dict, including the
-per-kind ``kind_breakdown`` for the workspace channel:
+Every fire log embeds the per-channel evidence summary in the loguru
+``extra=`` dict. The summary lists all five evidence channels in fixed
+order, labels each with its ``tier`` (``first_party`` or ``side_channel``),
+and shows whether that channel is allowed to defer the verdict
+(``can_defer``). Only strong channels defer: first-party channels
+(``mcp_tool``, ``subagent_output``) and quality-filtered workspace
+changes (``workspace`` with positive source-code weight) set
+``can_defer=true``; stdout, bare subagent liveness, and weak workspace
+changes set ``can_defer=false``.
 
 ```
 extra = {
     "evidence_summary": [
-        {"channel": "stdout",    "last_at": ..., "age_seconds": ..., "counter": ...},
-        {"channel": "mcp_tool",  "last_at": ..., "age_seconds": ..., "counter": ...},
-        {"channel": "subagent",  "last_at": ..., "age_seconds": ..., "counter": ...},
-        {"channel": "workspace", "last_at": ..., "age_seconds": ..., "counter": ...,
-         "kind_breakdown": {"source": 5, "log": 0}},
+        {"channel": "stdout",            "tier": "first_party",   "last_at": ..., "age_seconds": ..., "counter": ..., "can_defer": false},
+        {"channel": "mcp_tool",          "tier": "first_party",   "last_at": ..., "age_seconds": ..., "counter": ..., "can_defer": true},
+        {"channel": "subagent_output",   "tier": "first_party",   "last_at": ..., "age_seconds": ..., "counter": ..., "can_defer": true},
+        {"channel": "subagent_liveness", "tier": "side_channel",  "last_at": ..., "age_seconds": ..., "counter": ..., "can_defer": false, "alive_by": "..."},
+        {"channel": "workspace",         "tier": "side_channel",  "last_at": ..., "age_seconds": ..., "counter": ..., "can_defer": true,
+         "kind_breakdown": {"source": 5, "log": 0, "cache": 0, "artifact": 0, "other": 0}},
     ],
     "active_channel": "none",
+    "activity_evidence_ttl_seconds": 30.0,
     "fire_reason": "no_output_deadline",
 }
 ```
 
 The post-mortem reader can see exactly which kinds were most
-active at the moment of the fire, e.g. ``{source: 5, log: 0}``
+active at the moment of the fire, e.g. ``{"source": 5, "log": 0}``
 indicates that the agent was making source-code changes but
 emitting no stdout (the conservative default policy would still
 defer the verdict on those source changes — this is the expected
-behavior).
+behavior). A bare subagent PID with no observable output appears
+under ``subagent_liveness`` with ``can_defer=false``; it is
+reported but does not reset the idle clock.
 
 ## Migration
 

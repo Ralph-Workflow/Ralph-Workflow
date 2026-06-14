@@ -2,20 +2,18 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: ``auto`` — pytest-xdist auto-detects available CPU cores.
-# On systems with 12+ cores, this reliably keeps tests under the 60s
-# combined budget. On systems with fewer cores or under load, override:
-#   PYTEST_WORKERS=8 make test
+# Default: ``2`` — pinned to a count that keeps the full suite under the
+# 60s combined budget on the current development environment without
+# starving individual tests past the 1s per-test limit. On systems with
+# 12+ fast cores, ``auto`` may be faster; override as needed:
 #   PYTEST_WORKERS=auto make test
-#
-# Minimum recommendation: 8+ physical cores for reliable <60s test
-# suite. If ``auto`` produces >60s results, pin PYTEST_WORKERS to a
-# validated count for your environment (e.g., 12 or 16).
+#   PYTEST_WORKERS=8 make test
 #
 # The 60s combined test budget is ABSOLUTE and IMMUTABLE — enforced
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout
 # is a SECONDARY cap only.
-PYTEST_WORKERS ?= auto
+PYTEST_WORKERS ?= 2
+export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
 # NOTE: PYTEST_SUITE_TIMEOUT_SECONDS is a PER-SUITE timeout only.
 # The combined total test budget (60 s, ABSOLUTE and IMMUTABLE) for
