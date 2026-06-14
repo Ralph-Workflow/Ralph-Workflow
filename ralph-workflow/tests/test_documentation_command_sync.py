@@ -574,3 +574,48 @@ def test_tooling_guide_uses_ini_style_overrides_not_toml() -> None:
         "docs/tooling/python-tooling.md must not show TOML [[overrides]] syntax; "
         "ralph-workflow/mypy.ini uses INI-style [mypy-...] override sections"
     )
+
+
+_CHANGELOG_PATH = REPO_ROOT / "CHANGELOG.md"
+
+
+def test_changelog_does_not_claim_none_disables_activity_evidence_ttl() -> None:
+    """CHANGELOG.md must document ``agent_idle_activity_evidence_ttl_seconds``
+    as disabled only by ``0.0``, not by ``None``.
+
+    The operator-facing config surface (``GeneralConfig``) defines the
+    field as ``float`` with ``ge=0.0``; it does not accept ``None``.
+    """
+    content = _CHANGELOG_PATH.read_text(encoding="utf-8")
+    for match in re.finditer(r"agent_idle_activity_evidence_ttl_seconds", content):
+        start = max(0, match.start() - 200)
+        end = min(len(content), match.end() + 200)
+        context = content[start:end]
+        assert "None" not in context, (
+            "CHANGELOG.md context around agent_idle_activity_evidence_ttl_seconds"
+            " must not claim None disables it; the config surface only accepts"
+            f" float >= 0.0: {context!r}"
+        )
+
+
+def test_changelog_does_not_claim_upstream_proxy_invokes_active_sink() -> None:
+    """CHANGELOG.md must not claim ``UpstreamProxyHandler`` emits the activity sink.
+
+    The single emission point for every ``tools/call`` is
+    ``McpServer._handle_tools_call``; the proxy is a pure pass-through and
+    must not invoke ``invoke_active_sink`` itself.
+    """
+    content = _CHANGELOG_PATH.read_text(encoding="utf-8")
+    assert "invoke_active_sink(self._alias)" not in content, (
+        "CHANGELOG.md must not claim UpstreamProxyHandler invokes the activity sink;"
+        " McpServer._handle_tools_call is the single emission point"
+    )
+
+
+def test_changelog_does_not_reference_missing_architecture_doc() -> None:
+    """CHANGELOG.md must not point at a non-existent architecture doc path."""
+    content = _CHANGELOG_PATH.read_text(encoding="utf-8")
+    assert "docs/architecture/logging-and-observability.md" not in content, (
+        "CHANGELOG.md references docs/architecture/logging-and-observability.md,"
+        " which does not exist; remove or correct the stale pointer"
+    )

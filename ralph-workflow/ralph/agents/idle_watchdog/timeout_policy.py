@@ -158,8 +158,10 @@ class TimeoutPolicy:
     # checked BEFORE this deferral, so they remain absolute. Setting this
     # to 0.0 disables the activity-aware verdict and restores the
     # legacy stdout-only NO_OUTPUT_DEADLINE behavior. Must be >= 0 when
-    # set. The operator-facing config surface only accepts a non-negative
-    # float; use 0.0 (not None) to disable.
+    # set. The operator-facing config surface exposes this as a
+    # non-negative float (0.0 disables). TimeoutPolicy also accepts None
+    # internally for test callers and layered defaults; None is treated the
+    # same as 0.0 (disabled).
     activity_evidence_ttl_seconds: float | None = AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS
     # Per-kind workspace file-change weights. Each value is BINARY:
     # weight==0.0 means the change is dropped (does not defer the
