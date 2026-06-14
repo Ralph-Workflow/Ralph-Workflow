@@ -327,6 +327,92 @@ class TestProHooksComposition:
         assert deps.policy_bundle is None
         assert deps.registry_factory is None
 
+    def test_display_context_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        override_ctx = _display_context()
+        hooks = ProPipelineHooks(display_context=override_ctx)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.display_context is override_ctx
+
+    def test_model_identity_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+        hooks = ProPipelineHooks(model_identity=model_identity)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.model_identity is model_identity
+
+    def test_system_prompt_materializer_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        fake_materializer = MagicMock(return_value="fake-system-prompt.md")
+        hooks = ProPipelineHooks(system_prompt_materializer=fake_materializer)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.system_prompt_materializer is fake_materializer
+
+    def test_phase_prompt_materializer_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        fake_materializer = MagicMock(return_value="fake-phase-prompt.md")
+        hooks = ProPipelineHooks(phase_prompt_materializer=fake_materializer)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.phase_prompt_materializer is fake_materializer
+
+    def test_artifact_requirements_resolver_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        fake_resolver = MagicMock(return_value=None)
+        hooks = ProPipelineHooks(artifact_requirements_resolver=fake_resolver)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.artifact_requirements_resolver is fake_resolver
+
+    def test_all_collaborator_overrides_applied_together(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        override_ctx = _display_context()
+        model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+        fake_system_materializer = MagicMock(return_value="fake-system-prompt.md")
+        fake_phase_materializer = MagicMock(return_value="fake-phase-prompt.md")
+        fake_resolver = MagicMock(return_value=None)
+        hooks = ProPipelineHooks(
+            display_context=override_ctx,
+            model_identity=model_identity,
+            system_prompt_materializer=fake_system_materializer,
+            phase_prompt_materializer=fake_phase_materializer,
+            artifact_requirements_resolver=fake_resolver,
+        )
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.display_context is override_ctx
+        assert deps.model_identity is model_identity
+        assert deps.system_prompt_materializer is fake_system_materializer
+        assert deps.phase_prompt_materializer is fake_phase_materializer
+        assert deps.artifact_requirements_resolver is fake_resolver
+
 
 class TestPipelineSharedExecutionCore:
     """Regression tests proving PipelineDeps drives the shared execution core."""
@@ -370,6 +456,70 @@ class TestPipelineSharedExecutionCore:
         assert event == PipelineEvent.AGENT_SUCCESS
         assert len(factory.calls) == 1
         assert factory.calls[0]["drain"] == "development"
+
+    def test_execute_agent_effect_uses_pipeline_deps_artifact_requirements_resolver(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        display_context = _display_context()
+        config = UnifiedConfig(
+            agents={"dev": AgentConfig(cmd="opencode", output_flag="--json-stream")}
+        )
+        effect = InvokeAgentEffect(
+            agent_name="dev", phase="planning", prompt_file="plan.md", drain="planning"
+        )
+        bundle = _make_fake_bundle()
+        resolver_calls: list[dict[str, object]] = []
+
+        def recording_resolver(
+            pipeline_policy: object,
+            artifacts_policy: object,
+            *,
+            phase: str,
+            drain: str | None = None,
+        ) -> object:
+            resolver_calls.append(
+                {
+                    "pipeline_policy": pipeline_policy,
+                    "artifacts_policy": artifacts_policy,
+                    "phase": phase,
+                    "drain": drain,
+                }
+            )
+            return None
+
+        deps = make_test_pipeline_deps(
+            display_context=display_context,
+            artifact_requirements_resolver=recording_resolver,
+            policy_bundle=bundle,
+        )
+
+        def fake_invoke_agent(
+            _agent_config: AgentConfig,
+            _prompt_file: str,
+            *,
+            options: object = None,
+        ) -> list[str]:
+            del _agent_config, _prompt_file, options
+            return []
+
+        event = execute_agent_effect(
+            effect,
+            config,
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=display_context,
+            policy_bundle=bundle,
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=RuntimeError,
+        )
+
+        assert event == PipelineEvent.AGENT_SUCCESS
+        assert len(resolver_calls) == 1
+        assert resolver_calls[0]["phase"] == "planning"
+        assert resolver_calls[0]["drain"] == "planning"
+        assert resolver_calls[0]["pipeline_policy"] is bundle.pipeline
+        assert resolver_calls[0]["artifacts_policy"] is bundle.artifacts
 
 
 class TestPipelineFactoryProtocol:

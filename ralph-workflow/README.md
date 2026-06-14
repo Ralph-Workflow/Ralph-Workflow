@@ -327,10 +327,27 @@ primary collaborators:
 The main pipeline (`ralph.pipeline.runner`) and plumbing commands
 (`--generate-commit`, smoke test) both build a `PipelineDeps` via
 `build_default_pipeline_deps` and execute agents through
-`execute_agent_effect`. Pro can inject custom implementations of any
-of these collaborators through `ProPipelineHooks`, and
-`build_default_pipeline_deps` applies those overrides without changing
-the shared execution core.
+`execute_agent_effect`. `display_context`, `model_identity`,
+`system_prompt_materializer`, and `artifact_requirements_resolver` are
+consumed inside `execute_agent_effect`; the main pipeline additionally
+routes `phase_prompt_materializer` through
+`materialize_agent_prompt_if_needed` before each agent invocation so
+phase prompts are materialized by the same injected collaborator.
+
+Pro can inject custom implementations of any of these collaborators
+through `ProPipelineHooks`, and `build_default_pipeline_deps` applies
+those overrides to the returned `PipelineDeps` without changing the
+shared execution core. Existing tests exercise this contract:
+
+- `tests/test_pipeline_factory.py` proves the four collaborators live
+  in `PipelineDeps`, that `execute_agent_effect` consumes
+  `artifact_requirements_resolver`, and that `ProPipelineHooks` can
+  override each collaborator.
+- `tests/integration/test_plumbing_shared_deps.py` proves plumbing
+  commands receive and forward the same `PipelineDeps` bundle to the
+  shared execution core.
+- `tests/test_run_loop_pro_integration.py` proves `PipelineDeps`
+  composed with `ProPipelineHooks` reaches the inner pipeline loop.
 
 - Engine-side contract page: [`docs/sphinx/pro-support.md`](docs/sphinx/pro-support.md).
 - Engine-side engine-capability traceability: [`docs/agents/pro-contract.md`](docs/agents/pro-contract.md).

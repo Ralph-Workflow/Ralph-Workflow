@@ -261,6 +261,22 @@ def apply_pro_hooks_to_deps(
         deps = dataclasses.replace(deps, marker_watcher_factory=pro_hooks.marker_watcher_factory)
     if pro_hooks.snapshot_registry is not None:
         deps = dataclasses.replace(deps, snapshot_registry=pro_hooks.snapshot_registry)
+    if pro_hooks.display_context is not None:
+        deps = dataclasses.replace(deps, display_context=pro_hooks.display_context)
+    if pro_hooks.model_identity is not None:
+        deps = dataclasses.replace(deps, model_identity=pro_hooks.model_identity)
+    if pro_hooks.system_prompt_materializer is not None:
+        deps = dataclasses.replace(
+            deps, system_prompt_materializer=pro_hooks.system_prompt_materializer
+        )
+    if pro_hooks.phase_prompt_materializer is not None:
+        deps = dataclasses.replace(
+            deps, phase_prompt_materializer=pro_hooks.phase_prompt_materializer
+        )
+    if pro_hooks.artifact_requirements_resolver is not None:
+        deps = dataclasses.replace(
+            deps, artifact_requirements_resolver=pro_hooks.artifact_requirements_resolver
+        )
     return deps
 
 
