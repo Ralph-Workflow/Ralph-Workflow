@@ -10,6 +10,7 @@ or subprocess is started.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock, patch
@@ -24,7 +25,10 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.plumbing import commit_plumbing as commit_plumbing_module
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
+from ralph.pipeline.work_unit import WorkUnit
 from ralph.policy.models import AgentsPolicy
+from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+from ralph.workspace.memory import MemoryWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -73,6 +77,33 @@ def _fake_commit_prompt_for_opencode(
     return "commit prompt"
 
 
+def _exercise_fake_executor_seam(agent_name: str) -> None:
+    """Run a seeded ``FakeAgentExecutor`` to prove the fake agent boundary
+    is available in a plumbing integration test.
+    """
+    unit = WorkUnit(
+        unit_id=agent_name,
+        description="plumbing integration work",
+        allowed_directories=["tmp"],
+    )
+    executor = FakeAgentExecutor(
+        runs={
+            agent_name: FakeRun(
+                outputs=["fake agent output"],
+                exit_code=0,
+                duration_ms=1,
+            )
+        }
+    )
+    asyncio.run(
+        executor.run(
+            unit,
+            on_output=lambda _line: None,
+            on_status=lambda _status: None,
+        )
+    )
+
+
 def test_commit_plumbing_uses_shared_pipeline_deps_path(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -107,8 +138,9 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
         workspace_scope: object,
         **kwargs: object,
     ) -> PipelineEvent:
-        del effect, workspace_scope, kwargs
+        del workspace_scope, kwargs
         captured_execute_calls.append({"config": config, "pipeline_deps": pipeline_deps})
+        _exercise_fake_executor_seam("commit-agent")
         return PipelineEvent.AGENT_SUCCESS
 
     monkeypatch.setattr(
@@ -176,15 +208,26 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
     mock_read.assert_called_once_with(workspace_root)
 
 
+class _FakeOutputPath(Path):
+    """Path stand-in that avoids real filesystem I/O for the smoke output file."""
+
+    def exists(self) -> bool:
+        return True
+
+    def unlink(self, missing_ok: bool = False) -> None:
+        del missing_ok
+
+
 def test_smoke_plumbing_uses_shared_pipeline_deps_path(
     monkeypatch: MonkeyPatch,
-    tmp_path: Path,
 ) -> None:
     """``run_smoke_plumbing`` creates the bridge through the injected
     ``PipelineDeps.bridge_factory`` and forwards the same bundle to
     ``execute_agent_effect``.
     """
-    workspace_root = tmp_path
+    workspace = MemoryWorkspace()
+    workspace.write("PROMPT.md", "smoke prompt")
+    workspace_root = Path("/workspace")
     display_context = _fake_display_context()
     bridge = MagicMock()
     bridge_calls: list[dict[str, object]] = []
@@ -221,8 +264,9 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
         workspace_scope: object,
         **kwargs: object,
     ) -> PipelineEvent:
-        del effect, workspace_scope, kwargs
+        del workspace_scope, kwargs
         captured_execute_calls.append({"config": config, "pipeline_deps": pipeline_deps})
+        _exercise_fake_executor_seam("claude-haiku")
         return PipelineEvent.AGENT_SUCCESS
 
     def fake_read_smoke_result(_root: Path) -> dict[str, str]:
@@ -235,11 +279,6 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
         smoke_plumbing_module,
         "AgentRegistry",
         _make_fake_smoke_registry(),
-    )
-    monkeypatch.setattr(
-        smoke_plumbing_module,
-        "invoke_agent",
-        _fake_smoke_invoke_agent,
     )
     monkeypatch.setattr(
         smoke_plumbing_module,
@@ -256,16 +295,21 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
         "resolve_workspace_scope",
         fake_resolve_workspace_scope,
     )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "_clear_smoke_artifact",
+        lambda _root: None,
+    )
 
-    output_file = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    output_file = _FakeOutputPath(
+        "/workspace/tmp/interactive-claude-smoke/todo-list.js"
+    )
 
     result = smoke_plumbing_module.run_smoke_plumbing(
         config=UnifiedConfig(),
         workspace_root=workspace_root,
         agent_name="claude/haiku",
-        prompt_file=Path("PROMPT.md"),
+        prompt_file=Path(workspace.absolute_path("PROMPT.md")),
         output_file=output_file,
         display_context=display_context,
         pipeline_deps=shared_deps,
@@ -300,24 +344,3 @@ def _make_fake_smoke_registry() -> object:
             return None
 
     return FakeRegistry
-
-
-def _fake_smoke_invoke_agent(
-    _config: AgentConfig,
-    _prompt_file: str,
-    *,
-    options: object = None,
-) -> object:
-    del options
-    return iter(
-        [
-            '{"type":"assistant","message":{"type":"message","content":'
-            '[{"type":"text","text":"I am creating the todo list now."}]}}\n',
-            '{"type":"assistant","message":{"type":"message","content":'
-            '[{"type":"text","text":"The file has been written successfully."}]}}\n',
-            "Claude session ready. Session ID: interactive-smoke-session\n",
-            "claude tool: write_file\n",
-            "Task declared complete: session_id=interactive-smoke-session, "
-            "summary=done, timestamp=1\n",
-        ]
-    )

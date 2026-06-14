@@ -7,19 +7,24 @@ collaborators without real subprocess, network, or wall-clock delays.
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline.factory import PipelineDeps, build_default_pipeline_deps
+from ralph.pipeline.work_unit import WorkUnit
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import PipelineStateSnapshot, SnapshotRegistry
+from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.memory import MemoryWorkspace
 
 if TYPE_CHECKING:
+    from ralph.agents.executor import WorkerResult
     from ralph.display.context import DisplayContext
 
 
@@ -282,3 +287,62 @@ def test_pipeline_deps_fake_registry_factory_return_value() -> None:
     assert isinstance(registry, FakeRegistry)
     assert registry.get("fake-agent") is agent_config
     assert registry.get("missing") is None
+
+
+def test_pipeline_deps_fake_agent_executor_seam() -> None:
+    """``PipelineDeps`` composes with ``FakeAgentExecutor`` to replay agent
+    output into a ``MemoryWorkspace`` without subprocesses or real I/O.
+
+    This exercises the required fake executor seam end-to-end: the registry
+    factory resolves an agent config, and a seeded ``FakeAgentExecutor``
+    drives the agent boundary deterministically.
+    """
+    workspace = MemoryWorkspace()
+    agent_config = AgentConfig(
+        cmd="fake-agent",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.GENERIC,
+    )
+
+    class FakeRegistry:
+        def get(self, name: str) -> AgentConfig | None:
+            return agent_config if name == "fake-agent" else None
+
+    deps = PipelineDeps(
+        display_context=_fake_display_context(),
+        registry_factory=lambda _config: FakeRegistry(),
+        system_prompt_materializer=MagicMock(return_value=".agent/system.md"),
+        phase_prompt_materializer=MagicMock(return_value=".agent/phase.md"),
+        bridge_factory=MagicMock(),
+    )
+
+    registry = deps.registry_factory(UnifiedConfig())
+    resolved = registry.get("fake-agent")
+    assert resolved is agent_config
+
+    unit = WorkUnit(
+        unit_id="fake-agent",
+        description="fake agent work",
+        allowed_directories=["tmp"],
+    )
+    executor = FakeAgentExecutor(
+        runs={
+            "fake-agent": FakeRun(
+                outputs=["line one", "line two"],
+                exit_code=0,
+                duration_ms=1,
+            )
+        }
+    )
+
+    async def _run() -> WorkerResult:
+        return await executor.run(
+            unit,
+            on_output=lambda line: workspace.append("output.txt", f"{line}\n"),
+            on_status=lambda _status: None,
+        )
+
+    result = asyncio.run(_run())
+    assert result.exit_code == 0
+    assert executor.calls == [unit]
+    assert workspace.read("output.txt") == "line one\nline two\n"
