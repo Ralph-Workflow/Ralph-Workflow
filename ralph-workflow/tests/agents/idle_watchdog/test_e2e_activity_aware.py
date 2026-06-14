@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import psutil
 import pytest
 
 from ralph.agents.execution_state import AgentExecutionState
@@ -29,6 +30,7 @@ from ralph.agents.idle_watchdog._evidence_tier import (
     EvidenceTier,
 )
 from ralph.agents.timeout_clock import FakeClock
+from ralph.process.child_liveness import ChildLivenessRegistry, ChildLivenessSubagentPidSource
 from ralph.process.monitor import (
     ClaudeCodeSubagentOutputDiscovery,
     DefaultProcessMonitor,
@@ -159,18 +161,20 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
 def test_process_monitor_discovers_and_classifies_subagent() -> None:
-    """AC-06/AC-10: DefaultProcessMonitor classifies a live descendant subagent.
+    """AC-06/AC-10/AC-11: DefaultProcessMonitor classifies a live descendant subagent.
 
-    The built-in default classifier is documentation-grounded and conservative;
-    it does not promote descendants based on broad command-line tokens. This
-    test injects an explicit role classifier so the monitor can recognise the
-    spawned child as a subagent for the purpose of the end-to-end assertion.
+    The built-in command-line classifier is documentation-grounded and
+    conservative; it does not promote descendants based on broad command-line
+    tokens. OpenCode subagents are instead identified via the shipped
+    ``ChildLivenessSubagentPidSource`` backed by the
+    ``ChildLivenessRegistry`` (first-party evidence from structured child
+    lifecycle events on stdout). This test uses that shipped source to
+    classify the spawned child as a subagent without injecting a substitute
+    lambda classifier.
     """
-    child_marker = "subagent = True"
-    child_cmd = f"{child_marker!r} + '; import time; time.sleep(600)'"
     host_script = (
         "import subprocess, sys, time; "
-        f"subprocess.Popen([sys.executable, '-c', {child_cmd}], "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'], "
         "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
         "time.sleep(600)"
     )
@@ -181,18 +185,29 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
     )
     time.sleep(0.3)
     try:
+        host_proc = psutil.Process(host.pid)
+        children = host_proc.children(recursive=False)
+        assert len(children) >= 1
+        child_pid = children[0].pid
+
+        registry = ChildLivenessRegistry(
+            progress_ttl=60.0,
+            heartbeat_ttl=60.0,
+            stale_label_ttl=60.0,
+            exit_reconcile=5.0,
+        )
+        registry.register_child("child-A", "agent:test-scope:", pid=child_pid)
+        pid_source = ChildLivenessSubagentPidSource(registry, "agent:test-scope:")
+
         monitor = DefaultProcessMonitor(
             host.pid,
-            role_classifier=lambda _pid, cmdline: (
-                ProcessRole.SPAWNED_SUBAGENT
-                if cmdline and child_marker in " ".join(cmdline)
-                else ProcessRole.INCIDENTAL_HELPER
-            ),
+            subagent_pid_source=pid_source,
         )
         assert monitor.live_subagent_count() == 1
         processes = monitor.classified_processes()
-        assert any(p.role.value == "spawned_subagent" for p in processes)
-        assert any(p.role.value == "host" and p.pid == host.pid for p in processes)
+        roles = {p.pid: p.role for p in processes}
+        assert roles[host.pid] == ProcessRole.HOST
+        assert roles[child_pid] == ProcessRole.SPAWNED_SUBAGENT
     finally:
         DefaultProcessTeardown(kill_escalation_ms=300.0).teardown_subtree(host.pid)
 

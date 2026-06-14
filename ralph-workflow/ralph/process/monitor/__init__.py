@@ -26,6 +26,7 @@ from ._opencode_discovery import OpencodeSubagentOutputDiscovery
 from ._process_monitor import ClassifiedProcess, ProcessMonitor, ProcessRole
 from ._role_classifier import RoleClassifier, role_classifier_for_transport
 from ._subagent_output_capture import FileSubagentOutputCapture, SubagentOutputCapture
+from ._subagent_pid_source import SubagentPidSource
 
 __all__ = [
     "ClassifiedProcess",
@@ -38,5 +39,6 @@ __all__ = [
     "ProcessRole",
     "RoleClassifier",
     "SubagentOutputCapture",
+    "SubagentPidSource",
     "role_classifier_for_transport",
 ]

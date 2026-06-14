@@ -40,41 +40,6 @@ if TYPE_CHECKING:
         def monotonic(self) -> float: ...
 
 
-def _format_evidence_summary_line(entry: ChannelEvidenceSummary) -> str:
-    """Render a single ChannelEvidenceSummary as a compact diagnostic line."""
-    parts: list[str] = []
-    parts.append(f"{entry.channel_name.value} ({entry.tier.value})")
-    if entry.age_seconds is None:
-        parts.append("never")
-    else:
-        parts.append(f"{round(entry.age_seconds, 1)}s ago")
-    counter = entry.counter
-    if counter is not None:
-        label = (
-            "calls"
-            if entry.channel_name == ChannelName.MCP_TOOL
-            else "children"
-            if entry.channel_name == ChannelName.SUBAGENT_LIVENESS
-            else "lines"
-            if entry.channel_name == ChannelName.SUBAGENT_OUTPUT
-            else "events"
-        )
-        parts.append(f"{counter} {label}")
-    if entry.can_defer:
-        freshness = "fresh" if entry.is_fresh(entry.age_seconds) else "stale"
-        parts.append(freshness)
-    else:
-        qualifier = "deferral not allowed"
-        if entry.alive_by is not None:
-            qualifier = f"{entry.alive_by.value}, {qualifier}"
-        parts.append(qualifier)
-    if entry.kind_breakdown is not None:
-        parts.append(
-            "weights " + ",".join(f"{k}={v}" for k, v in entry.kind_breakdown.items())
-        )
-    return ": ".join(parts)
-
-
 @dataclass
 class IdleWatchdog:
     """Tracks agent idle time and decides when to fire the timeout.

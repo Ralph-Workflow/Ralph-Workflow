@@ -6,9 +6,11 @@ import subprocess
 import sys
 import time
 
+import psutil
 import pytest
 
 from ralph.config.enums import AgentTransport
+from ralph.process.child_liveness import ChildLivenessRegistry, ChildLivenessSubagentPidSource
 from ralph.process.monitor import (
     DefaultProcessMonitor,
     ProcessRole,
@@ -178,3 +180,60 @@ def test_role_classifier_for_unknown_transport_is_conservative() -> None:
     """An unknown transport falls back to the conservative classifier."""
     classifier = role_classifier_for_transport(object())
     assert classifier(123, ["worker", "subagent"]) == ProcessRole.INCIDENTAL_HELPER
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
+def test_default_monitor_classifies_subagent_via_child_liveness_registry() -> None:
+    """AC-06/AC-10/AC-11: shipped OpenCode PID source classifies real descendants.
+
+    OpenCode emits structured child lifecycle events on stdout that carry the
+    child PID. ``ChildLivenessSubagentPidSource`` exposes those registered PIDs
+    to ``DefaultProcessMonitor`` so a real descendant process is classified as
+    ``SPAWNED_SUBAGENT`` without injecting a substitute lambda classifier.
+    """
+    host_script = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)']); "
+        "time.sleep(600)"
+    )
+    host = subprocess.Popen(
+        [sys.executable, "-c", host_script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    time.sleep(0.3)
+
+    try:
+        # Find the real child PID spawned by host_script.
+        host_proc = psutil.Process(host.pid)
+        children = host_proc.children(recursive=False)
+        assert len(children) >= 1, "host should have spawned at least one child"
+        child_pid = children[0].pid
+
+        registry = ChildLivenessRegistry(
+            progress_ttl=60.0,
+            heartbeat_ttl=60.0,
+            stale_label_ttl=60.0,
+            exit_reconcile=5.0,
+        )
+        # Register the spawned child as a known OpenCode subagent.
+        registry.register_child("child-A", "agent:test-scope:", pid=child_pid)
+        pid_source = ChildLivenessSubagentPidSource(registry, "agent:test-scope:")
+
+        monitor = DefaultProcessMonitor(
+            host.pid,
+            subagent_pid_source=pid_source,
+            poll_interval_seconds=0.0,
+        )
+        assert monitor.live_subagent_count() == 1
+        processes = monitor.classified_processes()
+        roles = {p.pid: p.role for p in processes}
+        assert roles[host.pid] == ProcessRole.HOST
+        assert roles[child_pid] == ProcessRole.SPAWNED_SUBAGENT
+    finally:
+        host.terminate()
+        try:
+            host.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            host.kill()
+            host.wait(timeout=1.0)

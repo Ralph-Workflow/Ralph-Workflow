@@ -15,6 +15,7 @@ from ralph.process.monitor import (
     DefaultProcessMonitor,
     DiscoveryStrategy,
     OpencodeSubagentOutputDiscovery,
+    SubagentPidSource,
     role_classifier_for_transport,
 )
 
@@ -43,6 +44,7 @@ def _make_process_monitor(
     handle: ManagedProcess | ManagedPtyProcess,
     config: AgentConfig,
     policy: TimeoutPolicy,
+    subagent_pid_source: SubagentPidSource | None = None,
 ) -> DefaultProcessMonitor | None:
     """Construct a DefaultProcessMonitor when the policy enables it."""
     if not policy.process_monitor_enabled:
@@ -52,6 +54,7 @@ def _make_process_monitor(
         handle.pid,
         role_classifier=role_classifier_for_transport(config.transport),
         discovery_strategy=discovery,
+        subagent_pid_source=subagent_pid_source,
         poll_interval_seconds=policy.subagent_output_poll_interval_seconds,
     )
 

@@ -7,6 +7,13 @@ module is grounded in the official documentation for its agent CLI. When the
 documented surface does not expose a stable subagent-identification signal, the
 classifier degrades conservatively and treats all descendants as
 ``INCIDENTAL_HELPER`` rather than guessing.
+
+For OpenCode, spawned subagents are identified separately via the injected
+``SubagentPidSource`` (backed by the ``ChildLivenessRegistry``) because OpenCode
+emits structured child lifecycle events on stdout that carry the child PID.
+That first-party evidence is used before the command-line classifier is
+consulted. The command-line classifiers in this module therefore remain
+conservative for every transport.
 """
 
 from __future__ import annotations
@@ -50,18 +57,19 @@ def _claude_code_role_classifier(_pid: int, _cmdline: list[str] | None) -> Proce
 
 
 def _opencode_role_classifier(_pid: int, _cmdline: list[str] | None) -> ProcessRole:
-    """OpenCode role classifier.
+    """OpenCode command-line role classifier.
 
     OpenCode uses ``.opencode/`` as its data directory and documents its tools,
     permission service, and shell configuration (Context7
     ``/opencode-ai/opencode``, accessed 2026-06-14). The modular architecture
-    (``internal/app``, ``internal/session``, etc.) does not expose a stable
-    per-subagent command-line signature or documented process-tree convention
-    that Ralph can observe from outside the process.
+    does not expose a stable per-subagent command-line signature or documented
+    process-tree convention that Ralph can observe from outside the process.
 
-    Because the classification must be grounded in documented behavior
-    (AC-11), this classifier degrades conservatively: every descendant of the
-    host is treated as ``INCIDENTAL_HELPER``.
+    OpenCode subagents are instead identified via the injected
+    ``SubagentPidSource`` backed by the ``ChildLivenessRegistry``, which uses
+    the structured child lifecycle events OpenCode emits on stdout. This
+    command-line classifier therefore degrades conservatively to
+    ``INCIDENTAL_HELPER``.
     """
     return ProcessRole.INCIDENTAL_HELPER
 

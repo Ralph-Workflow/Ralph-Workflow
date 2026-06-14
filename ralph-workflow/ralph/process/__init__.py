@@ -10,6 +10,7 @@ from ralph.process.child_liveness import (
     ChildActivitySnapshot,
     ChildLivenessRecord,
     ChildLivenessRegistry,
+    ChildLivenessSubagentPidSource,
 )
 from ralph.process.manager import (
     ManagedAsyncProcess,
@@ -37,6 +38,7 @@ __all__ = [
     "ChildActivitySnapshot",
     "ChildLivenessRecord",
     "ChildLivenessRegistry",
+    "ChildLivenessSubagentPidSource",
     "DefaultProcessTeardown",
     "ManagedAsyncProcess",
     "ManagedProcess",

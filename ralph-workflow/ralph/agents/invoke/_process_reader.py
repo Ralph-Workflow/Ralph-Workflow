@@ -44,7 +44,12 @@ from ralph.mcp.server._activity_sink import (
     set_active_sink,
     set_subagent_sink,
 )
-from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
+from ralph.process.child_liveness import (
+    AliveBy,
+    ChildLivenessRegistry,
+    ChildLivenessSubagentPidSource,
+    classify_child_snapshot,
+)
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedProcess,
@@ -58,7 +63,7 @@ from ralph.process.teardown import teardown_subtree
 from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.config.models import AgentConfig
@@ -117,6 +122,28 @@ class _ProcessLineReader:
             and event.new_status in _TERMINAL_PROCESS_STATUSES
         ):
             self._terminal_counter[0] += 1
+
+    def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
+        """Build a PID source from the strategy's child-liveness registry, if any.
+
+        OpenCode emits structured child lifecycle events on stdout. The
+        strategy ingests those events into a ``ChildLivenessRegistry`` whose
+        records include the child PID. Returning those PIDs as a
+        ``SubagentPidSource`` lets ``DefaultProcessMonitor`` classify real
+        spawned subagents as ``SPAWNED_SUBAGENT`` instead of guessing from
+        the command line.
+        """
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
+        )
+        if registry is None:
+            return None
+        active_prefix_fn = cast(
+            "Callable[[], str | None] | None",
+            getattr(self._strategy, "_active_label_prefix", None),
+        )
+        prefix = active_prefix_fn() if active_prefix_fn is not None else ""
+        return ChildLivenessSubagentPidSource(registry, prefix or "")
 
     def _on_waiting_event(self, evt: WaitingStatusEvent) -> None:
         if evt.kind == WaitingStatusKind.HARD_STOP:
@@ -304,7 +331,10 @@ class _ProcessLineReader:
     def read_lines(self) -> Iterator[str]:
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
-        process_monitor = _make_process_monitor(self._handle, self._config, self._policy)
+        subagent_pid_source = self._build_subagent_pid_source()
+        process_monitor = _make_process_monitor(
+            self._handle, self._config, self._policy, subagent_pid_source
+        )
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 
+import psutil
 import pytest
 
 from ralph.process.teardown import DefaultProcessTeardown
@@ -15,27 +16,53 @@ pytestmark = pytest.mark.subprocess_e2e
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
 def test_teardown_subtree_reaps_nested_children() -> None:
-    """DefaultProcessTeardown kills the host and all descendants."""
-    # Spawn a top-level shell that creates a grandchild sleep process and then
-    # waits. The grandchild is in the same process group as the host so the
-    # teardown walk reaches it.
-    script = "import os, time; time.sleep(600)"
+    """DefaultProcessTeardown kills the host and all descendants transitively."""
+    # Spawn a host that spawns a child; the child spawns a grandchild. All three
+    # processes must be reaped by teardown_subtree.
+    grandchild_script = "import time; time.sleep(600)"
+    child_script = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {grandchild_script!r}], "
+        "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+        "time.sleep(600)"
+    )
+    host_script = (
+        "import subprocess, sys, time; "
+        f"subprocess.Popen([sys.executable, '-c', {child_script!r}], "
+        "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+        "time.sleep(600)"
+    )
     host = subprocess.Popen(
-        [sys.executable, "-c", script],
+        [sys.executable, "-c", host_script],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.2)
+    time.sleep(0.4)
     assert host.poll() is None
 
-    teardown = DefaultProcessTeardown(kill_escalation_ms=200.0)
+    # Verify both child and grandchild exist before teardown.
+    host_proc = psutil.Process(host.pid)
+    children = host_proc.children(recursive=True)
+    assert len(children) >= 2, f"expected nested descendants, got {len(children)}"
+    child_pids = {p.pid for p in children}
+
+    teardown = DefaultProcessTeardown(kill_escalation_ms=500.0)
     teardown.teardown_subtree(host.pid)
 
-    for _ in range(20):
+    for _ in range(40):
         if host.poll() is not None:
             break
         time.sleep(0.05)
     assert host.poll() is not None
+
+    # Confirm no descendants survived.
+    gone: set[int] = set()
+    for pid in child_pids:
+        try:
+            psutil.Process(pid)
+        except psutil.NoSuchProcess:
+            gone.add(pid)
+    assert gone == child_pids, f"some descendants survived teardown: {child_pids - gone}"
 
 
 def test_teardown_subtree_missing_process_is_noop() -> None:

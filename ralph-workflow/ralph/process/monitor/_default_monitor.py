@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from ._discovery_strategy import DiscoveryStrategy
     from ._subagent_output_capture import SubagentOutputCapture
+    from ._subagent_pid_source import SubagentPidSource
 
 
 
@@ -50,6 +51,12 @@ class DefaultProcessMonitor(ProcessMonitor):
         discovery_strategy: Optional ``DiscoveryStrategy`` used to locate
             observable subagent output streams. When omitted, the channel is
             unavailable and ``discover_subagent_outputs`` returns an empty map.
+        subagent_pid_source: Optional ``SubagentPidSource`` that returns the
+            set of PIDs known to be spawned subagents. When a descendant PID
+            is in this set, it is classified as ``SPAWNED_SUBAGENT`` before
+            the ``role_classifier`` is consulted. This lets transports such as
+            OpenCode identify subagents from first-party stdout evidence
+            (the ``ChildLivenessRegistry``) rather than command-line guessing.
         now: Callable returning the current monotonic time.
         poll_interval_seconds: Minimum seconds between process-tree rescans.
     """
@@ -60,12 +67,14 @@ class DefaultProcessMonitor(ProcessMonitor):
         *,
         role_classifier: Callable[[int, list[str] | None], ProcessRole] | None = None,
         discovery_strategy: DiscoveryStrategy | None = None,
+        subagent_pid_source: SubagentPidSource | None = None,
         now: Callable[[], float] | None = None,
         poll_interval_seconds: float = SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     ) -> None:
         self._host_pid = host_pid
         self._role_classifier = role_classifier or _conservative_role_classifier
         self._discovery_strategy = discovery_strategy
+        self._subagent_pid_source = subagent_pid_source
         self._now = now or time.monotonic
         self._poll_interval_seconds = poll_interval_seconds
         self._last_refresh_at: float = 0.0
@@ -101,11 +110,23 @@ class DefaultProcessMonitor(ProcessMonitor):
         except psutil.Error:
             descendants = []
 
+        known_subagent_pids: set[int] = set()
+        if self._subagent_pid_source is not None:
+            try:
+                known_subagent_pids = self._subagent_pid_source.known_subagent_pids()
+            except Exception:
+                # Discovery source failure must not crash the monitor; fall
+                # back to role-classifier-only classification.
+                known_subagent_pids = set()
+
         for proc in descendants:
             try:
                 pid = proc.pid
                 cmdline = proc.cmdline()
-                role = self._role_classifier(pid, cmdline)
+                if pid in known_subagent_pids:
+                    role = ProcessRole.SPAWNED_SUBAGENT
+                else:
+                    role = self._role_classifier(pid, cmdline)
                 classified.append(_ClassifiedProcess(pid=pid, role=role, cmdline=cmdline))
             except (psutil.Error, OSError):
                 # Process vanished between listing and inspection; skip it.

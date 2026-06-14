@@ -37,6 +37,41 @@ __all__ = [
 ]
 
 
+class ChildLivenessSubagentPidSource:
+    """Subagent PID source backed by a ChildLivenessRegistry.
+
+    OpenCode emits structured child lifecycle events (``child_started``,
+    ``child_progress``, ``child_heartbeat``, ``child_complete``) on its
+    stdout stream. Those events carry the child PID and are ingested by
+    ``OpenCodeExecutionStrategy`` into a per-invocation
+    ``ChildLivenessRegistry``. Because the registry is first-party
+    evidence produced by the agent's own output, using it to identify
+    spawned subagent PIDs is documentation-grounded for OpenCode and
+    avoids broad command-line heuristics.
+
+    The source is injected into ``DefaultProcessMonitor`` so the monitor
+    can promote known subagent PIDs to ``ProcessRole.SPAWNED_SUBAGENT``
+    while remaining transport-agnostic in structure.
+
+    Args:
+        registry: The ``ChildLivenessRegistry`` that owns scoped child records.
+        scope_prefix: Scope prefix used to narrow records to the current
+            invocation. For OpenCode this is typically ``agent:{label_scope}:``.
+    """
+
+    def __init__(
+        self,
+        registry: ChildLivenessRegistry,
+        scope_prefix: str = "",
+    ) -> None:
+        self._registry = registry
+        self._scope_prefix = scope_prefix
+
+    def known_subagent_pids(self) -> set[int]:
+        """Return active subagent PIDs from the registry."""
+        return self._registry.active_pids(self._scope_prefix)
+
+
 def classify_child_snapshot(
     snapshot: ChildActivitySnapshot,
     *,
@@ -245,6 +280,24 @@ class ChildLivenessRegistry:
             active_count=active_count,
             terminal_count=terminal_count,
         )
+
+    def active_pids(self, scope_prefix: str) -> set[int]:
+        """Return non-terminal PIDs of children matching ``scope_prefix``.
+
+        Prunes stale records first so returned PIDs correspond to children
+        whose evidence has not yet aged out of the registry.
+        """
+        t = self._now()
+        self.prune_stale(t)
+        pids: set[int] = set()
+        for rec in self._records.values():
+            if not rec.scope_prefix.startswith(scope_prefix):
+                continue
+            if rec.terminal_state is not None:
+                continue
+            if rec.pid is not None:
+                pids.add(rec.pid)
+        return pids
 
     def prune_stale(self, now: float | None = None) -> int:
         """Remove records whose evidence is fully stale.

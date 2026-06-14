@@ -36,19 +36,31 @@ guessing a path or format.
 
 ## Role classification
 
-The same documentation-grounded rule applies to process-tree role
-classification (host / spawned subagent / incidental helper). Each
-transport's role classifier in `_role_classifier.py` cites the same
-official sources. Because none of the supported agent CLIs document a
-stable external signal for identifying spawned subagents by command
-line, process name, or environment variable, every classifier degrades
-conservatively: descendants are classified as `INCIDENTAL_HELPER`
-unless the caller injects a transport-specific, documented classifier.
+Process-tree role classification (host / spawned subagent /
+incidental helper) has two independent mechanisms:
+
+1. **Subagent PID discovery via `SubagentPidSource`.** OpenCode emits
+   structured child lifecycle events on stdout (e.g. `child_started`
+   with a `pid` field). `OpenCodeExecutionStrategy` ingests those
+   events into a per-invocation `ChildLivenessRegistry`, and
+   `ChildLivenessSubagentPidSource` exposes the registered PIDs to
+   `DefaultProcessMonitor`. A descendant PID that is present in the
+   source is classified as `SPAWNED_SUBAGENT`. This is first-party
+   evidence from the agent's own output stream.
+
+2. **Command-line role classifiers in `_role_classifier.py`.** Each
+   transport's classifier cites official documentation. Because none
+   of the supported agent CLIs document a stable external signal for
+   identifying spawned subagents by command line, process name, or
+   environment variable, every command-line classifier degrades
+   conservatively to `INCIDENTAL_HELPER`. The PID source takes
+   precedence when it is available.
 
 ## Fallback policy
 
 If documented behavior for an agent cannot be established, the
 corresponding discovery strategy reports the channel as unavailable
-rather than guessing a path or format, and the role classifier treats
-all descendants as incidental helpers rather than guessing a
-subagent-identifying token.
+rather than guessing a path or format, and the command-line role
+classifier treats all descendants as incidental helpers rather than
+guessing a subagent-identifying token. OpenCode subagent PIDs are
+identified through the stdout-backed registry described above.

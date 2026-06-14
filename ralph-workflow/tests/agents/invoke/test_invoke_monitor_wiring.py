@@ -12,6 +12,7 @@ from ralph.agents.invoke._invoke_options import InvokeOptions
 from ralph.agents.invoke._types import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
+from ralph.process.child_liveness import ChildLivenessSubagentPidSource
 from ralph.process.monitor import (
     ClaudeCodeSubagentOutputDiscovery,
     DefaultProcessMonitor,
@@ -170,11 +171,12 @@ def test_invoke_role_classifier_is_conservative_for_transport(
     tmp_path: Path,
     transport: AgentTransport,
 ) -> None:
-    """AC-06/AC-10/AC-11: injected classifier is documentation-grounded and conservative.
+    """AC-06/AC-10/AC-11: command-line classifier is documentation-grounded and conservative.
 
     No supported transport documents a stable external subagent-identification
-    signal, so the classifier must not promote descendants to SPAWNED_SUBAGENT
-    based on broad command-line tokens.
+    command-line signal. The command-line classifier must therefore not promote
+    descendants to SPAWNED_SUBAGENT based on broad tokens. OpenCode subagents
+    are identified separately via the injected SubagentPidSource.
     """
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
@@ -281,6 +283,38 @@ def test_invoke_disabling_only_output_capture_keeps_process_monitor(
     assert monitor._discovery_strategy is None
 
 
+def test_invoke_wires_subagent_pid_source_for_opencode(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """AC-06/AC-09/AC-10/AC-11: OpenCode invocation wires a SubagentPidSource.
+
+    The source is backed by the ChildLivenessRegistry so real OpenCode child
+    lifecycle events (which carry PIDs) can identify spawned subagents.
+    """
+    captured: dict[str, object] = {}
+    _capture_idle_watchdog_args(monkeypatch, captured)
+    _patch_resolve_invocation_runtime(monkeypatch)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._build_command",
+        _noop_command,
+    )
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("test prompt", encoding="utf-8")
+    config = AgentConfig(
+        cmd="opencode",
+        transport=AgentTransport.OPENCODE,
+    )
+
+    list(invoke_agent(config, str(prompt_file)))
+
+    monitor = captured.get("process_monitor")
+    assert isinstance(monitor, DefaultProcessMonitor)
+    pid_source = monitor._subagent_pid_source
+    assert isinstance(pid_source, ChildLivenessSubagentPidSource)
+
+
 def test_invoke_poll_interval_reaches_process_monitor(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -352,7 +386,7 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
     )
     monkeypatch.setattr(
         "ralph.agents.invoke._process_reader._make_process_monitor",
-        lambda _handle, _config, _policy: _FreshProcessMonitor(),
+        lambda _handle, _config, _policy, _pid_source=None: _FreshProcessMonitor(),
     )
 
     prompt_file = tmp_path / "PROMPT.md"
