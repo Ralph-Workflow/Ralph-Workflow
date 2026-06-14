@@ -50,10 +50,12 @@ def test_diagnose_renders_agent_path_column(
 
     runner.invoke(app, ["--init", "default"], catch_exceptions=False)
 
-    # Force GC to flush any deferred file-buffer cleanup from shutil.copy2
-    # that Python 3.14's stricter ResourceWarning would otherwise surface
-    # under xdist process recycling.
-    gc.collect()
+    # Force a young-generation GC to flush any deferred file-buffer cleanup
+    # from shutil.copy2 that Python 3.14's stricter ResourceWarning would
+    # otherwise surface under xdist process recycling. A full collection is
+    # unnecessarily expensive under heavy parallel load and can exceed the
+    # test timeout; generation-0 is sufficient for freshly closed buffers.
+    gc.collect(0)
 
     result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
 
@@ -270,7 +272,7 @@ def test_diagnose_next_steps_panel_rendered_in_cli(
     monkeypatch.chdir(tmp_path)
 
     runner.invoke(app, ["--init", "default"], catch_exceptions=False)
-    gc.collect()
+    gc.collect(0)
 
     result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
 

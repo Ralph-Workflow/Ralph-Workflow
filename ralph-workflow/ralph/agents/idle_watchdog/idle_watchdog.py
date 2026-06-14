@@ -766,7 +766,7 @@ class IdleWatchdog:
                 # Cumulative ceiling path; the activity channel does NOT
                 # defer this branch (CHILDREN_PERSIST_TOO_LONG is absolute
                 # and must fire regardless of non-stdout activity).
-                verdict = self._handle_waiting_branch(now)
+                verdict = self._handle_waiting_branch(now, classify_quiet)
             elif self._channel_evidence_active(now):
                 # Activity channel defers the ACTIVE-branch fire
                 # (NO_OUTPUT_DEADLINE) but not the cumulative ceiling.
@@ -855,7 +855,7 @@ class IdleWatchdog:
                 "idle watchdog: drain window abandoned"
                 " (children reappeared), switching to WAITING_ON_CHILD"
             )
-            return self._handle_waiting_branch(now)
+            return self._handle_waiting_branch(now, classify_quiet)
 
         drain_elapsed = now - self._drain_started_at
         if drain_elapsed < self._config.drain_window_seconds:
@@ -909,7 +909,11 @@ class IdleWatchdog:
 
         return self._config.max_waiting_on_child_seconds
 
-    def _handle_waiting_branch(self, now: float) -> WatchdogVerdict:
+    def _handle_waiting_branch(
+        self,
+        now: float,
+        classify_quiet: Callable[[], AgentExecutionState],
+    ) -> WatchdogVerdict:
         """Handle the WAITING_ON_CHILD deferral branch.
 
         Accumulates time within the current run WITHOUT mutating the cumulative
@@ -923,6 +927,11 @@ class IdleWatchdog:
         When max_waiting_on_child_no_progress_seconds is set and corroboration shows
         non-progress evidence (heartbeat-only, stale-label, or OS-descendant-only),
         the shorter no-progress ceiling is used instead of the full ceiling.
+
+        The execution strategy is re-consulted on every tick so that a run
+        that entered WAITING_ON_CHILD while a child was demonstrably active
+        transitions back to the normal idle path as soon as the child evidence
+        goes stale, rather than lingering until the larger cumulative ceiling.
         """
         idle_elapsed = now - self._last_activity
         if self._waiting_on_child_started_at is None:
@@ -945,6 +954,22 @@ class IdleWatchdog:
 
         current_run_elapsed = now - self._waiting_on_child_started_at
         candidate_total = self._cumulative_waiting_on_child_seconds + current_run_elapsed
+
+        # Re-consult the execution strategy: if the child evidence is no
+        # longer fresh, transition out of WAITING_ON_CHILD and let the
+        # normal idle path (or activity-channel deferral) decide. This
+        # prevents a stale/dead child from stretching the wait until the
+        # cumulative ceiling.
+        try:
+            current_quiet_state = classify_quiet()
+        except Exception:
+            current_quiet_state = AgentExecutionState.WAITING_ON_CHILD
+        if current_quiet_state != AgentExecutionState.WAITING_ON_CHILD:
+            self._accumulate_waiting_run(now)
+            if self._channel_evidence_active(now):
+                return self._handle_evidence_deferral(now, idle_elapsed)
+            return self._handle_active_branch(now)
+
         current_corr = self._safe_corroborate()
         effective_ceiling = self._effective_waiting_ceiling(current_corr)
 

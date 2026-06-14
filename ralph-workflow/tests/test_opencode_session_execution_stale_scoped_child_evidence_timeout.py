@@ -6,6 +6,7 @@ no real psutil. Verifies five acceptance scenarios and two edge cases.
 
 from __future__ import annotations
 
+import json
 from typing import cast
 
 from ralph.agents.completion_signals import CompletionSignals
@@ -285,6 +286,51 @@ class TestStaleScopedChildEvidenceTimeout:
 
         assert state == AgentExecutionState.WAITING_ON_CHILD, (
             f"Fresh child in exit path must still return WAITING_ON_CHILD, not {state!r}."
+        )
+
+    def test_classify_quiet_stale_registry_after_pruning_with_raw_descendants_returns_active(
+        self,
+    ) -> None:
+        """Stale scoped records pruned before classify_quiet still yield ACTIVE.
+
+        Regression: the corroborator calls registry.snapshot() which prunes
+        stale records. A subsequent classify_quiet() must not fall back to
+        raw OS descendants just because has_records() now returns False.
+        """
+        t = [0.0]
+        registry = ChildLivenessRegistry(
+            progress_ttl=30.0,
+            heartbeat_ttl=30.0,
+            stale_label_ttl=60.0,
+            exit_reconcile=5.0,
+            now=lambda: t[0],
+        )
+
+        strategy = OpenCodeExecutionStrategy(label_scope="test", registry=registry)
+
+        # Observe fresh child signals first (real read-loop sequence).
+        strategy.observe_line(json.dumps({"type": "child_started", "child_id": "child-x"}))
+        strategy.observe_line(
+            json.dumps({"type": "child_progress", "child_id": "child-x", "phase": "running"})
+        )
+
+        # Advance time so evidence becomes stale; snapshot() prunes records.
+        t[0] = 1000.0
+        registry.snapshot("agent:test:")
+        assert not registry.has_records("agent:test:")
+
+        class _OldStyleProbe:
+            def any_agent_active(self, label_prefix: str) -> bool:
+                return False
+
+        probe = cast("FakeLivenessProbe", _OldStyleProbe())
+        handle = _FakeHandle(has_descendants=True)
+
+        state = strategy.classify_quiet(handle, probe)
+
+        assert state == AgentExecutionState.ACTIVE, (
+            f"Stale scoped records pruned before classify_quiet must still yield ACTIVE, "
+            f"not {state!r}. Raw descendants must not override previously-stale scoped evidence."
         )
 
     def test_evidence_precedence_no_scoped_evidence_with_raw_descendants_returns_waiting(

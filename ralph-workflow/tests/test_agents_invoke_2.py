@@ -17,6 +17,10 @@ from ralph.agents.invoke import (
     invoke_agent,
     provider_allowed_mcp_tool_names,
 )
+from ralph.agents.invoke._workspace_change_classifier import (
+    WorkspaceChangeClassifier,
+    WorkspaceChangeKind,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
@@ -938,6 +942,98 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
         UpstreamMcpServer(name="angular-cli", transport="stdio", command="workspace-cmd"),
     )
+
+
+def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Workspace evidence collection starts even when progress UI is disabled.
+
+    Regression for the activity-aware idle watchdog: a quiet unattended run
+    can be doing real file work without wanting progress output. The
+    workspace monitor must start whenever a workspace_path is provided,
+    regardless of show_progress.
+    """
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    captured_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    def _spy_start_workspace_monitor(
+        workspace_path: Path | None,
+        classifier: object | None = None,
+    ) -> None:
+        captured_calls.append(((workspace_path,), {"classifier": classifier}))
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._start_workspace_monitor",
+        _spy_start_workspace_monitor,
+    )
+
+    class FakeProcess:
+        pid: int = 12345
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def __init__(self) -> None:
+            self.stdout = iter(
+                ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
+            )
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
+            return False
+
+        def wait(self, timeout: float | None = None) -> int:
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: FakeProcess(),
+    )
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+            _clock=FakeClock(),
+        )
+    )
+
+    assert len(captured_calls) == 1, (
+        f"expected one _start_workspace_monitor call, got {captured_calls}"
+    )
+    args, kwargs = captured_calls[0]
+    assert args[0] == tmp_path, (
+        f"workspace_path must be passed even with show_progress=False, got {args[0]}"
+    )
+    classifier = kwargs.get("classifier")
+    assert isinstance(classifier, WorkspaceChangeClassifier), (
+        f"expected a WorkspaceChangeClassifier for direct invoke callers, got {classifier!r}"
+    )
+    # Direct callers must receive the conservative default weights, not the
+    # legacy OTHER/1.0 fallback. Source changes count as activity; log churn
+    # does not.
+    assert classifier.classify("src/app.py") == (WorkspaceChangeKind.SOURCE, 1.0)
+    assert classifier.classify("build/output.log") == (WorkspaceChangeKind.LOG, 0.0)
 
 
 def test_claude_mode_rejects_duplicate_ralph_server_name(

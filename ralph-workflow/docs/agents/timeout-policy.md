@@ -7,6 +7,20 @@ The workspace channel (file changes detected by
 into one of five ``WorkspaceChangeKind`` values and weighted
 BINARILY (``0.0`` = drop, ``1.0`` = full activity).
 
+Workspace evidence collection runs whenever a run has a
+``workspace_path``, regardless of whether the progress UI
+(``show_progress``) is enabled. A quiet unattended run that is doing
+real file work is therefore not falsely killed as idle.
+
+"Activity" means **demonstrated work**, not mere existence. An
+OpenCode subagent process that is alive but has produced no output,
+no tool calls, and no file changes for the configured idle window is
+**not** evidence of progress. Once scoped Ralph child evidence goes
+stale, the run falls back to the normal idle timeout instead of
+lingering under the larger cumulative waiting-on-child ceiling. Raw
+OS descendants alone defer the verdict only when Ralph never had
+scoped visibility into the child in the first place.
+
 > **Behavior change for existing operators** — the default policy
 > is conservative: only source-code changes count as activity.
 > If you previously relied on log-file activity to defer the

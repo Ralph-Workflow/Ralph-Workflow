@@ -88,7 +88,10 @@ from ralph.agents.invoke._types import (
     _PtyExtras,
 )
 from ralph.agents.invoke._workspace import WorkspaceMonitor
-from ralph.agents.invoke._workspace_change_classifier import WorkspaceChangeClassifier
+from ralph.agents.invoke._workspace_change_classifier import (
+    WorkspaceChangeClassifier,
+    _normalize_workspace_change_weights,
+)
 from ralph.api.opencode import validate_local_model_support
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
@@ -294,9 +297,11 @@ def invoke_agent(
     )
     liveness_probe = DefaultLivenessProbe(registry=registry)
     monitor = _start_workspace_monitor(
-        opts.workspace_path if opts.show_progress else None,
-        classifier=WorkspaceChangeClassifier(weights=dict(opts.workspace_change_weights))
-        if opts.workspace_change_weights is not None
+        opts.workspace_path,
+        classifier=WorkspaceChangeClassifier(
+            weights=_normalize_workspace_change_weights(opts.workspace_change_weights)
+        )
+        if opts.workspace_path is not None
         else None,
     )
     policy = _policy_from_options(opts)
