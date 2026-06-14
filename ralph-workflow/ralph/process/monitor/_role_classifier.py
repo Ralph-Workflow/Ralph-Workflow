@@ -110,15 +110,21 @@ def _nanocoder_role_classifier(_pid: int, _cmdline: list[str] | None) -> Process
 
 
 def _agy_role_classifier(_pid: int, _cmdline: list[str] | None) -> ProcessRole:
-    """AGY role classifier.
+    """AGY (Google Antigravity CLI) role classifier.
 
-    AGY (Google Anti Gravity) does not document a stable command-line,
-    process-name, or environment-variable signal for identifying spawned
-    subagents from an external observer. Without a documented signal, the
-    classifier degrades conservatively.
+    Antigravity CLI supports asynchronous subagents and background tasks
+    (https://antigravity.google/docs/cli-subagents, accessed 2026-06-14). The
+    documentation describes an interactive ``/agents`` panel and a ``/tasks``
+    command for managing background work inside the terminal UI, but does not
+    document a stable command-line token, process-name prefix, or environment
+    variable that an external observer can use to identify spawned subagent
+    processes on the OS process tree. The GitHub repository
+    ``google-gemini/gemini-cli`` does not document such a signal either.
 
     Because the classification must be grounded in documented behavior
-    (AC-11), every descendant of the host is treated as ``INCIDENTAL_HELPER``.
+    (AC-11) and no documented external signal exists, this classifier degrades
+    conservatively: every descendant of the host is treated as
+    ``INCIDENTAL_HELPER``.
     """
     return ProcessRole.INCIDENTAL_HELPER
 

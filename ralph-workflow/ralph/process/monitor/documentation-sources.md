@@ -56,6 +56,21 @@ incidental helper) has two independent mechanisms:
    conservatively to `INCIDENTAL_HELPER`. The PID source takes
    precedence when it is available.
 
+## AGY (Google Antigravity CLI)
+
+- Public documentation: https://antigravity.google/docs/cli-subagents
+  (accessed 2026-06-14).
+- GitHub repository: https://github.com/google-gemini/gemini-cli
+  (accessed 2026-06-14).
+
+Antigravity CLI supports asynchronous subagents and background tasks
+managed through an interactive ``/agents`` panel and a ``/tasks``
+command. The official documentation does not describe a stable
+command-line token, process-name prefix, or environment variable that
+an external observer can use to identify spawned subagent processes on
+the OS process tree. The command-line role classifier therefore
+degrades conservatively to ``INCIDENTAL_HELPER``.
+
 ## Fallback policy
 
 If documented behavior for an agent cannot be established, the
