@@ -35,6 +35,7 @@ from ralph.policy.models import (
     PolicyBundle,
     RecoveryPolicy,
 )
+from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.recovery.controller import RecoveryController
 
 if TYPE_CHECKING:
@@ -238,3 +239,79 @@ class TestRunLoopPipelineDeps:
         assert exit_code == 0
         fake_registry_factory.assert_called_once_with(config)
         from_config_spy.assert_not_called()
+
+    def test_run_with_pro_hooks_and_pipeline_deps_prefers_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        run_loop_module = _load_run_loop()
+        runner_module = _load_runner()
+        monkeypatch.setattr(
+            run_loop_module,
+            "_setup_active_display",
+            lambda *_a, **_kw: (
+                ParallelDisplay(
+                    workspace_root=Path("/tmp"),
+                    display_context=make_display_context(),
+                    is_quiet=True,
+                ),
+                make_display_context(),
+                lambda: None,
+            ),
+        )
+        monkeypatch.setattr(
+            run_loop_module,
+            "_run_inner_loop",
+            lambda _state, _ctx, _prev: (state, "complete", None),
+        )
+        monkeypatch.setattr(
+            run_loop_module,
+            "_build_recovery_controller",
+            lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
+        )
+
+        state = PipelineState(phase="complete")
+        bundle = _make_fake_bundle()
+        _patch_runner_dependencies(monkeypatch, tmp_path, state, bundle)
+
+        pro_registry = MagicMock()
+        pro_registry_factory = MagicMock(return_value=pro_registry)
+        deps_registry = MagicMock()
+        deps_registry_factory = MagicMock(return_value=deps_registry)
+
+        pro_bundle = _make_fake_bundle()
+        deps_bundle = _make_fake_bundle()
+        pro_policy_factory = MagicMock(return_value=pro_bundle)
+        deps_policy_factory = MagicMock(return_value=deps_bundle)
+        load_spy = MagicMock(return_value=bundle)
+        monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", load_spy)
+
+        pro_hooks = ProPipelineHooks(
+            policy_bundle_override=pro_bundle,
+            policy_bundle_factory=pro_policy_factory,
+            registry_factory=pro_registry_factory,
+        )
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            policy_bundle=deps_bundle,
+            policy_bundle_factory=deps_policy_factory,
+            registry_factory=deps_registry_factory,
+        )
+
+        config = _build_config(tmp_path)
+        from_config_spy = runner_module.AgentRegistry.from_config
+        from_config_spy.reset_mock()
+
+        exit_code = cast("Callable[..., int]", run_loop_module.run)(
+            config,
+            initial_state=state,
+            pro_hooks=pro_hooks,
+            pipeline_deps=deps,
+        )
+
+        assert exit_code == 0
+        pro_registry_factory.assert_called_once_with(config)
+        deps_registry_factory.assert_not_called()
+        from_config_spy.assert_not_called()
+        pro_policy_factory.assert_not_called()
+        deps_policy_factory.assert_not_called()
+        load_spy.assert_not_called()
