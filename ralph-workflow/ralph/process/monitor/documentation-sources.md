@@ -71,6 +71,36 @@ an external observer can use to identify spawned subagent processes on
 the OS process tree. The command-line role classifier therefore
 degrades conservatively to ``INCIDENTAL_HELPER``.
 
+## Codex CLI
+
+- Repository and documentation: https://github.com/openai/codex
+  (accessed 2026-06-14).
+- Context7 index: ``/openai/codex``, accessed 2026-06-14.
+
+Codex CLI exposes experimental process-management RPCs such as
+``process/spawn`` in its app/exec server surfaces. These are server
+APIs, not a documented CLI convention for identifying spawned subagent
+processes by their command line or process tree from an external
+observer. No official Codex CLI documentation documents a stable
+subagent-identification signal visible to Ralph. The discovery strategy
+therefore reports the channel as unavailable, and the command-line role
+classifier degrades conservatively to ``INCIDENTAL_HELPER``.
+
+## Nanocoder
+
+- Repository and documentation: https://github.com/nano-collective/nanocoder
+  (accessed 2026-06-14).
+- Context7 index: ``/nano-collective/nanocoder``, accessed 2026-06-14.
+
+Nanocoder supports subagents, skills, and a per-project daemon. The
+documented CLI surface exposes ``nanocoder daemon`` commands for
+managing the daemon and ``DEBUG=nanocoder:*`` for verbose logging, but
+does not document a stable per-subagent command-line token or
+process-tree signal that Ralph can observe from outside the process.
+The discovery strategy therefore reports the channel as unavailable,
+and the command-line role classifier degrades conservatively to
+``INCIDENTAL_HELPER``.
+
 ## Fallback policy
 
 If documented behavior for an agent cannot be established, the
