@@ -31,15 +31,17 @@ from ralph.mcp.artifacts.smoke_test_result import (
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.factory import build_default_pipeline_deps
+from ralph.pipeline.factory import PipelineCore, PipelineDeps, build_default_pipeline_deps
+from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
+from ralph.pipeline.session_bridge import build_session_bridge
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
-    from ralph.pipeline.factory import PipelineDeps
+    from ralph.pipeline.session_bridge import BridgeFactory
 
 _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
 _SMOKE_OUTPUT_FILE = _SMOKE_RELATIVE_DIR / "todo-list.js"
@@ -344,20 +346,43 @@ def run_smoke_plumbing(
     prompt_file: Path,
     output_file: Path,
     display_context: DisplayContext | None = None,
+    pipeline_core: PipelineCore | None = None,
+    bridge_factory: BridgeFactory | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> SmokeRunResult:
     """Run the interactive-Claude smoke test and return the observed result.
 
-    ``pipeline_deps`` carries injectable collaborators. When omitted,
-    production defaults are used and the bridge is constructed with the
-    same session planning path as the main pipeline.
+    Callers may supply either the modular ``pipeline_core`` + ``bridge_factory``
+    surface or the legacy extended ``pipeline_deps`` bundle. When
+    ``pipeline_deps`` is provided it is used for backward compatibility and
+    its ``core`` and ``bridge_factory`` are derived automatically. When both
+    are omitted, production defaults are used and the bridge is constructed
+    with the same session planning path as the main pipeline.
     """
-    if pipeline_deps is None:
+    if pipeline_deps is not None:
         if display_context is None:
-            raise ValueError("display_context is required when pipeline_deps is not provided")
-        pipeline_deps = build_default_pipeline_deps(config, display_context)
-    elif display_context is None:
-        display_context = pipeline_deps.display_context
+            display_context = pipeline_deps.display_context
+        effective_pipeline_deps = pipeline_deps
+        effective_core = pipeline_deps.core
+        effective_bridge_factory = pipeline_deps.bridge_factory
+    elif pipeline_core is not None:
+        if display_context is None:
+            display_context = pipeline_core.display_context
+        effective_bridge_factory = bridge_factory or build_session_bridge
+        effective_pipeline_deps = PipelineDeps(
+            core=pipeline_core,
+            bridge_factory=effective_bridge_factory,
+        )
+        effective_core = pipeline_core
+    else:
+        if display_context is None:
+            raise ValueError(
+                "display_context is required when pipeline_deps and pipeline_core are not provided"
+            )
+        effective_pipeline_deps = build_default_pipeline_deps(config, display_context)
+        display_context = effective_pipeline_deps.display_context
+        effective_core = effective_pipeline_deps.core
+        effective_bridge_factory = effective_pipeline_deps.bridge_factory
 
     registry = AgentRegistry.from_config(config)
     agent_config = registry.get(agent_name)
@@ -366,15 +391,13 @@ def run_smoke_plumbing(
             f"Smoke test agent '{agent_name}' is unavailable in the registry"
         )
 
-    bridge = pipeline_deps.bridge_factory(
-        workspace_root=workspace_root,
+    with with_bridge_lifetime(
+        effective_core,
+        effective_bridge_factory,
+        repo_root=workspace_root,
         drain="development",
-        agents_policy=None,
         session_id_prefix="smoke",
-        model_identity=pipeline_deps.model_identity,
-    )
-
-    try:
+    ) as bridge:
         if output_file.exists():
             output_file.unlink()
         _clear_smoke_artifact(workspace_root)
@@ -399,12 +422,10 @@ def run_smoke_plumbing(
                     options=InvokeOptions(),
                     display_context=display_context,
                     bridge=bridge,
-                    pipeline_deps=pipeline_deps,
+                    pipeline_deps=effective_pipeline_deps,
                 )
             )
         ]
-    finally:
-        bridge.shutdown()
 
     return results[0]
 

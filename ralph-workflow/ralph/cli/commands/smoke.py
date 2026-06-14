@@ -21,7 +21,7 @@ from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
-from ralph.pipeline.factory import PipelineDeps, build_default_pipeline_deps
+from ralph.pipeline.factory import build_minimal_pipeline_core
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_IDLE_TIMEOUT_SECONDS,
     _SMOKE_MAX_SESSION_SECONDS,
@@ -33,6 +33,8 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _execute_smoke_turns,
     run_smoke_plumbing,
 )
+from ralph.pipeline.session_bridge import build_session_bridge
+from ralph.pro_support.hooks import apply_pro_hooks_to_core
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -177,12 +179,13 @@ def smoke_interactive_claude_command(
         encoding="utf-8",
     )
 
-    pipeline_deps: PipelineDeps = build_default_pipeline_deps(
+    pipeline_core = build_minimal_pipeline_core(
         config,
         ctx,
         model_identity=model_identity,
-        pro_hooks=pro_hooks,
     )
+    if pro_hooks is not None:
+        pipeline_core = apply_pro_hooks_to_core(pipeline_core, pro_hooks)
 
     result = run_smoke_plumbing(
         config=config,
@@ -191,7 +194,8 @@ def smoke_interactive_claude_command(
         prompt_file=prompt_file,
         output_file=output_file,
         display_context=ctx,
-        pipeline_deps=pipeline_deps,
+        pipeline_core=pipeline_core,
+        bridge_factory=build_session_bridge,
     )
 
     _render_smoke_table([result], display_context=ctx)

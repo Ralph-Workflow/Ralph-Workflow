@@ -71,11 +71,14 @@ from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import (
     MaterializeSystemPromptFn,
+    PipelineCore,
     PipelineDeps,
     _resolve_phase_required_artifact,
     build_default_pipeline_deps,
 )
+from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
 from ralph.pipeline.session_bridge import (
+    BridgeFactory,
     bridge_env_for,
     build_session_bridge,
     reset_tool_registry_callback,
@@ -185,12 +188,28 @@ def _apply_commit_deps_overrides(
     Ensures the commit plumbing path uses the commit-specific artifact
     resolver only when no custom resolver was injected, composes the chain
     registry, and swaps in the late-bound test-patch bridge factory when the
-    default production bridge is in use.
+    default production bridge is in use. Core collaborators are replaced on
+    the embedded :class:`PipelineCore`; extended fields are replaced on
+    ``deps`` itself.
     """
+    core = deps.core
     if materializer is not None:
-        deps = dataclasses.replace(deps, system_prompt_materializer=materializer)
+        core = dataclasses.replace(core, system_prompt_materializer=materializer)
+    # Only replace the default artifact resolver. If Pro or a test injected a
+    # custom resolver via PipelineCore/ProPipelineHooks, preserve it so the
+    # commit path shares the same injectable collaborator contract as the
+    # main pipeline.
+    if core.artifact_requirements_resolver is _resolve_phase_required_artifact:
+        core = dataclasses.replace(
+            core, artifact_requirements_resolver=_commit_artifact_requirements_resolver
+        )
+
     if registry is not None:
-        deps = dataclasses.replace(deps, registry_factory=lambda _config: registry)
+
+        def _registry_factory(_config: UnifiedConfig) -> object:
+            return registry
+
+        deps = dataclasses.replace(deps, registry_factory=_registry_factory)
     # Preserve the legacy late-bound test-patch surface when no explicit
     # bridge factory was injected. Tests monkeypatch
     # ``ralph.cli.commands.commit.start_commit_bridge``; the wrapper below
@@ -198,15 +217,8 @@ def _apply_commit_deps_overrides(
     # still routing default commit bridge creation through PipelineDeps.
     if deps.bridge_factory is build_session_bridge:
         deps = dataclasses.replace(deps, bridge_factory=_default_commit_bridge_factory)
-    # Only replace the default artifact resolver. If Pro or a test injected a
-    # custom resolver via PipelineDeps/ProPipelineHooks, preserve it so the
-    # commit path shares the same injectable collaborator contract as the
-    # main pipeline.
-    if deps.artifact_requirements_resolver is _resolve_phase_required_artifact:
-        deps = dataclasses.replace(
-            deps,
-            artifact_requirements_resolver=_commit_artifact_requirements_resolver,
-        )
+    if core is not deps.core:
+        deps = dataclasses.replace(deps, core=core)
     return deps
 
 
@@ -228,6 +240,8 @@ def run_commit_plumbing(
     repo_root: Path,
     chain_config: CommitChainConfig,
     display_context: DisplayContext | None = None,
+    pipeline_core: PipelineCore | None = None,
+    bridge_factory: BridgeFactory | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> CommitAgentResult:
     """Iterate the commit chain, delegating each agent to the shared execution core.
@@ -238,53 +252,80 @@ def run_commit_plumbing(
     commit path shares the same bridge lifecycle, retry, and output
     handling as the main pipeline.
 
-    ``pipeline_deps`` carries injectable collaborators. When omitted,
-    production defaults are used and the legacy late-bound bridge
-    resolver is preserved so existing test monkeypatches continue to
+    Callers may supply either the modular ``pipeline_core`` + ``bridge_factory``
+    surface or the legacy extended ``pipeline_deps`` bundle. When
+    ``pipeline_deps`` is provided it is used for backward compatibility and
+    its ``core`` and ``bridge_factory`` are derived automatically. When both
+    are omitted, production defaults are used and the legacy late-bound
+    bridge resolver is preserved so existing test monkeypatches continue to
     work.
 
     No inline failure-classifier construction sites live in this
     module; recovery decisions are routed exclusively through the
     shared execution core.
     """
-    if pipeline_deps is None:
+    if pipeline_deps is not None:
         if display_context is None:
-            raise ValueError("display_context is required when pipeline_deps is not provided")
-        pipeline_deps = _commit_pipeline_deps(
+            display_context = pipeline_deps.display_context
+        effective_pipeline_deps = _apply_commit_deps_overrides(
+            pipeline_deps,
+            materializer=None,
+            registry=chain_config.registry,
+        )
+        effective_core = effective_pipeline_deps.core
+        effective_bridge_factory = effective_pipeline_deps.bridge_factory
+    elif pipeline_core is not None:
+        if display_context is None:
+            display_context = pipeline_core.display_context
+        effective_pipeline_deps = PipelineDeps(
+            core=pipeline_core,
+            bridge_factory=bridge_factory
+            if bridge_factory is not None
+            else build_session_bridge,
+        )
+        effective_pipeline_deps = _apply_commit_deps_overrides(
+            effective_pipeline_deps,
+            materializer=None,
+            registry=chain_config.registry,
+        )
+        effective_core = effective_pipeline_deps.core
+        effective_bridge_factory = effective_pipeline_deps.bridge_factory
+    else:
+        if display_context is None:
+            raise ValueError(
+                "display_context is required when pipeline_deps and pipeline_core are not provided"
+            )
+        effective_pipeline_deps = _commit_pipeline_deps(
             cast("UnifiedConfig", chain_config.general_config),
             display_context,
             materializer=None,
             registry=chain_config.registry,
         )
-    else:
-        if display_context is None:
-            display_context = pipeline_deps.display_context
-        pipeline_deps = _apply_commit_deps_overrides(
-            pipeline_deps,
-            materializer=None,
-            registry=chain_config.registry,
-        )
+        effective_core = effective_pipeline_deps.core
+        effective_bridge_factory = effective_pipeline_deps.bridge_factory
+
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
-    bridge = pipeline_deps.bridge_factory(
-        workspace_root=repo_root,
-        drain="commit",
-        agents_policy=chain_config.agents_policy,
-        session_id_prefix="commit",
-        model_identity=pipeline_deps.model_identity,
-    )
-    extra_env: dict[str, str] | None = _commit_bridge_env(bridge)
-    # Normalize the key set so downstream consumers (and tests)
-    # observe string keys, never the ``McpEnvVar`` enum.
-    if extra_env is not None:
-        extra_env = _stringify_extra_env(extra_env)
+    extra_env: dict[str, str] | None = None
     failure_details: list[str] = []
     last_session_id: str | None = None
     last_error: Exception | None = None
     output_lines: list[str] = []
 
-    materializer = pipeline_deps.system_prompt_materializer
-    try:
+    materializer = effective_core.system_prompt_materializer
+    with with_bridge_lifetime(
+        effective_core,
+        effective_bridge_factory,
+        repo_root=repo_root,
+        drain="commit",
+        session_id_prefix="commit",
+        agents_policy=chain_config.agents_policy,
+    ) as bridge:
+        extra_env = _commit_bridge_env(bridge)
+        # Normalize the key set so downstream consumers (and tests)
+        # observe string keys, never the ``McpEnvVar`` enum.
+        if extra_env is not None:
+            extra_env = _stringify_extra_env(extra_env)
         for agent_name in chain_config.agents:
             cfg = chain_config.registry.get(agent_name)
             if cfg is None:
@@ -312,7 +353,7 @@ def run_commit_plumbing(
                 prior_session_id=last_session_id,
                 output_collector=output_lines,
                 materializer=materializer,
-                pipeline_deps=pipeline_deps,
+                pipeline_deps=effective_pipeline_deps,
             )
             failure_details.extend(result.failure_details)
 
@@ -332,8 +373,6 @@ def run_commit_plumbing(
                     last_error=last_error,
                     output=list(output_lines),
                 )
-    finally:
-        bridge.shutdown()
 
     return CommitAgentResult(
         failure_details=failure_details,

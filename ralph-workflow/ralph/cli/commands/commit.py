@@ -35,7 +35,7 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_artifact,
 )
-from ralph.pipeline.factory import build_default_pipeline_deps
+from ralph.pipeline.factory import build_minimal_pipeline_core
 from ralph.pipeline.plumbing.commit_plumbing import (
     CommitAgentResult,
     _generate_commit_message_with_agent,
@@ -46,8 +46,10 @@ from ralph.pipeline.plumbing.commit_plumbing import (
     invoke_commit_agent_attempt,
     run_commit_plumbing,
 )
+from ralph.pipeline.session_bridge import build_session_bridge
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
+from ralph.pro_support.hooks import apply_pro_hooks_to_core
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.workspace.scope import resolve_workspace_scope
@@ -400,16 +402,18 @@ def _generate_commit_message_with_chain(
     continue to work. The actual chain-iteration ownership lives in
     :mod:`ralph.pipeline.plumbing.commit_plumbing`.
     """
-    pipeline_deps = build_default_pipeline_deps(
+    pipeline_core = build_minimal_pipeline_core(
         cast("UnifiedConfig", chain_config.general_config),
         display_context,
         model_identity=model_identity,
-        pro_hooks=pro_hooks,
     )
+    if pro_hooks is not None:
+        pipeline_core = apply_pro_hooks_to_core(pipeline_core, pro_hooks)
     return run_commit_plumbing(
         diff=diff,
         repo_root=repo_root,
         chain_config=chain_config,
         display_context=display_context,
-        pipeline_deps=pipeline_deps,
+        pipeline_core=pipeline_core,
+        bridge_factory=build_session_bridge,
     )

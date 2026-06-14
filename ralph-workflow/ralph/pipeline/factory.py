@@ -3,8 +3,8 @@
 This module is the single composition point for the four PROMPT-mandated
 collaborators (display, model identity, prompt materializers, artifact
 resolver), the bridge factory, and all seven ``ProPipelineHooks`` overrides.
-Both the main pipeline (via ``run_loop.run``) and plumbing commands consume
-``PipelineDeps`` so they share the same underlying collaborators.
+Both the main pipeline (via ``run_loop.run``) and plumbing commands compose
+from :class:`PipelineCore` so they share the same underlying collaborators.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import ralph.pipeline.session_bridge as _session_bridge
 from ralph.mcp.protocol.startup import heartbeat_policy_from_env
 from ralph.mcp.server.lifecycle import check_mcp_bridge_health
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.pro_support.hooks import apply_pro_hooks_to_core
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.prompts.system_prompt import materialize_system_prompt
@@ -177,23 +178,51 @@ def _check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class PipelineDeps:
-    """Injectable dependency bundle for the pipeline and plumbing commands.
+class PipelineCore:
+    """The four PROMPT-mandated pipeline collaborators.
 
-    Fields cover the four PROMPT-mandated collaborators
-    (display_context, model_identity, system/phase prompt materializers,
-    artifact resolver), the bridge factory, MCP lifecycle machinery, the
-    seven ``ProPipelineHooks`` overrides, and the recovery sleep seam.
+    This is the lean, modular surface shared by the main pipeline and
+    plumbing commands. It contains exactly the collaborators that can be
+    injected by Pro via :class:`ralph.pro_support.hooks.ProPipelineHooks`:
+
+    - ``display_context`` — display/rendering context.
+    - ``model_identity`` — resolved multimodal model identity.
+    - ``system_prompt_materializer`` — system-prompt materializer.
+    - ``phase_prompt_materializer`` — phase-prompt materializer.
+    - ``artifact_requirements_resolver`` — phase/drain artifact resolver.
+
+    The bridge factory is intentionally NOT part of ``PipelineCore``; it is
+    a plumbing-only concern and is supplied separately to plumbing call sites.
     """
 
     display_context: DisplayContext
     model_identity: MultimodalModelIdentity | None = None
-    registry_factory: Callable[[UnifiedConfig], object] | None = None
     system_prompt_materializer: MaterializeSystemPromptFn = _materialize_system_prompt
     phase_prompt_materializer: PhasePromptMaterializerFn = _materialize_prompt_for_phase
     artifact_requirements_resolver: ArtifactRequirementsResolverFn = (
         _resolve_phase_required_artifact
     )
+
+
+_UNSET: object = object()
+
+
+@dataclasses.dataclass(frozen=True, slots=True, init=False)
+class PipelineDeps:
+    """Injectable dependency bundle for the pipeline and plumbing commands.
+
+    Fields cover the four PROMPT-mandated collaborators (bundled in
+    ``core``), the bridge factory, MCP lifecycle machinery, the
+    seven ``ProPipelineHooks`` overrides, and the recovery sleep seam.
+
+    For backward compatibility, the four collaborators may still be passed
+    directly to ``__init__``; they are composed into the embedded
+    :class:`PipelineCore`. Callers that already have a ``PipelineCore``
+    should pass ``core=...`` instead.
+    """
+
+    core: PipelineCore
+    registry_factory: Callable[[UnifiedConfig], object] | None = None
     bridge_factory: _session_bridge.BridgeFactory = _session_bridge.build_session_bridge
     mcp_supervisor_factory: McpSupervisorFactoryFn = _mcp_supervisor_factory
     heartbeat_policy_from_env_fn: HeartbeatPolicyFromEnvFn = _heartbeat_policy_from_env
@@ -205,6 +234,151 @@ class PipelineDeps:
     marker_watcher_factory: MarkerWatcherFactory | None = None
     snapshot_registry: SnapshotRegistry | None = None
     recovery_sleep: Callable[[float], None] | None = None
+
+    def __init__(
+        self,
+        *,
+        core: PipelineCore | None = None,
+        display_context: DisplayContext | object = _UNSET,
+        model_identity: MultimodalModelIdentity | None | object = _UNSET,
+        system_prompt_materializer: MaterializeSystemPromptFn | object = _UNSET,
+        phase_prompt_materializer: PhasePromptMaterializerFn | object = _UNSET,
+        artifact_requirements_resolver: ArtifactRequirementsResolverFn | object = _UNSET,
+        registry_factory: Callable[[UnifiedConfig], object] | None = None,
+        bridge_factory: _session_bridge.BridgeFactory = _session_bridge.build_session_bridge,
+        mcp_supervisor_factory: McpSupervisorFactoryFn = _mcp_supervisor_factory,
+        heartbeat_policy_from_env_fn: HeartbeatPolicyFromEnvFn = _heartbeat_policy_from_env,
+        check_mcp_bridge_health_fn: CheckMcpBridgeHealthFn = _check_mcp_bridge_health,
+        policy_bundle: PolicyBundle | None = None,
+        policy_bundle_factory: PolicyBundleFactory | None = None,
+        state_factory: StateFactory | None = None,
+        recovery_controller_factory: RecoveryControllerFactory | None = None,
+        marker_watcher_factory: MarkerWatcherFactory | None = None,
+        snapshot_registry: SnapshotRegistry | None = None,
+        recovery_sleep: Callable[[float], None] | None = None,
+    ) -> None:
+        core_overrides: dict[str, object] = {}
+        if display_context is not _UNSET:
+            core_overrides["display_context"] = display_context
+        if model_identity is not _UNSET:
+            core_overrides["model_identity"] = model_identity
+        if system_prompt_materializer is not _UNSET:
+            core_overrides["system_prompt_materializer"] = system_prompt_materializer
+        if phase_prompt_materializer is not _UNSET:
+            core_overrides["phase_prompt_materializer"] = phase_prompt_materializer
+        if artifact_requirements_resolver is not _UNSET:
+            core_overrides["artifact_requirements_resolver"] = artifact_requirements_resolver
+
+        if core is None:
+            if display_context is _UNSET:
+                raise ValueError(
+                    "display_context is required when core is not provided"
+                )
+            effective_core = PipelineCore(
+                display_context=cast("DisplayContext", display_context),
+                model_identity=(
+                    None
+                    if model_identity is _UNSET
+                    else cast("MultimodalModelIdentity | None", model_identity)
+                ),
+                system_prompt_materializer=(
+                    _materialize_system_prompt
+                    if system_prompt_materializer is _UNSET
+                    else cast("MaterializeSystemPromptFn", system_prompt_materializer)
+                ),
+                phase_prompt_materializer=(
+                    _materialize_prompt_for_phase
+                    if phase_prompt_materializer is _UNSET
+                    else cast("PhasePromptMaterializerFn", phase_prompt_materializer)
+                ),
+                artifact_requirements_resolver=(
+                    _resolve_phase_required_artifact
+                    if artifact_requirements_resolver is _UNSET
+                    else cast(
+                        "ArtifactRequirementsResolverFn",
+                        artifact_requirements_resolver,
+                    )
+                ),
+            )
+        elif core_overrides:
+            effective_core = core
+            if "display_context" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    display_context=cast("DisplayContext", core_overrides["display_context"]),
+                )
+            if "model_identity" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    model_identity=cast(
+                        "MultimodalModelIdentity | None", core_overrides["model_identity"]
+                    ),
+                )
+            if "system_prompt_materializer" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    system_prompt_materializer=cast(
+                        "MaterializeSystemPromptFn",
+                        core_overrides["system_prompt_materializer"],
+                    ),
+                )
+            if "phase_prompt_materializer" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    phase_prompt_materializer=cast(
+                        "PhasePromptMaterializerFn",
+                        core_overrides["phase_prompt_materializer"],
+                    ),
+                )
+            if "artifact_requirements_resolver" in core_overrides:
+                effective_core = dataclasses.replace(
+                    effective_core,
+                    artifact_requirements_resolver=cast(
+                        "ArtifactRequirementsResolverFn",
+                        core_overrides["artifact_requirements_resolver"],
+                    ),
+                )
+        else:
+            effective_core = core
+
+        object.__setattr__(self, "core", effective_core)
+        object.__setattr__(self, "registry_factory", registry_factory)
+        object.__setattr__(self, "bridge_factory", bridge_factory)
+        object.__setattr__(self, "mcp_supervisor_factory", mcp_supervisor_factory)
+        object.__setattr__(self, "heartbeat_policy_from_env_fn", heartbeat_policy_from_env_fn)
+        object.__setattr__(self, "check_mcp_bridge_health_fn", check_mcp_bridge_health_fn)
+        object.__setattr__(self, "policy_bundle", policy_bundle)
+        object.__setattr__(self, "policy_bundle_factory", policy_bundle_factory)
+        object.__setattr__(self, "state_factory", state_factory)
+        object.__setattr__(self, "recovery_controller_factory", recovery_controller_factory)
+        object.__setattr__(self, "marker_watcher_factory", marker_watcher_factory)
+        object.__setattr__(self, "snapshot_registry", snapshot_registry)
+        object.__setattr__(self, "recovery_sleep", recovery_sleep)
+
+    @property
+    def display_context(self) -> DisplayContext:
+        """Backward-compatible accessor for ``core.display_context``."""
+        return self.core.display_context
+
+    @property
+    def model_identity(self) -> MultimodalModelIdentity | None:
+        """Backward-compatible accessor for ``core.model_identity``."""
+        return self.core.model_identity
+
+    @property
+    def system_prompt_materializer(self) -> MaterializeSystemPromptFn:
+        """Backward-compatible accessor for ``core.system_prompt_materializer``."""
+        return self.core.system_prompt_materializer
+
+    @property
+    def phase_prompt_materializer(self) -> PhasePromptMaterializerFn:
+        """Backward-compatible accessor for ``core.phase_prompt_materializer``."""
+        return self.core.phase_prompt_materializer
+
+    @property
+    def artifact_requirements_resolver(self) -> ArtifactRequirementsResolverFn:
+        """Backward-compatible accessor for ``core.artifact_requirements_resolver``."""
+        return self.core.artifact_requirements_resolver
 
 
 @runtime_checkable
@@ -219,6 +393,27 @@ class PipelineFactory(Protocol):
         pro_hooks: ProPipelineHooks | None = None,
     ) -> PipelineDeps:
         ...
+
+
+def build_minimal_pipeline_core(
+    config: UnifiedConfig,
+    display_context: DisplayContext,
+    *,
+    model_identity: MultimodalModelIdentity | None = None,
+) -> PipelineCore:
+    """Build the shared 4-collaborator ``PipelineCore``.
+
+    This is the lean composition root used by both plumbing commands and
+    ``build_default_pipeline_deps``. It does NOT accept ``pro_hooks``,
+    ``policy_bundle``, ``recovery_sleep``, or any other extended field;
+    callers that need the extended bundle should use
+    :func:`build_default_pipeline_deps`.
+    """
+    del config
+    return PipelineCore(
+        display_context=display_context,
+        model_identity=model_identity,
+    )
 
 
 def _resolve_policy_bundle(
@@ -262,24 +457,11 @@ def apply_pro_hooks_to_deps(
         deps = dataclasses.replace(deps, marker_watcher_factory=pro_hooks.marker_watcher_factory)
     if pro_hooks.snapshot_registry is not None:
         deps = dataclasses.replace(deps, snapshot_registry=pro_hooks.snapshot_registry)
-    if pro_hooks.display_context is not None:
-        deps = dataclasses.replace(deps, display_context=pro_hooks.display_context)
-    if pro_hooks.model_identity is not None:
-        deps = dataclasses.replace(deps, model_identity=pro_hooks.model_identity)
-    if pro_hooks.system_prompt_materializer is not None:
-        deps = dataclasses.replace(
-            deps, system_prompt_materializer=pro_hooks.system_prompt_materializer
-        )
-    if pro_hooks.phase_prompt_materializer is not None:
-        deps = dataclasses.replace(
-            deps, phase_prompt_materializer=pro_hooks.phase_prompt_materializer
-        )
-    if pro_hooks.artifact_requirements_resolver is not None:
-        deps = dataclasses.replace(
-            deps, artifact_requirements_resolver=pro_hooks.artifact_requirements_resolver
-        )
     if pro_hooks.recovery_sleep is not None:
         deps = dataclasses.replace(deps, recovery_sleep=pro_hooks.recovery_sleep)
+    core = apply_pro_hooks_to_core(deps.core, pro_hooks)
+    if core is not deps.core:
+        deps = dataclasses.replace(deps, core=core)
     return deps
 
 
@@ -307,9 +489,13 @@ def build_default_pipeline_deps(
     recovery backoff; ``pro_hooks.recovery_sleep`` takes precedence over this
     argument when both are provided.
     """
-    deps = PipelineDeps(
-        display_context=display_context,
+    core = build_minimal_pipeline_core(
+        config,
+        display_context,
         model_identity=model_identity,
+    )
+    deps = PipelineDeps(
+        core=core,
         policy_bundle=policy_bundle,
         recovery_sleep=recovery_sleep,
     )
@@ -325,8 +511,10 @@ __all__ = [
     "MaterializeSystemPromptFn",
     "McpSupervisorFactoryFn",
     "PhasePromptMaterializerFn",
+    "PipelineCore",
     "PipelineDeps",
     "PipelineFactory",
     "apply_pro_hooks_to_deps",
     "build_default_pipeline_deps",
+    "build_minimal_pipeline_core",
 ]

@@ -26,11 +26,12 @@ from ralph.cli.commands.commit import (
 )
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.git.operations import GitOperationError
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from ralph.pipeline.factory import PipelineCore
 from ralph.policy.models import AgentsPolicy
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
@@ -549,26 +550,36 @@ def test_generate_commit_message_with_chain_forwards_pro_hooks_and_model_identit
     tmp_path: Path,
 ) -> None:
     """The commit command forwards injected Pro hooks and model identity into the
-    shared pipeline dependency factory so plumbing uses the same initialization
-    path as the main pipeline.
+    shared pipeline core so plumbing uses the same initialization path as the
+    main pipeline.
     """
     display_context = make_display_context()
     model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
     pro_hooks = ProPipelineHooks(snapshot_registry=SnapshotRegistry())
-    captured: dict[str, object] = {}
+    captured_core: dict[str, object] = {}
+    captured_plumbing: dict[str, object] = {}
 
-    def fake_build_default_pipeline_deps(
+    def fake_build_minimal_pipeline_core(
         config: UnifiedConfig,
-        ctx: object,
-        **kwargs: object,
-    ) -> object:
-        captured["config"] = config
-        captured["display_context"] = ctx
-        captured["kwargs"] = kwargs
-        return make_test_pipeline_deps(display_context)
+        ctx: DisplayContext,
+        *,
+        model_identity: MultimodalModelIdentity | None = None,
+    ) -> PipelineCore:
+        captured_core["config"] = config
+        captured_core["display_context"] = ctx
+        captured_core["model_identity"] = model_identity
+        return PipelineCore(display_context=ctx, model_identity=model_identity)
+
+    def fake_apply_pro_hooks_to_core(
+        core: PipelineCore,
+        hooks: ProPipelineHooks,
+    ) -> PipelineCore:
+        captured_core["pro_hooks"] = hooks
+        captured_core["returned_core"] = core
+        return core
 
     def fake_run_commit_plumbing(**kwargs: object) -> CommitAgentResult:
-        del kwargs
+        captured_plumbing["kwargs"] = kwargs
         return CommitAgentResult(message="feat: shared init")
 
     chain_config = CommitChainConfig(
@@ -582,8 +593,13 @@ def test_generate_commit_message_with_chain_forwards_pro_hooks_and_model_identit
     with (
         patch.object(
             commit_module,
-            "build_default_pipeline_deps",
-            fake_build_default_pipeline_deps,
+            "build_minimal_pipeline_core",
+            fake_build_minimal_pipeline_core,
+        ),
+        patch.object(
+            commit_module,
+            "apply_pro_hooks_to_core",
+            fake_apply_pro_hooks_to_core,
         ),
         patch.object(commit_module, "run_commit_plumbing", fake_run_commit_plumbing),
     ):
@@ -597,6 +613,9 @@ def test_generate_commit_message_with_chain_forwards_pro_hooks_and_model_identit
         )
 
     assert result.message == "feat: shared init"
-    kwargs = cast("dict[str, object]", captured["kwargs"])
-    assert kwargs["pro_hooks"] is pro_hooks
-    assert kwargs["model_identity"] is model_identity
+    assert captured_core["display_context"] is display_context
+    assert captured_core["model_identity"] is model_identity
+    assert captured_core["pro_hooks"] is pro_hooks
+    plumbing_kwargs = cast("dict[str, object]", captured_plumbing["kwargs"])
+    assert plumbing_kwargs["pipeline_core"] is captured_core["returned_core"]
+    assert plumbing_kwargs["bridge_factory"] is commit_module.build_session_bridge

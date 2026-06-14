@@ -64,23 +64,22 @@ class ChannelEvidenceSummary:
     TTL. A channel with ``last_at is None`` has never been observed and is
     treated as stale.
 
-    Fields:
-        channel_name: Canonical name of the channel (see ``ChannelName``).
-        tier: Whether this channel is first-party or side-channel evidence.
-        last_at: Monotonic clock value of the last observed activity on this
-            channel, or None if the channel has never been observed.
-        age_seconds: Seconds since the last observed activity; None when
-            ``last_at`` is None. Always non-negative for observable channels.
-        counter: Number of activity events seen on this channel, or
-            None if the channel has never been observed.
-        kind_breakdown: Per-kind breakdown of the channel counter. Only
-            populated for the ``workspace`` channel. None when the channel has
-            no kind breakdown or when no workspace activity has been observed.
-        alive_by: For the ``subagent_liveness`` channel, the ``AliveBy``
-            classification at the time of the summary; None otherwise.
-        can_defer: Whether this channel's fresh evidence is allowed to defer
-            the NO_OUTPUT_DEADLINE verdict. First-party channels and strong
-            side-channel channels defer; weak side-channel channels do not.
+    - ``channel_name``: Canonical name of the channel (see ``ChannelName``).
+    - ``tier``: Whether this channel is first-party or side-channel evidence.
+    - ``last_at``: Monotonic clock value of the last observed activity on this
+      channel, or None if the channel has never been observed.
+    - ``age_seconds``: Seconds since the last observed activity; None when
+      ``last_at`` is None. Always non-negative for observable channels.
+    - ``counter``: Number of activity events seen on this channel, or
+      None if the channel has never been observed.
+    - ``kind_breakdown``: Per-kind breakdown of the channel counter. Only
+      populated for the ``workspace`` channel. None when the channel has
+      no kind breakdown or when no workspace activity has been observed.
+    - ``alive_by``: For the ``subagent_liveness`` channel, the ``AliveBy``
+      classification at the time of the summary; None otherwise.
+    - ``can_defer``: Whether this channel's fresh evidence is allowed to defer
+      the NO_OUTPUT_DEADLINE verdict. First-party channels and strong
+      side-channel channels defer; weak side-channel channels do not.
     """
 
     channel_name: ChannelName

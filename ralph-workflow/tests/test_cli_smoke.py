@@ -18,11 +18,11 @@ from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.factory import PipelineCore
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
-from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
@@ -201,21 +201,20 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     monkeypatch.setattr(smoke_plumbing_module, "AgentRegistry", FakeRegistry)
     monkeypatch.setattr(smoke_plumbing_module, "execute_agent_effect", fake_execute_agent_effect)
 
-    def fake_build_default_pipeline_deps(
+    def fake_build_minimal_pipeline_core(
         _config: UnifiedConfig,
         display_context: DisplayContext,
-        **_kwargs: object,
-    ) -> object:
-        return make_test_pipeline_deps(
-            display_context,
-            bridge_factory=fake_bridge_factory,
-        )
+        *,
+        model_identity: MultimodalModelIdentity | None = None,
+    ) -> PipelineCore:
+        return PipelineCore(display_context=display_context)
 
     monkeypatch.setattr(
         smoke_module,
-        "build_default_pipeline_deps",
-        fake_build_default_pipeline_deps,
+        "build_minimal_pipeline_core",
+        fake_build_minimal_pipeline_core,
     )
+    monkeypatch.setattr(smoke_module, "build_session_bridge", fake_bridge_factory)
 
     exit_code = smoke_module.smoke_interactive_claude_command(display_context=None)
 
@@ -275,21 +274,36 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
 
     captured: dict[str, object] = {}
 
-    def fake_build_default_pipeline_deps(
+    def fake_build_minimal_pipeline_core(
         _config: UnifiedConfig,
         _display_context: DisplayContext,
-        **kwargs: object,
-    ) -> object:
-        captured["kwargs"] = kwargs
-        return make_test_pipeline_deps(_display_context)
+        *,
+        model_identity: MultimodalModelIdentity | None = None,
+    ) -> PipelineCore:
+        captured["model_identity"] = model_identity
+        return PipelineCore(display_context=_display_context)
+
+    def fake_apply_pro_hooks_to_core(
+        core: PipelineCore,
+        hooks: ProPipelineHooks,
+    ) -> PipelineCore:
+        captured["pro_hooks"] = hooks
+        captured["returned_core"] = core
+        return core
 
     monkeypatch.setattr(
         smoke_module,
-        "build_default_pipeline_deps",
-        fake_build_default_pipeline_deps,
+        "build_minimal_pipeline_core",
+        fake_build_minimal_pipeline_core,
+    )
+    monkeypatch.setattr(
+        smoke_module,
+        "apply_pro_hooks_to_core",
+        fake_apply_pro_hooks_to_core,
     )
 
-    def fake_run_smoke_plumbing(**_kwargs: object) -> smoke_module.SmokeRunResult:
+    def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
+        captured["plumbing_kwargs"] = kwargs
         return smoke_module.SmokeRunResult(
             agent_name="claude/haiku",
             transport="claude_interactive",
@@ -316,6 +330,8 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     )
 
     assert exit_code == 0
-    kwargs = cast("dict[str, object]", captured["kwargs"])
-    assert kwargs["pro_hooks"] is pro_hooks
-    assert kwargs["model_identity"] is model_identity
+    assert captured["model_identity"] is model_identity
+    assert captured["pro_hooks"] is pro_hooks
+    plumbing_kwargs = cast("dict[str, object]", captured["plumbing_kwargs"])
+    assert plumbing_kwargs["pipeline_core"] is captured["returned_core"]
+    assert plumbing_kwargs["bridge_factory"] is smoke_module.build_session_bridge

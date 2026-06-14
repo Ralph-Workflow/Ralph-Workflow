@@ -99,11 +99,33 @@ the marker after the engine has started, the engine runs
 - **Idempotent `stop()`** that does NOT join the worker, mirroring
   `ProHeartbeatClient.stop()`.
 
+## Modular pipeline surface
+
+Both the main pipeline and plumbing commands compose from the same
+four PROMPT-mandated collaborators through `ralph.pipeline.factory.PipelineCore`.
+`PipelineCore` is a frozen dataclass with exactly these fields:
+
+- `display_context: DisplayContext`
+- `model_identity: MultimodalModelIdentity | None`
+- `system_prompt_materializer: MaterializeSystemPromptFn`
+- `phase_prompt_materializer: PhasePromptMaterializerFn`
+- `artifact_requirements_resolver: ArtifactRequirementsResolverFn`
+
+The bridge factory is intentionally **not** part of `PipelineCore`;
+it is a plumbing-only concern. Plumbing commands receive the bridge
+factory as a separate parameter and route bridge startup/shutdown
+through `ralph.pipeline.plumbing._bridge_lifetime.with_bridge_lifetime`.
+
+The lean composition root is
+`ralph.pipeline.factory.build_minimal_pipeline_core(config, display_context, *, model_identity=None)`.
+It does **not** accept `pro_hooks`, `policy_bundle`, `recovery_sleep`,
+or any extended field; those belong to the main-pipeline bundle.
+
 ## Custom pipeline DI
 
 Pro MAY inject custom pipeline collaborators into the engine via
 `ralph.pro_support.hooks.ProPipelineHooks`. The dataclass bundles
-eight fields:
+thirteen fields:
 
 - 5 factory callables that, when supplied, REPLACE the corresponding
   runner helpers:
@@ -118,10 +140,15 @@ eight fields:
 - 1 passthrough: `snapshot_registry: SnapshotRegistry | None`;
   when set, the engine publishes a `PipelineStateSnapshot` to the
   registry on each reduce step.
-- 1 collaborator override: `recovery_sleep: Callable[[float], None] | None`;
-  when set, the engine uses it instead of `time.sleep` during recovery
-  backoff. It is applied to `PipelineDeps` by
-  `build_default_pipeline_deps`, not forwarded as a `run()` kwarg.
+- 6 collaborator overrides. The first 5 are applied to `PipelineCore`
+  by `apply_pro_hooks_to_core`; the last is applied to the extended
+  `PipelineDeps` by `build_default_pipeline_deps`:
+  - `display_context: DisplayContext | None`
+  - `model_identity: MultimodalModelIdentity | None`
+  - `system_prompt_materializer: MaterializeSystemPromptFn | None`
+  - `phase_prompt_materializer: PhasePromptMaterializerFn | None`
+  - `artifact_requirements_resolver: ArtifactRequirementsResolverFn | None`
+  - `recovery_sleep: Callable[[float], None] | None`
 
 All fields are keyword-only with `None` defaults so the seam is
 zero-overhead for non-Pro runs. The dataclass is
@@ -131,6 +158,22 @@ forwards exactly six entries to the engine's `run()` entry point
 and never `policy_bundle_override` or `recovery_sleep` (both are
 fields that `run()`/`build_default_pipeline_deps` inspects
 separately).
+
+## Pro plumbing seam
+
+Pro plumbing consumers target the modular `PipelineCore` surface
+instead of the extended `PipelineDeps` bundle. The helper
+`ralph.pro_support.hooks.apply_pro_hooks_to_core(core, pro_hooks)`
+returns a new `PipelineCore` with only the five PROMPT collaborators
+propagated via `dataclasses.replace`. It ignores all extended fields
+(`policy_bundle_override`, `policy_bundle_factory`, `registry_factory`,
+`state_factory`, `recovery_controller_factory`, `marker_watcher_factory`,
+`snapshot_registry`, `recovery_sleep`).
+
+This keeps the Pro plumbing contract narrow: a Pro plumbing consumer
+only needs to know about the five `PipelineCore` collaborators, while
+the main pipeline continues to use `apply_pro_hooks_to_deps` for the
+full extended bundle.
 
 ## State observability
 

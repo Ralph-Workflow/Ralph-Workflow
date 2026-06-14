@@ -60,6 +60,7 @@ if TYPE_CHECKING:
         ArtifactRequirementsResolverFn,
         MaterializeSystemPromptFn,
         PhasePromptMaterializerFn,
+        PipelineCore,
     )
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
@@ -90,14 +91,16 @@ class ProPipelineHooks:
     When ``policy_bundle_override`` is not ``None``,
     ``policy_bundle_factory`` is short-circuited.
 
-    The six collaborator overrides (``display_context``,
-    ``model_identity``, ``system_prompt_materializer``,
-    ``phase_prompt_materializer``, ``artifact_requirements_resolver``,
-    ``recovery_sleep``) are applied to the ``PipelineDeps`` built by
-    ``build_default_pipeline_deps`` so Pro can inject custom
-    implementations of the primary pipeline collaborators
-    (display, model, prompt, artifact requirements, recovery sleep)
-    without changing the shared execution core.
+    The five collaborator overrides on the modular surface
+    (``display_context``, ``model_identity``,
+    ``system_prompt_materializer``, ``phase_prompt_materializer``,
+    ``artifact_requirements_resolver``) are the only fields a Pro
+    plumbing consumer must know about when targeting
+    :class:`ralph.pipeline.factory.PipelineCore`; they are applied
+    via :func:`apply_pro_hooks_to_core`. The extended surface
+    (``PipelineDeps``) additionally consumes ``recovery_sleep`` and
+    the main-pipeline factories; those are handled by
+    :func:`ralph.pipeline.factory.apply_pro_hooks_to_deps`.
     """
 
     policy_bundle_factory: PolicyBundleFactory | None = None
@@ -135,4 +138,38 @@ class ProPipelineHooks:
         }
 
 
-__all__ = ["ProPipelineHooks"]
+def apply_pro_hooks_to_core(
+    core: PipelineCore,
+    pro_hooks: ProPipelineHooks,
+) -> PipelineCore:
+    """Return a new ``PipelineCore`` with Pro collaborator overrides applied.
+
+    Only the five PROMPT-mandated collaborators are propagated:
+    ``display_context``, ``model_identity``,
+    ``system_prompt_materializer``, ``phase_prompt_materializer``,
+    and ``artifact_requirements_resolver``. Extended fields such as
+    ``policy_bundle_override``, ``registry_factory``, ``state_factory``,
+    ``recovery_controller_factory``, ``marker_watcher_factory``,
+    ``snapshot_registry``, and ``recovery_sleep`` are ignored because
+    they belong to the main-pipeline ``PipelineDeps`` surface.
+    """
+    if pro_hooks.display_context is not None:
+        core = dataclasses.replace(core, display_context=pro_hooks.display_context)
+    if pro_hooks.model_identity is not None:
+        core = dataclasses.replace(core, model_identity=pro_hooks.model_identity)
+    if pro_hooks.system_prompt_materializer is not None:
+        core = dataclasses.replace(
+            core, system_prompt_materializer=pro_hooks.system_prompt_materializer
+        )
+    if pro_hooks.phase_prompt_materializer is not None:
+        core = dataclasses.replace(
+            core, phase_prompt_materializer=pro_hooks.phase_prompt_materializer
+        )
+    if pro_hooks.artifact_requirements_resolver is not None:
+        core = dataclasses.replace(
+            core, artifact_requirements_resolver=pro_hooks.artifact_requirements_resolver
+        )
+    return core
+
+
+__all__ = ["ProPipelineHooks", "apply_pro_hooks_to_core"]
