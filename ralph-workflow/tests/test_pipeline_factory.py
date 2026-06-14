@@ -123,6 +123,7 @@ class TestBuildDefaultPipelineDeps:
         assert deps.recovery_controller_factory is None
         assert deps.marker_watcher_factory is None
         assert deps.snapshot_registry is None
+        assert deps.recovery_sleep is None
 
     def test_deps_is_frozen(self, tmp_path: Path) -> None:
         display_ctx = _display_context()
@@ -299,6 +300,54 @@ class TestProHooksComposition:
         )
 
         assert deps.snapshot_registry is fake_registry
+
+    def test_recovery_sleep_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+
+        def recovery_sleep(_seconds: float) -> None:
+            return None
+
+        hooks = ProPipelineHooks(recovery_sleep=recovery_sleep)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.recovery_sleep is recovery_sleep
+
+    def test_recovery_sleep_argument_wins_over_default(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+
+        def recovery_sleep(_seconds: float) -> None:
+            return None
+
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            recovery_sleep=recovery_sleep,
+        )
+
+        assert deps.recovery_sleep is recovery_sleep
+
+    def test_pro_hooks_recovery_sleep_wins_over_argument(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+
+        def arg_sleep(_seconds: float) -> None:
+            return None
+
+        def hook_sleep(_seconds: float) -> None:
+            return None
+
+        hooks = ProPipelineHooks(recovery_sleep=hook_sleep)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            recovery_sleep=arg_sleep,
+            pro_hooks=hooks,
+        )
+
+        assert deps.recovery_sleep is hook_sleep
 
     def test_policy_bundle_factory_is_resolved_at_build_time(self, tmp_path: Path) -> None:
         display_ctx = _display_context()

@@ -58,6 +58,7 @@ def test_build_default_pipeline_deps_returns_valid_pipeline_deps() -> None:
     assert deps.recovery_controller_factory is None
     assert deps.marker_watcher_factory is None
     assert deps.snapshot_registry is None
+    assert deps.recovery_sleep is None
 
 
 def test_build_default_pipeline_deps_applies_pro_hooks() -> None:
@@ -67,10 +68,15 @@ def test_build_default_pipeline_deps_applies_pro_hooks() -> None:
     registry_factory = MagicMock()
     state_factory = MagicMock()
     snapshot_registry = SnapshotRegistry()
+
+    def recovery_sleep(_seconds: float) -> None:
+        return None
+
     pro_hooks = ProPipelineHooks(
         registry_factory=registry_factory,
         state_factory=state_factory,
         snapshot_registry=snapshot_registry,
+        recovery_sleep=recovery_sleep,
     )
 
     deps = build_default_pipeline_deps(config, display_context, pro_hooks=pro_hooks)
@@ -78,6 +84,7 @@ def test_build_default_pipeline_deps_applies_pro_hooks() -> None:
     assert deps.registry_factory is registry_factory
     assert deps.state_factory is state_factory
     assert deps.snapshot_registry is snapshot_registry
+    assert deps.recovery_sleep is recovery_sleep
 
 
 def test_pipeline_deps_replace_overrides_individual_fields() -> None:
@@ -255,6 +262,7 @@ def test_pipeline_deps_accepts_fake_collaborators() -> None:
         recovery_controller_factory=None,
         marker_watcher_factory=None,
         snapshot_registry=SnapshotRegistry(),
+        recovery_sleep=lambda _seconds: None,
     )
 
     assert deps.display_context is display_context

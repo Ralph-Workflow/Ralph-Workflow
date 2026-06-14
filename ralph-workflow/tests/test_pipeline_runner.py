@@ -958,6 +958,39 @@ class TestInjectionPrecedence:
 
         assert ctx.sleep is time.sleep
 
+    def test_pipeline_deps_recovery_sleep_wins_over_pro_hooks(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        def deps_sleep(_seconds: float) -> None:
+            return None
+
+        def pro_sleep(_seconds: float) -> None:
+            return None
+
+        pro_hooks = ProPipelineHooks(recovery_sleep=pro_sleep)
+        deps = PipelineDeps(
+            display_context=_display_context(),
+            recovery_sleep=deps_sleep,
+        )
+
+        ctx, _ = _capture_run_ctx(
+            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
+        )
+
+        assert ctx.sleep is deps_sleep
+
+    def test_pro_hooks_recovery_sleep_wins_over_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        def pro_sleep(_seconds: float) -> None:
+            return None
+
+        pro_hooks = ProPipelineHooks(recovery_sleep=pro_sleep)
+
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pro_hooks=pro_hooks)
+
+        assert ctx.sleep is pro_sleep
+
     @pytest.mark.parametrize(
         "kwarg_name, kwarg_value",
         [

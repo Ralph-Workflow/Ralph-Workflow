@@ -601,17 +601,19 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         recovery_controller_factory: (DEPRECATED) Use ``pipeline_deps``.
         marker_watcher_factory: (DEPRECATED) Use ``pipeline_deps``.
         snapshot_registry: (DEPRECATED) Use ``pipeline_deps``.
-        _recovery_sleep: (DEPRECATED) Use ``pipeline_deps``.
+        _recovery_sleep: (DEPRECATED) Use ``pipeline_deps.recovery_sleep``
+            (or pass ``recovery_sleep`` to :func:`build_default_pipeline_deps`).
 
     Migration Notes:
         ``run()`` previously accepted individual factory kwargs such as
         ``policy_bundle_factory``, ``registry_factory``, etc. These are now
         deprecated. Construct a :class:`PipelineDeps` bundle via
         :func:`build_default_pipeline_deps` (optionally passing
-        ``pro_hooks`` to it) and pass only ``pipeline_deps``. Passing any
-        deprecated factory kwarg alongside ``pipeline_deps`` raises
-        ``ValueError``. Callers using only the old factory kwargs (without
-        ``pipeline_deps``) continue to work for backward compatibility.
+        ``pro_hooks`` or ``recovery_sleep`` to it) and pass only
+        ``pipeline_deps``. Passing any deprecated factory kwarg alongside
+        ``pipeline_deps`` raises ``ValueError``. Callers using only the old
+        factory kwargs (without ``pipeline_deps``) continue to work for
+        backward compatibility.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
@@ -716,7 +718,11 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         verbosity if verbosity is not None else config.general.verbosity
     )
     is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
-    if pipeline_deps is None and _recovery_sleep is not None:
+    if pipeline_deps is not None and pipeline_deps.recovery_sleep is not None:
+        _sleep = pipeline_deps.recovery_sleep
+    elif pro_hooks is not None and pro_hooks.recovery_sleep is not None:
+        _sleep = pro_hooks.recovery_sleep
+    elif _recovery_sleep is not None:
         _sleep = _recovery_sleep
     else:
         _sleep = time.sleep

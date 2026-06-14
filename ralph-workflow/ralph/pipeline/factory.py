@@ -182,8 +182,8 @@ class PipelineDeps:
 
     Fields cover the four PROMPT-mandated collaborators
     (display_context, model_identity, system/phase prompt materializers,
-    artifact resolver), the bridge factory, MCP lifecycle machinery, and the
-    seven ``ProPipelineHooks`` overrides.
+    artifact resolver), the bridge factory, MCP lifecycle machinery, the
+    seven ``ProPipelineHooks`` overrides, and the recovery sleep seam.
     """
 
     display_context: DisplayContext
@@ -204,6 +204,7 @@ class PipelineDeps:
     recovery_controller_factory: RecoveryControllerFactory | None = None
     marker_watcher_factory: MarkerWatcherFactory | None = None
     snapshot_registry: SnapshotRegistry | None = None
+    recovery_sleep: Callable[[float], None] | None = None
 
 
 @runtime_checkable
@@ -277,6 +278,8 @@ def apply_pro_hooks_to_deps(
         deps = dataclasses.replace(
             deps, artifact_requirements_resolver=pro_hooks.artifact_requirements_resolver
         )
+    if pro_hooks.recovery_sleep is not None:
+        deps = dataclasses.replace(deps, recovery_sleep=pro_hooks.recovery_sleep)
     return deps
 
 
@@ -286,6 +289,7 @@ def build_default_pipeline_deps(
     *,
     model_identity: MultimodalModelIdentity | None = None,
     policy_bundle: PolicyBundle | None = None,
+    recovery_sleep: Callable[[float], None] | None = None,
     pro_hooks: ProPipelineHooks | None = None,
 ) -> PipelineDeps:
     """Build a ``PipelineDeps`` wired to production defaults.
@@ -298,11 +302,16 @@ def build_default_pipeline_deps(
     ``policy_bundle`` lets the main pipeline load the policy once and inject
     it into the shared bundle instead of passing it as a separate runner
     argument.
+
+    ``recovery_sleep`` lets callers replace the wall-clock sleep used during
+    recovery backoff; ``pro_hooks.recovery_sleep`` takes precedence over this
+    argument when both are provided.
     """
     deps = PipelineDeps(
         display_context=display_context,
         model_identity=model_identity,
         policy_bundle=policy_bundle,
+        recovery_sleep=recovery_sleep,
     )
     if pro_hooks is None:
         return deps

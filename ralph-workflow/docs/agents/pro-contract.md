@@ -62,7 +62,7 @@ by a CI drift guard.
 | §12A No engine-side WebSocket emission | Engine emits zero WebSocket events. | (absence; the engine has no WS code path) | (implicit; absent code path) |
 | **n/a (user prompt bullet 1)** Late marker adoption | Engine adopts a marker that appears AFTER engine start. | `ralph/pro_support/watcher.py:ProMarkerWatcher` | `tests/test_pro_support_watcher.py`, `tests/test_run_loop_pro_integration.py::test_late_marker_adoption_starts_heartbeat_after_run` |
 | **n/a (user prompt bullet 1)** Watcher is daemon-only | Watcher runs in a daemon thread; `stop()` returns promptly without joining. | `ralph/pro_support/watcher.py:ProMarkerWatcher._run_loop` | `tests/test_pro_support_watcher.py::test_watcher_stop_interrupts_sleep_within_50ms` |
-| **§10 (Configuration Ownership, pending amendment)** Custom pipeline DI | `ProPipelineHooks` exposes 5 factory kwargs + 1 policy_bundle_override + 1 snapshot_registry = 7 fields. | `ralph/pro_support/hooks.py:ProPipelineHooks` | `tests/test_pro_support_hooks.py` |
+| **§10 (Configuration Ownership, pending amendment)** Custom pipeline DI | `ProPipelineHooks` exposes 5 factory kwargs + 1 policy_bundle_override + 1 snapshot_registry + 1 recovery_sleep = 8 fields. | `ralph/pro_support/hooks.py:ProPipelineHooks` | `tests/test_pro_support_hooks.py` |
 | **§8 (Log Pipeline Contract, pending amendment)** Pipeline state observability | `PipelineStateSnapshot` is a frozen, read-only view published on each reduce. | `ralph/pro_support/state_query.py:PipelineStateSnapshot` | `tests/test_pro_support_state_query.py` |
 | **n/a (user prompt bullet 0)** Cross-repo handoff marker is present | `docs/agents/pro-contract.md` lists the three new engine capabilities by canonical name. | `docs/agents/pro-contract.md` (this file, forward-looking section) | `tests/test_pro_support_cross_repo_marker.py` |
 
@@ -83,7 +83,7 @@ The full set of files that prove the engine's Pro contract:
 | `tests/test_audit_mcp_timeout.py` | Bounded-subprocess audit covers `pro_support` by default. |
 | `tests/test_pro_support_contract.py` | **Contract-level traceability assertions** — one test per named contract clause. |
 | `tests/test_pro_support_watcher.py` | `ProMarkerWatcher` polls the marker and adopts on first appearance; daemon thread; never writes to the marker. |
-| `tests/test_pro_support_hooks.py` | `ProPipelineHooks` exposes 5 factory kwargs + 1 policy_bundle_override + 1 snapshot_registry; all wired into `run()`. |
+| `tests/test_pro_support_hooks.py` | `ProPipelineHooks` exposes 5 factory kwargs + 1 policy_bundle_override + 1 snapshot_registry + 1 recovery_sleep; all wired into `run()`. |
 | `tests/test_pro_support_state_query.py` | `PipelineStateSnapshot` is a frozen, read-only view of the live state; published on each reduce. |
 | `tests/test_pro_support_cross_repo_marker.py` | The forward-looking engine-capability section in this file lists the three new engine surfaces by canonical name. |
 | `tests/test_pro_support_end_to_end.py` | One black-box `run()` invocation exercises all 3 user-prompt bullets end-to-end: late-marker adoption via `ProMarkerWatcher`, snapshot observability via `SnapshotRegistry` + `PipelineStateSnapshot`, and custom-pipeline DI via `policy_bundle_override`. |
@@ -131,7 +131,8 @@ binding on the Pro product.
   `_cleanup_pipeline`.
 - `ProPipelineHooks` — custom pipeline DI seam; 5 factory
   kwargs + 1 policy_bundle_override + 1 snapshot_registry
-  = 7 fields total. See `ralph/pro_support/hooks.py` and
+  + 1 recovery_sleep = 8 fields total. See
+  `ralph/pro_support/hooks.py` and
   `tests/test_pro_support_hooks.py`. The `ProPipelineHooks`
   dataclass is consumed in `ralph/pipeline/run_loop.py:run`
   through the `pro_hooks` keyword argument and per-field
