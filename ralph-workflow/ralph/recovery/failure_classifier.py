@@ -123,9 +123,13 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
     }
 )
 
-# Claude Code documented usage/billing limit messages that indicate the current
-# Claude run cannot continue without waiting for reset time or adding usage.
+# Usage/billing/limit messages that indicate the current agent run cannot
+# continue without waiting for a quota reset or adding credits. Patterns are
+# matched case-insensitively via ``contains_casefolded_marker``. Add provider-
+# specific and cross-provider phrases here; keep them lowercase because the
+# helper casefolds both the marker and the detail surface.
 _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
+    # Claude Code documented limits
     "You've hit your session limit",
     "You've hit your weekly limit",
     "You've hit your Opus limit",
@@ -134,6 +138,49 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "Extra usage is required for long context requests",
     "workspace API usage limits",
     "billing_error",
+    # OpenAI credit / quota / billing families
+    "you exceeded your current quota",
+    "insufficient_quota",
+    "insufficient quota",
+    "rate limit reached for requests",
+    "billing hard limit reached",
+    "monthly spend limit reached",
+    "organization has no valid billing information",
+    "your account is not active",
+    "you've run out of credits",
+    # Anthropic / Claude API families
+    "rate_limit_error",
+    "number of request tokens has exceeded your per-minute rate limit",
+    "number of output tokens has exceeded your per-minute rate limit",
+    "out of credits",
+    "spend limit reached",
+    "rate limit reached",
+    # Google / Gemini
+    "resource_exhausted",
+    "resource exhausted",
+    "quota exceeded",
+    "quota limit has been exceeded",
+    # Cohere / general providers
+    "rate limit exceeded",
+    "too many requests",
+    # Cross-provider generic credit/quota/limit signals
+    "credits exhausted",
+    "no credits remaining",
+    "insufficient credits",
+    "insufficient balance",
+    "usage limit exceeded",
+    "request limit exceeded",
+    "token limit exceeded",
+    "plan limit reached",
+    "billing threshold reached",
+    "payment required",
+    "account suspended",
+    "subscription expired",
+    "trial expired",
+    "free tier limit exceeded",
+    "daily limit reached",
+    "hourly limit reached",
+    "per-minute limit exceeded",
 )
 
 # Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.

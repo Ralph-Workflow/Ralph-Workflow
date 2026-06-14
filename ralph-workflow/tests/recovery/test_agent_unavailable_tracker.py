@@ -497,3 +497,177 @@ def test_post_tool_empty_response_stays_retryable_not_unavailable() -> None:
     assert failure.category == FailureCategory.AGENT
     assert failure.reset_tool_registry is True
     assert failure.is_unavailable is False
+
+
+# New credit-exhaustion / quota / rate-limit detection patterns.
+# Each pattern must flag the agent as unavailable only when connectivity is online.
+_NEW_SUBSCRIPTION_LIMIT_PATTERNS = [
+    # OpenAI
+    "429 - You exceeded your current quota, please check your plan and billing details",
+    "insufficient_quota: You exceeded your current quota",
+    "rate limit reached for requests",
+    "billing hard limit reached",
+    "monthly spend limit reached",
+    "organization has no valid billing information",
+    "your account is not active",
+    "you've run out of credits",
+    # Anthropic / Claude
+    "rate_limit_error: Number of request tokens has exceeded your per-minute rate limit",
+    "rate_limit_error: Number of output tokens has exceeded your per-minute rate limit",
+    "billing_error: out of credits or spend limit reached",
+    "out of credits",
+    "spend limit reached",
+    "rate limit reached",
+    # Google / Gemini
+    "429 Resource Exhausted: quota exceeded",
+    "resource_exhausted",
+    "quota limit has been exceeded",
+    # Cohere / general
+    "rate limit exceeded",
+    "too many requests",
+    # Cross-provider generic
+    "credits exhausted",
+    "no credits remaining",
+    "insufficient credits",
+    "insufficient balance",
+    "usage limit exceeded",
+    "request limit exceeded",
+    "token limit exceeded",
+    "plan limit reached",
+    "billing threshold reached",
+    "payment required",
+    "account suspended",
+    "subscription expired",
+    "trial expired",
+    "free tier limit exceeded",
+    "daily limit reached",
+    "hourly limit reached",
+    "per-minute limit exceeded",
+]
+
+
+def test_classifier_new_subscription_patterns_online() -> None:
+    """New credit/quota/rate-limit patterns set is_unavailable=True when online."""
+    classifier = FailureClassifier()
+    for message in _NEW_SUBSCRIPTION_LIMIT_PATTERNS:
+        failure = classifier.classify(
+            AgentInvocationError("claude", 1, message),
+            phase="development",
+            agent="claude",
+            connectivity_state="online",
+        )
+        assert failure.category == FailureCategory.AGENT, message
+        assert failure.is_unavailable is True, message
+
+
+def test_classifier_new_subscription_patterns_not_unavailable_when_offline() -> None:
+    """Credit/quota patterns do not set is_unavailable when connectivity is not online."""
+    classifier = FailureClassifier()
+    for connectivity in ("unknown", "offline"):
+        for message in _NEW_SUBSCRIPTION_LIMIT_PATTERNS:
+            failure = classifier.classify(
+                AgentInvocationError("claude", 1, message),
+                phase="development",
+                agent="claude",
+                connectivity_state=connectivity,
+            )
+            assert failure.category == FailureCategory.AGENT, message
+            assert failure.is_unavailable is False, (connectivity, message)
+
+
+def test_credit_exhaustion_failure_sets_timeout() -> None:
+    """Credit-exhaustion messages store the same per-phase:agent unavailable timeout."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+
+    controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "429 - You exceeded your current quota"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    snap = controller.snapshot()
+    assert snap["unavailable_timeouts"]["development:claude"] == 5_000
+
+
+def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
+    """A credit-exhaustion failure causes fallover to the next agent in the chain."""
+    clock = FakeClock(start=0.0)
+    registry = _make_registry_with_budget("development", "claude", max_retries=2)
+    fallovers: list[FalloverEvent] = []
+    bus = FailureEventBus()
+    bus.subscribe(
+        lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
+    )
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            budget_registry=registry,
+            clock=clock,
+            event_bus=bus,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
+
+    new_state, _, evt = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "rate_limit_error: quota exceeded"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert evt.category == "agent"
+    assert new_state.chain_for_phase("development").current_index == 1
+    assert len(fallovers) == 1
+    assert fallovers[0].from_agent == "claude"
+    assert fallovers[0].to_agent == "opencode"
+
+
+def test_all_agents_unavailable_credit_exhaustion_waits_for_cooldown() -> None:
+    """Credit-exhaustion across the whole chain waits rather than crashing."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailable_timeouts={
+                "development:claude": 60_000,
+                "development:opencode": 60_000,
+            },
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
+
+    new_state, effects, _ = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "insufficient credits"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert new_state.phase == "development"
+    assert new_state.last_retry_delay_ms > 0
+    assert effects == []
+    assert new_state.last_error is not None
+    assert "all agents unavailable" in new_state.last_error.lower()
+    assert "waiting for cooldown expiry" in new_state.last_error.lower()
+
+    clock.advance(60)
+    retried_state, retried_effects, _ = controller.handle(
+        new_state,
+        AgentInvocationError("claude", 1, "insufficient credits"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert retried_state.phase == "development"
+    assert retried_state.chain_for_phase("development").current_index == 1
+    assert retried_effects == []
