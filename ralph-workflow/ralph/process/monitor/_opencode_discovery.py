@@ -1,52 +1,41 @@
 """OpenCode subagent output discovery strategy.
 
-OpenCode uses ``.opencode/`` as its data directory and ``.agent/`` for project-local
-agent state (Context7 /opencode-ai/opencode, accessed 2026-06-14). Subagent worker
-output is written to per-worker log files under ``.agent/workers/*/output.log``.
-The exact path convention is derived from OpenCode's project-local agent state
-layout; this strategy treats the channel as available only when the expected
-directory layout is actually present on disk.
+OpenCode uses ``.opencode/`` as its data directory (Context7
+``/opencode-ai/opencode``, accessed 2026-06-14). The public documentation
+covers the available tools (glob, grep, ls, view, write, edit, patch,
+diagnostics) and the permission/bash/write services, but it does not
+document a stable per-worker subagent output log path such as
+``.agent/workers/*/output.log``.
+
+Because the strategy must be grounded in documented behavior (AC-11), this
+implementation reports the subagent-output channel as unavailable rather than
+guessing a convention.
 
 Documentation references:
-  - https://github.com/opencode-ai/opencode (configuration and data directories)
-  - Context7 /opencode-ai/opencode, accessed 2026-06-14
+  - https://github.com/opencode-ai/opencode
+  - Context7 ``/opencode-ai/opencode``, accessed 2026-06-14
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ._discovery_strategy import DiscoveryStrategy
-from ._subagent_output_capture import FileSubagentOutputCapture
 
 if TYPE_CHECKING:
     from ._subagent_output_capture import SubagentOutputCapture
 
-_MIN_OPENCODE_PATH_PARTS = 3
-
 
 class OpencodeSubagentOutputDiscovery(DiscoveryStrategy):
-    """Discover OpenCode subagent worker log files.
+    """OpenCode subagent output discovery.
 
-    Looks for ``.agent/workers/*/output.log`` relative to the current working
-    directory. Each worker directory name becomes the worker identifier.
-
-    If no matching files are found, the strategy returns an empty mapping
-    rather than inventing paths.
+    The documented OpenCode surface does not expose a stable per-worker
+    subagent log path. The strategy therefore returns an empty mapping, which
+    causes the watchdog to treat subagent output as not observable for this
+    agent and fall back to the other evidence channels it does have.
     """
 
     def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]:
-        """Return worker_id -> capture for OpenCode subagent logs."""
-        del host_pid  # OpenCode logs are located by worker directory, not PID.
-        paths = Path().glob(".agent/workers/*/output.log")
-        result: dict[str, SubagentOutputCapture] = {}
-        for path in paths:
-            parts = path.parts
-            worker_id = (
-                parts[-2]
-                if len(parts) >= _MIN_OPENCODE_PATH_PARTS
-                else str(path)
-            )
-            result[worker_id] = FileSubagentOutputCapture(str(path))
-        return result
+        """Return an empty mapping because the log path is not documented."""
+        _ = host_pid
+        return {}

@@ -19,11 +19,13 @@ if TYPE_CHECKING:
     from ralph.agents.execution_state import GenericExecutionStrategy, OpenCodeExecutionStrategy
     from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
     from ralph.agents.invoke._workspace import WorkspaceMonitor
+    from ralph.config.models import AgentConfig
     from ralph.process.liveness import LivenessProbe
 
 
 @dataclass(frozen=True)
 class _ProcessReaderCtx:
+    config: AgentConfig
     policy: TimeoutPolicy
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
     liveness_probe: LivenessProbe | None = None

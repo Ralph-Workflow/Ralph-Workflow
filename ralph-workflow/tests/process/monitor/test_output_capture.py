@@ -45,10 +45,15 @@ def test_file_capture_handles_partial_lines(tmp_path: Path) -> None:
     assert capture.read_lines("w1") == ["partial continuation"]
 
 
-def test_opencode_discovery_finds_output_logs(
+def test_opencode_discovery_returns_empty_for_undocumented_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """OpencodeSubagentOutputDiscovery finds .agent/workers/*/output.log files."""
+    """OpencodeSubagentOutputDiscovery does not invent an undocumented path.
+
+    Even when the legacy-looking directory layout is present on disk, the
+    strategy returns an empty mapping because ``.agent/workers/*/output.log``
+    is not documented in the official OpenCode surface.
+    """
     monkeypatch.chdir(tmp_path)
     worker_dir = tmp_path / ".agent" / "workers" / "w-1"
     worker_dir.mkdir(parents=True)
@@ -56,15 +61,18 @@ def test_opencode_discovery_finds_output_logs(
     log_file.write_text("worker output\n")
 
     discovery = OpencodeSubagentOutputDiscovery()
-    captures = discovery.discover_subagent_outputs(0)
-    assert "w-1" in captures
-    assert captures["w-1"].read_lines("w-1") == ["worker output"]
+    assert discovery.discover_subagent_outputs(0) == {}
 
 
-def test_claude_discovery_finds_worker_logs(
+def test_claude_discovery_returns_empty_for_undocumented_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ClaudeCodeSubagentOutputDiscovery finds .claude/session/*/worker-*/log.txt files."""
+    """ClaudeCodeSubagentOutputDiscovery does not invent an undocumented path.
+
+    Even when the legacy-looking directory layout is present on disk, the
+    strategy returns an empty mapping because ``worker-*/log.txt`` is not
+    documented in the official Claude Code surface.
+    """
     monkeypatch.chdir(tmp_path)
     worker_dir = tmp_path / ".claude" / "session" / "sess-1" / "worker-1"
     worker_dir.mkdir(parents=True)
@@ -72,11 +80,7 @@ def test_claude_discovery_finds_worker_logs(
     log_file.write_text("claude worker log\n")
 
     discovery = ClaudeCodeSubagentOutputDiscovery()
-    captures = discovery.discover_subagent_outputs(0)
-    assert len(captures) == 1
-    key = next(iter(captures))
-    assert "sess-1/worker-1" in key
-    assert captures[key].read_lines(key) == ["claude worker log"]
+    assert discovery.discover_subagent_outputs(0) == {}
 
 
 def test_discovery_returns_empty_when_no_logs(tmp_path: Path) -> None:

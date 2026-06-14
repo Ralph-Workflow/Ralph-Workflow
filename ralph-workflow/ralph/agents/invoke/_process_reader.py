@@ -55,6 +55,8 @@ from ralph.process.manager import (
 )
 from ralph.process.teardown import teardown_subtree
 
+from ._monitor_factory import _make_discovery_strategy, _make_process_monitor
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -90,6 +92,7 @@ class _ProcessLineReader:
 
     def __init__(self, handle: ManagedProcess, ctx: _ProcessReaderCtx, clock: Clock) -> None:
         self._handle = handle
+        self._config = ctx.config
         self._policy = ctx.policy
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe = ctx.liveness_probe or DefaultLivenessProbe()
@@ -290,6 +293,8 @@ class _ProcessLineReader:
             )
             if result is not None:
                 return result
+            if drain_deadline is None and self._handle.poll() is not None:
+                return None
             if drain_deadline is not None and self._clock.monotonic() >= drain_deadline:
                 return None
             if self._policy.idle_timeout_seconds is None:
@@ -299,11 +304,15 @@ class _ProcessLineReader:
     def read_lines(self) -> Iterator[str]:
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
+        process_monitor = _make_process_monitor(self._handle, self._policy)
+        discovery_strategy = _make_discovery_strategy(self._config, self._policy)
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,
             listener=self._on_waiting_event,
             corroborator=self._corroborate,
+            process_monitor=process_monitor,
+            discovery_strategy=discovery_strategy,
         )
 
         # Register the watchdog's workspace channel recorder as the
@@ -441,6 +450,7 @@ def _run_subprocess_and_read_lines(
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         reader_ctx = _ProcessReaderCtx(
+            config=ctx.config,
             policy=ctx.policy,
             execution_strategy=ctx.execution_strategy,
             liveness_probe=ctx.liveness_probe,

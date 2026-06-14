@@ -12,20 +12,27 @@ per-agent subagent output discovery strategies in
 Claude Code stores session metadata under `.claude/` in the working
 directory. The public repository exposes session metadata at
 `.claude/sessions/<number>.json` and transcripts at
-`.claude/projects/<project-id>/<session-uuid>.jsonl`. Subagent worker
-output is written to per-worker log files under the session directory;
-the `worker-*/log.txt` convention is treated as available only when
-that directory layout is actually present on disk.
+`.claude/projects/<project-id>/<session-uuid>.jsonl`. A
+security-guidance plugin writes its own log to
+`~/.claude/security/log.txt`.
+
+No official documentation documents a stable per-worker subagent output
+log path (e.g. `worker-*/log.txt`). The discovery strategy therefore
+reports the channel as unavailable rather than guessing a path or format.
 
 ## OpenCode
 
 - Repository and documentation: https://github.com/opencode-ai/opencode
 - Context7 index: `/opencode-ai/opencode`, accessed 2026-06-14.
 
-OpenCode uses `.opencode/` as its data directory and `.agent/` for
-project-local agent state. Subagent worker output is discovered under
-`.agent/workers/<worker-id>/output.log`; the strategy returns an empty
-mapping when that layout is not present.
+OpenCode uses `.opencode/` as its data directory and documents its tools
+(glob, grep, ls, view, write, edit, patch, diagnostics), permission
+service, and bash tool.
+
+No official documentation documents a stable per-worker subagent output
+log path (e.g. `.agent/workers/<worker-id>/output.log`). The discovery
+strategy therefore reports the channel as unavailable rather than
+guessing a path or format.
 
 ## Fallback policy
 

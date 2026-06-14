@@ -38,6 +38,8 @@ from ralph.agents.invoke import (
     read_lines_from_process,
 )
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig
 from ralph.process.child_liveness import ChildLivenessRegistry, MutableRecord
 from ralph.process.liveness import FakeLivenessProbe
 from tests.agents.test_invoke_timeout_integration_helper__raisingstrategy import _RaisingStrategy
@@ -56,10 +58,15 @@ class _FakeManagedHandle:
     ) -> None:
         self._stdout = stdout_lines
         self._stderr = None
-        self._returncode: int | None = 0
+        self._returncode: int | None = None
         self._terminated = False
         self._descendant_count = descendant_count
         self._descendant_oldest_seconds = descendant_oldest_seconds
+        self._pid = 999_999
+
+    @property
+    def pid(self) -> int:
+        return self._pid
 
     @property
     def stdout(self) -> object | None:
@@ -111,6 +118,10 @@ def _read_lines(
     return read_lines_from_process(
         cast("object", handle),
         ctx=ProcessReaderCtx(
+            config=AgentConfig(
+                cmd="opencode",
+                transport=AgentTransport.OPENCODE,
+            ),
             policy=policy,
             execution_strategy=execution_strategy,
             liveness_probe=liveness_probe,

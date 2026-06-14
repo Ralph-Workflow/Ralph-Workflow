@@ -90,6 +90,18 @@ class DefaultProcessMonitor(ProcessMonitor):
 
         classified: list[_ClassifiedProcess] = []
         try:
+            host_cmdline = host.cmdline()
+        except psutil.Error:
+            host_cmdline = None
+        classified.append(
+            _ClassifiedProcess(
+                pid=self._host_pid,
+                role=ProcessRole.HOST,
+                cmdline=host_cmdline,
+            )
+        )
+
+        try:
             descendants = host.children(recursive=True)
         except psutil.Error:
             descendants = []

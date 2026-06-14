@@ -75,6 +75,8 @@ from ralph.process.manager import (
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
 from ralph.process.teardown import teardown_subtree
 
+from ._monitor_factory import _make_discovery_strategy, _make_process_monitor
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
     from pathlib import Path
@@ -99,6 +101,7 @@ class PtyLineReader:
         self._handle = handle
         self._agent_name = agent_name
         self._started_at_wall_clock = time.time()
+        self._config = ctx.config
         self._policy = ctx.policy
         self._monitor = ctx.monitor
         self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
@@ -626,11 +629,15 @@ class PtyLineReader:
         reader = self._start_thread(self._read_thread)
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
+        process_monitor = _make_process_monitor(self._handle, self._policy)
+        discovery_strategy = _make_discovery_strategy(self._config, self._policy)
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,
             listener=self._on_waiting_event,
             corroborator=self._corroborate,
+            process_monitor=process_monitor,
+            discovery_strategy=discovery_strategy,
         )
 
         # Register the watchdog's workspace channel recorder as the

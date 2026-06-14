@@ -54,8 +54,49 @@ def test_default_monitor_classifies_subagent_by_cmdline() -> None:
             host.wait(timeout=1.0)
 
 
+def test_default_monitor_includes_host_classification() -> None:
+    """The host process itself is classified with ProcessRole.HOST."""
+    host_script = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)']); "
+        "time.sleep(600)"
+    )
+    host = subprocess.Popen(
+        [sys.executable, "-c", host_script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    time.sleep(0.3)
+
+    try:
+        monitor = DefaultProcessMonitor(
+            host.pid,
+            role_classifier=lambda _pid, cmdline: (
+                ProcessRole.SPAWNED_SUBAGENT
+                if cmdline and "time.sleep(600)" in " ".join(cmdline)
+                else ProcessRole.INCIDENTAL_HELPER
+            ),
+            poll_interval_seconds=0.0,
+        )
+        classified = monitor.classified_processes()
+        roles = {p.pid: p.role for p in classified}
+        assert roles[host.pid] == ProcessRole.HOST
+        assert any(
+            p.role == ProcessRole.SPAWNED_SUBAGENT
+            for p in classified
+            if p.pid != host.pid
+        )
+    finally:
+        host.terminate()
+        try:
+            host.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            host.kill()
+            host.wait(timeout=1.0)
+
+
 def test_default_monitor_handles_missing_host() -> None:
-    """A missing host process results in zero live subagents."""
+    """A missing host process results in zero live subagents and no host entry."""
     monitor = DefaultProcessMonitor(999_999, poll_interval_seconds=0.0)
     assert monitor.live_subagent_count() == 0
     assert monitor.classified_processes() == ()

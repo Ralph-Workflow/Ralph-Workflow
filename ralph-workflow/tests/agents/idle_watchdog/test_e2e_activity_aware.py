@@ -12,8 +12,8 @@ import os
 import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -32,12 +32,12 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.process.monitor import (
     ClaudeCodeSubagentOutputDiscovery,
     DefaultProcessMonitor,
+    DiscoveryStrategy,
+    FileSubagentOutputCapture,
     OpencodeSubagentOutputDiscovery,
+    SubagentOutputCapture,
 )
 from ralph.process.teardown import DefaultProcessTeardown
-
-if TYPE_CHECKING:
-    from ralph.process.monitor import DiscoveryStrategy
 
 pytestmark = pytest.mark.subprocess_e2e
 
@@ -77,43 +77,37 @@ def _make_watchdog(
     )
 
 
+@dataclass
+class _FakeDiscovery(DiscoveryStrategy):
+    """Test-only discovery that exposes a configurable capture map."""
+
+    captures: dict[str, SubagentOutputCapture] = field(default_factory=dict)
+
+    def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]:
+        return dict(self.captures)
+
+
 @pytest.mark.parametrize(
-    ("discovery", "log_path", "worker_id"),
+    "discovery",
     [
-        (
-            OpencodeSubagentOutputDiscovery(),
-            ".agent/workers/w1/output.log",
-            "w1",
-        ),
-        (
-            ClaudeCodeSubagentOutputDiscovery(),
-            ".claude/session/s1/worker-1/log.txt",
-            "s1/worker-1",
-        ),
+        OpencodeSubagentOutputDiscovery(),
+        ClaudeCodeSubagentOutputDiscovery(),
     ],
 )
-def test_subagent_output_discovery_reads_new_lines(
+def test_documented_discovery_returns_empty_when_path_not_documented(
     tmp_path: Path,
     discovery: DiscoveryStrategy,
-    log_path: str,
-    worker_id: str,
 ) -> None:
-    """AC-07/AC-10/AC-11: observable subagent log files are discovered and read.
+    """AC-11: undocumented subagent output paths are not invented.
 
-    Writing a new line to the documented log path advances the
-    SUBAGENT_OUTPUT first-party channel and can defer NO_OUTPUT_DEADLINE.
+    Discovery strategies are cwd-relative; even when the legacy-looking
+    directory layout is present on disk, the strategy must return an empty
+    mapping because the path is not documented.
     """
-    log_file = tmp_path / log_path
-    log_file.parent.mkdir(parents=True, exist_ok=True)
-    log_file.write_text("hello subagent\n", encoding="utf-8")
-
-    # Discovery strategies are cwd-relative; run from tmp_path.
     original_cwd = Path.cwd()
     os.chdir(str(tmp_path))
     try:
-        captures = discovery.discover_subagent_outputs(0)
-        assert worker_id in captures, f"expected {worker_id} in {list(captures)}"
-        assert captures[worker_id].read_lines(worker_id) == ["hello subagent"]
+        assert discovery.discover_subagent_outputs(0) == {}
     finally:
         os.chdir(str(original_cwd))
 
@@ -124,25 +118,23 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
     log_file.write_text("line 1\n", encoding="utf-8")
 
-    original_cwd = Path.cwd()
-    os.chdir(str(tmp_path))
-    try:
-        policy = _make_policy(activity_ttl=1000.0)
-        wd, clock = _make_watchdog(policy, OpencodeSubagentOutputDiscovery())
-        wd.record_activity()
-        clock.advance(1.0)
+    policy = _make_policy(activity_ttl=1000.0)
+    discovery = _FakeDiscovery(
+        captures={"w1": FileSubagentOutputCapture(str(log_file))}
+    )
+    wd, clock = _make_watchdog(policy, discovery)
+    wd.record_activity()
+    clock.advance(1.0)
 
-        verdict = wd.evaluate(classify_quiet=_active)
-        assert verdict == WatchdogVerdict.CONTINUE
-        assert wd._subagent_output_count >= 1
+    verdict = wd.evaluate(classify_quiet=_active)
+    assert verdict == WatchdogVerdict.CONTINUE
+    assert wd._subagent_output_count >= 1
 
-        # Past TTL with no new lines -> fire.
-        clock.advance(2000.0)
-        verdict = wd.evaluate(classify_quiet=_active)
-        assert verdict == WatchdogVerdict.FIRE
-        assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
-    finally:
-        os.chdir(str(original_cwd))
+    # Past TTL with no new lines -> fire.
+    clock.advance(2000.0)
+    verdict = wd.evaluate(classify_quiet=_active)
+    assert verdict == WatchdogVerdict.FIRE
+    assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
@@ -165,6 +157,7 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
         assert monitor.live_subagent_count() == 1
         processes = monitor.classified_processes()
         assert any(p.role.value == "spawned_subagent" for p in processes)
+        assert any(p.role.value == "host" and p.pid == host.pid for p in processes)
     finally:
         DefaultProcessTeardown(kill_escalation_ms=300.0).teardown_subtree(host.pid)
 

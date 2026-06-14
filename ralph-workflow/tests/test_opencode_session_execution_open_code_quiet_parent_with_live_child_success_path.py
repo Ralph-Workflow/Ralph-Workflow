@@ -26,6 +26,8 @@ from ralph.agents.invoke import (
     check_process_result,
     read_lines_from_process,
 )
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
 
 if TYPE_CHECKING:
@@ -75,6 +77,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
             stdout = _BlockingThenOneLineStdout()
             stderr = SimpleNamespace(read=lambda: "")
             terminate_count: int = 0
+            pid: int = 999_999
 
             def terminate(self, grace_period_s: float | None = None) -> None:
                 del grace_period_s
@@ -119,6 +122,10 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
                 read_lines_from_process(
                     cast("ManagedProcess", handle),
                     ctx=ProcessReaderCtx(
+                        config=AgentConfig(
+                            cmd="opencode",
+                            transport=AgentTransport.OPENCODE,
+                        ),
                         policy=TimeoutPolicy(idle_timeout_seconds=1.0),
                         execution_strategy=strategy,
                         liveness_probe=probe,
