@@ -373,8 +373,13 @@ class FailureClassifier:
             category = FailureCategory.AGENT
             counts = True
 
+        # Unavailable-agent detection only applies when the failure is agent-side
+        # AND connectivity is known healthy. The "no output despite healthy
+        # connection" signal is what distinguishes a temporarily unavailable
+        # agent (e.g. out of credits) from a transport or offline failure.
         is_unavailable = (
             category == FailureCategory.AGENT
+            and (connectivity_state or "").casefold() == "online"
             and (
                 exc_obj is None
                 or type(exc_obj).__name__ == "AgentInvocationError"

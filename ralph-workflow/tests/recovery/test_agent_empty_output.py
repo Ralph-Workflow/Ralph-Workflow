@@ -11,7 +11,12 @@ from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
-from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
+from ralph.recovery.controller import (
+    FailureContext,
+    RecoveryController,
+    RecoveryControllerOptions,
+    compute_backoff_ms,
+)
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 
 
@@ -163,10 +168,14 @@ def test_empty_response_in_parsed_output_classified_as_agent_fault() -> None:
 
 
 def test_online_timeout_with_no_output_debits_budget_in_controller() -> None:
-    """Known-online timeout with no output should trigger suspicious-agent fallback."""
+    """Known-online timeout with no output is attributed to the agent budget."""
     registry = _make_registry_with_budget("development", "claude", max_retries=2)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(cycle_cap=10, budget_registry=registry)
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            budget_registry=registry,
+            policy_bundle=_minimal_policy_bundle(),
+        )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
 
@@ -183,41 +192,61 @@ def test_online_timeout_with_no_output_debits_budget_in_controller() -> None:
     assert budget.consumed == 1
 
 
-def test_unavailable_agent_message_classified_with_is_unavailable_flag() -> None:
-    """Messages matching the unavailable-agent pattern set is_unavailable=True."""
+def test_unavailable_agent_requires_online_connectivity() -> None:
+    """No-output failures are flagged unavailable only with healthy connectivity."""
     classifier = FailureClassifier()
+    message = "agent produced no output for 60s"
 
-    failure = classifier.classify(
-        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+    for connectivity in ("unknown", "offline"):
+        failure = classifier.classify(
+            AgentInvocationError("claude", 1, message),
+            phase="development",
+            agent="claude",
+            connectivity_state=connectivity,
+        )
+        assert failure.category == FailureCategory.AGENT
+        assert failure.is_unavailable is False
+
+    online_failure = classifier.classify(
+        AgentInvocationError("claude", 1, message),
         phase="development",
         agent="claude",
+        connectivity_state="online",
     )
-
-    assert failure.category == FailureCategory.AGENT
-    assert failure.is_unavailable is True
+    assert online_failure.category == FailureCategory.AGENT
+    assert online_failure.is_unavailable is True
 
     network_failure = classifier.classify(
         AgentInvocationError("claude", 1, "Connection reset by peer"),
         phase="development",
         agent="claude",
+        connectivity_state="online",
     )
     assert network_failure.category == FailureCategory.ENVIRONMENTAL
     assert network_failure.is_unavailable is False
 
 
 def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
-    """An unavailable agent is skipped when selecting the next agent to try."""
+    """An unavailable agent is skipped; it is retried after its timeout expires."""
     clock = FakeClock(start=0.0)
     registry = _make_registry_with_budget("development", "claude", max_retries=2)
+    fallovers: list[FalloverEvent] = []
+    bus = FailureEventBus()
+    bus.subscribe(
+        lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
+    )
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
             budget_registry=registry,
             clock=clock,
+            event_bus=bus,
             unavailable_timeouts={"development:claude": 60_000},
         )
     )
-    state = _make_state(["claude", "opencode"])
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
 
     new_state, _, evt = controller.handle(
         state,
@@ -227,54 +256,107 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
 
     assert evt.category == "agent"
     assert new_state.chain_for_phase("development").current_index == 1
-    assert new_state.chain_for_phase("development").agents[1] == "opencode"
-    assert controller._unavailable_timeouts["development:claude"] == 5_000
+    assert len(fallovers) == 1
+    assert fallovers[0].from_agent == "claude"
+    assert fallovers[0].to_agent == "opencode"
 
     clock.advance(60)
-    assert controller._is_agent_available("development", "claude") is True
-
-    reset_state = _make_state(["claude", "opencode"])
+    retry_state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
     retried_state, _, _ = controller.handle(
-        reset_state,
+        retry_state,
         AgentInvocationError("claude", 1, "transient agent error"),
         FailureContext(phase="development", agent="claude"),
     )
     assert retried_state.chain_for_phase("development").current_index == 0
+    assert retried_state.chain_for_phase("development").retries == 1
+
+
+def test_all_agents_unavailable_triggers_phase_failure() -> None:
+    """When every agent in the chain is unavailable, the phase fails."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+            unavailable_timeouts={
+                "development:claude": 60_000,
+                "development:opencode": 60_000,
+            },
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
+
+    new_state, _, _ = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert new_state.phase == "failed_terminal"
 
 
 def test_exponential_backoff_increases_across_cycles() -> None:
-    """Backoff increases exponentially with each unavailable mark and caps."""
+    """Consecutive unavailable failures grow the skip timeout exponentially."""
     clock = FakeClock(start=0.0)
     controller = RecoveryController(
-        options=RecoveryControllerOptions(clock=clock),
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
     )
-    phase = "development"
-    agent = "claude"
-    key = f"{phase}:{agent}"
+    msg = "agent produced no output for 60s"
 
-    controller._backoff_attempts[key] = 0
-    backoff_1 = controller._mark_agent_unavailable(phase, agent)
-    assert backoff_1 == 5_000
-    until_1 = controller._unavailable_timeouts[key]
-    assert until_1 == 5_000
+    def _fresh_state() -> PipelineState:
+        return _make_state(["claude"]).copy_with(last_connectivity_state="online")
 
-    clock.advance(5)
-    controller._backoff_attempts[key] = 1
-    backoff_2 = controller._mark_agent_unavailable(phase, agent)
-    assert backoff_2 == 10_000
-    assert controller._unavailable_timeouts[key] == 15_000
+    # First failure: base 5s timeout.
+    controller.handle(
+        _fresh_state(),
+        AgentInvocationError("claude", 1, msg),
+        FailureContext(phase="development", agent="claude"),
+    )
+    snap1 = controller.snapshot()
+    assert snap1["unavailable_timeouts"]["development:claude"] == 5_000
 
-    clock.advance(10)
-    controller._backoff_attempts[key] = 2
-    backoff_3 = controller._mark_agent_unavailable(phase, agent)
-    assert backoff_3 == 20_000
-    assert controller._unavailable_timeouts[key] == 35_000
+    # Second failure before timeout expires: doubled to 10s from now.
+    clock.advance(4.9)
+    controller.handle(
+        _fresh_state(),
+        AgentInvocationError("claude", 1, msg),
+        FailureContext(phase="development", agent="claude"),
+    )
+    snap2 = controller.snapshot()
+    assert snap2["unavailable_timeouts"]["development:claude"] == 14_900
 
-    controller._backoff_attempts[key] = 10
-    backoff_capped = controller._mark_agent_unavailable(phase, agent)
-    assert backoff_capped == 300_000
+    # Third failure: doubled again to 20s from now.
+    clock.advance(9.9)
+    controller.handle(
+        _fresh_state(),
+        AgentInvocationError("claude", 1, msg),
+        FailureContext(phase="development", agent="claude"),
+    )
+    snap3 = controller.snapshot()
+    assert snap3["unavailable_timeouts"]["development:claude"] == 34_800
 
-    controller.reset_backoff(phase, agent)
-    assert controller._backoff_attempts.get(key) is None
-    backoff_reset = controller._mark_agent_unavailable(phase, agent)
-    assert backoff_reset == 5_000
+    # After the timeout expires and backoff is reset, the next mark is base again.
+    clock.advance(20.1)
+    controller.reset_backoff("development", "claude")
+    controller.handle(
+        _fresh_state(),
+        AgentInvocationError("claude", 1, msg),
+        FailureContext(phase="development", agent="claude"),
+    )
+    snap4 = controller.snapshot()
+    assert snap4["unavailable_timeouts"]["development:claude"] == 39_900
+
+    # Public helper caps growth at max_backoff_ms.
+    assert compute_backoff_ms(5_000, 0, 300_000) == 5_000
+    assert compute_backoff_ms(5_000, 1, 300_000) == 10_000
+    assert compute_backoff_ms(5_000, 2, 300_000) == 20_000
+    assert compute_backoff_ms(5_000, 10, 300_000) == 300_000

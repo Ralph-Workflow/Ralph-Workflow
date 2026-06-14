@@ -445,9 +445,11 @@ class RecoveryController:
         current_agent_available = current_agent is None or self._is_agent_available(
             phase, current_agent
         )
-        # Retry the current agent when budget allows and either the agent is
-        # available or there is no other agent to fall over to.
-        can_retry_current = current_agent_available or next_available_index is None
+        # Retry the current agent only when it is actually available. An agent
+        # marked unavailable (cooldown/backoff) must never be retried, even if
+        # it is the only agent in the chain. If no agent is available, the chain
+        # is exhausted and we fail the phase.
+        can_retry_current = current_agent_available
         should_retry_in_chain = (
             current_agent is not None
             and can_retry_current
@@ -536,6 +538,7 @@ class RecoveryController:
             },
             "backoff_attempts": dict(self._backoff_attempts),
             "technical_retry_cap": self._technical_retry_cap,
+            "unavailable_timeouts": dict(self._unavailable_timeouts),
         }
 
     def _enter_phase_failed(
