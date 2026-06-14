@@ -11,6 +11,7 @@ from loguru import logger
 
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.pipeline import progress
+from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.agent_retry_intent import (
     cleared_agent_retry_intent,
     resume_agent_retry_intent,
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.pipeline.effects import Effect
-    from ralph.pipeline.state import AgentChainState, PipelineState
+    from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentChainConfig
 
 
@@ -451,7 +452,10 @@ class RecoveryController:
             if use_budget and current_agent is not None
             else None
         )
-        next_available_index = self._next_available_agent_index(chain, phase)
+        is_agent_unavailable = failure.is_unavailable and agent is not None
+        next_available_index = self._next_available_agent_index(
+            chain, phase, wrap=is_agent_unavailable
+        )
         current_agent_available = current_agent is None or self._is_agent_available(
             phase, current_agent
         )
@@ -491,9 +495,11 @@ class RecoveryController:
             )
             self._bus.publish(fallover_evt)
 
-            new_chain = chain
-            for _ in range(next_available_index - chain.current_index):
-                new_chain = new_chain.with_advance()
+            new_chain = AgentChainState(
+                agents=chain.agents,
+                current_index=next_available_index,
+                retries=0,
+            )
             new_state = (
                 state.with_phase_chain(phase, new_chain)
                 .copy_with(
@@ -513,17 +519,25 @@ class RecoveryController:
         self,
         chain: AgentChainState,
         phase: str,
+        *,
+        wrap: bool = False,
     ) -> int | None:
-        """Return the index of the next available agent after the current one.
+        """Return the index of the next available agent in chain order.
 
-        Skips agents that are marked unavailable until their timeout expires.
-        Returns None if no subsequent agent is available.
+        By default only agents after the current index are considered, preserving
+        the existing forward-only fallover semantics for budget exhaustion. When
+        ``wrap=True`` the search is cyclic, so earlier agents whose unavailable
+        cooldown has expired can be reconsidered. The current agent itself is
+        never returned here; it is handled by the retry-current logic.
         """
-        index = chain.current_index + 1
-        while index < len(chain.agents):
+        n = len(chain.agents)
+        if n <= 1:
+            return None
+        max_offset = n if wrap else n - chain.current_index
+        for offset in range(1, max_offset):
+            index = (chain.current_index + offset) % n
             if self._is_agent_available(phase, chain.agents[index]):
                 return index
-            index += 1
         return None
 
     def _get_max_retries_for_chain(self, phase: str) -> int:

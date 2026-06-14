@@ -42,15 +42,19 @@ if TYPE_CHECKING:
         ) -> ProcessResult: ...
 
 
-# Default: ``auto`` — pytest-xdist auto-detects available CPU cores.
-# On systems with 12+ cores, this reliably keeps tests under the 60s
-# combined budget. Override via PYTEST_WORKERS env var for environments
-# with fewer cores. Minimum recommendation: 8+ physical cores.
+# Default worker count leaves two logical cores free for the main process and
+# system overhead. On a 12-core machine this uses 10 workers; pytest-xdist's
+# ``auto`` can over-subscribe and cause per-test timeouts under load, so we
+# cap the default. Override via PYTEST_WORKERS env var.
 _DEFAULT_PYTEST_WORKERS = "auto"
 
 
 def _pytest_workers() -> str:
-    return os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
+    env = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
+    if env == "auto":
+        cores = os.cpu_count() or 1
+        return str(max(1, cores - 2))
+    return env
 
 
 def _default_runner(

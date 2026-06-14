@@ -15,7 +15,7 @@ from ralph.skills._agent_paths import AgentSkillRoot
 from ralph.skills._capability_entry import CapabilityEntry
 from ralph.skills._capability_state import CapabilityState
 from ralph.skills._capability_status import CapabilityStatus
-from ralph.skills._content import BASELINE_SKILL_NAMES, get_skill_content
+from ralph.skills._content import BASELINE_SKILL_NAMES
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -229,7 +229,7 @@ def test_init_command_skill_summary_reports_project_skill_root(
             sibling_dir = sibling_root / name
             sibling_dir.mkdir(parents=True, exist_ok=True)
             (sibling_dir / "SKILL.md").write_text(
-                get_skill_content(name), encoding="utf-8"
+                f"# {name}\n", encoding="utf-8"
             )
 
     monkeypatch.chdir(tmp_path)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -125,17 +126,19 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
     assert fallovers[0].from_agent == "claude"
     assert fallovers[0].to_agent == "opencode"
 
+    # Cooldown for claude expires; a later failure on opencode routes back to
+    # claude when opencode is also marked unavailable.
     clock.advance(60)
-    retry_state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
     retried_state, _, _ = controller.handle(
-        retry_state,
-        AgentInvocationError("claude", 1, "transient agent error"),
-        FailureContext(phase="development", agent="claude"),
+        new_state,
+        AgentInvocationError("opencode", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="opencode"),
     )
     assert retried_state.chain_for_phase("development").current_index == 0
-    assert retried_state.chain_for_phase("development").retries == 1
+    assert any(
+        f.from_agent == "opencode" and f.to_agent == "claude"
+        for f in retried_state.fallover_history
+    )
 
 
 def test_all_agents_unavailable_triggers_phase_failure() -> None:
@@ -280,3 +283,42 @@ def test_classifier_flags_unavailable_only_when_online() -> None:
     )
     assert network_failure.category == FailureCategory.ENVIRONMENTAL
     assert network_failure.is_unavailable is False
+
+
+def test_agent_inactivity_timeout_is_unavailable() -> None:
+    """The real AgentInactivityTimeoutError subclass flags the agent unavailable."""
+    failure = FailureClassifier().classify(
+        AgentInactivityTimeoutError("claude", 30.0),
+        phase="development",
+        agent="claude",
+        connectivity_state="online",
+    )
+    assert failure.category == FailureCategory.AGENT
+    assert failure.is_unavailable is True
+
+
+def test_post_tool_empty_response_stays_retryable_not_unavailable() -> None:
+    """Post-tool registry-wedge failures keep their bounded retry path.
+
+    A tool-result desync (empty response after prior tool activity) is a
+    tool-registry issue, not an out-of-credits unavailability, and must not
+    be routed into the unavailable cooldown path.
+    """
+    exc = AgentInvocationError(
+        "claude",
+        1,
+        "stderr text",
+        parsed_output=[
+            '{"type":"tool_result"}',
+            "Model returned an empty response with no tool calls",
+        ],
+    )
+    failure = FailureClassifier().classify(
+        exc,
+        phase="development",
+        agent="claude",
+        connectivity_state="online",
+    )
+    assert failure.category == FailureCategory.AGENT
+    assert failure.reset_tool_registry is True
+    assert failure.is_unavailable is False

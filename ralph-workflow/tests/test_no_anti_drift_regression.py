@@ -1019,6 +1019,9 @@ class TestNoRetryDecisionReimplementation:
                 continue
             if "test" in rel.parts:
                 continue
+            source = _read(path).lower()
+            if "retry" not in source:
+                continue
             tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

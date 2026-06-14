@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import signal
 import threading
 from typing import TYPE_CHECKING
@@ -127,6 +128,11 @@ def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
 def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
     """Create a temporary git repository for testing.
 
+    Creating a fresh repository with GitPython for every test costs several
+    seconds of real subprocess/git I/O. The session-scoped template already
+    contains an identical initial commit and config, so copying it gives the
+    same isolated starting state much faster.
+
     Args:
         tmp_path: Pytest temporary path fixture.
 
@@ -134,16 +140,7 @@ def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
         Path to the temporary git repository.
     """
     repo_path = tmp_path / "repo"
-    repo = Repo.init(str(repo_path))
-    try:
-        _configure_repo_identity(repo)
-        readme_src = _git_repo_template / "README.md"
-        readme_dst = repo_path / "README.md"
-        readme_dst.write_text(readme_src.read_text())
-        repo.index.add(["README.md"])
-        repo.index.commit("initial commit")
-    finally:
-        repo.close()
+    shutil.copytree(_git_repo_template, repo_path)
     return repo_path
 
 

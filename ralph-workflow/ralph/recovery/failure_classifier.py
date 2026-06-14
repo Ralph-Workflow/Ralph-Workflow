@@ -374,15 +374,21 @@ class FailureClassifier:
             counts = True
 
         # Unavailable-agent detection only applies when the failure is agent-side
-        # AND connectivity is known healthy. The "no output despite healthy
-        # connection" signal is what distinguishes a temporarily unavailable
-        # agent (e.g. out of credits) from a transport or offline failure.
+        # AND connectivity is known healthy AND the failure is not a tool-registry
+        # wedge (those have their own bounded retry path). The "no output despite
+        # healthy connection" signal is what distinguishes a temporarily
+        # unavailable agent (e.g. out of credits) from a transport or offline
+        # failure. AgentInactivityTimeoutError subclasses AgentInvocationError,
+        # so both class names are accepted here. We match by name rather than
+        # isinstance to avoid a circular import through ralph.agents.invoke.
         is_unavailable = (
             category == FailureCategory.AGENT
             and (connectivity_state or "").casefold() == "online"
+            and not reset_tool_registry
             and (
                 exc_obj is None
-                or type(exc_obj).__name__ == "AgentInvocationError"
+                or type(exc_obj).__name__
+                in {"AgentInvocationError", "AgentInactivityTimeoutError"}
             )
             and (
                 _is_unavailable_agent_message(raw_message)
