@@ -17,6 +17,10 @@ from ralph.agents.invoke import (
     invoke_agent,
     provider_allowed_mcp_tool_names,
 )
+from ralph.agents.invoke._workspace_change_classifier import (
+    WorkspaceChangeClassifier,
+    WorkspaceChangeKind,
+)
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
@@ -1017,10 +1021,19 @@ def test_invoke_agent_starts_workspace_monitor_without_progress_ui(
     assert len(captured_calls) == 1, (
         f"expected one _start_workspace_monitor call, got {captured_calls}"
     )
-    args, _kwargs = captured_calls[0]
+    args, kwargs = captured_calls[0]
     assert args[0] == tmp_path, (
         f"workspace_path must be passed even with show_progress=False, got {args[0]}"
     )
+    classifier = kwargs.get("classifier")
+    assert isinstance(classifier, WorkspaceChangeClassifier), (
+        f"expected a WorkspaceChangeClassifier for direct invoke callers, got {classifier!r}"
+    )
+    # Direct callers must receive the conservative default weights, not the
+    # legacy OTHER/1.0 fallback. Source changes count as activity; log churn
+    # does not.
+    assert classifier.classify("src/app.py") == (WorkspaceChangeKind.SOURCE, 1.0)
+    assert classifier.classify("build/output.log") == (WorkspaceChangeKind.LOG, 0.0)
 
 
 def test_claude_mode_rejects_duplicate_ralph_server_name(
