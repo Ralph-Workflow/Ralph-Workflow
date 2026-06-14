@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ralph.agents.invoke import AgentInvocationError
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands._commit_chain_config import CommitChainConfig
@@ -422,6 +423,141 @@ def test_plumbing_routes_through_execute_agent_effect(
     )
 
     assert len(smoke_calls) == 1
+
+
+def test_commit_plumbing_propagates_session_id(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """``run_commit_plumbing`` returns the session id captured by the shared
+    execution core so callers can resume a suspended commit attempt.
+    """
+    workspace_root = Path("/workspace")
+    display_context = _fake_display_context()
+    bridge = MagicMock()
+    bridge_factory = MagicMock(return_value=bridge)
+    core = build_minimal_pipeline_core(UnifiedConfig(), display_context)
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: UnifiedConfig,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        del effect, config, pipeline_deps, workspace_scope
+        set_session_id_cb = kwargs.get("set_session_id_cb")
+        if callable(set_session_id_cb):
+            set_session_id_cb("sess-captured")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "execute_agent_effect",
+        fake_execute_agent_effect,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message",
+        _fake_commit_prompt,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message_for_opencode",
+        _fake_commit_prompt_for_opencode,
+    )
+
+    with (
+        patch.object(commit_module, "delete_commit_message_artifacts"),
+        patch.object(
+            commit_module,
+            "read_commit_message_artifact",
+            return_value="feat: session captured",
+        ),
+        patch.object(
+            commit_module,
+            "write_commit_prompt_file",
+            return_value="PROMPT.md",
+        ),
+    ):
+        result = commit_plumbing_module.run_commit_plumbing(
+            diff="diff --git a/x b/x",
+            repo_root=workspace_root,
+            chain_config=_make_commit_chain_config(),
+            display_context=display_context,
+            pipeline_core=core,
+            bridge_factory=bridge_factory,
+        )
+
+    assert result.message == "feat: session captured"
+    assert result.session_id == "sess-captured"
+
+
+def test_commit_plumbing_propagates_last_error(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """``run_commit_plumbing`` returns the last error reported by the shared
+    execution core so callers can inspect why a commit attempt failed.
+    """
+    workspace_root = Path("/workspace")
+    display_context = _fake_display_context()
+    bridge = MagicMock()
+    bridge_factory = MagicMock(return_value=bridge)
+    core = build_minimal_pipeline_core(UnifiedConfig(), display_context)
+    captured_error = AgentInvocationError("claude", 1, "boom")
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: UnifiedConfig,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        del effect, config, pipeline_deps, workspace_scope
+        error_sink = kwargs.get("agent_invocation_error_sink")
+        if callable(error_sink):
+            error_sink(captured_error)
+        return PipelineEvent.AGENT_FAILURE
+
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "execute_agent_effect",
+        fake_execute_agent_effect,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message",
+        _fake_commit_prompt,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message_for_opencode",
+        _fake_commit_prompt_for_opencode,
+    )
+
+    with (
+        patch.object(commit_module, "delete_commit_message_artifacts"),
+        patch.object(
+            commit_module,
+            "read_commit_message_artifact",
+            return_value="",
+        ),
+        patch.object(
+            commit_module,
+            "write_commit_prompt_file",
+            return_value="PROMPT.md",
+        ),
+    ):
+        result = commit_plumbing_module.run_commit_plumbing(
+            diff="diff --git a/x b/x",
+            repo_root=workspace_root,
+            chain_config=_make_commit_chain_config(),
+            display_context=display_context,
+            pipeline_core=core,
+            bridge_factory=bridge_factory,
+        )
+
+    assert result.last_error is captured_error
+    assert result.message == ""
 
 
 def test_commit_plumbing_shuts_down_bridge_on_execute_raise(

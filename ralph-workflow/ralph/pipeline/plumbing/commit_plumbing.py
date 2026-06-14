@@ -356,6 +356,8 @@ def run_commit_plumbing(
                 pipeline_deps=effective_pipeline_deps,
             )
             failure_details.extend(result.failure_details)
+            last_session_id = result.session_id or last_session_id
+            last_error = result.last_error or last_error
 
             if result.skipped:
                 return CommitAgentResult(
@@ -453,7 +455,11 @@ def _generate_commit_message_with_agent(
         else:
             raw_max_retries = getattr(general_cfg.general, "max_same_agent_retries", None)
     max_retries = default_direct_mcp_retry_limit(raw_max_retries)
-    initial_attempt, _last_session_id, _last_error = _run_commit_agent_attempt_with_recovery(
+    (
+        initial_attempt,
+        last_session_id,
+        last_error,
+    ) = _run_commit_agent_attempt_with_recovery(
         agent_name,
         agent,
         prompt_file=prompt_file,
@@ -467,14 +473,20 @@ def _generate_commit_message_with_agent(
         pipeline_deps=pipeline_deps,
     )
     if not initial_attempt.failure_detail:
-        return _finalize_commit_attempt(initial_attempt, failure_details)
+        return _finalize_commit_attempt(
+            initial_attempt, failure_details, last_session_id, last_error
+        )
     failure_details.append(initial_attempt.failure_detail)
 
     latest_attempt = initial_attempt
 
     if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
         if initial_attempt.resume_session_id:
-            session_retry, _session_id, _err = _run_commit_agent_attempt_with_recovery(
+            (
+                session_retry,
+                last_session_id,
+                last_error,
+            ) = _run_commit_agent_attempt_with_recovery(
                 agent_name,
                 agent,
                 prompt_file=prompt_file,
@@ -488,7 +500,9 @@ def _generate_commit_message_with_agent(
                 pipeline_deps=pipeline_deps,
             )
             if not session_retry.failure_detail:
-                return _finalize_commit_attempt(session_retry, failure_details)
+                return _finalize_commit_attempt(
+                    session_retry, failure_details, last_session_id, last_error
+                )
             failure_details.append(session_retry.failure_detail)
             latest_attempt = session_retry
 
@@ -501,7 +515,11 @@ def _generate_commit_message_with_agent(
                     agent,
                 ),
             )
-            summary_retry, _sid, _e = _run_commit_agent_attempt_with_recovery(
+            (
+                summary_retry,
+                last_session_id,
+                last_error,
+            ) = _run_commit_agent_attempt_with_recovery(
                 agent_name,
                 agent,
                 prompt_file=summary_prompt_file,
@@ -515,10 +533,16 @@ def _generate_commit_message_with_agent(
                 pipeline_deps=pipeline_deps,
             )
             if not summary_retry.failure_detail:
-                return _finalize_commit_attempt(summary_retry, failure_details)
+                return _finalize_commit_attempt(
+                    summary_retry, failure_details, last_session_id, last_error
+                )
             failure_details.append(summary_retry.failure_detail)
 
-    return CommitAgentResult(failure_details=failure_details)
+    return CommitAgentResult(
+        failure_details=failure_details,
+        session_id=last_session_id,
+        last_error=last_error,
+    )
 
 
 def _reset_tool_registry_callback(
@@ -865,10 +889,22 @@ def invoke_commit_agent_attempt(
 def _finalize_commit_attempt(
     attempt: CommitAgentAttempt,
     failure_details: list[str],
+    session_id: str | None = None,
+    last_error: Exception | None = None,
 ) -> CommitAgentResult:
     if attempt.skipped:
-        return CommitAgentResult(skipped=True, failure_details=failure_details)
-    return CommitAgentResult(message=attempt.message, failure_details=failure_details)
+        return CommitAgentResult(
+            skipped=True,
+            failure_details=failure_details,
+            session_id=session_id,
+            last_error=last_error,
+        )
+    return CommitAgentResult(
+        message=attempt.message,
+        failure_details=failure_details,
+        session_id=session_id,
+        last_error=last_error,
+    )
 
 
 def _is_missing_commit_artifact_failure(detail: str) -> bool:

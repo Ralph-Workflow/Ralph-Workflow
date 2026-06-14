@@ -102,7 +102,7 @@ the marker after the engine has started, the engine runs
 ## Modular pipeline surface
 
 Both the main pipeline and plumbing commands compose from the same
-four PROMPT-mandated collaborators through `ralph.pipeline.factory.PipelineCore`.
+five PROMPT-mandated collaborators through `ralph.pipeline.factory.PipelineCore`.
 `PipelineCore` is a frozen dataclass with exactly these fields:
 
 - `display_context: DisplayContext`

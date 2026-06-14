@@ -135,8 +135,10 @@ binding on the Pro product.
   `_cleanup_pipeline`.
 - `ProPipelineHooks` — custom pipeline DI seam; 5 factory
   kwargs + 1 policy_bundle_override + 1 snapshot_registry
-  + 1 recovery_sleep = 8 fields total. See
-  `ralph/pro_support/hooks.py` and
+  + 6 collaborator overrides (display_context, model_identity,
+  system_prompt_materializer, phase_prompt_materializer,
+  artifact_requirements_resolver, recovery_sleep) = 13 fields
+  total. See `ralph/pro_support/hooks.py` and
   `tests/test_pro_support_hooks.py`. The `ProPipelineHooks`
   dataclass is consumed in `ralph/pipeline/run_loop.py:run`
   through the `pro_hooks` keyword argument and per-field

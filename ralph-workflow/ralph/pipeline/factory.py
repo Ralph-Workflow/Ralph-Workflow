@@ -1,8 +1,8 @@
 """Pipeline dependency bundle and factory.
 
-This module is the single composition point for the four PROMPT-mandated
-collaborators (display, model identity, prompt materializers, artifact
-resolver), the bridge factory, and all seven ``ProPipelineHooks`` overrides.
+This module is the single composition point for the five PROMPT-mandated
+collaborators (display, model identity, system/phase prompt materializers,
+artifact resolver), the bridge factory, and all seven ``ProPipelineHooks`` overrides.
 Both the main pipeline (via ``run_loop.run``) and plumbing commands compose
 from :class:`PipelineCore` so they share the same underlying collaborators.
 """
@@ -179,7 +179,7 @@ def _check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class PipelineCore:
-    """The four PROMPT-mandated pipeline collaborators.
+    """The five PROMPT-mandated pipeline collaborators.
 
     This is the lean, modular surface shared by the main pipeline and
     plumbing commands. It contains exactly the collaborators that can be
@@ -211,7 +211,7 @@ _UNSET: object = object()
 class PipelineDeps:
     """Injectable dependency bundle for the pipeline and plumbing commands.
 
-    Fields cover the four PROMPT-mandated collaborators (bundled in
+    Fields cover the five PROMPT-mandated collaborators (bundled in
     ``core``), the bridge factory, MCP lifecycle machinery, the
     seven ``ProPipelineHooks`` overrides, and the recovery sleep seam.
 
