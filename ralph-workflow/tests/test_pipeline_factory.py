@@ -361,7 +361,7 @@ class TestProHooksComposition:
         )
 
         assert deps.policy_bundle is bundle
-        assert deps.policy_bundle_factory is None
+        assert deps.policy_bundle_factory is fake_factory
         fake_factory.assert_called_once()
 
     def test_pro_factory_none_does_not_override(self, tmp_path: Path) -> None:

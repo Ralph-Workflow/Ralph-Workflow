@@ -22,8 +22,52 @@ from tests._pipeline_deps_factory import make_test_pipeline_deps
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
-    from ralph.pipeline.factory import PipelineDeps
+    from ralph.display.context import DisplayContext
+    from ralph.pipeline.factory import PhasePromptMaterializerFn, PipelineDeps
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
+
+
+class _FakePipelineFactory:
+    """Conforms to ``PipelineFactory`` and returns a pre-built test bundle."""
+
+    def __init__(
+        self,
+        phase_prompt_materializer: PhasePromptMaterializerFn | None = None,
+    ) -> None:
+        self._phase_prompt_materializer = phase_prompt_materializer
+
+    def build(
+        self,
+        config: object,
+        display_context: object,
+        **kwargs: object,
+    ) -> PipelineDeps:
+        del config, kwargs
+        return make_test_pipeline_deps(
+            cast("DisplayContext", display_context),
+            phase_prompt_materializer=self._phase_prompt_materializer,
+        )
+
+
+class _RecordingPipelineFactory:
+    """Conforms to ``PipelineFactory`` and records injected kwargs."""
+
+    def __init__(self, captured: dict[str, object]) -> None:
+        self._captured = captured
+
+    def build(
+        self,
+        config: object,
+        display_context: object,
+        *,
+        model_identity: object = None,
+        pro_hooks: object = None,
+        **kwargs: object,
+    ) -> PipelineDeps:
+        del config, kwargs
+        self._captured["model_identity"] = model_identity
+        self._captured["pro_hooks"] = pro_hooks
+        return make_test_pipeline_deps(cast("DisplayContext", display_context))
 
 
 def _no_agent_registry_class() -> object:
@@ -198,9 +242,8 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
     )
     monkeypatch.setattr(
         module,
-        "build_default_pipeline_deps",
-        lambda _config, display_context, **kwargs: make_test_pipeline_deps(
-            display_context,
+        "DefaultPipelineFactory",
+        lambda *_args, **_kwargs: _FakePipelineFactory(
             phase_prompt_materializer=_fake_materialize_prompt_for_phase,
         ),
         raising=False,
@@ -307,9 +350,8 @@ def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_ag
     )
     monkeypatch.setattr(
         module,
-        "build_default_pipeline_deps",
-        lambda _config, display_context, **kwargs: make_test_pipeline_deps(
-            display_context,
+        "DefaultPipelineFactory",
+        lambda *_args, **_kwargs: _FakePipelineFactory(
             phase_prompt_materializer=lambda context=None, options=None, **kwargs: (
                 ".agent/workers/unit-a/tmp/development_prompt.md"
             ),
@@ -432,9 +474,8 @@ def test_run_parallel_worker_from_manifest_preserves_transport_tool_prefix(
     )
     monkeypatch.setattr(
         module,
-        "build_default_pipeline_deps",
-        lambda _config, display_context, **kwargs: make_test_pipeline_deps(
-            display_context,
+        "DefaultPipelineFactory",
+        lambda *_args, **_kwargs: _FakePipelineFactory(
             phase_prompt_materializer=_fake_materialize_prompt_for_phase,
         ),
     )
@@ -527,9 +568,8 @@ def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_with
     )
     monkeypatch.setattr(
         module,
-        "build_default_pipeline_deps",
-        lambda _config, display_context, **kwargs: make_test_pipeline_deps(
-            display_context,
+        "DefaultPipelineFactory",
+        lambda *_args, **_kwargs: _FakePipelineFactory(
             phase_prompt_materializer=lambda context=None, options=None, **kwargs: (
                 ".agent/tmp/development_prompt.md"
             ),
@@ -657,17 +697,6 @@ def test_run_parallel_worker_from_manifest_preserves_injected_model_identity_and
         artifacts = object()
         agents = object()
 
-    def _fake_build_default_pipeline_deps(
-        _config: object,
-        display_context: object,
-        *,
-        model_identity: object = None,
-        pro_hooks: object = None,
-    ) -> PipelineDeps:
-        captured["model_identity"] = model_identity
-        captured["pro_hooks"] = pro_hooks
-        return make_test_pipeline_deps(display_context)
-
     monkeypatch.setattr(module, "load_config", lambda *args, **kwargs: object(), raising=False)
     monkeypatch.setattr(
         module,
@@ -694,8 +723,8 @@ def test_run_parallel_worker_from_manifest_preserves_injected_model_identity_and
     )
     monkeypatch.setattr(
         module,
-        "build_default_pipeline_deps",
-        _fake_build_default_pipeline_deps,
+        "DefaultPipelineFactory",
+        lambda *_args, **_kwargs: _RecordingPipelineFactory(captured),
         raising=False,
     )
     monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)

@@ -445,6 +445,8 @@ def apply_pro_hooks_to_deps(
     policy_bundle, _ = _resolve_policy_bundle(config, pro_hooks)
     if policy_bundle is not None:
         deps = dataclasses.replace(deps, policy_bundle=policy_bundle)
+    if pro_hooks.policy_bundle_factory is not None:
+        deps = dataclasses.replace(deps, policy_bundle_factory=pro_hooks.policy_bundle_factory)
     if pro_hooks.registry_factory is not None:
         deps = dataclasses.replace(deps, registry_factory=pro_hooks.registry_factory)
     if pro_hooks.state_factory is not None:
@@ -504,9 +506,41 @@ def build_default_pipeline_deps(
     return apply_pro_hooks_to_deps(deps, pro_hooks, config)
 
 
+class DefaultPipelineFactory:
+    """Default composition root for the main pipeline and plumbing commands.
+
+    This thin, stateless factory implements :class:`PipelineFactory` by
+    delegating to :func:`build_default_pipeline_deps`. Because the extended
+    call sites (main pipeline, parallel worker runtime) need to inject
+    ``model_identity`` and ``policy_bundle``, the :meth:`build` method accepts
+    those optional kwargs in addition to the Protocol surface.
+    """
+
+    def build(
+        self,
+        config: UnifiedConfig,
+        display_context: DisplayContext,
+        *,
+        model_identity: MultimodalModelIdentity | None = None,
+        policy_bundle: PolicyBundle | None = None,
+        recovery_sleep: Callable[[float], None] | None = None,
+        pro_hooks: ProPipelineHooks | None = None,
+    ) -> PipelineDeps:
+        """Build a :class:`PipelineDeps` wired to production defaults."""
+        return build_default_pipeline_deps(
+            config,
+            display_context,
+            model_identity=model_identity,
+            policy_bundle=policy_bundle,
+            recovery_sleep=recovery_sleep,
+            pro_hooks=pro_hooks,
+        )
+
+
 __all__ = [
     "ArtifactRequirementsResolverFn",
     "CheckMcpBridgeHealthFn",
+    "DefaultPipelineFactory",
     "HeartbeatPolicyFromEnvFn",
     "MaterializeSystemPromptFn",
     "McpSupervisorFactoryFn",

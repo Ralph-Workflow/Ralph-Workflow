@@ -63,8 +63,9 @@ by a CI drift guard.
 | **n/a (user prompt bullet 1)** Late marker adoption | Engine adopts a marker that appears AFTER engine start. | `ralph/pro_support/watcher.py:ProMarkerWatcher` | `tests/test_pro_support_watcher.py`, `tests/test_run_loop_pro_integration.py::test_late_marker_adoption_starts_heartbeat_after_run` |
 | **n/a (user prompt bullet 1)** Watcher is daemon-only | Watcher runs in a daemon thread; `stop()` returns promptly without joining. | `ralph/pro_support/watcher.py:ProMarkerWatcher._run_loop` | `tests/test_pro_support_watcher.py::test_watcher_stop_interrupts_sleep_within_50ms` |
 | **§10 (Configuration Ownership, pending amendment)** Custom pipeline DI | `ProPipelineHooks` exposes 5 factory kwargs + 1 policy_bundle_override + 1 snapshot_registry + 6 collaborator overrides = 13 fields. | `ralph/pro_support/hooks.py:ProPipelineHooks` | `tests/test_pro_support_hooks.py` |
-| **n/a (modular pipeline surface)** PipelineCore | The four PROMPT collaborators are extracted into a frozen `PipelineCore` dataclass shared by the main pipeline and plumbing. | `ralph/pipeline/factory.py:PipelineCore` | `tests/test_pipeline_core.py` |
-| **n/a (modular pipeline surface)** build_minimal_pipeline_core | Lean 4-collaborator composition root used by both plumbing and `build_default_pipeline_deps`. | `ralph/pipeline/factory.py:build_minimal_pipeline_core` | `tests/test_pipeline_core.py` |
+| **n/a (modular pipeline surface)** PipelineCore | The five PROMPT collaborators are extracted into a frozen `PipelineCore` dataclass shared by the main pipeline and plumbing. | `ralph/pipeline/factory.py:PipelineCore` | `tests/test_pipeline_core.py` |
+| **n/a (modular pipeline surface)** build_minimal_pipeline_core | Lean 5-collaborator composition root used by both plumbing and `build_default_pipeline_deps`. | `ralph/pipeline/factory.py:build_minimal_pipeline_core` | `tests/test_pipeline_core.py` |
+| **n/a (modular pipeline surface)** DefaultPipelineFactory | Default composition root for the main pipeline and plumbing. Implements `ralph.pipeline.factory.PipelineFactory` Protocol. | `ralph/pipeline/factory.py:DefaultPipelineFactory` | `tests/test_pipeline_factory_default.py`, `tests/integration/test_cli_plumbing_uses_factory.py` |
 | **n/a (modular pipeline surface)** with_bridge_lifetime | Plumbing-only bridge lifetime context manager; not part of `PipelineCore`. | `ralph/pipeline/plumbing/_bridge_lifetime.py:with_bridge_lifetime` | `tests/test_bridge_lifetime_primitive.py`, `tests/integration/test_plumbing_pipeline_core.py` |
 | **n/a (Pro plumbing seam)** apply_pro_hooks_to_core | Propagates only the five `PipelineCore` collaborators from `ProPipelineHooks`. | `ralph/pro_support/hooks.py:apply_pro_hooks_to_core` | `tests/test_pro_hooks_core_propagation.py` |
 | **§8 (Log Pipeline Contract, pending amendment)** Pipeline state observability | `PipelineStateSnapshot` is a frozen, read-only view published on each reduce. | `ralph/pro_support/state_query.py:PipelineStateSnapshot` | `tests/test_pro_support_state_query.py` |
@@ -150,7 +151,7 @@ binding on the Pro product.
   `PipelineStateSnapshot` is published from
   `ralph/pipeline/run_loop.py:_run_inner_loop` after
   `state = step_result` and before the next iteration.
-- `PipelineCore` — modular 4-collaborator pipeline surface
+- `PipelineCore` — modular 5-collaborator pipeline surface
   (`display_context`, `model_identity`, `system_prompt_materializer`,
   `phase_prompt_materializer`, `artifact_requirements_resolver`). Both
   the main pipeline and plumbing commands compose from
@@ -165,6 +166,17 @@ binding on the Pro product.
   `tests/test_bridge_lifetime_primitive.py`,
   `tests/integration/test_plumbing_pipeline_core.py`, and
   `tests/test_pro_hooks_core_propagation.py`.
+- `DefaultPipelineFactory` — the single composition root for both the
+  main pipeline and plumbing commands. Implements
+  `ralph.pipeline.factory.PipelineFactory` (the Protocol declared at
+  `ralph.pipeline.factory.py:PipelineFactory`). The factory's `build`
+  method is a thin wrapper over `build_default_pipeline_deps` that
+  applies all 13 `ProPipelineHooks` fields. Plumbing commands consume
+  `PipelineDeps.core` (the 5 modular collaborators) and
+  `PipelineDeps.bridge_factory`; the main pipeline consumes the full
+  bundle. Pro subclasses or replaces this factory to inject a custom
+  composition root. See `ralph.pipeline.factory.py:DefaultPipelineFactory`
+  and `tests/test_pipeline_factory_default.py`.
 
 Until the upstream contract is amended, these engine
 capabilities are documented in the engine-side

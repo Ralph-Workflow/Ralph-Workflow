@@ -13,6 +13,8 @@ from rich.text import Text
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.pipeline.factory import PipelineDeps
+
 from ralph.agents.invoke import AgentInvocationError, build_invoke_options_from_config
 from ralph.agents.parsers import AgentOutputLine
 from ralph.agents.registry import AgentRegistry
@@ -31,13 +33,40 @@ from ralph.git.operations import GitOperationError
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
-from ralph.pipeline.factory import PipelineCore
 from ralph.policy.models import AgentsPolicy
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 _OUTPUT_BATCH = 400
+
+
+class _FakePipelineFactory:
+    """Conforms to ``PipelineFactory`` and records every build call."""
+
+    def __init__(self, deps: PipelineDeps) -> None:
+        self._deps = deps
+        self.calls: list[dict[str, object]] = []
+
+    def build(
+        self,
+        config: UnifiedConfig,
+        display_context: DisplayContext,
+        *,
+        model_identity: MultimodalModelIdentity | None = None,
+        pro_hooks: ProPipelineHooks | None = None,
+        **kwargs: object,
+    ) -> PipelineDeps:
+        del kwargs
+        self.calls.append(
+            {
+                "config": config,
+                "display_context": display_context,
+                "model_identity": model_identity,
+                "pro_hooks": pro_hooks,
+            }
+        )
+        return self._deps
 
 
 def _claude_commit_agent() -> AgentConfig:
@@ -546,37 +575,18 @@ def test_handle_agent_commit_generation_surfaces_recovered_retry_evidence(
     assert "Model returned an empty response with no tool calls" in rendered
 
 
-def test_generate_commit_message_with_chain_forwards_pro_hooks_and_model_identity(
+def test_generate_commit_message_with_chain_routes_through_default_pipeline_factory(
     tmp_path: Path,
 ) -> None:
-    """The commit command forwards injected Pro hooks and model identity into the
-    shared pipeline core so plumbing uses the same initialization path as the
-    main pipeline.
+    """The commit command routes pipeline construction through DefaultPipelineFactory
+    so plumbing uses the same composition root as the main pipeline.
     """
     display_context = make_display_context()
     model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
     pro_hooks = ProPipelineHooks(snapshot_registry=SnapshotRegistry())
-    captured_core: dict[str, object] = {}
     captured_plumbing: dict[str, object] = {}
-
-    def fake_build_minimal_pipeline_core(
-        config: UnifiedConfig,
-        ctx: DisplayContext,
-        *,
-        model_identity: MultimodalModelIdentity | None = None,
-    ) -> PipelineCore:
-        captured_core["config"] = config
-        captured_core["display_context"] = ctx
-        captured_core["model_identity"] = model_identity
-        return PipelineCore(display_context=ctx, model_identity=model_identity)
-
-    def fake_apply_pro_hooks_to_core(
-        core: PipelineCore,
-        hooks: ProPipelineHooks,
-    ) -> PipelineCore:
-        captured_core["pro_hooks"] = hooks
-        captured_core["returned_core"] = core
-        return core
+    expected_deps = make_test_pipeline_deps(display_context)
+    fake_factory = _FakePipelineFactory(expected_deps)
 
     def fake_run_commit_plumbing(**kwargs: object) -> CommitAgentResult:
         captured_plumbing["kwargs"] = kwargs
@@ -593,13 +603,8 @@ def test_generate_commit_message_with_chain_forwards_pro_hooks_and_model_identit
     with (
         patch.object(
             commit_module,
-            "build_minimal_pipeline_core",
-            fake_build_minimal_pipeline_core,
-        ),
-        patch.object(
-            commit_module,
-            "apply_pro_hooks_to_core",
-            fake_apply_pro_hooks_to_core,
+            "DefaultPipelineFactory",
+            lambda *_args, **_kwargs: fake_factory,
         ),
         patch.object(commit_module, "run_commit_plumbing", fake_run_commit_plumbing),
     ):
@@ -613,9 +618,11 @@ def test_generate_commit_message_with_chain_forwards_pro_hooks_and_model_identit
         )
 
     assert result.message == "feat: shared init"
-    assert captured_core["display_context"] is display_context
-    assert captured_core["model_identity"] is model_identity
-    assert captured_core["pro_hooks"] is pro_hooks
+    assert len(fake_factory.calls) == 1
+    factory_call = fake_factory.calls[0]
+    assert factory_call["config"] is chain_config.general_config
+    assert factory_call["display_context"] is display_context
+    assert factory_call["model_identity"] is model_identity
+    assert factory_call["pro_hooks"] is pro_hooks
     plumbing_kwargs = cast("dict[str, object]", captured_plumbing["kwargs"])
-    assert plumbing_kwargs["pipeline_core"] is captured_core["returned_core"]
-    assert plumbing_kwargs["bridge_factory"] is commit_module.build_session_bridge
+    assert plumbing_kwargs["pipeline_deps"] is expected_deps

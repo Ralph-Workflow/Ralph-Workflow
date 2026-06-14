@@ -101,7 +101,7 @@ from ralph.pipeline.effects import (
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
-from ralph.pipeline.factory import build_default_pipeline_deps
+from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.phase_agent_handler import (
@@ -299,7 +299,7 @@ def _execute_effect(
         display._ctx if display is not None and hasattr(display, "_ctx") else make_display_context()
     )
     if pipeline_deps is None:
-        pipeline_deps = build_default_pipeline_deps(config, resolved_display_context)
+        pipeline_deps = DefaultPipelineFactory().build(config, resolved_display_context)
     if isinstance(effect, InvokeAgentEffect):
         return execute_agent_effect(
             effect,

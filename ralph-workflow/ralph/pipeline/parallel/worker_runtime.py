@@ -15,7 +15,7 @@ from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import Event, PipelineEvent
-from ralph.pipeline.factory import PipelineDeps, build_default_pipeline_deps
+from ralph.pipeline.factory import DefaultPipelineFactory, PipelineDeps
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
 from ralph.pipeline.prompt_prep import session_capabilities_for_agent_phase
@@ -129,7 +129,7 @@ def run_parallel_worker_from_manifest(
     # workspace_scope, which execute_agent_effect uses for the MCP surface.
     workspace = FsWorkspace(workspace_root)
     agent = AgentRegistry.from_config(config).get(effect.agent_name)
-    effective_pipeline_deps = pipeline_deps or build_default_pipeline_deps(
+    effective_pipeline_deps = pipeline_deps or DefaultPipelineFactory().build(
         config,
         display_context,
         model_identity=model_identity,
