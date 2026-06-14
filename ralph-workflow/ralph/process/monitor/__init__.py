@@ -24,6 +24,7 @@ from ._default_monitor import DefaultProcessMonitor
 from ._discovery_strategy import DiscoveryStrategy
 from ._opencode_discovery import OpencodeSubagentOutputDiscovery
 from ._process_monitor import ClassifiedProcess, ProcessMonitor, ProcessRole
+from ._role_classifier import RoleClassifier, role_classifier_for_transport
 from ._subagent_output_capture import FileSubagentOutputCapture, SubagentOutputCapture
 
 __all__ = [
@@ -35,5 +36,7 @@ __all__ = [
     "OpencodeSubagentOutputDiscovery",
     "ProcessMonitor",
     "ProcessRole",
+    "RoleClassifier",
     "SubagentOutputCapture",
+    "role_classifier_for_transport",
 ]

@@ -9,19 +9,36 @@ import pytest
 from ralph.agents.idle_watchdog import IdleWatchdog
 from ralph.agents.invoke import invoke_agent
 from ralph.agents.invoke._invoke_options import InvokeOptions
+from ralph.agents.invoke._types import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.monitor import (
+    ClaudeCodeSubagentOutputDiscovery,
     DefaultProcessMonitor,
     OpencodeSubagentOutputDiscovery,
     ProcessMonitor,
+    ProcessRole,
     SubagentOutputCapture,
+    role_classifier_for_transport,
 )
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from pytest import MonkeyPatch
+
+
+def _patch_resolve_invocation_runtime(monkeypatch: MonkeyPatch) -> None:
+    """Return a minimal runtime so transport-specific MCP setup is not exercised.
+
+    These tests verify process-monitor wiring, not runtime resolution. A minimal
+    runtime keeps the tests focused and avoids network/file setup that some
+    transports require when a real MCP endpoint is present.
+    """
+    monkeypatch.setattr(
+        "ralph.agents.invoke.resolve_invocation_runtime",
+        lambda *_args, **_kwargs: ResolvedInvocationRuntime(),
+    )
 
 
 def _capture_idle_watchdog_args(
@@ -52,13 +69,27 @@ def _noop_command(
     ]
 
 
-def test_invoke_wires_process_monitor_and_discovery(
+@pytest.mark.parametrize(
+    "transport",
+    [
+        AgentTransport.CLAUDE,
+        AgentTransport.CLAUDE_INTERACTIVE,
+        AgentTransport.OPENCODE,
+        AgentTransport.CODEX,
+        AgentTransport.NANOCODER,
+        AgentTransport.GENERIC,
+        AgentTransport.AGY,
+    ],
+)
+def test_invoke_wires_process_monitor_for_transport(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
+    transport: AgentTransport,
 ) -> None:
-    """AC-06/AC-07/AC-09/AC-10: real invoke path injects monitor and discovery."""
+    """AC-06/AC-09/AC-10: real invoke path injects a DefaultProcessMonitor for every transport."""
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
+    _patch_resolve_invocation_runtime(monkeypatch)
     monkeypatch.setattr(
         "ralph.agents.invoke._build_command",
         _noop_command,
@@ -67,8 +98,8 @@ def test_invoke_wires_process_monitor_and_discovery(
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("test prompt", encoding="utf-8")
     config = AgentConfig(
-        cmd="opencode",
-        transport=AgentTransport.OPENCODE,
+        cmd=transport.value,
+        transport=transport,
     )
 
     list(invoke_agent(config, str(prompt_file)))
@@ -76,8 +107,98 @@ def test_invoke_wires_process_monitor_and_discovery(
     monitor = captured.get("process_monitor")
     assert monitor is not None
     assert isinstance(monitor, DefaultProcessMonitor)
-    assert monitor._discovery_strategy is not None
-    assert isinstance(monitor._discovery_strategy, OpencodeSubagentOutputDiscovery)
+
+
+@pytest.mark.parametrize(
+    ("transport", "expected_discovery"),
+    [
+        (AgentTransport.CLAUDE, ClaudeCodeSubagentOutputDiscovery),
+        (AgentTransport.CLAUDE_INTERACTIVE, ClaudeCodeSubagentOutputDiscovery),
+        (AgentTransport.OPENCODE, OpencodeSubagentOutputDiscovery),
+        (AgentTransport.CODEX, type(None)),
+        (AgentTransport.NANOCODER, type(None)),
+        (AgentTransport.GENERIC, type(None)),
+        (AgentTransport.AGY, type(None)),
+    ],
+)
+def test_invoke_wires_discovery_strategy_for_transport(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    transport: AgentTransport,
+    expected_discovery: type,
+) -> None:
+    """AC-10/AC-11: only documented transports get a discovery strategy."""
+    captured: dict[str, object] = {}
+    _capture_idle_watchdog_args(monkeypatch, captured)
+    _patch_resolve_invocation_runtime(monkeypatch)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._build_command",
+        _noop_command,
+    )
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("test prompt", encoding="utf-8")
+    config = AgentConfig(
+        cmd=transport.value,
+        transport=transport,
+    )
+
+    list(invoke_agent(config, str(prompt_file)))
+
+    monitor = captured.get("process_monitor")
+    assert isinstance(monitor, DefaultProcessMonitor)
+    if expected_discovery is type(None):
+        assert monitor._discovery_strategy is None
+    else:
+        assert isinstance(monitor._discovery_strategy, expected_discovery)
+
+
+@pytest.mark.parametrize(
+    "transport",
+    [
+        AgentTransport.CLAUDE,
+        AgentTransport.CLAUDE_INTERACTIVE,
+        AgentTransport.OPENCODE,
+        AgentTransport.CODEX,
+        AgentTransport.NANOCODER,
+        AgentTransport.GENERIC,
+        AgentTransport.AGY,
+    ],
+)
+def test_invoke_role_classifier_is_conservative_for_transport(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    transport: AgentTransport,
+) -> None:
+    """AC-06/AC-10/AC-11: injected classifier is documentation-grounded and conservative.
+
+    No supported transport documents a stable external subagent-identification
+    signal, so the classifier must not promote descendants to SPAWNED_SUBAGENT
+    based on broad command-line tokens.
+    """
+    captured: dict[str, object] = {}
+    _capture_idle_watchdog_args(monkeypatch, captured)
+    _patch_resolve_invocation_runtime(monkeypatch)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._build_command",
+        _noop_command,
+    )
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("test prompt", encoding="utf-8")
+    config = AgentConfig(
+        cmd=transport.value,
+        transport=transport,
+    )
+
+    list(invoke_agent(config, str(prompt_file)))
+
+    monitor = captured.get("process_monitor")
+    assert isinstance(monitor, DefaultProcessMonitor)
+    classifier = monitor._role_classifier
+    assert classifier is role_classifier_for_transport(transport)
+    assert classifier(123, ["worker", "--task", "agent"]) == ProcessRole.INCIDENTAL_HELPER
+    assert classifier(123, [transport.value, "run", "hello"]) == ProcessRole.INCIDENTAL_HELPER
 
 
 def test_invoke_respects_disabled_monitor_flags(

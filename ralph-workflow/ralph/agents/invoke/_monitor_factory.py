@@ -15,6 +15,7 @@ from ralph.process.monitor import (
     DefaultProcessMonitor,
     DiscoveryStrategy,
     OpencodeSubagentOutputDiscovery,
+    role_classifier_for_transport,
 )
 
 if TYPE_CHECKING:
@@ -49,6 +50,7 @@ def _make_process_monitor(
     discovery = _make_discovery_strategy(config, policy)
     return DefaultProcessMonitor(
         handle.pid,
+        role_classifier=role_classifier_for_transport(config.transport),
         discovery_strategy=discovery,
         poll_interval_seconds=policy.subagent_output_poll_interval_seconds,
     )

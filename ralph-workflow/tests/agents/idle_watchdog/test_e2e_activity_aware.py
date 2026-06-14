@@ -36,6 +36,7 @@ from ralph.process.monitor import (
     FileSubagentOutputCapture,
     OpencodeSubagentOutputDiscovery,
     ProcessMonitor,
+    ProcessRole,
     SubagentOutputCapture,
 )
 from ralph.process.teardown import DefaultProcessTeardown
@@ -158,10 +159,18 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
 def test_process_monitor_discovers_and_classifies_subagent() -> None:
-    """AC-06/AC-10: DefaultProcessMonitor classifies a live descendant subagent."""
+    """AC-06/AC-10: DefaultProcessMonitor classifies a live descendant subagent.
+
+    The built-in default classifier is documentation-grounded and conservative;
+    it does not promote descendants based on broad command-line tokens. This
+    test injects an explicit role classifier so the monitor can recognise the
+    spawned child as a subagent for the purpose of the end-to-end assertion.
+    """
+    child_marker = "subagent = True"
+    child_cmd = f"{child_marker!r} + '; import time; time.sleep(600)'"
     host_script = (
         "import subprocess, sys, time; "
-        "subprocess.Popen([sys.executable, '-c', 'subagent = True; import time; time.sleep(600)'], "
+        f"subprocess.Popen([sys.executable, '-c', {child_cmd}], "
         "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
         "time.sleep(600)"
     )
@@ -172,7 +181,14 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
     )
     time.sleep(0.3)
     try:
-        monitor = DefaultProcessMonitor(host.pid)
+        monitor = DefaultProcessMonitor(
+            host.pid,
+            role_classifier=lambda _pid, cmdline: (
+                ProcessRole.SPAWNED_SUBAGENT
+                if cmdline and child_marker in " ".join(cmdline)
+                else ProcessRole.INCIDENTAL_HELPER
+            ),
+        )
         assert monitor.live_subagent_count() == 1
         processes = monitor.classified_processes()
         assert any(p.role.value == "spawned_subagent" for p in processes)

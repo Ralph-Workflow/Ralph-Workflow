@@ -11,6 +11,7 @@ import psutil
 from ralph.timeout_defaults import SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS
 
 from ._process_monitor import ProcessMonitor, ProcessRole
+from ._role_classifier import _conservative_role_classifier
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,31 +33,26 @@ class _ClassifiedProcess:
 class DefaultProcessMonitor(ProcessMonitor):
     """Process monitor that uses psutil to scan the host process tree.
 
-    Classification is intentionally conservative: only processes whose command
-    line matches a known subagent pattern are classified as
-    ``SPAWNED_SUBAGENT``. Everything else that is a descendant of the host is
-    treated as ``INCIDENTAL_HELPER``; processes outside the host tree are
-    ignored.
+    Classification is intentionally conservative: without an injected
+    ``role_classifier`` that is grounded in documented agent behavior, every
+    descendant of the host is treated as ``INCIDENTAL_HELPER``. Processes
+    outside the host tree are ignored.
 
     The monitor is agent-agnostic in structure but accepts an optional
-    ``role_classifier`` predicate so agent-specific CLI patterns can be
-    injected without editing the watchdog.
+    ``role_classifier`` predicate so transport-specific, documentation-grounded
+    classification can be injected without editing the watchdog or the monitor.
 
     Args:
         host_pid: PID of the top-level agent process Ralph launched.
         role_classifier: Optional callable ``(pid, cmdline) -> ProcessRole``.
-            When omitted, a built-in classifier is used that recognises common
-            subagent CLI tokens (e.g. ``worker``, ``subagent``, ``task``).
+            When omitted, a built-in conservative classifier is used that never
+            promotes a descendant to ``SPAWNED_SUBAGENT``.
         discovery_strategy: Optional ``DiscoveryStrategy`` used to locate
             observable subagent output streams. When omitted, the channel is
             unavailable and ``discover_subagent_outputs`` returns an empty map.
         now: Callable returning the current monotonic time.
         poll_interval_seconds: Minimum seconds between process-tree rescans.
     """
-
-    _SUBAGENT_TOKENS: frozenset[str] = frozenset(
-        {"worker", "subagent", "task", "agent", "claude", "opencode"}
-    )
 
     def __init__(
         self,
@@ -68,21 +64,12 @@ class DefaultProcessMonitor(ProcessMonitor):
         poll_interval_seconds: float = SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     ) -> None:
         self._host_pid = host_pid
-        self._role_classifier = role_classifier or self._default_classifier
+        self._role_classifier = role_classifier or _conservative_role_classifier
         self._discovery_strategy = discovery_strategy
         self._now = now or time.monotonic
         self._poll_interval_seconds = poll_interval_seconds
         self._last_refresh_at: float = 0.0
         self._processes: tuple[_ClassifiedProcess, ...] = ()
-
-    def _default_classifier(self, _pid: int, cmdline: list[str] | None) -> ProcessRole:
-        """Classify a descendant process based on its command line."""
-        if not cmdline:
-            return ProcessRole.INCIDENTAL_HELPER
-        lowered = " ".join(cmdline).lower()
-        if any(token in lowered for token in self._SUBAGENT_TOKENS):
-            return ProcessRole.SPAWNED_SUBAGENT
-        return ProcessRole.INCIDENTAL_HELPER
 
     def refresh(self) -> None:
         """Rescan the process tree if the poll interval has elapsed."""
