@@ -8,12 +8,18 @@ from typing import TYPE_CHECKING, Protocol, cast
 from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog._evidence_tier import (
+    CHANNEL_DEFERS_BY_DEFAULT,
+    CHANNEL_TIERS,
+    ChannelEvidenceSummary,
+    ChannelName,
+    EvidenceSummary,
+    EvidenceTier,
+)
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.process.child_liveness import AliveBy
 
 from .corroboration_snapshot import (
-    ChannelEvidenceSummary,
-    ChannelName,
     CorroborationSnapshot,
     WaitingCorroborator,
 )
@@ -25,6 +31,8 @@ from .watchdog_verdict import WatchdogVerdict
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from ralph.process.monitor import ProcessMonitor, SubagentOutputCapture
 
     from .timeout_policy import TimeoutPolicy
 
@@ -122,8 +130,17 @@ class IdleWatchdog:
     _last_mcp_tool_call_at: float | None = field(default=None, init=False)
     _subagent_progress_count: int = field(default=0, init=False)
     _last_subagent_progress_at: float | None = field(default=None, init=False)
+    _subagent_output_count: int = field(default=0, init=False)
+    _last_subagent_output_at: float | None = field(default=None, init=False)
     _workspace_event_count_internal: int = field(default=0, init=False)
     _last_workspace_event_at: float | None = field(default=None, init=False)
+    _last_workspace_event_weight: float = field(default=0.0, init=False)
+    # Subagent output capture state. The watchdog polls the injected
+    # DiscoveryStrategy for output paths and reuses capture instances per
+    # worker so only new lines are ingested as first-party evidence.
+    _subagent_output_captures: dict[str, SubagentOutputCapture] = field(
+        default_factory=dict, init=False
+    )
     # Per-kind workspace event counter. The watchdog tracks how many
     # file changes have been observed for each WorkspaceChangeKind
     # (source / log / cache / artifact / other) so the post-mortem
@@ -138,11 +155,13 @@ class IdleWatchdog:
         listener: WaitingStatusListener | None = None,
         *,
         corroborator: WaitingCorroborator | None = None,
+        process_monitor: ProcessMonitor | None = None,
     ) -> None:
         self._config = config
         self._clock = clock
         self._listener = listener
         self._corroborator = corroborator
+        self._process_monitor = process_monitor
         now = clock.monotonic()
         self._last_activity = now
         self._session_started_at = now
@@ -159,8 +178,12 @@ class IdleWatchdog:
         self._last_mcp_tool_call_at = None
         self._subagent_progress_count = 0
         self._last_subagent_progress_at = None
+        self._subagent_output_count = 0
+        self._last_subagent_output_at = None
+        self._subagent_output_captures = {}
         self._workspace_event_count_internal = 0
         self._last_workspace_event_at = None
+        self._last_workspace_event_weight = 0.0
         self._workspace_kind_counts = {}
         self._entry_corroboration: CorroborationSnapshot | None = None
         self._repetition_tracker = RepetitionTracker(
@@ -310,13 +333,13 @@ class IdleWatchdog:
         self._last_mcp_tool_call_at = timestamp
 
     def record_subagent_work(self, now: float | None = None) -> None:
-        """Record a subagent work activity signal (new channel).
+        """Record a subagent work activity signal (subagent_output channel).
 
-        Increments the subagent channel counter and updates the per-channel
-        ``_last_at`` timestamp. Does NOT touch ``_last_activity`` (the stdout
-        baseline). The verdict hook in ``evaluate()`` defers a
-        NO_OUTPUT_DEADLINE fire while this channel is fresher than the
-        configured ``activity_evidence_ttl_seconds``.
+        Increments the subagent_output first-party channel counter and updates
+        the per-channel ``_last_at`` timestamp. Does NOT touch
+        ``_last_activity`` (the stdout baseline). The verdict hook in
+        ``evaluate()`` defers a NO_OUTPUT_DEADLINE fire while this channel is
+        fresher than the configured ``activity_evidence_ttl_seconds``.
 
         A subagent that exists but has produced no tool calls, no progress
         signals, and no file changes for the full TTL is NOT evidence of
@@ -331,6 +354,63 @@ class IdleWatchdog:
         timestamp = now if now is not None else self._clock.monotonic()
         self._subagent_progress_count += 1
         self._last_subagent_progress_at = timestamp
+
+    def record_subagent_output(self, line_count: int = 1, now: float | None = None) -> None:
+        """Record fresh subagent output as first-party evidence.
+
+        This is the channel that captures a subagent's own output/log stream
+        when it is observable. Each new line read from the subagent's output
+        advances the ``subagent_output`` first-party channel timestamp.
+
+        Args:
+            line_count: Number of new lines observed; defaults to 1.
+            now: Optional monotonic timestamp override.
+        """
+        timestamp = now if now is not None else self._clock.monotonic()
+        self._subagent_output_count += line_count
+        self._last_subagent_output_at = timestamp
+
+    def poll_subagent_output(self, now: float | None = None) -> int:
+        """Poll observable subagent output streams and record new lines.
+
+        Uses the injected ``ProcessMonitor`` to discover subagent log files and
+        reads only new lines since the last poll. Each new line advances the
+        ``subagent_output`` first-party channel.
+
+        Args:
+            now: Optional monotonic timestamp override.
+
+        Returns:
+            Number of new lines observed across all workers.
+        """
+        if self._process_monitor is None:
+            return 0
+        timestamp = now if now is not None else self._clock.monotonic()
+        try:
+            captures = self._process_monitor.discover_subagent_outputs()
+        except Exception:
+            self._log.debug(
+                "idle watchdog: process_monitor.discover_subagent_outputs raised (suppressed)"
+            )
+            return 0
+        total = 0
+        for worker_id, capture in captures.items():
+            existing = self._subagent_output_captures.get(worker_id)
+            if existing is not None:
+                resolved = existing
+            else:
+                resolved = capture
+                self._subagent_output_captures[worker_id] = resolved
+            try:
+                lines = resolved.read_lines(worker_id)
+            except Exception:
+                self._log.debug("idle watchdog: subagent output capture raised (suppressed)")
+                continue
+            if lines:
+                total += len(lines)
+        if total:
+            self.record_subagent_output(total, now=timestamp)
+        return total
 
     def record_workspace_event(
         self,
@@ -371,11 +451,12 @@ class IdleWatchdog:
                 activity. Defaults to ``1.0`` for the legacy 0-arg
                 binding.
         """
+        timestamp = now if now is not None else self._clock.monotonic()
         if weight == 0.0:
             return
-        timestamp = now if now is not None else self._clock.monotonic()
         self._workspace_event_count_internal += 1
         self._last_workspace_event_at = timestamp
+        self._last_workspace_event_weight = weight
         self._workspace_kind_counts[kind.value] = self._workspace_kind_counts.get(kind.value, 0) + 1
 
     @property
@@ -392,21 +473,19 @@ class IdleWatchdog:
         """
         return dict(self._workspace_kind_counts)
 
-    def last_evidence_summary(self, now: float | None = None) -> tuple[ChannelEvidenceSummary, ...]:
-        """Return a per-channel evidence summary at the given time.
+    def last_evidence_summary(self, now: float | None = None) -> EvidenceSummary:
+        """Return a tier-aware per-channel evidence summary at the given time.
 
-        Always returns a 4-tuple in the fixed channel order
-        (stdout, mcp_tool, subagent, workspace). Each ChannelEvidenceSummary
-        carries the channel name, the last observed monotonic timestamp
-        (``last_at``), the age in seconds (``age_seconds``; None when
-        ``last_at`` is None), and the per-channel counter (``counter``; None
-        when the channel has never been observed).
+        Returns an ``EvidenceSummary`` containing five channels in fixed order:
+        stdout (first-party), mcp_tool (first-party), subagent_output
+        (first-party), subagent_liveness (side-channel), workspace
+        (side-channel). Each ``ChannelEvidenceSummary`` carries the channel
+        name, tier label, last observed monotonic timestamp, age in seconds,
+        counter, and deferral permission.
 
         The summary is consumed by the watchdog's own verdict hook
         (via ``_channel_evidence_active``) and by the post-mortem
-        diagnostic threading in the readers (the ``_check_fire`` path
-        embeds the summary into the ``evidence_summary`` key of the
-        watchdog fire diagnostic).
+        diagnostic threading in the readers.
 
         Args:
             now: Optional monotonic timestamp override; tests use this to
@@ -414,31 +493,28 @@ class IdleWatchdog:
                 watchdog's injected clock.
         """
         timestamp = now if now is not None else self._clock.monotonic()
-        stdout_age = max(0.0, timestamp - self._last_activity)
-        return (
-            ChannelEvidenceSummary(
-                channel_name="stdout",
-                last_at=self._last_activity,
-                age_seconds=stdout_age,
-                counter=None,
-            ),
-            self._channel_summary(
-                "mcp_tool", self._last_mcp_tool_call_at, self._mcp_tool_call_count, timestamp, None
-            ),
-            self._channel_summary(
-                "subagent",
-                self._last_subagent_progress_at,
-                self._subagent_progress_count,
-                timestamp,
-                None,
-            ),
-            self._channel_summary(
-                "workspace",
-                self._last_workspace_event_at,
-                self._workspace_event_count_internal,
-                timestamp,
-                self._workspace_kind_breakdown_for_summary(),
-            ),
+        return EvidenceSummary(
+            channels=(
+                self._channel_summary(
+                    ChannelName.STDOUT,
+                    self._last_activity,
+                    None,
+                    timestamp,
+                    None,
+                    alive_by=None,
+                ),
+                self._channel_summary(
+                    ChannelName.MCP_TOOL,
+                    self._last_mcp_tool_call_at,
+                    self._mcp_tool_call_count,
+                    timestamp,
+                    None,
+                    alive_by=None,
+                ),
+                self._subagent_output_summary(timestamp),
+                self._subagent_liveness_summary(timestamp),
+                self._workspace_summary(timestamp),
+            )
         )
 
     def _workspace_kind_breakdown_for_summary(self) -> dict[str, int] | None:
@@ -456,51 +532,127 @@ class IdleWatchdog:
             return None
         return dict(self._workspace_kind_counts)
 
+    def _subagent_output_summary(self, now: float) -> ChannelEvidenceSummary:
+        """Build the first-party subagent_output summary.
+
+        Combines explicit subagent progress signals (``record_subagent_work``)
+        and captured subagent log-stream output (``record_subagent_output``).
+        Either source is first-party evidence of subagent work and can defer
+        the NO_OUTPUT_DEADLINE verdict while fresh.
+        """
+        candidates = [
+            self._last_subagent_progress_at,
+            self._last_subagent_output_at,
+        ]
+        last_at = max((t for t in candidates if t is not None), default=None)
+        counter = self._subagent_progress_count + self._subagent_output_count
+        return self._channel_summary(
+            ChannelName.SUBAGENT_OUTPUT,
+            last_at,
+            counter,
+            now,
+            None,
+            alive_by=None,
+        )
+
+    def _workspace_summary(self, now: float) -> ChannelEvidenceSummary:
+        """Build the side-channel workspace summary with quality filtering.
+
+        A workspace event only defers the verdict when its weight is greater
+        than zero. The weight of the most recently recorded event determines
+        the ``can_defer`` flag for the channel summary.
+        """
+        can_defer = self._last_workspace_event_weight > 0.0
+        return self._channel_summary(
+            ChannelName.WORKSPACE,
+            self._last_workspace_event_at,
+            self._workspace_event_count_internal,
+            now,
+            self._workspace_kind_breakdown_for_summary(),
+            alive_by=None,
+            can_defer_override=can_defer,
+        )
+
+    def _subagent_liveness_summary(self, now: float) -> ChannelEvidenceSummary:
+        """Build the side-channel subagent_liveness summary.
+
+        Uses the last subagent progress signal as a proxy for liveness when no
+        process monitor is injected. When a process monitor is available, the
+        watchdog consults it for live spawned subagents and records the liveness
+        timestamp. The channel is side-channel and is quality-filtered: bare
+        PID existence (alive_by in non-progress states) does NOT defer the
+        verdict.
+        """
+        last_at = self._last_subagent_progress_at
+        counter = self._subagent_progress_count
+        alive_by: AliveBy | None = None
+        if self._process_monitor is not None:
+            live = self._process_monitor.live_subagent_count()
+            if live > 0:
+                counter = max(counter, live)
+                if last_at is None:
+                    last_at = now
+                alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        age: float | None = None if last_at is None else max(0.0, now - last_at)
+        observed_counter: int | None = counter if counter > 0 else None
+        return ChannelEvidenceSummary(
+            channel_name=ChannelName.SUBAGENT_LIVENESS,
+            tier=EvidenceTier.SIDE_CHANNEL,
+            last_at=last_at,
+            age_seconds=age,
+            counter=observed_counter,
+            alive_by=alive_by,
+            can_defer=False,
+        )
+
     @staticmethod
     def _channel_summary(
         channel_name: ChannelName,
         last_at: float | None,
-        counter: int,
+        counter: int | None,
         now: float,
         kind_breakdown: dict[str, int] | None,
+        alive_by: AliveBy | None = None,
+        can_defer_override: bool | None = None,
     ) -> ChannelEvidenceSummary:
-        """Build a ChannelEvidenceSummary for a single non-stdout channel."""
+        """Build a ChannelEvidenceSummary for a single channel."""
         age: float | None = None if last_at is None else max(0.0, now - last_at)
-        observed_counter: int | None = counter if counter > 0 else None
+        observed_counter: int | None = counter if counter is not None and counter > 0 else None
+        can_defer = (
+            can_defer_override
+            if can_defer_override is not None
+            else CHANNEL_DEFERS_BY_DEFAULT[channel_name]
+        )
         return ChannelEvidenceSummary(
             channel_name=channel_name,
+            tier=CHANNEL_TIERS[channel_name],
             last_at=last_at,
             age_seconds=age,
             counter=observed_counter,
             kind_breakdown=kind_breakdown,
+            alive_by=alive_by,
+            can_defer=can_defer,
         )
 
     def _channel_evidence_active(self, now: float) -> bool:
-        """Return True when any non-stdout channel is fresher than the TTL.
+        """Return True when any quality-filtered channel is fresher than the TTL.
 
-        Used by the verdict hook in ``evaluate()`` to defer a
-        NO_OUTPUT_DEADLINE fire while a non-stdout channel is still showing
-        activity. Returns False when the TTL is None (legacy behavior — but
-        the verdict hook guards on this already), or when no channel has been
-        observed, or when every observed channel is older than the TTL.
+        Consults the full tier-aware evidence summary. First-party channels
+        (mcp_tool, subagent_output) always defer when fresh. Side-channel
+        channels (workspace, subagent_liveness) only defer when explicitly
+        marked ``can_defer=True`` by quality filtering.
 
         The stdout channel is intentionally excluded: a quiet stdout is the
         NORMAL state we are trying to detect, so it cannot itself defer the
         verdict.
         """
+        summary = self.last_evidence_summary(now)
         ttl = self._config.activity_evidence_ttl_seconds
-        if ttl is None or ttl <= 0.0:
-            return False
-        for last_at in (
-            self._last_mcp_tool_call_at,
-            self._last_subagent_progress_at,
-            self._last_workspace_event_at,
-        ):
-            if last_at is None:
-                continue
-            if (now - last_at) < ttl:
-                return True
-        return False
+        fresh = summary.first_party_fresh(ttl)
+        if fresh is not None:
+            return True
+        fresh = summary.side_channel_fresh(ttl)
+        return fresh is not None
 
     def _accumulate_waiting_run(self, now: float) -> None:
         """Add elapsed time from the current WAITING run to the cumulative total.
@@ -623,9 +775,11 @@ class IdleWatchdog:
         active_channel = "none"
         freshest_age: float | None = None
         flat: list[dict[str, object]] = []
-        for entry in summary:
+        for entry in summary.channels:
             flat.append(entry.to_dict())
-            if entry.channel_name == "stdout":
+            if entry.channel_name == ChannelName.STDOUT:
+                continue
+            if not entry.can_defer:
                 continue
             if (
                 entry.age_seconds is not None
@@ -635,7 +789,7 @@ class IdleWatchdog:
                 and (freshest_age is None or entry.age_seconds < freshest_age)
             ):
                 freshest_age = entry.age_seconds
-                active_channel = entry.channel_name
+                active_channel = entry.channel_name.value
         diag: dict[str, object] = {
             "evidence_summary": cast("list[object]", list(flat)),
             "active_channel": active_channel,
@@ -725,6 +879,10 @@ class IdleWatchdog:
             FIRE: idle deadline elapsed with no valid deferral; caller must terminate.
         """
         now = self._clock.monotonic()
+
+        # Poll observable subagent output streams before any verdict so fresh
+        # subagent output is treated as first-party activity on this tick.
+        self.poll_subagent_output(now=now)
 
         if self._config.max_session_seconds is not None:
             session_elapsed = now - self._session_started_at

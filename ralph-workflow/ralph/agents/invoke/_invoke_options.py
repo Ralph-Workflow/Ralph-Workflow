@@ -44,6 +44,9 @@ class InvokeOptions:
     repeated_error_window_seconds: float | None = None
     activity_evidence_ttl_seconds: float | None = None
     workspace_change_weights: dict[str, float] | None = None
+    process_monitor_enabled: bool | None = None
+    subagent_output_capture_enabled: bool | None = None
+    subagent_output_poll_interval_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None

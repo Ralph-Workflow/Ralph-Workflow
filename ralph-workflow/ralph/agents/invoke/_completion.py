@@ -22,6 +22,7 @@ from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
+from ralph.process.teardown import teardown_subtree
 from ralph.recovery.failure_classifier import FailureClassifier
 
 if TYPE_CHECKING:
@@ -31,6 +32,17 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._agent_run_ctx import _EvalCompletionFn
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+
+
+def _teardown_subtree_if_pid_available(handle: object) -> None:
+    """Best-effort subtree teardown when the handle exposes a PID.
+
+    Test fakes may not implement ``pid``; this helper ignores them so
+    unit tests stay isolated from real process signals.
+    """
+    pid = cast("int | None", getattr(handle, "pid", None))
+    if pid is not None:
+        teardown_subtree(pid)
 
 
 @dataclass(frozen=True)
@@ -89,6 +101,7 @@ def _wait_for_completion_grace(
 
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_parent_exit_grace(classify_exit_state)
+    _teardown_subtree_if_pid_available(handle)
     if verdict == PostExitVerdict.SIGNALS_PRESENT:
         return AgentExecutionState.TERMINAL_COMPLETE
     if verdict == PostExitVerdict.CHILDREN_ACTIVE:
@@ -149,6 +162,7 @@ def _wait_for_descendants_then_recheck(
 
     post_exit = PostExitWatchdog(opts.policy, effective_clock)
     verdict = post_exit.wait_descendant_quiesce(classify_exit_state)
+    _teardown_subtree_if_pid_available(handle)
     if verdict == PostExitVerdict.SIGNALS_PRESENT:
         return AgentExecutionState.TERMINAL_COMPLETE
     if verdict == PostExitVerdict.QUIESCED_NO_SIGNALS:

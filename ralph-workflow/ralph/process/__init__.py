@@ -10,6 +10,7 @@ from ralph.process.child_liveness import (
     ChildActivitySnapshot,
     ChildLivenessRecord,
     ChildLivenessRegistry,
+    ChildLivenessSubagentPidSource,
 )
 from ralph.process.manager import (
     ManagedAsyncProcess,
@@ -27,11 +28,18 @@ from ralph.process.manager import (
     process_phase_scope,
     reset_process_manager,
 )
+from ralph.process.teardown import (
+    DefaultProcessTeardown,
+    ProcessTeardown,
+    teardown_subtree,
+)
 
 __all__ = [
     "ChildActivitySnapshot",
     "ChildLivenessRecord",
     "ChildLivenessRegistry",
+    "ChildLivenessSubagentPidSource",
+    "DefaultProcessTeardown",
     "ManagedAsyncProcess",
     "ManagedProcess",
     "ManagedPtyProcess",
@@ -40,10 +48,12 @@ __all__ = [
     "ProcessManagerPolicy",
     "ProcessRecord",
     "ProcessStatus",
+    "ProcessTeardown",
     "ProcessTerminationError",
     "PtySpawnOptions",
     "SpawnOptions",
     "get_process_manager",
     "process_phase_scope",
     "reset_process_manager",
+    "teardown_subtree",
 ]

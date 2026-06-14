@@ -73,6 +73,9 @@ def build_invoke_options_from_config(
         repeated_error_window_seconds=general_config.agent_repeated_error_window_seconds,
         activity_evidence_ttl_seconds=general_config.agent_idle_activity_evidence_ttl_seconds,
         workspace_change_weights=general_config.agent_workspace_change_weights,
+        process_monitor_enabled=general_config.agent_process_monitor_enabled,
+        subagent_output_capture_enabled=general_config.agent_subagent_output_capture_enabled,
+        subagent_output_poll_interval_seconds=general_config.agent_subagent_output_poll_interval_seconds,
         child_progress_ttl_seconds=general_config.agent_child_progress_ttl_seconds,
         child_heartbeat_ttl_seconds=general_config.agent_child_heartbeat_ttl_seconds,
         child_stale_label_ttl_seconds=general_config.agent_child_stale_label_ttl_seconds,
@@ -181,6 +184,21 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.workspace_change_weights
             if opts.workspace_change_weights is not None
             else _base.workspace_change_weights
+        ),
+        process_monitor_enabled=(
+            opts.process_monitor_enabled
+            if opts.process_monitor_enabled is not None
+            else _base.process_monitor_enabled
+        ),
+        subagent_output_capture_enabled=(
+            opts.subagent_output_capture_enabled
+            if opts.subagent_output_capture_enabled is not None
+            else _base.subagent_output_capture_enabled
+        ),
+        subagent_output_poll_interval_seconds=(
+            opts.subagent_output_poll_interval_seconds
+            if opts.subagent_output_poll_interval_seconds is not None
+            else _base.subagent_output_poll_interval_seconds
         ),
     )
 

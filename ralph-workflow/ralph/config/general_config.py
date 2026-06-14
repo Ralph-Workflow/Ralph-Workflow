@@ -25,10 +25,13 @@ from ralph.timeout_defaults import (
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
+    PROCESS_MONITOR_ENABLED,
     REPEATED_ERROR_CONSECUTIVE_THRESHOLD,
     REPEATED_ERROR_WINDOW_COUNT,
     REPEATED_ERROR_WINDOW_SECONDS,
     SESSION_SOFT_WRAPUP_SECONDS,
+    SUBAGENT_OUTPUT_CAPTURE_ENABLED,
+    SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
@@ -250,6 +253,35 @@ class GeneralConfig(RalphBaseModel):
             " to 0.0 disables the activity-aware verdict and restores"
             " the legacy stdout-only NO_OUTPUT_DEADLINE behavior."
             " Must be >= 0."
+        ),
+    )
+    agent_process_monitor_enabled: bool = Field(
+        default=PROCESS_MONITOR_ENABLED,
+        description=(
+            "Enable the agent-agnostic process monitor. When true, the"
+            " watchdog scans the agent process tree for spawned subagents"
+            " and treats observable subagent output as first-party"
+            " evidence. When false, subagent liveness is inferred only"
+            " from progress signals already received by the MCP server."
+        ),
+    )
+    agent_subagent_output_capture_enabled: bool = Field(
+        default=SUBAGENT_OUTPUT_CAPTURE_ENABLED,
+        description=(
+            "Enable polling of observable subagent output streams. When"
+            " true, the watchdog reads subagent log files (where the"
+            " agent CLI documents their location) and treats new lines as"
+            " first-party activity. When false, subagent output is not"
+            " treated as evidence even if the process monitor is enabled."
+        ),
+    )
+    agent_subagent_output_poll_interval_seconds: float = Field(
+        default=SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
+        gt=0.0,
+        description=(
+            "Poll interval in seconds for observable subagent output"
+            " streams. The watchdog reads only new lines since the last"
+            " poll. Values < 0.01s are intended for tests only."
         ),
     )
     agent_workspace_change_weights: dict[str, float] = Field(

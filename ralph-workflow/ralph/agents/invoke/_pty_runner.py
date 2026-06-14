@@ -35,6 +35,7 @@ from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import PtySpawnOptions, get_process_manager
+from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -121,6 +122,9 @@ def run_pty_and_read_lines(
             verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
             if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                 handle.terminate(grace_period_s=0.5)
+                exit_pid = cast("int | None", getattr(handle, "pid", None))
+                if exit_pid is not None:
+                    teardown_subtree(exit_pid)
                 raise _IdleStreamTimeoutError(
                     ctx.policy.process_exit_wait_seconds,
                     WatchdogFireReason.PROCESS_EXIT_HANG,

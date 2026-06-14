@@ -73,6 +73,9 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
+from ralph.process.teardown import teardown_subtree
+
+from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -98,6 +101,7 @@ class PtyLineReader:
         self._handle = handle
         self._agent_name = agent_name
         self._started_at_wall_clock = time.time()
+        self._config = ctx.config
         self._policy = ctx.policy
         self._monitor = ctx.monitor
         self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
@@ -370,6 +374,9 @@ class PtyLineReader:
             pending_lines = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
+        pid = cast("int | None", getattr(self._handle, "pid", None))
+        if pid is not None:
+            teardown_subtree(pid)
         # Always merge the watchdog's per-channel evidence summary into
         # the diagnostic so a post-mortem (or the on-call operator) can
         # see exactly which evidence channels were fresh and which
@@ -381,9 +388,9 @@ class PtyLineReader:
         # the post-tool-result rewrite above, so this merge is
         # deliberately applied AFTER that rewrite.
         merged_diag: dict[str, object] = {
-            "evidence_summary": [
-                entry.to_dict() for entry in watchdog.last_evidence_summary(self._clock.monotonic())
-            ],
+            "evidence_summary": watchdog.last_evidence_summary(
+                self._clock.monotonic()
+            ).to_dict_list(),
         }
         if diagnostic is not None:
             for key, value in diagnostic.items():
@@ -622,11 +629,13 @@ class PtyLineReader:
         reader = self._start_thread(self._read_thread)
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
+        process_monitor = _make_process_monitor(self._handle, self._config, self._policy)
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,
             listener=self._on_waiting_event,
             corroborator=self._corroborate,
+            process_monitor=process_monitor,
         )
 
         # Register the watchdog's workspace channel recorder as the

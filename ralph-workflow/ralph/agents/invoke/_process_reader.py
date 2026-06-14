@@ -44,7 +44,12 @@ from ralph.mcp.server._activity_sink import (
     set_active_sink,
     set_subagent_sink,
 )
-from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
+from ralph.process.child_liveness import (
+    AliveBy,
+    ChildLivenessRegistry,
+    ChildLivenessSubagentPidSource,
+    classify_child_snapshot,
+)
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedProcess,
@@ -53,9 +58,12 @@ from ralph.process.manager import (
     SpawnOptions,
     get_process_manager,
 )
+from ralph.process.teardown import teardown_subtree
+
+from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.config.models import AgentConfig
@@ -89,6 +97,7 @@ class _ProcessLineReader:
 
     def __init__(self, handle: ManagedProcess, ctx: _ProcessReaderCtx, clock: Clock) -> None:
         self._handle = handle
+        self._config = ctx.config
         self._policy = ctx.policy
         self._strategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe = ctx.liveness_probe or DefaultLivenessProbe()
@@ -113,6 +122,28 @@ class _ProcessLineReader:
             and event.new_status in _TERMINAL_PROCESS_STATUSES
         ):
             self._terminal_counter[0] += 1
+
+    def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
+        """Build a PID source from the strategy's child-liveness registry, if any.
+
+        OpenCode emits structured child lifecycle events on stdout. The
+        strategy ingests those events into a ``ChildLivenessRegistry`` whose
+        records include the child PID. Returning those PIDs as a
+        ``SubagentPidSource`` lets ``DefaultProcessMonitor`` classify real
+        spawned subagents as ``SPAWNED_SUBAGENT`` instead of guessing from
+        the command line.
+        """
+        registry = cast(
+            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
+        )
+        if registry is None:
+            return None
+        active_prefix_fn = cast(
+            "Callable[[], str | None] | None",
+            getattr(self._strategy, "_active_label_prefix", None),
+        )
+        prefix = active_prefix_fn() if active_prefix_fn is not None else ""
+        return ChildLivenessSubagentPidSource(registry, prefix or "")
 
     def _on_waiting_event(self, evt: WaitingStatusEvent) -> None:
         if evt.kind == WaitingStatusKind.HARD_STOP:
@@ -225,6 +256,9 @@ class _ProcessLineReader:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
+        pid = cast("int | None", getattr(self._handle, "pid", None))
+        if pid is not None:
+            teardown_subtree(pid)
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
         # Always merge the watchdog's per-channel evidence summary into
@@ -237,7 +271,7 @@ class _ProcessLineReader:
         # the watchdog already populated.
         now = self._clock.monotonic()
         evidence_block = {
-            "evidence_summary": [entry.to_dict() for entry in watchdog.last_evidence_summary(now)],
+            "evidence_summary": watchdog.last_evidence_summary(now).to_dict_list(),
         }
         merged_diag: dict[str, object] = dict(evidence_block)
         if hard_stop_diag is not None:
@@ -286,6 +320,8 @@ class _ProcessLineReader:
             )
             if result is not None:
                 return result
+            if drain_deadline is None and self._handle.poll() is not None:
+                return None
             if drain_deadline is not None and self._clock.monotonic() >= drain_deadline:
                 return None
             if self._policy.idle_timeout_seconds is None:
@@ -295,11 +331,16 @@ class _ProcessLineReader:
     def read_lines(self) -> Iterator[str]:
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
+        subagent_pid_source = self._build_subagent_pid_source()
+        process_monitor = _make_process_monitor(
+            self._handle, self._config, self._policy, subagent_pid_source
+        )
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,
             listener=self._on_waiting_event,
             corroborator=self._corroborate,
+            process_monitor=process_monitor,
         )
 
         # Register the watchdog's workspace channel recorder as the
@@ -437,6 +478,7 @@ def _run_subprocess_and_read_lines(
             raise AgentInvocationError(_agent_command_name(ctx.config), -1, msg)
 
         reader_ctx = _ProcessReaderCtx(
+            config=ctx.config,
             policy=ctx.policy,
             execution_strategy=ctx.execution_strategy,
             liveness_probe=ctx.liveness_probe,
@@ -488,6 +530,9 @@ def _run_subprocess_and_read_lines(
             verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
             if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                 handle.terminate(grace_period_s=0.5)
+                exit_pid = cast("int | None", getattr(handle, "pid", None))
+                if exit_pid is not None:
+                    teardown_subtree(exit_pid)
                 raise _IdleStreamTimeoutError(
                     ctx.policy.process_exit_wait_seconds,
                     WatchdogFireReason.PROCESS_EXIT_HANG,

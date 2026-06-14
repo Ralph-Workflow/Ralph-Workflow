@@ -7,11 +7,14 @@ import pytest
 
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.idle_watchdog import TimeoutPolicy, WatchdogFireReason, WatchdogVerdict
+from ralph.agents.idle_watchdog._evidence_tier import EvidenceSummary
 from ralph.agents.invoke import AgentInactivityTimeoutError
 from ralph.agents.invoke._errors import _IdleStreamTimeoutError
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
 from ralph.agents.invoke._pty_runner import run_pty_and_read_lines
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig
 
 
 class _FakeHandle:
@@ -114,6 +117,7 @@ def test_pty_line_reader_reclassifies_no_output_deadline_after_tool_result() -> 
         handle = _FakeHandle(master_fd)
         clock = FakeClock(start=25.0)
         ctx = SimpleNamespace(
+            config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
             policy=TimeoutPolicy(idle_timeout_seconds=300.0),
             monitor=None,
             execution_strategy=None,
@@ -131,7 +135,7 @@ def test_pty_line_reader_reclassifies_no_output_deadline_after_tool_result() -> 
 
         watchdog = SimpleNamespace(
             last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
-            last_evidence_summary=lambda _now: (),
+            last_evidence_summary=lambda _now: EvidenceSummary(),
         )
 
         result = reader._check_fire(watchdog, WatchdogVerdict.FIRE)
@@ -151,6 +155,7 @@ def test_pty_line_reader_keeps_stalled_after_tool_result_reason_after_lifecycle_
         handle = _FakeHandle(master_fd)
         clock = FakeClock(start=25.0)
         ctx = SimpleNamespace(
+            config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
             policy=TimeoutPolicy(idle_timeout_seconds=300.0),
             monitor=None,
             execution_strategy=None,
@@ -165,7 +170,7 @@ def test_pty_line_reader_keeps_stalled_after_tool_result_reason_after_lifecycle_
 
         watchdog = SimpleNamespace(
             last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
-            last_evidence_summary=lambda _now: (),
+            last_evidence_summary=lambda _now: EvidenceSummary(),
         )
 
         result = reader._check_fire(watchdog, WatchdogVerdict.FIRE)
@@ -277,6 +282,7 @@ def test_handle_queued_line_keeps_post_tool_result_marker_through_lifecycle_nois
         handle = _FakeHandle(master_fd)
         clock = FakeClock(start=25.0)
         ctx = SimpleNamespace(
+            config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
             policy=TimeoutPolicy(idle_timeout_seconds=300.0),
             monitor=None,
             execution_strategy=_FakeStrategy(),

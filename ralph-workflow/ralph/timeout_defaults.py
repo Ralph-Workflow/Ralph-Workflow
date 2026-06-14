@@ -130,6 +130,21 @@ SSE_DRAIN_CEILING_MS: int = 5_000
 #: shutdown.
 KILL_ESCALATION_CEILING_MS: int = 5_000
 
+#: Default poll interval for subagent output capture. The watchdog polls
+#: observable subagent log streams at this cadence and ingests only new lines
+#: since the last poll.
+SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS: float = 1.0
+
+#: Default enabled state for the process monitor. When false, the watchdog
+#: does not scan the process tree and subagent liveness is inferred only from
+#: progress signals already received by the MCP server.
+PROCESS_MONITOR_ENABLED: bool = True
+
+#: Default enabled state for subagent output capture. When false, the watchdog
+#: does not poll subagent log streams; subagent output is not treated as
+#: first-party evidence.
+SUBAGENT_OUTPUT_CAPTURE_ENABLED: bool = True
+
 #: Default poll interval for the read loop.
 IDLE_POLL_INTERVAL_SECONDS: float = 0.05
 

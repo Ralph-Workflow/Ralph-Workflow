@@ -25,6 +25,8 @@ from ralph.agents.invoke import (
     read_lines_from_process,
 )
 from ralph.agents.timeout_clock import FakeClock
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig
 from ralph.process.liveness import FakeLivenessProbe
 
 if TYPE_CHECKING:
@@ -61,6 +63,7 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
             stdout = _BlockingStdout()
             stderr = SimpleNamespace(read=lambda: "")
             terminate_count: int = 0
+            pid: int = 999_999
 
             def terminate(self, grace_period_s: float | None = None) -> None:
                 del grace_period_s
@@ -107,6 +110,10 @@ class TestReadLinesFromProcessWaitingOnChildDeferred:
                 read_lines_from_process(
                     cast("ManagedProcess", handle),
                     ctx=ProcessReaderCtx(
+                        config=AgentConfig(
+                            cmd="opencode",
+                            transport=AgentTransport.OPENCODE,
+                        ),
                         policy=TimeoutPolicy(
                             idle_timeout_seconds=1.0,
                             drain_window_seconds=0.0,
