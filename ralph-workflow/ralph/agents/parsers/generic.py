@@ -41,7 +41,6 @@ _AGY_TOOL_RESULT_PATTERN = re.compile(
     r"^(?:Tool result|Tool output|Result of):\s*(.*)",
     re.IGNORECASE | re.DOTALL,
 )
-_RALPH_MCP_COMPLETION_PATTERN = re.compile(r"Task declared complete:")
 
 
 def _classify_plaintext_tool_line(stripped: str) -> tuple[str, str] | None:
