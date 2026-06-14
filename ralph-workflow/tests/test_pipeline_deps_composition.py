@@ -56,8 +56,7 @@ def test_build_default_pipeline_deps_returns_valid_pipeline_deps() -> None:
 
 
 def test_build_default_pipeline_deps_applies_pro_hooks() -> None:
-    """``build_default_pipeline_deps`` applies ``ProPipelineHooks`` overrides.
-    """
+    """``build_default_pipeline_deps`` applies ``ProPipelineHooks`` overrides."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
     registry_factory = MagicMock()
@@ -77,8 +76,7 @@ def test_build_default_pipeline_deps_applies_pro_hooks() -> None:
 
 
 def test_pipeline_deps_replace_overrides_individual_fields() -> None:
-    """``dataclasses.replace`` correctly overrides individual collaborators.
-    """
+    """``dataclasses.replace`` correctly overrides individual collaborators."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
     deps = build_default_pipeline_deps(config, display_context)
@@ -107,8 +105,7 @@ def test_pipeline_deps_replace_overrides_individual_fields() -> None:
 
 
 def test_pipeline_deps_replace_preserves_immutability() -> None:
-    """Replacing a field returns a new instance; the original is unchanged.
-    """
+    """Replacing a field returns a new instance; the original is unchanged."""
     config = UnifiedConfig()
     display_context = _fake_display_context()
     deps = build_default_pipeline_deps(config, display_context)
@@ -122,8 +119,7 @@ def test_pipeline_deps_replace_preserves_immutability() -> None:
 
 
 def test_pro_pipeline_hooks_to_runner_kwargs_returns_six_fields() -> None:
-    """``ProPipelineHooks.to_runner_kwargs`` returns the six factory kwargs.
-    """
+    """``ProPipelineHooks.to_runner_kwargs`` returns the six factory kwargs."""
     hooks = ProPipelineHooks(
         policy_bundle_factory=MagicMock(),
         registry_factory=MagicMock(),
@@ -152,8 +148,7 @@ def test_pro_pipeline_hooks_to_runner_kwargs_returns_six_fields() -> None:
 
 
 def test_pro_pipeline_hooks_override_excludes_policy_bundle_override() -> None:
-    """``policy_bundle_override`` is intentionally excluded from runner kwargs.
-    """
+    """``policy_bundle_override`` is intentionally excluded from runner kwargs."""
     policy_bundle = MagicMock()
     hooks = ProPipelineHooks(policy_bundle_override=policy_bundle)
 
