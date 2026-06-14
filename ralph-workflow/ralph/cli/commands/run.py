@@ -670,6 +670,8 @@ def run_pipeline(
         return run_parallel_worker_from_manifest(
             manifest_path=effective_parallel_worker_manifest,
             display_context=ctx,
+            model_identity=effective_request.model_identity,
+            pro_hooks=effective_request.pro_hooks,
         )
 
     if effective_request.inline_prompt is not None:

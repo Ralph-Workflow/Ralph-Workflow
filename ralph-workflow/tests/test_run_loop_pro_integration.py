@@ -18,6 +18,7 @@ from unittest.mock import MagicMock
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -416,6 +417,55 @@ class _LateMarkerWatcher:
 
     def stop(self) -> None:
         self._stopped = True
+
+
+def test_pipeline_deps_policy_bundle_is_authoritative_for_pro_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When ``pipeline_deps.policy_bundle`` is already resolved, ``run()`` does not
+    call ``pro_hooks.policy_bundle_factory`` again.
+    """
+    run_loop_module = _load_run_loop()
+    _seed_workspace(tmp_path)
+
+    state = PipelineState(phase="complete")
+    bundle = _make_fake_bundle()
+    _patch_runner_dependencies(monkeypatch, tmp_path, state, bundle)
+
+    factory_calls: list[tuple[object, ...]] = []
+
+    def fake_factory(workspace_scope: object, config: object) -> PolicyBundle:
+        factory_calls.append((workspace_scope, config))
+        return bundle
+
+    hooks = ProPipelineHooks(policy_bundle_factory=fake_factory)
+    deps = PipelineDeps(
+        display_context=make_display_context(),
+        policy_bundle=bundle,
+    )
+
+    monkeypatch.setattr(
+        run_loop_module,
+        "_run_inner_loop",
+        lambda _state, _ctx, _prev: (state, "complete", None),
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_build_recovery_controller",
+        lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
+    )
+    _install_display_context(monkeypatch, run_loop_module)
+
+    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        _build_config(tmp_path),
+        initial_state=state,
+        pro_hooks=hooks,
+        pipeline_deps=deps,
+    )
+
+    assert exit_code == 0
+    assert factory_calls == []
 
 
 def test_late_marker_adoption_starts_heartbeat_after_run(

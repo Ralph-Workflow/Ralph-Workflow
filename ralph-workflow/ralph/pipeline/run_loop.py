@@ -621,14 +621,17 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     if pipeline_deps is not None and display_context is None:
         display_context = pipeline_deps.display_context
 
-    # Resolve collaborators with precedence: pro_hooks > pipeline_deps > kwargs > defaults.
-    # Pro-provided factories/values take priority so Pro integration remains authoritative.
-    if pro_hooks is not None and pro_hooks.policy_bundle_override is not None:
+    # Resolve collaborators with precedence: pipeline_deps > pro_hooks > kwargs > defaults.
+    # pipeline_deps is the authoritative composed bundle; when it is provided its
+    # values already include any Pro overrides applied by build_default_pipeline_deps().
+    # This prevents pro_hooks.policy_bundle_factory from being evaluated a second time
+    # after PipelineDeps composition.
+    if pipeline_deps is not None and pipeline_deps.policy_bundle is not None:
+        policy_bundle = pipeline_deps.policy_bundle
+    elif pro_hooks is not None and pro_hooks.policy_bundle_override is not None:
         policy_bundle = pro_hooks.policy_bundle_override
     elif pro_hooks is not None and pro_hooks.policy_bundle_factory is not None:
         policy_bundle = pro_hooks.policy_bundle_factory(workspace_scope, config)
-    elif pipeline_deps is not None and pipeline_deps.policy_bundle is not None:
-        policy_bundle = pipeline_deps.policy_bundle
     elif pipeline_deps is not None and pipeline_deps.policy_bundle_factory is not None:
         policy_bundle = pipeline_deps.policy_bundle_factory(workspace_scope, config)
     elif policy_bundle_factory is not None:
@@ -642,10 +645,10 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         registry = cast("_RegistryLike", pro_hooks.registry_factory(config))
     elif pipeline_deps is not None and pipeline_deps.registry_factory is not None:
         registry = cast("_RegistryLike", pipeline_deps.registry_factory(config))
-    elif registry_factory is None:
-        registry = _runner_module.AgentRegistry.from_config(config)
-    else:
+    elif registry_factory is not None:
         registry = registry_factory(config)
+    else:
+        registry = _runner_module.AgentRegistry.from_config(config)
 
     if initial_state is not None:
         state = initial_state
@@ -689,10 +692,10 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         _controller, _ = pro_hooks.recovery_controller_factory(state, policy_bundle, config)
     elif pipeline_deps is not None and pipeline_deps.recovery_controller_factory is not None:
         _controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
-    elif recovery_controller_factory is None:
-        _controller, _ = _build_recovery_controller(state, policy_bundle, config)
-    else:
+    elif recovery_controller_factory is not None:
         _controller, _ = recovery_controller_factory(state, policy_bundle, config)
+    else:
+        _controller, _ = _build_recovery_controller(state, policy_bundle, config)
     _unsubscribe_bus = _subscribe_recovery_logger(_controller)
     logger.info("Starting pipeline: phase={}, budget_caps={}", state.phase, state.budget_caps)
     if pipeline_subscriber is None:

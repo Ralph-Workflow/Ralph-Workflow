@@ -29,8 +29,10 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
+    from ralph.pro_support.hooks import ProPipelineHooks
 
 
 @dataclass(frozen=True)
@@ -86,8 +88,16 @@ def run_parallel_worker_from_manifest(
     manifest_path: Path,
     display_context: DisplayContext,
     pipeline_deps: PipelineDeps | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
 ) -> int:
-    """Execute one manifest-backed worker flow without entering the shared run loop."""
+    """Execute one manifest-backed worker flow without entering the shared run loop.
+
+    ``model_identity`` and ``pro_hooks`` are forwarded into the shared dependency
+    composition path so a parallel worker uses the same injected collaborators as
+    the direct run path. They are ignored when an explicit ``pipeline_deps`` bundle
+    is supplied.
+    """
 
     manifest = ParallelWorkerManifest.load(manifest_path)
     workspace_root = Path(manifest.workspace_root)
@@ -119,7 +129,12 @@ def run_parallel_worker_from_manifest(
     # workspace_scope, which execute_agent_effect uses for the MCP surface.
     workspace = FsWorkspace(workspace_root)
     agent = AgentRegistry.from_config(config).get(effect.agent_name)
-    effective_pipeline_deps = pipeline_deps or build_default_pipeline_deps(config, display_context)
+    effective_pipeline_deps = pipeline_deps or build_default_pipeline_deps(
+        config,
+        display_context,
+        model_identity=model_identity,
+        pro_hooks=pro_hooks,
+    )
     prompt_path = effective_pipeline_deps.phase_prompt_materializer(
         phase=manifest.phase,
         workspace=workspace,

@@ -10,6 +10,7 @@ import pytest
 from ralph.agents.worker_result import WorkerResult
 from ralph.cli.commands import run as run_module
 from ralph.display.context import make_display_context
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
 from ralph.pipeline import fan_out as fan_out_module
 from ralph.pipeline import prompt_prep as prompt_prep_module
@@ -21,6 +22,8 @@ from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseParallelization
+from ralph.pro_support.hooks import ProPipelineHooks
+from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.prompts import materialize as materialize_module
 from ralph.workspace.scope import WorkspaceScope
 
@@ -247,6 +250,40 @@ def test_parallel_worker_mode_does_not_call_shared_pipeline_preflight(
     assert called == []
     assert outer_execute_calls == []
     assert not shared_checkpoint.exists()
+
+
+def test_run_pipeline_forwards_model_identity_and_pro_hooks_to_parallel_worker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``run_pipeline`` forwards injected collaborators into the worker path."""
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(run_module, "resolve_workspace_scope", lambda: scope)
+    captured: dict[str, object] = {}
+
+    def fake_run_worker(*, manifest_path: object, display_context: object, **kwargs: object) -> int:
+        captured["manifest_path"] = manifest_path
+        captured["display_context"] = display_context
+        captured["kwargs"] = kwargs
+        return 0
+
+    monkeypatch.setattr(run_module, "run_parallel_worker_from_manifest", fake_run_worker)
+
+    model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+    pro_hooks = ProPipelineHooks(snapshot_registry=SnapshotRegistry())
+    manifest_path = tmp_path / "worker-manifest.json"
+    request = run_module.RunPipelineRequest(
+        parallel_worker_manifest=manifest_path,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+    )
+    result = run_module.run_pipeline(request=request)
+
+    assert result == 0
+    assert captured["manifest_path"] is manifest_path
+    kwargs = cast("dict[str, object]", captured["kwargs"])
+    assert kwargs["model_identity"] is model_identity
+    assert kwargs["pro_hooks"] is pro_hooks
 
 
 def test_parallel_worker_manifest_persists_parent_config_and_env(
