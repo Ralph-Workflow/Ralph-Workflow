@@ -17,13 +17,14 @@ Three concerns exercised here:
    when the handler raises; a recorded error is also activity (a
    wedged tool that fails repeatedly is still a tool that was called).
 
-4. **Upstream proxy sink coverage** (closes the documented gap in
-   ``docs/agents/verification.md:255``): the ``UpstreamProxyHandler``
-   in ``ralph/mcp/tools/bridge/_upstream_proxy_handler.py`` must
-   invoke the contextvar sink on every upstream tool dispatch
-   (success, failure, and buggy-sink cases), and must remain a
-   no-op when no sink is registered. The proxy reuses the same
-   ``mcp_tool`` evidence channel as the in-process McpServer.
+4. **Upstream proxy sink coverage**: upstream-proxied tool calls are
+   recorded on the same ``mcp_tool`` evidence channel as in-process
+   calls, but the single emission point is ``McpServer._handle_tools_call``;
+   ``UpstreamProxyHandler`` itself must not emit again, otherwise a
+   logical upstream call would be double-counted. Tests cover both the
+   negative case (proxy alone does not invoke the sink) and the
+   end-to-end case (a full ``McpServer`` dispatch with an upstream proxy
+   records activity exactly once on success and on failure).
 
 All tests use FakeClock where applicable, no real I/O, no real
 subprocess. Total wall-clock for the file is well under 1s.
@@ -349,7 +350,7 @@ def test_subagent_sink_set_reset_roundtrip() -> None:
 
 
 # ---------------------------------------------------------------------------
-# (h) Upstream proxy invokes the contextvar sink on success
+# (h) Upstream proxy does NOT double-count activity when called directly
 # ---------------------------------------------------------------------------
 
 
@@ -384,17 +385,45 @@ class _FakeUpstreamRegistry:
         return self._result
 
 
-def test_upstream_proxy_invokes_sink_on_successful_call() -> None:
-    """An ``UpstreamProxyHandler`` dispatch that returns successfully
-    invokes the contextvar activity sink once with the resolved alias
-    (the proxied tool name), and the upstream registry's
-    ``call_tool`` is then called with the same alias and arguments.
+def _build_server_with_upstream_tool(
+    alias: str = "mcp__upstream__search",
+    *,
+    sink: Callable[[str], None] | None = None,
+    upstream_result: object | None = None,
+    upstream_exc: BaseException | None = None,
+) -> tuple[McpServer, _FakeUpstreamRegistry]:
+    """Build a McpServer whose registry contains one upstream-proxied tool."""
+    bridge = ToolBridge()
+    upstream = _FakeUpstreamRegistry(result=upstream_result, exc=upstream_exc)
+    handler = UpstreamProxyHandler(alias=alias, upstream_registry=cast("Any", upstream))
+    bridge.register(
+        ToolMetadata(
+            definition=ToolDefinition(
+                name=alias,
+                description=f"Test upstream tool {alias}",
+                input_schema={"type": "object"},
+            ),
+            required_capability="upstream.tool_use",
+        ),
+        cast("Any", handler),
+    )
+    server = McpServer(
+        session=cast("Any", object()),
+        workspace=cast("Any", object()),
+        registry=bridge,
+        mcp_activity_sink=sink,
+    )
+    return server, upstream
 
-    This is the upstream-MCP equivalent of
-    ``test_mcp_server_invokes_sink_on_successful_tools_call``: a
-    successful upstream tool call is recorded as activity on the
-    ``mcp_tool`` channel, so the watchdog defers a
-    ``NO_OUTPUT_DEADLINE`` fire even when stdout is quiet.
+
+def test_upstream_proxy_does_not_invoke_sink_when_called_directly() -> None:
+    """``UpstreamProxyHandler`` itself must NOT invoke the activity sink.
+
+    The single emission point for a logical tools/call is
+    ``McpServer._handle_tools_call``. The proxy is just another
+    dispatched handler; if it also emitted, upstream-proxied calls
+    would be double-counted on the ``mcp_tool`` channel. This test
+    proves the proxy is a pure pass-through when invoked directly.
     """
     sinks_called: list[str] = []
     upstream = _FakeUpstreamRegistry(result={"content": [{"type": "text", "text": "ok"}]})
@@ -409,8 +438,8 @@ def test_upstream_proxy_invokes_sink_on_successful_call() -> None:
     try:
         result = handler(host_session=None, workspace=None, params={"query": "hello"})
         assert result == {"content": [{"type": "text", "text": "ok"}]}
-        assert sinks_called == ["mcp__upstream__search"], (
-            f"expected sink to be called once with the alias, got {sinks_called}"
+        assert sinks_called == [], (
+            f"expected no sink calls from UpstreamProxyHandler directly, got {sinks_called}"
         )
         assert upstream.calls == [
             ("mcp__upstream__search", {"query": "hello"}, None)
@@ -420,21 +449,14 @@ def test_upstream_proxy_invokes_sink_on_successful_call() -> None:
 
 
 # ---------------------------------------------------------------------------
-# (i) Upstream proxy invokes the contextvar sink on failure
+# (i) Upstream proxy failure does not double-count activity
 # ---------------------------------------------------------------------------
 
 
-def test_upstream_proxy_invokes_sink_on_failed_call() -> None:
-    """When the upstream transport raises (e.g. a transport timeout or
-    a server-side error), the contextvar activity sink is still
-    invoked once with the alias BEFORE the exception propagates.
-
-    This matches the in-process contract from
-    ``test_mcp_server_invokes_sink_on_failed_tools_call``: a wedged
-    tool that fails repeatedly is still a tool that was called, so
-    the watchdog treats the failure as evidence of demonstrable work.
-    The ``UpstreamProxyHandler`` raises the original exception
-    untouched so the upstream transport's failure mode is preserved.
+def test_upstream_proxy_failure_does_not_invoke_sink_when_called_directly() -> None:
+    """Even when the upstream transport raises, the proxy itself must
+    not emit an activity signal. The logical tools/call boundary in
+    ``McpServer._handle_tools_call`` is the single emission point.
     """
     sinks_called: list[str] = []
     upstream = _FakeUpstreamRegistry(exc=TimeoutError("upstream transport timed out"))
@@ -453,25 +475,25 @@ def test_upstream_proxy_invokes_sink_on_failed_call() -> None:
         except TimeoutError:
             raised = True
         assert raised, "UpstreamProxyHandler should have re-raised the upstream exception"
-        assert sinks_called == ["mcp__upstream__fetch"], (
-            f"expected sink to be called once with the alias even on failure, got {sinks_called}"
+        assert sinks_called == [], (
+            "expected no sink calls from UpstreamProxyHandler directly on failure,"
+            f" got {sinks_called}"
         )
     finally:
         reset_active_sink(token)
 
 
 # ---------------------------------------------------------------------------
-# (j) Upstream proxy swallows a buggy sink
+# (j) Upstream proxy ignores any registered sink
 # ---------------------------------------------------------------------------
 
 
-def test_upstream_proxy_sink_exception_does_not_crash_proxy() -> None:
-    """A buggy sink that raises must not crash the upstream proxy path.
+def test_upstream_proxy_ignores_registered_sink() -> None:
+    """The proxy must not call a registered sink, even a buggy one.
 
-    ``invoke_active_sink`` is itself exception-swallowing; the
-    upstream proxy relies on that contract so a buggy watchdog binding
-    cannot break the dispatch path. The upstream transport is still
-    called and its result is returned to the caller.
+    Because the proxy no longer emits activity, a buggy sink cannot
+    crash the proxy path. This is the negative counterpart to the
+    previous ``test_upstream_proxy_sink_exception_does_not_crash_proxy``.
     """
     upstream = _FakeUpstreamRegistry(result={"content": [{"type": "text", "text": "ok"}]})
 
@@ -498,9 +520,9 @@ def test_upstream_proxy_sink_exception_does_not_crash_proxy() -> None:
 def test_upstream_proxy_without_sink_does_not_raise() -> None:
     """When no watchdog is bound (default ``_active_sink`` contextvar
     is ``None``), the upstream proxy must still dispatch the tool
-    call and return the result. ``invoke_active_sink`` is a no-op
-    when no sink is registered, so the proxy must remain a pure
-    no-op wrapper from the dispatch path's perspective.
+    call and return the result. The proxy is a pure pass-through,
+    so it must remain a no-op wrapper from the dispatch path's
+    perspective.
     """
     assert get_active_sink() is None
     upstream = _FakeUpstreamRegistry(result={"content": [{"type": "text", "text": "ok"}]})
@@ -510,3 +532,77 @@ def test_upstream_proxy_without_sink_does_not_raise() -> None:
     result = handler(host_session=None, workspace=None, params={"k": "v"})
     assert result == {"content": [{"type": "text", "text": "ok"}]}
     assert upstream.calls == [("mcp__upstream__search", {"k": "v"}, None)]
+
+
+# ---------------------------------------------------------------------------
+# (l) McpServer records upstream-proxied tool activity exactly once (success)
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_server_records_upstream_tool_activity_exactly_once() -> None:
+    """A logical upstream-proxied ``tools/call`` must record activity
+    exactly once. ``McpServer._handle_tools_call`` is the single
+    emission point; ``UpstreamProxyHandler`` must not emit again.
+
+    This guards the double-counting regression where both the server
+    boundary and the proxy handler invoked the activity sink.
+    """
+    sinks_called: list[str] = []
+
+    def sink(name: str) -> None:
+        sinks_called.append(name)
+
+    server, upstream = _build_server_with_upstream_tool(
+        alias="mcp__upstream__search",
+        sink=sink,
+        upstream_result={"content": [{"type": "text", "text": "ok"}]},
+    )
+    request = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="tools/call",
+        msg_id="1",
+        params={"name": "mcp__upstream__search", "arguments": {"query": "hello"}},
+    )
+    response, _ = server._handle_tools_call(request, ServerState.RUNNING)
+    assert response.error is None
+    assert sinks_called == ["mcp__upstream__search"], (
+        f"expected exactly one sink call for upstream-proxied tool, got {sinks_called}"
+    )
+    assert len(upstream.calls) == 1
+    assert upstream.calls[0][0] == "mcp__upstream__search"
+    assert upstream.calls[0][1] == {"query": "hello"}
+
+
+# ---------------------------------------------------------------------------
+# (m) McpServer records upstream-proxied tool activity exactly once (failure)
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_server_records_upstream_tool_activity_exactly_once_on_failure() -> None:
+    """Even when the upstream transport raises, the logical tools/call
+    is recorded exactly once by the ``McpServer`` boundary.
+    """
+    sinks_called: list[str] = []
+
+    def sink(name: str) -> None:
+        sinks_called.append(name)
+
+    server, upstream = _build_server_with_upstream_tool(
+        alias="mcp__upstream__fetch",
+        sink=sink,
+        upstream_exc=TimeoutError("upstream transport timed out"),
+    )
+    request = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="tools/call",
+        msg_id="1",
+        params={"name": "mcp__upstream__fetch", "arguments": {"url": "https://example.com"}},
+    )
+    response, _ = server._handle_tools_call(request, ServerState.RUNNING)
+    assert response.error is not None
+    assert sinks_called == ["mcp__upstream__fetch"], (
+        f"expected exactly one sink call for failed upstream-proxied tool, got {sinks_called}"
+    )
+    assert len(upstream.calls) == 1
+    assert upstream.calls[0][0] == "mcp__upstream__fetch"
+    assert upstream.calls[0][1] == {"url": "https://example.com"}
