@@ -40,13 +40,16 @@ def _discovery_strategy_for_config(config: AgentConfig) -> DiscoveryStrategy | N
 
 def _make_process_monitor(
     handle: ManagedProcess | ManagedPtyProcess,
+    config: AgentConfig,
     policy: TimeoutPolicy,
 ) -> DefaultProcessMonitor | None:
     """Construct a DefaultProcessMonitor when the policy enables it."""
     if not policy.process_monitor_enabled:
         return None
+    discovery = _make_discovery_strategy(config, policy)
     return DefaultProcessMonitor(
         handle.pid,
+        discovery_strategy=discovery,
         poll_interval_seconds=policy.subagent_output_poll_interval_seconds,
     )
 

@@ -32,7 +32,7 @@ from .watchdog_verdict import WatchdogVerdict
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.process.monitor import DiscoveryStrategy, ProcessMonitor, SubagentOutputCapture
+    from ralph.process.monitor import ProcessMonitor, SubagentOutputCapture
 
     from .timeout_policy import TimeoutPolicy
 
@@ -191,14 +191,12 @@ class IdleWatchdog:
         *,
         corroborator: WaitingCorroborator | None = None,
         process_monitor: ProcessMonitor | None = None,
-        discovery_strategy: DiscoveryStrategy | None = None,
     ) -> None:
         self._config = config
         self._clock = clock
         self._listener = listener
         self._corroborator = corroborator
         self._process_monitor = process_monitor
-        self._discovery_strategy = discovery_strategy
         now = clock.monotonic()
         self._last_activity = now
         self._session_started_at = now
@@ -410,7 +408,7 @@ class IdleWatchdog:
     def poll_subagent_output(self, now: float | None = None) -> int:
         """Poll observable subagent output streams and record new lines.
 
-        Uses the injected ``DiscoveryStrategy`` to find subagent log files and
+        Uses the injected ``ProcessMonitor`` to discover subagent log files and
         reads only new lines since the last poll. Each new line advances the
         ``subagent_output`` first-party channel.
 
@@ -420,14 +418,15 @@ class IdleWatchdog:
         Returns:
             Number of new lines observed across all workers.
         """
-        if self._discovery_strategy is None:
+        if self._process_monitor is None:
             return 0
         timestamp = now if now is not None else self._clock.monotonic()
-        # Use a stable host_pid; 0 means "current process tree" for discovery.
         try:
-            captures = self._discovery_strategy.discover_subagent_outputs(0)
+            captures = self._process_monitor.discover_subagent_outputs()
         except Exception:
-            self._log.debug("idle watchdog: discovery_strategy raised (suppressed)")
+            self._log.debug(
+                "idle watchdog: process_monitor.discover_subagent_outputs raised (suppressed)"
+            )
             return 0
         total = 0
         for worker_id, capture in captures.items():

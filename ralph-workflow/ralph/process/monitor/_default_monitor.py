@@ -15,6 +15,9 @@ from ._process_monitor import ProcessMonitor, ProcessRole
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ._discovery_strategy import DiscoveryStrategy
+    from ._subagent_output_capture import SubagentOutputCapture
+
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,9 @@ class DefaultProcessMonitor(ProcessMonitor):
         role_classifier: Optional callable ``(pid, cmdline) -> ProcessRole``.
             When omitted, a built-in classifier is used that recognises common
             subagent CLI tokens (e.g. ``worker``, ``subagent``, ``task``).
+        discovery_strategy: Optional ``DiscoveryStrategy`` used to locate
+            observable subagent output streams. When omitted, the channel is
+            unavailable and ``discover_subagent_outputs`` returns an empty map.
         now: Callable returning the current monotonic time.
         poll_interval_seconds: Minimum seconds between process-tree rescans.
     """
@@ -57,11 +63,13 @@ class DefaultProcessMonitor(ProcessMonitor):
         host_pid: int,
         *,
         role_classifier: Callable[[int, list[str] | None], ProcessRole] | None = None,
+        discovery_strategy: DiscoveryStrategy | None = None,
         now: Callable[[], float] | None = None,
         poll_interval_seconds: float = SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     ) -> None:
         self._host_pid = host_pid
         self._role_classifier = role_classifier or self._default_classifier
+        self._discovery_strategy = discovery_strategy
         self._now = now or time.monotonic
         self._poll_interval_seconds = poll_interval_seconds
         self._last_refresh_at: float = 0.0
@@ -127,3 +135,16 @@ class DefaultProcessMonitor(ProcessMonitor):
         """Return all classified descendant processes."""
         self.refresh()
         return self._processes
+
+    def discover_subagent_outputs(self) -> dict[str, SubagentOutputCapture]:
+        """Delegate to the injected discovery strategy, if any.
+
+        Returns an empty mapping when no strategy is injected so the
+        watchdog degrades gracefully to stdout, MCP, and workspace channels.
+        """
+        if self._discovery_strategy is None:
+            return {}
+        try:
+            return self._discovery_strategy.discover_subagent_outputs(self._host_pid)
+        except Exception:
+            return {}

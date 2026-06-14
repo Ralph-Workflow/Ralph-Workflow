@@ -13,8 +13,8 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.monitor import (
     DefaultProcessMonitor,
-    DiscoveryStrategy,
     OpencodeSubagentOutputDiscovery,
+    ProcessMonitor,
     SubagentOutputCapture,
 )
 
@@ -73,10 +73,11 @@ def test_invoke_wires_process_monitor_and_discovery(
 
     list(invoke_agent(config, str(prompt_file)))
 
-    assert captured.get("process_monitor") is not None
-    assert isinstance(captured["process_monitor"], DefaultProcessMonitor)
-    assert captured.get("discovery_strategy") is not None
-    assert isinstance(captured["discovery_strategy"], OpencodeSubagentOutputDiscovery)
+    monitor = captured.get("process_monitor")
+    assert monitor is not None
+    assert isinstance(monitor, DefaultProcessMonitor)
+    assert monitor._discovery_strategy is not None
+    assert isinstance(monitor._discovery_strategy, OpencodeSubagentOutputDiscovery)
 
 
 def test_invoke_respects_disabled_monitor_flags(
@@ -105,7 +106,6 @@ def test_invoke_respects_disabled_monitor_flags(
     list(invoke_agent(config, str(prompt_file), options=options))
 
     assert captured.get("process_monitor") is None
-    assert captured.get("discovery_strategy") is None
 
 
 def test_invoke_disabling_only_process_monitor_keeps_discovery(
@@ -131,7 +131,6 @@ def test_invoke_disabling_only_process_monitor_keeps_discovery(
     list(invoke_agent(config, str(prompt_file), options=options))
 
     assert captured.get("process_monitor") is None
-    assert isinstance(captured.get("discovery_strategy"), OpencodeSubagentOutputDiscovery)
 
 
 def test_invoke_disabling_only_output_capture_keeps_process_monitor(
@@ -156,8 +155,9 @@ def test_invoke_disabling_only_output_capture_keeps_process_monitor(
 
     list(invoke_agent(config, str(prompt_file), options=options))
 
-    assert isinstance(captured.get("process_monitor"), DefaultProcessMonitor)
-    assert captured.get("discovery_strategy") is None
+    monitor = captured.get("process_monitor")
+    assert isinstance(monitor, DefaultProcessMonitor)
+    assert monitor._discovery_strategy is None
 
 
 def test_invoke_poll_interval_reaches_process_monitor(
@@ -194,10 +194,19 @@ class _FreshOutputCapture(SubagentOutputCapture):
         return ["fresh subagent output"]
 
 
-class _FreshDiscovery(DiscoveryStrategy):
-    """Discovery that always reports one fresh worker output stream."""
+class _FreshProcessMonitor(ProcessMonitor):
+    """Process monitor that always reports one fresh worker output stream."""
 
-    def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]:
+    def live_subagent_count(self) -> int:
+        return 0
+
+    def classified_processes(self) -> tuple:
+        return ()
+
+    def refresh(self) -> None:
+        pass
+
+    def discover_subagent_outputs(self) -> dict[str, SubagentOutputCapture]:
         return {"worker-1": _FreshOutputCapture()}
 
 
@@ -221,12 +230,8 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
         ],
     )
     monkeypatch.setattr(
-        "ralph.agents.invoke._process_reader._make_discovery_strategy",
-        lambda _config, _policy: _FreshDiscovery(),
-    )
-    monkeypatch.setattr(
         "ralph.agents.invoke._process_reader._make_process_monitor",
-        lambda _handle, _policy: None,
+        lambda _handle, _config, _policy: _FreshProcessMonitor(),
     )
 
     prompt_file = tmp_path / "PROMPT.md"

@@ -35,6 +35,7 @@ from ralph.process.monitor import (
     DiscoveryStrategy,
     FileSubagentOutputCapture,
     OpencodeSubagentOutputDiscovery,
+    ProcessMonitor,
     SubagentOutputCapture,
 )
 from ralph.process.teardown import DefaultProcessTeardown
@@ -63,15 +64,14 @@ def _make_policy(activity_ttl: float | None = 30.0) -> TimeoutPolicy:
 
 def _make_watchdog(
     policy: TimeoutPolicy,
-    discovery_strategy: DiscoveryStrategy | None = None,
+    process_monitor: ProcessMonitor | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     clock = FakeClock(start=0.0)
     return (
         IdleWatchdog(
             policy,
             clock,
-            process_monitor=None,
-            discovery_strategy=discovery_strategy,
+            process_monitor=process_monitor,
         ),
         clock,
     )
@@ -84,6 +84,25 @@ class _FakeDiscovery(DiscoveryStrategy):
     captures: dict[str, SubagentOutputCapture] = field(default_factory=dict)
 
     def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]:
+        return dict(self.captures)
+
+
+@dataclass
+class _FakeProcessMonitor(ProcessMonitor):
+    """Test-only process monitor that exposes configurable captures."""
+
+    captures: dict[str, SubagentOutputCapture] = field(default_factory=dict)
+
+    def live_subagent_count(self) -> int:
+        return 0
+
+    def classified_processes(self) -> tuple:
+        return ()
+
+    def refresh(self) -> None:
+        pass
+
+    def discover_subagent_outputs(self) -> dict[str, SubagentOutputCapture]:
         return dict(self.captures)
 
 
@@ -119,10 +138,10 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
     log_file.write_text("line 1\n", encoding="utf-8")
 
     policy = _make_policy(activity_ttl=1000.0)
-    discovery = _FakeDiscovery(
+    monitor = _FakeProcessMonitor(
         captures={"w1": FileSubagentOutputCapture(str(log_file))}
     )
-    wd, clock = _make_watchdog(policy, discovery)
+    wd, clock = _make_watchdog(policy, monitor)
     wd.record_activity()
     clock.advance(1.0)
 

@@ -23,7 +23,6 @@ from ralph.agents.idle_watchdog._evidence_tier import (
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.monitor import (
-    DiscoveryStrategy,
     ProcessMonitor,
     SubagentOutputCapture,
 )
@@ -67,7 +66,6 @@ def _make_watchdog(
     *,
     start: float = 0.0,
     process_monitor: ProcessMonitor | None = None,
-    discovery_strategy: DiscoveryStrategy | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     policy = policy if policy is not None else _make_policy()
     clock = FakeClock(start=start)
@@ -76,7 +74,6 @@ def _make_watchdog(
             policy,
             clock,
             process_monitor=process_monitor,
-            discovery_strategy=discovery_strategy,
         ),
         clock,
     )
@@ -88,6 +85,7 @@ class FakeProcessMonitor(ProcessMonitor):
 
     live_count: int = 0
     classified: tuple = ()
+    captures: dict[str, SubagentOutputCapture] = field(default_factory=dict)
 
     def live_subagent_count(self) -> int:
         return self.live_count
@@ -97,6 +95,9 @@ class FakeProcessMonitor(ProcessMonitor):
 
     def refresh(self) -> None:
         pass
+
+    def discover_subagent_outputs(self) -> dict[str, SubagentOutputCapture]:
+        return dict(self.captures)
 
 
 @dataclass
@@ -110,16 +111,6 @@ class FakeCapture(SubagentOutputCapture):
         result = self.lines[self.call_count] if self.call_count < len(self.lines) else []
         self.call_count += 1
         return result
-
-
-@dataclass
-class FakeDiscovery(DiscoveryStrategy):
-    """Fake discovery strategy returning configurable captures."""
-
-    captures: dict[str, SubagentOutputCapture] = field(default_factory=dict)
-
-    def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]:
-        return dict(self.captures)
 
 
 def test_first_party_mcp_tool_defers_no_output_deadline() -> None:
@@ -142,10 +133,10 @@ def test_first_party_mcp_tool_defers_no_output_deadline() -> None:
 def test_first_party_subagent_output_defers_no_output_deadline() -> None:
     """AC-2/AC-7: subagent output stream defers NO_OUTPUT_DEADLINE."""
     capture = FakeCapture(lines=[["hello from subagent"]])
-    discovery = FakeDiscovery(captures={"worker-1": capture})
+    monitor = FakeProcessMonitor(captures={"worker-1": capture})
     wd, clock = _make_watchdog(
         _make_policy(activity_ttl=1000.0),
-        discovery_strategy=discovery,
+        process_monitor=monitor,
     )
     wd.record_activity()
     clock.advance(100.0)
@@ -285,8 +276,8 @@ def test_process_monitor_disabled_gracefully() -> None:
     assert liveness.can_defer is False
 
 
-def test_discovery_strategy_disabled_gracefully() -> None:
-    """AC-10: when discovery strategy is None, subagent output is unavailable."""
+def test_subagent_output_unavailable_when_no_process_monitor() -> None:
+    """AC-10: when process monitor is None, subagent output is unavailable."""
     wd, clock = _make_watchdog(_make_policy(activity_ttl=1000.0))
     wd.record_activity()
     clock.advance(1.0)

@@ -9,7 +9,10 @@ and incidental helpers (short-lived shells, the MCP server, tool subprocesses).
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from ._subagent_output_capture import SubagentOutputCapture
 
 
 class ProcessRole(StrEnum):
@@ -60,5 +63,15 @@ class ProcessMonitor(Protocol):
         """Refresh the monitor's view of the process tree.
 
         May be a no-op for implementations that scan on demand.
+        """
+        ...
+
+    def discover_subagent_outputs(self) -> dict[str, SubagentOutputCapture]:
+        """Return observable subagent output streams.
+
+        The monitor is responsible for discovering which subagent output
+        streams (if any) are observable for the host process it tracks.
+        Implementations that cannot observe subagent output return an empty
+        mapping so the watchdog degrades gracefully to other channels.
         """
         ...
