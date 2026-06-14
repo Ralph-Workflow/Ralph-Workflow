@@ -53,6 +53,7 @@ from ralph.process.manager import (
     SpawnOptions,
     get_process_manager,
 )
+from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -225,6 +226,9 @@ class _ProcessLineReader:
             pending = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
+        pid = cast("int | None", getattr(self._handle, "pid", None))
+        if pid is not None:
+            teardown_subtree(pid)
         hs_event = self._last_hard_stop[0]
         hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
         # Always merge the watchdog's per-channel evidence summary into
@@ -237,7 +241,7 @@ class _ProcessLineReader:
         # the watchdog already populated.
         now = self._clock.monotonic()
         evidence_block = {
-            "evidence_summary": [entry.to_dict() for entry in watchdog.last_evidence_summary(now)],
+            "evidence_summary": watchdog.last_evidence_summary(now).to_dict_list(),
         }
         merged_diag: dict[str, object] = dict(evidence_block)
         if hard_stop_diag is not None:
@@ -488,6 +492,9 @@ def _run_subprocess_and_read_lines(
             verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
             if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                 handle.terminate(grace_period_s=0.5)
+                exit_pid = cast("int | None", getattr(handle, "pid", None))
+                if exit_pid is not None:
+                    teardown_subtree(exit_pid)
                 raise _IdleStreamTimeoutError(
                     ctx.policy.process_exit_wait_seconds,
                     WatchdogFireReason.PROCESS_EXIT_HANG,

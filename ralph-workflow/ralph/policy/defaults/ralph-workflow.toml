@@ -55,6 +55,9 @@
 # agent_idle_no_progress_waiting_on_child_seconds = 600.0  # no-progress ceiling; fires when child alive but not making progress (<=max_waiting_on_child_seconds)
 # agent_idle_activity_evidence_ttl_seconds = 30.0   # per-channel activity TTL; defers NO_OUTPUT_DEADLINE while MCP tool calls, subagent work, or workspace events are fresher than this TTL. Workspace evidence is collected whenever a run has a workspace_path, even when show_progress is disabled. A subagent that is alive but silent on every channel is NOT treated as activity. Set to 0.0 to disable and restore legacy stdout-only behavior. (>=0)
 # agent_workspace_change_weights = { source = 1.0, log = 0.0, cache = 0.0, artifact = 0.0, other = 0.0 }   # per-kind workspace file-change weights; values are BINARY (0.0 = drop, 1.0 = full activity). The default is conservative: only source-code changes count. Operators who relied on log-file activity to defer the verdict can opt in by setting `agent_workspace_change_weights = { log = 1.0, source = 1.0 }`. The five keys are: source (source code / documentation), log (*.log / *.tmp / *.bak / *.swp / *~ / *.pyc / *.pyo), cache (.git / __pycache__ / .pytest_cache / .mypy_cache / .ruff_cache / node_modules / .venv / .agent/tmp / .agent/raw / completion_seen_*.json), artifact (.agent/artifacts), and other (anything else). See docs/agents/timeout-policy.md for the full migration note.
+# agent_process_monitor_enabled = true              # enable the agent-agnostic process monitor that discovers and classifies spawned subagents
+# agent_subagent_output_capture_enabled = true      # enable polling of observable subagent output streams as first-party evidence
+# agent_subagent_output_poll_interval_seconds = 1.0 # poll interval for subagent output streams (>0)
 
 # [general.provider_fallback] — Provider/model fallbacks keyed by agent name
 # Uncomment and list agents as keys; each value is an ordered list of fallback models/providers

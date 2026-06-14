@@ -73,6 +73,7 @@ from ralph.process.manager import (
     get_process_manager,
 )
 from ralph.process.pty import read_master_chunk, wait_for_master_readable
+from ralph.process.teardown import teardown_subtree
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -370,6 +371,9 @@ class PtyLineReader:
             pending_lines = list(self._lines_queue)
             self._lines_queue.clear()
         self._handle.terminate(grace_period_s=0.5)
+        pid = cast("int | None", getattr(self._handle, "pid", None))
+        if pid is not None:
+            teardown_subtree(pid)
         # Always merge the watchdog's per-channel evidence summary into
         # the diagnostic so a post-mortem (or the on-call operator) can
         # see exactly which evidence channels were fresh and which
@@ -381,9 +385,9 @@ class PtyLineReader:
         # the post-tool-result rewrite above, so this merge is
         # deliberately applied AFTER that rewrite.
         merged_diag: dict[str, object] = {
-            "evidence_summary": [
-                entry.to_dict() for entry in watchdog.last_evidence_summary(self._clock.monotonic())
-            ],
+            "evidence_summary": watchdog.last_evidence_summary(
+                self._clock.monotonic()
+            ).to_dict_list(),
         }
         if diagnostic is not None:
             for key, value in diagnostic.items():

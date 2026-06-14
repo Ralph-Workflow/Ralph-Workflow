@@ -163,6 +163,31 @@ Opt-in for log files (``source=1.0``, ``log=1.0``, all others ``0.0``):
 | `agent.log`                            | log      | defer (counts)       |
 | `__pycache__/foo.pyc`                  | cache    | dropped              |
 
+## Process monitor and subagent output capture
+
+Three new ``[general]`` tunables control how the watchdog gathers
+non-stdout evidence. They ship with safe defaults and require no
+operator action:
+
+| Config key | Default | Purpose |
+|------------|---------|---------|
+| ``agent_process_monitor_enabled`` | ``true`` | Enable the agent-agnostic process monitor that discovers spawned subagents and tracks their liveness. |
+| ``agent_subagent_output_capture_enabled`` | ``true`` | Enable polling of observable subagent output streams as first-party evidence. |
+| ``agent_subagent_output_poll_interval_seconds`` | ``1.0`` | Poll cadence for subagent output streams. |
+
+When ``agent_process_monitor_enabled`` is ``false``, the watchdog
+does not scan the process tree; subagent liveness is inferred only
+from progress signals already received by the MCP server. When
+``agent_subagent_output_capture_enabled`` is ``false``, subagent log
+streams are not polled even if the process monitor is enabled. Set
+these to ``false`` only when the agent's documentation confirms it
+does not expose observable subagent output.
+
+Subagent output capture is documentation-grounded per agent: the
+strategy returns an empty mapping when the expected log layout is
+not present on disk, so the watchdog degrades gracefully instead of
+inventing paths.
+
 ## Absolute ceilings are unaffected
 
 The ``SESSION_CEILING_EXCEEDED`` and ``CHILDREN_PERSIST_TOO_LONG``

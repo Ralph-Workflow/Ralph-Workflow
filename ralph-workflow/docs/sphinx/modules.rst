@@ -2416,6 +2416,22 @@ ralph.process.mcp_supervisor
    :members:
    :show-inheritance:
 
+ralph.process.monitor
+~~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.process.monitor re-exports from its submodules; using :no-members:
+   avoids duplicate object-description warnings.
+
+.. automodule:: ralph.process.monitor
+   :no-members:
+
+ralph.process.teardown
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.teardown
+   :members:
+   :show-inheritance:
+
 API
 ---
 

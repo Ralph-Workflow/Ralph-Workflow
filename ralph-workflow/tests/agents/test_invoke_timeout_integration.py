@@ -187,9 +187,15 @@ def test_reader_fire_exception_carries_evidence_summary() -> None:
     assert diag is not None
     assert "evidence_summary" in diag
     assert isinstance(diag["evidence_summary"], list)
-    assert len(diag["evidence_summary"]) == 4
+    assert len(diag["evidence_summary"]) == 5
     channels = {entry["channel"] for entry in diag["evidence_summary"]}
-    assert channels == {"stdout", "mcp_tool", "subagent", "workspace"}
+    assert channels == {
+        "stdout",
+        "mcp_tool",
+        "subagent_output",
+        "subagent_liveness",
+        "workspace",
+    }
 
 
 def test_watchdog_fires_even_when_classify_quiet_raises() -> None:

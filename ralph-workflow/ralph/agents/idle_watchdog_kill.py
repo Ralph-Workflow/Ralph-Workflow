@@ -24,9 +24,17 @@ class IdleWatchdogKilledError(Exception):
             ``"stalled"``, ``"no_output"``). NEVER derived from a text match.
         signal: The OS signal the watchdog used to terminate the agent
             (typically ``signal.SIGTERM`` == 15). Typed, not parsed from text.
+        evidence_summary: Optional human-readable summary of per-channel
+            evidence state at fire time, including tier labels and freshness.
     """
 
-    def __init__(self, reason: str, signal: int) -> None:
+    def __init__(
+        self,
+        reason: str,
+        signal: int,
+        *,
+        evidence_summary: str | None = None,
+    ) -> None:
         # The message may legitimately contain misleading tokens (e.g. the
         # word "timeout") to stress-test the classifier; the recovery decision
         # consults the typed attributes, never the message.
@@ -34,6 +42,7 @@ class IdleWatchdogKilledError(Exception):
         super().__init__(message)
         self.reason = reason
         self.signal = signal
+        self.evidence_summary = evidence_summary
 
 
 __all__ = ["IdleWatchdogKilledError"]

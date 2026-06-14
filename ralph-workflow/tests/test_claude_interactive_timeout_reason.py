@@ -7,6 +7,7 @@ import pytest
 
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.idle_watchdog import TimeoutPolicy, WatchdogFireReason, WatchdogVerdict
+from ralph.agents.idle_watchdog._evidence_tier import EvidenceSummary
 from ralph.agents.invoke import AgentInactivityTimeoutError
 from ralph.agents.invoke._errors import _IdleStreamTimeoutError
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
@@ -131,7 +132,7 @@ def test_pty_line_reader_reclassifies_no_output_deadline_after_tool_result() -> 
 
         watchdog = SimpleNamespace(
             last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
-            last_evidence_summary=lambda _now: (),
+            last_evidence_summary=lambda _now: EvidenceSummary(),
         )
 
         result = reader._check_fire(watchdog, WatchdogVerdict.FIRE)
@@ -165,7 +166,7 @@ def test_pty_line_reader_keeps_stalled_after_tool_result_reason_after_lifecycle_
 
         watchdog = SimpleNamespace(
             last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
-            last_evidence_summary=lambda _now: (),
+            last_evidence_summary=lambda _now: EvidenceSummary(),
         )
 
         result = reader._check_fire(watchdog, WatchdogVerdict.FIRE)

@@ -37,6 +37,7 @@ from ralph.agents.idle_watchdog import (
     WatchdogFireReason,
     WatchdogVerdict,
 )
+from ralph.agents.idle_watchdog._evidence_tier import ChannelName, EvidenceSummary
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.invoke._workspace import WorkspaceMonitor
 from ralph.agents.invoke._workspace_change_classifier import (
@@ -346,9 +347,15 @@ def test_evidence_summary_in_hard_stop_diagnostic() -> None:
     diag = hard_stops[0].diagnostic
     assert "evidence_summary" in diag
     assert isinstance(diag["evidence_summary"], list)
-    assert len(diag["evidence_summary"]) == 4
+    assert len(diag["evidence_summary"]) == 5
     channel_names = {entry["channel"] for entry in diag["evidence_summary"]}
-    assert channel_names == {"stdout", "mcp_tool", "subagent", "workspace"}
+    assert channel_names == {
+        "stdout",
+        "mcp_tool",
+        "subagent_output",
+        "subagent_liveness",
+        "workspace",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -387,7 +394,7 @@ def test_session_ceiling_fire_carries_evidence_summary() -> None:
     bound_extra = extra_dict.get("extra", extra_dict)
     assert "evidence_summary" in bound_extra
     assert isinstance(bound_extra["evidence_summary"], list)
-    assert len(bound_extra["evidence_summary"]) == 4
+    assert len(bound_extra["evidence_summary"]) == 5
     assert "active_channel" in bound_extra
     assert bound_extra["fire_reason"] == "session_ceiling_exceeded"
 
@@ -423,7 +430,7 @@ def test_repeated_error_loop_fire_carries_evidence_summary() -> None:
     bound_extra = extra_dict.get("extra", extra_dict)
     assert "evidence_summary" in bound_extra
     assert isinstance(bound_extra["evidence_summary"], list)
-    assert len(bound_extra["evidence_summary"]) == 4
+    assert len(bound_extra["evidence_summary"]) == 5
     assert "active_channel" in bound_extra
     assert bound_extra["fire_reason"] == "repeated_error_loop"
 
@@ -467,7 +474,7 @@ def test_stalled_after_tool_result_fire_carries_evidence_summary() -> None:
     bound_extra = extra_dict.get("extra", extra_dict)
     assert "evidence_summary" in bound_extra
     assert isinstance(bound_extra["evidence_summary"], list)
-    assert len(bound_extra["evidence_summary"]) == 4
+    assert len(bound_extra["evidence_summary"]) == 5
     assert "active_channel" in bound_extra
     assert bound_extra["fire_reason"] == "stalled_after_tool_result"
 
@@ -660,28 +667,23 @@ def test_workspace_monitor_smart_filter_source_defers_log_does_not(tmp_path: Pat
 
 
 def test_last_evidence_summary_channel_order() -> None:
-    """``last_evidence_summary`` returns channels in fixed order
-    (stdout, mcp_tool, subagent, workspace) so callers can index by
-    position without lookup by name.
+    """``last_evidence_summary`` returns a tier-aware ``EvidenceSummary`` with
+    five channels in fixed order (stdout, mcp_tool, subagent_output,
+    subagent_liveness, workspace).
     """
     wd, _ = _make_watchdog()
     summary = wd.last_evidence_summary(0.0)
-    assert isinstance(summary, tuple)
-    assert len(summary) == 4
-    assert [s.channel_name for s in summary] == [
-        "stdout",
-        "mcp_tool",
-        "subagent",
-        "workspace",
+    assert isinstance(summary, EvidenceSummary)
+    assert len(summary.channels) == 5
+    assert [s.channel_name for s in summary.channels] == [
+        ChannelName.STDOUT,
+        ChannelName.MCP_TOOL,
+        ChannelName.SUBAGENT_OUTPUT,
+        ChannelName.SUBAGENT_LIVENESS,
+        ChannelName.WORKSPACE,
     ]
-    for entry in summary:
+    for entry in summary.channels:
         assert isinstance(entry, ChannelEvidenceSummary)
-        assert entry.to_dict() == {
-            "channel": entry.channel_name,
-            "last_at": entry.last_at,
-            "age_seconds": entry.age_seconds,
-            "counter": entry.counter,
-        }
 
 
 # ---------------------------------------------------------------------------

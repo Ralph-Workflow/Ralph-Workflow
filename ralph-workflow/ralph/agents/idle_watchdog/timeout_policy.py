@@ -19,9 +19,12 @@ from ralph.timeout_defaults import (
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
+    PROCESS_MONITOR_ENABLED,
     REPEATED_ERROR_CONSECUTIVE_THRESHOLD,
     REPEATED_ERROR_WINDOW_COUNT,
     REPEATED_ERROR_WINDOW_SECONDS,
+    SUBAGENT_OUTPUT_CAPTURE_ENABLED,
+    SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
 )
@@ -176,6 +179,12 @@ class TimeoutPolicy:
     workspace_change_weights: dict[str, float] | None = field(
         default_factory=lambda: dict(DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS)
     )
+    # Process monitor and subagent output capture controls. These are
+    # feature flags that let operators disable the new evidence channels
+    # when the agent CLI does not expose observable subagent output.
+    process_monitor_enabled: bool = PROCESS_MONITOR_ENABLED
+    subagent_output_capture_enabled: bool = SUBAGENT_OUTPUT_CAPTURE_ENABLED
+    subagent_output_poll_interval_seconds: float = SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()
@@ -185,6 +194,7 @@ class TimeoutPolicy:
         self._validate_repeated_error_fields()
         self._validate_activity_evidence_ttl()
         self._validate_workspace_change_weights()
+        self._validate_subagent_output_poll_interval()
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
@@ -300,3 +310,8 @@ class TimeoutPolicy:
                     f" is not a binary weight; allowed: {{0.0, 1.0}}"
                 )
                 raise ValueError(msg)
+
+    def _validate_subagent_output_poll_interval(self) -> None:
+        if self.subagent_output_poll_interval_seconds <= 0:
+            msg = "subagent_output_poll_interval_seconds must be positive"
+            raise ValueError(msg)
