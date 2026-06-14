@@ -127,6 +127,78 @@ When any phase exhausts its agent chain or reaches a non-recoverable failure, th
 
 The recovery controller in `ralph/recovery/controller.py` handles failure classification, budget management, and agent retry/fallback decisions within each phase. Workflow-level recovery routing is always policy-owned.
 
+## Pipeline Dependency Injection
+
+The pipeline runtime is composed behind an explicit dependency-injection layer
+so that the same session/agent/retry core can be consumed by both the main
+pipeline and the plumbing commands (`--generate-commit`, smoke tests, etc.).
+
+### `PipelineDeps` and `PipelineFactory`
+
+`ralph/pipeline/factory.py` defines the public composition surface:
+
+- `PipelineDeps` is a frozen, slots-based dataclass with 13 fields that bundle
+  all injectable collaborators:
+  - `display_context` — the `DisplayContext` used for all rendering.
+  - `model_identity` — an optional pre-resolved `MultimodalModelIdentity` that
+    the plumbing bridge passes to `build_session_mcp_plan` via
+    `SessionModelOpts(model_identity=...)`. The main pipeline resolves model
+    per-effect from `agent_config.model_flag` + transport, so this field is
+    primarily for explicit plumbing injection.
+  - `system_prompt_materializer` — produces the system prompt for a session.
+  - `phase_prompt_materializer` — produces the phase-specific prompt.
+  - `artifact_requirements_resolver` — resolves required artifacts for a phase.
+  - `bridge_factory` — constructs the session bridge (`AgentSession` + workspace
+    + MCP server).
+  - `policy_bundle` / `policy_bundle_factory` — policy bundle override or
+    factory.
+  - `registry_factory`, `state_factory`, `recovery_controller_factory`,
+    `marker_watcher_factory`, `snapshot_registry` — ProPipelineHooks overrides.
+- `PipelineFactory` is a runtime-checkable Protocol with a single
+  `build(config, display_context, *, pro_hooks=None) -> PipelineDeps` method.
+- `build_default_pipeline_deps(config, display_context, *, pro_hooks=None)`
+  returns a `PipelineDeps` populated with production defaults. When
+  `pro_hooks` is supplied, `apply_pro_hooks_to_deps` resolves the policy bundle
+  with the same three-way priority used by `run_loop.run`: override short-
+  circuits, then factory, then defer to the default loader.
+
+### Shared session bridge
+
+`ralph/pipeline/session_bridge.py` is the single owner of `AgentSession`,
+workspace, `McpServerExtras`, and `start_mcp_server` construction. It exposes:
+
+- `build_session_bridge(...)` — builds and starts a session bridge.
+- `bridge_env_for(bridge, run_id_label=...)` — returns the two-key MCP env dict
+  (`MCP_ENDPOINT_ENV`, `MCP_RUN_ID_ENV`) used by plumbing commands.
+- `reset_tool_registry_callback(bridge)` — returns the reset callback when the
+  bridge exposes one.
+
+This replaces the three previously duplicated bridge/env/reset construction
+sites in `commit_plumbing`, `smoke`, and the main pipeline.
+
+### Consumption
+
+Both the main pipeline and the plumbing commands consume the same factory:
+
+- `ralph/pipeline/run_loop.py:run()` accepts an optional `pipeline_deps`
+  argument and reads registry, recovery, policy bundle, state, marker watcher,
+  and snapshot registry from it.
+- `ralph/pipeline/plumbing/commit_plumbing.py:run_commit_plumbing()` builds
+  default deps when none are supplied and sources the bridge, model identity,
+  and system-prompt materializer from the deps.
+- `ralph/pipeline/plumbing/smoke_plumbing.py:run_smoke_plumbing()` sources the
+  bridge and model identity from the deps; the thin CLI surface in
+  `ralph/cli/commands/smoke.py` only handles option setup and delegates to it.
+
+### Pro composition point
+
+`build_default_pipeline_deps(..., pro_hooks=ProPipelineHooks(...))` absorbs all
+seven `ProPipelineHooks` overrides at build time, so Ralph Workflow Pro can
+inject policy, registry, state, recovery, marker watcher, and snapshot
+registry through a single call. The helper lives in `factory.py` and uses
+`dataclasses.replace` on the frozen `PipelineDeps`, keeping `ProPipelineHooks`
+itself decoupled from `PipelineDeps`.
+
 ## Where to Look in Code
 
 | Concern | Location |
@@ -137,6 +209,11 @@ The recovery controller in `ralph/recovery/controller.py` handles failure classi
 | Events | `ralph/pipeline/events.py` |
 | Effects | `ralph/pipeline/effects.py` |
 | Runner / event loop | `ralph/pipeline/runner.py` |
+| Pipeline DI factory | `ralph/pipeline/factory.py` |
+| Shared session bridge | `ralph/pipeline/session_bridge.py` |
+| Main pipeline entry | `ralph/pipeline/run_loop.py` (`pipeline_deps` param) |
+| Commit plumbing | `ralph/pipeline/plumbing/commit_plumbing.py` |
+| Smoke plumbing | `ralph/pipeline/plumbing/smoke_plumbing.py` |
 | Policy models | `ralph/policy/models.py` |
 | Policy validation | `ralph/policy/validation.py` |
 | Policy loading | `ralph/policy/loader.py` |

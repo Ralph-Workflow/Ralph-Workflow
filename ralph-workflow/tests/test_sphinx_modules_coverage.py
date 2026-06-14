@@ -61,6 +61,7 @@ _EXCLUDED: dict[str, str] = {
     "pipeline.fallover_record": "internal pipeline type, not public API",
     "pipeline.parallel.parallel_coordinator": "internal pipeline type, not public API",
     "pipeline.plumbing": "internal pipeline plumbing submodule, not public API",
+    "pipeline.session_bridge": "internal pipeline DI helper, not public API",
     "pipeline.parallel.worker_context": "internal pipeline type, not public API",
     "pipeline.parallel.worker_failure_error": "internal pipeline type, not public API",
     "pipeline.parallel.worker_log": "internal pipeline type, not public API",

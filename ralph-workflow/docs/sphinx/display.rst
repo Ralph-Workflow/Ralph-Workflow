@@ -31,7 +31,7 @@ To opt a line out of the invariant scan, append ``# noqa: di-allow`` to it
 and document why in the same commit.
 
 Single display owner
--------------------
+--------------------
 
 :class:`~ralph.display.parallel_display.ParallelDisplay` is the **only**
 display class in Ralph Workflow. Every public display helper lives in
@@ -78,7 +78,7 @@ Run lifecycle
 - ``emit_analysis_result`` — render the analysis-cycle result.
 
 Phase banners
-~~~~~~~~~~~~
+~~~~~~~~~~~~~
 
 - ``emit_phase_start`` — show a phase-start banner from explicit
   parameters.
@@ -121,7 +121,7 @@ Tables and panels
 - ``emit_info_panel`` — render a titled info panel.
 
 Status and warnings
-~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
 
 - ``emit_status`` — emit a one-line status message.
 - ``emit_warning`` — emit a one-line warning (also the error path; uses

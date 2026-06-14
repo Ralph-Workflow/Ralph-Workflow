@@ -1882,6 +1882,7 @@ class ParallelDisplay:
         is the full completion panel emitted at the very end of the run.
 
         Visual-hierarchy contract:
+
         - Section rule (``[run-completion]``) is emitted in non-compact mode
           only (mirrors the ``if self._ctx.mode != 'compact'`` guard used
           by every other emit_* method).
@@ -1898,7 +1899,9 @@ class ParallelDisplay:
         - The section rule is the stable log-line tag for downstream
           parsers; the body title Rule is the human-readable title.
 
-        Quiet-mode contract: unlike every other emit_* method, this method
+        Quiet-mode contract:
+
+        Unlike every other emit_* method, this method
         intentionally does NOT short-circuit on ``self._is_quiet``. The
         completion summary is the only dashboard surface that must
         remain visible in ``--quiet`` mode so the user can see the final

@@ -51,7 +51,8 @@ class IdleWatchdog:
     The session ceiling (max_session_seconds) is checked first on every evaluate()
     call and cannot be defeated by activity — record_activity() does not reset it.
 
-    Status events are emitted via the optional listener:
+    Status events are emitted via the optional listener.
+
     - ENTERED once when WAITING_ON_CHILD deferral begins.
     - PROGRESS at most once per waiting_status_interval_seconds (rate-limited).
     - SUSPECTED_FROZEN once per WAITING run when suspect threshold is crossed.
@@ -61,7 +62,8 @@ class IdleWatchdog:
     Listener exceptions are caught and logged at DEBUG; they never propagate.
 
     Per-channel activity evidence (NEW): the watchdog tracks three non-stdout
-    channels in addition to the stdout baseline:
+    channels in addition to the stdout baseline.
+
       - mcp_tool: MCP tools/call invocations/completions routed via the
         Ralph MCP server. Updated by ``record_mcp_tool_call``.
       - subagent: subagent progress signals (heartbeat, phase change) routed

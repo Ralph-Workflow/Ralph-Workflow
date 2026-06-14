@@ -9,7 +9,7 @@ wiring cannot drift between the two paths.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
@@ -25,9 +25,6 @@ if TYPE_CHECKING:
     from ralph.mcp.session_plan import SessionMcpPlan
     from ralph.policy.models import AgentsPolicy
     from ralph.workspace.protocol import Workspace
-
-_T = TypeVar("_T")
-
 
 class BuildSessionMcpPlanFn(Protocol):
     """Injectable planner returning a ``SessionMcpPlan``."""

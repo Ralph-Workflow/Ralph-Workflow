@@ -887,13 +887,6 @@ ralph.pipeline.run_loop
    :members:
    :show-inheritance:
 
-ralph.pipeline.session_bridge
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.pipeline.session_bridge
-   :members:
-   :show-inheritance:
-
 ralph.pipeline.state_init
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1368,6 +1361,7 @@ ralph.agents.invoke
 .. automodule:: ralph.agents.invoke
    :members:
    :show-inheritance:
+   :noindex:
 
 ralph.agents.parsers
 ~~~~~~~~~~~~~~~~~~~~

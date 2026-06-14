@@ -74,6 +74,7 @@ def resolve_resume_session_id(
             None when ``has_prior_session`` is False; must be non-empty
             when ``has_prior_session`` is True.
         recovery_action: The decision the recovery controller made. One of:
+
               - ``"fresh"``: ignore any prior session id; start anew.
               - ``"resume"``: continue the prior session.
               - ``"new_session_with_id"``: reuse the supplied id for a new

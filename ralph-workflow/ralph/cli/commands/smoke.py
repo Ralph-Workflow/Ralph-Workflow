@@ -16,19 +16,11 @@ from typing import TYPE_CHECKING
 
 from rich.table import Table
 
-from ralph.agents.idle_watchdog import WatchdogFireReason
-from ralph.agents.invoke import (
-    AgentInactivityTimeoutError,
-    AgentInvocationError,
-    InactivityTimeoutOpts,
-    InvokeOptions,
-    OpenCodeResumableExitError,
-)
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import resolve_active_display
-from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
+from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_IDLE_TIMEOUT_SECONDS,
     _SMOKE_MAX_SESSION_SECONDS,
@@ -58,18 +50,11 @@ _HEADLESS_SEMANTIC_GUIDE = (
 
 __all__ = [
     "MCP_ENDPOINT_ENV",
-    "MCP_RUN_ID_ENV",
     "_SMOKE_IDLE_TIMEOUT_SECONDS",
     "_SMOKE_MAX_SESSION_SECONDS",
     "_SMOKE_MAX_TURNS",
-    "AgentInactivityTimeoutError",
-    "AgentInvocationError",
-    "InactivityTimeoutOpts",
-    "InvokeOptions",
-    "OpenCodeResumableExitError",
     "SmokeRunParams",
     "SmokeRunResult",
-    "WatchdogFireReason",
     "_execute_smoke_turns",
     "_run_smoke_attempt",
     "build_smoke_prompt",
