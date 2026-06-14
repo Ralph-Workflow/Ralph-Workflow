@@ -6,6 +6,7 @@ changes to worker counts or coverage thresholds without needing to be updated.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -182,6 +183,44 @@ def test_contributing_uses_operator_facing_activity_evidence_ttl_key() -> None:
         " `agent_idle_activity_evidence_ttl_seconds`, not the internal"
         " TimeoutPolicy field name `activity_evidence_ttl_seconds`"
     )
+
+
+def test_readme_does_not_claim_none_disables_activity_evidence_ttl() -> None:
+    """README.md must document ``agent_idle_activity_evidence_ttl_seconds``
+    as disabled only by ``0.0``, not by ``None``.
+
+    The operator-facing config surface (``GeneralConfig``) defines the
+    field as ``float`` with ``ge=0.0``; it does not accept ``None``.
+    """
+    content = README_PATH.read_text(encoding="utf-8")
+    for match in re.finditer(r"agent_idle_activity_evidence_ttl_seconds", content):
+        start = max(0, match.start() - 200)
+        end = min(len(content), match.end() + 200)
+        context = content[start:end]
+        assert "None" not in context, (
+            "README.md context around agent_idle_activity_evidence_ttl_seconds"
+            " must not claim None disables it; the config surface only accepts"
+            f" float >= 0.0: {context!r}"
+        )
+
+
+def test_contributing_does_not_claim_none_disables_activity_evidence_ttl() -> None:
+    """CONTRIBUTING.md must document ``agent_idle_activity_evidence_ttl_seconds``
+    as disabled only by ``0.0``, not by ``None``.
+
+    The operator-facing config surface (``GeneralConfig``) defines the
+    field as ``float`` with ``ge=0.0``; it does not accept ``None``.
+    """
+    content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
+    for match in re.finditer(r"agent_idle_activity_evidence_ttl_seconds", content):
+        start = max(0, match.start() - 200)
+        end = min(len(content), match.end() + 200)
+        context = content[start:end]
+        assert "None" not in context, (
+            "CONTRIBUTING.md context around agent_idle_activity_evidence_ttl_seconds"
+            " must not claim None disables it; the config surface only accepts"
+            f" float >= 0.0: {context!r}"
+        )
 
 
 def test_contributing_does_not_reference_obsolete_watchdog_module_paths() -> None:

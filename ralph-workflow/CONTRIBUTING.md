@@ -174,7 +174,7 @@ real work happening on any of four channels as evidence the session is NOT idle:
 
 While ANY non-stdout channel age is below
 `agent_idle_activity_evidence_ttl_seconds` (default 30.0s under `[general]` in
-`ralph-workflow.toml`; set to `0.0` or `None` to disable), the watchdog defers
+`ralph-workflow.toml`; set to `0.0` to disable), the watchdog defers
 a `NO_OUTPUT_DEADLINE` fire and returns `WatchdogVerdict.CONTINUE` with a debug
 log. The absolute `SESSION_CEILING_EXCEEDED` and `CHILDREN_PERSIST_TOO_LONG`
 ceilings are checked BEFORE the deferral, so they remain absolute (activity
@@ -195,11 +195,12 @@ suite covering this contract.
 **Upstream MCP coverage.** The `mcp_tool` channel covers both in-process
 Ralph Workflow tool calls and upstream (third-party) MCP tool calls proxied through
 `UpstreamProxyHandler` (`ralph/mcp/tools/bridge/_upstream_proxy_handler.py`).
-`UpstreamProxyHandler.__call__` invokes the same activity-sink protocol as the
-in-process `McpServer._handle_tools_call` path, so a delegated upstream tool
-call refreshes the `mcp_tool` channel just like a native Ralph Workflow tool call. Set
-`agent_idle_activity_evidence_ttl_seconds = 0.0` (or `None`) only when you want
-to opt out of the activity-aware verdict entirely and restore the legacy
+The single emission point for any `tools/call` is `McpServer._handle_tools_call`,
+which records the call on the `mcp_tool` channel before dispatch; the proxy is a
+pure pass-through and does not emit again, so a delegated upstream tool call
+refreshes the `mcp_tool` channel exactly once, just like a native Ralph Workflow
+tool call. Set `agent_idle_activity_evidence_ttl_seconds = 0.0` only when you
+want to opt out of the activity-aware verdict entirely and restore the legacy
 stdout-only behavior.
 
 See `ralph/agents/post_exit_watchdog.py` for the full post-exit transition matrix and

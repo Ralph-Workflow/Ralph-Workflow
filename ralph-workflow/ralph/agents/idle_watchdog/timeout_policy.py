@@ -156,9 +156,10 @@ class TimeoutPolicy:
     # detected at the regular idle deadline once its own channel goes
     # stale. The SESSION_CEILING and CHILDREN_PERSIST_TOO_LONG ceilings are
     # checked BEFORE this deferral, so they remain absolute. Setting this
-    # to None OR 0.0 disables the activity-aware verdict and restores the
+    # to 0.0 disables the activity-aware verdict and restores the
     # legacy stdout-only NO_OUTPUT_DEADLINE behavior. Must be >= 0 when
-    # not None.
+    # set. The operator-facing config surface only accepts a non-negative
+    # float; use 0.0 (not None) to disable.
     activity_evidence_ttl_seconds: float | None = AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS
     # Per-kind workspace file-change weights. Each value is BINARY:
     # weight==0.0 means the change is dropped (does not defer the
