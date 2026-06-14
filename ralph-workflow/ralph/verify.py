@@ -153,6 +153,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "activity-aware watchdog audit (audit_activity_aware_watchdog)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "parallelization dormant audit (audit_parallelization_dormant)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),

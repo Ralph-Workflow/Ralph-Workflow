@@ -50,6 +50,8 @@ TESTS_ALLOWLIST: set[str] = {
     "test_audit_mcp_timeout.py",  # subprocess.run/Popen literals as audit-fixture code strings
     "test_audit_parallelization_dormant.py",
     # invokes the audit module as a subprocess in test_audit_executable_invocation_returns_zero
+    "test_audit_activity_aware_watchdog.py",
+    # invokes the audit module as a subprocess to verify the main() exit code
     "test_verify_budget_real_time.py",  # tests process-level timeout behavior via subprocess
     "test_verify_invariants.py",  # spawns patched subprocesses to verify import-time invariants
     # spawns python -O to verify size-limit import-time invariants

@@ -115,6 +115,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="di seam audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog"),
+                returncode=0,
+                stdout="activity-aware watchdog audit ok\n",
+            ),
             ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")): _result(
                 command="uv",
                 args=("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),
@@ -137,6 +143,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_test_policy")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_mcp_timeout")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_di_seam")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")),
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -148,6 +155,7 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[6][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[7][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[8][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[9][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
@@ -295,6 +303,12 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="di seam audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog"),
+                returncode=0,
+                stdout="activity-aware watchdog audit ok\n",
+            ),
             ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")): _result(
                 command="uv",
                 args=("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),
@@ -304,12 +318,14 @@ def test_run_verify_single_step_within_budget(
         }
     )
 
-    # Nine steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
+    # Ten steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
     # 5=test_policy audit, 6=mcp_timeout audit, 7=di_seam audit,
-    # 8=parallelization_dormant audit). Each step calls time.monotonic()
-    # twice (start + end). make test takes 1s; all other steps take 0s.
+    # 8=activity_aware_watchdog audit, 9=parallelization_dormant audit).
+    # Each step calls time.monotonic() twice (start + end). make test takes 1s;
+    # all other steps take 0s.
     times = [
-        0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+        0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
@@ -508,6 +524,12 @@ def test_run_verify_non_test_steps_not_counted(
                 returncode=0,
                 stdout="di seam audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog"),
+                returncode=0,
+                stdout="activity-aware watchdog audit ok\n",
+            ),
             ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")): _result(
                 command="uv",
                 args=("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),
@@ -518,12 +540,12 @@ def test_run_verify_non_test_steps_not_counted(
     )
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Nine steps (ruff, mypy, make test, five audits) x 2 monotonic calls
-    # per step = 18 entries.
+    # Ten steps (ruff, mypy, make test, six audits) x 2 monotonic calls
+    # per step = 20 entries.
     times = [
         0.0, 100.0, 100.0, 200.0, 200.0, 300.0, 300.0, 400.0,
         400.0, 500.0, 500.0, 600.0, 600.0, 700.0, 700.0, 800.0,
-        800.0, 900.0,
+        800.0, 900.0, 900.0, 1000.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
