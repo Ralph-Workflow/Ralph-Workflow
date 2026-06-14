@@ -123,6 +123,19 @@ _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
     }
 )
 
+# Permanent account/billing/configuration failures that will not self-heal
+# after a cooldown. These are matched case-insensitively via
+# ``contains_casefolded_marker`` and routed to USER_CONFIG so the pipeline
+# terminates through the normal failure path instead of waiting forever.
+_PERMANENT_ACCOUNT_SUBSTRINGS: tuple[str, ...] = (
+    "organization has no valid billing information",
+    "your account is not active",
+    "payment required",
+    "account suspended",
+    "subscription expired",
+    "trial expired",
+)
+
 # Usage/billing/limit messages that indicate the current agent run cannot
 # continue without waiting for a quota reset or adding credits. Patterns are
 # matched case-insensitively via ``contains_casefolded_marker``. Add provider-
@@ -145,8 +158,6 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "rate limit reached for requests",
     "billing hard limit reached",
     "monthly spend limit reached",
-    "organization has no valid billing information",
-    "your account is not active",
     "you've run out of credits",
     # Anthropic / Claude API families
     "rate_limit_error",
@@ -173,10 +184,6 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "token limit exceeded",
     "plan limit reached",
     "billing threshold reached",
-    "payment required",
-    "account suspended",
-    "subscription expired",
-    "trial expired",
     "free tier limit exceeded",
     "daily limit reached",
     "hourly limit reached",
@@ -334,6 +341,11 @@ def _is_unavailable_agent_message(msg: str) -> bool:
 def _is_subscription_limit_message(detail_parts: tuple[str, ...] | list[str]) -> bool:
     """Return True if the message matches Claude Code documented limit/billing families."""
     return contains_casefolded_marker(detail_parts, _SUBSCRIPTION_LIMIT_SUBSTRINGS)
+
+
+def _is_permanent_account_failure(detail_parts: tuple[str, ...] | list[str]) -> bool:
+    """Return True for permanent account/billing failures that will not self-heal."""
+    return contains_casefolded_marker(detail_parts, _PERMANENT_ACCOUNT_SUBSTRINGS)
 
 
 _NO_OUTPUT_SUBSTRINGS: tuple[str, ...] = (
@@ -541,6 +553,8 @@ class FailureClassifier:
         reset_session = contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS)
         if reset_session:
             return FailureCategory.AGENT, True, True
+        if _is_permanent_account_failure(detail_parts):
+            return FailureCategory.USER_CONFIG, False, False
         if _is_subscription_limit_message(detail_parts):
             return FailureCategory.AGENT, True, False
         if _is_suspicious_timeout_without_output(detail_parts, connectivity_state):
@@ -571,6 +585,10 @@ class FailureClassifier:
             (
                 contains_casefolded_marker(detail_parts, SESSION_NOT_FOUND_SUBSTRINGS),
                 (FailureCategory.AGENT, True, True),
+            ),
+            (
+                _is_permanent_account_failure(detail_parts),
+                (FailureCategory.USER_CONFIG, False, False),
             ),
             (
                 _is_subscription_limit_message(detail_parts),

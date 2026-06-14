@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
@@ -184,12 +185,13 @@ class RecoveryController:
                 failure.reason[:200],
             )
             new_state = new_state.copy_with(last_error=failure.reason)
-            new_state, effects = self._handle_technical_retry_exhaustion(
+            new_state, effects, failure_evt = self._handle_technical_retry_exhaustion(
                 new_state,
                 failure,
                 phase,
                 agent,
                 retry_in_session=retry_in_session,
+                failure_evt=failure_evt,
             )
             return new_state, effects, failure_evt
 
@@ -209,12 +211,13 @@ class RecoveryController:
                 failure.reason[:200],
             )
             new_state = new_state.copy_with(last_error=failure.reason)
-            new_state, effects = self._handle_technical_retry_exhaustion(
+            new_state, effects, failure_evt = self._handle_technical_retry_exhaustion(
                 new_state,
                 failure,
                 phase,
                 agent,
                 retry_in_session=retry_in_session,
+                failure_evt=failure_evt,
             )
             return new_state, effects, failure_evt
 
@@ -255,8 +258,13 @@ class RecoveryController:
                 key = f"{phase}:{agent}"
                 self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
 
-        new_state, effects = self._handle_agent_budget_exhaustion(
-            new_state, failure, phase, agent, retry_in_session=retry_in_session
+        new_state, effects, failure_evt = self._handle_agent_budget_exhaustion(
+            new_state,
+            failure,
+            phase,
+            agent,
+            retry_in_session=retry_in_session,
+            failure_evt=failure_evt,
         )
 
         if self._cap.is_exceeded(new_state.recovery_cycle_count):
@@ -317,7 +325,8 @@ class RecoveryController:
         agent: str | None,
         *,
         retry_in_session: bool = False,
-    ) -> tuple[PipelineState, list[Effect]]:
+        failure_evt: FailureEvent,
+    ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         return self._handle_retry_progression(
             state,
             failure,
@@ -326,6 +335,7 @@ class RecoveryController:
             retry_in_session=retry_in_session,
             max_retries=self._technical_retry_cap,
             use_budget=False,
+            failure_evt=failure_evt,
         )
 
     def _apply_chain_retry(
@@ -415,7 +425,8 @@ class RecoveryController:
         agent: str | None,
         *,
         retry_in_session: bool = False,
-    ) -> tuple[PipelineState, list[Effect]]:
+        failure_evt: FailureEvent,
+    ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         """Handle agent failure with budget debit and chain progression."""
         return self._handle_retry_progression(
             state,
@@ -425,6 +436,7 @@ class RecoveryController:
             retry_in_session=retry_in_session,
             max_retries=self._get_max_retries_for_chain(phase),
             use_budget=True,
+            failure_evt=failure_evt,
         )
 
     def _handle_retry_progression(
@@ -437,10 +449,11 @@ class RecoveryController:
         retry_in_session: bool,
         max_retries: int,
         use_budget: bool,
-    ) -> tuple[PipelineState, list[Effect]]:
+        failure_evt: FailureEvent,
+    ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         chain = state.chain_for_phase(phase)
         if chain is None:
-            return state, []
+            return state, [], failure_evt
 
         current_agent = agent or (
             chain.agents[chain.current_index]
@@ -476,6 +489,7 @@ class RecoveryController:
             return (
                 self._apply_chain_retry(state, phase, chain, retry_in_session=retry_in_session),
                 [],
+                failure_evt,
             )
 
         if next_available_index is not None:
@@ -509,7 +523,7 @@ class RecoveryController:
                 )
                 .with_fallover_record(fallover_record)
             )
-            return new_state, []
+            return new_state, [], failure_evt
 
         # If every agent in the chain is temporarily unavailable, preserve the
         # session and wait until the earliest cooldown expires instead of
@@ -522,17 +536,20 @@ class RecoveryController:
             wait_ms = self._earliest_unavailable_wait_ms(phase, chain)
             reason = "all agents unavailable; waiting for cooldown expiry"
             logger.info("{} in phase={} (wait_ms={})", reason, phase, wait_ms)
+            updated_evt = replace(failure_evt, retry_delay_ms=wait_ms)
+            self._bus.publish(updated_evt)
             return (
                 state.copy_with(
                     last_error=reason,
                     last_retry_delay_ms=wait_ms,
                 ),
                 [],
+                updated_evt,
             )
 
         new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
         failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
-        return failed_state, []
+        return failed_state, [], failure_evt
 
     def _earliest_unavailable_wait_ms(
         self,

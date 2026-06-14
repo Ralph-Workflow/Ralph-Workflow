@@ -138,6 +138,8 @@ def _apply_connectivity_check(
     state: PipelineState, monitor: _ConnectivityMonitorLike
 ) -> PipelineState:
     """Block synchronously if offline; return updated state when online."""
+    if monitor.current_state == ConnectivityState.ONLINE:
+        return state.copy_with(last_connectivity_state=str(ConnectivityState.ONLINE))
     if monitor.current_state != ConnectivityState.OFFLINE:
         return state
 

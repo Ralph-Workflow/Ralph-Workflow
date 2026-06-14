@@ -8,17 +8,20 @@ from pathlib import Path
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._errors import AgentInvocationError
 from ralph.agents.timeout_clock import FakeClock
+from ralph.pipeline.run_loop import _apply_connectivity_check
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
+from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.controller import (
     FailureContext,
     RecoveryController,
     RecoveryControllerOptions,
     compute_backoff_ms,
 )
-from ralph.recovery.events import FailureEventBus, FalloverEvent
+from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
+from ralph.recovery.testing import FakeConnectivityMonitor
 
 
 def _minimal_policy_bundle() -> object:
@@ -499,7 +502,8 @@ def test_post_tool_empty_response_stays_retryable_not_unavailable() -> None:
     assert failure.is_unavailable is False
 
 
-# New credit-exhaustion / quota / rate-limit detection patterns.
+# Transient credit-exhaustion / quota / rate-limit detection patterns.
+# These can self-heal after a cooldown and should flag the agent unavailable.
 # Each pattern must flag the agent as unavailable only when connectivity is online.
 _NEW_SUBSCRIPTION_LIMIT_PATTERNS = [
     # OpenAI
@@ -508,8 +512,6 @@ _NEW_SUBSCRIPTION_LIMIT_PATTERNS = [
     "rate limit reached for requests",
     "billing hard limit reached",
     "monthly spend limit reached",
-    "organization has no valid billing information",
-    "your account is not active",
     "you've run out of credits",
     # Anthropic / Claude
     "rate_limit_error: Number of request tokens has exceeded your per-minute rate limit",
@@ -535,14 +537,22 @@ _NEW_SUBSCRIPTION_LIMIT_PATTERNS = [
     "token limit exceeded",
     "plan limit reached",
     "billing threshold reached",
-    "payment required",
-    "account suspended",
-    "subscription expired",
-    "trial expired",
     "free tier limit exceeded",
     "daily limit reached",
     "hourly limit reached",
     "per-minute limit exceeded",
+]
+
+# Permanent account/billing/configuration failures that will not self-heal.
+# These must terminate through the normal failure path, not enter an
+# indefinite unavailable cooldown.
+_PERMANENT_ACCOUNT_PATTERNS = [
+    "organization has no valid billing information",
+    "your account is not active",
+    "payment required",
+    "account suspended",
+    "subscription expired",
+    "trial expired",
 ]
 
 
@@ -671,3 +681,107 @@ def test_all_agents_unavailable_credit_exhaustion_waits_for_cooldown() -> None:
     assert retried_state.phase == "development"
     assert retried_state.chain_for_phase("development").current_index == 1
     assert retried_effects == []
+
+
+def test_permanent_account_failures_classify_as_user_config() -> None:
+    """Permanent billing/account failures are user-config, not agent unavailable."""
+    classifier = FailureClassifier()
+    for message in _PERMANENT_ACCOUNT_PATTERNS:
+        failure = classifier.classify(
+            AgentInvocationError("claude", 1, message),
+            phase="development",
+            agent="claude",
+            connectivity_state="online",
+        )
+        assert failure.category == FailureCategory.USER_CONFIG, message
+        assert failure.is_unavailable is False, message
+
+
+def test_permanent_account_failure_terminates_instead_of_waiting() -> None:
+    """Permanent billing failures advance to the failed route instead of waiting."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+
+    new_state, effects, evt = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "organization has no valid billing information"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert evt.category == "user_config"
+    assert new_state.last_connectivity_state == "online"
+    # The phase should fail rather than entering an indefinite unavailable wait.
+    assert new_state.phase != "development" or effects
+    assert new_state.last_error is not None
+    assert "all agents unavailable" not in (new_state.last_error or "").lower()
+
+
+def test_online_connectivity_propagates_through_run_loop_wiring() -> None:
+    """An ONLINE monitor writes 'online' into state so subscription limits trigger unavailable."""
+    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
+    state = _make_state(["claude", "opencode"])
+    # Default production state starts with unknown connectivity.
+    assert state.last_connectivity_state == "unknown"
+
+    updated_state = _apply_connectivity_check(state, monitor)
+
+    assert updated_state.last_connectivity_state == "online"
+
+    # A quota failure on the now-online state is classified as unavailable and falls over.
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=FakeClock(start=0.0),
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    new_state, _, evt = controller.handle(
+        updated_state,
+        AgentInvocationError("claude", 1, "insufficient_quota: quota exceeded"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert evt.category == "agent"
+    assert new_state.chain_for_phase("development").current_index == 1
+
+
+def test_all_agents_unavailable_event_reports_real_cooldown_delay() -> None:
+    """The returned FailureEvent reports the actual cooldown wait, not zero."""
+    clock = FakeClock(start=0.0)
+    collected: list[FailureEvent] = []
+    bus = FailureEventBus()
+    bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            event_bus=bus,
+            unavailable_timeouts={
+                "development:claude": 60_000,
+                "development:opencode": 60_000,
+            },
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
+
+    new_state, effects, evt = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert new_state.last_retry_delay_ms > 0
+    assert evt.retry_delay_ms == new_state.last_retry_delay_ms
+    assert effects == []
+    assert new_state.last_error is not None
+    assert "all agents unavailable" in new_state.last_error.lower()
+    # At least one published event carries the real cooldown delay.
+    assert any(e.retry_delay_ms == new_state.last_retry_delay_ms for e in collected)
