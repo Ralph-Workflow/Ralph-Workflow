@@ -310,6 +310,28 @@ engine exposes a small, read-only, bounded surface so Pro can
 monitor and (in advanced uses) inject custom pipeline
 collaborators.
 
+### Pipeline dependency injection
+
+The engine's pipeline and plumbing commands share the same underlying
+execution core through a single injectable dependency bundle,
+`PipelineDeps` (`ralph.pipeline.factory`). The bundle carries the four
+primary collaborators:
+
+- **display** — `display_context` drives all output surfaces.
+- **model** — `model_identity` is forwarded through the session bridge to `AgentSession`.
+- **prompt** — `system_prompt_materializer` and `phase_prompt_materializer`
+  materialize system and phase prompts respectively.
+- **artifact requirements** — `artifact_requirements_resolver` resolves the
+  required artifact contract for each phase/drain.
+
+The main pipeline (`ralph.pipeline.runner`) and plumbing commands
+(`--generate-commit`, smoke test) both build a `PipelineDeps` via
+`build_default_pipeline_deps` and execute agents through
+`execute_agent_effect`. Pro can inject custom implementations of any
+of these collaborators through `ProPipelineHooks`, and
+`build_default_pipeline_deps` applies those overrides without changing
+the shared execution core.
+
 - Engine-side contract page: [`docs/sphinx/pro-support.md`](docs/sphinx/pro-support.md).
 - Engine-side engine-capability traceability: [`docs/agents/pro-contract.md`](docs/agents/pro-contract.md).
 - Upstream contract (authoritative source of truth): `Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`.
