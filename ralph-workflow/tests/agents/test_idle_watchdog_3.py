@@ -37,7 +37,12 @@ from ralph.agents.idle_watchdog import (
     WatchdogFireReason,
     WatchdogVerdict,
 )
+from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.agents.invoke._workspace import WorkspaceMonitor
+from ralph.agents.invoke._workspace_change_classifier import (
+    DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
+    WorkspaceChangeClassifier,
+)
 from ralph.agents.timeout_clock import FakeClock
 
 if TYPE_CHECKING:
@@ -155,13 +160,14 @@ def test_no_false_kill_on_subagent_work() -> None:
 def test_no_false_kill_on_workspace_changes() -> None:
     """Agent whose workspace is changing (writes files) is not killed as idle.
 
-    Same shape as the mcp_tool and subagent tests, but uses
-    ``record_workspace_event``.
+    Same shape as the mcp_tool and subagent tests, but uses the
+    production-style ``record_workspace_event(kind=..., weight=...)``
+    call that the WorkspaceMonitor -> watchdog wiring forwards.
     """
     wd, clock = _make_watchdog(activity_ttl=1000.0)
     wd.record_activity()
     clock.advance(100.0)
-    wd.record_workspace_event()
+    wd.record_workspace_event(kind=WorkspaceChangeKind.SOURCE, weight=1.0)
     clock.advance(50.0)
 
     verdict = wd.evaluate(classify_quiet=_active_classifier())
@@ -504,19 +510,25 @@ def test_workspace_monitor_records_last_event_at(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _default_classifier() -> WorkspaceChangeClassifier:
+    """Return the conservative default classifier used in production."""
+    return WorkspaceChangeClassifier(weights=dict(DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS))
+
+
 def test_workspace_monitor_to_watchdog_integration(tmp_path: Path) -> None:
     """``WorkspaceMonitor`` end-to-end integration: when the monitor's
     ``on_event`` callback is wired to the watchdog's
-    ``record_workspace_event``, a recorded file change updates the
-    watchdog's per-channel ``_last_workspace_event_at`` timestamp.
+    ``record_workspace_event`` via the production 2-arg lambda, a
+    recorded file change updates the watchdog's per-channel
+    ``_last_workspace_event_at`` timestamp AND the per-kind counter.
 
     This is the production wiring: the readers receive the
     ``WorkspaceMonitor`` via ``ctx.monitor`` and register
-    ``watchdog.record_workspace_event`` as the on-event callback after
-    the watchdog is created. A file change in the monitored workspace
-    is then visible to the watchdog as a workspace channel event,
-    and the activity-aware verdict can defer ``NO_OUTPUT_DEADLINE``
-    while the workspace is changing.
+    ``lambda kind, weight: watchdog.record_workspace_event(kind=kind, weight=weight)``
+    as the on-event callback after the watchdog is created. A file
+    change in the monitored workspace is then visible to the watchdog
+    as a workspace channel event, and the activity-aware verdict can
+    defer ``NO_OUTPUT_DEADLINE`` while the workspace is changing.
 
     Pre-fix, the production code path did not wire this up: the
     monitor's ``record_event`` updated its own internal
@@ -529,41 +541,57 @@ def test_workspace_monitor_to_watchdog_integration(tmp_path: Path) -> None:
     # Use the watchdog's FakeClock as the monitor's clock source so
     # the two clocks stay synchronized (production uses time.monotonic
     # for both; the test mirrors that with a shared fake).
-    monitor = WorkspaceMonitor(tmp_path, now=clock.monotonic)
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        now=clock.monotonic,
+        classifier=_default_classifier(),
+    )
     # Pre-condition: watchdog has not observed any workspace activity yet.
     assert wd._last_workspace_event_at is None
     assert wd._workspace_event_count_internal == 0
-    # Wire the production-style callback: the monitor's on_event fires
-    # the watchdog's recorder whenever a file change is observed.
-    monitor.set_on_event(wd.record_workspace_event)
+    # Wire the production-style 2-arg callback so the watchdog receives
+    # the real (kind, weight) classification instead of the OTHER default.
+    monitor.set_on_event(
+        lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight)
+    )
     # Advance both clocks together and trigger a file change.
     clock.advance(100.5)
     monitor.record_event("/tmp/foo.py")
     # The watchdog's per-channel state must now reflect the event.
     assert wd._last_workspace_event_at == 100.5
     assert wd._workspace_event_count_internal == 1
+    # The per-kind counter must reflect the real classification (source),
+    # not the OTHER default that the legacy 0-arg binding would yield.
+    assert wd.workspace_kind_counts == {"source": 1}
 
 
 def test_workspace_monitor_to_watchdog_defers_verdict(tmp_path: Path) -> None:
-    """End-to-end: with WorkspaceMonitor wired to the watchdog, an
-    active workspace defers ``NO_OUTPUT_DEADLINE`` while the channel
-    is fresher than ``activity_evidence_ttl_seconds``.
+    """End-to-end: with WorkspaceMonitor wired to the watchdog via the
+    production 2-arg lambda, a source file change defers
+    ``NO_OUTPUT_DEADLINE`` while the channel is fresher than
+    ``activity_evidence_ttl_seconds``.
 
     This is the AC-01 corollary for the workspace channel: a session
-    that is quiet on stdout but actively writing files is not killed
-    as idle, even past the regular idle deadline.
+    that is quiet on stdout but actively writing source files is not
+    killed as idle, even past the regular idle deadline.
     """
     wd, clock = _make_watchdog(activity_ttl=1000.0)
     # Use the watchdog's FakeClock as the monitor's clock source so
     # both clocks stay synchronized (production uses time.monotonic
     # for both; the test mirrors that with a shared fake).
-    monitor = WorkspaceMonitor(tmp_path, now=clock.monotonic)
-    monitor.set_on_event(wd.record_workspace_event)
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        now=clock.monotonic,
+        classifier=_default_classifier(),
+    )
+    monitor.set_on_event(
+        lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight)
+    )
     # Quiet stdout for 5s of watchdog time. The monitor's clock is the
     # same as the watchdog's, so a single advance moves both.
     clock.advance(5.0)
-    # A workspace event is recorded at watchdog-t=5.0; the watchdog
-    # workspace channel is now fresh.
+    # A source workspace event is recorded at watchdog-t=5.0; the
+    # watchdog workspace channel is now fresh.
     monitor.record_event("/tmp/foo.py")
     verdict = wd.evaluate(classify_quiet=_active_classifier())
     assert verdict == WatchdogVerdict.CONTINUE, (
@@ -574,6 +602,56 @@ def test_workspace_monitor_to_watchdog_defers_verdict(tmp_path: Path) -> None:
     verdict = wd.evaluate(classify_quiet=_active_classifier())
     assert verdict == WatchdogVerdict.FIRE
     assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
+
+
+def test_workspace_monitor_smart_filter_source_defers_log_does_not(tmp_path: Path) -> None:
+    """End-to-end smart-filter proof: with the default conservative
+    classifier, a source file change defers ``NO_OUTPUT_DEADLINE``
+    while a log file change does NOT.
+
+    This is the AC-07 regression test requested by the plan: workspace
+    monitoring must remain smart, counting source changes as activity
+    while dropping log-only churn by default.
+    """
+    wd, clock = _make_watchdog(activity_ttl=1000.0)
+    monitor = WorkspaceMonitor(
+        tmp_path,
+        now=clock.monotonic,
+        classifier=_default_classifier(),
+    )
+    monitor.set_on_event(
+        lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight)
+    )
+
+    # Quiet stdout for 5s, then record a log file change.
+    clock.advance(5.0)
+    monitor.record_event("/tmp/agent.log")
+    verdict = wd.evaluate(classify_quiet=_active_classifier())
+    assert verdict == WatchdogVerdict.FIRE, (
+        "expected FIRE for log-only change (dropped by default classifier)"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
+    assert wd.workspace_kind_counts.get("log", 0) == 0, (
+        "log events must not increment the per-kind counter when dropped"
+    )
+
+    # Reset and record a source file change: this MUST defer the fire.
+    wd2, clock2 = _make_watchdog(activity_ttl=1000.0)
+    monitor2 = WorkspaceMonitor(
+        tmp_path,
+        now=clock2.monotonic,
+        classifier=_default_classifier(),
+    )
+    monitor2.set_on_event(
+        lambda kind, weight: wd2.record_workspace_event(kind=kind, weight=weight)
+    )
+    clock2.advance(5.0)
+    monitor2.record_event("/tmp/foo.py")
+    verdict2 = wd2.evaluate(classify_quiet=_active_classifier())
+    assert verdict2 == WatchdogVerdict.CONTINUE, (
+        "expected CONTINUE for source change (counts as activity by default)"
+    )
+    assert wd2.workspace_kind_counts == {"source": 1}
 
 
 # ---------------------------------------------------------------------------
