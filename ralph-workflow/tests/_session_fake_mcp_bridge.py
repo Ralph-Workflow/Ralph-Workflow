@@ -7,3 +7,6 @@ class _FakeMcpBridge:
 
     def shutdown(self) -> None:
         pass
+
+    def reset_tool_registry(self) -> None:
+        pass

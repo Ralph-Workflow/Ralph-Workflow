@@ -39,9 +39,8 @@ def artifact_specs() -> list[ToolSpec]:
                 name=SUBMIT_ARTIFACT_TOOL,
                 description=(
                     _SUBMIT_ARTIFACT_DESCRIPTION
-                    + " For artifact_type='plan', the in-progress draft is deleted on success"
-                    " and plan.json is written. The format doc is canonical."
-                    " Draft preserved on failure."
+                    + " For 'plan', the draft is deleted on success and plan.json is"
+                    " written; draft preserved on failure."
                 ),
                 input_schema={
                     "type": "object",

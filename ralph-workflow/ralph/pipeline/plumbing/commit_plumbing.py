@@ -28,6 +28,7 @@ Public surface (kept narrow on purpose):
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import json
 import typing
@@ -49,16 +50,13 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.invoke._direct_mcp_recovery import (
     default_direct_mcp_retry_limit,
-    run_with_direct_mcp_recovery,
     summarize_retry_failure_evidence,
 )
-
-# INVARIANT: must use the public ralph.agents.invoke surface so the per-file
-# exclusion in tests/test_no_anti_drift_regression.py stays enforced.
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
+from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -67,16 +65,20 @@ from ralph.mcp.artifacts.commit_message import (
     normalize_commit_message_content,
     read_commit_message_artifact,
 )
-from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
-from ralph.mcp.protocol.session import AgentSession
-from ralph.mcp.server.lifecycle import (
-    McpServerExtras,
-    SessionBridgeLike,
-    start_mcp_server,
-)
-from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
+from ralph.pipeline.effect_executor import execute_agent_effect
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.factory import (
+    MaterializeSystemPromptFn,
+    PipelineDeps,
+    build_default_pipeline_deps,
+)
+from ralph.pipeline.session_bridge import (
+    bridge_env_for,
+    build_session_bridge,
+    reset_tool_registry_callback,
+)
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,
@@ -88,7 +90,7 @@ from ralph.recovery.failure_classifier import (
     is_unsubmitted_artifact_failure,
     should_reset_tool_registry,
 )
-from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     import types
@@ -97,6 +99,7 @@ if TYPE_CHECKING:
     from ralph.cli.commands._commit_chain_config import CommitChainConfig
     from ralph.config.models import AgentConfig
     from ralph.display.context import DisplayContext
+    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.policy.models import AgentsPolicy
 
 # Late-binding reference for the test-patch surface: tests in
@@ -126,6 +129,7 @@ _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_mess
 _MAX_COMMIT_PARSED_OUTPUT_LINES = 128
 _MAX_COMMIT_RAW_OUTPUT_LINES = 256
 _MODELED_FLAG_PARTS = 2
+_COMMIT_RUN_ID = "commit-plumbing"
 
 
 @dataclass(frozen=True)
@@ -146,48 +150,96 @@ class CommitAgentResult:
     output: list[str] = field(default_factory=list)
 
 
+def _commit_required_artifact() -> RequiredArtifact:
+    return RequiredArtifact(
+        phase="commit",
+        artifact_type=COMMIT_MESSAGE_TYPE,
+        json_path=COMMIT_MESSAGE_ARTIFACT,
+        markdown_path=None,
+        normalizer=normalize_commit_message_content,
+        artifact_required=True,
+    )
+
+
+def _commit_artifact_requirements_resolver(
+    pipeline_policy: object,
+    artifacts_policy: object,
+    *,
+    phase: str,
+    drain: str | None = None,
+) -> RequiredArtifact | None:
+    del pipeline_policy, artifacts_policy, phase, drain
+    return _commit_required_artifact()
+
+
+def _commit_pipeline_deps(
+    config: UnifiedConfig,
+    display_context: DisplayContext,
+    materializer: MaterializeSystemPromptFn | None,
+    registry: object | None = None,
+) -> PipelineDeps:
+    deps = build_default_pipeline_deps(config, display_context)
+    if materializer is not None:
+        deps = dataclasses.replace(deps, system_prompt_materializer=materializer)
+    if registry is not None:
+        deps = dataclasses.replace(deps, registry_factory=lambda _config: registry)
+    return dataclasses.replace(
+        deps,
+        artifact_requirements_resolver=_commit_artifact_requirements_resolver,
+    )
+
+
 def run_commit_plumbing(
     *,
     diff: str,
     repo_root: Path,
     chain_config: CommitChainConfig,
     display_context: DisplayContext,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> CommitAgentResult:
-    """Iterate the commit chain, retrying through the shared recovery loop.
+    """Iterate the commit chain, delegating each agent to the shared execution core.
 
     The chain iterates over each agent in ``chain_config.agents``; for
-    each agent, the same retry-recovery machinery the pipeline runner
-    uses is invoked via :func:`run_with_direct_mcp_recovery`. Session
-    resume is decided through
-    :func:`recovery_action_for_failure_reason` and
-    :func:`extract_transport_session_id` — the single source of truth
-    for those decisions.
+    each agent, the actual invocation is delegated to
+    :func:`ralph.pipeline.effect_executor.execute_agent_effect` so the
+    commit path shares the same bridge lifecycle, retry, and output
+    handling as the main pipeline.
+
+    ``pipeline_deps`` carries injectable collaborators. When omitted,
+    production defaults are used and the legacy late-bound bridge
+    resolver is preserved so existing test monkeypatches continue to
+    work.
 
     No inline failure-classifier construction sites live in this
     module; recovery decisions are routed exclusively through the
-    shared retry loop via :func:`should_reset_tool_registry`.
+    shared execution core.
     """
+    pipeline_deps_provided = pipeline_deps is not None
+    if pipeline_deps is None:
+        pipeline_deps = _commit_pipeline_deps(
+            cast("UnifiedConfig", chain_config.general_config),
+            display_context,
+            materializer=None,
+            registry=chain_config.registry,
+        )
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
-    # The canonical owner ``_start_commit_bridge`` takes
-    # ``agents_policy=`` (the policy-aware path). The legacy
-    # one-arg version is what the test-patch surface uses; the
-    # patch substitutes a single-arg lambda, so the dispatch has
-    # to match what the patch provides. We try the policy-aware
-    # signature first; on TypeError (patched to a one-arg
-    # lambda) we fall back.
-    #
-    # We resolve ``start_commit_bridge`` from the
-    # ``ralph.cli.commands.commit`` module at call time so the
-    # test-patch surface (which monkeypatches the commit module
-    # attribute) is honored transparently. This keeps a single
-    # call site in the codebase without coupling plumbing to
-    # test internals.
-    bridge_fn = _resolve_commit_start_commit_bridge()
-    try:
-        bridge = bridge_fn(repo_root, agents_policy=chain_config.agents_policy)
-    except TypeError:
-        bridge = bridge_fn(repo_root)
+    if pipeline_deps_provided:
+        bridge = pipeline_deps.bridge_factory(
+            workspace_root=repo_root,
+            drain="commit",
+            agents_policy=chain_config.agents_policy,
+            session_id_prefix="commit",
+            model_identity=pipeline_deps.model_identity,
+        )
+    else:
+        # Preserve the legacy late-bound test-patch surface: tests
+        # monkeypatch ``ralph.cli.commands.commit.start_commit_bridge``.
+        bridge_fn = _resolve_commit_start_commit_bridge()
+        try:
+            bridge = bridge_fn(repo_root, agents_policy=chain_config.agents_policy)
+        except TypeError:
+            bridge = bridge_fn(repo_root)
     extra_env: dict[str, str] | None = _commit_bridge_env(bridge)
     # Normalize the key set so downstream consumers (and tests)
     # observe string keys, never the ``McpEnvVar`` enum.
@@ -198,6 +250,7 @@ def run_commit_plumbing(
     last_error: Exception | None = None
     output_lines: list[str] = []
 
+    materializer = pipeline_deps.system_prompt_materializer
     try:
         for agent_name in chain_config.agents:
             cfg = chain_config.registry.get(agent_name)
@@ -218,12 +271,15 @@ def run_commit_plumbing(
                 bridge=bridge,
             )
             result = _generate_commit_message_with_agent(
+                agent_name,
                 cfg,
                 prompt_file=prompt_file,
                 attempt_context=attempt_ctx,
                 display_context=display_context,
                 prior_session_id=last_session_id,
                 output_collector=output_lines,
+                materializer=materializer,
+                pipeline_deps=pipeline_deps,
             )
             failure_details.extend(result.failure_details)
 
@@ -296,18 +352,8 @@ def _submit_artifact_tool_names_for_transport(
     return (SUBMIT_ARTIFACT_TOOL,)
 
 
-def _commit_required_artifact() -> RequiredArtifact:
-    return RequiredArtifact(
-        phase="commit",
-        artifact_type=COMMIT_MESSAGE_TYPE,
-        json_path=COMMIT_MESSAGE_ARTIFACT,
-        markdown_path=None,
-        normalizer=normalize_commit_message_content,
-        artifact_required=True,
-    )
-
-
 def _generate_commit_message_with_agent(
+    agent_name: str,
     agent: AgentConfig,
     *,
     prompt_file: str,
@@ -315,6 +361,8 @@ def _generate_commit_message_with_agent(
     display_context: DisplayContext,
     prior_session_id: str | None = None,
     output_collector: list[str] | None = None,
+    materializer: MaterializeSystemPromptFn | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
 
@@ -325,13 +373,16 @@ def _generate_commit_message_with_agent(
             "retryable failure recovered: " + summarize_retry_failure_evidence(lines)
         )
 
-    raw_max_retries: object = (
-        attempt_context.general_config.max_same_agent_retries
-        if attempt_context.general_config is not None
-        else None
-    )
+    raw_max_retries: object = None
+    general_cfg = attempt_context.general_config
+    if general_cfg is not None:
+        if isinstance(general_cfg, GeneralConfig):
+            raw_max_retries = getattr(general_cfg, "max_same_agent_retries", None)
+        else:
+            raw_max_retries = getattr(general_cfg.general, "max_same_agent_retries", None)
     max_retries = default_direct_mcp_retry_limit(raw_max_retries)
     initial_attempt, _last_session_id, _last_error = _run_commit_agent_attempt_with_recovery(
+        agent_name,
         agent,
         prompt_file=prompt_file,
         attempt_context=attempt_context,
@@ -340,6 +391,8 @@ def _generate_commit_message_with_agent(
         prior_session_id=prior_session_id,
         on_retry_failure=_record_retry_failure,
         output_collector=output_collector,
+        materializer=materializer,
+        pipeline_deps=pipeline_deps,
     )
     if not initial_attempt.failure_detail:
         return _finalize_commit_attempt(initial_attempt, failure_details)
@@ -350,6 +403,7 @@ def _generate_commit_message_with_agent(
     if _is_missing_commit_artifact_failure(latest_attempt.failure_detail):
         if initial_attempt.resume_session_id:
             session_retry, _session_id, _err = _run_commit_agent_attempt_with_recovery(
+                agent_name,
                 agent,
                 prompt_file=prompt_file,
                 attempt_context=attempt_context,
@@ -358,6 +412,8 @@ def _generate_commit_message_with_agent(
                 prior_session_id=initial_attempt.resume_session_id,
                 on_retry_failure=_record_retry_failure,
                 output_collector=output_collector,
+                materializer=materializer,
+                pipeline_deps=pipeline_deps,
             )
             if not session_retry.failure_detail:
                 return _finalize_commit_attempt(session_retry, failure_details)
@@ -374,6 +430,7 @@ def _generate_commit_message_with_agent(
                 ),
             )
             summary_retry, _sid, _e = _run_commit_agent_attempt_with_recovery(
+                agent_name,
                 agent,
                 prompt_file=summary_prompt_file,
                 attempt_context=attempt_context,
@@ -382,6 +439,8 @@ def _generate_commit_message_with_agent(
                 prior_session_id=initial_attempt.resume_session_id,
                 on_retry_failure=_record_retry_failure,
                 output_collector=output_collector,
+                materializer=materializer,
+                pipeline_deps=pipeline_deps,
             )
             if not summary_retry.failure_detail:
                 return _finalize_commit_attempt(summary_retry, failure_details)
@@ -393,15 +452,14 @@ def _generate_commit_message_with_agent(
 def _reset_tool_registry_callback(
     bridge: object | None,
 ) -> typing.Callable[[], object] | None:
-    if bridge is None:
+    callback = reset_tool_registry_callback(bridge)
+    if callback is None:
         return None
-    reset_tool_registry_obj: object = getattr(bridge, "reset_tool_registry", None)
-    if not callable(reset_tool_registry_obj):
-        return None
-    return cast("typing.Callable[[], object]", reset_tool_registry_obj)
+    return cast("typing.Callable[[], object]", callback)
 
 
 def _run_commit_agent_attempt_with_recovery(
+    agent_name: str,
     agent: AgentConfig,
     *,
     prompt_file: str,
@@ -411,8 +469,10 @@ def _run_commit_agent_attempt_with_recovery(
     prior_session_id: str | None = None,
     on_retry_failure: typing.Callable[[list[str]], object] | None = None,
     output_collector: list[str] | None = None,
+    materializer: MaterializeSystemPromptFn | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> tuple[CommitAgentAttempt, str | None, Exception | None]:
-    """Run a single commit-agent attempt with the shared retry loop.
+    """Run a single commit-agent attempt through the shared execution core.
 
     Returns ``(attempt, last_session_id, last_error)``. The session id
     and last exception are captured so the chain orchestrator can thread
@@ -426,21 +486,133 @@ def _run_commit_agent_attempt_with_recovery(
         nonlocal last_session_id
         last_session_id = sid
 
+    def _capture_error(exc: Exception) -> None:
+        nonlocal last_error
+        last_error = exc
+
+    raw_output: deque[str] = deque(maxlen=_MAX_COMMIT_RAW_OUTPUT_LINES)
+    rendered_output: deque[str] = deque(maxlen=_MAX_COMMIT_PARSED_OUTPUT_LINES)
+
+    delete_artifacts = _get_patched(
+        _commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
+    )
+    delete_artifacts(attempt_context.repo_root)
+
     try:
-        attempt = run_with_direct_mcp_recovery(
-            lambda retry_session_id, capture_session_id: invoke_commit_agent_attempt(
-                agent,
-                prompt_file=prompt_file,
-                attempt_context=attempt_context,
-                session_id=retry_session_id or last_session_id,
-                display_context=display_context,
-                session_id_sink=capture_session_id,
-            ),
-            max_retries=max_retries,
-            reset_tool_registry=_reset_tool_registry_callback(attempt_context.bridge),
-            on_retry_failure=on_retry_failure,
+        effect = InvokeAgentEffect(
+            agent_name=agent_name,
+            phase="commit",
+            prompt_file=prompt_file,
+            drain="commit",
         )
-        return attempt, last_session_id, last_error
+        workspace_scope = WorkspaceScope(attempt_context.repo_root)
+        general_cfg = attempt_context.general_config
+        if general_cfg is None:
+            effective_general_config: UnifiedConfig = UnifiedConfig(agents={agent.cmd: agent})
+        elif isinstance(general_cfg, GeneralConfig):
+            effective_general_config = UnifiedConfig(
+                general=general_cfg,
+                agents={agent.cmd: agent},
+            )
+        else:
+            effective_general_config = general_cfg
+        effective_pipeline_deps = pipeline_deps or _commit_pipeline_deps(
+            effective_general_config,
+            display_context,
+            materializer,
+        )
+        event = execute_agent_effect(
+            effect,
+            effective_general_config,
+            effective_pipeline_deps,
+            workspace_scope,
+            bridge=cast("RestartAwareMcpBridge", attempt_context.bridge),
+            display_context=display_context,
+            run_id=_COMMIT_RUN_ID,
+            session_id=prior_session_id,
+            raw_output_sink=raw_output,
+            rendered_output_sink=rendered_output,
+            set_session_id_cb=_capture_session_id,
+            invoke_agent=_get_patched(
+                _commit_module, "invoke_agent", invoke_agent
+            ),
+            on_retry_failure=on_retry_failure,
+            agent_invocation_error_sink=_capture_error,
+        )
+        parsed_output, raw_lines, resume_session_id = collect_commit_agent_output(
+            list(raw_output),
+            parser_type=str(agent.json_parser),
+            agent_name=agent.cmd.split()[0],
+            verbose=attempt_context.verbose,
+            display_context=display_context,
+            session_id_sink=_capture_session_id,
+        )
+        if output_collector is not None:
+            output_collector.extend(raw_lines)
+        if event.value == "agent_success":
+            read_artifact = _get_patched(
+                _commit_module, "read_commit_message_artifact", read_commit_message_artifact
+            )
+            artifact_message = read_artifact(attempt_context.repo_root)
+            if artifact_message:
+                if _is_skip_response(artifact_message):
+                    return (
+                        CommitAgentAttempt(
+                            skipped=True,
+                            parsed_output=parsed_output,
+                            raw_output=raw_lines,
+                        ),
+                        last_session_id,
+                        last_error,
+                    )
+                return (
+                    CommitAgentAttempt(
+                        message=artifact_message,
+                        parsed_output=parsed_output,
+                        raw_output=raw_lines,
+                    ),
+                    last_session_id,
+                    last_error,
+                )
+            return (
+                CommitAgentAttempt(
+                    failure_detail=_format_commit_agent_failure(
+                        agent.cmd,
+                        prompt_file,
+                        parsed_output,
+                        _MISSING_COMMIT_ARTIFACT_REASON,
+                    ),
+                    parsed_output=parsed_output,
+                    raw_output=raw_lines,
+                    resume_session_id=resume_session_id or last_session_id,
+                ),
+                last_session_id,
+                last_error,
+            )
+        if isinstance(last_error, AgentInvocationError):
+            failure_detail = _format_agent_invocation_failure(
+                agent.cmd,
+                prompt_file,
+                last_error,
+                parsed_output=parsed_output or _parsed_output_from_invocation_error(last_error),
+            )
+        else:
+            failure_detail = _format_commit_agent_failure(
+                agent.cmd,
+                prompt_file,
+                parsed_output,
+                "agent invocation failed",
+            )
+        return (
+            CommitAgentAttempt(
+                failure_detail=failure_detail,
+                parsed_output=parsed_output,
+                raw_output=raw_lines,
+                resume_session_id=resume_session_id or last_session_id,
+            ),
+            last_session_id,
+            last_error,
+        )
     except AgentInvocationError as exc:
         last_error = exc
         parsed_output = _parsed_output_from_invocation_error(exc)
@@ -477,15 +649,26 @@ def invoke_commit_agent_attempt(
     session_id: str | None = None,
     display_context: DisplayContext,
     session_id_sink: typing.Callable[[str], None] | None = None,
+    materializer: MaterializeSystemPromptFn | None = None,
 ) -> CommitAgentAttempt:
-    """Run one commit-agent invocation attempt and return its result."""
+    """Run one commit-agent invocation attempt and return its result.
+
+    .. deprecated::
+        Kept as a thin late-binding wrapper for tests that patch
+        ``ralph.cli.commands.commit.{materialize_system_prompt,invoke_agent,
+        delete_commit_message_artifacts,read_commit_message_artifact}``.
+        New code should call :func:`execute_agent_effect` through
+        :func:`_run_commit_agent_attempt_with_recovery`.
+    """
     # Late-binding: tests patch ``ralph.cli.commands.commit.{X}``; look the
     # names up at call time so the patches take effect even though this
     # function lives in the plumbing module. (The import is module-level
     # to satisfy PLC0415; the function-level ``getattr`` is what makes
     # the patches take effect.)
     materialize = _get_patched(
-        _commit_module, "materialize_system_prompt", materialize_system_prompt
+        _commit_module,
+        "materialize_system_prompt",
+        materializer if materializer is not None else materialize_system_prompt,
     )
     invoke = _get_patched(_commit_module, "invoke_agent", invoke_agent)
     delete_artifacts = _get_patched(
@@ -502,8 +685,11 @@ def invoke_commit_agent_attempt(
         default_current_prompt="Commit message generation task.",
     )
     if attempt_context.general_config is not None:
+        general_cfg = attempt_context.general_config
+        if isinstance(general_cfg, UnifiedConfig):
+            general_cfg = general_cfg.general
         options = build_invoke_options_from_config(
-            attempt_context.general_config,
+            general_cfg,
             InvokeRuntimeOptions(
                 verbose=attempt_context.verbose,
                 workspace_path=attempt_context.repo_root,
@@ -876,31 +1062,16 @@ def _parsed_output_from_invocation_error(exc: AgentInvocationError) -> list[str]
 
 
 def _start_commit_bridge(repo_root: Path, *, agents_policy: AgentsPolicy) -> SessionBridgeLike:
-    session_mcp_plan = build_session_mcp_plan(
-        transport=None,
+    return build_session_bridge(
+        workspace_root=repo_root,
         drain="commit",
-        workspace_path=repo_root,
         agents_policy=agents_policy,
-    )
-    session = AgentSession(
-        session_id=f"commit-{uuid.uuid4().hex[:8]}",
-        run_id=str(uuid.uuid4()),
-        drain="commit",
-        capabilities=set(session_mcp_plan.capabilities),
-        model_identity=session_mcp_plan.model_identity,
-        stored_capability_profile=session_mcp_plan.capability_profile,
-    )
-    workspace = FsWorkspace(repo_root)
-    return start_mcp_server(
-        session, workspace, extras=McpServerExtras(extra_env=session_mcp_plan.server_env)
+        session_id_prefix="commit",
     )
 
 
 def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
-    return {
-        str(MCP_ENDPOINT_ENV): bridge.agent_endpoint_uri(),
-        str(MCP_RUN_ID_ENV): "commit-plumbing",
-    }
+    return bridge_env_for(bridge, run_id_label=_COMMIT_RUN_ID)
 
 
 # Module-level alias so the test-patch surface in

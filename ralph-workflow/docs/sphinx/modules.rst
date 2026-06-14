@@ -873,6 +873,13 @@ ralph.pipeline.prompt_prep
    :members:
    :show-inheritance:
 
+ralph.pipeline.factory
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.pipeline.factory
+   :members:
+   :show-inheritance:
+
 ralph.pipeline.run_loop
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1354,6 +1361,7 @@ ralph.agents.invoke
 .. automodule:: ralph.agents.invoke
    :members:
    :show-inheritance:
+   :noindex:
 
 ralph.agents.parsers
 ~~~~~~~~~~~~~~~~~~~~

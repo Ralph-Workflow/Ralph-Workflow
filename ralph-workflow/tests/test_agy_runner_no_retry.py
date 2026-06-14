@@ -16,10 +16,11 @@ from ralph.config.enums import AgentTransport
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.pipeline import runner as runner_module
+from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._session_fake_mcp_bridge import _FakeMcpBridge
 from tests._session_registry_factory import _RegistryFactory
 
@@ -27,20 +28,15 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    import pytest
-
     from ralph.process.manager import ManagedProcess
 
 
-def test_agy_missing_completion_does_not_retry(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_agy_missing_completion_does_not_retry(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the task", encoding="utf-8")
     effect = InvokeAgentEffect(agent_name="agy", phase="development", prompt_file=str(prompt_file))
     _RegistryFactory._agent_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     registry = _RegistryFactory
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge())
     invoke_count = [0]
 
     def fake_invoke_agent(
@@ -71,31 +67,32 @@ def test_agy_missing_completion_does_not_retry(
 
         return _gen()
 
-    result = runner_module.execute_agent_effect(
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        display_context=ctx,
+        bridge=_FakeMcpBridge(),
+        registry_factory=registry.from_config,
+    )
+    result = effect_executor_module.execute_agent_effect(
         effect,
         UnifiedConfig(general=GeneralConfig(max_retries=0)),
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=registry,
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
     assert invoke_count[0] == 1
 
 
-def test_agy_completion_evidenced_run_does_not_fail(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_agy_completion_evidenced_run_does_not_fail(tmp_path: Path) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("implement the task", encoding="utf-8")
     effect = InvokeAgentEffect(agent_name="agy", phase="development", prompt_file=str(prompt_file))
     _RegistryFactory._agent_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     registry = _RegistryFactory
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: _FakeMcpBridge())
     invoke_count = [0]
 
     def fake_invoke_agent(
@@ -127,16 +124,20 @@ def test_agy_completion_evidenced_run_does_not_fail(
 
         return _gen()
 
-    result = runner_module.execute_agent_effect(
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        display_context=ctx,
+        bridge=_FakeMcpBridge(),
+        registry_factory=registry.from_config,
+    )
+    result = effect_executor_module.execute_agent_effect(
         effect,
         UnifiedConfig(general=GeneralConfig(max_retries=0)),
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=registry,
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS

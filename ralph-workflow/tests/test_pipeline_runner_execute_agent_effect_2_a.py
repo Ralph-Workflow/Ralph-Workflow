@@ -34,6 +34,7 @@ from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_recording_bridge_factory, make_test_pipeline_deps
 from tests.test_pipeline_runner_execute_agent_effect_2_a_agent_error import AgentError
 from tests.test_pipeline_runner_execute_agent_effect_2_a_fake_bridge import _FakeBridge
 
@@ -183,9 +184,7 @@ class TestExecuteAgentEffectA:
         config.ccs_aliases = {"mm": "ccs mm"}
         return config
 
-    def test_returns_success_when_invocation_succeeds(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_returns_success_when_invocation_succeeds(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
@@ -196,26 +195,29 @@ class TestExecuteAgentEffectA:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        monkeypatch.setattr(
-            effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            def reset_tool_registry(self) -> None:
+                pass
+
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
         )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
 
     def test_invoke_start_records_visible_activity_on_display_subscriber(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+        self, tmp_path: Path
     ) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
@@ -227,8 +229,13 @@ class TestExecuteAgentEffectA:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        monkeypatch.setattr(
-            effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            def reset_tool_registry(self) -> None:
+                pass
+
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
         )
 
         console = Console(file=StringIO(), force_terminal=False, width=120, color_system=None)
@@ -238,20 +245,18 @@ class TestExecuteAgentEffectA:
             run_id="run-invoke-start",
         )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, options=None, **_kwargs: (
-                    options.pre_output_listener() if options is not None else None,
-                    iter(()),
-                )[1],
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
             display=display,
             display_context=display.display_context,
+            invoke_agent=lambda *_args, options=None, **_kwargs: (
+                options.pre_output_listener() if options is not None else None,
+                iter(()),
+            )[1],
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -264,7 +269,7 @@ class TestExecuteAgentEffectA:
         }
 
     def test_phase_banner_renders_before_invoke_start_activity(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+        self, tmp_path: Path
     ) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
@@ -276,8 +281,13 @@ class TestExecuteAgentEffectA:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        monkeypatch.setattr(
-            effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            def reset_tool_registry(self) -> None:
+                pass
+
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
         )
 
         console = Console(
@@ -295,20 +305,23 @@ class TestExecuteAgentEffectA:
         state = PipelineState(phase="development", budget_caps={"iteration": 1})
         policy_bundle = _load_default_policy_bundle()
 
-        result = runner_module.execute_agent_effect(
+        display.emit_phase_start(
+            effect.phase,
+            agent_name=effect.agent_name,
+            pipeline_policy=policy_bundle.pipeline,
+        )
+
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(()),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-                show_phase_start_cb=runner_module.show_phase_start_with_context,
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
             display=display,
             display_context=display.display_context,
             state=state,
             policy_bundle=policy_bundle,
+            invoke_agent=lambda *_args, **_kwargs: iter(()),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -318,7 +331,7 @@ class TestExecuteAgentEffectA:
         assert out.index("Development") < out.index("Invoking agent: dev")
 
     def test_pre_output_progress_renders_when_agent_has_not_emitted_output_yet(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+        self, tmp_path: Path
     ) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
@@ -330,8 +343,13 @@ class TestExecuteAgentEffectA:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        monkeypatch.setattr(
-            effect_executor_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            def reset_tool_registry(self) -> None:
+                pass
+
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
         )
 
         console = Console(
@@ -347,20 +365,18 @@ class TestExecuteAgentEffectA:
             run_id="run-pre-output",
         )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, options=None, **_kwargs: (
-                    options.pre_output_listener() if options is not None else None,
-                    iter(()),
-                )[1],
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
             display=display,
             display_context=display.display_context,
+            invoke_agent=lambda *_args, options=None, **_kwargs: (
+                options.pre_output_listener() if options is not None else None,
+                iter(()),
+            )[1],
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -368,40 +384,30 @@ class TestExecuteAgentEffectA:
         assert "Invoking agent: dev" in out
         assert "Agent process started; waiting for first output" in out
 
-    def test_development_session_gets_expected_mcp_capabilities(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_development_session_gets_expected_mcp_capabilities(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
-        captured: dict[str, object] = {}
+        recording_factory = make_recording_bridge_factory(_FakeBridge())
 
-        class FakeBridge:
-            def shutdown(self) -> None:
-                return
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge_factory=recording_factory,
+            registry_factory=registry.from_config,
+        )
 
-            def agent_endpoint_uri(self) -> str:
-                return "http://127.0.0.1:12345/mcp"
-
-        def fake_start_mcp_server(session: object, *_args: object, **_kwargs: object) -> object:
-            captured["capabilities"] = session.capabilities
-            return FakeBridge()
-
-        monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
-
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        assert captured["capabilities"] == {
+        call = recording_factory.calls[-1]
+        assert set(call["capabilities"]) == {
             "workspace.read",
             "workspace.metadata_read",
             "git.status_read",
@@ -422,9 +428,7 @@ class TestExecuteAgentEffectA:
             "media.read",
         }
 
-    def test_custom_phase_uses_bound_drain_capabilities(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_custom_phase_uses_bound_drain_capabilities(self) -> None:
         effect = InvokeAgentEffect(
             agent_name="dev",
             phase="custom_phase",
@@ -432,37 +436,28 @@ class TestExecuteAgentEffectA:
             drain="development",
         )
         registry = _registry_factory(MagicMock())
-        captured: dict[str, object] = {}
+        recording_factory = make_recording_bridge_factory(_FakeBridge())
 
-        class FakeBridge:
-            def shutdown(self) -> None:
-                return
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge_factory=recording_factory,
+            registry_factory=registry.from_config,
+        )
 
-            def agent_endpoint_uri(self) -> str:
-                return "http://127.0.0.1:12345/mcp"
-
-        def fake_start_mcp_server(session: object, *_args: object, **_kwargs: object) -> object:
-            captured["drain"] = session.drain
-            captured["capabilities"] = session.capabilities
-            return FakeBridge()
-
-        monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
-
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        assert captured["drain"] == "development"
-        assert captured["capabilities"] == {
+        call = recording_factory.calls[-1]
+        assert call["drain"] == "development"
+        assert set(call["capabilities"]) == {
             "workspace.read",
             "workspace.metadata_read",
             "git.status_read",
@@ -487,46 +482,45 @@ class TestExecuteAgentEffectA:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(None)
 
-        result = runner_module.execute_agent_effect(
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            registry_factory=registry.from_config,
+        )
+
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
 
-    def test_execute_agent_effect_propagates_mcp_config_error(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+    def test_execute_agent_effect_propagates_mcp_config_error(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "build_session_mcp_plan",
-            lambda **_kwargs: (_ for _ in ()).throw(
-                McpConfigError("fallback backend 'searxng' is not configured")
-            ),
+        def failing_bridge_factory(**_kwargs: object) -> object:
+            raise McpConfigError("fallback backend 'searxng' is not configured")
+
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge_factory=failing_bridge_factory,
+            registry_factory=registry.from_config,
         )
 
         with pytest.raises(McpConfigError):
-            runner_module.execute_agent_effect(
+            effect_executor_module.execute_agent_effect(
                 effect,
                 self._config(),
-                runner_module.AgentExecutionDeps(
-                    invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                    agent_invocation_error=AgentError,
-                    agent_registry=registry,
-                ),
+                pipeline_deps,
                 WorkspaceScope("/tmp/worktree"),
                 display_context=make_display_context(),
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=AgentError,
             )
 
     @pytest.mark.parametrize(
@@ -550,7 +544,6 @@ class TestExecuteAgentEffectA:
     )
     def test_execute_agent_effect_removes_stale_phase_artifact_before_invocation(
         self,
-        monkeypatch: MonkeyPatch,
         tmp_path: Path,
         phase: str,
         artifact_paths: tuple[str, ...],
@@ -567,26 +560,21 @@ class TestExecuteAgentEffectA:
             stale_artifact.parent.mkdir(parents=True, exist_ok=True)
             stale_artifact.write_text('{"type":"stale"}', encoding="utf-8")
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-        monkeypatch.setattr(
-            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            registry_factory=runner_module.AgentRegistry.from_config,
         )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=runner_module.AgentRegistry,
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
             display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
             policy_bundle=_load_default_policy_bundle(),
         )
 
@@ -596,7 +584,6 @@ class TestExecuteAgentEffectA:
 
     def test_execute_agent_effect_preserves_planning_artifacts_on_analysis_loopback(
         self,
-        monkeypatch: MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         effect = InvokeAgentEffect(
@@ -624,26 +611,21 @@ class TestExecuteAgentEffectA:
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("Revise the plan", encoding="utf-8")
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-        monkeypatch.setattr(
-            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            registry_factory=_registry_factory(MagicMock()).from_config,
         )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=_registry_factory(MagicMock()),
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
             display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
             state=PipelineState(phase="planning", previous_phase="planning_analysis"),
             policy_bundle=_load_default_policy_bundle(),
         )
@@ -655,7 +637,6 @@ class TestExecuteAgentEffectA:
 
     def test_execute_agent_effect_worker_mode_uses_namespaced_system_prompt_and_session(
         self,
-        monkeypatch: MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         effect = InvokeAgentEffect(
@@ -672,28 +653,7 @@ class TestExecuteAgentEffectA:
             captured["materialize_kwargs"] = kwargs
             return str(prompt_file)
 
-        def _fake_start_mcp_server(
-            session: object,
-            workspace: object,
-            **kwargs: object,
-        ) -> _FakeBridge:
-            captured["session"] = session
-            captured["workspace"] = workspace
-            captured["start_kwargs"] = kwargs
-            return _FakeBridge()
-
-        monkeypatch.setattr(
-            effect_executor_module,
-            "materialize_system_prompt",
-            _fake_materialize_system_prompt,
-        )
-        monkeypatch.setattr(
-            effect_executor_module,
-            "clear_phase_output_artifacts",
-            lambda *args, **kwargs: None,
-        )
-        monkeypatch.setattr(effect_executor_module, "start_mcp_server", _fake_start_mcp_server)
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
+        recording_factory = make_recording_bridge_factory(_FakeBridge())
 
         agent_config = AgentConfig(
             cmd="claude",
@@ -702,14 +662,17 @@ class TestExecuteAgentEffectA:
             transport=AgentTransport.CLAUDE,
         )
 
-        result = runner_module.execute_agent_effect(
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge_factory=recording_factory,
+            system_prompt_materializer=_fake_materialize_system_prompt,
+            registry_factory=_registry_factory(agent_config).from_config,
+        )
+
+        result = effect_executor_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=_registry_factory(agent_config),
-            ),
+            pipeline_deps,
             WorkspaceScope.for_same_workspace_worker(
                 repo_root=tmp_path,
                 allowed_directories=("src/a",),
@@ -720,21 +683,22 @@ class TestExecuteAgentEffectA:
             worker_namespace=worker_ns,
             worker_artifact_dir=worker_ns / "artifacts",
             parallel_worker=True,
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
         materialize_kwargs = captured["materialize_kwargs"]
         assert isinstance(materialize_kwargs, dict)
         assert materialize_kwargs["worker_namespace"] == worker_ns
-        session = captured["session"]
-        assert session.parallel_worker is True
-        assert session.worker_artifact_dir == worker_ns / "artifacts"
-        assert session.worker_namespace == worker_ns
-        assert worker_ns in session.allowed_roots
+        call = recording_factory.calls[-1]
+        assert call["parallel_worker"] is True
+        assert call["worker_artifact_dir"] == worker_ns / "artifacts"
+        assert call["worker_namespace"] == worker_ns
+        assert worker_ns in call["allowed_roots"]
 
     def test_execute_agent_effect_worker_mode_does_not_clear_shared_phase_artifacts(
         self,
-        monkeypatch: MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         """Parallel workers must not touch shared repo-root phase outputs.
@@ -756,18 +720,6 @@ class TestExecuteAgentEffectA:
         shared_artifact.write_text("{}", encoding="utf-8")
         prompt_file = worker_ns / "tmp" / "development_system_prompt.md"
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "materialize_system_prompt",
-            lambda **_kwargs: str(prompt_file),
-        )
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-
         agent_config = AgentConfig(
             cmd="claude",
             output_flag="--json-stream",
@@ -775,14 +727,17 @@ class TestExecuteAgentEffectA:
             transport=AgentTransport.CLAUDE,
         )
 
-        result = runner_module.execute_agent_effect(
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            registry_factory=_registry_factory(agent_config).from_config,
+        )
+
+        result = effect_executor_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=_registry_factory(agent_config),
-            ),
+            pipeline_deps,
             WorkspaceScope.for_same_workspace_worker(
                 repo_root=tmp_path,
                 allowed_directories=("src/a",),
@@ -793,6 +748,8 @@ class TestExecuteAgentEffectA:
             worker_namespace=worker_ns,
             worker_artifact_dir=worker_ns / "artifacts",
             parallel_worker=True,
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -800,7 +757,6 @@ class TestExecuteAgentEffectA:
 
     def test_execute_agent_effect_preserves_planning_artifacts_on_same_phase_retry(
         self,
-        monkeypatch: MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         effect = InvokeAgentEffect(
@@ -819,26 +775,21 @@ class TestExecuteAgentEffectA:
             encoding="utf-8",
         )
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-        monkeypatch.setattr(
-            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: str(prompt_file),
+            registry_factory=_registry_factory(MagicMock()).from_config,
         )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=_registry_factory(MagicMock()),
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
             display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
             state=PipelineState(phase="planning", previous_phase="planning"),
             policy_bundle=_load_default_policy_bundle(),
         )
@@ -974,7 +925,7 @@ class TestExecuteAgentEffectA:
         assert not (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
         assert not (tmp_path / ".agent" / "PLAN.md").exists()
 
-    def test_dynamic_ccs_agent_reaches_invocation(self, monkeypatch: MonkeyPatch) -> None:
+    def test_dynamic_ccs_agent_reaches_invocation(self) -> None:
         effect = InvokeAgentEffect(
             agent_name="ccs/mm",
             phase="development",
@@ -982,14 +933,11 @@ class TestExecuteAgentEffectA:
         )
         invoked: dict[str, object] = {}
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-        monkeypatch.setattr(
-            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            registry_factory=runner_module.AgentRegistry.from_config,
         )
 
         def record_invoke(config: AgentConfig, *_args: object, **_kwargs: object) -> object:
@@ -997,66 +945,54 @@ class TestExecuteAgentEffectA:
             invoked["transport"] = config.transport
             return iter(["line"])
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             UnifiedConfig(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=record_invoke,
-                agent_invocation_error=AgentError,
-                agent_registry=runner_module.AgentRegistry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=record_invoke,
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
         assert invoked == {"cmd": "ccs mm", "transport": AgentTransport.CLAUDE}
 
-    def test_handles_invocation_error_gracefully(self, monkeypatch: MonkeyPatch) -> None:
+    def test_handles_invocation_error_gracefully(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-        monkeypatch.setattr(
-            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            registry_factory=registry.from_config,
         )
 
         def raising_invoke(*_args: object, **_kwargs: object) -> None:
             raise AgentError("boom")
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=raising_invoke,
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=raising_invoke,
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
 
-    def test_execute_agent_effect_uses_canonical_retry_intent_resume(
-        self, monkeypatch: MonkeyPatch
-    ) -> None:
+    def test_execute_agent_effect_uses_canonical_retry_intent_resume(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-        monkeypatch.setattr(
-            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            registry_factory=registry.from_config,
         )
 
         seen_session_ids: list[str | None] = []
@@ -1069,40 +1005,34 @@ class TestExecuteAgentEffectA:
             agent_retry_intent=resume_agent_retry_intent("sess-retry")
         )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=record_invoke,
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             state=state,
             display_context=make_display_context(),
+            invoke_agent=record_invoke,
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
         assert seen_session_ids == ["sess-retry"]
 
-    def test_apply_session_capture_clears_stale_session_after_fresh_retry_intent(
-        self, monkeypatch: MonkeyPatch
-    ) -> None:
+    def test_apply_session_capture_clears_stale_session_after_fresh_retry_intent(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-        monkeypatch.setattr(
-            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            registry_factory=registry.from_config,
         )
 
         def stale_session_invoke(
-            *_args: object, **_kwargs: object
+            *_args: object,
+            **_kwargs: object,
         ) -> object:
             yield '{"type":"session","session_id":"sess-stale"}'
             raise AgentInvocationError(
@@ -1116,17 +1046,15 @@ class TestExecuteAgentEffectA:
             agent_retry_intent=resume_agent_retry_intent("sess-stale"),
         )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=stale_session_invoke,
-                agent_invocation_error=AgentInvocationError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             state=state,
             display_context=make_display_context(),
+            invoke_agent=stale_session_invoke,
+            agent_invocation_error=AgentInvocationError,
         )
 
         new_state = runner_session_module.apply_session_capture(state)
@@ -1135,40 +1063,33 @@ class TestExecuteAgentEffectA:
         assert new_state.last_agent_session_id is None
         assert new_state.agent_retry_intent.action == "fresh"
 
-    def test_handles_unexpected_error_as_failure(self, monkeypatch: MonkeyPatch) -> None:
+    def test_handles_unexpected_error_as_failure(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        monkeypatch.setattr(
-            effect_executor_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: _FakeBridge(),
-        )
-        monkeypatch.setattr(effect_executor_module, "shutdown_mcp_server", lambda _bridge: None)
-        monkeypatch.setattr(
-            effect_executor_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge=_FakeBridge(),
+            system_prompt_materializer=lambda **_kwargs: "PROMPT.md",
+            registry_factory=registry.from_config,
         )
 
         def raising_value_error(*_args: object, **_kwargs: object) -> None:
             raise ValueError("boom")
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=raising_value_error,
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=raising_value_error,
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
 
-    def test_starts_and_shuts_down_mcp_bridge_around_invocation(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_starts_and_shuts_down_mcp_bridge_around_invocation(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
@@ -1188,15 +1109,18 @@ class TestExecuteAgentEffectA:
             def endpoint_uri(self) -> str:
                 return "tcp://127.0.0.1:12345"
 
-        def fake_start_mcp_server(session: object, workspace: object, **_kwargs: object) -> object:
+            def reset_tool_registry(self) -> None:
+                pass
+
+        def bridge_factory(**_kwargs: object) -> object:
             bridge = FakeBridge()
             bridge.start()
             return bridge
 
-        monkeypatch.setattr(
-            runner_module,
-            "start_mcp_server",
-            fake_start_mcp_server,
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge_factory=bridge_factory,
+            registry_factory=registry.from_config,
         )
 
         seen_options: list[object] = []
@@ -1205,16 +1129,14 @@ class TestExecuteAgentEffectA:
             seen_options.append(kwargs.get("options"))
             return iter(["line"])
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=record_invoke,
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=record_invoke,
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1222,9 +1144,7 @@ class TestExecuteAgentEffectA:
         assert shutdown["value"] is True
         assert seen_options
 
-    def test_starts_fresh_mcp_server_for_each_invocation(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_starts_fresh_mcp_server_for_each_invocation(self) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
@@ -1240,34 +1160,37 @@ class TestExecuteAgentEffectA:
             def agent_endpoint_uri(self) -> str:
                 return f"http://127.0.0.1:{12345 + self.marker}/mcp"
 
-        def fake_start_mcp_server(*_args: object, **_kwargs: object) -> object:
+            def reset_tool_registry(self) -> None:
+                pass
+
+        def bridge_factory(**_kwargs: object) -> object:
             marker = len(created)
             created.append(marker)
             return FakeBridge(marker)
 
-        monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
-
-        first = runner_module.execute_agent_effect(
-            effect,
-            self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
-            WorkspaceScope("/tmp/worktree"),
-            display_context=make_display_context(),
+        pipeline_deps = make_test_pipeline_deps(
+            make_display_context(),
+            bridge_factory=bridge_factory,
+            registry_factory=registry.from_config,
         )
-        second = runner_module.execute_agent_effect(
+
+        first = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
             display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
+        )
+        second = effect_executor_module.execute_agent_effect(
+            effect,
+            self._config(),
+            pipeline_deps,
+            WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
+            invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+            agent_invocation_error=AgentError,
         )
 
         assert first == PipelineEvent.AGENT_SUCCESS

@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.heartbeat import ProHeartbeatClient
@@ -70,6 +71,7 @@ if TYPE_CHECKING:
             config_path: Path | None,
             cli_overrides: dict[str, object],
             _monitor_stop_cb: Callable[[], None] | None,
+            pipeline_deps: PipelineDeps | None = None,
         ) -> PipelineState | int: ...
 
     class _ConnectivityMonitorLike(Protocol):
@@ -118,6 +120,7 @@ class _LoopContext:
     heartbeat_client: ProHeartbeatClient | None = None
     pro_watcher: ProMarkerWatcher | None = None
     snapshot_registry: SnapshotRegistry | None = None
+    pipeline_deps: PipelineDeps | None = None
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -294,6 +297,7 @@ def _run_inner_loop(
             config_path=ctx.config_path,
             cli_overrides=ctx.cli_overrides,
             _monitor_stop_cb=ctx.monitor_stop,
+            pipeline_deps=ctx.pipeline_deps,
         )
         if isinstance(step_result, int):
             return state, prev_phase, step_result
@@ -571,6 +575,7 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     | None = None,
     marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None = None,
     snapshot_registry: SnapshotRegistry | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> int:
     """Execute the pipeline event loop.
 
@@ -602,6 +607,9 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
             defaults.
         snapshot_registry: Optional ``SnapshotRegistry``; when set, the inner
             loop publishes a ``PipelineStateSnapshot`` to it on each reduce.
+        pipeline_deps: Optional ``PipelineDeps`` carrying injected
+            collaborators. When supplied, it takes precedence over the
+            legacy ``pro_hooks`` and individual factory kwargs.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
@@ -610,23 +618,25 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     _runner_module.write_start_commit_if_absent(workspace_scope.root)
     if _runner_module.validate_custom_mcp_servers(workspace_scope.root) != 0:
         return 1
+    if pipeline_deps is not None and display_context is None:
+        display_context = pipeline_deps.display_context
     if pro_hooks is not None:
-        if policy_bundle_factory is None:
+        if policy_bundle_factory is None and pipeline_deps is None:
             policy_bundle_factory = pro_hooks.policy_bundle_factory
-        if registry_factory is None:
+        if registry_factory is None and pipeline_deps is None:
             registry_factory = cast(
                 "Callable[[UnifiedConfig], _RegistryLike] | None",
                 pro_hooks.registry_factory,
             )
-        if state_factory is None:
+        if state_factory is None and pipeline_deps is None:
             state_factory = pro_hooks.state_factory
-        if recovery_controller_factory is None:
+        if recovery_controller_factory is None and pipeline_deps is None:
             recovery_controller_factory = pro_hooks.recovery_controller_factory
-        if marker_watcher_factory is None:
+        if marker_watcher_factory is None and pipeline_deps is None:
             marker_watcher_factory = pro_hooks.marker_watcher_factory
-        if snapshot_registry is None:
+        if snapshot_registry is None and pipeline_deps is None:
             snapshot_registry = pro_hooks.snapshot_registry
-        if pro_hooks.policy_bundle_override is not None:
+        if pro_hooks.policy_bundle_override is not None and pipeline_deps is None:
             policy_bundle = pro_hooks.policy_bundle_override
         elif policy_bundle_factory is None:
             policy_bundle = _runner_module.load_policy_bundle_for_run(
@@ -640,13 +650,26 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         )
     else:
         policy_bundle = policy_bundle_factory(workspace_scope, config)
+    if pipeline_deps is not None and pipeline_deps.policy_bundle is not None:
+        policy_bundle = pipeline_deps.policy_bundle
+    elif pipeline_deps is not None and pipeline_deps.policy_bundle_factory is not None:
+        policy_bundle = pipeline_deps.policy_bundle_factory(workspace_scope, config)
     _runner_module.register_role_handlers(policy_bundle.pipeline)
     registry: _RegistryLike
-    if registry_factory is None:
+    if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
+        registry = cast("_RegistryLike", pipeline_deps.registry_factory(config))
+    elif registry_factory is None:
         registry = _runner_module.AgentRegistry.from_config(config)
     else:
         registry = registry_factory(config)
-    if state_factory is None:
+    if pipeline_deps is not None and pipeline_deps.state_factory is not None:
+        state = initial_state or pipeline_deps.state_factory(
+            config,
+            policy_bundle.agents,
+            policy_bundle.pipeline,
+            counter_overrides,
+        )
+    elif state_factory is None:
         state = initial_state or _runner_module.create_initial_state(
             config,
             agents_policy=policy_bundle.agents,
@@ -668,7 +691,9 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
     _sleep = _recovery_sleep or time.sleep
     connectivity_monitor, _monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
-    if recovery_controller_factory is None:
+    if pipeline_deps is not None and pipeline_deps.recovery_controller_factory is not None:
+        _controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
+    elif recovery_controller_factory is None:
         _controller, _ = _build_recovery_controller(state, policy_bundle, config)
     else:
         _controller, _ = recovery_controller_factory(state, policy_bundle, config)
@@ -682,9 +707,14 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     effective_pipeline_subscriber = _resolve_effective_subscriber(
         dashboard_subscriber, pipeline_subscriber, active_display
     )
+    _effective_marker_watcher_factory = marker_watcher_factory
+    if pipeline_deps is not None and pipeline_deps.marker_watcher_factory is not None:
+        _effective_marker_watcher_factory = pipeline_deps.marker_watcher_factory
+    if pipeline_deps is not None and pipeline_deps.snapshot_registry is not None:
+        snapshot_registry = pipeline_deps.snapshot_registry
     _pro_watcher, _heartbeat_client = _start_pro_marker_watcher(
         workspace_scope.root,
-        watcher_factory=marker_watcher_factory,
+        watcher_factory=_effective_marker_watcher_factory,
     )
     # The legacy public helper ``_start_pro_heartbeat_if_active`` is
     # monkey-patched in many tests to inject a recording heartbeat.
@@ -729,6 +759,7 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         heartbeat_client=_heartbeat_client,
         pro_watcher=_pro_watcher,
         snapshot_registry=snapshot_registry,
+        pipeline_deps=pipeline_deps,
     )
     return _execute_with_cleanup(state, loop_ctx, state.phase, _unsubscribe_bus, _display_stop)
 

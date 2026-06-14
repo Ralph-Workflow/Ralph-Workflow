@@ -13,12 +13,15 @@ from rich.console import Console
 from ralph.config.models import AgentConfig
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import ExitSuccessEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import _FakeBridge as FakeBridge
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -88,19 +91,27 @@ def _patch_common_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
         runner_module, "materialize_system_prompt", lambda **_kwargs: "SYSTEM_PROMPT.md"
     )
     monkeypatch.setattr(
-        runner_module,
-        "start_mcp_server",
-        lambda *_args, **_kwargs: type(
-            "FakeBridge",
-            (),
-            {"agent_endpoint_uri": lambda self: "http://127.0.0.1:12345/mcp"},
-        )(),
-    )
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
-    monkeypatch.setattr(
         runner_module, "handle_phase", lambda *_args, **_kwargs: [PipelineEvent.AGENT_SUCCESS]
     )
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state, *_args, **_kwargs: None)
+
+
+def _fast_materializers(
+    workspace_scope: WorkspaceScope, effect: InvokeAgentEffect
+) -> tuple[object, object]:
+    def _fast_phase_materializer(*_args: object, **_kwargs: object) -> str:
+        prompt_path = workspace_scope.root / ".agent" / "tmp" / f"{effect.phase}_prompt.md"
+        prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        prompt_path.write_text("prompt", encoding="utf-8")
+        return str(prompt_path)
+
+    def _fast_system_materializer(*_args: object, **_kwargs: object) -> str:
+        sys_path = workspace_scope.root / ".agent" / "tmp" / "system_prompt.md"
+        sys_path.parent.mkdir(parents=True, exist_ok=True)
+        sys_path.write_text("system", encoding="utf-8")
+        return str(sys_path)
+
+    return _fast_phase_materializer, _fast_system_materializer
 
 
 def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -147,15 +158,36 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
         display: ParallelDisplay,
         *,
         state: PipelineState | None = None,
+        **kwargs: object,
     ) -> PipelineEvent:
+        del kwargs
         assert isinstance(effect, InvokeAgentEffect)
-        deps = runner_module.AgentExecutionDeps(
+        if effect.phase == "planning":
+            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.json"
+            plan_path.parent.mkdir(parents=True, exist_ok=True)
+            plan_path.write_text(
+                '{"type":"plan","content":{"noop":true}}',
+                encoding="utf-8",
+            )
+        phase_mat, sys_mat = _fast_materializers(workspace_scope, effect)
+        registry = _registry_factory(AgentConfig(cmd="fake-agent"))
+        pipeline_deps = make_test_pipeline_deps(
+            display_context=display._ctx,
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
+            phase_prompt_materializer=phase_mat,
+            system_prompt_materializer=sys_mat,
+        )
+        return effect_executor_module.execute_agent_effect(
+            effect,
+            config,
+            pipeline_deps,
+            workspace_scope,
+            display=display,
+            display_context=display._ctx,
+            state=state,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=RuntimeError,
-            agent_registry=_registry_factory(AgentConfig(cmd="fake-agent")),
-        )
-        return runner_module.execute_agent_effect(
-            effect, config, deps, workspace_scope, display=display, state=state
         )
 
     _patch_common_runner_dependencies(monkeypatch)
@@ -167,7 +199,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
 
     output = rendered.getvalue()
     assert result == 0
-    assert "[phase] \u25c6 planning" in output
+    assert "[phase] ◆ planning" in output
     assert "[phase] complete" in output
     assert "Pipeline Complete" in output
 
@@ -221,15 +253,38 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
         display: ParallelDisplay,
         *,
         state: PipelineState | None = None,
+        **kwargs: object,
     ) -> PipelineEvent:
+        del kwargs
         assert isinstance(effect, InvokeAgentEffect)
-        deps = runner_module.AgentExecutionDeps(
+        if effect.phase == "planning":
+            plan_path = workspace_scope.root / ".agent" / "artifacts" / "plan.json"
+            plan_path.parent.mkdir(parents=True, exist_ok=True)
+            plan_path.write_text(
+                '{"type":"plan","content":{"noop":true}}',
+                encoding="utf-8",
+            )
+            handoff_path = workspace_scope.root / ".agent" / "PLAN.md"
+            handoff_path.write_text("# Execution Plan\n\nNo execution work is required.\n")
+        phase_mat, sys_mat = _fast_materializers(workspace_scope, effect)
+        registry = _registry_factory(AgentConfig(cmd="fake-agent"))
+        pipeline_deps = make_test_pipeline_deps(
+            display_context=display._ctx,
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
+            phase_prompt_materializer=phase_mat,
+            system_prompt_materializer=sys_mat,
+        )
+        return effect_executor_module.execute_agent_effect(
+            effect,
+            config,
+            pipeline_deps,
+            workspace_scope,
+            display=display,
+            display_context=display._ctx,
+            state=state,
             invoke_agent=fake_invoke_agent,
             agent_invocation_error=RuntimeError,
-            agent_registry=_registry_factory(AgentConfig(cmd="fake-agent")),
-        )
-        return runner_module.execute_agent_effect(
-            effect, config, deps, workspace_scope, display=display, state=state
         )
 
     _patch_common_runner_dependencies(monkeypatch)
@@ -241,8 +296,8 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
 
     output = rendered.getvalue()
     assert result == 0
-    assert "[phase] \u25c6 planning" in output
-    assert "[phase] \u25c6 development" in output
+    assert "[phase] ◆ planning" in output
+    assert "[phase] ◆ development" in output
     assert "[phase] development_analysis" in output
     assert "[phase] complete" in output
     assert "Pipeline completed successfully." in output
@@ -281,8 +336,9 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
         display: ParallelDisplay,
         *,
         state: PipelineState | None = None,
+        **kwargs: object,
     ) -> PipelineEvent:
-        del config, workspace_scope, display, state
+        del config, workspace_scope, display, state, kwargs
         assert isinstance(effect, InvokeAgentEffect)
         return PipelineEvent.AGENT_SUCCESS
 

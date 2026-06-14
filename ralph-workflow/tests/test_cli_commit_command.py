@@ -7,12 +7,11 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
+from rich.console import Console
+from rich.text import Text
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-from rich.console import Console
-from rich.text import Text
 
 from ralph.agents.invoke import AgentInvocationError, build_invoke_options_from_config
 from ralph.agents.parsers import AgentOutputLine
@@ -27,10 +26,9 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.git.operations import GitOperationError
-from ralph.mcp.artifacts.commit_message import (
-    write_commit_message_artifact,
-)
+from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 _OUTPUT_BATCH = 400
 
@@ -77,7 +75,7 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
     mock_materialize.assert_called_once()
     _, kwargs = mock_materialize.call_args
     assert "default_current_prompt" in kwargs
-    assert kwargs["default_current_prompt"]
+    assert bool(kwargs["default_current_prompt"])
 
 
 def test_submit_artifact_tool_name_claude_interactive() -> None:
@@ -305,10 +303,12 @@ def test_generate_commit_message_retries_post_tool_empty_response_with_reset(
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
     ):
         result = commit_module._generate_commit_message_with_agent(
+            agent.cmd,
             agent,
             prompt_file=str(prompt_file),
             attempt_context=attempt_context,
             display_context=display_context,
+            pipeline_deps=make_test_pipeline_deps(display_context, bridge=bridge),
         )
 
     assert result.message == "fix: recovered after retry"
@@ -368,10 +368,12 @@ def test_generate_commit_message_retries_repeated_post_tool_empty_response_until
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
     ):
         result = commit_module._generate_commit_message_with_agent(
+            agent.cmd,
             agent,
             prompt_file=str(prompt_file),
             attempt_context=attempt_context,
             display_context=display_context,
+            pipeline_deps=make_test_pipeline_deps(display_context, bridge=bridge),
         )
 
     assert result.message == "fix: recovered after repeated retry"
@@ -433,10 +435,12 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
         patch("ralph.cli.commands.commit.invoke_agent", side_effect=fake_invoke_agent),
     ):
         result = commit_module._generate_commit_message_with_agent(
+            agent.cmd,
             agent,
             prompt_file=str(prompt_file),
             attempt_context=attempt_context,
             display_context=display_context,
+            pipeline_deps=make_test_pipeline_deps(display_context, bridge=bridge),
         )
 
     assert result.message == "fix: recovered after midstream retry"

@@ -21,6 +21,8 @@ from ralph.agents.invoke._session_resume import recovery_action_for_failure_reas
 from ralph.agents.timeout_clock import FakeClock
 from ralph.interrupt.controller import INTERRUPT_EXIT_CODE, InterruptController
 
+pytestmark = pytest.mark.timeout_seconds(10)
+
 RALPH_ROOT = pathlib.Path(__file__).parent.parent / "ralph"
 
 
@@ -47,8 +49,6 @@ class TestFailureClassifierSingleOwner:
             pathlib.Path("ralph/recovery/controller.py"),
             pathlib.Path("ralph/agents/invoke/_direct_mcp_recovery.py"),
             pathlib.Path("ralph/agents/invoke/_completion.py"),
-            pathlib.Path("ralph/pipeline/effect_executor.py"),
-            pathlib.Path("ralph/pipeline/plumbing/commit_plumbing.py"),
             pathlib.Path("ralph/pipeline/agent_retry_decision.py"),
         }
         offenders: list[str] = []
@@ -297,10 +297,9 @@ class TestClassifyQuietUnknownStateDefaultsToWaiting:
 
 class TestCommitPlumbingFailureClassificationPreserved:
     """Pin the two pre-fix commit.py classification paths are still
-    intact via the run_with_direct_mcp_recovery seam after the
-    refactor moved them into commit_plumbing.py. The post-refactor
-    plumbing must route AgentInactivityTimeoutError through
-    resolve_retry_intent with action='resume' and the expected session_id.
+    intact after the refactor. The post-refactor plumbing delegates
+    agent invocation to effect_executor.execute_agent_effect, which
+    owns the canonical run_with_direct_mcp_recovery retry loop.
     """
 
     def test_commit_plumbing_failure_classification_preserved(self) -> None:
@@ -315,7 +314,6 @@ class TestCommitPlumbingFailureClassificationPreserved:
             f"has_prior_session=True) must return 'resume' but got {action!r}"
         )
 
-        # Also verify the plumbing file routes through this seam.
         plumbing = RALPH_ROOT / "pipeline" / "plumbing" / "commit_plumbing.py"
         if not plumbing.exists():
             pytest.skip("commit_plumbing.py not present")
@@ -323,11 +321,18 @@ class TestCommitPlumbingFailureClassificationPreserved:
         # The plumbing must NOT construct FailureClassifier() inline.
         assert "FailureClassifier()" not in source, (
             "commit_plumbing.py must NOT construct FailureClassifier() inline; "
-            "it must route classification through run_with_direct_mcp_recovery."
+            "it must route classification through effect_executor.execute_agent_effect."
         )
-        # The plumbing must use the public shared retry loop.
-        assert "run_with_direct_mcp_recovery" in source, (
-            "commit_plumbing.py must route chain iteration through "
+        # The plumbing must delegate to the shared execution core.
+        assert "execute_agent_effect" in source, (
+            "commit_plumbing.py must call ralph.pipeline.effect_executor.execute_agent_effect."
+        )
+
+        effect_executor = RALPH_ROOT / "pipeline" / "effect_executor.py"
+        assert effect_executor.exists()
+        effect_source = _read(effect_executor)
+        assert "run_with_direct_mcp_recovery" in effect_source, (
+            "effect_executor.py must contain the canonical retry loop "
             "run_with_direct_mcp_recovery."
         )
 

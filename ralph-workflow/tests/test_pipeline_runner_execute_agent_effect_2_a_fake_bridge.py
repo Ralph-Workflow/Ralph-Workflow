@@ -9,3 +9,6 @@ class _FakeBridge:
 
     def agent_endpoint_uri(self) -> str:
         return "http://127.0.0.1:12345/mcp"
+
+    def reset_tool_registry(self) -> None:
+        pass

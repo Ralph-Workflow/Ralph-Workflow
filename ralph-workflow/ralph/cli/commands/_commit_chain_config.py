@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
-    from ralph.config.models import GeneralConfig
+    from ralph.config.models import UnifiedConfig
     from ralph.policy.models import AgentsPolicy
 
 
@@ -17,4 +17,4 @@ class CommitChainConfig:
     agents: list[str]
     verbose: bool
     agents_policy: AgentsPolicy
-    general_config: GeneralConfig | None = None
+    general_config: UnifiedConfig | None = None

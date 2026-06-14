@@ -38,7 +38,7 @@ def _make_registry_with_budget(phase: str, agent: str, max_retries: int = 1) -> 
 
 
 def _simulate_successful_run(controller: RecoveryController, phase: str, agent: str) -> None:
-    """Mirror the production success path: the runner resets backoff after a successful invocation."""
+    """Mirror the production success path: runner resets backoff after a successful invocation."""
     controller.reset_backoff(phase, agent)
 
 

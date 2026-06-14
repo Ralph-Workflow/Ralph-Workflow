@@ -78,7 +78,13 @@ def test_worker_materializes_prompt_from_shared_workspace_inputs(
 
     executed: list[str] = []
 
-    def _fake_execute_agent_effect(effect: object, *args: object, **kwargs: object) -> object:
+    def _fake_execute_agent_effect(
+        effect: object,
+        _config: object,
+        _pipeline_deps: object,
+        _workspace_scope: object,
+        **kwargs: object,
+    ) -> object:
         executed.append(getattr(effect, "prompt_file", ""))
         return PipelineEvent.AGENT_SUCCESS
 

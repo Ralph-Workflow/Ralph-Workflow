@@ -498,14 +498,23 @@ class TestPlumbingCommitUsesSharedPipeline:
             "of commit-time chain iteration."
         )
 
-    def test_plumbing_commit_module_uses_run_with_direct_mcp_recovery(self) -> None:
+    def test_plumbing_commit_module_calls_execute_agent_effect(self) -> None:
         plumbing = RALPH_ROOT / "pipeline" / "plumbing" / "commit_plumbing.py"
         if not plumbing.exists():
             pytest.skip("plumbing module not yet created; pin in Step 6")
         source = _read(plumbing)
+        assert "execute_agent_effect" in source, (
+            "commit_plumbing.py must delegate agent invocation to "
+            "ralph.pipeline.effect_executor.execute_agent_effect (the shared execution core)."
+        )
+
+    def test_effect_executor_module_owns_run_with_direct_mcp_recovery(self) -> None:
+        effect_executor = RALPH_ROOT / "pipeline" / "effect_executor.py"
+        assert effect_executor.exists()
+        source = _read(effect_executor)
         assert "run_with_direct_mcp_recovery" in source, (
-            "commit_plumbing.py must route chain iteration through "
-            "run_with_direct_mcp_recovery (the single canonical retry loop)."
+            "effect_executor.py must contain the canonical retry loop "
+            "run_with_direct_mcp_recovery."
         )
 
     def test_plumbing_commit_module_does_not_construct_failure_classifier(self) -> None:
@@ -544,8 +553,6 @@ class TestFailureClassifierOwnership:
         - `ralph/recovery/` (definition + tests)
         - `ralph/agents/invoke/_direct_mcp_recovery.py` (consolidated owner)
         - `ralph/agents/invoke/_completion.py` (post-exit watchdog check)
-        - `ralph/pipeline/effect_executor.py` (the retry-loop seam)
-        - `ralph/pipeline/plumbing/commit_plumbing.py` (new plumbing module)
         - `ralph/pipeline/agent_retry_decision.py` (the shared decision dispatcher)
         """
         allowed_relative = {
@@ -554,8 +561,6 @@ class TestFailureClassifierOwnership:
             pathlib.Path("ralph/recovery/controller.py"),
             pathlib.Path("ralph/agents/invoke/_direct_mcp_recovery.py"),
             pathlib.Path("ralph/agents/invoke/_completion.py"),
-            pathlib.Path("ralph/pipeline/effect_executor.py"),
-            pathlib.Path("ralph/pipeline/plumbing/commit_plumbing.py"),
             pathlib.Path("ralph/pipeline/agent_retry_decision.py"),
         }
         # Test files (tests/recovery/, tests/test_recovery_*) may also construct

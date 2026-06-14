@@ -6,6 +6,7 @@ import sys
 import textwrap
 import time
 from pathlib import Path
+from typing import TypedDict, cast
 
 import psutil
 import pytest
@@ -16,6 +17,17 @@ pytestmark = pytest.mark.subprocess_e2e
 
 PYTHON = sys.executable
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+class _ProcessRecord(TypedDict):
+    pid: int
+    status: str
+    returncode: int | None
+
+
+class _InterruptResultPayload(TypedDict):
+    runner_exit_code: int
+    records: list[_ProcessRecord]
 
 
 def _pid_gone(pid: int, timeout_s: float = 1.5) -> bool:
@@ -79,8 +91,8 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
             transport=AgentTransport.CLAUDE_INTERACTIVE,
         )
 
-        def fake_execute_agent_effect(effect, config, deps, workspace_scope, **kwargs):
-            del effect, config, deps, workspace_scope, kwargs
+        def fake_execute_agent_effect(effect, config, pipeline_deps, workspace_scope, **kwargs):
+            del effect, config, pipeline_deps, workspace_scope, kwargs
             for _line in invoke_module.invoke_agent(
                 claude_config,
                 str(prompt_file),
@@ -148,7 +160,10 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
     )
 
     assert completed.returncode == 0, completed.stderr
-    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    payload = cast(
+        "_InterruptResultPayload",
+        json.loads(result_path.read_text(encoding="utf-8")),
+    )
     assert payload["runner_exit_code"] == INTERRUPT_EXIT_CODE
     assert payload["records"], payload
     for record in payload["records"]:

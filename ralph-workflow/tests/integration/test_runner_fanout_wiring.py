@@ -13,6 +13,7 @@ from ralph.pipeline import fan_out as fan_out_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -531,12 +532,15 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
 
     # Patch materialize and dump to avoid writing files
 
-    monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", _fake_dump)
 
     policy = load_policy(tmp_path / ".agent")
     workspace_scope = WorkspaceScope(tmp_path)
     effect = PreparePromptEffect(phase="development", iteration=1)
+    pipeline_deps = PipelineDeps(
+        display_context=make_display_context(),
+        phase_prompt_materializer=_fake_materialize,
+    )
 
     runner_module.materialize_prepared_prompt(
         effect,
@@ -544,6 +548,7 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
         policy.artifacts,
         workspace_scope,
         env={str(WORKER_NAMESPACE_ENV): str(worker_ns)},
+        pipeline_deps=pipeline_deps,
     )
 
     assert len(recorded_kwargs) == 1
@@ -568,15 +573,22 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
         recorded_kwargs.append(dict(kwargs))
         return "rendered-prompt"
 
-    monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
     monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", lambda *a, **k: "/p")
 
     policy = load_policy(tmp_path / ".agent")
     workspace_scope = WorkspaceScope(tmp_path)
     effect = PreparePromptEffect(phase="development", iteration=1)
+    pipeline_deps = PipelineDeps(
+        display_context=make_display_context(),
+        phase_prompt_materializer=_fake_materialize,
+    )
 
     runner_module.materialize_prepared_prompt(
-        effect, policy.pipeline, policy.artifacts, workspace_scope
+        effect,
+        policy.pipeline,
+        policy.artifacts,
+        workspace_scope,
+        pipeline_deps=pipeline_deps,
     )
 
     assert len(recorded_kwargs) == 1

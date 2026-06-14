@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -42,19 +43,23 @@ if TYPE_CHECKING:
         ) -> ProcessResult: ...
 
 
-# Default worker count leaves two logical cores free for the main process and
-# system overhead. On a 12-core machine this uses 10 workers; pytest-xdist's
-# ``auto`` can over-subscribe and cause per-test timeouts under load, so we
-# cap the default. Override via PYTEST_WORKERS env var.
+# Default: capped ``auto`` — pytest-xdist auto-detects available CPU cores,
+# but we cap at 8 to avoid I/O contention on loaded machines. Real git and
+# subprocess fixtures dominate suite time; too many parallel workers causes
+# per-test timeouts even though each test is fast in isolation.
+# Override via PYTEST_WORKERS env var if needed.
 _DEFAULT_PYTEST_WORKERS = "auto"
+_MAX_PYTEST_WORKERS = 8
 
 
 def _pytest_workers() -> str:
-    env = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
-    if env == "auto":
-        cores = os.cpu_count() or 1
-        return str(max(1, cores - 2))
-    return env
+    raw = os.getenv("PYTEST_WORKERS", _DEFAULT_PYTEST_WORKERS)
+    if raw != "auto":
+        return raw
+    try:
+        return str(min(multiprocessing.cpu_count(), _MAX_PYTEST_WORKERS))
+    except Exception:
+        return str(_MAX_PYTEST_WORKERS)
 
 
 def _default_runner(

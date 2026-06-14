@@ -376,7 +376,8 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
     """Run the prompt helper.
 
     This is a host-owned state machine in which the agent never converses with
-    the user; the only conversation is between the user and this orchestrator:
+    the user; the only conversation is between the user and this orchestrator.
+
     1. Seed the first turn from an existing PROMPT.md, or ask the user once for
        an idea when none exists.
     2. Invoke the agent non-interactively for one turn to produce an artifact.

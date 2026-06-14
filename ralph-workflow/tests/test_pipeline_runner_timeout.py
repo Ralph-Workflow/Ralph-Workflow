@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pathlib
 import tempfile
+from contextlib import nullcontext
 from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
@@ -22,15 +23,17 @@ from ralph.mcp.server.lifecycle import (
     RestartAwareMcpBridge,
     StandaloneMcpProcess,
 )
-from ralph.pipeline import runner as runner_module
+from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.runner import WorkspaceScope
-from ralph.process.mcp_supervisor import McpSupervisor
+from ralph.workspace import WorkspaceScope
+from tests._pipeline_deps_factory import make_recording_bridge_factory, make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from ralph.display.parallel_display import ParallelDisplay
 
 
 def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
@@ -40,46 +43,82 @@ def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
 
 
 def _registry_factory(config: object) -> object:
+    del config
     agent_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
-    class RegistryInstance:
+    class _Registry:
         def get(self, name: str) -> AgentConfig | None:
             del name
             return agent_config
 
-    class Registry:
-        @classmethod
-        def from_config(cls, cfg: object) -> object:
-            del cls, cfg
-            return RegistryInstance()
+    return _Registry()
 
-    return Registry
+
+class FakeBridge:
+    """Minimal stand-in for a session bridge in these tests."""
+
+    def shutdown(self) -> None:
+        return
+
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:9999/mcp"
+
+    def reset_tool_registry(self) -> None:
+        return
+
+
+def _make_fake_restart_aware_bridge() -> RestartAwareMcpBridge:
+    """Build a RestartAwareMcpBridge backed by a fake process."""
+    td = pathlib.Path(tempfile.mkdtemp())
+    sf = td / "session.json"
+    sf.write_text("{}", encoding="utf-8")
+
+    class _FakePopen:
+        def poll(self) -> int | None:
+            return None
+
+        def terminate(self, grace_period_s: float = 5.0) -> None:
+            return
+
+        def wait(self, timeout: object = None) -> int:
+            return 0
+
+        def kill(self) -> None:
+            return
+
+        @property
+        def pid(self) -> int:
+            return 1
+
+    inner = StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:9888/mcp",
+        process=cast("ProcessLike", _FakePopen()),
+        session_file=sf,
+    )
+    return RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: inner,
+        restart_policy=McpRestartPolicy(max_restarts=3),
+    )
 
 
 def test_config_idle_timeout_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """UnifiedConfig.general.agent_idle_timeout_seconds is passed to InvokeOptions."""
+    del monkeypatch
     custom_timeout = 7.0
     config = _make_config(custom_timeout)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
     captured: dict[str, object] = {}
 
-    class FakeBridge:
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:9999/mcp"
-
-    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> FakeBridge:
-        return FakeBridge()
-
-    def fake_shutdown_mcp_server(_bridge: object) -> None:
-        return
-
-    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
-        del workspace_root, name
+    def fake_materialize_system_prompt(
+        workspace_root: Path,
+        name: str,
+        default_current_prompt: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_current_prompt, worker_namespace
         return str(tmp_path / "SYSTEM_PROMPT.md")
 
     def fake_invoke_agent(
@@ -94,18 +133,21 @@ def test_config_idle_timeout_flows_to_invoke_options(
         )
         return []
 
-    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
-    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
-
-    deps = runner_module.AgentExecutionDeps(
-        invoke_agent=fake_invoke_agent,
-        agent_invocation_error=RuntimeError,
-        agent_registry=_registry_factory(config),
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        system_prompt_materializer=fake_materialize_system_prompt,
+        registry_factory=_registry_factory,
     )
 
-    runner_module.execute_agent_effect(
-        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=RuntimeError,
     )
 
     assert captured.get("idle_timeout_seconds") == custom_timeout
@@ -166,36 +208,32 @@ def _run_with_config(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Helper that wires up mocks and runs _execute_agent_effect."""
+    """Helper that wires up fakes and runs execute_agent_effect."""
+    del monkeypatch
 
-    class FakeBridge:
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:9999/mcp"
-
-    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> FakeBridge:
-        return FakeBridge()
-
-    def fake_shutdown_mcp_server(_bridge: object) -> None:
-        return
-
-    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
-        del workspace_root, name
+    def fake_materialize_system_prompt(
+        workspace_root: Path,
+        name: str,
+        default_current_prompt: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_current_prompt, worker_namespace
         return str(tmp_path / "SYSTEM_PROMPT.md")
 
-    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
-    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
-
-    deps = runner_module.AgentExecutionDeps(
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        system_prompt_materializer=fake_materialize_system_prompt,
+        registry_factory=_registry_factory,
+    )
+    effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         invoke_agent=_capture_options_factory(captured),
         agent_invocation_error=RuntimeError,
-        agent_registry=_registry_factory(config),
-    )
-    runner_module.execute_agent_effect(
-        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
 
@@ -399,42 +437,38 @@ def test_mcp_server_error_causes_agent_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """McpServerError from check_mcp_bridge_health surfaces as AGENT_FAILURE."""
+    del monkeypatch
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
-    class FakeBridge:
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:9999/mcp"
-
-    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> FakeBridge:
-        return FakeBridge()
-
-    def fake_shutdown_mcp_server(_bridge: object) -> None:
-        return
-
-    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
-        del workspace_root, name
+    def fake_materialize_system_prompt(
+        workspace_root: Path,
+        name: str,
+        default_current_prompt: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_current_prompt, worker_namespace
         return str(tmp_path / "SYSTEM_PROMPT.md")
 
     def fake_check_mcp_bridge_health(_bridge: object) -> None:
         raise McpServerError("budget exhausted", restart_count=3)
 
-    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
-    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
-    monkeypatch.setattr(runner_module, "check_mcp_bridge_health", fake_check_mcp_bridge_health)
-
-    deps = runner_module.AgentExecutionDeps(
-        invoke_agent=lambda *_a, **_kw: [],
-        agent_invocation_error=RuntimeError,
-        agent_registry=_registry_factory(config),
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        system_prompt_materializer=fake_materialize_system_prompt,
+        registry_factory=_registry_factory,
+        check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    result = runner_module.execute_agent_effect(
-        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    result = effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
     )
     assert result == PipelineEvent.AGENT_FAILURE
 
@@ -442,30 +476,21 @@ def test_mcp_server_error_causes_agent_failure(
 def test_bridge_shared_across_retry_attempts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """start_mcp_server is called once; the same bridge serves all retry attempts."""
+    """The bridge factory is called once; the same bridge serves all retry attempts."""
+    del monkeypatch
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
-    bridge_start_calls: list[int] = []
     invoke_calls: list[int] = []
     attempt = 0
 
-    class FakeBridge:
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:9999/mcp"
-
-    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> FakeBridge:
-        bridge_start_calls.append(1)
-        return FakeBridge()
-
-    def fake_shutdown_mcp_server(_bridge: object) -> None:
-        return
-
-    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
-        del workspace_root, name
+    def fake_materialize_system_prompt(
+        workspace_root: Path,
+        name: str,
+        default_current_prompt: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_current_prompt, worker_namespace
         return str(tmp_path / "SYSTEM_PROMPT.md")
 
     def fake_invoke_agent(
@@ -478,21 +503,25 @@ def test_bridge_shared_across_retry_attempts(
             raise RuntimeError("timeout")
         return []
 
-    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
-    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
+    recording_factory = make_recording_bridge_factory(FakeBridge())
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge_factory=recording_factory,
+        system_prompt_materializer=fake_materialize_system_prompt,
+        registry_factory=_registry_factory,
+    )
 
-    deps = runner_module.AgentExecutionDeps(
+    effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         invoke_agent=fake_invoke_agent,
         agent_invocation_error=RuntimeError,
-        agent_registry=_registry_factory(config),
     )
 
-    runner_module.execute_agent_effect(
-        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
-    )
-
-    assert len(bridge_start_calls) == 1, "bridge must be started only once"
+    assert len(recording_factory.calls) == 1, "bridge factory must be called only once"
     assert len(invoke_calls) == 2, "agent must be invoked twice (retry)"
 
 
@@ -500,27 +529,20 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """check_mcp_bridge_health is called once per attempt (not just once at start)."""
+    del monkeypatch
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
     health_check_calls: list[int] = []
     invoke_attempt = 0
 
-    class FakeBridge:
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:9999/mcp"
-
-    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> FakeBridge:
-        return FakeBridge()
-
-    def fake_shutdown_mcp_server(_bridge: object) -> None:
-        return
-
-    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
-        del workspace_root, name
+    def fake_materialize_system_prompt(
+        workspace_root: Path,
+        name: str,
+        default_current_prompt: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_current_prompt, worker_namespace
         return str(tmp_path / "SYSTEM_PROMPT.md")
 
     def fake_check_mcp_bridge_health(_bridge: object) -> None:
@@ -535,19 +557,22 @@ def test_check_mcp_bridge_health_called_per_retry_attempt(
             raise RuntimeError("timeout on attempt 1")
         return []
 
-    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
-    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
-    monkeypatch.setattr(runner_module, "check_mcp_bridge_health", fake_check_mcp_bridge_health)
-
-    deps = runner_module.AgentExecutionDeps(
-        invoke_agent=fake_invoke_agent,
-        agent_invocation_error=RuntimeError,
-        agent_registry=_registry_factory(config),
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=FakeBridge(),
+        system_prompt_materializer=fake_materialize_system_prompt,
+        registry_factory=_registry_factory,
+        check_mcp_bridge_health_fn=fake_check_mcp_bridge_health,
     )
 
-    runner_module.execute_agent_effect(
-        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=RuntimeError,
     )
 
     assert len(health_check_calls) == 2, (
@@ -559,54 +584,13 @@ def test_record_mcp_restart_forwarded_to_subscriber(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """When bridge.restart_count > 0, record_mcp_restart is called on the display subscriber."""
+    del monkeypatch
 
     config = _make_config(300.0)
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
 
-    # Build a RestartAwareMcpBridge that already has a restart
-    td = pathlib.Path(tempfile.mkdtemp())
-    sf = td / "session.json"
-    sf.write_text("{}", encoding="utf-8")
-
-    class _FakePopen:
-        def poll(self) -> int | None:
-            return None
-
-        def terminate(self, grace_period_s: float = 5.0) -> None:
-            return
-
-        def wait(self, timeout: object = None) -> int:
-            return 0
-
-        def kill(self) -> None:
-            return
-
-        @property
-        def pid(self) -> int:
-            return 1
-
-    inner = StandaloneMcpProcess(
-        endpoint="http://127.0.0.1:9888/mcp",
-        process=cast("ProcessLike", _FakePopen()),
-        session_file=sf,
-    )
-    bridge = RestartAwareMcpBridge(
-        inner,
-        restart_fn=lambda: inner,
-        restart_policy=McpRestartPolicy(max_restarts=3),
-    )
-    # Manually advance restart count to 1 without the restart loop
+    bridge = _make_fake_restart_aware_bridge()
     bridge._restart_count = 1
-
-    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> RestartAwareMcpBridge:
-        return bridge
-
-    def fake_shutdown_mcp_server(_bridge: object) -> None:
-        return
-
-    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
-        del workspace_root, name
-        return str(tmp_path / "SYSTEM_PROMPT.md")
 
     recorded: list[int] = []
 
@@ -622,22 +606,18 @@ def test_record_mcp_restart_forwarded_to_subscriber(
         def emit(self, _unit_id: str, _line: str) -> None:
             return
 
-    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
-    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
-
-    deps = runner_module.AgentExecutionDeps(
-        invoke_agent=lambda *_a, **_kw: [],
-        agent_invocation_error=RuntimeError,
-        agent_registry=_registry_factory(config),
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=bridge,
+        registry_factory=_registry_factory,
     )
 
-    runner_module.execute_agent_effect(
+    effect_executor_module.execute_agent_effect(
         effect,
         config,
         deps,
         WorkspaceScope(tmp_path),
-        display=cast("runner_module.ParallelDisplay", _FakeDisplay()),
+        display=cast("ParallelDisplay", _FakeDisplay()),
     )
 
     assert recorded == [1], f"expected record_mcp_restart([1]); got {recorded}"
@@ -646,7 +626,8 @@ def test_record_mcp_restart_forwarded_to_subscriber(
 def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """_execute_agent_effect passes heartbeat_policy_from_env().interval to McpSupervisor."""
+    """heartbeat_policy_from_env().interval is passed to the MCP supervisor factory."""
+    del monkeypatch
 
     config = _make_config_with_watchdog()
     effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
@@ -654,50 +635,38 @@ def test_supervision_interval_from_env_flows_to_mcp_supervisor(
     custom_interval = timedelta(milliseconds=750)
     captured_intervals: list[timedelta] = []
 
-    original_init = McpSupervisor.__init__
+    def fake_heartbeat_policy_from_env() -> HeartbeatPolicy:
+        return HeartbeatPolicy(interval=custom_interval)
 
-    def patched_init(
-        self: McpSupervisor,
-        bridge: RestartAwareMcpBridge,
+    def fake_mcp_supervisor_factory(
+        bridge: object,
         *,
-        check_interval: timedelta = timedelta(seconds=2),
-        on_restart: Callable[[int], None] | None = None,
-    ) -> None:
+        check_interval: timedelta,
+        on_restart: Callable[[int], None] | None,
+    ) -> object:
+        del bridge, on_restart
         captured_intervals.append(check_interval)
-        original_init(self, bridge, check_interval=check_interval, on_restart=on_restart)
+        return nullcontext()
 
-    monkeypatch.setattr(McpSupervisor, "__init__", patched_init)
-    monkeypatch.setattr(
-        runner_module,
-        "heartbeat_policy_from_env",
-        lambda: HeartbeatPolicy(interval=custom_interval),
+    deps = make_test_pipeline_deps(
+        display_context=make_display_context(),
+        bridge=_make_fake_restart_aware_bridge(),
+        registry_factory=_registry_factory,
+        heartbeat_policy_from_env_fn=fake_heartbeat_policy_from_env,
+        mcp_supervisor_factory=fake_mcp_supervisor_factory,
     )
 
-    class FakeBridge:
-        def shutdown(self) -> None:
-            return
-
-        def agent_endpoint_uri(self) -> str:
-            return "http://127.0.0.1:9999/mcp"
-
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_a, **_kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _b: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYSTEM_PROMPT.md"),
-    )
-
-    deps = runner_module.AgentExecutionDeps(
+    effect_executor_module.execute_agent_effect(
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         invoke_agent=lambda *_a, **_kw: [],
         agent_invocation_error=RuntimeError,
-        agent_registry=_registry_factory(config),
-    )
-    runner_module.execute_agent_effect(
-        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
     )
 
-    assert captured_intervals, "McpSupervisor was not constructed"
+    assert captured_intervals, "McpSupervisor factory was not called"
     assert captured_intervals[0] == custom_interval, (
         f"expected {custom_interval}, got {captured_intervals[0]}"
     )

@@ -7,20 +7,25 @@ import uuid
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
+    AgentInvocationError,
     InvokeOptions,
     InvokeRuntimeOptions,
     build_invoke_options_from_config,
     extract_transport_session_id,
+    invoke_agent,
     recovery_action_for_failure_reason,
     resolve_resume_session_id,
 )
-from ralph.config.enums import Verbosity
+from ralph.agents.invoke._direct_mcp_recovery import run_with_direct_mcp_recovery
+from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
+from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport, Verbosity
 from ralph.config.mcp_loader import McpConfigError
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -31,18 +36,7 @@ from ralph.display.parallel_display import (
 )
 from ralph.git.operations import stage_files
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
-from ralph.mcp.protocol.session import AgentSession
-from ralph.mcp.protocol.startup import heartbeat_policy_from_env
-from ralph.mcp.server.lifecycle import (
-    McpServerError,
-    McpServerExtras,
-    RestartAwareMcpBridge,
-    check_mcp_bridge_health,
-    shutdown_mcp_server,
-    start_mcp_server,
-)
-from ralph.mcp.session_plan import SessionModelOpts, build_session_mcp_plan
-from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
 from ralph.pipeline._agent_bridge_ctx import _AgentBridgeCtx
 from ralph.pipeline._agent_invocation_ctx import _AgentInvocationCtx
 from ralph.pipeline._retry_progress_guard import (
@@ -51,6 +45,7 @@ from ralph.pipeline._retry_progress_guard import (
     retry_failure_signature,
 )
 from ralph.pipeline.activity_stream import stream_parsed_agent_activity
+from ralph.pipeline.agent_execution_deps import build_agent_execution_deps
 from ralph.pipeline.agent_recovery_input import AgentRecoveryInput
 from ralph.pipeline.agent_recovery_plan import AgentRecoveryPlan
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
@@ -61,13 +56,12 @@ from ralph.pipeline.agent_retry_intent import (
 from ralph.pipeline.commit_executor import clear_phase_output_artifacts
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, verbosity_rank
+from ralph.pipeline.phase_transition import show_phase_start_with_context
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
+from ralph.pipeline.session_bridge import reset_tool_registry_callback
 from ralph.pipeline.waiting_dispatch import dispatch_waiting_event
 from ralph.policy.loader import load_agents_policy_for_workspace_scope
-from ralph.process.mcp_supervisor import McpSupervisor
-from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.recovery.classifier import SESSION_NOT_FOUND_SUBSTRINGS as _SESSION_NOT_FOUND_SUBSTRINGS
-from ralph.recovery.failure_classifier import FailureClassifier, should_reset_tool_registry
 from ralph.recovery.failure_details import contains_casefolded_marker, failure_detail_parts
 from ralph.recovery.retry_prompt import build_retry_error_block
 from ralph.workspace import FsWorkspace
@@ -75,17 +69,16 @@ from ralph.workspace import FsWorkspace
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.agent_execution_deps import (
-        AgentExecutionDeps,
-        _CheckMcpBridgeHealthFn,
-        _McpSupervisorFactory,
-        _ShutdownMcpServerFn,
-        _StartMcpServerFn,
+        _InvokeAgentFn,
+        _ShowPhaseStartFn,
     )
     from ralph.pipeline.effects import InvokeAgentEffect
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
@@ -103,24 +96,23 @@ class _AttemptResult:
     event: PipelineEvent | None
     next_prompt_file: str
     next_session_id: str | None
-    # When True, the next attempt should call
-    # `RestartAwareMcpBridge.reset_tool_registry()` before dispatching.
-    # Set by the failure classifier when a tool-availability failure
-    # (e.g. live `No such tool available: mcp__<server>__<tool>`) is
-    # detected. The default False preserves the existing behavior on
-    # non-tool-availability failures.
-    reset_tool_registry: bool = False
-    # Normalized signature of a non-terminal (will-retry) failure, used by the
-    # recovery loop's zero-progress guard to bound consecutive identical retries.
-    # None for terminal results (success/permanent failure), which return early.
-    failure_signature: str | None = None
 
 
 def execute_agent_effect(
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
-    deps: AgentExecutionDeps,
+    pipeline_deps: PipelineDeps,
     workspace_scope: WorkspaceScope,
+    *,
+    bridge: RestartAwareMcpBridge | None = None,
+    raw_output_sink: deque[str] | None = None,
+    rendered_output_sink: deque[str] | None = None,
+    run_id: str | None = None,
+    required_artifact: RequiredArtifact | None = None,
+    session_id: str | None = None,
+    extra_env: dict[str, str] | None = None,
+    raise_resumable_exit: bool = False,
+    agent_invocation_error_sink: Callable[[Exception], object] | None = None,
     **opts: object,
 ) -> PipelineEvent:
     """Execute an agent-invocation effect end-to-end, including MCP server lifecycle."""
@@ -130,8 +122,8 @@ def execute_agent_effect(
     state = cast("PipelineState | None", opts.get("state"))
     policy_bundle = cast("PolicyBundle | None", opts.get("policy_bundle"))
     resolved_display_context = get_display_context(display, display_context)
-    registry = deps.agent_registry.from_config(config)
-    agent_config = registry.get(effect.agent_name)
+    registry = _registry_from_pipeline_deps(pipeline_deps, config)
+    agent_config = cast("AgentConfig | None", registry.get(effect.agent_name))
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
@@ -140,14 +132,6 @@ def execute_agent_effect(
         if policy_bundle is not None
         else load_agents_policy_for_workspace_scope(workspace_scope, config=config)
     )
-    if state is not None and policy_bundle is not None and deps.show_phase_start_cb is not None:
-        deps.show_phase_start_cb(
-            effect.phase,
-            effect.agent_name,
-            resolved_display_context,
-            state,
-            pipeline_policy=policy_bundle.pipeline,
-        )
     invoke_line = status_text("Invoking agent", effect.agent_name, "cyan")
     if display is not None:
         display.emit(effect.agent_name, invoke_line)
@@ -167,6 +151,19 @@ def execute_agent_effect(
             agent_name=effect.agent_name,
         )
 
+    show_phase_start_cb: _ShowPhaseStartFn | None = None
+    if state is not None and policy_bundle is not None:
+        show_phase_start_cb = show_phase_start_with_context
+    deps = build_agent_execution_deps(
+        pipeline_deps=pipeline_deps,
+        invoke_agent=_invoke_agent_from_registry_or_opts(opts),
+        agent_invocation_error=_agent_invocation_error_from_opts(opts),
+        agent_registry=AgentRegistry,
+        show_phase_start_cb=show_phase_start_cb,
+        set_session_id_cb=cast(
+            "Callable[[str | None], None] | None", opts.get("set_session_id_cb")
+        ),
+    )
     ctx = _AgentInvocationCtx(
         effect=effect,
         config=config,
@@ -186,260 +183,312 @@ def execute_agent_effect(
         worker_artifact_dir=cast("Path | None", opts.get("worker_artifact_dir")),
         parallel_worker=cast("bool", opts.get("parallel_worker", False)),
     )
-    return _invoke_agent_with_recovery(ctx)
+    return _invoke_agent_with_recovery(
+        ctx,
+        pipeline_deps,
+        bridge=bridge,
+        raw_output_sink=raw_output_sink,
+        rendered_output_sink=rendered_output_sink,
+        run_id=run_id,
+        required_artifact=required_artifact,
+        session_id=session_id,
+        extra_env=extra_env,
+        on_retry_failure=cast(
+            "Callable[[list[str]], object] | None", opts.get("on_retry_failure")
+        ),
+        raise_resumable_exit=raise_resumable_exit,
+        agent_invocation_error_sink=agent_invocation_error_sink,
+    )
 
 
-def _invoke_agent_with_recovery(ctx: _AgentInvocationCtx) -> PipelineEvent:
-    attempt_prompt_file = ctx.effect.prompt_file
-    # Single source of truth for the session-resume DECISION: resolve_resume_session_id
-    # maps the stored retry action to the session id to thread into InvokeOptions.
-    # The per-transport resume flag SYNTAX is owned separately by config.session_flag
-    # in each command builder, so the decision and the flag string cannot drift.
-    resume_session_id: str | None = None
-    if ctx.state is not None:
-        retry_intent = ctx.state.agent_retry_intent
-        action = retry_intent.action
-        prior_session_id = retry_intent.session_id
-        if action is not None and action != "fresh":
-            resume_session_id = resolve_resume_session_id(
-                has_prior_session=bool(prior_session_id),
-                prior_session_id=prior_session_id,
-                recovery_action=action,
-            )
-    bridge = None
+class _RegistryLike(Protocol):
+    def get(self, name: str) -> object | None: ...
+
+
+def _registry_from_pipeline_deps(
+    pipeline_deps: PipelineDeps,
+    config: UnifiedConfig,
+) -> _RegistryLike:
+    if pipeline_deps.registry_factory is not None:
+        return cast("_RegistryLike", pipeline_deps.registry_factory(config))
+    return cast("_RegistryLike", AgentRegistry.from_config(config))
+
+
+def _invoke_agent_from_registry_or_opts(
+    opts: dict[str, object],
+) -> _InvokeAgentFn:
+    invoke = cast("_InvokeAgentFn | None", opts.get("invoke_agent"))
+    if invoke is not None:
+        return invoke
+    return invoke_agent
+
+
+def _agent_invocation_error_from_opts(opts: dict[str, object]) -> type[Exception]:
+    error = cast("type[Exception] | None", opts.get("agent_invocation_error"))
+    if error is not None:
+        return error
+    return AgentInvocationError
+
+
+@dataclass
+class _AttemptState:
+    prompt_file: str
+    resume_session_id: str | None
+
+
+def _invoke_agent_with_recovery(
+    ctx: _AgentInvocationCtx,
+    pipeline_deps: PipelineDeps,
+    *,
+    bridge: RestartAwareMcpBridge | None = None,
+    raw_output_sink: deque[str] | None = None,
+    rendered_output_sink: deque[str] | None = None,
+    run_id: str | None = None,
+    required_artifact: RequiredArtifact | None = None,
+    session_id: str | None = None,
+    extra_env: dict[str, str] | None = None,
+    on_retry_failure: Callable[[list[str]], object] | None = None,
+    raise_resumable_exit: bool = False,
+    agent_invocation_error_sink: Callable[[Exception], object] | None = None,
+) -> PipelineEvent:
+    own_bridge = bridge is None
+    effective_run_id = run_id or str(uuid.uuid4())
+    if bridge is None:
+        bridge = _start_bridge(ctx, pipeline_deps, effective_run_id)
+    elif run_id is None:
+        effective_run_id = cast("str", getattr(bridge, "run_id", effective_run_id))
     try:
-        _materialize = ctx.deps.materialize_system_prompt_fn or materialize_system_prompt
-        try:
-            system_prompt_file = _materialize(
-                workspace_root=ctx.workspace_scope.root,
-                name=str(ctx.effect.phase),
-                worker_namespace=ctx.worker_namespace,
-            )
-        except TypeError:
-            system_prompt_file = _materialize(
-                workspace_root=ctx.workspace_scope.root,
-                name=str(ctx.effect.phase),
-            )
-        session_mcp_plan = build_session_mcp_plan(
-            transport=ctx.agent_config.transport,
-            drain=ctx.effect.drain or ctx.effect.phase,
-            workspace_path=ctx.workspace_scope.root,
-            agents_policy=ctx.effective_agents_policy,
-            model_opts=SessionModelOpts(model_flag=ctx.agent_config.model_flag),
-        )
-        session = AgentSession(
-            session_id=f"{ctx.effect.phase}-{uuid.uuid4().hex[:8]}",
-            run_id=str(uuid.uuid4()),
-            drain=ctx.effect.drain or ctx.effect.phase,
-            capabilities=set(session_mcp_plan.capabilities),
-            parallel_worker=ctx.parallel_worker,
-            worker_artifact_dir=ctx.worker_artifact_dir,
-            worker_namespace=ctx.worker_namespace,
-            allowed_roots=ctx.workspace_scope.allowed_roots,
-            model_identity=session_mcp_plan.model_identity,
-            stored_capability_profile=session_mcp_plan.capability_profile,
-        )
-        workspace = FsWorkspace(
-            ctx.workspace_scope.root, allowed_roots=ctx.workspace_scope.allowed_roots
-        )
-        if not ctx.parallel_worker:
-            # Shared phase outputs live at the repo root, outside a parallel
-            # worker's write scope; clearing them is the parent's job.
-            clear_phase_output_artifacts(
-                workspace,
-                ctx.effect.phase,
-                drain=ctx.effect.drain,
-                policy_bundle=ctx.policy_bundle,
-            )
-        _start_mcp: _StartMcpServerFn = cast(
-            "_StartMcpServerFn", ctx.deps.start_mcp_server_fn or start_mcp_server
-        )
-        bridge = _start_mcp(
-            session,
-            workspace,
-            extras=McpServerExtras(phase=ctx.effect.phase, extra_env=session_mcp_plan.server_env),
-        )
+        system_prompt_file = _materialize_system_prompt(ctx, pipeline_deps)
         bridge_ctx = _AgentBridgeCtx(
-            bridge=bridge, session=session, system_prompt_file=system_prompt_file
+            bridge=bridge, session=cast("object", None), system_prompt_file=system_prompt_file
+        )
+        raw_output: deque[str] = (
+            raw_output_sink
+            if raw_output_sink is not None
+            else deque(maxlen=_AGENT_RAW_OUTPUT_TAIL_LINES)
+        )
+        rendered_output: deque[str] = (
+            rendered_output_sink
+            if rendered_output_sink is not None
+            else deque(maxlen=_AGENT_RENDERED_OUTPUT_TAIL_LINES)
+        )
+        state = _AttemptState(
+            prompt_file=ctx.effect.prompt_file,
+            resume_session_id=session_id or _initial_resume_session_id(ctx),
         )
         progress_guard = RetryProgressGuard()
-        for attempt_index in range(ctx.max_recovery_attempts + 1):
-            result = _run_attempt(
-                ctx, bridge_ctx, attempt_index, attempt_prompt_file, resume_session_id
+
+        def attempt_fn(
+            retry_session_id: str | None,
+            capture_session_id: Callable[[str], None],
+        ) -> _AttemptResult:
+            session_id = retry_session_id or state.resume_session_id
+            options = _build_attempt_invoke_options(
+                ctx,
+                bridge_ctx,
+                pipeline_deps,
+                session_id,
+                effective_run_id,
+                required_artifact,
+                extra_env=extra_env,
             )
-            if result.event is not None:
-                return result.event
-            # Zero-progress guard: a retry that reproduces the prior failure's
-            # signature makes no forward progress. Bound consecutive identical
-            # retries so the loop cannot spin re-running a doomed attempt for the
-            # full recovery/session budget (the endless "Retrying ... (N/10)"
-            # wedge). A changed signature means progress and resets the streak.
-            if result.failure_signature is not None and progress_guard.record(
-                result.failure_signature
-            ):
-                logger.error(
-                    "Aborting agent '{}' retries: {} consecutive identical "
-                    "zero-progress failures. Refusing to spin; failing fast.",
-                    ctx.effect.agent_name,
-                    MAX_IDENTICAL_RETRY_ATTEMPTS,
+            try:
+                _check_bridge_health(ctx, bridge_ctx, pipeline_deps)
+                if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge):
+                    bridge_ctx.bridge.reset_session_budget()
+                _consume_attempt_output(
+                    ctx,
+                    bridge_ctx,
+                    state.prompt_file,
+                    options,
+                    raw_output,
+                    rendered_output,
+                    capture_session_id,
+                    pipeline_deps,
                 )
-                return PipelineEvent.AGENT_FAILURE
-            if (
-                result.reset_tool_registry
-                and isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
-            ):
-                bridge_ctx.bridge.reset_tool_registry()
-            attempt_prompt_file = result.next_prompt_file
-            resume_session_id = result.next_session_id
+                final_session_id = (
+                    extract_transport_session_id(tuple(raw_output)) or session_id
+                )
+                if ctx.deps.set_session_id_cb is not None:
+                    ctx.deps.set_session_id_cb(final_session_id)
+                _set_last_captured_retry_intent(cleared_agent_retry_intent())
+                return _AttemptResult(PipelineEvent.AGENT_SUCCESS, state.prompt_file, session_id)
+            except ctx.deps.agent_invocation_error as exc:
+                recovery_plan = build_agent_recovery_plan(
+                    AgentRecoveryInput(
+                        exc=exc,
+                        attempt_index=0,
+                        max_recovery_attempts=ctx.max_recovery_attempts,
+                        effect=ctx.effect,
+                        workspace_root=ctx.workspace_scope.root,
+                        raw_output=list(raw_output),
+                        rendered_output=list(rendered_output),
+                        extracted_session_id=(
+                            extract_transport_session_id(tuple(raw_output)) or session_id
+                        ),
+                        inactivity_error_type=AgentInactivityTimeoutError,
+                    )
+                )
+                if recovery_plan is None:
+                    _set_last_captured_retry_intent(cleared_agent_retry_intent())
+                    raise
+                failure_signature = retry_failure_signature(
+                    recovery_plan.reason, list(rendered_output)
+                )
+                if progress_guard.record(failure_signature):
+                    logger.error(
+                        "Aborting agent '{}' retries: {} consecutive identical "
+                        "zero-progress failures. Refusing to spin; failing fast.",
+                        ctx.effect.agent_name,
+                        MAX_IDENTICAL_RETRY_ATTEMPTS,
+                    )
+                    _set_last_captured_retry_intent(cleared_agent_retry_intent())
+                    return _AttemptResult(
+                        PipelineEvent.AGENT_FAILURE, state.prompt_file, session_id
+                    )
+                state.prompt_file = recovery_plan.prompt_file
+                state.resume_session_id = recovery_plan.session_id
+                retry_intent = resolve_retry_intent(
+                    exc,
+                    phase=str(ctx.effect.phase),
+                    agent=ctx.effect.agent_name,
+                    session_id=recovery_plan.session_id,
+                    inactivity_error_type=AgentInactivityTimeoutError,
+                )
+                _set_last_captured_retry_intent(
+                    retry_intent if retry_intent is not None else cleared_agent_retry_intent()
+                )
+                raise
+
+        try:
+            result = run_with_direct_mcp_recovery(
+                attempt_fn,
+                max_retries=ctx.max_recovery_attempts,
+                reset_tool_registry=cast(
+                    "Callable[[], object] | None",
+                    reset_tool_registry_callback(bridge_ctx.bridge),
+                ),
+                on_retry_failure=on_retry_failure,
+                retry_resumable_exit=True,
+            )
+            return result.event if result.event is not None else PipelineEvent.AGENT_FAILURE
+        except McpServerError as exc:
+            logger.error(
+                "MCP server failed permanently after {} restart(s): {}", exc.restart_count, exc
+            )
+            _set_last_captured_retry_intent(
+                AgentRetryIntent(action="fresh", failure_reason="McpServerError")
+            )
+            return PipelineEvent.AGENT_FAILURE
+        except ctx.deps.agent_invocation_error as exc:
+            if raise_resumable_exit and isinstance(exc, OpenCodeResumableExitError):
+                raise
+            agent_invocation_error_sink and agent_invocation_error_sink(exc)
+            return PipelineEvent.AGENT_FAILURE
     except McpConfigError:
+        raise
+    except OpenCodeResumableExitError:
         raise
     except Exception:
         logger.exception("Unexpected error during agent invocation: {}")
         return PipelineEvent.AGENT_FAILURE
     finally:
-        _shutdown: _ShutdownMcpServerFn = cast(
-            "_ShutdownMcpServerFn",
-            ctx.deps.shutdown_mcp_server_fn or shutdown_mcp_server,
+        if own_bridge and bridge is not None:
+            bridge.shutdown()
+
+
+def _start_bridge(
+    ctx: _AgentInvocationCtx,
+    pipeline_deps: PipelineDeps,
+    run_id: str,
+) -> RestartAwareMcpBridge:
+    if not ctx.parallel_worker:
+        workspace = FsWorkspace(
+            ctx.workspace_scope.root, allowed_roots=ctx.workspace_scope.allowed_roots
         )
-        if bridge is not None:
-            _shutdown(bridge)
-    return PipelineEvent.AGENT_FAILURE
+        clear_phase_output_artifacts(
+            workspace,
+            ctx.effect.phase,
+            drain=ctx.effect.drain,
+            policy_bundle=ctx.policy_bundle,
+        )
+    return cast(
+        "RestartAwareMcpBridge",
+        pipeline_deps.bridge_factory(
+            workspace_root=ctx.workspace_scope.root,
+            drain=ctx.effect.drain or ctx.effect.phase,
+            agents_policy=ctx.effective_agents_policy,
+            transport=ctx.agent_config.transport,
+            session_id_prefix=ctx.effect.phase,
+            run_id=run_id,
+            model_identity=pipeline_deps.model_identity,
+            parallel_worker=ctx.parallel_worker,
+            worker_namespace=ctx.worker_namespace,
+            worker_artifact_dir=ctx.worker_artifact_dir,
+            allowed_roots=ctx.workspace_scope.allowed_roots,
+        ),
+    )
 
 
-def _run_attempt(
+def _materialize_system_prompt(
+    ctx: _AgentInvocationCtx,
+    pipeline_deps: PipelineDeps,
+) -> str:
+    _materialize = pipeline_deps.system_prompt_materializer
+    try:
+        return _materialize(
+            workspace_root=ctx.workspace_scope.root,
+            name=str(ctx.effect.phase),
+            worker_namespace=ctx.worker_namespace,
+        )
+    except TypeError:
+        return _materialize(
+            workspace_root=ctx.workspace_scope.root,
+            name=str(ctx.effect.phase),
+        )
+
+
+def _initial_resume_session_id(ctx: _AgentInvocationCtx) -> str | None:
+    if ctx.state is None:
+        return None
+    retry_intent = ctx.state.agent_retry_intent
+    action = retry_intent.action
+    prior_session_id = retry_intent.session_id
+    if action is None or action == "fresh":
+        return None
+    return resolve_resume_session_id(
+        has_prior_session=bool(prior_session_id),
+        prior_session_id=prior_session_id,
+        recovery_action=action,
+    )
+
+
+def _check_bridge_health(
     ctx: _AgentInvocationCtx,
     bridge_ctx: _AgentBridgeCtx,
-    attempt_index: int,
-    attempt_prompt_file: str,
-    resume_session_id: str | None,
-) -> _AttemptResult:
-    raw_output: deque[str] = deque(maxlen=_AGENT_RAW_OUTPUT_TAIL_LINES)
-    rendered_output: deque[str] = deque(maxlen=_AGENT_RENDERED_OUTPUT_TAIL_LINES)
-    extracted_session_id: str | None = None
-
-    def _capture_session_id(session_id: str) -> None:
-        nonlocal extracted_session_id
-        extracted_session_id = session_id
-
-    try:
-        _check_bridge_health(ctx, bridge_ctx)
-        # Per-invocation session-budget reset: every attempt boundary
-        # re-arms the inner subprocess's soft wrap-up nag so a retried
-        # agent does not inherit the prior attempt's elapsed time. The
-        # 60-minute timing budget is a per-invocation soft timeout; a
-        # fresh command line (or a retry within the recovery loop) is a
-        # fresh attempt. The ``isinstance`` guard lets test stubs that
-        # inject a non-RestartAwareMcpBridge skip the reset silently.
-        if isinstance(bridge_ctx.bridge, RestartAwareMcpBridge):
-            bridge_ctx.bridge.reset_session_budget()
-        options = _build_attempt_invoke_options(ctx, bridge_ctx, resume_session_id)
-        _consume_attempt_output(
-            ctx,
-            bridge_ctx,
-            attempt_prompt_file,
-            options,
-            raw_output,
-            rendered_output,
-            _capture_session_id,
-        )
-        final_session_id = extracted_session_id or extract_transport_session_id(tuple(raw_output))
-        if ctx.deps.set_session_id_cb is not None:
-            ctx.deps.set_session_id_cb(final_session_id)
-        # Success path: clear any previously recorded failure reason so
-        # the next attempt starts fresh. The single-source-of-truth
-        # resume helper reads this field to decide between "resume" and
-        # "fresh".
-        _set_last_captured_retry_intent(cleared_agent_retry_intent())
-        return _AttemptResult(PipelineEvent.AGENT_SUCCESS, attempt_prompt_file, resume_session_id)
-    except McpServerError as exc:
-        logger.error(
-            "MCP server failed permanently after {} restart(s): {}", exc.restart_count, exc
-        )
-        _set_last_captured_retry_intent(
-            AgentRetryIntent(action="fresh", failure_reason="McpServerError")
-        )
-        return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
-    except ctx.deps.agent_invocation_error as exc:
-        # Run the failure classifier to detect tool-availability
-        # failures (the post-tool-result wedge). The classifier returns
-        # a ClassifiedFailure with reset_tool_registry=True when the
-        # message matches "no such tool available" or the exception is a
-        # runtime ToolDispatchError with "is not registered". The next
-        # attempt (in _invoke_agent_with_recovery's for loop) will call
-        # bridge.reset_tool_registry() when this flag is set.
-        classifier = FailureClassifier()
-        classified = classifier.classify(
-            exc,
-            phase=str(ctx.effect.phase),
-            agent=ctx.effect.agent_name,
-        )
-        recovery_plan = build_agent_recovery_plan(
-            AgentRecoveryInput(
-                exc=exc,
-                attempt_index=attempt_index,
-                max_recovery_attempts=ctx.max_recovery_attempts,
-                effect=ctx.effect,
-                workspace_root=ctx.workspace_scope.root,
-                raw_output=list(raw_output),
-                rendered_output=list(rendered_output),
-                extracted_session_id=(
-                    extracted_session_id or extract_transport_session_id(tuple(raw_output))
-                ),
-                inactivity_error_type=AgentInactivityTimeoutError,
-            )
-        )
-        retry_intent = resolve_retry_intent(
-            exc,
-            phase=str(ctx.effect.phase),
-            agent=ctx.effect.agent_name,
-            session_id=recovery_plan.session_id if recovery_plan is not None else None,
-            inactivity_error_type=AgentInactivityTimeoutError,
-        )
-        _set_last_captured_retry_intent(
-            retry_intent if retry_intent is not None else cleared_agent_retry_intent()
-        )
-        if recovery_plan is None:
-            logger.error("Agent invocation failed: {}", exc)
-            return _AttemptResult(
-                PipelineEvent.AGENT_FAILURE,
-                attempt_prompt_file,
-                resume_session_id,
-                reset_tool_registry=classified.reset_tool_registry,
-            )
-        logger.warning(
-            "Retrying agent '{}' after {} ({}/{})",
-            ctx.effect.agent_name,
-            recovery_plan.reason,
-            attempt_index + 1,
-            ctx.max_recovery_attempts,
-        )
-        return _AttemptResult(
-            None,
-            recovery_plan.prompt_file,
-            recovery_plan.session_id,
-            reset_tool_registry=classified.reset_tool_registry,
-            failure_signature=retry_failure_signature(
-                recovery_plan.reason, list(rendered_output)
-            ),
-        )
-    except Exception:
-        logger.exception("Unexpected error during agent invocation: {}")
-        _set_last_captured_retry_intent(cleared_agent_retry_intent())
-        return _AttemptResult(PipelineEvent.AGENT_FAILURE, attempt_prompt_file, resume_session_id)
-
-
-def _check_bridge_health(ctx: _AgentInvocationCtx, bridge_ctx: _AgentBridgeCtx) -> None:
-    _check_health: _CheckMcpBridgeHealthFn = cast(
-        "_CheckMcpBridgeHealthFn",
-        ctx.deps.check_mcp_bridge_health_fn or check_mcp_bridge_health,
-    )
-    _check_health(bridge_ctx.bridge)
+    pipeline_deps: PipelineDeps,
+) -> None:
+    pipeline_deps.check_mcp_bridge_health_fn(bridge_ctx.bridge)
     if (
         isinstance(bridge_ctx.bridge, RestartAwareMcpBridge)
         and bridge_ctx.bridge.restart_count > 0
         and ctx.display_subscriber is not None
     ):
         ctx.display_subscriber.record_mcp_restart(bridge_ctx.bridge.restart_count)
+
+
+def _bridge_endpoint_uri(bridge: object) -> str:
+    """Return the agent endpoint URI from a bridge, or an empty string if unavailable."""
+    raw_uri: object = getattr(bridge, "agent_endpoint_uri", None)
+    if raw_uri is None:
+        return ""
+    if callable(raw_uri):
+        uri_fn = cast("Callable[[], object]", raw_uri)
+        try:
+            return str(uri_fn())
+        except Exception:
+            return ""
+    return str(raw_uri)
 
 
 def _make_permission_prompt_listener(ctx: _AgentInvocationCtx) -> Callable[[str], None]:
@@ -461,18 +510,20 @@ def _make_permission_prompt_listener(ctx: _AgentInvocationCtx) -> Callable[[str]
 def _build_attempt_invoke_options(
     ctx: _AgentInvocationCtx,
     bridge_ctx: _AgentBridgeCtx,
+    pipeline_deps: PipelineDeps,
     resume_session_id: str | None,
+    run_id: str,
+    required_artifact_override: RequiredArtifact | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> InvokeOptions:
-    required_artifact = (
-        resolve_phase_required_artifact(
+    required_artifact = required_artifact_override
+    if required_artifact is None and ctx.policy_bundle is not None:
+        required_artifact = pipeline_deps.artifact_requirements_resolver(
             ctx.policy_bundle.pipeline,
             ctx.policy_bundle.artifacts,
             phase=ctx.effect.phase,
             drain=ctx.effect.drain or ctx.effect.phase,
         )
-        if ctx.policy_bundle is not None
-        else None
-    )
 
     def _emit_pre_output_progress() -> None:
         if ctx.display is not None:
@@ -481,23 +532,30 @@ def _build_attempt_invoke_options(
                 "Agent process started; waiting for first output",
             )
 
+    if extra_env is not None:
+        env: dict[str, str] = {str(k): str(v) for k, v in extra_env.items()}
+    else:
+        env = {
+            str(MCP_RUN_ID_ENV): run_id,
+            str(AGENT_LABEL_SCOPE_ENV): run_id,
+        }
+    endpoint_uri = _bridge_endpoint_uri(bridge_ctx.bridge)
+    if endpoint_uri:
+        env[str(MCP_ENDPOINT_ENV)] = endpoint_uri
     return build_invoke_options_from_config(
         ctx.config.general,
         InvokeRuntimeOptions(
             verbose=ctx.config.general.verbosity >= _VERBOSE_LOG_LEVEL,
             show_progress=False,
             workspace_path=ctx.workspace_scope.root,
-            extra_env={
-                MCP_ENDPOINT_ENV: bridge_ctx.bridge.agent_endpoint_uri(),
-                MCP_RUN_ID_ENV: bridge_ctx.session.run_id,
-                AGENT_LABEL_SCOPE_ENV: bridge_ctx.session.run_id,
-            },
+            extra_env=env,
             session_id=resume_session_id,
             system_prompt_file=bridge_ctx.system_prompt_file,
             waiting_listener=ctx.waiting_listener,
             pre_output_listener=_emit_pre_output_progress,
             permission_prompt_listener=_make_permission_prompt_listener(ctx),
             required_artifact=required_artifact,
+            pure=ctx.agent_config.transport == AgentTransport.OPENCODE,
         ),
     )
 
@@ -510,21 +568,17 @@ def _consume_attempt_output(
     raw_output: deque[str],
     rendered_output: deque[str],
     capture_session_id: Callable[[str], None],
+    pipeline_deps: PipelineDeps,
 ) -> None:
     on_mcp_restart = (
         ctx.display_subscriber.record_mcp_restart if ctx.display_subscriber is not None else None
     )
-    supervisor_factory: _McpSupervisorFactory = cast(
-        "_McpSupervisorFactory",
-        ctx.deps.mcp_supervisor_factory or McpSupervisor,
-    )
-    get_heartbeat = ctx.deps.heartbeat_policy_from_env_fn or heartbeat_policy_from_env
-    with supervisor_factory(
-        bridge_ctx.bridge,
-        check_interval=get_heartbeat().interval,
-        on_restart=on_mcp_restart,
-    ):
-        output_lines = ctx.deps.invoke_agent(ctx.agent_config, attempt_prompt_file, options=options)
+    get_heartbeat = pipeline_deps.heartbeat_policy_from_env_fn
+
+    def _run_invocation() -> None:
+        output_lines = ctx.deps.invoke_agent(
+            ctx.agent_config, attempt_prompt_file, options=options
+        )
         if verbosity_rank(ctx.verbosity) >= VERBOSITY_RANK[Verbosity.NORMAL]:
             stream_parsed_agent_activity(
                 output_lines,
@@ -544,6 +598,33 @@ def _consume_attempt_output(
             session_id = extract_transport_session_id((text_line,))
             if session_id is not None:
                 capture_session_id(session_id)
+
+    try:
+        with pipeline_deps.mcp_supervisor_factory(
+            bridge_ctx.bridge,
+            check_interval=get_heartbeat().interval,
+            on_restart=on_mcp_restart,
+        ):
+            _run_invocation()
+    except ctx.deps.agent_invocation_error as exc:
+        raise _enrich_invocation_error(exc, raw_output, rendered_output) from exc
+
+
+def _enrich_invocation_error(
+    exc: Exception,
+    raw_output: deque[str],
+    rendered_output: deque[str],
+) -> Exception:
+    """Merge captured output into an invocation error so classifiers see full context."""
+    if not isinstance(exc, AgentInvocationError):
+        return exc
+    extra = [
+        line
+        for line in (*raw_output, *rendered_output)
+        if line and line not in exc.parsed_output
+    ]
+    exc.parsed_output = [*extra, *exc.parsed_output]
+    return exc
 
 
 def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecoveryPlan | None:
@@ -572,11 +653,14 @@ def build_agent_recovery_plan(recovery_input: AgentRecoveryInput) -> AgentRecove
         recovery_input.extracted_session_id,
         recovery_input.inactivity_error_type,
     )
-    reset_tool_registry = should_reset_tool_registry(
+    retry_intent = resolve_retry_intent(
         recovery_input.exc,
         phase=str(recovery_input.effect.phase),
         agent=recovery_input.effect.agent_name,
+        session_id=session_id,
+        inactivity_error_type=recovery_input.inactivity_error_type,
     )
+    reset_tool_registry = retry_intent.reset_tool_registry if retry_intent is not None else False
     recovery_action = recovery_action_for_failure_reason(
         type(recovery_input.exc).__name__,
         has_prior_session=bool(session_id),

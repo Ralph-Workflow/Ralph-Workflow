@@ -2,7 +2,7 @@
 
 These tests operate at two levels:
 - RecoveryController / FailureClassifier level (pure logic tests)
-- runner._execute_agent_effect level (true E2E: stale session is detected and retried
+- effect_executor.execute_agent_effect level (true E2E: stale session is detected and retried
   internally with a fresh session, without any manual stitching of steps)
 """
 
@@ -22,17 +22,21 @@ from ralph.agents.invoke import (
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.pipeline import runner as runner_module
+from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.runner import WorkspaceScope
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
+from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     import pytest
+
+    from ralph.pipeline.factory import MaterializeSystemPromptFn
+
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_phases_retry_on_stale_session_helper__fakeregistryinstance import (
     _FakeRegistryInstance,
 )
@@ -77,6 +81,22 @@ class FakeBridge:
     def agent_endpoint_uri(self) -> str:
         return "http://127.0.0.1:19999/mcp"
 
+    def reset_tool_registry(self) -> None:
+        return
+
+
+def _system_prompt_materializer(tmp_path: Path) -> MaterializeSystemPromptFn:
+    def _materialize(
+        workspace_root: Path,
+        name: str,
+        default_current_prompt: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_current_prompt, worker_namespace
+        return str(tmp_path / "SYS.md")
+
+    return _materialize
+
 
 def _registry_factory(agent_config: AgentConfig) -> type:
     """Return a registry factory class stub that always resolves to agent_config."""
@@ -91,7 +111,7 @@ def _registry_factory(agent_config: AgentConfig) -> type:
 
 
 # ---------------------------------------------------------------------------
-# Runner-level E2E: _execute_agent_effect internally retries stale session
+# Runner-level E2E: execute_agent_effect internally retries stale session
 # ---------------------------------------------------------------------------
 
 
@@ -99,26 +119,18 @@ def test_runner_stale_session_internal_retry_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """_execute_agent_effect internally retries with a fresh session after stale-session failure.
+    """execute_agent_effect internally retries with a fresh session after stale-session failure.
 
-    The real retry path inside _execute_agent_effect detects the stale-session error,
+    The real retry path inside execute_agent_effect detects the stale-session error,
     produces a retry prompt carrying the failure context, and re-invokes with session_id=None.
     No manual stitching is needed — the pipeline loop handles it automatically.
 
     Assertions:
     1. First invocation fails with stale-session error.
-    2. Second invocation (same _execute_agent_effect call) uses session_id=None.
+    2. Second invocation (same execute_agent_effect call) uses session_id=None.
     3. The retry prompt passed to the second invocation contains the stale-session context.
     4. AGENT_SUCCESS is returned.
     """
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
-    )
-
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -153,20 +165,25 @@ def test_runner_stale_session_internal_retry_succeeds(
     )
     config = _make_config()
     state = _make_state(last_session_id=stale_session_id)
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(cmd="claude", output_flag="--json-stream")
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
 
-    result = runner_module.execute_agent_effect(
+    result = effect_executor_module.execute_agent_effect(
         effect,
         config,
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=_registry_factory(
-                AgentConfig(cmd="claude", output_flag="--json-stream")
-            ),
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
         state=state,
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     # (4) AGENT_SUCCESS: the internal retry succeeded
@@ -209,14 +226,6 @@ def test_runner_inactivity_timeout_with_captured_session_retries_same_session(
     tmp_path: Path,
 ) -> None:
     """Claude interactive inactivity retry preserves the observed session ID."""
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
-    )
-
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -247,27 +256,33 @@ def test_runner_inactivity_timeout_with_captured_session_retries_same_session(
             )
         return []
 
-    result = runner_module.execute_agent_effect(
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="claude",
+                output_flag="--json-stream",
+                session_flag="--resume {}",
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=_registry_factory(
-                AgentConfig(
-                    cmd="claude",
-                    output_flag="--json-stream",
-                    session_flag="--resume {}",
-                )
-            ),
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
         state=_make_state(),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -286,14 +301,6 @@ def test_runner_retry_prompt_condenses_visible_output_in_real_retry_flow(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
-    )
-
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -323,27 +330,33 @@ def test_runner_retry_prompt_condenses_visible_output_in_real_retry_flow(
             )
         return []
 
-    result = runner_module.execute_agent_effect(
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="claude",
+                output_flag="--json-stream",
+                session_flag="--resume {}",
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=_registry_factory(
-                AgentConfig(
-                    cmd="claude",
-                    output_flag="--json-stream",
-                    session_flag="--resume {}",
-                )
-            ),
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
         state=_make_state(),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -358,14 +371,6 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
     tmp_path: Path,
 ) -> None:
     """Stale-session errors force a fresh retry even when output has another session ID."""
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
-    )
-
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -390,27 +395,33 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
             )
         return []
 
-    result = runner_module.execute_agent_effect(
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="claude",
+                output_flag="--json-stream",
+                session_flag="--resume {}",
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=_registry_factory(
-                AgentConfig(
-                    cmd="claude",
-                    output_flag="--json-stream",
-                    session_flag="--resume {}",
-                )
-            ),
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
         state=_make_state(last_session_id="stale-original"),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -423,14 +434,6 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
     tmp_path: Path,
 ) -> None:
     """When all retries fail with stale-session errors, AGENT_FAILURE is returned."""
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
-    )
-
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -454,23 +457,29 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
 
     config = _make_config()
     state = _make_state(last_session_id=stale_session_id)
-    result = runner_module.execute_agent_effect(
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(cmd="claude", output_flag="--json-stream")
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         config,
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=_registry_factory(
-                AgentConfig(cmd="claude", output_flag="--json-stream")
-            ),
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
         state=state,
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
@@ -485,7 +494,7 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """OpenCode stale-session: _execute_agent_effect retries with fresh session after failure.
+    """OpenCode stale-session: execute_agent_effect retries with fresh session after failure.
 
     OpenCode-specific variant using 'Session not found' stale-session message and
     OpenCode transport. Proves the runner stale-session detection and session-reset
@@ -493,17 +502,9 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
 
     Assertions:
     1. First invocation fails with OpenCode stale-session error ('Session not found').
-    2. Second invocation (same _execute_agent_effect call) uses session_id=None.
+    2. Second invocation (same execute_agent_effect call) uses session_id=None.
     3. AGENT_SUCCESS is returned.
     """
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
-    )
-
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -538,25 +539,30 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
     )
     config = _make_config()
     state = _make_state(last_session_id=opencode_stale_session_id)
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
 
-    result = runner_module.execute_agent_effect(
+    result = effect_executor_module.execute_agent_effect(
         effect,
         config,
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=_registry_factory(
-                AgentConfig(
-                    cmd="opencode",
-                    output_flag="--format json",
-                    session_flag="--session {}",
-                    transport=AgentTransport.OPENCODE,
-                )
-            ),
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
         state=state,
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     # (3) AGENT_SUCCESS: the internal retry with fresh session succeeded
@@ -578,14 +584,6 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
     tmp_path: Path,
 ) -> None:
     """OpenCode 'Unknown session' message also triggers stale-session retry with fresh session."""
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
-    )
-
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -607,28 +605,34 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
             raise AgentInvocationError("opencode", 1, "Unknown session: deadbeef")
         return []
 
-    result = runner_module.execute_agent_effect(
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="opencode",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=_registry_factory(
-                AgentConfig(
-                    cmd="opencode",
-                    output_flag="--format json",
-                    session_flag="--session {}",
-                    transport=AgentTransport.OPENCODE,
-                )
-            ),
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
         state=_make_state(last_session_id="deadbeef"),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS
@@ -644,14 +648,6 @@ def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry
     tmp_path: Path,
 ) -> None:
     """Lowercase stale-session details in parsed_output still force a fresh retry session."""
-    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
-    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
-    monkeypatch.setattr(
-        runner_module,
-        "materialize_system_prompt",
-        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
-    )
-
     (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
 
@@ -677,28 +673,34 @@ def test_runner_opencode_lowercase_stale_message_in_parsed_output_triggers_retry
             )
         return []
 
-    result = runner_module.execute_agent_effect(
+    ctx = make_display_context()
+    pipeline_deps = make_test_pipeline_deps(
+        ctx,
+        bridge=FakeBridge(),
+        registry_factory=_registry_factory(
+            AgentConfig(
+                cmd="opencode",
+                output_flag="--format json",
+                session_flag="--session {}",
+                transport=AgentTransport.OPENCODE,
+            )
+        ).from_config,
+        system_prompt_materializer=_system_prompt_materializer(tmp_path),
+    )
+
+    result = effect_executor_module.execute_agent_effect(
         InvokeAgentEffect(
             agent_name="opencode",
             phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
-        runner_module.AgentExecutionDeps(
-            invoke_agent=fake_invoke_agent,
-            agent_invocation_error=AgentInvocationError,
-            agent_registry=_registry_factory(
-                AgentConfig(
-                    cmd="opencode",
-                    output_flag="--format json",
-                    session_flag="--session {}",
-                    transport=AgentTransport.OPENCODE,
-                )
-            ),
-        ),
+        pipeline_deps,
         WorkspaceScope(tmp_path),
-        display_context=make_display_context(),
+        display_context=ctx,
         state=_make_state(last_session_id="lower-case-deadbeef"),
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=AgentInvocationError,
     )
 
     assert result == PipelineEvent.AGENT_SUCCESS

@@ -14,9 +14,12 @@ from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
+
+    from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
 
 
 def _no_agent_registry_class() -> object:
@@ -135,13 +138,20 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
         artifacts = object()
         agents = object()
 
-    def _fake_materialize_prompt_for_phase(**kwargs: object) -> str:
+    def _fake_materialize_prompt_for_phase(
+        context: PromptPhaseContext | None = None,
+        options: PromptPhaseOptions | None = None,
+        **kwargs: object,
+    ) -> str:
+        del context, options
         captured["materialize_kwargs"] = kwargs
         return shared_prompt
 
     def _fake_execute_agent_effect(
         effect: InvokeAgentEffect,
-        *args: object,
+        _config: object,
+        _pipeline_deps: object,
+        _workspace_scope: object,
         **kwargs: object,
     ) -> PipelineEvent:
         captured["effect"] = effect
@@ -184,8 +194,11 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
     )
     monkeypatch.setattr(
         module,
-        "materialize_prompt_for_phase",
-        _fake_materialize_prompt_for_phase,
+        "build_default_pipeline_deps",
+        lambda _config, display_context: make_test_pipeline_deps(
+            display_context,
+            phase_prompt_materializer=_fake_materialize_prompt_for_phase,
+        ),
         raising=False,
     )
     monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)
@@ -290,8 +303,13 @@ def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_ag
     )
     monkeypatch.setattr(
         module,
-        "materialize_prompt_for_phase",
-        lambda **kwargs: ".agent/workers/unit-a/tmp/development_prompt.md",
+        "build_default_pipeline_deps",
+        lambda _config, display_context: make_test_pipeline_deps(
+            display_context,
+            phase_prompt_materializer=lambda context=None, options=None, **kwargs: (
+                ".agent/workers/unit-a/tmp/development_prompt.md"
+            ),
+        ),
         raising=False,
     )
     monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)
@@ -305,7 +323,9 @@ def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_ag
 
     def _fake_execute_agent_effect(
         effect: InvokeAgentEffect,
-        *args: object,
+        _config: object,
+        _pipeline_deps: object,
+        _workspace_scope: object,
         **kwargs: object,
     ) -> PipelineEvent:
         captured["effect"] = effect
@@ -373,7 +393,12 @@ def test_run_parallel_worker_from_manifest_preserves_transport_tool_prefix(
 
             return _Registry()
 
-    def _fake_materialize_prompt_for_phase(**kwargs: object) -> str:
+    def _fake_materialize_prompt_for_phase(
+        context: PromptPhaseContext | None = None,
+        options: PromptPhaseOptions | None = None,
+        **kwargs: object,
+    ) -> str:
+        del context, options
         captured.update(kwargs)
         return ".agent/tmp/development_prompt.md"
 
@@ -401,12 +426,21 @@ def test_run_parallel_worker_from_manifest_preserves_transport_tool_prefix(
         ),
         raising=False,
     )
-    monkeypatch.setattr(module, "materialize_prompt_for_phase", _fake_materialize_prompt_for_phase)
+    monkeypatch.setattr(
+        module,
+        "build_default_pipeline_deps",
+        lambda _config, display_context: make_test_pipeline_deps(
+            display_context,
+            phase_prompt_materializer=_fake_materialize_prompt_for_phase,
+        ),
+    )
     monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)
     monkeypatch.setattr(
         module,
         "execute_agent_effect",
-        lambda *args, **kwargs: PipelineEvent.AGENT_SUCCESS,
+        lambda _effect, _config, _pipeline_deps, _workspace_scope, **_kwargs: (
+            PipelineEvent.AGENT_SUCCESS
+        ),
         raising=False,
     )
     monkeypatch.setattr(
@@ -489,15 +523,22 @@ def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_with
     )
     monkeypatch.setattr(
         module,
-        "materialize_prompt_for_phase",
-        lambda **kwargs: ".agent/tmp/development_prompt.md",
+        "build_default_pipeline_deps",
+        lambda _config, display_context: make_test_pipeline_deps(
+            display_context,
+            phase_prompt_materializer=lambda context=None, options=None, **kwargs: (
+                ".agent/tmp/development_prompt.md"
+            ),
+        ),
         raising=False,
     )
     monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)
     monkeypatch.setattr(
         module,
         "execute_agent_effect",
-        lambda *args, **kwargs: PipelineEvent.AGENT_SUCCESS,
+        lambda _effect, _config, _pipeline_deps, _workspace_scope, **_kwargs: (
+            PipelineEvent.AGENT_SUCCESS
+        ),
         raising=False,
     )
     monkeypatch.setattr(
