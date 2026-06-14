@@ -343,7 +343,7 @@ def run_smoke_plumbing(
     agent_name: str,
     prompt_file: Path,
     output_file: Path,
-    display_context: DisplayContext,
+    display_context: DisplayContext | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> SmokeRunResult:
     """Run the interactive-Claude smoke test and return the observed result.
@@ -353,7 +353,11 @@ def run_smoke_plumbing(
     same session planning path as the main pipeline.
     """
     if pipeline_deps is None:
+        if display_context is None:
+            raise ValueError("display_context is required when pipeline_deps is not provided")
         pipeline_deps = build_default_pipeline_deps(config, display_context)
+    elif display_context is None:
+        display_context = pipeline_deps.display_context
 
     registry = AgentRegistry.from_config(config)
     agent_config = registry.get(agent_name)

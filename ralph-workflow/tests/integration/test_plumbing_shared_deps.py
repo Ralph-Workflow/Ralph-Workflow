@@ -429,6 +429,192 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
     assert result.artifact_submitted is True
 
 
+def test_commit_plumbing_resolves_display_context_from_pipeline_deps(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """When no separate ``display_context`` is supplied, commit plumbing falls
+    back to the one inside the injected ``PipelineDeps`` bundle, and it does
+    not discard an injected ``artifact_requirements_resolver``.
+    """
+    workspace_root = Path("/workspace")
+    deps_display_context = _fake_display_context()
+    custom_resolver = MagicMock(return_value=None)
+    bridge = MagicMock()
+    bridge_factory_mock = MagicMock(return_value=bridge)
+    shared_deps = PipelineDeps(
+        display_context=deps_display_context,
+        bridge_factory=bridge_factory_mock,
+        artifact_requirements_resolver=custom_resolver,
+    )
+    captured_execute_calls: list[dict[str, object]] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: UnifiedConfig,
+        pipeline_deps: PipelineDeps,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        del effect, config, workspace_scope
+        captured_execute_calls.append(
+            {"pipeline_deps": pipeline_deps, "display_context": kwargs.get("display_context")}
+        )
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "execute_agent_effect",
+        fake_execute_agent_effect,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message",
+        _fake_commit_prompt,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message_for_opencode",
+        _fake_commit_prompt_for_opencode,
+    )
+
+    with (
+        patch.object(commit_module, "delete_commit_message_artifacts") as mock_delete,
+        patch.object(
+            commit_module,
+            "read_commit_message_artifact",
+            return_value="feat: deps display",
+        ),
+        patch.object(
+            commit_module,
+            "write_commit_prompt_file",
+            return_value="PROMPT.md",
+        ),
+    ):
+        result = commit_plumbing_module.run_commit_plumbing(
+            diff="diff --git a/x b/x",
+            repo_root=workspace_root,
+            chain_config=_make_commit_chain_config(),
+            pipeline_deps=shared_deps,
+        )
+
+    assert result.message == "feat: deps display"
+    assert len(captured_execute_calls) == 1
+    executed_deps = captured_execute_calls[0]["pipeline_deps"]
+    assert isinstance(executed_deps, PipelineDeps)
+    assert executed_deps.display_context is deps_display_context
+    assert executed_deps.artifact_requirements_resolver is custom_resolver
+    assert captured_execute_calls[0]["display_context"] is deps_display_context
+    mock_delete.assert_called_once_with(workspace_root)
+
+
+def test_smoke_plumbing_resolves_display_context_from_pipeline_deps(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """When no separate ``display_context`` is supplied, smoke plumbing falls
+    back to the one inside the injected ``PipelineDeps`` bundle.
+    """
+    workspace = MemoryWorkspace()
+    workspace.write("PROMPT.md", "smoke prompt")
+    workspace_root = Path("/workspace")
+    deps_display_context = _fake_display_context()
+    bridge = MagicMock()
+    bridge_calls: list[dict[str, object]] = []
+
+    def fake_bridge_factory(
+        *,
+        workspace_root: Path,
+        drain: str,
+        agents_policy: AgentsPolicy | None,
+        session_id_prefix: str | None = None,
+        **kwargs: object,
+    ) -> MagicMock:
+        bridge_calls.append(
+            {
+                "workspace_root": workspace_root,
+                "drain": drain,
+                "agents_policy": agents_policy,
+                "session_id_prefix": session_id_prefix,
+            }
+        )
+        del kwargs
+        return bridge
+
+    shared_deps = PipelineDeps(
+        display_context=deps_display_context,
+        bridge_factory=fake_bridge_factory,
+    )
+    captured_execute_calls: list[dict[str, object]] = []
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: UnifiedConfig,
+        pipeline_deps: PipelineDeps,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        del effect, config, workspace_scope
+        captured_execute_calls.append(
+            {"pipeline_deps": pipeline_deps, "display_context": kwargs.get("display_context")}
+        )
+        return PipelineEvent.AGENT_SUCCESS
+
+    def fake_read_smoke_result(_root: Path) -> dict[str, str]:
+        return {"status": "passed", "summary": "ok"}
+
+    def fake_resolve_workspace_scope(_start: Path | None) -> WorkspaceScope:
+        return WorkspaceScope(workspace_root)
+
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_smoke_registry(),
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "execute_agent_effect",
+        fake_execute_agent_effect,
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "read_smoke_test_result_artifact",
+        fake_read_smoke_result,
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "resolve_workspace_scope",
+        fake_resolve_workspace_scope,
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "_clear_smoke_artifact",
+        lambda _root: None,
+    )
+
+    output_file = _FakeOutputPath(
+        "/workspace/tmp/interactive-claude-smoke/todo-list.js"
+    )
+
+    result = smoke_plumbing_module.run_smoke_plumbing(
+        config=UnifiedConfig(),
+        workspace_root=workspace_root,
+        agent_name="claude/haiku",
+        prompt_file=Path(workspace.absolute_path("PROMPT.md")),
+        output_file=output_file,
+        pipeline_deps=shared_deps,
+    )
+
+    assert len(bridge_calls) == 1
+    assert bridge_calls[0]["drain"] == "development"
+    assert bridge_calls[0]["session_id_prefix"] == "smoke"
+    assert cast("MagicMock", bridge.shutdown).call_count == 1
+    assert len(captured_execute_calls) == 1
+    executed_deps = captured_execute_calls[0]["pipeline_deps"]
+    assert isinstance(executed_deps, PipelineDeps)
+    assert executed_deps.display_context is deps_display_context
+    assert captured_execute_calls[0]["display_context"] is deps_display_context
+    assert result.artifact_submitted is True
+
+
 def _make_fake_smoke_registry() -> object:
     interactive = AgentConfig(
         cmd="claude",

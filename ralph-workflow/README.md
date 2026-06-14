@@ -317,12 +317,22 @@ execution core through a single injectable dependency bundle,
 `PipelineDeps` (`ralph.pipeline.factory`). The bundle carries the four
 primary collaborators:
 
-- **display** — `display_context` drives all output surfaces.
-- **model** — `model_identity` is forwarded through the session bridge to `AgentSession`.
-- **prompt** — `system_prompt_materializer` and `phase_prompt_materializer`
-  materialize system and phase prompts respectively.
+- **display** — `display_context` drives all output surfaces. Plumbing
+  commands resolve it from the injected `PipelineDeps` when it is not
+  supplied as a separate argument, matching the main run loop's
+  `PipelineDeps`-first contract.
+- **model** — `model_identity` is forwarded through the session bridge to
+  `AgentSession`.
+- **prompt** — `system_prompt_materializer` is consumed inside
+  `execute_agent_effect` and is shared by both the main pipeline and
+  plumbing. `phase_prompt_materializer` is used by the main pipeline for
+  phase handoff prompts; plumbing commands build single-task prompts
+  directly and do not route them through the phase materializer.
 - **artifact requirements** — `artifact_requirements_resolver` resolves the
-  required artifact contract for each phase/drain.
+  required artifact contract for each phase/drain. The commit plumbing
+  path preserves an injected resolver and only falls back to its
+  commit-specific resolver when the bundle still contains the default
+  production implementation.
 
 The main pipeline (`ralph.pipeline.runner`) and plumbing commands
 (`--generate-commit`, smoke test) both build a `PipelineDeps` via
@@ -345,7 +355,9 @@ shared execution core. Existing tests exercise this contract:
   override each collaborator.
 - `tests/integration/test_plumbing_shared_deps.py` proves plumbing
   commands receive and forward the same `PipelineDeps` bundle to the
-  shared execution core.
+  shared execution core, that `display_context` is resolved from the
+  bundle when omitted, and that an injected
+  `artifact_requirements_resolver` is preserved by the commit path.
 - `tests/test_run_loop_pro_integration.py` proves `PipelineDeps`
   composed with `ProPipelineHooks` reaches the inner pipeline loop.
 
