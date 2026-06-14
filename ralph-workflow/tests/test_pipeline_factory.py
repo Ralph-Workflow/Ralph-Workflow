@@ -151,6 +151,42 @@ class TestBuildDefaultPipelineDeps:
 
         assert deps.display_context is display_ctx
 
+    def test_accepts_model_identity(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            model_identity=model_identity,
+        )
+
+        assert deps.model_identity is model_identity
+
+    def test_accepts_policy_bundle(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        bundle = _make_fake_bundle()
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            policy_bundle=bundle,
+        )
+
+        assert deps.policy_bundle is bundle
+
+    def test_pro_hooks_override_wins_over_policy_bundle_kwarg(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        bundle_from_kwarg = _make_fake_bundle()
+        bundle_from_hooks = _make_fake_bundle()
+        hooks = ProPipelineHooks(policy_bundle_override=bundle_from_hooks)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            policy_bundle=bundle_from_kwarg,
+            pro_hooks=hooks,
+        )
+
+        assert deps.policy_bundle is bundle_from_hooks
+
 
 class TestPipelineDepsCollaborators:
     """Tests for per-field injection on PipelineDeps."""

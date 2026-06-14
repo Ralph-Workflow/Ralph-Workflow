@@ -268,17 +268,25 @@ def build_default_pipeline_deps(
     config: UnifiedConfig,
     display_context: DisplayContext,
     *,
+    model_identity: MultimodalModelIdentity | None = None,
+    policy_bundle: PolicyBundle | None = None,
     pro_hooks: ProPipelineHooks | None = None,
 ) -> PipelineDeps:
     """Build a ``PipelineDeps`` wired to production defaults.
 
-    ``model_identity`` defaults to ``None`` so plumbing callers reproduce the
-    pre-refactor ``UNKNOWN_IDENTITY`` behavior unless they explicitly inject a
-    resolved identity.
+    ``model_identity`` defaults to ``None`` so callers that do not have a
+    resolved identity reproduce the pre-refactor ``UNKNOWN_IDENTITY`` behavior;
+    callers that already know the effective identity (e.g. plumbing commands
+    with a single selected agent) can inject it here.
+
+    ``policy_bundle`` lets the main pipeline load the policy once and inject
+    it into the shared bundle instead of passing it as a separate runner
+    argument.
     """
     deps = PipelineDeps(
         display_context=display_context,
-        model_identity=None,
+        model_identity=model_identity,
+        policy_bundle=policy_bundle,
     )
     if pro_hooks is None:
         return deps

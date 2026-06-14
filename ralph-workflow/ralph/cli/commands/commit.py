@@ -56,6 +56,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.pro_support.hooks import ProPipelineHooks
 
 # Re-exports for the test-patch surface.
 __all__ = [
@@ -103,6 +105,8 @@ def commit_plumbing(
     *,
     options: CommitPlumbingOptions | None = None,
     display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
 ) -> None:
     """Handle commit plumbing operations.
 
@@ -140,6 +144,8 @@ def commit_plumbing(
             config=config,
             options=opts,
             display_context=ctx,
+            pro_hooks=pro_hooks,
+            model_identity=model_identity,
         )
         return
 
@@ -154,6 +160,8 @@ def _handle_agent_commit_generation(
     config: UnifiedConfig,
     options: CommitPlumbingOptions,
     display_context: DisplayContext,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
 ) -> None:
     display = resolve_active_display(None, display_context)
     generate = options.generate_commit_msg or options.generate_commit
@@ -190,6 +198,8 @@ def _handle_agent_commit_generation(
             general_config=config,
         ),
         display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
     )
 
     if result.skipped:
@@ -380,6 +390,8 @@ def _generate_commit_message_with_chain(
     repo_root: Path,
     chain_config: CommitChainConfig,
     display_context: DisplayContext,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
 ) -> CommitAgentResult:
     """Thin legacy alias that delegates to :func:`run_commit_plumbing`.
 
@@ -391,6 +403,8 @@ def _generate_commit_message_with_chain(
     pipeline_deps = build_default_pipeline_deps(
         cast("UnifiedConfig", chain_config.general_config),
         display_context,
+        model_identity=model_identity,
+        pro_hooks=pro_hooks,
     )
     return run_commit_plumbing(
         diff=diff,

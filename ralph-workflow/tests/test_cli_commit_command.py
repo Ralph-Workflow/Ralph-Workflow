@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import io
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 import pytest
@@ -15,7 +15,9 @@ if TYPE_CHECKING:
 
 from ralph.agents.invoke import AgentInvocationError, build_invoke_options_from_config
 from ralph.agents.parsers import AgentOutputLine
+from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands import commit as commit_module
+from ralph.cli.commands._commit_chain_config import CommitChainConfig
 from ralph.cli.commands.commit import (
     CommitAgentResult,
     CommitAttemptContext,
@@ -27,7 +29,11 @@ from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.git.operations import GitOperationError
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name
+from ralph.policy.models import AgentsPolicy
+from ralph.pro_support.hooks import ProPipelineHooks
+from ralph.pro_support.state_query import SnapshotRegistry
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 _OUTPUT_BATCH = 400
@@ -537,3 +543,60 @@ def test_handle_agent_commit_generation_surfaces_recovered_retry_evidence(
     rendered = output.getvalue()
     assert "Recovered after retryable MCP/agent failures" in rendered
     assert "Model returned an empty response with no tool calls" in rendered
+
+
+def test_generate_commit_message_with_chain_forwards_pro_hooks_and_model_identity(
+    tmp_path: Path,
+) -> None:
+    """The commit command forwards injected Pro hooks and model identity into the
+    shared pipeline dependency factory so plumbing uses the same initialization
+    path as the main pipeline.
+    """
+    display_context = make_display_context()
+    model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+    pro_hooks = ProPipelineHooks(snapshot_registry=SnapshotRegistry())
+    captured: dict[str, object] = {}
+
+    def fake_build_default_pipeline_deps(
+        config: UnifiedConfig,
+        ctx: object,
+        **kwargs: object,
+    ) -> object:
+        captured["config"] = config
+        captured["display_context"] = ctx
+        captured["kwargs"] = kwargs
+        return make_test_pipeline_deps(display_context)
+
+    def fake_run_commit_plumbing(**kwargs: object) -> CommitAgentResult:
+        del kwargs
+        return CommitAgentResult(message="feat: shared init")
+
+    chain_config = CommitChainConfig(
+        registry=AgentRegistry(),
+        agents=["claude"],
+        verbose=False,
+        agents_policy=AgentsPolicy(),
+        general_config=UnifiedConfig(),
+    )
+
+    with (
+        patch.object(
+            commit_module,
+            "build_default_pipeline_deps",
+            fake_build_default_pipeline_deps,
+        ),
+        patch.object(commit_module, "run_commit_plumbing", fake_run_commit_plumbing),
+    ):
+        result = commit_module._generate_commit_message_with_chain(
+            diff="diff --git a/x b/x",
+            repo_root=tmp_path,
+            chain_config=chain_config,
+            display_context=display_context,
+            pro_hooks=pro_hooks,
+            model_identity=model_identity,
+        )
+
+    assert result.message == "feat: shared init"
+    kwargs = cast("dict[str, object]", captured["kwargs"])
+    assert kwargs["pro_hooks"] is pro_hooks
+    assert kwargs["model_identity"] is model_identity

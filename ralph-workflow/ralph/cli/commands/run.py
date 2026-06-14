@@ -61,8 +61,10 @@ if TYPE_CHECKING:
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PolicyBundle
+    from ralph.pro_support.hooks import ProPipelineHooks
 
 if TYPE_CHECKING:
 
@@ -157,6 +159,8 @@ class RunPipelineRequest(NamedTuple):
     counter_overrides: dict[str, int] | None = None
     inline_prompt: str | None = None
     parallel_worker_manifest: Path | None = None
+    pro_hooks: ProPipelineHooks | None = None
+    model_identity: MultimodalModelIdentity | None = None
 
 
 def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
@@ -394,6 +398,40 @@ def print_dry_run(
     )
 
 
+def _build_runner_kwargs(
+    request: _ExecutePipelineRequest,
+    *,
+    display_context: DisplayContext,
+    run_func: _RunnerFunc,
+) -> dict[str, object]:
+    """Build the kwargs dict to pass to the pipeline runner."""
+    kwargs: dict[str, object] = {}
+    runner_params = signature(run_func).parameters
+    if request.verbosity is not None and "verbosity" in runner_params:
+        kwargs["verbosity"] = request.verbosity
+    if request.policy_bundle is not None and "policy_bundle" in runner_params:
+        kwargs["policy_bundle"] = request.policy_bundle
+    if "display_context" in runner_params:
+        kwargs["display_context"] = display_context
+    if request.counter_overrides and "counter_overrides" in runner_params:
+        kwargs["counter_overrides"] = request.counter_overrides
+    if request.config_path is not None and "config_path" in runner_params:
+        kwargs["config_path"] = request.config_path
+    if request.cli_overrides is not None and "cli_overrides" in runner_params:
+        kwargs["cli_overrides"] = request.cli_overrides
+    if "pipeline_deps" in runner_params:
+        kwargs["pipeline_deps"] = build_default_pipeline_deps(
+            request.config,
+            display_context,
+            model_identity=request.model_identity,
+            policy_bundle=request.policy_bundle,
+            pro_hooks=request.pro_hooks,
+        )
+    if "pro_hooks" in runner_params:
+        kwargs["pro_hooks"] = request.pro_hooks
+    return kwargs
+
+
 def _execute_pipeline(
     request: _ExecutePipelineRequest,
     *,
@@ -412,24 +450,9 @@ def _execute_pipeline(
         return _EXIT_CONFIG_ERROR
 
     try:
-        kwargs: dict[str, object] = {}
-        runner_params = signature(run_func).parameters
-        if request.verbosity is not None and "verbosity" in runner_params:
-            kwargs["verbosity"] = request.verbosity
-        if request.policy_bundle is not None and "policy_bundle" in runner_params:
-            kwargs["policy_bundle"] = request.policy_bundle
-        if "display_context" in runner_params:
-            kwargs["display_context"] = display_context
-        if request.counter_overrides and "counter_overrides" in runner_params:
-            kwargs["counter_overrides"] = request.counter_overrides
-        if request.config_path is not None and "config_path" in runner_params:
-            kwargs["config_path"] = request.config_path
-        if request.cli_overrides is not None and "cli_overrides" in runner_params:
-            kwargs["cli_overrides"] = request.cli_overrides
-        if "pipeline_deps" in runner_params:
-            kwargs["pipeline_deps"] = build_default_pipeline_deps(
-                request.config, display_context
-            )
+        kwargs = _build_runner_kwargs(
+            request, display_context=display_context, run_func=run_func
+        )
         return run_func(request.config, request.initial_state, **kwargs)
     except KeyboardInterrupt:
         display.emit_warning("\nInterrupted by user")
@@ -594,6 +617,8 @@ def run_pipeline(
     request: RunPipelineRequest | None = None,
     *,
     display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
     **kwargs: Unpack[_LegacyRunPipelineKwargs],
 ) -> int:
     """Run the Ralph Workflow pipeline (backward compatibility wrapper).
@@ -625,8 +650,13 @@ def run_pipeline(
                 if isinstance(manifest_from_kwargs, str)
                 else manifest_from_kwargs
             ),
+            pro_hooks=pro_hooks,
+            model_identity=model_identity,
         )
-    effective_request = request
+    effective_request = request._replace(
+        pro_hooks=pro_hooks if pro_hooks is not None else request.pro_hooks,
+        model_identity=model_identity if model_identity is not None else request.model_identity,
+    )
     effective_counter_overrides = effective_request.counter_overrides or {}
     effective_parallel_worker_manifest = effective_request.parallel_worker_manifest
     if effective_parallel_worker_manifest is None:
@@ -706,6 +736,8 @@ def run_pipeline(
                 config_path=effective_request.config_path,
                 cli_overrides=effective_request.cli_overrides,
                 parallel_worker_manifest=effective_request.parallel_worker_manifest,
+                pro_hooks=effective_request.pro_hooks,
+                model_identity=effective_request.model_identity,
             ),
             display_context=ctx,
         )
