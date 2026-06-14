@@ -90,7 +90,7 @@ Why this is a good first fit:
 - Ralph Workflow orchestrates it with the same MCP-controlled workflow used for other supported agents
 - good when you want Google ecosystem integration
 
-Verify the install end-to-end with `python -m ralph smoke-interactive-agy`.
+Verify the install end-to-end with `python -m ralph smoke-interactive-agy`. The run uses `gemini-3.5-flash-low` by default and honors AGY's 5m `--print-timeout`; allow up to 6 minutes for the live run.
 
 ## Best first-run rule
 

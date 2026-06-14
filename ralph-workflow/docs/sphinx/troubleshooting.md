@@ -80,7 +80,7 @@ The parity table reports five acceptance signals:
 | Tool activity | Tool-use/tool-result signals were observed |
 | Artifact | The `smoke_test_result` artifact was submitted |
 
-A red column points at the specific layer to investigate (MCP binding, AGY auth, PTY output parsing, or the prompt response). Use `--agent agy/<model>` to pin a different model alias.
+A red column in File, Parser events, Tool activity, or Artifact still indicates a Ralph Workflow regression. The Session column may show `missing` on AGY headless `--print` runs when the captured `tmp/agy-live-transcript.txt` confirms the AGY binary emits no session ID in stdout; this is a measured AGY wire-format limitation, not a Ralph Workflow bug. The rationale for removing the non-functional `session_flag` from the builtin AGY config is recorded in `ralph-workflow/CHANGELOG.md` line 45. Use `--agent agy/<model>` to pin a different model alias.
 
 ## MCP servers fail to start
 

@@ -6,8 +6,9 @@ no real network, no time.sleep, no real file I/O.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -21,6 +22,9 @@ from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 
 if TYPE_CHECKING:
+    from collections import deque
+    from collections.abc import Callable
+
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pipeline.session_bridge import (
         BuildSessionMcpPlanFn,
@@ -331,3 +335,284 @@ def _fake_invoke_agent(
 
 def _fake_config() -> UnifiedConfig:
     return UnifiedConfig()
+
+
+def _fake_execute_agent_effect_for_config(
+    agent_name: str = "agy/gemini-3.5-flash-low",
+) -> Callable[..., PipelineEvent]:
+    def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        rendered_sink = kwargs.get("rendered_output_sink")
+        output_relpath = (
+            "tmp/interactive-agy-smoke/todo-list.js"
+            if agent_name.startswith("agy/")
+            else "tmp/interactive-claude-smoke/todo-list.js"
+        )
+        workspace_root = kwargs.get("workspace_root")
+        if workspace_root is None:
+            # Fallback: the SmokeRunParams are passed positionally after the effect.
+            params = _args[2] if len(_args) >= 3 else None
+            if isinstance(params, SmokeRunParams):
+                workspace_root = params.workspace_root
+        if isinstance(workspace_root, Path):
+            output_path = workspace_root / output_relpath
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("export const todos = [];\n", encoding="utf-8")
+            artifact_dir = workspace_root / ".agent" / "artifacts"
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / "smoke_test_result.json").write_text(
+                json.dumps(
+                    {
+                        "name": "smoke_test_result",
+                        "artifact_type": "smoke_test_result",
+                        "content": {
+                            "status": "passed",
+                            "summary": "ok",
+                            "output_file": output_relpath,
+                            "observed_working": ["tmp artifact created"],
+                            "observed_breaks": [],
+                            "headless_guide_checks": ["tool activity"],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+        if raw_sink is not None:
+            cast("deque[str]", raw_sink).append(
+                "Task declared complete: session_id=dummy, summary=done\n"
+                if not agent_name.startswith("agy/")
+                else "agy planning line\n"
+            )
+        if rendered_sink is not None:
+            cast("deque[str]", rendered_sink).append(
+                "Task declared complete\n"
+                if not agent_name.startswith("agy/")
+                else "agy planning line\n"
+            )
+        return PipelineEvent.AGENT_SUCCESS
+
+    return fake_execute_agent_effect
+
+
+def test_detect_break_indicators_uses_anchored_crash_patterns() -> None:
+    """Incidental words like 'crash' in prose must not flag the detector."""
+    assert smoke_plumbing_module._detect_break_indicators(["this should not crash"]) == []
+    assert (
+        "crash-like transcript output observed"
+        in smoke_plumbing_module._detect_break_indicators(
+            ["Traceback (most recent call last):"]
+        )
+    )
+    assert (
+        "crash-like transcript output observed"
+        in smoke_plumbing_module._detect_break_indicators(["fatal: not a git repository"])
+    )
+    assert (
+        "crash-like transcript output observed"
+        in smoke_plumbing_module._detect_break_indicators(
+            ["thread main panicked at src/main.rs:42"]
+        )
+    )
+    assert (
+        "crash-like transcript output observed"
+        in smoke_plumbing_module._detect_break_indicators(
+            ["segmentation fault (core dumped)"]
+        )
+    )
+
+
+def test_agent_session_ceilings_agy_gets_360s_claude_gets_120s(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """AGY uses a 360s session ceiling; Claude keeps the legacy 120s ceiling."""
+    captured_params: list[SmokeRunParams] = []
+
+    def fake_run_smoke_agent(
+        params: SmokeRunParams,
+        run_id: str = "ignored",
+    ) -> smoke_plumbing_module.SmokeRunResult:
+        del run_id
+        captured_params.append(params)
+        return smoke_plumbing_module.SmokeRunResult(
+            agent_name=params.agent_name,
+            transport=params.config.transport.value,
+            output_file=params.output_file,
+            file_created=True,
+            session_id=None,
+            explicit_completion_seen=False,
+            raw_line_count=0,
+            parsed_event_count=0,
+            tool_activity_seen=False,
+            artifact_submitted=False,
+            meaningful_output_lines=[],
+            errors=[],
+        )
+
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "_run_smoke_agent",
+        fake_run_smoke_agent,
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="agy/gemini-3.5-flash-low"),
+    )
+
+    smoke_plumbing_module.run_smoke_plumbing(
+        config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        agent_name="agy/gemini-3.5-flash-low",
+        prompt_file=tmp_path / "PROMPT.md",
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+    )
+
+    assert len(captured_params) == 1
+    assert captured_params[0].unified_config.general.agent_max_session_seconds == 360.0
+
+    captured_params.clear()
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="claude/haiku"),
+    )
+
+    smoke_plumbing_module.run_smoke_plumbing(
+        config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        agent_name="claude/haiku",
+        prompt_file=tmp_path / "PROMPT.md",
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+    )
+
+    assert len(captured_params) == 1
+    assert captured_params[0].unified_config.general.agent_max_session_seconds == 120.0
+
+
+def _make_artifact(tmp_path: Path, *, observed_breaks: list[str]) -> None:
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "name": "smoke_test_result",
+                "artifact_type": "smoke_test_result",
+                "content": {
+                    "status": "passed",
+                    "summary": "ok",
+                    "output_file": "tmp/interactive-agy-smoke/todo-list.js",
+                    "observed_working": ["tmp artifact created"],
+                    "observed_breaks": observed_breaks,
+                    "headless_guide_checks": ["tool activity"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_detect_smoke_errors_agy_artifact_completion_skips_missing_signals(
+    tmp_path: Path,
+) -> None:
+    """AGY with a complete artifact but no stdout markers is not flagged for
+    declare_complete or session ID, but still reports missing tool activity."""
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(tmp_path, observed_breaks=[])
+
+    config = AgentConfig(
+        cmd="agy",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.AGY,
+    )
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.5-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
+    assert "declare_complete marker was not observed" not in errors
+    assert "session ID was not observed" not in errors
+    assert "no tool activity was observed" in errors
+
+
+def test_detect_smoke_errors_agy_artifact_with_breaks_still_reports_completion(
+    tmp_path: Path,
+) -> None:
+    """AGY artifact with non-empty observed_breaks does not count as completion."""
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(tmp_path, observed_breaks=["something went wrong"])
+
+    config = AgentConfig(
+        cmd="agy",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.AGY,
+    )
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.5-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
+    assert "declare_complete marker was not observed" in errors
+    assert "session ID was not observed" not in errors
+
+
+def test_detect_smoke_errors_non_agy_transport_keeps_missing_signal_checks(
+    tmp_path: Path,
+) -> None:
+    """The declare_complete and session ID gates are per-agent, not global."""
+    output_file = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(tmp_path, observed_breaks=[])
+
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    params = SmokeRunParams(
+        agent_name="claude/haiku",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
+    assert "declare_complete marker was not observed" in errors
+    assert "session ID was not observed" in errors

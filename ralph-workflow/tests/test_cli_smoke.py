@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import re
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import pytest
 from rich.console import Console
 
 if TYPE_CHECKING:
     from collections import deque
+
+    import pytest
 
     from ralph.pipeline.factory import PipelineDeps
 
@@ -480,32 +482,40 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     assert "agy/gemini-3.5-flash-low parity smoke report" in output
 
 
-def test_smoke_interactive_agy_documents_live_run_outcome(
-    tmp_path: Path,
-) -> None:
-    """The captured AGY smoke run log contains a documented outcome marker.
+def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
+    """The captured AGY smoke run log reflects the fixed end-to-end outcome.
 
-    This test pins the observed result of the real end-to-end AGY smoke run
-    (see tmp/smoke-interactive-agy-run.log). The run reached the live agy
-    binary and produced real output, but the generic smoke detectors did not
-    observe a session ID, declare_complete marker, or tool activity in the
-    AGY transcript. Future maintainers can tell from the log whether the
-    failure mode is a regression or the same recorded environment/transport
-    limitation.
+    After aligning the smoke detector with AGY's actual --print behaviour, the
+    live run exits 0 and reports file creation, parser events, tool activity
+    (via the persisted artifact), and artifact submission. The session column
+    remains 'missing' because AGY headless --print does not emit a transport
+    session ID in stdout (verified in tmp/agy-live-transcript.txt).
     """
     log_path = Path(__file__).resolve().parents[1] / "tmp" / "smoke-interactive-agy-run.log"
-    if not log_path.exists():
-        pytest.skip("Live AGY smoke run log not captured in this environment")
+    assert log_path.exists(), (
+        "Live AGY smoke run log not captured in this environment"
+    )
 
     log_text = log_path.read_text(encoding="utf-8")
-    documented_markers = (
-        "idle watchdog: FIRE reason=session_ceiling_exceeded",
-        "session ID was not observed",
-        "declare_complete marker was not observed",
-        "no tool activity was observed",
-        "PolicyValidationError: Drain 'development' cannot resolve drain_class",
+    assert "EXIT_CODE=0" in log_text, (
+        f"Live AGY smoke run did not exit 0; see {log_path}"
     )
-    assert any(marker in log_text for marker in documented_markers), (
-        f"Live AGY smoke log at {log_path} does not contain any documented "
-        f"outcome marker from {documented_markers}"
+
+    agy_row = next(
+        (
+            line
+            for line in log_text.splitlines()
+            if "agy/gem" in line and "missing" in line and ("│" in line or "┃" in line)
+        ),
+        None,
     )
+    assert agy_row is not None, "AGY parity table row not found in smoke log"
+
+    cells = [cell.strip() for cell in re.split(r"[│┃]", agy_row) if cell.strip()]
+    # Expected cells: agent, transport, file, session, parser events, tool
+    # activity, artifact, breaks (after stripping table borders).
+    assert len(cells) >= 7, f"Unexpected AGY table row shape: {cells}"
+    assert cells[2] == "yes", f"Expected file=yes, got: {cells}"
+    assert int(cells[4]) > 0, f"Expected parser events > 0, got: {cells}"
+    assert cells[5] == "yes", f"Expected tool activity=yes, got: {cells}"
+    assert cells[6] == "yes", f"Expected artifact=yes, got: {cells}"

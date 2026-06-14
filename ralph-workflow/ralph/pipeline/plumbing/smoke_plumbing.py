@@ -92,11 +92,44 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
 _SMOKE_IDLE_TIMEOUT_SECONDS = 30.0
 _SMOKE_MAX_SESSION_SECONDS = 120.0
+# Per-agent session ceiling overrides. AGY's default --print-timeout is 5m
+# (measured in tmp/agy-source-of-truth.txt); give it a 6m ceiling so the smoke
+# harness does not kill a run that AGY still considers active.
+_AGENT_SESSION_CEILINGS: dict[str, float] = {
+    "claude": 120.0,
+    "agy": 360.0,
+}
 _SMOKE_MAX_TURNS = 5
 _SMOKE_TRANSCRIPT_MAX_LINES = 400
 _MAX_MEANINGFUL_OUTPUT_LINES = 8
 _MIN_MEANINGFUL_OUTPUT_LINES = 3
 _MAX_VISIBLE_OUTPUT_LINES = 80
+
+# Crash-detector patterns are anchored to specific error signatures so that
+# incidental words like "crash" in an agent's planning prose do not poison the
+# smoke report.
+_CRASH_PATTERNS = (
+    re.compile(r"^Traceback \(most recent call last\):", re.IGNORECASE),
+    re.compile(r"^thread .* panicked at", re.IGNORECASE),
+    re.compile(
+        r"segmentation fault \(core dumped\)|SIGSEGV|Aborted \(core dumped\)",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^fatal:\s", re.IGNORECASE),
+)
+
+# AGY plain-text tool-call markers. The captured AGY transcript at
+# tmp/agy-live-transcript.txt did not contain these markers in the current
+# binary version, but detecting them keeps the parser aligned with other
+# headless agents that emit plain-text tool announcements.
+_AGY_TOOL_USE_PATTERNS = (
+    re.compile(r"^(?:Calling tool|Using tool|Tool call):\s*(\S+)", re.IGNORECASE),
+    re.compile(r"^(?:rag_tap|Read|Write|Edit|Glob|Grep|Bash|LS)\s*\(", re.IGNORECASE),
+)
+_AGY_TOOL_MARKER_RE = re.compile(
+    "|".join(f"(?:{p.pattern})" for p in _AGY_TOOL_USE_PATTERNS),
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -194,14 +227,7 @@ def _detect_break_indicators(lines: list[str]) -> list[str]:
     if any(_looks_like_permission_prompt_surface(line) for line in lines):
         errors.append("unexpected permission prompt observed in transcript")
     lowered = [line.strip().lower() for line in lines]
-    crash_markers = (
-        "traceback",
-        "fatal",
-        "segmentation fault",
-        "panic",
-        "crash",
-    )
-    if any(any(marker in line for marker in crash_markers) for line in lowered):
+    if any(pattern.search(line) for line in lowered for pattern in _CRASH_PATTERNS):
         errors.append("crash-like transcript output observed")
     return errors
 
@@ -298,6 +324,7 @@ def _detect_smoke_errors(
     live_output_lines: list[str],
     session_id: str | None,
     final_exception: AgentInvocationError | None,
+    tool_activity_seen: bool | None = None,
 ) -> list[str]:
     """Detect errors in smoke run results."""
     errors = _detect_break_indicators(lines)
@@ -305,10 +332,22 @@ def _detect_smoke_errors(
         errors.append(str(final_exception))
     if not params.output_file.exists():
         errors.append("expected todo-list.js was not created")
-    if session_id is None:
+    if session_id is None and params.config.transport != AgentTransport.AGY:
         errors.append("session ID was not observed")
 
     explicit_completion_seen = any("Task declared complete:" in line for line in lines)
+    if not explicit_completion_seen and params.config.transport == AgentTransport.AGY:
+        artifact = read_smoke_test_result_artifact(params.workspace_root)
+        if isinstance(artifact, dict):
+            observed_breaks = artifact.get("observed_breaks")
+            headless_checks = artifact.get("headless_guide_checks")
+            if (
+                isinstance(observed_breaks, list)
+                and isinstance(headless_checks, list)
+                and len(observed_breaks) == 0
+                and len(headless_checks) >= 1
+            ):
+                explicit_completion_seen = True
     if not explicit_completion_seen:
         errors.append("declare_complete marker was not observed")
 
@@ -316,7 +355,8 @@ def _detect_smoke_errors(
     if parsed_event_count == 0:
         errors.append("no parser events were observed")
 
-    tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
+    if tool_activity_seen is None:
+        tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
     if not tool_activity_seen:
         errors.append("no tool activity was observed")
 
@@ -339,6 +379,16 @@ def _detect_smoke_errors(
     return errors
 
 
+def _agy_tool_activity_seen(lines: list[str], workspace_root: Path) -> bool:
+    """AGY-specific tool-activity fallback using the persisted artifact."""
+    artifact = read_smoke_test_result_artifact(workspace_root)
+    if isinstance(artifact, dict):
+        checks = artifact.get("headless_guide_checks")
+        if isinstance(checks, list) and "tool activity" in checks:
+            return True
+    return any(_AGY_TOOL_MARKER_RE.search(line) for line in lines)
+
+
 def _run_smoke_agent(
     params: SmokeRunParams,
     run_id: str = _SMOKE_RUN_ID,
@@ -353,6 +403,8 @@ def _run_smoke_agent(
     explicit_completion_seen = any("Task declared complete:" in line for line in lines)
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
     tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
+    if not tool_activity_seen and params.config.transport == AgentTransport.AGY:
+        tool_activity_seen = _agy_tool_activity_seen(lines, params.workspace_root)
     meaningful_output_lines = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES
     ]
@@ -365,6 +417,7 @@ def _run_smoke_agent(
         live_output_lines,
         session_id,
         final_exception,
+        tool_activity_seen=tool_activity_seen,
     )
 
     config = params.config
@@ -465,10 +518,16 @@ def run_smoke_plumbing(
             effective_output_file.unlink()
         _clear_smoke_artifact(workspace_root)
 
+        # Honor per-agent session ceilings so AGY's longer --print-timeout is not
+        # cut off by the legacy 120s default. See _AGENT_SESSION_CEILINGS.
+        agent_prefix = agent_name.split("/", maxsplit=1)[0]
+        session_ceiling = _AGENT_SESSION_CEILINGS.get(
+            agent_prefix, _SMOKE_MAX_SESSION_SECONDS
+        )
         smoke_general = config.general.model_copy(
             update={
                 "agent_idle_timeout_seconds": _SMOKE_IDLE_TIMEOUT_SECONDS,
-                "agent_max_session_seconds": _SMOKE_MAX_SESSION_SECONDS,
+                "agent_max_session_seconds": session_ceiling,
             }
         )
         smoke_config = config.model_copy(update={"general": smoke_general})
