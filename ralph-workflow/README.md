@@ -254,7 +254,7 @@ The watchdog now considers **four evidence channels**:
 While any non-stdout channel is fresher than the new
 `agent_idle_activity_evidence_ttl_seconds` knob (under `[general]`, default
 `30.0`), the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns
-`CONTINUE`. Set the knob to `0.0` (or `None`) to opt out and restore the
+`CONTINUE`. Set the knob to `0.0` to opt out and restore the
 legacy stdout-only behaviour.
 
 Every HARD_STOP diagnostic and every deferred `CONTINUE` carries a
