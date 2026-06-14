@@ -21,6 +21,7 @@ from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
+from ralph.pipeline.factory import build_default_pipeline_deps
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_IDLE_TIMEOUT_SECONDS,
     _SMOKE_MAX_SESSION_SECONDS,
@@ -169,6 +170,8 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
         encoding="utf-8",
     )
 
+    pipeline_deps = build_default_pipeline_deps(config, ctx)
+
     result = run_smoke_plumbing(
         config=config,
         workspace_root=workspace_root,
@@ -176,6 +179,7 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
         prompt_file=prompt_file,
         output_file=output_file,
         display_context=ctx,
+        pipeline_deps=pipeline_deps,
     )
 
     _render_smoke_table([result], display_context=ctx)

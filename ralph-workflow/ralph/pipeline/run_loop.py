@@ -650,6 +650,7 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         )
     else:
         policy_bundle = policy_bundle_factory(workspace_scope, config)
+    # PipelineDeps overrides take precedence over legacy pro_hooks and individual kwargs.
     if pipeline_deps is not None and pipeline_deps.policy_bundle is not None:
         policy_bundle = pipeline_deps.policy_bundle
     elif pipeline_deps is not None and pipeline_deps.policy_bundle_factory is not None:

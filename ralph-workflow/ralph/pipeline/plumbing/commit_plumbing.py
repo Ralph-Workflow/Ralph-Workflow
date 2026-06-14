@@ -172,13 +172,18 @@ def _commit_artifact_requirements_resolver(
     return _commit_required_artifact()
 
 
-def _commit_pipeline_deps(
-    config: UnifiedConfig,
-    display_context: DisplayContext,
+def _apply_commit_deps_overrides(
+    deps: PipelineDeps,
+    *,
     materializer: MaterializeSystemPromptFn | None,
-    registry: object | None = None,
+    registry: object | None,
 ) -> PipelineDeps:
-    deps = build_default_pipeline_deps(config, display_context)
+    """Apply commit-specific overrides to a ``PipelineDeps`` bundle.
+
+    Ensures the commit plumbing path uses the commit-specific artifact
+    resolver, the chain registry, and the late-bound test-patch bridge
+    factory when the default production bridge is in use.
+    """
     if materializer is not None:
         deps = dataclasses.replace(deps, system_prompt_materializer=materializer)
     if registry is not None:
@@ -193,6 +198,18 @@ def _commit_pipeline_deps(
     return dataclasses.replace(
         deps,
         artifact_requirements_resolver=_commit_artifact_requirements_resolver,
+    )
+
+
+def _commit_pipeline_deps(
+    config: UnifiedConfig,
+    display_context: DisplayContext,
+    materializer: MaterializeSystemPromptFn | None,
+    registry: object | None = None,
+) -> PipelineDeps:
+    deps = build_default_pipeline_deps(config, display_context)
+    return _apply_commit_deps_overrides(
+        deps, materializer=materializer, registry=registry
     )
 
 
@@ -225,6 +242,12 @@ def run_commit_plumbing(
         pipeline_deps = _commit_pipeline_deps(
             cast("UnifiedConfig", chain_config.general_config),
             display_context,
+            materializer=None,
+            registry=chain_config.registry,
+        )
+    else:
+        pipeline_deps = _apply_commit_deps_overrides(
+            pipeline_deps,
             materializer=None,
             registry=chain_config.registry,
         )

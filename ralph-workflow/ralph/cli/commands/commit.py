@@ -35,6 +35,7 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_artifact,
 )
+from ralph.pipeline.factory import build_default_pipeline_deps
 from ralph.pipeline.plumbing.commit_plumbing import (
     CommitAgentResult,
     _generate_commit_message_with_agent,
@@ -387,9 +388,14 @@ def _generate_commit_message_with_chain(
     continue to work. The actual chain-iteration ownership lives in
     :mod:`ralph.pipeline.plumbing.commit_plumbing`.
     """
+    pipeline_deps = build_default_pipeline_deps(
+        cast("UnifiedConfig", chain_config.general_config),
+        display_context,
+    )
     return run_commit_plumbing(
         diff=diff,
         repo_root=repo_root,
         chain_config=chain_config,
         display_context=display_context,
+        pipeline_deps=pipeline_deps,
     )

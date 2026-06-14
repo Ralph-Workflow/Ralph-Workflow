@@ -207,7 +207,7 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
         )
 
     monkeypatch.setattr(
-        smoke_plumbing_module,
+        smoke_module,
         "build_default_pipeline_deps",
         fake_build_default_pipeline_deps,
     )
