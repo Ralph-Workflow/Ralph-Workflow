@@ -144,11 +144,8 @@ class _ModuleVisitor(ast.NodeVisitor):
         self.rel_path = rel_path
         self.source = source
         self.violations: list[ActivityAwareWatchdogViolation] = []
-        self._idle_watchdog_names: set[str] = set()
-        self._workspace_monitor_names: set[str] = set()
         self._has_set_active_sink = False
         self._has_set_subagent_sink = False
-        self._has_teardown_subtree = False
         self._function_defs: dict[str, ast.FunctionDef] | None = None
         self._tree = tree
 
@@ -171,14 +168,8 @@ class _ModuleVisitor(ast.NodeVisitor):
 
         # (2) process_monitor_injection: IdleWatchdog(...) must include
         # process_monitor= kwarg.
-        if name == "IdleWatchdog":
-            if not _has_kwarg(node, "process_monitor"):
-                self._add("process_monitor_injection", node.lineno)
-            else:
-                # Track local variable names assigned from this call so
-                # sink detectors can associate set_active_sink etc. with
-                # the watchdog.
-                self._track_idle_watchdog_name(node)
+        if name == "IdleWatchdog" and not _has_kwarg(node, "process_monitor"):
+            self._add("process_monitor_injection", node.lineno)
 
         # (6) DefaultProcessMonitor(...) must include role_classifier=,
         # discovery_strategy=, subagent_pid_source=, and role_classifier
@@ -194,12 +185,6 @@ class _ModuleVisitor(ast.NodeVisitor):
                 else:
                     self._has_set_subagent_sink = True
 
-            if name == "teardown_subtree":
-                self._has_teardown_subtree = True
-
-            if name == "WorkspaceMonitor":
-                self._track_workspace_monitor_name(node)
-
             # (1) workspace_event_binding: detect set_on_event bound to a
             # 0-arg callable in invoke files (outside the allowlist).
             if self._is_set_on_event_call(node):
@@ -209,16 +194,6 @@ class _ModuleVisitor(ast.NodeVisitor):
             # by scanning each function body for terminate/teardown pairs.
 
         self.generic_visit(node)
-
-    def _track_idle_watchdog_name(self, node: ast.Call) -> None:
-        """Remember variable names that hold the constructed IdleWatchdog."""
-        # We can't statically know the name in all cases, but we can track
-        # the most common patterns: direct assignment and annotated assignment.
-        # This is best-effort; the sink detectors below also fall back to
-        # checking whether ANY set_active_sink/set_subagent_sink call exists.
-
-    def _track_workspace_monitor_name(self, node: ast.Call) -> None:
-        """Remember variable names that hold a WorkspaceMonitor."""
 
     def _check_default_process_monitor(self, node: ast.Call) -> None:
         required = {"role_classifier", "discovery_strategy", "subagent_pid_source"}
@@ -284,16 +259,17 @@ class _ModuleVisitor(ast.NodeVisitor):
         nodes = body if isinstance(body, list) else [body]
         for node in nodes:
             for child in ast.walk(node):
-                if isinstance(child, ast.Call):
-                    name = _func_call_name(child)
-                    if name != "record_workspace_event":
-                        continue
-                    has_kind = any(kw.arg == "kind" for kw in child.keywords)
-                    has_weight = any(kw.arg == "weight" for kw in child.keywords)
-                    if has_kind and has_weight:
-                        return True
-                    if len(child.args) >= _MIN_RECORD_ARGS:
-                        return True
+                if not isinstance(child, ast.Call):
+                    continue
+                func = child.func
+                if not (isinstance(func, ast.Attribute) and func.attr == "record_workspace_event"):
+                    continue
+                has_kind = any(kw.arg == "kind" for kw in child.keywords)
+                has_weight = any(kw.arg == "weight" for kw in child.keywords)
+                if has_kind and has_weight:
+                    return True
+                if len(child.args) >= _MIN_RECORD_ARGS:
+                    return True
         return False
 
     def _is_set_on_event_call(self, node: ast.Call) -> bool:
@@ -355,7 +331,8 @@ class _ModuleVisitor(ast.NodeVisitor):
 
     def _constructs_idle_watchdog(self) -> bool:
         """Return True if this file contains any ``IdleWatchdog(...)`` call."""
-        for child in ast.walk(ast.parse(self.source)):
+        tree = self._tree if self._tree is not None else ast.parse(self.source)
+        for child in ast.walk(tree):
             if isinstance(child, ast.Call) and _func_call_name(child) == "IdleWatchdog":
                 return True
         return False
@@ -373,11 +350,10 @@ def audit_reader_file(path: Path) -> list[ActivityAwareWatchdogViolation]:
     except (OSError, SyntaxError):
         return []
 
-    rel_path = path.name
+    rel_path = f"ralph/agents/invoke/{path.name}"
     visitor = _ModuleVisitor(rel_path, source, tree=tree)
     visitor.visit(tree)
-    if visitor._is_invoke_file() or not path.name.startswith("test_"):
-        visitor.finalize_invoke_file()
+    visitor.finalize_invoke_file()
     return visitor.violations
 
 

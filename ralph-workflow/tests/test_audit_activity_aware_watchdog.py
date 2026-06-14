@@ -128,6 +128,36 @@ def _reader_source_with_valid_teardown_subtree() -> str:
     )
 
 
+def _reader_source_fully_wired() -> str:
+    """A reader that satisfies all six invoke-file invariants."""
+    return (
+        "from ralph.agents.idle_watchdog import IdleWatchdog\n"
+        "from ralph.agents.invoke._workspace import WorkspaceMonitor\n"
+        "from ralph.mcp.server._activity_sink import set_active_sink\n"
+        "from ralph.mcp.server._activity_sink import set_subagent_sink\n"
+        "from ralph.process.teardown import teardown_subtree\n"
+        "from ralph.agents.timeout_clock import FakeClock\n"
+        "\n"
+        "class Reader:\n"
+        "    def read_lines(self):\n"
+        "        monitor = WorkspaceMonitor('/tmp')\n"
+        "        watchdog = IdleWatchdog(\n"
+        "            self._policy, FakeClock(), process_monitor=None\n"
+        "        )\n"
+        "        def _forward_event(kind, weight):\n"
+        "            watchdog.record_workspace_event(kind=kind, weight=weight)\n"
+        "        monitor.set_on_event(_forward_event)\n"
+        "        set_active_sink(lambda: watchdog.record_mcp_tool_call())\n"
+        "        set_subagent_sink(lambda: watchdog.record_subagent_work())\n"
+        "        yield 'x'\n"
+        "\n"
+        "    def _check_fire(self):\n"
+        "        self._handle.terminate(grace_period_s=0.5)\n"
+        "        teardown_subtree(self._handle.pid)\n"
+        "        return None\n"
+    )
+
+
 def test_audit_flags_idle_watchdog_without_process_monitor(tmp_path: Path) -> None:
     """A reader that constructs ``IdleWatchdog`` without ``process_monitor=``
     is flagged as a ``process_monitor_injection`` violation."""
@@ -222,6 +252,21 @@ def test_audit_reader_file_per_file_interface(tmp_path: Path) -> None:
 
     assert violations, "expected at least one violation from per-file audit"
     assert any(v.category == "process_monitor_injection" for v in violations)
+
+
+def test_audit_reader_file_valid_reader_is_clean(tmp_path: Path) -> None:
+    """``audit_reader_file`` reports zero violations for a correctly wired
+    reader file. This guards the rel_path fix that makes invoke-gated
+    detectors active in per-file mode."""
+    good_file = tmp_path / "_good_reader.py"
+    good_file.write_text(_reader_source_fully_wired(), encoding="utf-8")
+
+    violations = audit.audit_reader_file(good_file)
+
+    assert violations == [], (
+        "expected zero violations for a fully wired reader, got:\n"
+        + "\n".join(f"  {v}" for v in violations)
+    )
 
 
 @pytest.mark.subprocess_e2e
