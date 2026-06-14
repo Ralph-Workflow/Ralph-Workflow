@@ -294,7 +294,7 @@ def invoke_agent(
     )
     liveness_probe = DefaultLivenessProbe(registry=registry)
     monitor = _start_workspace_monitor(
-        opts.workspace_path if opts.show_progress else None,
+        opts.workspace_path,
         classifier=WorkspaceChangeClassifier(weights=dict(opts.workspace_change_weights))
         if opts.workspace_change_weights is not None
         else None,

@@ -183,6 +183,17 @@ carries the per-channel `evidence_summary` (channel name, last_at, age_seconds,
 counter) so an on-call operator or post-mortem can see exactly which channels
 were fresh and which were stale at the moment the watchdog fired.
 
+Workspace evidence collection runs whenever a run has a `workspace_path`,
+regardless of whether the progress UI (`show_progress`) is enabled, so quiet
+unattended runs that do real file work are not falsely killed. Activity is
+**demonstrated work**, not mere existence: an OpenCode subagent process that
+is alive but has produced no output, no tool calls, and no file changes for
+the configured idle window is **not** evidence of progress. Once scoped Ralph Workflow
+child evidence goes stale, the run falls back to the normal idle timeout
+instead of lingering under the larger cumulative waiting-on-child ceiling.
+Raw OS descendants alone defer the verdict only when Ralph Workflow never had scoped
+visibility into the child in the first place.
+
 The three recorders are additive on top of `record_activity()`: they update
 per-channel `_last_at` timestamps and counters WITHOUT touching `_last_activity`
 (the stdout baseline). The existing 'stdout only resets idle baseline'

@@ -75,6 +75,13 @@ class OpenCodeExecutionStrategy:
         # default is None (legacy / non-opencode transports) so
         # existing callers and tests are unaffected.
         self._subagent_activity_sink = subagent_activity_sink
+        # Tracks whether this invocation ever observed scoped Ralph
+        # child evidence (registry records matching the active label
+        # prefix). Once true, the strategy treats the later absence of
+        # fresh scoped evidence as stale evidence, preventing raw OS
+        # descendant existence alone from keeping a quiet run in
+        # WAITING_ON_CHILD after the scoped child has been pruned.
+        self._scoped_records_seen = False
 
     def _active_label_prefix(self) -> str | None:
         if self._label_scope is None:
@@ -135,7 +142,10 @@ class OpenCodeExecutionStrategy:
                     _invoke_subagent_sink(line)
         if registry is None:
             return
-        _route_opencode_line_to_registry(line, registry, self._active_label_prefix() or "")
+        prefix = self._active_label_prefix() or ""
+        _route_opencode_line_to_registry(line, registry, prefix)
+        if registry.has_records(prefix):
+            self._scoped_records_seen = True
 
     def classify_quiet(
         self,
@@ -150,6 +160,8 @@ class OpenCodeExecutionStrategy:
         registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
         if registry is not None:
             had_scoped_records = registry.has_records(probe_prefix)
+            if had_scoped_records:
+                self._scoped_records_seen = True
             try:
                 reg_snap = registry.snapshot(probe_prefix)
                 verdict = classify_child_snapshot(reg_snap)
@@ -167,7 +179,13 @@ class OpenCodeExecutionStrategy:
             return probe_state
         scoped_child_evidence_stale = scoped_child_evidence_stale or probe_stale
 
-        if scoped_child_evidence_stale:
+        # Once scoped Ralph child evidence has been observed for this
+        # invocation, its later absence (records pruned due to staleness,
+        # or probe returning no fresh evidence) must not be overridden by
+        # raw OS descendant existence. Raw descendants alone are only a
+        # valid WAITING_ON_CHILD signal when Ralph never had scoped
+        # visibility into the child in the first place.
+        if scoped_child_evidence_stale or self._scoped_records_seen:
             return AgentExecutionState.ACTIVE
         return _os_descendant_state(handle, AgentExecutionState.ACTIVE)
 

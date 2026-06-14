@@ -248,14 +248,26 @@ The watchdog now considers **four evidence channels**:
 
 - `stdout` — agent stdout output (the baseline)
 - `mcp_tool` — Ralph Workflow MCP tool calls / completions
-- `subagent` — delegated child progress / tool calls
+- `subagent` — delegated child progress / tool calls / heartbeats
 - `workspace` — workspace file changes from `WorkspaceMonitor`
+
+Workspace evidence collection runs whenever a run has a `workspace_path`,
+regardless of whether the progress UI (`show_progress`) is enabled, so quiet
+unattended runs that do real file work are not falsely killed.
 
 While any non-stdout channel is fresher than the new
 `agent_idle_activity_evidence_ttl_seconds` knob (under `[general]`, default
 `30.0`), the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns
 `CONTINUE`. Set the knob to `0.0` to opt out and restore the
 legacy stdout-only behaviour.
+
+"Activity" means **demonstrated work**, not mere existence: an OpenCode
+subagent process that is alive but has produced no output, no tool calls,
+and no file changes for the configured idle window is **not** evidence of
+progress. Once scoped Ralph Workflow child evidence goes stale, the run falls back to
+the normal idle timeout instead of lingering under the larger cumulative
+waiting-on-child ceiling. Raw OS descendants alone defer the verdict only
+when Ralph Workflow never had scoped visibility into the child in the first place.
 
 Every HARD_STOP diagnostic and every deferred `CONTINUE` carries a
 per-channel `evidence_summary` array with `{channel, last_at, age_seconds,

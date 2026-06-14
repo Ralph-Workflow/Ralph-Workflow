@@ -10,6 +10,7 @@ No real subprocesses are spawned; all timing is driven by FakeClock.
 
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
@@ -37,6 +38,7 @@ from ralph.agents.invoke import (
     read_lines_from_process,
 )
 from ralph.agents.timeout_clock import FakeClock
+from ralph.process.child_liveness import ChildLivenessRegistry, MutableRecord
 from ralph.process.liveness import FakeLivenessProbe
 from tests.agents.test_invoke_timeout_integration_helper__raisingstrategy import _RaisingStrategy
 from tests.agents.test_invoke_timeout_integration_helper__waitingstrategy import _WaitingStrategy
@@ -630,6 +632,155 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
     assert "alive_by" in diag, f"Expected 'alive_by' key in diagnostic: {diag}"
     assert diag["alive_by"] == "os_descendant_only_stale_progress", (
         f"Expected alive_by='os_descendant_only_stale_progress', got {diag.get('alive_by')}"
+    )
+
+
+def test_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
+    """Stale scoped child evidence + no fresh activity fires NO_OUTPUT_DEADLINE.
+
+    Regression for activity-aware idle watchdog: when OpenCode scoped child
+    evidence is stale (registry has records but no fresh progress/heartbeat)
+    and there is no fresh stdout, MCP tool, or workspace activity, the read
+    loop must fire NO_OUTPUT_DEADLINE on the normal idle path instead of
+    lingering under WAITING_ON_CHILD because raw OS descendants still exist.
+    """
+    idle_timeout = 0.1
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=20.0,
+        drain_window_seconds=0.0,
+        idle_poll_interval_seconds=0.05,
+        waiting_status_interval_seconds=100.0,
+        suspect_waiting_on_child_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        activity_evidence_ttl_seconds=30.0,
+    )
+    clock = FakeClock(start=0.0)
+
+    _reader_release = threading.Event()
+
+    def _blocking_stdout() -> Iterator[str]:
+        _reader_release.wait(timeout=5.0)
+        yield from ()
+
+    handle = _FakeManagedHandle(
+        _blocking_stdout(),
+        descendant_count=1,
+        descendant_oldest_seconds=5.0,
+    )
+
+    # Build a registry with a stale scoped child record.
+    stale_registry = ChildLivenessRegistry(
+        progress_ttl=30.0,
+        heartbeat_ttl=30.0,
+        stale_label_ttl=60.0,
+        exit_reconcile=5.0,
+        now=lambda: 1000.0,
+    )
+    stale_registry._records["child-x"] = MutableRecord(
+        child_id="child-x",
+        scope_prefix="agent:test:",
+        pid=12345,
+        started_at=900.0,
+        last_progress_at=960.0,
+        last_heartbeat_at=960.0,
+        last_known_phase="running",
+    )
+
+    strategy = OpenCodeExecutionStrategy(label_scope="test", registry=stale_registry)
+    probe = FakeLivenessProbe(active=False)
+
+    try:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines(
+                handle,
+                policy=policy,
+                execution_strategy=strategy,
+                liveness_probe=probe,
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _reader_release.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE, (
+        f"Expected NO_OUTPUT_DEADLINE (normal idle path), got {exc_info.value.reason!r}"
+    )
+
+
+def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
+    """OpenCode child fresh then stale fires NO_OUTPUT_DEADLINE, not ceiling.
+
+    Regression for activity-aware idle watchdog: a run that enters
+    WAITING_ON_CHILD while the OpenCode child is demonstrably active must
+    still fall back to the normal idle timeout when the child evidence goes
+    stale, rather than lingering under WAITING_ON_CHILD until the larger
+    cumulative ceiling fires.
+    """
+    idle_timeout = 0.1
+    max_waiting = 20.0
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
+        drain_window_seconds=0.0,
+        idle_poll_interval_seconds=0.05,
+        waiting_status_interval_seconds=100.0,
+        suspect_waiting_on_child_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        activity_evidence_ttl_seconds=30.0,
+    )
+    clock = FakeClock(start=0.0)
+
+    _reader_release = threading.Event()
+    progress_yielded = [False]
+
+    def _stdout_gen() -> Iterator[str]:
+        if not progress_yielded[0]:
+            progress_yielded[0] = True
+            yield json.dumps({"type": "child_started", "child_id": "child-x"}) + "\n"
+            yield (
+                json.dumps(
+                    {"type": "child_progress", "child_id": "child-x", "phase": "running"}
+                )
+                + "\n"
+            )
+        _reader_release.wait(timeout=5.0)
+        yield from ()
+
+    handle = _FakeManagedHandle(
+        _stdout_gen(),
+        descendant_count=1,
+        descendant_oldest_seconds=5.0,
+    )
+
+    registry = ChildLivenessRegistry(
+        progress_ttl=0.2,
+        heartbeat_ttl=0.2,
+        stale_label_ttl=0.1,
+        exit_reconcile=5.0,
+        now=clock.monotonic,
+    )
+    strategy = OpenCodeExecutionStrategy(label_scope="test", registry=registry)
+    probe = FakeLivenessProbe(active=False)
+
+    try:
+        with pytest.raises(IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines(
+                handle,
+                policy=policy,
+                execution_strategy=strategy,
+                liveness_probe=probe,
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _reader_release.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE, (
+        f"Fresh-then-stale scoped child must fire NO_OUTPUT_DEADLINE, not {exc_info.value.reason!r}"
+    )
+    assert exc_info.value.timeout_seconds == idle_timeout, (
+        f"Must fire at idle timeout ({idle_timeout}s), not the waiting ceiling ({max_waiting}s)"
     )
 
 
