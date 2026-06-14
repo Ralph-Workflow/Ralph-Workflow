@@ -138,7 +138,6 @@ class TestResolveExhaustedAnalysisBypass:
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 3},
-            loop_caps={"planning_analysis_iteration": 3},
             review_outcome="issues",
         )
 
@@ -155,7 +154,6 @@ class TestResolveExhaustedAnalysisBypass:
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 2},
-            loop_caps={"planning_analysis_iteration": 3},
         )
 
         bypass = resolve_exhausted_analysis_bypass(state, "planning_analysis", policy)
@@ -169,7 +167,6 @@ class TestResolveExhaustedAnalysisBypass:
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 3},
-            loop_caps={"planning_analysis_iteration": 3},
             review_outcome="issues",
         )
 
@@ -197,7 +194,6 @@ class TestResolveExhaustedAnalysisBypass:
         state = PipelineState(
             phase="development",
             loop_iterations={"commit_cleanup_iteration": 3},
-            loop_caps={"commit_cleanup_iteration": 3},
             review_outcome="issues",
         )
 

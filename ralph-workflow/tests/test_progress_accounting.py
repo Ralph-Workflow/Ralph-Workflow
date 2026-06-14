@@ -154,6 +154,18 @@ def _progress_policy() -> PipelinePolicy:
     )
 
 
+def _policy_with_loop_counter_default(
+    policy: PipelinePolicy,
+    counter_name: str,
+    default_max: int,
+) -> PipelinePolicy:
+    loop_counters = dict(policy.loop_counters)
+    loop_counters[counter_name] = loop_counters[counter_name].model_copy(
+        update={"default_max": default_max}
+    )
+    return policy.model_copy(update={"loop_counters": loop_counters})
+
+
 @pytest.mark.parametrize(
     ("current_iteration", "max_iterations", "expected_final", "expected_skip"),
     [
@@ -195,12 +207,15 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
 
 def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issue_state() -> None:
     """At max iteration, ANALYSIS_LOOPBACK still routes to fix and marks issues."""
-    policy = _progress_policy()
+    policy = _policy_with_loop_counter_default(
+        _progress_policy(),
+        "review_analysis_iteration",
+        FORCED_REVIEW_ANALYSIS_ITERATION,
+    )
     state = PipelineState(
         phase="review_analysis",
         outer_progress={"reviewer_pass": 1},
         loop_iterations={"review_analysis_iteration": 1},
-        loop_caps={"review_analysis_iteration": FORCED_REVIEW_ANALYSIS_ITERATION},
         budget_caps={"reviewer_pass": 2},
     )
 

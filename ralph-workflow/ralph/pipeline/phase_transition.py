@@ -93,10 +93,9 @@ def _find_commit_counter_from_phase(
 
 def _resolve_analysis_cap(
     iteration_field: str,
-    state: PipelineState,
     pipeline_policy: PipelinePolicy,
 ) -> int:
-    return progress.resolve_analysis_cap(state, iteration_field, pipeline_policy)
+    return progress.resolve_analysis_cap(iteration_field, pipeline_policy)
 
 
 def _build_phase_entry_model_from_state(
@@ -115,8 +114,15 @@ def _build_phase_entry_model_from_state(
         phase_role = phase_def.role
         if phase_def.role == "analysis" and phase_def.loop_policy is not None:
             field = phase_def.loop_policy.iteration_state_field
-            inner_analysis = state.get_loop_iteration(field) + 1
-            inner_analysis_cap = _resolve_analysis_cap(field, state, pipeline_policy)
+            inner_analysis_cap = _resolve_analysis_cap(field, pipeline_policy)
+            if inner_analysis_cap > 0:
+                inner_analysis = progress.AnalysisLoopCounter(
+                    state.get_loop_iteration(field),
+                    inner_analysis_cap,
+                ).display_iteration
+            else:
+                inner_analysis = None
+                inner_analysis_cap = None
 
     outer_iteration: int | None = None
     outer_dev_cap: int | None = None
@@ -247,7 +253,7 @@ def _analysis_decision_transition_context(
         if route is not None and not route.reset_loop:
             iteration_field = phase_def.loop_policy.iteration_state_field
             analysis_cur = next_state.get_loop_iteration(iteration_field)
-            max_iter = _resolve_analysis_cap(iteration_field, next_state, pipeline_policy)
+            max_iter = _resolve_analysis_cap(iteration_field, pipeline_policy)
             if progress.is_final_analysis_iteration(analysis_cur, max_iter):
                 context["analysis_status"] = "final, skipping next"
     return context or None
@@ -344,7 +350,7 @@ def _phase_transition_context(
 
     iteration_field = loop_policy.iteration_state_field
     analysis_cur = state.get_loop_iteration(iteration_field)
-    max_iter = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
+    max_iter = _resolve_analysis_cap(iteration_field, pipeline_policy)
     if progress.is_final_analysis_iteration(analysis_cur, max_iter):
         return {"analysis_status": "final, skipping next"}
     return None

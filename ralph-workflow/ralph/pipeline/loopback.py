@@ -44,7 +44,6 @@ def handle_capped_phase_loopback_policy_driven(
 
     iteration_field: str = loop_policy.iteration_state_field
     max_iterations = progress.resolve_analysis_cap(
-        state,
         iteration_field,
         policy,
     )

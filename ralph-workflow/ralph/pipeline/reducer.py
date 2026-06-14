@@ -646,7 +646,6 @@ def _handle_analysis_decision(
         else:
             # Increment counter on loopback (e.g., 'request_changes' decision).
             max_iter = progress.resolve_analysis_cap(
-                state,
                 iteration_field,
                 policy,
             )

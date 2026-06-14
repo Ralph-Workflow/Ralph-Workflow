@@ -38,6 +38,17 @@ def _reduce(
     return reducer_reduce(state, cast("Any", event), policy)
 
 
+def _with_loop_cap(policy: PipelinePolicy, field: str, cap: int) -> PipelinePolicy:
+    return policy.model_copy(
+        update={
+            "loop_counters": {
+                **policy.loop_counters,
+                field: LoopCounterConfig(default_max=cap),
+            }
+        }
+    )
+
+
 def _basic_pipeline_policy() -> PipelinePolicy:
     return PipelinePolicy(
         phases={
@@ -330,10 +341,10 @@ class TestAnalysisBudgetBypass:
 
     def test_planning_success_skips_exhausted_planning_analysis(self) -> None:
         policy = _policy_with_planning_analysis()
+        policy = _with_loop_cap(policy, "planning_analysis_iteration", 10)
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 10},
-            loop_caps={"planning_analysis_iteration": 10},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
@@ -344,10 +355,10 @@ class TestAnalysisBudgetBypass:
 
     def test_planning_success_logs_effective_target_after_exhausted_analysis_bypass(self) -> None:
         policy = _policy_with_planning_analysis()
+        policy = _with_loop_cap(policy, "planning_analysis_iteration", 10)
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 10},
-            loop_caps={"planning_analysis_iteration": 10},
         )
 
         with patch(
@@ -362,10 +373,10 @@ class TestAnalysisBudgetBypass:
 
     def test_development_success_skips_exhausted_development_analysis(self) -> None:
         policy = _policy_with_planning_analysis()
+        policy = _with_loop_cap(policy, "development_analysis_iteration", 3)
         state = PipelineState(
             phase="development",
             loop_iterations={"development_analysis_iteration": 3},
-            loop_caps={"development_analysis_iteration": 3},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
@@ -376,10 +387,10 @@ class TestAnalysisBudgetBypass:
 
     def test_planning_success_skips_analysis_immediately_when_cap_is_zero(self) -> None:
         policy = _policy_with_planning_analysis()
+        policy = _with_loop_cap(policy, "planning_analysis_iteration", 0)
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 0},
-            loop_caps={"planning_analysis_iteration": 0},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
@@ -392,10 +403,10 @@ class TestAnalysisBudgetBypass:
         self,
     ) -> None:
         policy = _policy_with_planning_analysis()
+        policy = _with_loop_cap(policy, "development_analysis_iteration", 3)
         state = PipelineState(
             phase="development",
             loop_iterations={"development_analysis_iteration": 3},
-            loop_caps={"development_analysis_iteration": 3},
         )
 
         with patch(
@@ -410,10 +421,10 @@ class TestAnalysisBudgetBypass:
 
     def test_fix_success_skips_exhausted_review_analysis(self) -> None:
         policy = _policy_with_planning_analysis()
+        policy = _with_loop_cap(policy, "review_analysis_iteration", 2)
         state = PipelineState(
             phase="fix",
             loop_iterations={"review_analysis_iteration": 2},
-            loop_caps={"review_analysis_iteration": 2},
             review_outcome="has_issues",
         )
 

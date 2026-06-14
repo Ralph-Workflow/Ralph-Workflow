@@ -18,6 +18,7 @@ from ralph.pipeline.events import AnalysisDecisionEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
+    LoopCounterConfig,
     PhaseCommitPolicy,
     PhaseDecisionRoute,
     PhaseDefinition,
@@ -126,6 +127,10 @@ def _dev_analysis_policy() -> PipelinePolicy:
         },
         entry_phase="development",
         terminal_phase="complete",
+        loop_counters={
+            "development_analysis_iteration": LoopCounterConfig(default_max=3),
+            "review_analysis_iteration": LoopCounterConfig(default_max=2),
+        },
         post_commit_routes=[
             PostCommitRoute(
                 when=PostCommitRouteWhen(
@@ -150,12 +155,11 @@ class TestAnalysisDecisionEventRequestChanges:
 
     def test_request_changes_increments_loop_counter(self) -> None:
         """AnalysisDecisionEvent(request_changes) increments development_analysis_iteration."""
+        policy = _dev_analysis_policy()
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 0},
-            loop_caps={"development_analysis_iteration": 3},
         )
-        policy = _dev_analysis_policy()
         event = AnalysisDecisionEvent(phase="development_analysis", decision="request_changes")
         new_state, _ = _reduce(state, event, policy)
         assert new_state.phase == "development"
@@ -163,14 +167,13 @@ class TestAnalysisDecisionEventRequestChanges:
 
     def test_request_changes_at_cap_clamps_to_max(self) -> None:
         """AnalysisDecisionEvent(request_changes) at cap clamps counter to max, does not exceed."""
+        policy = _dev_analysis_policy()
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 2},
-            loop_caps={"development_analysis_iteration": 3},
         )
-        policy = _dev_analysis_policy()
         event = AnalysisDecisionEvent(phase="development_analysis", decision="request_changes")
         new_state, _ = _reduce(state, event, policy)
         assert new_state.phase == "development"
-        max_cap = state.loop_caps.get("development_analysis_iteration", 3)
+        max_cap = policy.loop_counters["development_analysis_iteration"].default_max
         assert new_state.get_loop_iteration("development_analysis_iteration") == max_cap

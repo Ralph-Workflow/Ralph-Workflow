@@ -107,7 +107,6 @@ def resolve_exhausted_analysis_bypass(
         iteration_field = phase_def.loop_policy.iteration_state_field
         current_iteration = current_state.get_loop_iteration(iteration_field)
         max_iterations = progress.resolve_analysis_cap(
-            current_state,
             iteration_field,
             pipeline_policy,
         )

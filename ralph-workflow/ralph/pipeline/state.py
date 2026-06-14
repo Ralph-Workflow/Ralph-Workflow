@@ -10,7 +10,7 @@ occur exclusively through the reduce function.
 
 POLICY-DRIVEN STATE TRACKING
 ==============================
-Loop counters (loop_iterations / loop_caps) and phase chains (phase_chains)
+Loop counters (loop_iterations) and phase chains (phase_chains)
 are keyed by policy-declared names, not hardcoded field names. This enables
 custom workflows with arbitrary phase and counter names to work without
 modifying source code.
@@ -106,7 +106,6 @@ class PipelineState(_FrozenPipelineStateModel):
     GENERIC TRACKING FIELDS (policy-keyed):
         phase_chains: Per-phase agent chain state keyed by canonical phase name.
         loop_iterations: Loop iteration counters keyed by iteration_state_field name.
-        loop_caps: Loop iteration caps keyed by iteration_state_field name.
         budget_caps: Max budget keyed by budget counter name (seeded from policy).
         outer_progress: Completed cycle counts keyed by budget counter name.
         Remaining budget is derived on-demand: max(0, cap - progress).
@@ -123,7 +122,6 @@ class PipelineState(_FrozenPipelineStateModel):
 
     # Generic loop iteration tracking (keyed by iteration_state_field from loop_policy)
     loop_iterations: dict[str, int] = Field(default_factory=dict)
-    loop_caps: dict[str, int] = Field(default_factory=dict)
 
     # Generic budget counter tracking (keyed by budget counter name from budget_counters)
     # Remaining budget is derived: max(0, budget_caps[k] - outer_progress[k])
@@ -313,15 +311,6 @@ class PipelineState(_FrozenPipelineStateModel):
         if isinstance(v, dict):
             return {str(k): int(val) for k, val in v.items()}
         raise TypeError(f"Expected dict for loop_iterations, got {type(v).__name__!r}")
-
-    @field_validator("loop_caps", mode="before")
-    @classmethod
-    def _coerce_loop_caps(cls, v: object) -> dict[str, int]:
-        if v is None:
-            return {}
-        if isinstance(v, dict):
-            return {str(k): int(val) for k, val in v.items()}
-        raise TypeError(f"Expected dict for loop_caps, got {type(v).__name__!r}")
 
     @field_validator("budget_caps", mode="before")
     @classmethod

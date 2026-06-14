@@ -22,7 +22,7 @@ Contract:
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
@@ -62,15 +62,39 @@ def review_issues_found(state: PipelineState, policy: PipelinePolicy | None = No
     return True
 
 
+@dataclass(frozen=True)
+class AnalysisLoopCounter:
+    """Canonical analysis-loop counter semantics derived from completed loopbacks."""
+
+    completed: int
+    cap: int
+
+    @property
+    def display_iteration(self) -> int:
+        """Return the saturated 1-based label shown to users."""
+        return min(max(self.completed, 0), max(self.cap - 1, 0)) + 1
+
+    @property
+    def is_final(self) -> bool:
+        """Return True when the current run is the final labeled analysis run."""
+        return self.completed >= self.cap - 1
+
+    @property
+    def should_skip_reentry(self) -> bool:
+        """Return True when the next attempt to enter analysis must be skipped."""
+        return self.completed >= self.cap
+
+    @property
+    def next_completed(self) -> int:
+        """Return the clamped completed count after one more loopback."""
+        return max(0, min(self.completed + 1, self.cap))
+
+
 def resolve_analysis_cap(
-    state: PipelineState,
     iteration_field: str,
     policy: PipelinePolicy,
 ) -> int:
-    """Resolve the effective analysis cap from canonical state/policy sources."""
-    cap_value = state.loop_caps.get(iteration_field)
-    if cap_value is not None:
-        return cap_value
+    """Resolve the effective analysis cap from live policy."""
     if iteration_field in policy.loop_counters:
         return policy.loop_counters[iteration_field].default_max
     msg = (
@@ -85,7 +109,7 @@ def is_final_analysis_iteration(current_iteration: int, max_iterations: int) -> 
 
     This intentionally matches the user-facing label semantics.
     """
-    return current_iteration >= max_iterations - 1
+    return AnalysisLoopCounter(current_iteration, max_iterations).is_final
 
 
 def should_skip_analysis_reentry(current_iteration: int, max_iterations: int) -> bool:
@@ -95,7 +119,7 @@ def should_skip_analysis_reentry(current_iteration: int, max_iterations: int) ->
     rendered for the current run. That means re-entry should skip only *after* the
     final labeled run has already happened.
     """
-    return is_final_analysis_iteration(current_iteration - 1, max_iterations)
+    return AnalysisLoopCounter(current_iteration, max_iterations).should_skip_reentry
 
 
 def advance_phase(
@@ -155,7 +179,10 @@ def apply_analysis_loopback(
     review_outcome: str | None = None,
 ) -> PipelineState:
     """Apply canonical loopback bookkeeping for an analysis phase."""
-    clamped = max(0, min(state.get_loop_iteration(iteration_field) + 1, max_iterations))
+    clamped = AnalysisLoopCounter(
+        state.get_loop_iteration(iteration_field),
+        max_iterations,
+    ).next_completed
     result = advanced_state.with_loop_iteration(iteration_field, clamped)
     if review_outcome is not None:
         result = result.copy_with(review_outcome=review_outcome)

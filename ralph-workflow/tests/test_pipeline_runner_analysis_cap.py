@@ -40,16 +40,28 @@ def _load_default_policy() -> PolicyBundle:
     return load_policy(DEFAULT_POLICY_DIR)
 
 
+def _policy_with_loop_counter_max(counter_name: str, default_max: int) -> PolicyBundle:
+    policy = _load_default_policy()
+    loop_counters = dict(policy.pipeline.loop_counters)
+    loop_counters[counter_name] = loop_counters[counter_name].model_copy(
+        update={"default_max": default_max}
+    )
+    return policy.model_copy(
+        update={"pipeline": policy.pipeline.model_copy(update={"loop_counters": loop_counters})}
+    )
+
+
 class TestDevAnalysisCapTriggeredCorrectionRouting:
     """Test that analysis loopback at max still routes to development under the default policy."""
 
     def test_dev_analysis_at_max_routes_to_development(self) -> None:
         """At max-1 iterations, ANALYSIS_LOOPBACK still routes to development."""
-        policy = _load_default_policy()
+        policy = _policy_with_loop_counter_max(
+            "development_analysis_iteration", _DEV_MAX_ANALYSIS
+        )
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 2},  # max-1 where max=3
-            loop_caps={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
             budget_caps={"iteration": 3},
         )
 

@@ -18,6 +18,7 @@ from ralph.pipeline.events import AnalysisDecisionEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
+    LoopCounterConfig,
     PhaseCommitPolicy,
     PhaseDecisionRoute,
     PhaseDefinition,
@@ -126,6 +127,10 @@ def _dev_analysis_policy() -> PipelinePolicy:
         },
         entry_phase="development",
         terminal_phase="complete",
+        loop_counters={
+            "development_analysis_iteration": LoopCounterConfig(default_max=3),
+            "review_analysis_iteration": LoopCounterConfig(default_max=2),
+        },
         post_commit_routes=[
             PostCommitRoute(
                 when=PostCommitRouteWhen(
@@ -153,7 +158,6 @@ class TestAnalysisDecisionEventCompleted:
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 2},
-            loop_caps={"development_analysis_iteration": 3},
         )
         policy = _dev_analysis_policy()
         event = AnalysisDecisionEvent(phase="development_analysis", decision="completed")
@@ -166,7 +170,6 @@ class TestAnalysisDecisionEventCompleted:
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 0},
-            loop_caps={"development_analysis_iteration": 3},
         )
         policy = _dev_analysis_policy()
         event = AnalysisDecisionEvent(phase="development_analysis", decision="completed")

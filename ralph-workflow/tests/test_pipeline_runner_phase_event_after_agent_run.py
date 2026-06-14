@@ -50,6 +50,17 @@ def _load_default_policy_bundle() -> PolicyBundle:
     return load_policy(defaults_dir)
 
 
+def _policy_bundle_with_loop_counter_max(counter_name: str, default_max: int) -> PolicyBundle:
+    bundle = _load_default_policy_bundle()
+    loop_counters = dict(bundle.pipeline.loop_counters)
+    loop_counters[counter_name] = loop_counters[counter_name].model_copy(
+        update={"default_max": default_max}
+    )
+    return bundle.model_copy(
+        update={"pipeline": bundle.pipeline.model_copy(update={"loop_counters": loop_counters})}
+    )
+
+
 def _registry_factory(return_value: object) -> object:
     class Registry:
         @classmethod
@@ -287,7 +298,7 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
     tmp_path: Path,
     analysis_iteration: int,
 ) -> None:
-    policy_bundle = _load_default_policy_bundle()
+    policy_bundle = _policy_bundle_with_loop_counter_max("development_analysis_iteration", 5)
     workspace = FsWorkspace(tmp_path)
     workspace.write(
         "PROMPT.md",
@@ -312,7 +323,6 @@ def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on
         phase="development",
         previous_phase="development_analysis",
         loop_iterations={"development_analysis_iteration": analysis_iteration - 1},
-        loop_caps={"development_analysis_iteration": 5},
     )
     registry = MagicMock()
     registry.get.return_value = None

@@ -39,6 +39,17 @@ def _reduce(
     return reducer_reduce(state, cast("Any", event), policy)
 
 
+def _with_loop_cap(policy: PipelinePolicy, field: str, cap: int) -> PipelinePolicy:
+    return policy.model_copy(
+        update={
+            "loop_counters": {
+                **policy.loop_counters,
+                field: LoopCounterConfig(default_max=cap),
+            }
+        }
+    )
+
+
 def _basic_pipeline_policy() -> PipelinePolicy:
     return PipelinePolicy(
         phases={
@@ -508,7 +519,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 0},
-            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.get_loop_iteration("development_analysis_iteration") == 1
@@ -516,40 +526,36 @@ class TestAnalysisDecisionDispatch:
     def test_dev_analysis_loopback_at_max_routes_to_development(self) -> None:
         """At max iterations, ANALYSIS_LOOPBACK still routes to development."""
         policy = _policy_with_post_commit_routes()
+        expected_cap = policy.loop_counters["development_analysis_iteration"].default_max
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 2},
-            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
         assert new_state.previous_phase == "development_analysis"
-        assert new_state.get_loop_iteration(
-            "development_analysis_iteration"
-        ) == state.loop_caps.get("development_analysis_iteration", 3)
+        assert new_state.get_loop_iteration("development_analysis_iteration") == expected_cap
 
     def test_dev_analysis_loopback_already_at_cap_stays_clamped(self) -> None:
         """Further loopbacks after the cap should not increment beyond the cap."""
         policy = _policy_with_post_commit_routes()
+        expected_cap = policy.loop_counters["development_analysis_iteration"].default_max
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 3},
-            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
         assert new_state.previous_phase == "development_analysis"
-        assert new_state.get_loop_iteration(
-            "development_analysis_iteration"
-        ) == state.loop_caps.get("development_analysis_iteration", 3)
+        assert new_state.get_loop_iteration("development_analysis_iteration") == expected_cap
 
     def test_dev_analysis_loopback_with_zero_cap_stays_zero(self) -> None:
         """A zero configured cap should still route to development without incrementing."""
         policy = _policy_with_post_commit_routes()
+        policy = _with_loop_cap(policy, "development_analysis_iteration", 0)
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 0},
-            loop_caps={"development_analysis_iteration": 0},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
@@ -559,10 +565,10 @@ class TestAnalysisDecisionDispatch:
     def test_dev_analysis_loopback_with_single_iteration_cap_clamps_to_one(self) -> None:
         """A cap of 1 should allow the first analysis run and clamp the loopback to 1."""
         policy = _policy_with_post_commit_routes()
+        policy = _with_loop_cap(policy, "development_analysis_iteration", 1)
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 0},
-            loop_caps={"development_analysis_iteration": 1},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
@@ -572,10 +578,14 @@ class TestAnalysisDecisionDispatch:
     def test_dev_analysis_loopback_with_two_iteration_cap_reaches_final_counter(self) -> None:
         """The second allowed analysis run should clamp to 2 so only the next re-entry skips."""
         policy = _policy_with_post_commit_routes()
+        policy = _with_loop_cap(
+            policy,
+            "development_analysis_iteration",
+            DEVELOPMENT_ANALYSIS_TWO_RUN_CAP,
+        )
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 1},
-            loop_caps={"development_analysis_iteration": DEVELOPMENT_ANALYSIS_TWO_RUN_CAP},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
@@ -591,7 +601,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 2},
-            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
@@ -602,7 +611,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": 2},
-            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
@@ -613,7 +621,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 0},
-            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.get_loop_iteration("review_analysis_iteration") == 1
@@ -621,41 +628,39 @@ class TestAnalysisDecisionDispatch:
     def test_review_analysis_loopback_at_max_routes_to_fix(self) -> None:
         """At the review-analysis cap, ANALYSIS_LOOPBACK still routes to fix."""
         policy = _policy_with_post_commit_routes()
+        policy = _with_loop_cap(policy, "review_analysis_iteration", 3)
+        expected_cap = policy.loop_counters["review_analysis_iteration"].default_max
         state = PipelineState(
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 2},
-            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
         assert new_state.previous_phase == "review_analysis"
-        assert new_state.get_loop_iteration("review_analysis_iteration") == state.loop_caps.get(
-            "review_analysis_iteration", 2
-        )
+        assert new_state.get_loop_iteration("review_analysis_iteration") == expected_cap
 
     def test_review_analysis_loopback_already_at_cap_stays_clamped(self) -> None:
         """Further review loopbacks after the cap should not increment beyond the cap."""
         policy = _policy_with_post_commit_routes()
+        policy = _with_loop_cap(policy, "review_analysis_iteration", 3)
+        expected_cap = policy.loop_counters["review_analysis_iteration"].default_max
         state = PipelineState(
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 3},
-            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
         assert new_state.previous_phase == "review_analysis"
-        assert new_state.get_loop_iteration("review_analysis_iteration") == state.loop_caps.get(
-            "review_analysis_iteration", 2
-        )
+        assert new_state.get_loop_iteration("review_analysis_iteration") == expected_cap
         assert new_state.review_outcome is not None
 
     def test_review_analysis_loopback_with_zero_cap_stays_zero(self) -> None:
         """A zero configured cap should still route to fix without incrementing."""
         policy = _policy_with_post_commit_routes()
+        policy = _with_loop_cap(policy, "review_analysis_iteration", 0)
         state = PipelineState(
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 0},
-            loop_caps={"review_analysis_iteration": 0},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
@@ -666,19 +671,17 @@ class TestAnalysisDecisionDispatch:
     def test_review_analysis_loopback_at_max_with_policy_routes_to_fix(self) -> None:
         """Policy routing must keep review analysis loopback on fix when the cap is reached."""
         policy = _policy_with_post_commit_routes()
+        expected_cap = policy.loop_counters["review_analysis_iteration"].default_max
         state = PipelineState(
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 1},
-            loop_caps={"review_analysis_iteration": 2},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
         assert new_state.phase == "fix"
         assert new_state.previous_phase == "review_analysis"
-        assert new_state.get_loop_iteration("review_analysis_iteration") == state.loop_caps.get(
-            "review_analysis_iteration", 2
-        )
+        assert new_state.get_loop_iteration("review_analysis_iteration") == expected_cap
         assert new_state.review_outcome is not None
 
     def test_review_analysis_success_resets_review_analysis_iteration(self) -> None:
@@ -687,7 +690,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 2},
-            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
@@ -698,7 +700,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="review_commit",
             loop_iterations={"review_analysis_iteration": 2},
-            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
@@ -707,6 +708,9 @@ class TestAnalysisDecisionDispatch:
         """Routing errors after capped dev loopback should keep the clamped counter."""
         policy = MagicMock()
         policy.recovery.failed_route = "failed"
+        policy.loop_counters = {
+            "development_analysis_iteration": LoopCounterConfig(default_max=3),
+        }
         phase_def = MagicMock()
         phase_def.role = "analysis"
         phase_def.workflow_fallback = None
@@ -719,7 +723,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 1},
-            loop_caps={"development_analysis_iteration": 3},
         )
         with patch("ralph.pipeline.reducer.resolve_next_phase", side_effect=ValueError("bad")):
             new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -727,13 +730,16 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == "failed"
         assert new_state.get_loop_iteration("development_analysis_iteration") == min(
             state.get_loop_iteration("development_analysis_iteration") + 1,
-            state.loop_caps.get("development_analysis_iteration", 3),
+            policy.loop_counters["development_analysis_iteration"].default_max,
         )
 
     def test_review_analysis_loopback_routing_error_preserves_iteration_bookkeeping(self) -> None:
         """Routing errors after capped review loopback should keep the clamped counter."""
         policy = MagicMock()
         policy.recovery.failed_route = "failed"
+        policy.loop_counters = {
+            "review_analysis_iteration": LoopCounterConfig(default_max=3),
+        }
         phase_def = MagicMock()
         phase_def.role = "analysis"
         phase_def.workflow_fallback = None
@@ -746,7 +752,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 1},
-            loop_caps={"review_analysis_iteration": 3},
         )
         with patch("ralph.pipeline.reducer.resolve_next_phase", side_effect=ValueError("bad")):
             new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -754,7 +759,7 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == "failed"
         assert new_state.get_loop_iteration("review_analysis_iteration") == min(
             state.get_loop_iteration("review_analysis_iteration") + 1,
-            state.loop_caps.get("review_analysis_iteration", 2),
+            policy.loop_counters["review_analysis_iteration"].default_max,
         )
         assert new_state.review_outcome is not None
 
@@ -790,7 +795,6 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="development_commit_cleanup",
             loop_iterations={"commit_cleanup_iteration": 1},
-            loop_caps={"commit_cleanup_iteration": 3},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.PHASE_LOOPBACK, policy)

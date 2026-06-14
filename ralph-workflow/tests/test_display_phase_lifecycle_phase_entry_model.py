@@ -118,7 +118,6 @@ class TestPhaseEntryModel:
         state = PipelineState(
             phase="development_commit_cleanup",
             loop_iterations={"commit_cleanup_iteration": 1},
-            loop_caps={"commit_cleanup_iteration": 3},
         )
 
         entry = build_phase_entry_model_from_state(
@@ -128,5 +127,49 @@ class TestPhaseEntryModel:
         )
 
         assert entry.phase_role == "commit_cleanup"
+        assert entry.inner_analysis is None
+        assert entry.inner_analysis_cap is None
+
+    def test_zero_cap_analysis_entry_model_hides_impossible_analysis_label(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        iteration_state_field="planning_analysis_iteration"
+                    ),
+                    transitions=PhaseTransition(on_success="complete", on_loopback="planning"),
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="planning_analysis"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_phase="planning",
+            terminal_phase="complete",
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=0),
+            },
+        )
+        state = PipelineState(
+            phase="planning_analysis",
+            loop_iterations={"planning_analysis_iteration": 0},
+        )
+
+        entry = build_phase_entry_model_from_state(
+            "planning_analysis",
+            state,
+            policy,
+        )
+
+        assert entry.phase_role == "analysis"
         assert entry.inner_analysis is None
         assert entry.inner_analysis_cap is None

@@ -89,6 +89,17 @@ def _config() -> UnifiedConfig:
     return UnifiedConfig()
 
 
+def _policy_bundle_with_loop_counter(counter_name: str, default_max: int) -> PolicyBundle:
+    bundle = load_policy(DEFAULT_POLICY_DIR)
+    loop_counters = dict(bundle.pipeline.loop_counters)
+    loop_counters[counter_name] = loop_counters[counter_name].model_copy(
+        update={"default_max": default_max}
+    )
+    return bundle.model_copy(
+        update={"pipeline": bundle.pipeline.model_copy(update={"loop_counters": loop_counters})}
+    )
+
+
 def _run_pipeline(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -96,9 +107,10 @@ def _run_pipeline(
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     counter_overrides: dict[str, int] | None = None,
+    policy_bundle: PolicyBundle | None = None,
 ) -> tuple[int, list[PipelineState]]:
     saved_states: list[PipelineState] = []
-    policy_bundle = _default_policy_bundle()
+    policy_bundle = _default_policy_bundle() if policy_bundle is None else policy_bundle
 
     def fake_execute_effect(
         effect: Effect,
@@ -278,15 +290,11 @@ def test_planning_analysis_cap_skips_reentry_and_enters_development(
     memory_workspace: MemoryWorkspace,
 ) -> None:
     invoker = PlanningAnalysisRequestChangesOnceInvoker(memory_workspace)
-    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
+    policy_bundle = _policy_bundle_with_loop_counter("planning_analysis_iteration", 1)
     initial_state = PipelineState.from_policy(
         policy_bundle.pipeline,
         budget_caps={"iteration": 1},
         loop_iterations={"planning_analysis_iteration": 1},
-        loop_caps={
-            "planning_analysis_iteration": 1,
-            "development_analysis_iteration": DEVELOPMENT_CYCLES_THREE,
-        },
     )
 
     result, saved_states = _run_pipeline(
@@ -296,6 +304,7 @@ def test_planning_analysis_cap_skips_reentry_and_enters_development(
         _config(),
         initial_state=initial_state,
         counter_overrides={"iteration": 1},
+        policy_bundle=policy_bundle,
     )
 
     assert result == 0
@@ -314,15 +323,10 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     tmp_path: Path,
 ) -> None:
     saved_states: list[PipelineState] = []
-    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
-    initial_loop_caps = {
-        name: cfg.default_max for name, cfg in policy_bundle.pipeline.loop_counters.items()
-    }
-    initial_loop_caps["planning_analysis_iteration"] = 3
+    policy_bundle = _policy_bundle_with_loop_counter("planning_analysis_iteration", 3)
     initial_state = PipelineState.from_policy(
         policy_bundle.pipeline,
         budget_caps={"iteration": 1},
-        loop_caps=initial_loop_caps,
     )
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted planning analysis.")
 
@@ -468,17 +472,15 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
     analysis_cap: int,
 ) -> None:
     invoker = DevelopmentAnalysisAlwaysLoopbackInvoker(memory_workspace)
-    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
-    initial_loop_caps = {
-        name: cfg.default_max for name, cfg in policy_bundle.pipeline.loop_counters.items()
-    }
-    initial_loop_caps["development_analysis_iteration"] = analysis_cap
+    policy_bundle = _policy_bundle_with_loop_counter(
+        "development_analysis_iteration",
+        analysis_cap,
+    )
     initial_state = PipelineState(
         phase="development",
         policy_entry_phase=policy_bundle.pipeline.entry_phase,
         current_drain="development",
         budget_caps={"iteration": 1},
-        loop_caps=initial_loop_caps,
     )
 
     result, saved_states = _run_pipeline(
@@ -488,6 +490,7 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
         _config(),
         initial_state=initial_state,
         counter_overrides={"iteration": 1},
+        policy_bundle=policy_bundle,
     )
 
     assert result == 0
@@ -526,17 +529,12 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     tmp_path: Path,
 ) -> None:
     saved_states: list[PipelineState] = []
-    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
-    initial_loop_caps = {
-        name: cfg.default_max for name, cfg in policy_bundle.pipeline.loop_counters.items()
-    }
-    initial_loop_caps["development_analysis_iteration"] = 3
+    policy_bundle = _policy_bundle_with_loop_counter("development_analysis_iteration", 3)
     initial_state = PipelineState(
         phase="development",
         policy_entry_phase=policy_bundle.pipeline.entry_phase,
         current_drain="development",
         budget_caps={"iteration": 1},
-        loop_caps=initial_loop_caps,
     )
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted development analysis.")
     (tmp_path / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)

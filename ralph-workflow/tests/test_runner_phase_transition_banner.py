@@ -31,6 +31,16 @@ _STUB_TOOL_CALLS = 7
 _STUB_ERRORS = 1
 
 
+def _default_pipeline_policy_with_loop_counter_max(
+    counter_name: str, default_max: int
+) -> PipelinePolicy:
+    loop_counters = dict(_DEFAULT_POLICY.pipeline.loop_counters)
+    loop_counters[counter_name] = loop_counters[counter_name].model_copy(
+        update={"default_max": default_max}
+    )
+    return _DEFAULT_POLICY.pipeline.model_copy(update={"loop_counters": loop_counters})
+
+
 def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
     """emit_phase_close_from_exit should be called with exit_trigger='completed'."""
     display = _StubDisplay()
@@ -402,7 +412,6 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
         budget_caps={"iteration": 1},
         # Set loop iteration to cap to trigger skipped analysis
         loop_iterations={"development_analysis_iteration": 5},
-        loop_caps={"development_analysis_iteration": 5},
     )
 
     setattr(
@@ -421,7 +430,9 @@ def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:
         "development_commit",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
-        pipeline_policy=_DEFAULT_POLICY.pipeline,
+        pipeline_policy=_default_pipeline_policy_with_loop_counter_max(
+            "development_analysis_iteration", 5
+        ),
     )
 
     output = display._ctx.console.export_text()
@@ -491,7 +502,6 @@ def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback() -> N
         phase="planning",
         previous_phase="planning_analysis",
         loop_iterations={"planning_analysis_iteration": 3},
-        loop_caps={"planning_analysis_iteration": 3},
     )
 
     setattr(
@@ -513,7 +523,9 @@ def test_emit_phase_transition_shows_skip_and_changes_for_capped_loopback() -> N
         "planning_analysis",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
-        pipeline_policy=_DEFAULT_POLICY.pipeline,
+        pipeline_policy=_default_pipeline_policy_with_loop_counter_max(
+            "planning_analysis_iteration", 3
+        ),
     )
 
     output = display._ctx.console.export_text()
@@ -553,7 +565,6 @@ def test_emit_phase_transition_shows_bypass_metadata_without_fake_decision() -> 
         phase="development",
         previous_phase="planning",
         loop_iterations={"planning_analysis_iteration": 3},
-        loop_caps={"planning_analysis_iteration": 3},
     )
     setattr(
         display,
@@ -572,7 +583,9 @@ def test_emit_phase_transition_shows_bypass_metadata_without_fake_decision() -> 
         "planning",
         state,
         verbosity=runner_module.Verbosity.VERBOSE,
-        pipeline_policy=_DEFAULT_POLICY.pipeline,
+        pipeline_policy=_default_pipeline_policy_with_loop_counter_max(
+            "planning_analysis_iteration", 3
+        ),
     )
 
     output = display._ctx.console.export_text()

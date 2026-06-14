@@ -66,5 +66,4 @@ def create_initial_state(
         policy_entry_phase=entry_phase,
         policy_format_version=2 if pipeline_policy.entry_block is not None else 1,
         current_drain=resolve_phase_drain(entry_phase, pipeline_policy),
-        loop_caps={name: cfg.default_max for name, cfg in pipeline_policy.loop_counters.items()},
     )
