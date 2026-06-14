@@ -511,9 +511,44 @@ class RecoveryController:
             )
             return new_state, []
 
+        # If every agent in the chain is temporarily unavailable, preserve the
+        # session and wait until the earliest cooldown expires instead of
+        # terminating the run. The run loop will sleep on last_retry_delay_ms
+        # and then retry the same phase. Otherwise the chain is truly exhausted
+        # (available agents have no budget/retries left), so fail the phase.
+        if all(
+            not self._is_agent_available(phase, agent) for agent in chain.agents
+        ):
+            wait_ms = self._earliest_unavailable_wait_ms(phase, chain)
+            reason = "all agents unavailable; waiting for cooldown expiry"
+            logger.info("{} in phase={} (wait_ms={})", reason, phase, wait_ms)
+            return (
+                state.copy_with(
+                    last_error=reason,
+                    last_retry_delay_ms=wait_ms,
+                ),
+                [],
+            )
+
         new_state = state.copy_with(recovery_cycle_count=state.recovery_cycle_count + 1)
         failed_state = self._enter_phase_failed(new_state, failure.reason, failure.category)
         return failed_state, []
+
+    def _earliest_unavailable_wait_ms(
+        self,
+        phase: str,
+        chain: AgentChainState,
+    ) -> int:
+        """Return milliseconds until the first unavailable agent in the chain becomes available."""
+        current_time_ms = int(self._clock.monotonic() * 1000)
+        min_remaining: int | None = None
+        for agent in chain.agents:
+            until_ms = self._unavailable_timeouts.get(f"{phase}:{agent}", 0)
+            if until_ms > current_time_ms:
+                remaining = until_ms - current_time_ms
+                if min_remaining is None or remaining < min_remaining:
+                    min_remaining = remaining
+        return max(0, min_remaining or 0)
 
     def _next_available_agent_index(
         self,

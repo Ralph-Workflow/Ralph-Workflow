@@ -423,102 +423,86 @@ class TestHandleReadMedia:
     # Typed-block delivery tests (Claude provider)
     # -------------------------------------------------------------------------
 
-    def test_claude_pdf_returns_typed_pdf_block(self) -> None:
+    def test_claude_pdf_returns_typed_pdf_block(self, tmp_path: Path) -> None:
         pdf_bytes = b"%PDF-1.4 fake pdf content"
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-            f.write(pdf_bytes)
-            temp_path = f.name
+        media_file = tmp_path / "report.pdf"
+        media_file.write_bytes(pdf_bytes)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(
-                MEDIA_READ_CAPABILITY,
-                model_identity=MultimodalModelIdentity(
-                    provider="claude", model_id="claude-3-5-sonnet-20241022"
-                ),
-            )
-            result = handle_read_media(session, ws, {"path": "report.pdf"})
+        ws = MagicMock()
+        ws.absolute_path.return_value = str(media_file)
+        session = MockSessionWithManifest(
+            MEDIA_READ_CAPABILITY,
+            model_identity=MultimodalModelIdentity(
+                provider="claude", model_id="claude-3-5-sonnet-20241022"
+            ),
+        )
+        result = handle_read_media(session, ws, {"path": "report.pdf"})
 
-            assert result.is_error is False
-            content = result.content[0]
-            assert isinstance(content, PdfContent)
-            assert content.type == "pdf"
-            assert content.delivery == "typed_block"
-            assert content.uri.startswith("ralph://media/")
-            assert content.mime_type == "application/pdf"
-            assert content.title == "report.pdf"
-        finally:
-            Path(temp_path).unlink()
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, PdfContent)
+        assert content.type == "pdf"
+        assert content.delivery == "typed_block"
+        assert content.uri.startswith("ralph://media/")
+        assert content.mime_type == "application/pdf"
+        assert content.title == "report.pdf"
 
-    def test_gemini_audio_returns_typed_audio_block(self) -> None:
+    def test_gemini_audio_returns_typed_audio_block(self, tmp_path: Path) -> None:
         mp3_bytes = b"ID3" + b"\x00" * 50
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            f.write(mp3_bytes)
-            temp_path = f.name
+        media_file = tmp_path / "clip.mp3"
+        media_file.write_bytes(mp3_bytes)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(
-                MEDIA_READ_CAPABILITY,
-                model_identity=MultimodalModelIdentity(provider="gemini"),
-            )
-            result = handle_read_media(session, ws, {"path": "clip.mp3"})
+        ws = MagicMock()
+        ws.absolute_path.return_value = str(media_file)
+        session = MockSessionWithManifest(
+            MEDIA_READ_CAPABILITY,
+            model_identity=MultimodalModelIdentity(provider="gemini"),
+        )
+        result = handle_read_media(session, ws, {"path": "clip.mp3"})
 
-            assert result.is_error is False
-            content = result.content[0]
-            assert isinstance(content, AudioContent)
-            assert content.type == "audio"
-            assert content.delivery == "typed_block"
-        finally:
-            Path(temp_path).unlink()
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, AudioContent)
+        assert content.type == "audio"
+        assert content.delivery == "typed_block"
 
-    def test_gemini_video_returns_typed_video_block(self) -> None:
+    def test_gemini_video_returns_typed_video_block(self, tmp_path: Path) -> None:
         mp4_bytes = b"\x00" * 100
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-            f.write(mp4_bytes)
-            temp_path = f.name
+        media_file = tmp_path / "video.mp4"
+        media_file.write_bytes(mp4_bytes)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(
-                MEDIA_READ_CAPABILITY,
-                model_identity=MultimodalModelIdentity(provider="gemini"),
-            )
-            result = handle_read_media(session, ws, {"path": "video.mp4"})
+        ws = MagicMock()
+        ws.absolute_path.return_value = str(media_file)
+        session = MockSessionWithManifest(
+            MEDIA_READ_CAPABILITY,
+            model_identity=MultimodalModelIdentity(provider="gemini"),
+        )
+        result = handle_read_media(session, ws, {"path": "video.mp4"})
 
-            assert result.is_error is False
-            content = result.content[0]
-            assert isinstance(content, VideoContent)
-            assert content.type == "video"
-            assert content.delivery == "typed_block"
-        finally:
-            Path(temp_path).unlink()
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, VideoContent)
+        assert content.type == "video"
+        assert content.delivery == "typed_block"
 
-    def test_claude_document_returns_typed_document_block(self) -> None:
+    def test_claude_document_returns_typed_document_block(self, tmp_path: Path) -> None:
         docx_bytes = b"PK\x03\x04" + b"\x00" * 50  # Fake DOCX (zip magic)
-        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
-            f.write(docx_bytes)
-            temp_path = f.name
+        media_file = tmp_path / "doc.docx"
+        media_file.write_bytes(docx_bytes)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(
-                MEDIA_READ_CAPABILITY,
-                model_identity=MultimodalModelIdentity(provider="claude"),
-            )
-            result = handle_read_media(session, ws, {"path": "doc.docx"})
+        ws = MagicMock()
+        ws.absolute_path.return_value = str(media_file)
+        session = MockSessionWithManifest(
+            MEDIA_READ_CAPABILITY,
+            model_identity=MultimodalModelIdentity(provider="claude"),
+        )
+        result = handle_read_media(session, ws, {"path": "doc.docx"})
 
-            assert result.is_error is False
-            content = result.content[0]
-            assert isinstance(content, DocumentContent)
-            assert content.type == "document"
-            assert content.delivery == "typed_block"
-        finally:
-            Path(temp_path).unlink()
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, DocumentContent)
+        assert content.type == "document"
+        assert content.delivery == "typed_block"
 
     # -------------------------------------------------------------------------
     # Replay handle tests (ralph://media/{artifact_id})

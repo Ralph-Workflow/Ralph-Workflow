@@ -139,6 +139,29 @@ def test_empty_output_message_classified_as_agent_fault() -> None:
     assert failure.counts_against_budget is True
 
 
+def test_unavailable_agent_message_classified_with_is_unavailable_flag() -> None:
+    """An online no-output failure is flagged as an unavailable agent."""
+    classifier = FailureClassifier()
+
+    unavailable_failure = classifier.classify(
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        phase="development",
+        agent="claude",
+        connectivity_state="online",
+    )
+    assert unavailable_failure.category == FailureCategory.AGENT
+    assert unavailable_failure.is_unavailable is True
+
+    network_failure = classifier.classify(
+        AgentInvocationError("claude", 1, "Connection reset by peer"),
+        phase="development",
+        agent="claude",
+        connectivity_state="online",
+    )
+    assert network_failure.category == FailureCategory.ENVIRONMENTAL
+    assert network_failure.is_unavailable is False
+
+
 def test_empty_response_in_parsed_output_classified_as_agent_fault() -> None:
     """An empty-response signal carried only in parsed_output (not the primary
     message) must classify as an agent fault, exactly like one in the message.
