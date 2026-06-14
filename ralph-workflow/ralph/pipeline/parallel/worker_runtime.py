@@ -15,7 +15,7 @@ from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import Event, PipelineEvent
-from ralph.pipeline.factory import build_default_pipeline_deps
+from ralph.pipeline.factory import PipelineDeps, build_default_pipeline_deps
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
 from ralph.pipeline.prompt_prep import session_capabilities_for_agent_phase
@@ -82,7 +82,10 @@ def _state_for_worker_manifest(
 
 
 def run_parallel_worker_from_manifest(
-    *, manifest_path: Path, display_context: DisplayContext
+    *,
+    manifest_path: Path,
+    display_context: DisplayContext,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> int:
     """Execute one manifest-backed worker flow without entering the shared run loop."""
 
@@ -116,8 +119,8 @@ def run_parallel_worker_from_manifest(
     # workspace_scope, which execute_agent_effect uses for the MCP surface.
     workspace = FsWorkspace(workspace_root)
     agent = AgentRegistry.from_config(config).get(effect.agent_name)
-    pipeline_deps = build_default_pipeline_deps(config, display_context)
-    prompt_path = pipeline_deps.phase_prompt_materializer(
+    effective_pipeline_deps = pipeline_deps or build_default_pipeline_deps(config, display_context)
+    prompt_path = effective_pipeline_deps.phase_prompt_materializer(
         phase=manifest.phase,
         workspace=workspace,
         pipeline_policy=policy_bundle.pipeline,
@@ -146,7 +149,7 @@ def run_parallel_worker_from_manifest(
     event: Event = execute_agent_effect(
         worker_effect,
         config,
-        pipeline_deps,
+        effective_pipeline_deps,
         workspace_scope,
         display_context=display_context,
         state=state,
