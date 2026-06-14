@@ -135,7 +135,7 @@ When working on `ralph/pipeline/runner.py`, `ralph/phases/`, or Claude/CCS agent
 All wall-clock timeout decisions in the agent invocation system are consolidated behind two
 watchdog controllers, both using Clock-injected time for deterministic FakeClock-driven testing:
 
-- **IdleWatchdog** (`ralph/agents/idle_watchdog.py`) — owns in-stream timeouts:
+- **IdleWatchdog** (`ralph/agents/idle_watchdog/idle_watchdog.py`) — owns in-stream timeouts:
   - `SESSION_CEILING_EXCEEDED` — absolute wall-clock ceiling; activity cannot reset it.
   - `NO_OUTPUT_DEADLINE` — idle deadline since last output (+ drain window).
   - `CHILDREN_PERSIST_TOO_LONG` — cumulative WAITING_ON_CHILD ceiling.
@@ -158,7 +158,7 @@ a missing watchdog seam.
 
 **Canonical child-evidence model:** All stale-vs-fresh child-liveness decisions flow
 through one function: `classify_child_snapshot()` in `ralph/process/child_liveness.py`.
-Both the in-stream idle-timeout path (`classify_quiet` in `execution_state.py`) and the
+Both the in-stream idle-timeout path (`classify_quiet` in `ralph/agents/execution_state/opencode_execution_strategy.py`) and the
 post-exit path (`classify_exit` / `_evidence_precedence`) must call this function rather
 than reimplementing the precedence rules independently.
 
@@ -172,10 +172,10 @@ real work happening on any of four channels as evidence the session is NOT idle:
 | `subagent` | A subagent progress / heartbeat / tool_call signal routed through `OpenCodeExecutionStrategy.observe_line` | `record_subagent_work()` via the parallel subagent contextvar |
 | `workspace` | A workspace file change captured by `WorkspaceMonitor.record_event` | `record_workspace_event()` |
 
-While ANY non-stdout channel age is below `activity_evidence_ttl_seconds`
-(default 30.0s, tunable via `agent_idle_activity_evidence_ttl_seconds` in
-`ralph-workflow.toml` or `None` / `0.0` to disable), the watchdog defers a
-`NO_OUTPUT_DEADLINE` fire and returns `WatchdogVerdict.CONTINUE` with a debug
+While ANY non-stdout channel age is below
+`agent_idle_activity_evidence_ttl_seconds` (default 30.0s under `[general]` in
+`ralph-workflow.toml`; set to `0.0` or `None` to disable), the watchdog defers
+a `NO_OUTPUT_DEADLINE` fire and returns `WatchdogVerdict.CONTINUE` with a debug
 log. The absolute `SESSION_CEILING_EXCEEDED` and `CHILDREN_PERSIST_TOO_LONG`
 ceilings are checked BEFORE the deferral, so they remain absolute (activity
 cannot reset either ceiling). The diagnostic embedded in every watchdog fire
@@ -192,16 +192,15 @@ perturbing the existing semantics. See `tests/agents/test_idle_watchdog_3.py`,
 `tests/agents/test_subagent_activity_wiring.py` for the black-box regression
 suite covering this contract.
 
-**Scope note — upstream MCP servers are not tracked by the `mcp_tool` channel.**
-The `mcp_tool` channel covers the in-process Ralph Workflow MCP server only;
-upstream (third-party) MCP servers configured via `[mcp] upstreams` or the
-`general.workflow.unsafe_mode` merge path are NOT tracked by the activity-sink
-protocol, so operators who rely on upstream MCP servers for sub-agent work
-should either leave the watchdog's stdout-only behavior in place (set
-`agent_idle_activity_evidence_ttl_seconds = 0.0`) or extend the activity-sink
-protocol to cover the upstream transport. This is a documented known
-limitation; a follow-up TODO is tracked in `CHANGELOG.md` under the
-[Unreleased] / Added block.
+**Upstream MCP coverage.** The `mcp_tool` channel covers both in-process
+Ralph Workflow tool calls and upstream (third-party) MCP tool calls proxied through
+`UpstreamProxyHandler` (`ralph/mcp/tools/bridge/_upstream_proxy_handler.py`).
+`UpstreamProxyHandler.__call__` invokes the same activity-sink protocol as the
+in-process `McpServer._handle_tools_call` path, so a delegated upstream tool
+call refreshes the `mcp_tool` channel just like a native Ralph Workflow tool call. Set
+`agent_idle_activity_evidence_ttl_seconds = 0.0` (or `None`) only when you want
+to opt out of the activity-aware verdict entirely and restore the legacy
+stdout-only behavior.
 
 See `ralph/agents/post_exit_watchdog.py` for the full post-exit transition matrix and
 verdict semantics.
@@ -209,7 +208,7 @@ verdict semantics.
 ## OpenCode session continuation and completion contract
 
 OpenCode is a session-based agent that may spawn child agents or delegate background work. Ralph Workflow
-models its lifecycle explicitly through `OpenCodeExecutionStrategy` in `ralph/agents/execution_state.py`:
+models its lifecycle explicitly through `OpenCodeExecutionStrategy` in `ralph/agents/execution_state/opencode_execution_strategy.py`:
 
 **Completion contract:** An OpenCode run is only declared terminal-complete when at least one of
 these conditions is true:

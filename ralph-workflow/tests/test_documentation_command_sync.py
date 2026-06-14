@@ -151,6 +151,53 @@ def test_contributing_describes_read_media_as_primary_multimodal_tool() -> None:
     assert "resource_reference" in content
 
 
+def test_contributing_does_not_claim_upstream_mcp_untracked() -> None:
+    """CONTRIBUTING.md must not claim upstream MCP servers are untracked.
+
+    The ``mcp_tool`` activity channel covers both in-process Ralph tools
+    and upstream (third-party) MCP tool calls proxied through
+    ``UpstreamProxyHandler``. The documented limitation was closed by the
+    upstream-proxy activity-sink wiring.
+    """
+    content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
+    assert "upstream MCP servers are not tracked" not in content, (
+        "CONTRIBUTING.md must not claim upstream MCP servers are untracked;"
+        " the UpstreamProxyHandler now records them on the mcp_tool channel"
+    )
+    assert "stdout-only behavior in place" not in content, (
+        "CONTRIBUTING.md must not advise operators to keep stdout-only behavior"
+        " because upstream MCP calls were untracked"
+    )
+
+
+def test_contributing_uses_operator_facing_activity_evidence_ttl_key() -> None:
+    """CONTRIBUTING.md must use the operator-facing TOML key name, not the
+    internal TimeoutPolicy field name, when describing the tunable."""
+    content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
+    # The internal dataclass field name must not appear bare in docs text;
+    # the operator-facing TOML key ``agent_idle_activity_evidence_ttl_seconds``
+    # is the canonical name for contributor-facing documentation.
+    assert "`activity_evidence_ttl_seconds`" not in content, (
+        "CONTRIBUTING.md must use the operator-facing key"
+        " `agent_idle_activity_evidence_ttl_seconds`, not the internal"
+        " TimeoutPolicy field name `activity_evidence_ttl_seconds`"
+    )
+
+
+def test_contributing_does_not_reference_obsolete_watchdog_module_paths() -> None:
+    """CONTRIBUTING.md must point at the maintained module paths, not the
+    obsolete flat-module paths that no longer exist."""
+    content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
+    assert "ralph/agents/idle_watchdog.py" not in content, (
+        "CONTRIBUTING.md references obsolete path ralph/agents/idle_watchdog.py;"
+        " use ralph/agents/idle_watchdog/idle_watchdog.py"
+    )
+    assert "ralph/agents/execution_state.py" not in content, (
+        "CONTRIBUTING.md references obsolete path ralph/agents/execution_state.py;"
+        " use ralph/agents/execution_state/opencode_execution_strategy.py"
+    )
+
+
 def test_architecture_md_describes_read_media_as_primary_tool() -> None:
     """ralph/mcp/ARCHITECTURE.md must describe read_media as primary multimodal tool."""
     content = _ARCHITECTURE_PATH.read_text(encoding="utf-8")
