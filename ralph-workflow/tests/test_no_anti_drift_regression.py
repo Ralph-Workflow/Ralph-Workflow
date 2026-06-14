@@ -17,7 +17,7 @@ import importlib
 import pathlib
 import re
 import time
-from functools import lru_cache
+from functools import cache
 
 import pytest
 
@@ -52,8 +52,14 @@ TESTS_ROOT = pathlib.Path(__file__).parent
 # ---------------------------------------------------------------------------
 
 
+@cache
 def _read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+@cache
+def _parse(path: pathlib.Path) -> ast.AST:
+    return ast.parse(_read(path))
 
 
 def _walk_python_files(root: pathlib.Path) -> list[pathlib.Path]:
@@ -133,7 +139,7 @@ class TestDisplayIsOnlyParallelDisplay:
             source = _read(path)
             if "LegacyConsoleDisplay" not in source:
                 continue
-            tree = ast.parse(source)
+            tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
@@ -734,7 +740,7 @@ class TestNoAntiDriftRegressions:
             source = _read(path)
             if "LegacyConsoleDisplay" not in source:
                 continue
-            tree = ast.parse(source)
+            tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
@@ -1013,8 +1019,7 @@ class TestNoRetryDecisionReimplementation:
                 continue
             if "test" in rel.parts:
                 continue
-            source = _read(path)
-            tree = ast.parse(source)
+            tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
@@ -1052,8 +1057,7 @@ class TestNoSessionIdReimplementation:
             rel = path.relative_to(RALPH_ROOT.parent)
             if rel in allowed_files:
                 continue
-            source = _read(path)
-            tree = ast.parse(source)
+            tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
@@ -1096,8 +1100,7 @@ class TestUserFacingStatusEmissionRoutesThroughParallelDisplay:
             rel = path.relative_to(RALPH_ROOT.parent)
             if rel in allowed_files:
                 continue
-            source = _read(path)
-            tree = ast.parse(source)
+            tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
@@ -1133,9 +1136,8 @@ class TestTransportAdaptationIsNarrow:
         for path in _walk_python_files(RALPH_ROOT / "agents" / "invoke"):
             if path.name == "__init__.py":
                 continue
-            source = _read(path)
             try:
-                tree = ast.parse(source)
+                tree = _parse(path)
             except SyntaxError:
                 continue
             for node in ast.walk(tree):
@@ -1222,8 +1224,7 @@ def _collect_phase_transition_findings() -> None:
         if plumbing_dir in path.parents:
             continue
         try:
-            source = _read(path)
-            tree = ast.parse(source)
+            tree = _parse(path)
         except (SyntaxError, OSError):
             continue
         for node in ast.walk(tree):
@@ -1394,8 +1395,7 @@ class TestSessionIdStorageIsSingleSource:
     def test_session_id_storage_is_single_source(self) -> None:
         state_module = RALPH_ROOT / "pipeline" / "state.py"
         assert state_module.exists()
-        source = _read(state_module)
-        tree = ast.parse(source)
+        tree = _parse(state_module)
         # Find all `session_id: <type> = <default>` attributes on the
         # PipelineState class.
         storage_attrs: list[str] = []
@@ -1511,9 +1511,8 @@ class TestNoExcludedEmitMethod:
         )
         offenders: list[str] = []
         for path in _emission_target_files():
-            source = _read(path)
             try:
-                tree = ast.parse(source)
+                tree = _parse(path)
             except SyntaxError:
                 continue
             for node in ast.walk(tree):
@@ -1538,7 +1537,7 @@ class TestNoExcludedEmitMethod:
         )
 
 
-@lru_cache(maxsize=1)
+@cache
 def _emission_target_files() -> tuple[pathlib.Path, ...]:
     """Return all ``.py`` files under CLI / pipeline / config (module-level)."""
     files: list[pathlib.Path] = []

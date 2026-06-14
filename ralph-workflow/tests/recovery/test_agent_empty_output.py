@@ -167,14 +167,18 @@ def test_empty_response_in_parsed_output_classified_as_agent_fault() -> None:
     assert failure.counts_against_budget is True
 
 
-def test_online_timeout_with_no_output_debits_budget_in_controller() -> None:
-    """Known-online timeout with no output is attributed to the agent budget."""
+def test_online_timeout_with_no_output_marks_agent_unavailable() -> None:
+    """Known-online timeout with no output marks the agent unavailable and
+    skips its budget because the failure signals a temporary unavailability
+    (e.g. out of credits) rather than a retriable agent fault.
+    """
     registry = _make_registry_with_budget("development", "claude", max_retries=2)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
             budget_registry=registry,
             policy_bundle=_minimal_policy_bundle(),
+            clock=FakeClock(start=0.0),
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
@@ -189,7 +193,9 @@ def test_online_timeout_with_no_output_debits_budget_in_controller() -> None:
     assert evt.counted_against_budget is True
     budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
-    assert budget.consumed == 1
+    assert budget.consumed == 0
+    snap = controller.snapshot()
+    assert snap["unavailable_timeouts"]["development:claude"] == 5_000
 
 
 def test_unavailable_agent_requires_online_connectivity() -> None:

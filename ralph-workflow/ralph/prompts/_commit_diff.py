@@ -10,6 +10,33 @@ if TYPE_CHECKING:
     from pathlib import Path
 from ralph.prompts.payload_refs import sanitize_surrogates as _sanitize_surrogates
 
+
+def _is_inside_git_repo(workspace_root: Path) -> bool:
+    """Fast path: detect a git working tree by walking up for ``.git``.
+
+    This avoids spawning ``git`` processes for workspaces that are not under
+    version control (common in unit tests using ``tmp_path``). It correctly
+    handles repositories nested inside other repositories and stops at the
+    filesystem root.
+    """
+    path = workspace_root.resolve()
+    for _ in range(100):
+        if (path / ".git").exists():
+            return True
+        parent = path.parent
+        if parent == path:
+            return False
+        path = parent
+    return False
+
+
+def _git_output_if_repo(workspace_root: Path, *args: str) -> str:
+    """Run a git command only when the workspace is inside a git working tree."""
+    if not _is_inside_git_repo(workspace_root):
+        return _NO_DIFF_SENTINEL
+    return _git_output(workspace_root, *args)
+
+
 # Maximum number of untracked file paths to surface in the cleanup diff before
 # the list is truncated. Keeps the prompt size bounded and prevents prompt
 # overflow when a workspace contains huge numbers of untracked files
@@ -72,8 +99,10 @@ def commit_cleanup_diff(workspace_root: Path) -> str:
     capped at ``_MAX_UNTRACKED_FILES_IN_DIFF`` entries and a truncation
     footer is appended when more files exist.
     """
-    tracked = _git_output(workspace_root, "diff", "HEAD")
-    untracked_raw = _git_output(workspace_root, "ls-files", "--others", "--exclude-standard")
+    tracked = _git_output_if_repo(workspace_root, "diff", "HEAD")
+    untracked_raw = _git_output_if_repo(
+        workspace_root, "ls-files", "--others", "--exclude-standard"
+    )
     if untracked_raw == _NO_DIFF_SENTINEL:
         untracked_paths: list[str] = []
     else:

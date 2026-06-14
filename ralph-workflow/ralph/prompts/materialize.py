@@ -47,7 +47,7 @@ from ralph.pipeline.phase_entry_cleaner import (
 from ralph.policy.models import ROLE_REVIEW
 from ralph.pro_support.env import PROMPT_PATH as _PROMPT_PATH_ENV
 from ralph.pro_support.prompt import resolve_effective_prompt_path
-from ralph.prompts._commit_diff import _UNTRACKED_HEADER
+from ralph.prompts._commit_diff import _UNTRACKED_HEADER, _is_inside_git_repo
 from ralph.prompts._missing_plan_handoff_error import MissingPlanHandoffError
 from ralph.prompts._prompt_phase_context import PromptPhaseContext
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
@@ -1073,6 +1073,8 @@ def _git_diff(workspace_root: Path) -> str:
       changes on top (HEAD vs working tree). This is correct whether the user
       commits once per dev cycle or once per individual dev iteration within a cycle.
     """
+    if not _is_inside_git_repo(workspace_root):
+        return "(no diff available)"
     baseline_sha = read_cycle_baseline(workspace_root)
     if baseline_sha:
         committed = _git_output(workspace_root, "diff", baseline_sha, "HEAD")
@@ -1084,11 +1086,15 @@ def _git_diff(workspace_root: Path) -> str:
 
 def _pending_diff(workspace_root: Path) -> str:
     """Return the pending (staged but not committed) diff for a workspace."""
+    if not _is_inside_git_repo(workspace_root):
+        return "(no diff available)"
     return _git_output(workspace_root, "diff", "HEAD")
 
 
 def _commit_phase_diff(workspace_root: Path) -> str:
     diff = _pending_diff(workspace_root).strip()
+    if not _is_inside_git_repo(workspace_root):
+        return diff or "(no diff available)"
     if Repo is not None:
         repo: _RepoProtocol | None = None
         try:

@@ -142,12 +142,19 @@ class RecoveryController:
         chain = state.chain_for_phase(phase)
         chain_capacity = 0
         retry_delay_ms = 0
+        is_agent_unavailable = failure.is_unavailable and agent is not None
 
         if chain is not None:
             chain_capacity = max(0, len(chain.agents) - chain.current_index - 1)
 
-            # Compute retry delay from chain config
-            if agent is not None and failure.counts_against_budget:
+            # Compute retry delay from chain config only when the failing
+            # agent is currently available. An unavailable agent is skipped
+            # (not retried), so no retry delay is charged for it.
+            if (
+                agent is not None
+                and failure.counts_against_budget
+                and not is_agent_unavailable
+            ):
                 retry_delay_ms = self._compute_retry_delay(phase, agent)
 
         failure_evt = FailureEvent(
@@ -238,9 +245,11 @@ class RecoveryController:
             )
             self._write_session_reset_hint(phase, failure)
 
-        if agent is not None:
+        if agent is not None and not is_agent_unavailable:
             self._registry = self._registry.debit(phase, agent, failure)
-            # Track backoff attempt
+            # Track backoff attempt for retry-delay growth on non-unavailable
+            # agent failures. Unavailable attempts are tracked inside
+            # _mark_agent_unavailable because they use a separate cooldown.
             if failure.counts_against_budget:
                 key = f"{phase}:{agent}"
                 self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
@@ -282,6 +291,7 @@ class RecoveryController:
         backoff_ms = compute_backoff_ms(base_backoff_ms, attempt, max_ms=300_000)
         current_time_ms = int(self._clock.monotonic() * 1000)
         self._unavailable_timeouts[key] = current_time_ms + backoff_ms
+        self._backoff_attempts[key] = attempt + 1
         return backoff_ms
 
     def _is_agent_available(self, phase: str, agent: str) -> bool:
