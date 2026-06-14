@@ -29,6 +29,8 @@ from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 

@@ -248,6 +248,16 @@ Recovery tests cover:
 
 All recovery tests run in under 10 seconds each with injectable fake clocks, fake sleep, and fake probes — no real network I/O.
 
+### Cycle cap vs unavailable-cooldown waiting
+
+The recovery cycle cap prevents infinite loops from **budget exhaustion** (consumed retries, chain exhaustion, repeated agent failures). It is enforced by `RecoveryController` via `recovery_cycle_count` and terminates the run with an `ExitFailureEffect` when the cap is reached.
+
+Unavailable-cooldown waiting is **different** and does **not** count toward the cycle cap. When every agent in a phase chain is temporarily unavailable, the controller preserves the session and returns a state with `last_retry_delay_ms > 0` and reason `all agents unavailable; waiting for cooldown expiry`. The run loop sleeps on `last_retry_delay_ms` and retries the same phase. This path does **not** increment `recovery_cycle_count`, so agents can cool down indefinitely without hitting the cap. The "WE NEVER CRASH" requirement applies here: the system waits for the earliest cooldown to expire and then resumes, rather than terminating.
+
+In short:
+- **Cycle cap** = limit on retry budget consumption / repeated failure loops.
+- **Unavailable-cooldown wait** = pause until an agent becomes available again; unbounded by the cycle cap.
+
 ## Idle watchdog — per-channel activity evidence model
 
 The idle watchdog in `ralph-workflow/ralph/agents/idle_watchdog/` decides whether a session is stuck by looking at four independent evidence channels: the agent's `stdout` output (the original baseline), MCP `tools/call` activity against the Ralph Workflow MCP server, subagent progress / heartbeat / tool-call signals routed through `OpenCodeExecutionStrategy.observe_line`, and workspace file-change events captured by `WorkspaceMonitor`. Workspace evidence collection runs whenever a run has a `workspace_path`, regardless of whether the progress UI (`show_progress`) is enabled. While ANY non-stdout channel is fresher than `agent_idle_activity_evidence_ttl_seconds` (default 30.0 s, tunable in `ralph-workflow.toml`; set to `0.0` to disable and restore the legacy stdout-only behavior), the watchdog defers a `NO_OUTPUT_DEADLINE` fire and returns `CONTINUE` instead. The `SESSION_CEILING_EXCEEDED` and `CHILDREN_PERSIST_TOO_LONG` absolute ceilings are checked BEFORE the deferral, so they remain absolute — activity evidence cannot reset or defer either ceiling.

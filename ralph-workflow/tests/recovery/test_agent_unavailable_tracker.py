@@ -204,6 +204,136 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
     assert snap2["unavailable_timeouts"]["development:claude"] > 60_000
 
 
+def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> None:
+    """When every agent is unavailable, wait for the earliest cooldown then resume."""
+    clock = FakeClock(start=0.0)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailable_timeouts={
+                "development:claude": 5_000,
+                "development:opencode": 10_000,
+            },
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
+
+    # Every agent is unavailable: the session waits for the earliest cooldown.
+    waiting_state, effects, _ = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert waiting_state.phase == "development"
+    assert waiting_state.last_retry_delay_ms == 5_000
+    assert effects == []
+    assert waiting_state.last_error is not None
+    assert "all agents unavailable" in waiting_state.last_error.lower()
+    assert "waiting for cooldown expiry" in waiting_state.last_error.lower()
+    snap = controller.snapshot()
+    assert snap["backoff_attempts"]["development:claude"] == 1
+
+    # Advance to the earliest cooldown expiry; claude can be reconsidered.
+    clock.advance(5)
+
+    # Claude fails again and is re-marked unavailable; opencode is still
+    # cooling down, so the controller waits again rather than crashing.
+    waiting_state2, effects2, _ = controller.handle(
+        waiting_state,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert waiting_state2.phase == "development"
+    assert waiting_state2.last_retry_delay_ms == 5_000
+    assert effects2 == []
+
+    # Advance until opencode's cooldown also expires.
+    clock.advance(5)
+
+    # Claude fails again; opencode is now available, so the controller falls
+    # over and the phase makes progress instead of terminating.
+    resumed_state, resumed_effects, _ = controller.handle(
+        waiting_state2,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert resumed_state.phase == "development"
+    assert resumed_state.chain_for_phase("development").current_index == 1
+    assert resumed_effects == []
+
+
+def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> None:
+    """Agent A fails, fall over to B, then retry A after cooldown and grow its backoff."""
+    clock = FakeClock(start=0.0)
+    registry = _make_registry_with_budget("development", "claude", max_retries=2)
+    registry = _make_registry_with_budget("development", "opencode", max_retries=2)
+    fallovers: list[FalloverEvent] = []
+    bus = FailureEventBus()
+    bus.subscribe(
+        lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
+    )
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            budget_registry=registry,
+            clock=clock,
+            event_bus=bus,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
+
+    # A fails -> fall over to B.
+    state_b, _, _ = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert state_b.chain_for_phase("development").current_index == 1
+    assert fallovers[-1].from_agent == "claude"
+    assert fallovers[-1].to_agent == "opencode"
+    snap1 = controller.snapshot()
+    assert snap1["unavailable_timeouts"]["development:claude"] == 5_000
+    assert snap1["backoff_attempts"]["development:claude"] == 1
+
+    # Advance past A's cooldown so A can be reconsidered.
+    clock.advance(5)
+
+    # B fails -> fall back to A (A to B to A complete).
+    state_a, _, _ = controller.handle(
+        state_b,
+        AgentInvocationError("opencode", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="opencode"),
+    )
+    assert state_a.chain_for_phase("development").current_index == 0
+    assert fallovers[-1].from_agent == "opencode"
+    assert fallovers[-1].to_agent == "claude"
+
+    # Advance past B's cooldown so B can be reconsidered when A fails again.
+    clock.advance(5)
+
+    # A fails again -> fall over to B, and A's backoff grows from 5s to 10s.
+    state_b2, _, _ = controller.handle(
+        state_a,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert state_b2.chain_for_phase("development").current_index == 1
+    assert fallovers[-1].from_agent == "claude"
+    assert fallovers[-1].to_agent == "opencode"
+    snap2 = controller.snapshot()
+    # Backoff duration grew from 5s to 10s (unavailable_timeouts stores absolute
+    # expiration timestamps, so compute the remaining cooldown).
+    current_time_ms = int(clock.monotonic() * 1000)
+    assert snap2["unavailable_timeouts"]["development:claude"] - current_time_ms == 10_000
+    assert snap2["backoff_attempts"]["development:claude"] == 2
+
+
 def test_unavailable_skip_does_not_consume_budget() -> None:
     """Falling over from an unavailable agent must not debit its budget."""
     registry = _make_registry_with_budget("development", "claude", max_retries=2)

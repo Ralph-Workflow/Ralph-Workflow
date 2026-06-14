@@ -104,6 +104,28 @@ def test_agent_invocation_parsed_output_session_limit_message_is_detected() -> N
     assert failure.reset_session is False
 
 
+def test_subscription_limit_sets_is_unavailable_when_online() -> None:
+    """Subscription/credit limit failures flag the agent unavailable when connectivity is online."""
+    classifier = FailureClassifier()
+    exc = AgentInvocationError(
+        "claude",
+        1,
+        "",
+        ["You've hit your weekly limit \u00b7 resets Mon 12:00am"],
+    )
+
+    failure = classifier.classify(
+        exc,
+        phase="development",
+        agent="claude",
+        connectivity_state="online",
+    )
+
+    assert failure.category == FailureCategory.AGENT
+    assert failure.is_unavailable is True
+    assert failure.reset_tool_registry is False
+
+
 def test_online_timeout_with_no_output_is_treated_as_suspicious_agent_fault() -> None:
     """When connectivity is known online, no-output timeout should fall over as agent fault."""
     classifier = FailureClassifier()

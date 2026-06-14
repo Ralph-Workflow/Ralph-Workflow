@@ -395,6 +395,7 @@ class FailureClassifier:
                 or contains_casefolded_marker(
                     detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
                 )
+                or _is_subscription_limit_message(detail_parts)
             )
         )
 
