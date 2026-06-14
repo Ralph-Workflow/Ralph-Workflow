@@ -538,3 +538,100 @@ def test_run_smoke_plumbing_pro_hooks_reach_factory(
     assert len(recording_factory.calls) == 1
     assert recording_factory.calls[0]["pro_hooks"] is pro_hooks
     assert recording_factory.calls[0]["pro_hooks"].model_identity is model_identity
+
+
+def test_run_commit_plumbing_uses_hooked_display_context_at_dispatch_boundary(
+    monkeypatch: object,
+    tmp_path: Path,
+) -> None:
+    """Regression: the display_context forwarded to execute_agent_effect and
+    collect_commit_agent_output must be the one produced by the factory, not
+    the original caller display_context. ProPipelineHooks.display_context is
+    applied by DefaultPipelineFactory, so the commit plumbing fallback path
+    must rebind display_context from the returned PipelineDeps.
+    """
+    original_display_context = _make_display_context()
+    hooked_display_context = _make_display_context()
+    expected_deps = make_test_pipeline_deps(hooked_display_context)
+    recording_factory = _RecordingPipelineFactory(expected_deps)
+    captured_execute_display_context: object | None = None
+    captured_collect_display_context: object | None = None
+    chain_config = _make_commit_chain_config()
+
+    def fake_execute_agent_effect(
+        effect: object,
+        config: UnifiedConfig,
+        pipeline_deps: PipelineDeps,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        nonlocal captured_execute_display_context
+        del effect, config, pipeline_deps, workspace_scope
+        captured_execute_display_context = kwargs.get("display_context")
+        return PipelineEvent.AGENT_SUCCESS
+
+    def fake_collect_commit_agent_output(
+        lines: object,
+        *,
+        parser_type: object,
+        agent_name: object,
+        verbose: object,
+        display_context: object,
+        session_id_sink: object | None = None,
+    ) -> tuple[list[str], list[str], None]:
+        del lines, parser_type, agent_name, verbose, session_id_sink
+        nonlocal captured_collect_display_context
+        captured_collect_display_context = display_context
+        return [], [], None
+
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "DefaultPipelineFactory",
+        lambda *_args, **_kwargs: recording_factory,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module, "execute_agent_effect", fake_execute_agent_effect
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "collect_commit_agent_output",
+        fake_collect_commit_agent_output,
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message",
+        lambda _diff, **kwargs: "prompt",
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "prompt_commit_message_for_opencode",
+        lambda _diff, **kwargs: "prompt",
+    )
+    monkeypatch.setattr(
+        commit_plumbing_module,
+        "write_commit_prompt_file",
+        lambda _repo_root, _prompt: str(tmp_path / "prompt.md"),
+    )
+
+    with (
+        patch.object(commit_module, "delete_commit_message_artifacts"),
+        patch.object(
+            commit_module,
+            "read_commit_message_artifact",
+            return_value="feat: hooked display context",
+        ),
+    ):
+        run_commit_plumbing(
+            diff="diff --git a/x b/x",
+            repo_root=tmp_path,
+            chain_config=chain_config,
+            display_context=original_display_context,
+        )
+
+    assert len(recording_factory.calls) == 1
+    assert recording_factory.calls[0]["display_context"] is original_display_context
+    assert captured_execute_display_context is hooked_display_context
+    assert captured_collect_display_context is hooked_display_context

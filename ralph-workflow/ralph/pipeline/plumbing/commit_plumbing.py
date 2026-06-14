@@ -316,6 +316,7 @@ def run_commit_plumbing(
             registry=chain_config.registry,
             pro_hooks=pro_hooks,
         )
+        display_context = effective_pipeline_deps.display_context
         effective_core = effective_pipeline_deps.core
         effective_bridge_factory = effective_pipeline_deps.bridge_factory
 
