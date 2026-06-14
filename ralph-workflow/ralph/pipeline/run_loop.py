@@ -71,6 +71,7 @@ if TYPE_CHECKING:
             config_path: Path | None,
             cli_overrides: dict[str, object],
             _monitor_stop_cb: Callable[[], None] | None,
+            pipeline_deps: PipelineDeps | None = None,
         ) -> PipelineState | int: ...
 
     class _ConnectivityMonitorLike(Protocol):
@@ -119,6 +120,7 @@ class _LoopContext:
     heartbeat_client: ProHeartbeatClient | None = None
     pro_watcher: ProMarkerWatcher | None = None
     snapshot_registry: SnapshotRegistry | None = None
+    pipeline_deps: PipelineDeps | None = None
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -295,6 +297,7 @@ def _run_inner_loop(
             config_path=ctx.config_path,
             cli_overrides=ctx.cli_overrides,
             _monitor_stop_cb=ctx.monitor_stop,
+            pipeline_deps=ctx.pipeline_deps,
         )
         if isinstance(step_result, int):
             return state, prev_phase, step_result
@@ -756,6 +759,7 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         heartbeat_client=_heartbeat_client,
         pro_watcher=_pro_watcher,
         snapshot_registry=snapshot_registry,
+        pipeline_deps=pipeline_deps,
     )
     return _execute_with_cleanup(state, loop_ctx, state.phase, _unsubscribe_bus, _display_stop)
 

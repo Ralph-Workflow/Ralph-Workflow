@@ -10,21 +10,28 @@ Both the main pipeline (via ``run_loop.run``) and plumbing commands consume
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 import ralph.pipeline.session_bridge as _session_bridge
+from ralph.mcp.protocol.startup import heartbeat_policy_from_env
+from ralph.mcp.server.lifecycle import check_mcp_bridge_health
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
+from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from contextlib import AbstractContextManager
+    from datetime import timedelta
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.mcp.protocol.startup import HeartbeatPolicy
+    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.policy.models import ArtifactsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.hooks import (
@@ -81,6 +88,33 @@ class ArtifactRequirementsResolverFn(Protocol):
         ...
 
 
+class McpSupervisorFactoryFn(Protocol):
+    """Construct a context manager that supervises an MCP bridge during invocation."""
+
+    def __call__(
+        self,
+        bridge: RestartAwareMcpBridge,
+        *,
+        check_interval: timedelta,
+        on_restart: Callable[[int], None] | None,
+    ) -> AbstractContextManager[object, bool | None]:
+        ...
+
+
+class HeartbeatPolicyFromEnvFn(Protocol):
+    """Return the heartbeat policy read from the environment."""
+
+    def __call__(self) -> HeartbeatPolicy:
+        ...
+
+
+class CheckMcpBridgeHealthFn(Protocol):
+    """Check that an MCP bridge is healthy, raising on failure."""
+
+    def __call__(self, bridge: SessionBridgeLike) -> None:
+        ...
+
+
 def _materialize_system_prompt(
     workspace_root: Path,
     name: str,
@@ -118,14 +152,38 @@ def _resolve_phase_required_artifact(
     )
 
 
+def _mcp_supervisor_factory(
+    bridge: RestartAwareMcpBridge,
+    *,
+    check_interval: timedelta,
+    on_restart: Callable[[int], None] | None,
+) -> AbstractContextManager[object, bool | None]:
+    return cast(
+        "AbstractContextManager[object, bool | None]",
+        McpSupervisor(
+            bridge,
+            check_interval=check_interval,
+            on_restart=on_restart,
+        ),
+    )
+
+
+def _heartbeat_policy_from_env() -> HeartbeatPolicy:
+    return heartbeat_policy_from_env()
+
+
+def _check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
+    check_mcp_bridge_health(bridge)
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class PipelineDeps:
     """Injectable dependency bundle for the pipeline and plumbing commands.
 
     Fields cover the four PROMPT-mandated collaborators
     (display_context, model_identity, system/phase prompt materializers,
-    artifact resolver), the bridge factory, and the seven
-    ``ProPipelineHooks`` overrides.
+    artifact resolver), the bridge factory, MCP lifecycle machinery, and the
+    seven ``ProPipelineHooks`` overrides.
     """
 
     display_context: DisplayContext
@@ -137,6 +195,9 @@ class PipelineDeps:
         _resolve_phase_required_artifact
     )
     bridge_factory: _session_bridge.BridgeFactory = _session_bridge.build_session_bridge
+    mcp_supervisor_factory: McpSupervisorFactoryFn = _mcp_supervisor_factory
+    heartbeat_policy_from_env_fn: HeartbeatPolicyFromEnvFn = _heartbeat_policy_from_env
+    check_mcp_bridge_health_fn: CheckMcpBridgeHealthFn = _check_mcp_bridge_health
     policy_bundle: PolicyBundle | None = None
     policy_bundle_factory: PolicyBundleFactory | None = None
     state_factory: StateFactory | None = None
@@ -226,7 +287,10 @@ def build_default_pipeline_deps(
 
 __all__ = [
     "ArtifactRequirementsResolverFn",
+    "CheckMcpBridgeHealthFn",
+    "HeartbeatPolicyFromEnvFn",
     "MaterializeSystemPromptFn",
+    "McpSupervisorFactoryFn",
     "PhasePromptMaterializerFn",
     "PipelineDeps",
     "PipelineFactory",

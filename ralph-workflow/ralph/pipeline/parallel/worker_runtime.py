@@ -8,21 +8,20 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.agents.invoke import AgentInvocationError, invoke_agent
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
-from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
 from ralph.pipeline.checkpoint import worker_checkpoint_path
+from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import determine_effect_from_policy
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.factory import build_default_pipeline_deps
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.phase_agent_handler import phase_event_after_agent_run
 from ralph.pipeline.prompt_prep import session_capabilities_for_agent_phase
 from ralph.pipeline.state_init import create_initial_state
 from ralph.policy.loader import load_policy_for_workspace_scope
 from ralph.prompts.debug_dump import worker_multimodal_sidecar_path, worker_prompt_dump_path
-from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.prompts.system_prompt import worker_current_prompt_path, worker_system_prompt_path
 from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
@@ -117,7 +116,8 @@ def run_parallel_worker_from_manifest(
     # workspace_scope, which execute_agent_effect uses for the MCP surface.
     workspace = FsWorkspace(workspace_root)
     agent = AgentRegistry.from_config(config).get(effect.agent_name)
-    prompt_path = materialize_prompt_for_phase(
+    pipeline_deps = build_default_pipeline_deps(config, display_context)
+    prompt_path = pipeline_deps.phase_prompt_materializer(
         phase=manifest.phase,
         workspace=workspace,
         pipeline_policy=policy_bundle.pipeline,
@@ -143,15 +143,10 @@ def run_parallel_worker_from_manifest(
         drain=effect.drain,
         chain_name=effect.chain_name,
     )
-    deps = AgentExecutionDeps(
-        invoke_agent=invoke_agent,
-        agent_invocation_error=AgentInvocationError,
-        agent_registry=AgentRegistry,
-    )
     event: Event = execute_agent_effect(
         worker_effect,
         config,
-        deps,
+        pipeline_deps,
         workspace_scope,
         display_context=display_context,
         state=state,
@@ -171,20 +166,6 @@ def run_parallel_worker_from_manifest(
             state=state,
         )
     return 0 if event == PipelineEvent.AGENT_SUCCESS else 1
-
-
-def execute_agent_effect(
-    effect: InvokeAgentEffect,
-    config: UnifiedConfig,
-    deps: AgentExecutionDeps,
-    workspace_scope: WorkspaceScope,
-    **opts: object,
-) -> PipelineEvent:
-    """Delegate worker-mode agent execution through the standard runner seam."""
-    from ralph.pipeline.runner import (  # noqa: PLC0415
-        execute_agent_effect as runner_execute_agent_effect,
-    )
-    return runner_execute_agent_effect(effect, config, deps, workspace_scope, **opts)
 
 
 __all__ = [

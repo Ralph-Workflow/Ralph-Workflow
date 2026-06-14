@@ -51,9 +51,16 @@ def _retry_plan_for_exception(
     attempt_lines: list[str],
     current_session_id: str | None,
 ) -> _DirectMcpRetryPlan | None:
+    raw_resumable_session_id: object = getattr(exc, "resumable_session_id", None)
+    resumable_session_id = (
+        raw_resumable_session_id
+        if isinstance(raw_resumable_session_id, str) and raw_resumable_session_id
+        else None
+    )
     session_id = (
         extract_transport_session_id(tuple(attempt_lines))
         or extract_transport_session_id(_exception_parsed_output(exc))
+        or resumable_session_id
         or current_session_id
     )
     intent = resolve_retry_intent(
@@ -78,6 +85,7 @@ def run_with_direct_mcp_recovery[T](
     reset_tool_registry: Callable[[], object] | None = None,
     on_retry_failure: Callable[[list[str]], object] | None = None,
     on_session_observed: Callable[[str], object] | None = None,
+    retry_resumable_exit: bool = False,
 ) -> T:
     current_session_id: str | None = None
     retries_used = 0
@@ -93,7 +101,7 @@ def run_with_direct_mcp_recovery[T](
         try:
             return run_attempt(current_session_id, _capture_session_id)
         except Exception as exc:
-            if type(exc).__name__ == "OpenCodeResumableExitError":
+            if type(exc).__name__ == "OpenCodeResumableExitError" and not retry_resumable_exit:
                 raise
             if reset_tool_registry is None or retries_used >= max_retries:
                 raise

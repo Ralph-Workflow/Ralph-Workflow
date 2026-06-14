@@ -20,7 +20,7 @@ from ralph.agents.invoke import (
 from ralph.config.general_config import GeneralConfig
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
-from ralph.pipeline import runner as runner_module
+from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.scope import WorkspaceScope
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests._session_fake_mcp_bridge import _FakeMcpBridge
 from tests._session_registry_factory import _RegistryFactory
 
@@ -49,6 +50,7 @@ class TestRunnerSessionContinuation:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """First call raises OpenCodeResumableExitError; second call gets session_id='sess-1'."""
+        del monkeypatch
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("implement the task", encoding="utf-8")
 
@@ -59,10 +61,11 @@ class TestRunnerSessionContinuation:
         )
         agent_config = _opencode_agent_config()
         registry = _registry_factory_for(agent_config)
-        monkeypatch.setattr(
-            runner_module,
-            "start_mcp_server",
-            lambda *_a, **_kw: _FakeMcpBridge(),
+        display_context = make_display_context()
+        pipeline_deps = make_test_pipeline_deps(
+            display_context,
+            bridge=_FakeMcpBridge(),
+            registry_factory=registry.from_config,
         )
 
         seen_session_ids: list[str | None] = []
@@ -84,16 +87,14 @@ class TestRunnerSessionContinuation:
                 return _first()
             return iter(['{"type":"result"}'])
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             _runner_config(max_retries=1),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=fake_invoke_agent,
-                agent_invocation_error=AgentInvocationError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
+            display_context=display_context,
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -105,6 +106,7 @@ class TestRunnerSessionContinuation:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """With max_retries=0, OpenCodeResumableExitError is not retried and returns FAILURE."""
+        del monkeypatch
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("implement the task", encoding="utf-8")
 
@@ -115,10 +117,11 @@ class TestRunnerSessionContinuation:
         )
         agent_config = _opencode_agent_config()
         registry = _registry_factory_for(agent_config)
-        monkeypatch.setattr(
-            runner_module,
-            "start_mcp_server",
-            lambda *_a, **_kw: _FakeMcpBridge(),
+        display_context = make_display_context()
+        pipeline_deps = make_test_pipeline_deps(
+            display_context,
+            bridge=_FakeMcpBridge(),
+            registry_factory=registry.from_config,
         )
 
         def fake_invoke_agent(
@@ -135,16 +138,14 @@ class TestRunnerSessionContinuation:
 
             return _first()
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             _runner_config(max_retries=0),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=fake_invoke_agent,
-                agent_invocation_error=AgentInvocationError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
+            display_context=display_context,
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
         )
 
         assert result == PipelineEvent.AGENT_FAILURE

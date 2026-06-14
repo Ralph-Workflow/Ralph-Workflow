@@ -65,6 +65,7 @@ if TYPE_CHECKING:
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.executor.process import ProcessResult
     from ralph.mcp.server.factory import McpServerFactory
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.parallel import coordinator as parallel_coordinator
     from ralph.pipeline.state import PipelineState
     from ralph.pipeline.work_units import WorkUnit
@@ -113,6 +114,7 @@ class _FanOutCtx:
     mcp_factory_cls: _McpFactory | None = None
     run_process_async_fn: _RunProcessAsyncFn | None = None
     reducer_reduce_fn: _ReducerReduceFn | None = None
+    pipeline_deps: PipelineDeps | None = None
 
 
 def _notify_subscriber(subscriber: _PipelineSubscriberLike | None, state: PipelineState) -> None:
@@ -651,6 +653,7 @@ def execute_fan_out_sync(
     effect: FanOutEffect,
     state: PipelineState,
     display: ParallelDisplay,
+    pipeline_deps: PipelineDeps | None = None,
     **opts: object,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
@@ -688,6 +691,7 @@ def execute_fan_out_sync(
         mcp_factory_cls=mcp_factory_cls,
         run_process_async_fn=run_process_fn,
         reducer_reduce_fn=reducer_fn,
+        pipeline_deps=pipeline_deps,
     )
     return asyncio.run(_run_fan_out_async(ctx))
 

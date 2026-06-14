@@ -186,7 +186,7 @@ def _handle_agent_commit_generation(
             agents=agents,
             verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
             agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
-            general_config=config.general,
+            general_config=config,
         ),
         display_context=display_context,
     )

@@ -14,9 +14,13 @@ import pytest
 from rich.console import Console
 
 from ralph.config.enums import Verbosity
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+from ralph.pipeline.effect_executor import execute_agent_effect
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import (
     PipelineDeps,
     PipelineFactory,
@@ -35,11 +39,11 @@ from ralph.policy.models import (
     RecoveryPolicy,
 )
 from ralph.pro_support.hooks import ProPipelineHooks
+from ralph.workspace import WorkspaceScope
+from tests._pipeline_deps_factory import make_recording_bridge_factory, make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from ralph.config.models import UnifiedConfig
 
 
 def _build_config(tmp_path: Path) -> UnifiedConfig:
@@ -286,6 +290,50 @@ class TestProHooksComposition:
 
         assert deps.policy_bundle is None
         assert deps.registry_factory is None
+
+
+class TestPipelineSharedExecutionCore:
+    """Regression tests proving PipelineDeps drives the shared execution core."""
+
+    def test_execute_agent_effect_uses_pipeline_deps_bridge_factory(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        display_context = _display_context()
+        config = UnifiedConfig(
+            agents={"dev": AgentConfig(cmd="opencode", output_flag="--json-stream")}
+        )
+        effect = InvokeAgentEffect(
+            agent_name="dev", phase="development", prompt_file="dev.md"
+        )
+        factory = make_recording_bridge_factory()
+        deps = make_test_pipeline_deps(
+            display_context=display_context,
+            bridge_factory=factory,
+        )
+
+        def fake_invoke_agent(
+            _agent_config: AgentConfig,
+            _prompt_file: str,
+            *,
+            options: object = None,
+        ) -> list[str]:
+            del _agent_config, _prompt_file, options
+            return []
+
+        event = execute_agent_effect(
+            effect,
+            config,
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=display_context,
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=RuntimeError,
+        )
+
+        assert event == PipelineEvent.AGENT_SUCCESS
+        assert len(factory.calls) == 1
+        assert factory.calls[0]["drain"] == "development"
 
 
 class TestPipelineFactoryProtocol:

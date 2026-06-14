@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, cast
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
-from ralph.agents.invoke import AgentInvocationError, invoke_agent
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.config.enums import Verbosity
@@ -53,9 +52,6 @@ from ralph.pipeline._runner_mcp_validation import (
 from ralph.pipeline._runner_session import (
     apply_session_capture as _apply_session_capture,
 )
-from ralph.pipeline._runner_session import (
-    set_last_captured_session_id as _set_last_captured_session_id,
-)
 from ralph.pipeline._runner_state_helpers import (
     notify_pipeline_subscriber as _notify_pipeline_subscriber,
 )
@@ -72,7 +68,6 @@ from ralph.pipeline.activity_stream import (
     terminal_width,
     truncate,
 )
-from ralph.pipeline.agent_execution_deps import AgentExecutionDeps
 from ralph.pipeline.agent_retry_intent import cleared_agent_retry_intent
 from ralph.pipeline.commit_executor import (
     cleanup_commit_message_artifacts,
@@ -89,9 +84,7 @@ from ralph.pipeline.cycle_baseline import (
     read_cycle_baseline,
     write_cycle_baseline,
 )
-from ralph.pipeline.effect_executor import (
-    execute_agent_effect as _ee_execute_agent_effect,
-)
+from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effect_router import (
     determine_effect_from_policy,
 )
@@ -108,6 +101,7 @@ from ralph.pipeline.effects import (
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.factory import build_default_pipeline_deps
 from ralph.pipeline.fan_out import execute_fan_out_sync as _fan_out_execute_fan_out_sync
 from ralph.pipeline.handoffs import resolve_exhausted_analysis_bypass, resolve_phase_drain
 from ralph.pipeline.phase_agent_handler import (
@@ -120,7 +114,6 @@ from ralph.pipeline.phase_transition import (
     clear_phase_materialization_outputs,
     emit_final_summary,
     record_phase_transition_metadata,
-    show_phase_start_with_context,
     skipped_exhausted_analysis_info,
 )
 from ralph.pipeline.phase_transition import (
@@ -157,12 +150,8 @@ if TYPE_CHECKING:
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
-    from ralph.pipeline.agent_execution_deps import (
-        _CheckMcpBridgeHealthFn,
-        _McpSupervisorFactory,
-        _ShutdownMcpServerFn,
-        _StartMcpServerFn,
-    )
+    from ralph.mcp.websearch.secrets import EnvGetter
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.policy.models import (
         AgentsPolicy,
         ArtifactsPolicy,
@@ -300,24 +289,25 @@ def _execute_effect(
     workspace_scope: WorkspaceScope,
     *,
     display: ParallelDisplay | None = None,
+    display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> PipelineEvent:
-    deps = AgentExecutionDeps(
-        invoke_agent=invoke_agent,
-        agent_invocation_error=AgentInvocationError,
-        agent_registry=AgentRegistry,
-        show_phase_start_cb=show_phase_start_with_context,
-        set_session_id_cb=_set_last_captured_session_id,
+    resolved_display_context = display_context or (
+        display._ctx if display is not None and hasattr(display, "_ctx") else make_display_context()
     )
+    if pipeline_deps is None:
+        pipeline_deps = build_default_pipeline_deps(config, resolved_display_context)
     if isinstance(effect, InvokeAgentEffect):
         return execute_agent_effect(
             effect,
             config,
-            deps,
+            pipeline_deps,
             workspace_scope,
             display=display,
+            display_context=resolved_display_context,
             verbosity=verbosity,
             state=state,
             policy_bundle=policy_bundle,
@@ -360,6 +350,7 @@ def _execute_effect_with_optional_display(
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> Event:
     fn = execute_effect
     params = signature(fn).parameters
@@ -370,6 +361,7 @@ def _execute_effect_with_optional_display(
         "verbosity": verbosity,
         "state": state,
         "policy_bundle": policy_bundle,
+        "pipeline_deps": pipeline_deps,
     }
     supported = all_opts if accepts_kwargs else {k: v for k, v in all_opts.items() if k in params}
     return cast("_ExecuteEffectKwargsFn", fn)(effect, config, workspace_scope, **supported)
@@ -385,6 +377,7 @@ def execute_effect_with_optional_display(
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
     policy_bundle: PolicyBundle | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> Event:
     """Execute an effect and return the resulting event, optionally routing output to a display."""
     return _execute_effect_with_optional_display(
@@ -396,6 +389,7 @@ def execute_effect_with_optional_display(
         verbosity=verbosity,
         state=state,
         policy_bundle=policy_bundle,
+        pipeline_deps=pipeline_deps,
     )
 
 
@@ -409,6 +403,7 @@ def _invoke_execute_effect_with_optional_display(
     verbosity: Verbosity,
     state: PipelineState,
     policy_bundle: PolicyBundle,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> Event:
     return execute_effect_with_optional_display(
         effect,
@@ -419,6 +414,7 @@ def _invoke_execute_effect_with_optional_display(
         verbosity=verbosity,
         state=state,
         policy_bundle=policy_bundle,
+        pipeline_deps=pipeline_deps,
     )
 
 
@@ -502,6 +498,7 @@ def _run_pipeline_step(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
     _monitor_stop_cb: Callable[[], None] | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> PipelineState | int:
     try:
         effect = call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
@@ -545,13 +542,15 @@ def _run_pipeline_step(
                 workspace,
                 policy_bundle,
             )
-            _mat_fn = (
-                materialize_prompt_for_phase
-                if materialize_prompt_for_phase is not _original_materialize_prompt_for_phase
-                else None
-            )
             materialize_agent_prompt_if_needed(
-                effect, state, workspace, policy_bundle, registry, materialize_fn=_mat_fn
+                effect,
+                state,
+                workspace,
+                policy_bundle,
+                registry,
+                materialize_fn=(
+                    pipeline_deps.phase_prompt_materializer if pipeline_deps is not None else None
+                ),
             )
             event = invoke_execute_effect_with_optional_display(
                 effect,
@@ -562,13 +561,13 @@ def _run_pipeline_step(
                 verbosity=verbosity,
                 state=state,
                 policy_bundle=policy_bundle,
+                pipeline_deps=pipeline_deps,
             )
             if isinstance(effect, InvokeAgentEffect):
                 state = _apply_session_capture(state)
             if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
                 if recovery_controller is not None:
                     recovery_controller.reset_backoff(effect.phase, effect.agent_name)
-                _hp_fn = handle_phase if handle_phase is not _original_handle_phase else None
                 event = phase_event_after_agent_run(
                     effect=effect,
                     config=config,
@@ -579,7 +578,6 @@ def _run_pipeline_step(
                     display_context=display_context,
                     verbosity=verbosity,
                     state=state,
-                    handle_phase_fn=_hp_fn,
                 )
 
         _commit_phase_def = policy_bundle.pipeline.phases.get(state.phase)
@@ -772,7 +770,7 @@ def _handle_inline_effect(
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
-        return _emit_success_exit(display)
+        return _emit_success_exit(display, os.getenv)
 
     if isinstance(effect, ExitFailureEffect):
         emit_activity_line(
@@ -796,12 +794,15 @@ def _handle_inline_effect(
     return None
 
 
-def _emit_success_exit(display: ParallelDisplay | None) -> int:
+def _emit_success_exit(
+    display: ParallelDisplay | None,
+    getenv: EnvGetter,
+) -> int:
     emit_activity_line(display, None, "[green]Pipeline completed successfully.[/green]")
     # Periodic star CTA - shown ~50% of successful runs.
     # Only fires after first-run (first-run already shows full welcome panel with star CTA).
     # Uses process-id hash to avoid deterministic spam: each user sees it ~1 in 2 runs.
-    show_cta = (hash(str(os.getpid()) + str(os.getenv("USER", ""))) % 2) == 0
+    show_cta = (hash(str(os.getpid()) + str(getenv("USER") or "")) % 2) == 0
     if show_cta:
         emit_activity_line(display, None, f"[bold yellow]{CODEBERG_STAR_CTA}[/bold yellow]")
     return 0
@@ -831,14 +832,6 @@ def _call_determine_effect_from_policy(
     return fn(state, policy_bundle)
 
 
-_original_start_mcp_server = start_mcp_server
-_original_shutdown_mcp_server = shutdown_mcp_server
-_original_check_mcp_bridge_health = check_mcp_bridge_health
-_original_materialize_system_prompt = materialize_system_prompt
-_original_mcp_supervisor = McpSupervisor
-_original_heartbeat_policy_from_env = heartbeat_policy_from_env
-_original_materialize_prompt_for_phase = materialize_prompt_for_phase
-_original_handle_phase = handle_phase
 _cleanup_commit_message_artifacts = cleanup_commit_message_artifacts
 
 
@@ -847,6 +840,7 @@ def execute_fan_out_sync(
     effect: FanOutEffect,
     state: PipelineState,
     display: ParallelDisplay,
+    pipeline_deps: PipelineDeps | None = None,
     **opts: object,
 ) -> PipelineState:
     """Execute fan-out synchronously, forwarding current module globals as injectable overrides."""
@@ -859,6 +853,7 @@ def execute_fan_out_sync(
         _mcp_factory_cls=DynamicBindingMcpServerFactory,
         _run_process_async=run_process_async,
         _reducer_reduce=reducer_reduce,
+        pipeline_deps=pipeline_deps,
         **opts,
     )
 
@@ -874,13 +869,9 @@ def materialize_prepared_prompt(
     *,
     registry: _RegistryLike | None = None,
     config: UnifiedConfig | None = None,
+    pipeline_deps: PipelineDeps | None = None,
 ) -> None:
     """Delegate to _materialize_prepared_prompt, injecting the patchable prompt function."""
-    _mat_fn = (
-        materialize_prompt_for_phase
-        if materialize_prompt_for_phase is not _original_materialize_prompt_for_phase
-        else None
-    )
     _materialize_prepared_prompt_impl(
         effect,
         pipeline_policy,
@@ -889,7 +880,9 @@ def materialize_prepared_prompt(
         agents_policy=agents_policy,
         state=state,
         env=env,
-        materialize_fn=_mat_fn,
+        materialize_fn=(
+            pipeline_deps.phase_prompt_materializer if pipeline_deps is not None else None
+        ),
         registry=registry,
         config=config,
     )
@@ -898,65 +891,6 @@ def materialize_prepared_prompt(
 def available_width(prefix_len: int) -> int:
     """Return usable terminal width minus prefix and padding."""
     return max(40, terminal_width() - prefix_len - 2)
-
-
-def execute_agent_effect(
-    effect: InvokeAgentEffect,
-    config: UnifiedConfig,
-    deps: AgentExecutionDeps,
-    workspace_scope: WorkspaceScope,
-    **opts: object,
-) -> PipelineEvent:
-    """Execute an agent-invocation effect, injecting any patched MCP lifecycle hooks."""
-    effective_start_fn = (
-        start_mcp_server if start_mcp_server is not _original_start_mcp_server else None
-    )
-    effective_shutdown_fn = (
-        shutdown_mcp_server if shutdown_mcp_server is not _original_shutdown_mcp_server else None
-    )
-    effective_health_fn = (
-        check_mcp_bridge_health
-        if check_mcp_bridge_health is not _original_check_mcp_bridge_health
-        else None
-    )
-    effective_materialize_fn = (
-        materialize_system_prompt
-        if materialize_system_prompt is not _original_materialize_system_prompt
-        else None
-    )
-    effective_supervisor = McpSupervisor if McpSupervisor is not _original_mcp_supervisor else None
-    effective_heartbeat_fn = (
-        heartbeat_policy_from_env
-        if heartbeat_policy_from_env is not _original_heartbeat_policy_from_env
-        else None
-    )
-    effective_deps = AgentExecutionDeps(
-        invoke_agent=deps.invoke_agent,
-        agent_invocation_error=deps.agent_invocation_error,
-        agent_registry=deps.agent_registry,
-        show_phase_start_cb=deps.show_phase_start_cb,
-        set_session_id_cb=deps.set_session_id_cb,
-        start_mcp_server_fn=cast(
-            "_StartMcpServerFn | None",
-            effective_start_fn or deps.start_mcp_server_fn,
-        ),
-        shutdown_mcp_server_fn=cast(
-            "_ShutdownMcpServerFn | None",
-            effective_shutdown_fn or deps.shutdown_mcp_server_fn,
-        ),
-        check_mcp_bridge_health_fn=cast(
-            "_CheckMcpBridgeHealthFn | None",
-            effective_health_fn or deps.check_mcp_bridge_health_fn,
-        ),
-        materialize_system_prompt_fn=effective_materialize_fn
-        or deps.materialize_system_prompt_fn,
-        mcp_supervisor_factory=cast(
-            "_McpSupervisorFactory | None",
-            effective_supervisor or deps.mcp_supervisor_factory,
-        ),
-        heartbeat_policy_from_env_fn=effective_heartbeat_fn or deps.heartbeat_policy_from_env_fn,
-    )
-    return _ee_execute_agent_effect(effect, config, effective_deps, workspace_scope, **opts)
 
 
 def execute_commit_effect(

@@ -8,7 +8,7 @@ parsing, report rendering, exit codes only).
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -16,43 +16,29 @@ from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
-    InvokeRuntimeOptions,
     OpenCodeResumableExitError,
-    build_invoke_options_from_config,
     extract_transport_session_id,
     invoke_agent,
-)
-from ralph.agents.invoke._direct_mcp_recovery import (
-    default_direct_mcp_retry_limit,
-    run_with_direct_mcp_recovery,
 )
 from ralph.agents.parsers import get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
-from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.vt_normalizer import normalize_vt_text
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
     read_smoke_test_result_artifact,
 )
-from ralph.pipeline.activity_stream import stream_parsed_agent_activity
+from ralph.pipeline.effect_executor import execute_agent_effect
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import build_default_pipeline_deps
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
-from ralph.pipeline.session_bridge import (
-    bridge_env_for,
-    build_session_bridge,
-    reset_tool_registry_callback,
-)
-from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
-    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
-    from ralph.mcp.server.lifecycle import SessionBridgeLike
+    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
     from ralph.pipeline.factory import PipelineDeps
 
 _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
@@ -175,31 +161,6 @@ def _detect_break_indicators(lines: list[str]) -> list[str]:
     return errors
 
 
-def _start_smoke_bridge(
-    repo_root: Path,
-    *,
-    config: UnifiedConfig,
-    model_identity: MultimodalModelIdentity | None = None,
-) -> SessionBridgeLike:
-    workspace_scope = resolve_workspace_scope(repo_root)
-    agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
-    return build_session_bridge(
-        workspace_root=repo_root,
-        drain="development",
-        agents_policy=agents_policy,
-        session_id_prefix="smoke",
-        model_identity=model_identity,
-    )
-
-
-def _smoke_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
-    return bridge_env_for(bridge, run_id_label=_SMOKE_RUN_ID)
-
-
-def _with_session_id(options: InvokeOptions, session_id: str | None) -> InvokeOptions:
-    return replace(options, session_id=session_id)
-
-
 def _execute_smoke_turns(
     params: SmokeRunParams,
     current_session_id: str | None,
@@ -208,97 +169,74 @@ def _execute_smoke_turns(
     all_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
     live_output_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
     final_exception: AgentInvocationError | None = None
+    workspace_scope = resolve_workspace_scope(params.workspace_root)
 
     for _attempt in range(_SMOKE_MAX_TURNS):
-        raw_lines: list[str] = []
-        active_session_id = current_session_id
-        observed_session_id = current_session_id
+        raw_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
+        rendered_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
+        observed_session_id: str | None = current_session_id
 
         def _capture_session_id(session_id: str) -> None:
             nonlocal observed_session_id
             observed_session_id = session_id
 
-        def _run_retry_attempt(
-            retry_session_id: str | None,
-            capture_session_id: Callable[[str], None],
-            bound_session_id: str | None = active_session_id,
-        ) -> tuple[list[str], list[str]]:
-            return _run_smoke_attempt(
-                params,
-                _with_session_id(params.options, retry_session_id or bound_session_id),
-                session_id_sink=capture_session_id,
-            )
-
+        effect = InvokeAgentEffect(
+            agent_name=params.agent_name,
+            phase="development",
+            prompt_file=str(params.prompt_file),
+            drain="development",
+        )
+        pipeline_deps = params.pipeline_deps
+        if pipeline_deps is None:
+            raise RuntimeError("SmokeRunParams.pipeline_deps is required")
         try:
-            raw_lines, rendered_lines = run_with_direct_mcp_recovery(
-                _run_retry_attempt,
-                max_retries=default_direct_mcp_retry_limit(_SMOKE_MAX_TURNS - 1),
-                reset_tool_registry=cast(
-                    "Callable[[], object] | None",
-                    reset_tool_registry_callback(params.bridge),
-                ),
-                on_retry_failure=all_lines.extend,
-                on_session_observed=_capture_session_id,
+            event = execute_agent_effect(
+                effect,
+                params.unified_config,
+                pipeline_deps,
+                workspace_scope,
+                bridge=cast("RestartAwareMcpBridge", params.bridge),
+                display_context=params.display_context,
+                run_id=_SMOKE_RUN_ID,
+                raw_output_sink=raw_lines,
+                rendered_output_sink=rendered_lines,
+                set_session_id_cb=_capture_session_id,
+                invoke_agent=invoke_agent,
+                raise_resumable_exit=True,
             )
             all_lines.extend(raw_lines)
             live_output_lines.extend(rendered_lines)
-            current_session_id = observed_session_id or extract_transport_session_id(raw_lines)
+            current_session_id = observed_session_id or extract_transport_session_id(
+                tuple(raw_lines)
+            )
             final_exception = None
+            if event == PipelineEvent.AGENT_SUCCESS:
+                break
+            # Non-success event from the shared core ends the turn loop.
             break
         except OpenCodeResumableExitError as exc:
+            all_lines.extend(raw_lines)
+            live_output_lines.extend(rendered_lines)
             current_session_id = (
                 exc.resumable_session_id
                 or observed_session_id
-                or extract_transport_session_id(raw_lines)
+                or extract_transport_session_id(tuple(raw_lines))
             )
             final_exception = exc
             continue
         except AgentInvocationError as exc:
-            all_lines.extend(exc.parsed_output)
+            all_lines.extend(raw_lines)
+            live_output_lines.extend(rendered_lines)
+            merged_output = list(raw_lines)
+            for line in exc.parsed_output:
+                if line not in merged_output:
+                    merged_output.append(line)
+            if merged_output:
+                exc.parsed_output = merged_output
             final_exception = exc
             break
 
     return list(all_lines), list(live_output_lines), current_session_id, final_exception
-
-
-def _run_smoke_attempt(
-    params: SmokeRunParams,
-    options: InvokeOptions,
-    *,
-    session_id_sink: Callable[[str], None] | None = None,
-) -> tuple[list[str], list[str]]:
-    raw_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
-    rendered_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
-    line_iter = invoke_agent(
-        params.config,
-        str(params.prompt_file),
-        options=options,
-    )
-    display = ParallelDisplay(
-        params.display_context,
-        workspace_root=params.workspace_root,
-    )
-    try:
-        stream_parsed_agent_activity(
-            line_iter,
-            parser_type=str(params.config.json_parser),
-            agent_name=params.agent_name,
-            display=display,
-            transport=params.config.transport,
-            display_context=params.display_context,
-            raw_output_sink=raw_lines,
-            rendered_output_sink=rendered_lines,
-            session_id_sink=session_id_sink,
-        )
-    except AgentInvocationError as exc:
-        merged_output = list(raw_lines)
-        for line in exc.parsed_output:
-            if line not in merged_output:
-                merged_output.append(line)
-        if merged_output:
-            exc.parsed_output = merged_output
-        raise
-    return list(raw_lines), list(rendered_lines)
 
 
 def _clear_smoke_artifact(workspace_root: Path) -> None:
@@ -362,7 +300,7 @@ def _run_smoke_agent(params: SmokeRunParams) -> SmokeRunResult:
     )
 
     lines = all_lines
-    session_id = current_session_id or extract_transport_session_id(lines)
+    session_id = current_session_id or extract_transport_session_id(tuple(lines))
     explicit_completion_seen = any("Task declared complete:" in line for line in lines)
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
     tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
@@ -414,7 +352,6 @@ def run_smoke_plumbing(
     production defaults are used and the bridge is constructed with the
     same session planning path as the main pipeline.
     """
-    pipeline_deps_provided = pipeline_deps is not None
     if pipeline_deps is None:
         pipeline_deps = build_default_pipeline_deps(config, display_context)
 
@@ -425,47 +362,40 @@ def run_smoke_plumbing(
             f"Smoke test agent '{agent_name}' is unavailable in the registry"
         )
 
-    if pipeline_deps_provided:
-        bridge = pipeline_deps.bridge_factory(
-            workspace_root=workspace_root,
-            drain="development",
-            agents_policy=None,
-            session_id_prefix="smoke",
-            model_identity=pipeline_deps.model_identity,
-        )
-    else:
-        bridge = _start_smoke_bridge(workspace_root, config=config)
+    bridge = pipeline_deps.bridge_factory(
+        workspace_root=workspace_root,
+        drain="development",
+        agents_policy=None,
+        session_id_prefix="smoke",
+        model_identity=pipeline_deps.model_identity,
+    )
 
     try:
         if output_file.exists():
             output_file.unlink()
         _clear_smoke_artifact(workspace_root)
-        options = build_invoke_options_from_config(
-            config.general,
-            InvokeRuntimeOptions(
-                verbose=False,
-                show_progress=False,
-                workspace_path=workspace_root,
-                extra_env=_smoke_bridge_env(bridge),
-                pure=agent_config.transport == AgentTransport.OPENCODE,
-            ),
+
+        smoke_general = config.general.model_copy(
+            update={
+                "agent_idle_timeout_seconds": _SMOKE_IDLE_TIMEOUT_SECONDS,
+                "agent_max_session_seconds": _SMOKE_MAX_SESSION_SECONDS,
+            }
         )
-        options = replace(
-            options,
-            idle_timeout_seconds=_SMOKE_IDLE_TIMEOUT_SECONDS,
-            max_session_seconds=_SMOKE_MAX_SESSION_SECONDS,
-        )
+        smoke_config = config.model_copy(update={"general": smoke_general})
+
         results = [
             _run_smoke_agent(
                 SmokeRunParams(
                     agent_name=agent_name,
                     config=agent_config,
+                    unified_config=smoke_config,
                     workspace_root=workspace_root,
                     prompt_file=prompt_file,
                     output_file=output_file,
-                    options=options,
+                    options=InvokeOptions(),
                     display_context=display_context,
                     bridge=bridge,
+                    pipeline_deps=pipeline_deps,
                 )
             )
         ]
@@ -480,6 +410,5 @@ __all__ = [
     "_build_smoke_prompt",
     "_execute_smoke_turns",
     "_run_smoke_agent",
-    "_run_smoke_attempt",
     "run_smoke_plumbing",
 ]

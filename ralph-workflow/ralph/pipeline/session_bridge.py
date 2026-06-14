@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy
     from ralph.workspace.protocol import Workspace
 
+
 class BuildSessionMcpPlanFn(Protocol):
     """Injectable planner returning a ``SessionMcpPlan``."""
 
@@ -75,6 +76,9 @@ class BridgeFactory(Protocol):
         run_id: str | None = None,
         model_identity: MultimodalModelIdentity | None = None,
         parallel_worker: bool = False,
+        worker_namespace: Path | None = None,
+        worker_artifact_dir: Path | None = None,
+        allowed_roots: tuple[Path, ...] | None = None,
         build_session_mcp_plan_fn: BuildSessionMcpPlanFn | None = None,
         start_mcp_server_fn: StartMcpServerFn | None = None,
         workspace_factory: WorkspaceFactoryFn | None = None,
@@ -123,6 +127,9 @@ def build_session_bridge(
     run_id: str | None = None,
     model_identity: MultimodalModelIdentity | None = None,
     parallel_worker: bool = False,
+    worker_namespace: Path | None = None,
+    worker_artifact_dir: Path | None = None,
+    allowed_roots: tuple[Path, ...] | None = None,
     build_session_mcp_plan_fn: BuildSessionMcpPlanFn | None = None,
     start_mcp_server_fn: StartMcpServerFn | None = None,
     workspace_factory: WorkspaceFactoryFn | None = None,
@@ -165,6 +172,9 @@ def build_session_bridge(
         model_identity=session_mcp_plan.model_identity,
         stored_capability_profile=session_mcp_plan.capability_profile,
         parallel_worker=parallel_worker,
+        worker_artifact_dir=worker_artifact_dir,
+        worker_namespace=worker_namespace,
+        allowed_roots=allowed_roots or (),
     )
     workspace = workspace_fn(workspace_root)
     bridge = server_fn(

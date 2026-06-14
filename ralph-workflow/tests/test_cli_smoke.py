@@ -2,22 +2,24 @@ from __future__ import annotations
 
 from io import StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from rich.console import Console
 
 if TYPE_CHECKING:
-    import pytest
+    from collections import deque
 
-    from ralph.agents.invoke import InvokeOptions
+    import pytest
 
 from ralph.cli.commands import smoke as smoke_module
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
@@ -145,18 +147,12 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
         def shutdown(self) -> None:
             bridge_shutdown.append(True)
 
-    def fake_invoke_agent(
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: InvokeOptions | None = None,
+    def fake_execute_agent_effect(
+        *_args: object,
+        **kwargs: object,
     ) -> object:
-        assert config.yolo_flag == "--dangerously-skip-permissions"
-        assert options is not None
-        assert options.extra_env is not None
-        assert options.extra_env[smoke_module.MCP_ENDPOINT_ENV] == "http://127.0.0.1:9999/mcp"
-        assert options.idle_timeout_seconds == smoke_module._SMOKE_IDLE_TIMEOUT_SECONDS
-        assert options.max_session_seconds == smoke_module._SMOKE_MAX_SESSION_SECONDS
+        raw_sink = kwargs.get("raw_output_sink")
+        rendered_sink = kwargs.get("rendered_output_sink")
         output_path = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("export const todos = [];\n", encoding="utf-8")
@@ -172,34 +168,48 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
             '"created_at":"now","updated_at":"now","metadata":{}}',
             encoding="utf-8",
         )
-        return iter(
-            [
-                '{"type":"assistant","message":{"type":"message","content":'
-                '[{"type":"text","text":"I am creating the todo list now."}]}\n',
-                '{"type":"assistant","message":{"type":"message","content":'
-                '[{"type":"text","text":"The file has been written successfully."}]}\n',
-                "Claude session ready. Session ID: interactive-smoke-session\n",
-                "claude tool: write_file\n",
-                "Task declared complete: session_id=interactive-smoke-session, "
-                "summary=done, timestamp=1\n",
-            ]
-        )
+        raw_lines = [
+            '{"type":"assistant","message":{"type":"message","content":'
+            '[{"type":"text","text":"I am creating the todo list now."}]}\n',
+            '{"type":"assistant","message":{"type":"message","content":'
+            '[{"type":"text","text":"The file has been written successfully."}]}\n',
+            "Claude session ready. Session ID: interactive-smoke-session\n",
+            "claude tool: write_file\n",
+            "Task declared complete: session_id=interactive-smoke-session, "
+            "summary=done, timestamp=1\n",
+        ]
+        rendered_lines = [
+            "I am creating the todo list now.",
+            "The file has been written successfully.",
+            "claude/haiku tool: write_file",
+            "Task declared complete",
+        ]
+        if raw_sink is not None:
+            for line in raw_lines:
+                cast("deque[str]", raw_sink).append(line)
+        if rendered_sink is not None:
+            for line in rendered_lines:
+                cast("deque[str]", rendered_sink).append(line)
+        return PipelineEvent.AGENT_SUCCESS
+
+    def fake_bridge_factory(**_kwargs: object) -> FakeBridge:
+        return FakeBridge()
 
     monkeypatch.setattr(smoke_plumbing_module, "AgentRegistry", FakeRegistry)
-    monkeypatch.setattr(smoke_plumbing_module, "invoke_agent", fake_invoke_agent)
-    def _start_smoke_bridge(
-        _root: Path,
-        *,
-        config: UnifiedConfig,
-        model_identity: object = None,
-    ) -> FakeBridge:
-        del config, model_identity
-        return FakeBridge()
+    monkeypatch.setattr(smoke_plumbing_module, "execute_agent_effect", fake_execute_agent_effect)
+
+    def fake_build_default_pipeline_deps(
+        _config: UnifiedConfig, display_context: DisplayContext
+    ) -> object:
+        return make_test_pipeline_deps(
+            display_context,
+            bridge_factory=fake_bridge_factory,
+        )
 
     monkeypatch.setattr(
         smoke_plumbing_module,
-        "_start_smoke_bridge",
-        _start_smoke_bridge,
+        "build_default_pipeline_deps",
+        fake_build_default_pipeline_deps,
     )
 
     exit_code = smoke_module.smoke_interactive_claude_command(display_context=None)

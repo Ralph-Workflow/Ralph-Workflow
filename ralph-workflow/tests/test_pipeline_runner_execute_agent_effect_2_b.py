@@ -20,7 +20,7 @@ from ralph.config.enums import (
     JsonParserType,
 )
 from ralph.config.models import AgentConfig, CcsConfig
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import (
         PolicyBundle,
     )
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.test_pipeline_runner_execute_agent_effect_2_b_helper_agenterror import AgentError
 
 DEVELOPER_ITERATIONS = 5
@@ -67,14 +68,11 @@ def _registry_factory(return_value: object) -> object:
 
 
 def _install_runner_display_context(
-    monkeypatch: MonkeyPatch,
     *,
     width: int = 120,
-) -> Console:
+) -> DisplayContext:
     console = Console(record=True, force_terminal=False, width=width, color_system=None)
-    ctx = make_display_context(console=console, force_width=width, force_mode="wide")
-    monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
-    return console
+    return make_display_context(console=console, force_width=width, force_mode="wide")
 
 
 def _config_with_agents(
@@ -200,33 +198,33 @@ class TestExecuteAgentEffectB:
             def endpoint_uri(self) -> str:
                 return "tcp://127.0.0.1:12345"
 
-        monkeypatch.setattr(
-            runner_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: FakeBridge(),
+            def reset_tool_registry(self) -> None:
+                return
+
+        ctx = _install_runner_display_context()
+        pipeline_deps = make_test_pipeline_deps(
+            display_context=ctx,
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
         )
 
-        captured_console = _install_runner_display_context(monkeypatch)
-
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(
-                    [
-                        '{"type":"text_delta","delta":"thinking"}',
-                        '{"type":"tool_use","name":"bash","input":{"command":"ls"}}',
-                    ]
-                ),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
-            display_context=runner_module.make_display_context(),
+            display_context=ctx,
+            invoke_agent=lambda *_args, **_kwargs: iter(
+                [
+                    '{"type":"text_delta","delta":"thinking"}',
+                    '{"type":"tool_use","name":"bash","input":{"command":"ls"}}',
+                ]
+            ),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        printed = captured_console.export_text()
+        printed = ctx.console.export_text()
         assert "thinking" in printed
         assert "bash" in printed
 
@@ -252,34 +250,34 @@ class TestExecuteAgentEffectB:
             def endpoint_uri(self) -> str:
                 return "tcp://127.0.0.1:12345"
 
-        monkeypatch.setattr(
-            runner_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: FakeBridge(),
+            def reset_tool_registry(self) -> None:
+                return
+
+        ctx = _install_runner_display_context()
+        pipeline_deps = make_test_pipeline_deps(
+            display_context=ctx,
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
         )
 
-        captured_console = _install_runner_display_context(monkeypatch)
-
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=lambda *_args, **_kwargs: iter(
-                    [
-                        '{"type":"thread.started"}',
-                        '{"type":"result","result":"plan complete"}',
-                        '{"type":"turn.completed"}',
-                    ]
-                ),
-                agent_invocation_error=AgentError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope("/tmp/worktree"),
-            display_context=runner_module.make_display_context(),
+            display_context=ctx,
+            invoke_agent=lambda *_args, **_kwargs: iter(
+                [
+                    '{"type":"thread.started"}',
+                    '{"type":"result","result":"plan complete"}',
+                    '{"type":"turn.completed"}',
+                ]
+            ),
+            agent_invocation_error=AgentError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        printed = captured_console.export_text()
+        printed = ctx.console.export_text()
         # Lifecycle events (thread.started) are suppressed — no noise in output
         assert "message_start" not in printed
         # Meaningful events still stream
@@ -287,7 +285,7 @@ class TestExecuteAgentEffectB:
         assert "stop" in printed
 
     def test_retries_transient_connectivity_failures_with_session_resume(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+        self, tmp_path: Path
     ) -> None:
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("ship it", encoding="utf-8")
@@ -314,10 +312,15 @@ class TestExecuteAgentEffectB:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        def fake_start_mcp_server(*_args: object, **_kwargs: object) -> object:
-            return FakeBridge()
+            def reset_tool_registry(self) -> None:
+                return
 
-        monkeypatch.setattr(effect_executor_module, "start_mcp_server", fake_start_mcp_server)
+        ctx = make_display_context()
+        pipeline_deps = make_test_pipeline_deps(
+            display_context=ctx,
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
+        )
 
         seen_session_ids: list[str | None] = []
 
@@ -337,16 +340,14 @@ class TestExecuteAgentEffectB:
                 ['{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}']
             )
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=fake_invoke_agent,
-                agent_invocation_error=AgentInvocationError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
+            display_context=ctx,
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -378,10 +379,14 @@ class TestExecuteAgentEffectB:
             def agent_endpoint_uri(self) -> str:
                 return "http://127.0.0.1:12345/mcp"
 
-        monkeypatch.setattr(
-            runner_module,
-            "start_mcp_server",
-            lambda *_args, **_kwargs: FakeBridge(),
+            def reset_tool_registry(self) -> None:
+                return
+
+        ctx = make_display_context()
+        pipeline_deps = make_test_pipeline_deps(
+            display_context=ctx,
+            bridge=FakeBridge(),
+            registry_factory=registry.from_config,
         )
 
         seen_prompt_files: list[str] = []
@@ -400,16 +405,14 @@ class TestExecuteAgentEffectB:
                 return _first_attempt()
             return iter(['{"type":"result","result":"finished"}'])
 
-        result = runner_module.execute_agent_effect(
+        result = effect_executor_module.execute_agent_effect(
             effect,
             self._config(),
-            runner_module.AgentExecutionDeps(
-                invoke_agent=fake_invoke_agent,
-                agent_invocation_error=AgentInvocationError,
-                agent_registry=registry,
-            ),
+            pipeline_deps,
             WorkspaceScope(tmp_path),
-            display_context=make_display_context(),
+            display_context=ctx,
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS

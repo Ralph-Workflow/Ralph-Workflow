@@ -7,14 +7,11 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
-    from contextlib import AbstractContextManager
-    from pathlib import Path
 
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
-    from ralph.mcp.protocol.startup import HeartbeatPolicy
-    from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import PipelinePolicy
 
@@ -48,49 +45,39 @@ if TYPE_CHECKING:
             pipeline_policy: PipelinePolicy,
         ) -> None: ...
 
-    class _StartMcpServerFn(Protocol):
-        def __call__(self, *args: object, **kwargs: object) -> RestartAwareMcpBridge: ...
-
-    class _ShutdownMcpServerFn(Protocol):
-        def __call__(self, bridge: object) -> None: ...
-
-    class _CheckMcpBridgeHealthFn(Protocol):
-        def __call__(self, bridge: object) -> None: ...
-
-    class _MaterializeSystemPromptFn(Protocol):
-        def __call__(
-            self,
-            *,
-            workspace_root: Path,
-            name: str,
-            worker_namespace: Path | None = None,
-        ) -> str: ...
-
-    class _McpSupervisorFactory(Protocol):
-        def __call__(
-            self,
-            bridge: object,
-            *,
-            check_interval: object,
-            on_restart: object,
-        ) -> AbstractContextManager[None]: ...
-
-    class _HeartbeatPolicyFromEnvFn(Protocol):
-        def __call__(self) -> HeartbeatPolicy: ...
-
 
 @dataclass(frozen=True)
 class AgentExecutionDeps:
-    """Injectable dependencies for executing an agent-invocation effect."""
+    """Invoke-specific dependencies bundled with the shared PipelineDeps.
 
+    Lifecycle collaborators (bridge factory, prompt materializers, MCP
+    supervisor, etc.) live in ``pipeline_deps``. This dataclass carries only
+    the callbacks and registries that vary per invocation context.
+    """
+
+    pipeline_deps: PipelineDeps
     invoke_agent: _InvokeAgentFn
     agent_invocation_error: type[Exception]
     agent_registry: _AgentRegistryFactory
     show_phase_start_cb: _ShowPhaseStartFn | None = None
     set_session_id_cb: Callable[[str | None], None] | None = None
-    start_mcp_server_fn: _StartMcpServerFn | None = None
-    shutdown_mcp_server_fn: _ShutdownMcpServerFn | None = None
-    check_mcp_bridge_health_fn: _CheckMcpBridgeHealthFn | None = None
-    materialize_system_prompt_fn: _MaterializeSystemPromptFn | None = None
-    mcp_supervisor_factory: _McpSupervisorFactory | None = None
-    heartbeat_policy_from_env_fn: _HeartbeatPolicyFromEnvFn | None = None
+
+
+def build_agent_execution_deps(
+    pipeline_deps: PipelineDeps,
+    *,
+    invoke_agent: _InvokeAgentFn,
+    agent_invocation_error: type[Exception],
+    agent_registry: _AgentRegistryFactory,
+    show_phase_start_cb: _ShowPhaseStartFn | None = None,
+    set_session_id_cb: Callable[[str | None], None] | None = None,
+) -> AgentExecutionDeps:
+    """Build an ``AgentExecutionDeps`` from a ``PipelineDeps`` and invoke callbacks."""
+    return AgentExecutionDeps(
+        pipeline_deps=pipeline_deps,
+        invoke_agent=invoke_agent,
+        agent_invocation_error=agent_invocation_error,
+        agent_registry=agent_registry,
+        show_phase_start_cb=show_phase_start_cb,
+        set_session_id_cb=set_session_id_cb,
+    )

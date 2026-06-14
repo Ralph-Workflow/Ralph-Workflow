@@ -19,7 +19,11 @@ if TYPE_CHECKING:
 import pytest
 
 import ralph.process.manager as _mgr
+from ralph.agents.invoke import AgentInvocationError
 from ralph.config.enums import Verbosity
+from ralph.config.models import AgentConfig
+from ralph.display.context import make_display_context
+from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -34,6 +38,7 @@ from ralph.process.manager import (
 )
 from ralph.testing.fake_process import FakePsutil, make_sync_process_factory
 from ralph.workspace.scope import WorkspaceScope
+from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3,
@@ -45,6 +50,35 @@ _FAST_POLICY = ProcessManagerPolicy(
 _INTERRUPT_EXIT_CODE = 130
 PYTHON = sys.executable
 _TEST_PHASE = "fake-phase"
+
+
+def _config() -> object:
+    config = MagicMock()
+    config.general.verbosity = 0
+    return config
+
+
+class _FakeBridge:
+    """Minimal stand-in for an MCP session bridge."""
+
+    def shutdown(self) -> None:
+        pass
+
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:12345/mcp"
+
+    def reset_tool_registry(self) -> None:
+        pass
+
+
+def _fake_registry_factory(config: object) -> object:
+    class _Registry:
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "fake-agent":
+                return AgentConfig(cmd="fake")
+            return None
+
+    return _Registry()
 
 
 @pytest.fixture(autouse=True)
@@ -74,8 +108,8 @@ def _apply_runner_stubs(
     tmp_path: Path,
     effects: list[object],
     *,
-    fake_execute_agent_effect: object,
-) -> None:
+    fake_invoke_agent: object,
+) -> object:
     complete_state = PipelineState(phase="complete")
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _: None)
@@ -83,17 +117,39 @@ def _apply_runner_stubs(
     _mock_bundle = MagicMock()
     _mock_bundle.pipeline.terminal_phase = "complete"
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda *a, **kw: _mock_bundle)
-    monkeypatch.setattr(runner_module, "AgentRegistry", MagicMock())
     monkeypatch.setattr(
         runner_module, "determine_effect_from_policy", _stub_determine_effect(effects)
     )
-    monkeypatch.setattr(runner_module, "execute_agent_effect", fake_execute_agent_effect)
     monkeypatch.setattr(runner_module, "materialize_agent_prompt_if_needed", lambda *a, **kw: None)
     monkeypatch.setattr(
         runner_module, "phase_event_after_agent_run", lambda **kw: PipelineEvent.AGENT_SUCCESS
     )
     monkeypatch.setattr(runner_module, "reducer_reduce", lambda *a, **kw: (complete_state, []))
-    monkeypatch.setattr(runner_module.ckpt, "save", lambda _: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda *_args, **_kwargs: None)
+
+    pipeline_deps = make_test_pipeline_deps(
+        make_display_context(),
+        bridge=_FakeBridge(),
+        registry_factory=_fake_registry_factory,
+        policy_bundle=_mock_bundle,
+    )
+
+    def _execute_agent_effect_wrapper(
+        effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
+    ) -> PipelineEvent:
+        return effect_executor_module.execute_agent_effect(
+            effect,
+            config,
+            deps,
+            workspace_scope,
+            bridge=_FakeBridge(),
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(runner_module, "execute_agent_effect", _execute_agent_effect_wrapper)
+    return pipeline_deps
 
 
 def test_runner_phase_scope_kills_phase_labeled_child(
@@ -109,15 +165,15 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned_pid: list[int] = []
 
-    def fake_execute_agent_effect(
-        effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
-    ) -> PipelineEvent:
+    def fake_invoke_agent(
+        agent_config: object, prompt_file: str, *, options: object = None
+    ) -> object:
         handle = get_process_manager().spawn(
             [PYTHON, "-c", "pass"],
             SpawnOptions(label=f"phase:{_TEST_PHASE}:worker"),
         )
         spawned_pid.append(handle.record.pid)
-        return PipelineEvent.AGENT_SUCCESS
+        return iter(["line"])
 
     effects: list[object] = [
         InvokeAgentEffect(
@@ -126,19 +182,20 @@ def test_runner_phase_scope_kills_phase_labeled_child(
             prompt_file="/dev/null",
         ),
     ]
-    _apply_runner_stubs(
-        monkeypatch, tmp_path, effects, fake_execute_agent_effect=fake_execute_agent_effect
+    pipeline_deps = _apply_runner_stubs(
+        monkeypatch, tmp_path, effects, fake_invoke_agent=fake_invoke_agent
     )
 
-    initial_state = MagicMock()
-    initial_state.phase = _TEST_PHASE
-    initial_state.recovery_epoch = 0
+    initial_state = PipelineState(phase=_TEST_PHASE)
 
     original_singleton = _mgr._pm_state.instance
     _mgr._pm_state.instance = pm
     try:
         exit_code = runner_module.run(
-            MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
+            _config(),
+            initial_state=initial_state,
+            verbosity=Verbosity.QUIET,
+            pipeline_deps=pipeline_deps,
         )
     finally:
         _mgr._pm_state.instance = original_singleton
@@ -161,9 +218,9 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned: dict[str, int] = {}
 
-    def fake_execute_agent_effect(
-        effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
-    ) -> PipelineEvent:
+    def fake_invoke_agent(
+        agent_config: object, prompt_file: str, *, options: object = None
+    ) -> object:
         phase_handle = get_process_manager().spawn(
             [PYTHON, "-c", "pass"],
             SpawnOptions(label=f"phase:{_TEST_PHASE}:worker"),
@@ -174,7 +231,7 @@ def test_runner_phase_scope_does_not_kill_other_labels(
         )
         spawned["phase"] = phase_handle.record.pid
         spawned["bystander"] = bystander_handle.record.pid
-        return PipelineEvent.AGENT_SUCCESS
+        return iter(["line"])
 
     effects: list[object] = [
         InvokeAgentEffect(
@@ -183,19 +240,20 @@ def test_runner_phase_scope_does_not_kill_other_labels(
             prompt_file="/dev/null",
         ),
     ]
-    _apply_runner_stubs(
-        monkeypatch, tmp_path, effects, fake_execute_agent_effect=fake_execute_agent_effect
+    pipeline_deps = _apply_runner_stubs(
+        monkeypatch, tmp_path, effects, fake_invoke_agent=fake_invoke_agent
     )
 
-    initial_state = MagicMock()
-    initial_state.phase = _TEST_PHASE
-    initial_state.recovery_epoch = 0
+    initial_state = PipelineState(phase=_TEST_PHASE)
 
     original_singleton = _mgr._pm_state.instance
     _mgr._pm_state.instance = pm
     try:
         exit_code = runner_module.run(
-            MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
+            _config(),
+            initial_state=initial_state,
+            verbosity=Verbosity.QUIET,
+            pipeline_deps=pipeline_deps,
         )
     finally:
         _mgr._pm_state.instance = original_singleton
@@ -228,9 +286,9 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory, psutil=FakePsutil())
     spawned_pid: list[int] = []
 
-    def fake_execute_agent_effect(
-        effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
-    ) -> PipelineEvent:
+    def fake_invoke_agent(
+        agent_config: object, prompt_file: str, *, options: object = None
+    ) -> object:
         handle = get_process_manager().spawn(
             [PYTHON, "-c", "pass"],
             SpawnOptions(label="invoke:fake-agent"),
@@ -245,18 +303,14 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
             prompt_file="/dev/null",
         ),
     ]
-    _apply_runner_stubs(
-        monkeypatch, tmp_path, effects, fake_execute_agent_effect=fake_execute_agent_effect
+    pipeline_deps = _apply_runner_stubs(
+        monkeypatch, tmp_path, effects, fake_invoke_agent=fake_invoke_agent
     )
 
-    initial_state = MagicMock()
-    initial_state.phase = _TEST_PHASE
-    initial_state.recovery_epoch = 0
-    interrupted_state = MagicMock()
-    initial_state.copy_with.return_value = interrupted_state
-    saved_states: list[object] = []
+    initial_state = PipelineState(phase=_TEST_PHASE)
+    saved_states: list[PipelineState] = []
 
-    def _save_state(saved_state: object, *_args: object, **_kwargs: object) -> None:
+    def _save_state(saved_state: PipelineState, *_args: object, **_kwargs: object) -> None:
         saved_states.append(saved_state)
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
@@ -265,7 +319,10 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     _mgr._pm_state.instance = pm
     try:
         exit_code = runner_module.run(
-            MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
+            _config(),
+            initial_state=initial_state,
+            verbosity=Verbosity.QUIET,
+            pipeline_deps=pipeline_deps,
         )
     finally:
         _mgr._pm_state.instance = original_singleton
@@ -278,5 +335,6 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     assert record is not None
     assert record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
-    initial_state.copy_with.assert_called_once_with(interrupted_by_user=True)
-    assert saved_states == [interrupted_state]
+    assert len(saved_states) == 1
+    assert saved_states[0].interrupted_by_user is True
+    assert saved_states[0].phase == _TEST_PHASE

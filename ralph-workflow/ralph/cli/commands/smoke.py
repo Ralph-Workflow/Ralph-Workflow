@@ -30,7 +30,6 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunResult,
     _build_smoke_prompt,
     _execute_smoke_turns,
-    _run_smoke_attempt,
     run_smoke_plumbing,
 )
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
@@ -56,7 +55,6 @@ __all__ = [
     "SmokeRunParams",
     "SmokeRunResult",
     "_execute_smoke_turns",
-    "_run_smoke_attempt",
     "build_smoke_prompt",
     "render_smoke_report",
     "smoke_interactive_claude_command",
