@@ -396,7 +396,8 @@ def _build_agy_command(
 ) -> list[str]:
     """Build the AGY command line.
 
-    AGY uses: agy [--dangerously-skip-permissions] [--add-dir <path>] [--verbose] --print <prompt>
+    AGY uses: agy [--dangerously-skip-permissions] [--model <name>]
+    [--add-dir <path>] [--verbose] --print <prompt>
     """
     cmd = config.cmd.split()
     cmd.extend(_split_optional_flag(config.yolo_flag))
@@ -406,6 +407,9 @@ def _build_agy_command(
         cmd.extend(["--add-dir", str(options.workspace_path)])
     if options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
+    effective_model = options.model_flag or config.model_flag
+    if effective_model:
+        cmd.extend(effective_model.split())
     if config.print_flag:
         cmd.append(config.print_flag)
     prompt_text = _load_prompt_text(prompt_file, options.workspace_path)

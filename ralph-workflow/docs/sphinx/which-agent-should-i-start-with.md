@@ -90,6 +90,8 @@ Why this is a good first fit:
 - Ralph Workflow orchestrates it with the same MCP-controlled workflow used for other supported agents
 - good when you want Google ecosystem integration
 
+Verify the install end-to-end with `python -m ralph smoke-interactive-agy`.
+
 ## Best first-run rule
 
 Pick the path with the **least setup friction**.

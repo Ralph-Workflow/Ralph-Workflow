@@ -152,6 +152,15 @@ Remove Ralph Workflow-generated working files from the current project, such as 
 ralph cleanup
 ```
 
+### `ralph smoke-interactive-agy`
+
+Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the canonical verification command for the AGY transport: it drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports a parity table with file creation, session capture, parser events, tool activity, and artifact submission. The default model is the cheapest tier, `agy/gemini-3.5-flash-low`; override it with `--agent agy/<model>`.
+
+```bash
+python -m ralph smoke-interactive-agy
+python -m ralph smoke-interactive-agy --agent agy/gemini-3.5-flash-high
+```
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough

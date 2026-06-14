@@ -58,6 +58,30 @@ The PATH column in the Agents table should show `on PATH` in green.
 - Use WSL2 or a POSIX-compatible environment on Windows.
 - Or route the phase to another headless transport such as Codex, OpenCode, or Nanocoder.
 
+## AGY transport end-to-end smoke
+
+**Symptom:** You want to verify that the AGY transport is wired correctly from Ralph Workflow through the live `agy` binary.
+
+**Fix:**
+
+- Run the canonical AGY smoke test on Linux or macOS:
+
+```bash
+python -m ralph smoke-interactive-agy
+```
+
+The parity table reports five acceptance signals:
+
+| Column | Green means |
+|--------|-------------|
+| File | `tmp/interactive-agy-smoke/todo-list.js` was created |
+| Session | A session ID was observed in the transcript |
+| Parser events | The transcript produced parseable events |
+| Tool activity | Tool-use/tool-result signals were observed |
+| Artifact | The `smoke_test_result` artifact was submitted |
+
+A red column points at the specific layer to investigate (MCP binding, AGY auth, PTY output parsing, or the prompt response). Use `--agent agy/<model>` to pin a different model alias.
+
 ## MCP servers fail to start
 
 **Symptom:** `ralph --check-mcp` or `ralph --diagnose` reports MCP server errors.

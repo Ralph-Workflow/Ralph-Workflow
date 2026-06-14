@@ -15,6 +15,7 @@ from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
@@ -37,6 +38,89 @@ pytestmark = pytest.mark.timeout_seconds(5)
 class _FakeBridge:
     def reset_tool_registry(self) -> None:
         return None
+
+
+def test_resolve_smoke_harness_spec_claude_uses_legacy_layout() -> None:
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("claude/haiku")
+    assert spec.relative_dir == Path("tmp/interactive-claude-smoke")
+    assert spec.output_file == Path("tmp/interactive-claude-smoke/todo-list.js")
+    assert spec.run_id == "interactive-claude-smoke"
+
+
+def test_resolve_smoke_harness_spec_agy_uses_agy_layout() -> None:
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/gemini-3.5-flash-low")
+    assert spec.relative_dir == Path("tmp/interactive-agy-smoke")
+    assert spec.output_file == Path("tmp/interactive-agy-smoke/todo-list.js")
+    assert spec.run_id == "interactive-agy-smoke-gemini-3.5-flash-low"
+
+
+def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured_run_ids: list[str] = []
+
+    def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
+        run_id = kwargs.get("run_id")
+        if isinstance(run_id, str):
+            captured_run_ids.append(run_id)
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="agy/gemini-3.5-flash-low"),
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "execute_agent_effect",
+        fake_execute_agent_effect,
+    )
+
+    output_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("export const todos = [];\n", encoding="utf-8")
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "smoke_test_result.json").write_text(
+        '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
+        '"content":{"status":"passed","summary":"ok"},'
+        '"created_at":"now","updated_at":"now","metadata":{}}',
+        encoding="utf-8",
+    )
+
+    result = smoke_plumbing_module.run_smoke_plumbing(
+        config=_fake_config(),
+        workspace_root=tmp_path,
+        agent_name="agy/gemini-3.5-flash-low",
+        prompt_file=tmp_path / "PROMPT.md",
+        output_file=output_path,
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+    )
+
+    assert result.agent_name == "agy/gemini-3.5-flash-low"
+    assert captured_run_ids == ["interactive-agy-smoke-gemini-3.5-flash-low"]
+
+
+def _fake_bridge_factory(**_kwargs: object) -> object:
+    class FakeBridge:
+        def start(self) -> None:
+            return None
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+        def endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+        def shutdown(self) -> None:
+            return None
+
+    return FakeBridge()
 
 
 def test_detect_break_indicators_ignores_bypass_status_line() -> None:

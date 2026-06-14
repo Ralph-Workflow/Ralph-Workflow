@@ -7,6 +7,7 @@ parsing, report rendering, exit codes only).
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,7 @@ from ralph.pipeline.factory import DefaultPipelineFactory, PipelineCore, Pipelin
 from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.pipeline.session_bridge import build_session_bridge
+from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
@@ -48,6 +50,46 @@ _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
 _SMOKE_OUTPUT_FILE = _SMOKE_RELATIVE_DIR / "todo-list.js"
 _INTERACTIVE_AGENT = "claude/haiku"
 _SMOKE_RUN_ID = "interactive-claude-smoke"
+_AGY_SMOKE_RELATIVE_DIR = Path("tmp/interactive-agy-smoke")
+_AGY_SMOKE_OUTPUT_FILE = _AGY_SMOKE_RELATIVE_DIR / "todo-list.js"
+
+
+@dataclass(frozen=True)
+class SmokeHarnessSpec:
+    """Layout specification for an interactive smoke harness."""
+
+    agent_name: str
+    relative_dir: Path
+    output_file: Path
+    run_id: str
+
+
+def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
+    """Return the smoke harness layout for ``agent_name``.
+
+    The ``claude/haiku`` branch preserves the legacy layout so existing
+    on-disk artifacts and tests are not orphaned. The ``agy/<model>`` branch
+    uses a separate ``tmp/interactive-agy-smoke`` directory so the two
+    harnesses can run side by side without collisions.
+    """
+    if agent_name == _INTERACTIVE_AGENT:
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_SMOKE_RELATIVE_DIR,
+            output_file=_SMOKE_OUTPUT_FILE,
+            run_id=_SMOKE_RUN_ID,
+        )
+    if agent_name.startswith("agy/"):
+        model = agent_name.removeprefix("agy/")
+        sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model).strip("-")
+        run_id = f"interactive-agy-smoke-{sanitized}"
+        return SmokeHarnessSpec(
+            agent_name=agent_name,
+            relative_dir=_AGY_SMOKE_RELATIVE_DIR,
+            output_file=_AGY_SMOKE_OUTPUT_FILE,
+            run_id=run_id,
+        )
+    raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
 _SMOKE_IDLE_TIMEOUT_SECONDS = 30.0
 _SMOKE_MAX_SESSION_SECONDS = 120.0
 _SMOKE_MAX_TURNS = 5
@@ -167,6 +209,7 @@ def _detect_break_indicators(lines: list[str]) -> list[str]:
 def _execute_smoke_turns(
     params: SmokeRunParams,
     current_session_id: str | None,
+    run_id: str = _SMOKE_RUN_ID,
 ) -> tuple[list[str], list[str], str | None, AgentInvocationError | None]:
     """Execute smoke test turns and return collected lines and state."""
     all_lines: deque[str] = deque(maxlen=_SMOKE_TRANSCRIPT_MAX_LINES)
@@ -200,7 +243,7 @@ def _execute_smoke_turns(
                 workspace_scope,
                 bridge=cast("RestartAwareMcpBridge", params.bridge),
                 display_context=params.display_context,
-                run_id=_SMOKE_RUN_ID,
+                run_id=run_id,
                 raw_output_sink=raw_lines,
                 rendered_output_sink=rendered_lines,
                 set_session_id_cb=_capture_session_id,
@@ -296,10 +339,13 @@ def _detect_smoke_errors(
     return errors
 
 
-def _run_smoke_agent(params: SmokeRunParams) -> SmokeRunResult:
+def _run_smoke_agent(
+    params: SmokeRunParams,
+    run_id: str = _SMOKE_RUN_ID,
+) -> SmokeRunResult:
     """Run the smoke agent and return results."""
     all_lines, live_output_lines, current_session_id, final_exception = _execute_smoke_turns(
-        params, None
+        params, None, run_id=run_id
     )
 
     lines = all_lines
@@ -345,14 +391,14 @@ def run_smoke_plumbing(
     workspace_root: Path,
     agent_name: str,
     prompt_file: Path,
-    output_file: Path,
+    output_file: Path | None = None,
     display_context: DisplayContext | None = None,
     pipeline_core: PipelineCore | None = None,
     bridge_factory: BridgeFactory | None = None,
     pipeline_deps: PipelineDeps | None = None,
     pro_hooks: ProPipelineHooks | None = None,
 ) -> SmokeRunResult:
-    """Run the interactive-Claude smoke test and return the observed result.
+    """Run the interactive smoke test for ``agent_name`` and return the result.
 
     Callers may supply either the modular ``pipeline_core`` + ``bridge_factory``
     surface or the legacy extended ``pipeline_deps`` bundle. When
@@ -363,6 +409,7 @@ def run_smoke_plumbing(
     the same composition root as the main pipeline; ``pro_hooks`` is forwarded
     so a Pro subclassed factory is honored.
     """
+    spec = resolve_smoke_harness_spec(agent_name)
     if pipeline_deps is not None:
         if display_context is None:
             display_context = pipeline_deps.display_context
@@ -397,15 +444,25 @@ def run_smoke_plumbing(
             f"Smoke test agent '{agent_name}' is unavailable in the registry"
         )
 
+    effective_output_file = output_file if output_file is not None else spec.output_file
+
+    agents_policy = None
+    if pipeline_deps is not None and pipeline_deps.policy_bundle is not None:
+        agents_policy = pipeline_deps.policy_bundle.agents
+    if agents_policy is None:
+        workspace_scope = resolve_workspace_scope(workspace_root)
+        agents_policy = load_agents_policy_for_workspace_scope(workspace_scope, config=config)
+
     with with_bridge_lifetime(
         effective_core,
         effective_bridge_factory,
         repo_root=workspace_root,
         drain="development",
         session_id_prefix="smoke",
+        agents_policy=agents_policy,
     ) as bridge:
-        if output_file.exists():
-            output_file.unlink()
+        if effective_output_file.exists():
+            effective_output_file.unlink()
         _clear_smoke_artifact(workspace_root)
 
         smoke_general = config.general.model_copy(
@@ -424,12 +481,13 @@ def run_smoke_plumbing(
                     unified_config=smoke_config,
                     workspace_root=workspace_root,
                     prompt_file=prompt_file,
-                    output_file=output_file,
+                    output_file=effective_output_file,
                     options=InvokeOptions(),
                     display_context=display_context,
                     bridge=bridge,
                     pipeline_deps=effective_pipeline_deps,
-                )
+                ),
+                run_id=spec.run_id,
             )
         ]
 
@@ -437,9 +495,11 @@ def run_smoke_plumbing(
 
 
 __all__ = [
+    "SmokeHarnessSpec",
     "SmokeRunResult",
     "_build_smoke_prompt",
     "_execute_smoke_turns",
     "_run_smoke_agent",
+    "resolve_smoke_harness_spec",
     "run_smoke_plumbing",
 ]

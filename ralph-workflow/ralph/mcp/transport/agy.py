@@ -93,6 +93,8 @@ def _normalize_agy_server_entry(name: str, entry: object) -> tuple[str, object] 
     Returns:
         Tuple of (name, normalized_entry) if valid, None if skipped.
     """
+    if name == RALPH_MCP_SERVER_NAME:
+        return None
     if not isinstance(entry, Mapping):
         return None
     casted = cast("dict[str, object]", entry)
