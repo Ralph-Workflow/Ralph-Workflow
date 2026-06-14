@@ -70,11 +70,11 @@ from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import (
+    DefaultPipelineFactory,
     MaterializeSystemPromptFn,
     PipelineCore,
     PipelineDeps,
     _resolve_phase_required_artifact,
-    build_default_pipeline_deps,
 )
 from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
 from ralph.pipeline.session_bridge import (
@@ -106,6 +106,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
+    from ralph.pro_support.hooks import ProPipelineHooks
 
 # Late-binding reference for the test-patch surface: tests in
 # ``tests/test_cli_commit_command.py`` (and friends) patch names
@@ -227,8 +228,16 @@ def _commit_pipeline_deps(
     display_context: DisplayContext,
     materializer: MaterializeSystemPromptFn | None,
     registry: object | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
 ) -> PipelineDeps:
-    deps = build_default_pipeline_deps(config, display_context)
+    """Build PipelineDeps for the commit plumbing fallback path.
+
+    Routes through :class:`DefaultPipelineFactory` so a Pro subclassed
+    factory is honored on the plumbing-direct-call path.
+    """
+    deps = DefaultPipelineFactory().build(
+        config, display_context, pro_hooks=pro_hooks
+    )
     return _apply_commit_deps_overrides(
         deps, materializer=materializer, registry=registry
     )
@@ -243,6 +252,7 @@ def run_commit_plumbing(
     pipeline_core: PipelineCore | None = None,
     bridge_factory: BridgeFactory | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
 ) -> CommitAgentResult:
     """Iterate the commit chain, delegating each agent to the shared execution core.
 
@@ -259,6 +269,10 @@ def run_commit_plumbing(
     are omitted, production defaults are used and the legacy late-bound
     bridge resolver is preserved so existing test monkeypatches continue to
     work.
+
+    ``pro_hooks`` is forwarded to :class:`DefaultPipelineFactory` when the
+    fallback path builds a fresh ``PipelineDeps``, so Pro factory subclassing
+    is honored even for direct plumbing callers.
 
     No inline failure-classifier construction sites live in this
     module; recovery decisions are routed exclusively through the
@@ -300,6 +314,7 @@ def run_commit_plumbing(
             display_context,
             materializer=None,
             registry=chain_config.registry,
+            pro_hooks=pro_hooks,
         )
         effective_core = effective_pipeline_deps.core
         effective_bridge_factory = effective_pipeline_deps.bridge_factory
@@ -616,6 +631,7 @@ def _run_commit_agent_attempt_with_recovery(
             effective_general_config,
             display_context,
             materializer,
+            pro_hooks=None,
         )
         event = execute_agent_effect(
             effect,

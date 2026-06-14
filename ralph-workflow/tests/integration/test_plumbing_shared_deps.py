@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
     from ralph.display.context import DisplayContext
+    from ralph.pro_support.hooks import ProPipelineHooks
 
 
 def _fake_display_context() -> DisplayContext:
@@ -121,17 +122,7 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
         display_context=display_context,
         bridge_factory=bridge_factory_mock,
     )
-    captured_build_calls: list[tuple[object, ...]] = []
     captured_execute_calls: list[dict[str, object]] = []
-
-    def fake_build_default_pipeline_deps(
-        config: UnifiedConfig,
-        ctx: DisplayContext,
-        *,
-        pro_hooks: object = None,
-    ) -> PipelineDeps:
-        captured_build_calls.append((config, ctx, pro_hooks))
-        return shared_deps
 
     def fake_execute_agent_effect(
         effect: object,
@@ -145,10 +136,12 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
         _exercise_fake_executor_seam("commit-agent")
         return PipelineEvent.AGENT_SUCCESS
 
+    recording_factory = _RecordingPipelineFactoryForSharedDeps(shared_deps)
+
     monkeypatch.setattr(
         commit_plumbing_module,
-        "build_default_pipeline_deps",
-        fake_build_default_pipeline_deps,
+        "DefaultPipelineFactory",
+        lambda: recording_factory,
     )
     monkeypatch.setattr(
         commit_plumbing_module,
@@ -187,8 +180,8 @@ def test_commit_plumbing_uses_shared_pipeline_deps_path(
         )
 
     assert result.message == "feat: shared deps commit"
-    assert len(captured_build_calls) == 1
-    assert captured_build_calls[0][1] is display_context
+    assert len(recording_factory.calls) == 1
+    assert recording_factory.calls[0]["display_context"] is display_context
     assert len(captured_execute_calls) == 1
 
     executed_deps = captured_execute_calls[0]["pipeline_deps"]
@@ -613,6 +606,34 @@ def test_smoke_plumbing_resolves_display_context_from_pipeline_deps(
     assert executed_deps.display_context is deps_display_context
     assert captured_execute_calls[0]["display_context"] is deps_display_context
     assert result.artifact_submitted is True
+
+
+class _RecordingPipelineFactoryForSharedDeps:
+    """Conforms to ``PipelineFactory`` and records every ``build`` call."""
+
+    def __init__(self, deps: PipelineDeps) -> None:
+        self._deps = deps
+        self.calls: list[dict[str, object]] = []
+
+    def build(
+        self,
+        config: UnifiedConfig,
+        display_context: DisplayContext,
+        *,
+        model_identity: MultimodalModelIdentity | None = None,
+        pro_hooks: ProPipelineHooks | None = None,
+        **kwargs: object,
+    ) -> PipelineDeps:
+        del kwargs
+        self.calls.append(
+            {
+                "config": config,
+                "display_context": display_context,
+                "model_identity": model_identity,
+                "pro_hooks": pro_hooks,
+            }
+        )
+        return self._deps
 
 
 def _make_fake_smoke_registry() -> object:

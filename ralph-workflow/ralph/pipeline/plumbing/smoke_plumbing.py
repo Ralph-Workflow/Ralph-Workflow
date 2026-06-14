@@ -31,7 +31,7 @@ from ralph.mcp.artifacts.smoke_test_result import (
 from ralph.pipeline.effect_executor import execute_agent_effect
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.factory import PipelineCore, PipelineDeps, build_default_pipeline_deps
+from ralph.pipeline.factory import DefaultPipelineFactory, PipelineCore, PipelineDeps
 from ralph.pipeline.plumbing._bridge_lifetime import with_bridge_lifetime
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 from ralph.pipeline.session_bridge import build_session_bridge
@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
     from ralph.pipeline.session_bridge import BridgeFactory
+    from ralph.pro_support.hooks import ProPipelineHooks
 
 _SMOKE_RELATIVE_DIR = Path("tmp/interactive-claude-smoke")
 _SMOKE_OUTPUT_FILE = _SMOKE_RELATIVE_DIR / "todo-list.js"
@@ -349,6 +350,7 @@ def run_smoke_plumbing(
     pipeline_core: PipelineCore | None = None,
     bridge_factory: BridgeFactory | None = None,
     pipeline_deps: PipelineDeps | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
 ) -> SmokeRunResult:
     """Run the interactive-Claude smoke test and return the observed result.
 
@@ -356,8 +358,10 @@ def run_smoke_plumbing(
     surface or the legacy extended ``pipeline_deps`` bundle. When
     ``pipeline_deps`` is provided it is used for backward compatibility and
     its ``core`` and ``bridge_factory`` are derived automatically. When both
-    are omitted, production defaults are used and the bridge is constructed
-    with the same session planning path as the main pipeline.
+    are omitted, production defaults are built through
+    :class:`DefaultPipelineFactory` so the plumbing-direct-call path shares
+    the same composition root as the main pipeline; ``pro_hooks`` is forwarded
+    so a Pro subclassed factory is honored.
     """
     if pipeline_deps is not None:
         if display_context is None:
@@ -379,7 +383,9 @@ def run_smoke_plumbing(
             raise ValueError(
                 "display_context is required when pipeline_deps and pipeline_core are not provided"
             )
-        effective_pipeline_deps = build_default_pipeline_deps(config, display_context)
+        effective_pipeline_deps = DefaultPipelineFactory().build(
+            config, display_context, pro_hooks=pro_hooks
+        )
         display_context = effective_pipeline_deps.display_context
         effective_core = effective_pipeline_deps.core
         effective_bridge_factory = effective_pipeline_deps.bridge_factory
