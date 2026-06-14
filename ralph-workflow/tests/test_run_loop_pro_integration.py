@@ -18,6 +18,8 @@ from unittest.mock import MagicMock
 from ralph.config.enums import Verbosity
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+from ralph.pipeline.factory import PipelineDeps, build_default_pipeline_deps
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -416,6 +418,145 @@ class _LateMarkerWatcher:
 
     def stop(self) -> None:
         self._stopped = True
+
+
+def test_pipeline_deps_policy_bundle_is_authoritative_for_pro_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When ``pipeline_deps.policy_bundle`` is already resolved, ``run()`` does not
+    call ``pro_hooks.policy_bundle_factory`` again.
+    """
+    run_loop_module = _load_run_loop()
+    _seed_workspace(tmp_path)
+
+    state = PipelineState(phase="complete")
+    bundle = _make_fake_bundle()
+    _patch_runner_dependencies(monkeypatch, tmp_path, state, bundle)
+
+    factory_calls: list[tuple[object, ...]] = []
+
+    def fake_factory(workspace_scope: object, config: object) -> PolicyBundle:
+        factory_calls.append((workspace_scope, config))
+        return bundle
+
+    hooks = ProPipelineHooks(policy_bundle_factory=fake_factory)
+    deps = PipelineDeps(
+        display_context=make_display_context(),
+        policy_bundle=bundle,
+    )
+
+    monkeypatch.setattr(
+        run_loop_module,
+        "_run_inner_loop",
+        lambda _state, _ctx, _prev: (state, "complete", None),
+    )
+    monkeypatch.setattr(
+        run_loop_module,
+        "_build_recovery_controller",
+        lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
+    )
+    _install_display_context(monkeypatch, run_loop_module)
+
+    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        _build_config(tmp_path),
+        initial_state=state,
+        pro_hooks=hooks,
+        pipeline_deps=deps,
+    )
+
+    assert exit_code == 0
+    assert factory_calls == []
+
+
+def test_pro_collaborator_overrides_reach_inner_loop(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """PipelineDeps built with Pro collaborator overrides is forwarded to the inner loop."""
+    run_loop_module = _load_run_loop()
+    monkeypatch.delenv("RALPH_WORKFLOW_PRO", raising=False)
+    _seed_workspace(tmp_path)
+
+    state = PipelineState(phase="complete")
+    bundle = _make_fake_bundle()
+    _patch_runner_dependencies(monkeypatch, tmp_path, state, bundle)
+    _install_display_context(monkeypatch, run_loop_module)
+
+    override_display_context = make_display_context()
+    model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+
+    def fake_system_materializer(
+        workspace_root: Path,
+        name: str,
+        default_current_prompt: str | None = None,
+        worker_namespace: Path | None = None,
+    ) -> str:
+        del workspace_root, name, default_current_prompt, worker_namespace
+        return "fake-system-prompt.md"
+
+    def fake_phase_materializer(
+        context: object = None,
+        options: object = None,
+        **kwargs: object,
+    ) -> str:
+        del context, options, kwargs
+        return "fake-phase-prompt.md"
+
+    def fake_artifact_resolver(
+        pipeline_policy: object,
+        artifacts_policy: object,
+        *,
+        phase: str,
+        drain: str | None = None,
+    ) -> object:
+        del pipeline_policy, artifacts_policy, phase, drain
+        return None
+
+    hooks = ProPipelineHooks(
+        display_context=override_display_context,
+        model_identity=model_identity,
+        system_prompt_materializer=fake_system_materializer,
+        phase_prompt_materializer=fake_phase_materializer,
+        artifact_requirements_resolver=fake_artifact_resolver,
+    )
+    display_context = make_display_context()
+    deps = build_default_pipeline_deps(
+        _build_config(tmp_path),
+        display_context,
+        pro_hooks=hooks,
+    )
+
+    captured_deps: list[PipelineDeps | None] = []
+
+    def _inner_loop(
+        _state: PipelineState, ctx: object, _prev: object
+    ) -> tuple[PipelineState, str, int | None]:
+        captured_deps.append(getattr(ctx, "pipeline_deps", None))
+        return _state, "complete", None
+
+    monkeypatch.setattr(run_loop_module, "_run_inner_loop", _inner_loop)
+    monkeypatch.setattr(
+        run_loop_module,
+        "_build_recovery_controller",
+        lambda _state, _pp, _cfg: (_build_recovery_controller_mock(), 1),
+    )
+
+    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        _build_config(tmp_path),
+        initial_state=state,
+        pro_hooks=hooks,
+        pipeline_deps=deps,
+    )
+
+    assert exit_code == 0
+    assert len(captured_deps) == 1
+    observed_deps = captured_deps[0]
+    assert observed_deps is not None
+    assert observed_deps.display_context is override_display_context
+    assert observed_deps.model_identity is model_identity
+    assert observed_deps.system_prompt_materializer is fake_system_materializer
+    assert observed_deps.phase_prompt_materializer is fake_phase_materializer
+    assert observed_deps.artifact_requirements_resolver is fake_artifact_resolver
 
 
 def test_late_marker_adoption_starts_heartbeat_after_run(

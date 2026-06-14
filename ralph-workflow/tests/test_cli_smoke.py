@@ -16,8 +16,11 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
+from ralph.pro_support.hooks import ProPipelineHooks
+from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
@@ -199,7 +202,9 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     monkeypatch.setattr(smoke_plumbing_module, "execute_agent_effect", fake_execute_agent_effect)
 
     def fake_build_default_pipeline_deps(
-        _config: UnifiedConfig, display_context: DisplayContext
+        _config: UnifiedConfig,
+        display_context: DisplayContext,
+        **_kwargs: object,
     ) -> object:
         return make_test_pipeline_deps(
             display_context,
@@ -207,7 +212,7 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
         )
 
     monkeypatch.setattr(
-        smoke_plumbing_module,
+        smoke_module,
         "build_default_pipeline_deps",
         fake_build_default_pipeline_deps,
     )
@@ -228,3 +233,89 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
     assert "Observed working" in output
     assert "Observed breaks" in output
     assert "No breaks observed" in output
+
+
+def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The smoke command forwards injected Pro hooks and model identity into the
+    shared pipeline dependency factory so plumbing uses the same initialization
+    path as the main pipeline.
+    """
+    _attach_console(monkeypatch)
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+    monkeypatch.setattr(
+        smoke_module,
+        "submit_artifact_tool_name_for_transport",
+        lambda _transport: "mcp__ralph__ralph_submit_artifact",
+    )
+    monkeypatch.setattr(
+        smoke_module,
+        "_build_smoke_prompt",
+        lambda _output_relpath, *, submit_artifact_tool_name: "prompt",
+    )
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "claude/haiku":
+                return AgentConfig(
+                    cmd="claude",
+                    transport=AgentTransport.CLAUDE_INTERACTIVE,
+                )
+            return None
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    captured: dict[str, object] = {}
+
+    def fake_build_default_pipeline_deps(
+        _config: UnifiedConfig,
+        _display_context: DisplayContext,
+        **kwargs: object,
+    ) -> object:
+        captured["kwargs"] = kwargs
+        return make_test_pipeline_deps(_display_context)
+
+    monkeypatch.setattr(
+        smoke_module,
+        "build_default_pipeline_deps",
+        fake_build_default_pipeline_deps,
+    )
+
+    def fake_run_smoke_plumbing(**_kwargs: object) -> smoke_module.SmokeRunResult:
+        return smoke_module.SmokeRunResult(
+            agent_name="claude/haiku",
+            transport="claude_interactive",
+            output_file=tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js",
+            file_created=True,
+            session_id="sess-1",
+            explicit_completion_seen=True,
+            raw_line_count=1,
+            parsed_event_count=1,
+            tool_activity_seen=True,
+            artifact_submitted=True,
+            meaningful_output_lines=["ok"],
+            errors=[],
+        )
+
+    monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
+
+    pro_hooks = ProPipelineHooks(snapshot_registry=SnapshotRegistry())
+    model_identity = MultimodalModelIdentity(provider="claude", model_id="haiku")
+    exit_code = smoke_module.smoke_interactive_claude_command(
+        display_context=None,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+    )
+
+    assert exit_code == 0
+    kwargs = cast("dict[str, object]", captured["kwargs"])
+    assert kwargs["pro_hooks"] is pro_hooks
+    assert kwargs["model_identity"] is model_identity

@@ -529,6 +529,7 @@ def _run_pipeline_step(
                 config_path=config_path,
                 cli_overrides=cli_overrides,
                 monitor_stop_cb=_monitor_stop_cb,
+                pipeline_deps=pipeline_deps,
             )
 
         with process_phase_scope(state.phase):

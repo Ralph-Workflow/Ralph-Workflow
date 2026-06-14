@@ -310,6 +310,57 @@ engine exposes a small, read-only, bounded surface so Pro can
 monitor and (in advanced uses) inject custom pipeline
 collaborators.
 
+### Pipeline dependency injection
+
+The engine's pipeline and plumbing commands share the same underlying
+execution core through a single injectable dependency bundle,
+`PipelineDeps` (`ralph.pipeline.factory`). The bundle carries the four
+primary collaborators:
+
+- **display** — `display_context` drives all output surfaces. Plumbing
+  commands resolve it from the injected `PipelineDeps` when it is not
+  supplied as a separate argument, matching the main run loop's
+  `PipelineDeps`-first contract.
+- **model** — `model_identity` is forwarded through the session bridge to
+  `AgentSession`.
+- **prompt** — `system_prompt_materializer` is consumed inside
+  `execute_agent_effect` and is shared by both the main pipeline and
+  plumbing. `phase_prompt_materializer` is used by the main pipeline for
+  phase handoff prompts; plumbing commands build single-task prompts
+  directly and do not route them through the phase materializer.
+- **artifact requirements** — `artifact_requirements_resolver` resolves the
+  required artifact contract for each phase/drain. The commit plumbing
+  path preserves an injected resolver and only falls back to its
+  commit-specific resolver when the bundle still contains the default
+  production implementation.
+
+The main pipeline (`ralph.pipeline.runner`) and plumbing commands
+(`--generate-commit`, smoke test) both build a `PipelineDeps` via
+`build_default_pipeline_deps` and execute agents through
+`execute_agent_effect`. `display_context`, `model_identity`,
+`system_prompt_materializer`, and `artifact_requirements_resolver` are
+consumed inside `execute_agent_effect`; the main pipeline additionally
+routes `phase_prompt_materializer` through
+`materialize_agent_prompt_if_needed` before each agent invocation so
+phase prompts are materialized by the same injected collaborator.
+
+Pro can inject custom implementations of any of these collaborators
+through `ProPipelineHooks`, and `build_default_pipeline_deps` applies
+those overrides to the returned `PipelineDeps` without changing the
+shared execution core. Existing tests exercise this contract:
+
+- `tests/test_pipeline_factory.py` proves the four collaborators live
+  in `PipelineDeps`, that `execute_agent_effect` consumes
+  `artifact_requirements_resolver`, and that `ProPipelineHooks` can
+  override each collaborator.
+- `tests/integration/test_plumbing_shared_deps.py` proves plumbing
+  commands receive and forward the same `PipelineDeps` bundle to the
+  shared execution core, that `display_context` is resolved from the
+  bundle when omitted, and that an injected
+  `artifact_requirements_resolver` is preserved by the commit path.
+- `tests/test_run_loop_pro_integration.py` proves `PipelineDeps`
+  composed with `ProPipelineHooks` reaches the inner pipeline loop.
+
 - Engine-side contract page: [`docs/sphinx/pro-support.md`](docs/sphinx/pro-support.md).
 - Engine-side engine-capability traceability: [`docs/agents/pro-contract.md`](docs/agents/pro-contract.md).
 - Upstream contract (authoritative source of truth): `Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`.

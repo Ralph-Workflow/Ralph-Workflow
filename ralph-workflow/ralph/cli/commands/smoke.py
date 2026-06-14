@@ -21,6 +21,7 @@ from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import resolve_active_display
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
+from ralph.pipeline.factory import PipelineDeps, build_default_pipeline_deps
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_IDLE_TIMEOUT_SECONDS,
     _SMOKE_MAX_SESSION_SECONDS,
@@ -37,6 +38,8 @@ from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.pro_support.hooks import ProPipelineHooks
 
 # Re-export plumbing symbols so existing tests can still reach them.
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
@@ -142,7 +145,12 @@ def _render_smoke_table(results: list[SmokeRunResult], *, display_context: Displ
 render_smoke_report = _render_smoke_report
 
 
-def smoke_interactive_claude_command(*, display_context: DisplayContext | None = None) -> int:
+def smoke_interactive_claude_command(
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+) -> int:
     """Run a token-consuming manual parity smoke test for interactive Claude."""
     ctx = display_context if display_context is not None else make_display_context()
     workspace_scope = resolve_workspace_scope()
@@ -169,6 +177,13 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
         encoding="utf-8",
     )
 
+    pipeline_deps: PipelineDeps = build_default_pipeline_deps(
+        config,
+        ctx,
+        model_identity=model_identity,
+        pro_hooks=pro_hooks,
+    )
+
     result = run_smoke_plumbing(
         config=config,
         workspace_root=workspace_root,
@@ -176,6 +191,7 @@ def smoke_interactive_claude_command(*, display_context: DisplayContext | None =
         prompt_file=prompt_file,
         output_file=output_file,
         display_context=ctx,
+        pipeline_deps=pipeline_deps,
     )
 
     _render_smoke_table([result], display_context=ctx)

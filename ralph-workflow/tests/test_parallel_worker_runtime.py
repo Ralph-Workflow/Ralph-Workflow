@@ -7,18 +7,22 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ralph.config.enums import AgentTransport
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.env import WORKER_NAMESPACE_ENV
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.parallel.worker_manifest import ParallelWorkerManifest
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
+from ralph.pro_support.hooks import ProPipelineHooks
+from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
 
+    from ralph.pipeline.factory import PipelineDeps
     from ralph.prompts.materialize import PromptPhaseContext, PromptPhaseOptions
 
 
@@ -195,7 +199,7 @@ def test_run_parallel_worker_from_manifest_executes_real_worker_mode_flow(
     monkeypatch.setattr(
         module,
         "build_default_pipeline_deps",
-        lambda _config, display_context: make_test_pipeline_deps(
+        lambda _config, display_context, **kwargs: make_test_pipeline_deps(
             display_context,
             phase_prompt_materializer=_fake_materialize_prompt_for_phase,
         ),
@@ -304,7 +308,7 @@ def test_run_parallel_worker_from_manifest_passes_worker_context_into_execute_ag
     monkeypatch.setattr(
         module,
         "build_default_pipeline_deps",
-        lambda _config, display_context: make_test_pipeline_deps(
+        lambda _config, display_context, **kwargs: make_test_pipeline_deps(
             display_context,
             phase_prompt_materializer=lambda context=None, options=None, **kwargs: (
                 ".agent/workers/unit-a/tmp/development_prompt.md"
@@ -429,7 +433,7 @@ def test_run_parallel_worker_from_manifest_preserves_transport_tool_prefix(
     monkeypatch.setattr(
         module,
         "build_default_pipeline_deps",
-        lambda _config, display_context: make_test_pipeline_deps(
+        lambda _config, display_context, **kwargs: make_test_pipeline_deps(
             display_context,
             phase_prompt_materializer=_fake_materialize_prompt_for_phase,
         ),
@@ -524,7 +528,7 @@ def test_run_parallel_worker_from_manifest_does_not_write_worker_checkpoint_with
     monkeypatch.setattr(
         module,
         "build_default_pipeline_deps",
-        lambda _config, display_context: make_test_pipeline_deps(
+        lambda _config, display_context, **kwargs: make_test_pipeline_deps(
             display_context,
             phase_prompt_materializer=lambda context=None, options=None, **kwargs: (
                 ".agent/tmp/development_prompt.md"
@@ -610,6 +614,120 @@ def test_materialize_prepared_prompt_passes_worker_work_unit(
     )
 
     assert captured["work_unit"] == unit
+
+
+def test_run_parallel_worker_from_manifest_preserves_injected_model_identity_and_pro_hooks(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Injected ``model_identity`` and ``pro_hooks`` reach the shared deps composition path."""
+    module = importlib.import_module("ralph.pipeline.parallel.worker_runtime")
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-a"
+    worker_ns.mkdir(parents=True)
+    manifest = ParallelWorkerManifest(
+        unit_id="unit-a",
+        description="Implement only unit A",
+        allowed_directories=["src/a"],
+        phase="development",
+        drain="development",
+        worker_namespace=str(worker_ns),
+        worker_artifact_dir=str(worker_ns / "artifacts"),
+        prompt_file=str(worker_ns / "tmp" / "development_prompt.md"),
+        workspace_root=str(tmp_path),
+    )
+    manifest_path = tmp_path / "worker-manifest.json"
+    manifest_path.write_text(manifest.model_dump_json(indent=2), encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class _FakeWorkspace:
+        def __init__(
+            self,
+            root: Path,
+            *,
+            allowed_roots: tuple[Path, ...] | None = None,
+        ) -> None:
+            del root, allowed_roots
+
+        def read(self, path: str) -> str:
+            del path
+            return "worker prompt body"
+
+    class _PolicyBundle:
+        pipeline = object()
+        artifacts = object()
+        agents = object()
+
+    def _fake_build_default_pipeline_deps(
+        _config: object,
+        display_context: object,
+        *,
+        model_identity: object = None,
+        pro_hooks: object = None,
+    ) -> PipelineDeps:
+        captured["model_identity"] = model_identity
+        captured["pro_hooks"] = pro_hooks
+        return make_test_pipeline_deps(display_context)
+
+    monkeypatch.setattr(module, "load_config", lambda *args, **kwargs: object(), raising=False)
+    monkeypatch.setattr(
+        module,
+        "load_policy_for_workspace_scope",
+        lambda *args, **kwargs: _PolicyBundle(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        module,
+        "create_initial_state",
+        lambda *args, **kwargs: PipelineState(phase="development"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        module,
+        "determine_effect_from_policy",
+        lambda *args, **kwargs: InvokeAgentEffect(
+            agent_name="developer",
+            phase="development",
+            prompt_file="ignored.md",
+            drain="development",
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        module,
+        "build_default_pipeline_deps",
+        _fake_build_default_pipeline_deps,
+        raising=False,
+    )
+    monkeypatch.setattr(module, "FsWorkspace", _FakeWorkspace, raising=False)
+    monkeypatch.setattr(
+        module,
+        "execute_agent_effect",
+        lambda _effect, _config, _pipeline_deps, _workspace_scope, **_kwargs: (
+            PipelineEvent.AGENT_SUCCESS
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        module,
+        "phase_event_after_agent_run",
+        lambda **kwargs: PipelineEvent.AGENT_SUCCESS,
+        raising=False,
+    )
+    monkeypatch.setattr(module, "AgentRegistry", _no_agent_registry_class(), raising=False)
+
+    model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+    pro_hooks = ProPipelineHooks(snapshot_registry=SnapshotRegistry())
+
+    exit_code = module.run_parallel_worker_from_manifest(
+        manifest_path=manifest_path,
+        display_context=object(),
+        model_identity=model_identity,
+        pro_hooks=pro_hooks,
+    )
+
+    assert exit_code == 0
+    assert captured["model_identity"] is model_identity
+    assert captured["pro_hooks"] is pro_hooks
 
 
 def test_materialize_prepared_prompt_preserves_transport_tool_prefix_from_agent_context(

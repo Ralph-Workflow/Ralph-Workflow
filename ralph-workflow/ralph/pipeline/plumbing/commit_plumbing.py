@@ -72,6 +72,7 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.factory import (
     MaterializeSystemPromptFn,
     PipelineDeps,
+    _resolve_phase_required_artifact,
     build_default_pipeline_deps,
 )
 from ralph.pipeline.session_bridge import (
@@ -79,6 +80,7 @@ from ralph.pipeline.session_bridge import (
     build_session_bridge,
     reset_tool_registry_callback,
 )
+from ralph.policy.models import AgentsPolicy
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,
@@ -99,8 +101,8 @@ if TYPE_CHECKING:
     from ralph.cli.commands._commit_chain_config import CommitChainConfig
     from ralph.config.models import AgentConfig
     from ralph.display.context import DisplayContext
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
-    from ralph.policy.models import AgentsPolicy
 
 # Late-binding reference for the test-patch surface: tests in
 # ``tests/test_cli_commit_command.py`` (and friends) patch names
@@ -172,6 +174,42 @@ def _commit_artifact_requirements_resolver(
     return _commit_required_artifact()
 
 
+def _apply_commit_deps_overrides(
+    deps: PipelineDeps,
+    *,
+    materializer: MaterializeSystemPromptFn | None,
+    registry: object | None,
+) -> PipelineDeps:
+    """Apply commit-specific overrides to a ``PipelineDeps`` bundle.
+
+    Ensures the commit plumbing path uses the commit-specific artifact
+    resolver only when no custom resolver was injected, composes the chain
+    registry, and swaps in the late-bound test-patch bridge factory when the
+    default production bridge is in use.
+    """
+    if materializer is not None:
+        deps = dataclasses.replace(deps, system_prompt_materializer=materializer)
+    if registry is not None:
+        deps = dataclasses.replace(deps, registry_factory=lambda _config: registry)
+    # Preserve the legacy late-bound test-patch surface when no explicit
+    # bridge factory was injected. Tests monkeypatch
+    # ``ralph.cli.commands.commit.start_commit_bridge``; the wrapper below
+    # resolves that attribute at call time so the patch is honored while
+    # still routing default commit bridge creation through PipelineDeps.
+    if deps.bridge_factory is build_session_bridge:
+        deps = dataclasses.replace(deps, bridge_factory=_default_commit_bridge_factory)
+    # Only replace the default artifact resolver. If Pro or a test injected a
+    # custom resolver via PipelineDeps/ProPipelineHooks, preserve it so the
+    # commit path shares the same injectable collaborator contract as the
+    # main pipeline.
+    if deps.artifact_requirements_resolver is _resolve_phase_required_artifact:
+        deps = dataclasses.replace(
+            deps,
+            artifact_requirements_resolver=_commit_artifact_requirements_resolver,
+        )
+    return deps
+
+
 def _commit_pipeline_deps(
     config: UnifiedConfig,
     display_context: DisplayContext,
@@ -179,13 +217,8 @@ def _commit_pipeline_deps(
     registry: object | None = None,
 ) -> PipelineDeps:
     deps = build_default_pipeline_deps(config, display_context)
-    if materializer is not None:
-        deps = dataclasses.replace(deps, system_prompt_materializer=materializer)
-    if registry is not None:
-        deps = dataclasses.replace(deps, registry_factory=lambda _config: registry)
-    return dataclasses.replace(
-        deps,
-        artifact_requirements_resolver=_commit_artifact_requirements_resolver,
+    return _apply_commit_deps_overrides(
+        deps, materializer=materializer, registry=registry
     )
 
 
@@ -194,7 +227,7 @@ def run_commit_plumbing(
     diff: str,
     repo_root: Path,
     chain_config: CommitChainConfig,
-    display_context: DisplayContext,
+    display_context: DisplayContext | None = None,
     pipeline_deps: PipelineDeps | None = None,
 ) -> CommitAgentResult:
     """Iterate the commit chain, delegating each agent to the shared execution core.
@@ -214,32 +247,32 @@ def run_commit_plumbing(
     module; recovery decisions are routed exclusively through the
     shared execution core.
     """
-    pipeline_deps_provided = pipeline_deps is not None
     if pipeline_deps is None:
+        if display_context is None:
+            raise ValueError("display_context is required when pipeline_deps is not provided")
         pipeline_deps = _commit_pipeline_deps(
             cast("UnifiedConfig", chain_config.general_config),
             display_context,
             materializer=None,
             registry=chain_config.registry,
         )
+    else:
+        if display_context is None:
+            display_context = pipeline_deps.display_context
+        pipeline_deps = _apply_commit_deps_overrides(
+            pipeline_deps,
+            materializer=None,
+            registry=chain_config.registry,
+        )
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
-    if pipeline_deps_provided:
-        bridge = pipeline_deps.bridge_factory(
-            workspace_root=repo_root,
-            drain="commit",
-            agents_policy=chain_config.agents_policy,
-            session_id_prefix="commit",
-            model_identity=pipeline_deps.model_identity,
-        )
-    else:
-        # Preserve the legacy late-bound test-patch surface: tests
-        # monkeypatch ``ralph.cli.commands.commit.start_commit_bridge``.
-        bridge_fn = _resolve_commit_start_commit_bridge()
-        try:
-            bridge = bridge_fn(repo_root, agents_policy=chain_config.agents_policy)
-        except TypeError:
-            bridge = bridge_fn(repo_root)
+    bridge = pipeline_deps.bridge_factory(
+        workspace_root=repo_root,
+        drain="commit",
+        agents_policy=chain_config.agents_policy,
+        session_id_prefix="commit",
+        model_identity=pipeline_deps.model_identity,
+    )
     extra_env: dict[str, str] | None = _commit_bridge_env(bridge)
     # Normalize the key set so downstream consumers (and tests)
     # observe string keys, never the ``McpEnvVar`` enum.
@@ -533,9 +566,7 @@ def _run_commit_agent_attempt_with_recovery(
             raw_output_sink=raw_output,
             rendered_output_sink=rendered_output,
             set_session_id_cb=_capture_session_id,
-            invoke_agent=_get_patched(
-                _commit_module, "invoke_agent", invoke_agent
-            ),
+            invoke_agent=_get_patched(_commit_module, "invoke_agent", invoke_agent),
             on_retry_failure=on_retry_failure,
             agent_invocation_error_sink=_capture_error,
         )
@@ -808,9 +839,7 @@ def _is_missing_commit_artifact_failure(detail: str) -> bool:
     return _MISSING_COMMIT_ARTIFACT_REASON in detail or is_unsubmitted_artifact_failure((detail,))
 
 
-def _summarized_retry_prompt(
-    base_prompt: str, parsed_output: list[str], agent: AgentConfig
-) -> str:
+def _summarized_retry_prompt(base_prompt: str, parsed_output: list[str], agent: AgentConfig) -> str:
     """Commit's resubmit prompt — built by the SAME `build_retry_hint` the pipeline
     phase gates use, so the artifact-missing retry guidance cannot drift between
     the commit command and the pipeline. Only the commit-specific example payload
@@ -1061,12 +1090,76 @@ def _parsed_output_from_invocation_error(exc: AgentInvocationError) -> list[str]
     return parsed_output
 
 
-def _start_commit_bridge(repo_root: Path, *, agents_policy: AgentsPolicy) -> SessionBridgeLike:
+def _default_commit_bridge_factory(
+    *,
+    workspace_root: Path,
+    drain: str,
+    agents_policy: AgentsPolicy | None,
+    transport: AgentTransport | None = None,
+    capabilities: frozenset[str] | None = None,
+    session_id_prefix: str | None = None,
+    run_id: str | None = None,
+    model_identity: object | None = None,
+    parallel_worker: bool = False,
+    worker_namespace: Path | None = None,
+    worker_artifact_dir: Path | None = None,
+    allowed_roots: tuple[Path, ...] | None = None,
+    build_session_mcp_plan_fn: object | None = None,
+    start_mcp_server_fn: object | None = None,
+    workspace_factory: object | None = None,
+) -> SessionBridgeLike:
+    """Default commit bridge factory that honors the test-patch surface.
+
+    Implements the :class:`ralph.pipeline.session_bridge.BridgeFactory`
+    protocol while forwarding to the legacy
+    ``ralph.cli.commands.commit.start_commit_bridge`` attribute. The
+    late-bound lookup lets tests monkeypatch the commit module's bridge
+    starter and have the patch propagate through the shared PipelineDeps
+    path. The injected ``model_identity`` is forwarded when the patched
+    starter accepts it, preserving the same model-context flow as the
+    main pipeline.
+    """
+    del (
+        drain,
+        transport,
+        capabilities,
+        session_id_prefix,
+        run_id,
+        parallel_worker,
+        worker_namespace,
+        worker_artifact_dir,
+        allowed_roots,
+        build_session_mcp_plan_fn,
+        start_mcp_server_fn,
+        workspace_factory,
+    )
+    bridge_fn = _resolve_commit_start_commit_bridge()
+    policy = agents_policy or AgentsPolicy()
+    try:
+        return bridge_fn(
+            workspace_root,
+            agents_policy=policy,
+            model_identity=model_identity,
+        )
+    except TypeError:
+        try:
+            return bridge_fn(workspace_root, agents_policy=policy)
+        except TypeError:
+            return bridge_fn(workspace_root)
+
+
+def _start_commit_bridge(
+    repo_root: Path,
+    *,
+    agents_policy: AgentsPolicy,
+    model_identity: MultimodalModelIdentity | None = None,
+) -> SessionBridgeLike:
     return build_session_bridge(
         workspace_root=repo_root,
         drain="commit",
         agents_policy=agents_policy,
         session_id_prefix="commit",
+        model_identity=model_identity,
     )
 
 

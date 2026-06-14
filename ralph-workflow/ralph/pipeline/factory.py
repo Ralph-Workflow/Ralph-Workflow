@@ -182,8 +182,8 @@ class PipelineDeps:
 
     Fields cover the four PROMPT-mandated collaborators
     (display_context, model_identity, system/phase prompt materializers,
-    artifact resolver), the bridge factory, MCP lifecycle machinery, and the
-    seven ``ProPipelineHooks`` overrides.
+    artifact resolver), the bridge factory, MCP lifecycle machinery, the
+    seven ``ProPipelineHooks`` overrides, and the recovery sleep seam.
     """
 
     display_context: DisplayContext
@@ -204,6 +204,7 @@ class PipelineDeps:
     recovery_controller_factory: RecoveryControllerFactory | None = None
     marker_watcher_factory: MarkerWatcherFactory | None = None
     snapshot_registry: SnapshotRegistry | None = None
+    recovery_sleep: Callable[[float], None] | None = None
 
 
 @runtime_checkable
@@ -261,6 +262,24 @@ def apply_pro_hooks_to_deps(
         deps = dataclasses.replace(deps, marker_watcher_factory=pro_hooks.marker_watcher_factory)
     if pro_hooks.snapshot_registry is not None:
         deps = dataclasses.replace(deps, snapshot_registry=pro_hooks.snapshot_registry)
+    if pro_hooks.display_context is not None:
+        deps = dataclasses.replace(deps, display_context=pro_hooks.display_context)
+    if pro_hooks.model_identity is not None:
+        deps = dataclasses.replace(deps, model_identity=pro_hooks.model_identity)
+    if pro_hooks.system_prompt_materializer is not None:
+        deps = dataclasses.replace(
+            deps, system_prompt_materializer=pro_hooks.system_prompt_materializer
+        )
+    if pro_hooks.phase_prompt_materializer is not None:
+        deps = dataclasses.replace(
+            deps, phase_prompt_materializer=pro_hooks.phase_prompt_materializer
+        )
+    if pro_hooks.artifact_requirements_resolver is not None:
+        deps = dataclasses.replace(
+            deps, artifact_requirements_resolver=pro_hooks.artifact_requirements_resolver
+        )
+    if pro_hooks.recovery_sleep is not None:
+        deps = dataclasses.replace(deps, recovery_sleep=pro_hooks.recovery_sleep)
     return deps
 
 
@@ -268,17 +287,31 @@ def build_default_pipeline_deps(
     config: UnifiedConfig,
     display_context: DisplayContext,
     *,
+    model_identity: MultimodalModelIdentity | None = None,
+    policy_bundle: PolicyBundle | None = None,
+    recovery_sleep: Callable[[float], None] | None = None,
     pro_hooks: ProPipelineHooks | None = None,
 ) -> PipelineDeps:
     """Build a ``PipelineDeps`` wired to production defaults.
 
-    ``model_identity`` defaults to ``None`` so plumbing callers reproduce the
-    pre-refactor ``UNKNOWN_IDENTITY`` behavior unless they explicitly inject a
-    resolved identity.
+    ``model_identity`` defaults to ``None`` so callers that do not have a
+    resolved identity reproduce the pre-refactor ``UNKNOWN_IDENTITY`` behavior;
+    callers that already know the effective identity (e.g. plumbing commands
+    with a single selected agent) can inject it here.
+
+    ``policy_bundle`` lets the main pipeline load the policy once and inject
+    it into the shared bundle instead of passing it as a separate runner
+    argument.
+
+    ``recovery_sleep`` lets callers replace the wall-clock sleep used during
+    recovery backoff; ``pro_hooks.recovery_sleep`` takes precedence over this
+    argument when both are provided.
     """
     deps = PipelineDeps(
         display_context=display_context,
-        model_identity=None,
+        model_identity=model_identity,
+        policy_bundle=policy_bundle,
+        recovery_sleep=recovery_sleep,
     )
     if pro_hooks is None:
         return deps

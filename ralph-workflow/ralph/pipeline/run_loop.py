@@ -590,28 +590,32 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
             calls after each reduce.
         verbosity: Optional explicit verbosity. Defaults to the configured
             value in ``config.general.verbosity`` (mapped from int rank).
-        pro_hooks: Optional ``ProPipelineHooks`` carrying 5 factory callables
-            plus 1 policy_bundle_override and 1 snapshot_registry. When
-            supplied, individual ``policy_bundle_factory`` /
-            ``registry_factory`` / etc. kwargs are pulled from this dataclass
-            (which keeps them in a single, typed bundle).
-        policy_bundle_factory: Optional callable that replaces
-            ``_runner_module.load_policy_bundle_for_run``; ignored when
-            ``pro_hooks.policy_bundle_override`` is set.
-        registry_factory: Optional callable that replaces
-            ``_runner_module.AgentRegistry.from_config``.
-        state_factory: Optional callable that replaces
-            ``_runner_module.create_initial_state``.
-        recovery_controller_factory: Optional callable that replaces
-            ``_build_recovery_controller``.
-        marker_watcher_factory: Optional callable that constructs a
-            ``ProMarkerWatcher``; default constructs one with production
-            defaults.
-        snapshot_registry: Optional ``SnapshotRegistry``; when set, the inner
-            loop publishes a ``PipelineStateSnapshot`` to it on each reduce.
+        pro_hooks: Optional ``ProPipelineHooks`` carrying Pro overrides.
+            Ignored when ``pipeline_deps`` is provided; prefer passing
+            ``pro_hooks`` to :func:`build_default_pipeline_deps` instead.
         pipeline_deps: Optional ``PipelineDeps`` carrying injected
-            collaborators. When supplied, it takes precedence over the
-            legacy ``pro_hooks`` and individual factory kwargs.
+            collaborators. This is the single authoritative injection
+            surface for the run loop. When provided, its values take
+            precedence over ``pro_hooks`` and production defaults.
+        policy_bundle_factory: (DEPRECATED) Use ``pipeline_deps``.
+        registry_factory: (DEPRECATED) Use ``pipeline_deps``.
+        state_factory: (DEPRECATED) Use ``pipeline_deps``.
+        recovery_controller_factory: (DEPRECATED) Use ``pipeline_deps``.
+        marker_watcher_factory: (DEPRECATED) Use ``pipeline_deps``.
+        snapshot_registry: (DEPRECATED) Use ``pipeline_deps``.
+        _recovery_sleep: (DEPRECATED) Use ``pipeline_deps.recovery_sleep``
+            (or pass ``recovery_sleep`` to :func:`build_default_pipeline_deps`).
+
+    Migration Notes:
+        ``run()`` previously accepted individual factory kwargs such as
+        ``policy_bundle_factory``, ``registry_factory``, etc. These are now
+        deprecated. Construct a :class:`PipelineDeps` bundle via
+        :func:`build_default_pipeline_deps` (optionally passing
+        ``pro_hooks`` or ``recovery_sleep`` to it) and pass only
+        ``pipeline_deps``. Passing any deprecated factory kwarg alongside
+        ``pipeline_deps`` raises ``ValueError``. Callers using only the old
+        factory kwargs (without ``pipeline_deps``) continue to work for
+        backward compatibility.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
@@ -620,85 +624,123 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     _runner_module.write_start_commit_if_absent(workspace_scope.root)
     if _runner_module.validate_custom_mcp_servers(workspace_scope.root) != 0:
         return 1
+
+    if pipeline_deps is not None and (
+        policy_bundle_factory is not None
+        or registry_factory is not None
+        or state_factory is not None
+        or recovery_controller_factory is not None
+        or marker_watcher_factory is not None
+        or snapshot_registry is not None
+        or _recovery_sleep is not None
+    ):
+        raise ValueError(
+            "Passing factory kwargs alongside pipeline_deps is not supported. "
+            "Use build_default_pipeline_deps() to construct a PipelineDeps bundle "
+            "with your overrides, then pass only pipeline_deps."
+        )
+
     if pipeline_deps is not None and display_context is None:
         display_context = pipeline_deps.display_context
-    if pro_hooks is not None:
-        if policy_bundle_factory is None and pipeline_deps is None:
-            policy_bundle_factory = pro_hooks.policy_bundle_factory
-        if registry_factory is None and pipeline_deps is None:
-            registry_factory = cast(
-                "Callable[[UnifiedConfig], _RegistryLike] | None",
-                pro_hooks.registry_factory,
-            )
-        if state_factory is None and pipeline_deps is None:
-            state_factory = pro_hooks.state_factory
-        if recovery_controller_factory is None and pipeline_deps is None:
-            recovery_controller_factory = pro_hooks.recovery_controller_factory
-        if marker_watcher_factory is None and pipeline_deps is None:
-            marker_watcher_factory = pro_hooks.marker_watcher_factory
-        if snapshot_registry is None and pipeline_deps is None:
-            snapshot_registry = pro_hooks.snapshot_registry
-        if pro_hooks.policy_bundle_override is not None and pipeline_deps is None:
-            policy_bundle = pro_hooks.policy_bundle_override
-        elif policy_bundle_factory is None:
-            policy_bundle = _runner_module.load_policy_bundle_for_run(
-                workspace_scope, config
+
+    # Resolve collaborators with precedence: pipeline_deps > pro_hooks > defaults.
+    # When pipeline_deps is provided it is the authoritative composed bundle;
+    # deprecated factory kwargs are rejected above, so the two injection paths
+    # are never mixed.
+    if pipeline_deps is not None:
+        if pipeline_deps.policy_bundle is not None:
+            policy_bundle = pipeline_deps.policy_bundle
+        elif pipeline_deps.policy_bundle_factory is not None:
+            policy_bundle = pipeline_deps.policy_bundle_factory(workspace_scope, config)
+        else:
+            policy_bundle = _runner_module.load_policy_bundle_for_run(workspace_scope, config)
+    elif pro_hooks is not None and pro_hooks.policy_bundle_override is not None:
+        policy_bundle = pro_hooks.policy_bundle_override
+    elif pro_hooks is not None and pro_hooks.policy_bundle_factory is not None:
+        policy_bundle = pro_hooks.policy_bundle_factory(workspace_scope, config)
+    elif policy_bundle_factory is not None:
+        policy_bundle = policy_bundle_factory(workspace_scope, config)
+    else:
+        policy_bundle = _runner_module.load_policy_bundle_for_run(workspace_scope, config)
+    _runner_module.register_role_handlers(policy_bundle.pipeline)
+
+    registry: _RegistryLike
+    if pipeline_deps is not None:
+        if pipeline_deps.registry_factory is not None:
+            registry = cast("_RegistryLike", pipeline_deps.registry_factory(config))
+        else:
+            registry = _runner_module.AgentRegistry.from_config(config)
+    elif pro_hooks is not None and pro_hooks.registry_factory is not None:
+        registry = cast("_RegistryLike", pro_hooks.registry_factory(config))
+    elif registry_factory is not None:
+        registry = registry_factory(config)
+    else:
+        registry = _runner_module.AgentRegistry.from_config(config)
+
+    if initial_state is not None:
+        state = initial_state
+    elif pipeline_deps is not None:
+        if pipeline_deps.state_factory is not None:
+            state = pipeline_deps.state_factory(
+                config,
+                policy_bundle.agents,
+                policy_bundle.pipeline,
+                counter_overrides,
             )
         else:
-            policy_bundle = policy_bundle_factory(workspace_scope, config)
-    elif policy_bundle_factory is None:
-        policy_bundle = _runner_module.load_policy_bundle_for_run(
-            workspace_scope, config
-        )
-    else:
-        policy_bundle = policy_bundle_factory(workspace_scope, config)
-    if pipeline_deps is not None and pipeline_deps.policy_bundle is not None:
-        policy_bundle = pipeline_deps.policy_bundle
-    elif pipeline_deps is not None and pipeline_deps.policy_bundle_factory is not None:
-        policy_bundle = pipeline_deps.policy_bundle_factory(workspace_scope, config)
-    _runner_module.register_role_handlers(policy_bundle.pipeline)
-    registry: _RegistryLike
-    if pipeline_deps is not None and pipeline_deps.registry_factory is not None:
-        registry = cast("_RegistryLike", pipeline_deps.registry_factory(config))
-    elif registry_factory is None:
-        registry = _runner_module.AgentRegistry.from_config(config)
-    else:
-        registry = registry_factory(config)
-    if pipeline_deps is not None and pipeline_deps.state_factory is not None:
-        state = initial_state or pipeline_deps.state_factory(
+            state = _runner_module.create_initial_state(
+                config,
+                agents_policy=policy_bundle.agents,
+                pipeline_policy=policy_bundle.pipeline,
+                counter_overrides=counter_overrides,
+            )
+    elif pro_hooks is not None and pro_hooks.state_factory is not None:
+        state = pro_hooks.state_factory(
             config,
             policy_bundle.agents,
             policy_bundle.pipeline,
             counter_overrides,
         )
-    elif state_factory is None:
-        state = initial_state or _runner_module.create_initial_state(
-            config,
-            agents_policy=policy_bundle.agents,
-            pipeline_policy=policy_bundle.pipeline,
-            counter_overrides=counter_overrides,
-        )
-    elif initial_state is not None:
-        state = initial_state
-    else:
+    elif state_factory is not None:
         state = state_factory(
             config,
             policy_bundle.agents,
             policy_bundle.pipeline,
             counter_overrides,
         )
+    else:
+        state = _runner_module.create_initial_state(
+            config,
+            agents_policy=policy_bundle.agents,
+            pipeline_policy=policy_bundle.pipeline,
+            counter_overrides=counter_overrides,
+        )
+
     effective_verbosity = normalize_verbosity(
         verbosity if verbosity is not None else config.general.verbosity
     )
     is_quiet = verbosity_rank(effective_verbosity) <= VERBOSITY_RANK[Verbosity.QUIET]
-    _sleep = _recovery_sleep or time.sleep
-    connectivity_monitor, _monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
-    if pipeline_deps is not None and pipeline_deps.recovery_controller_factory is not None:
-        _controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
-    elif recovery_controller_factory is None:
-        _controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    if pipeline_deps is not None and pipeline_deps.recovery_sleep is not None:
+        _sleep = pipeline_deps.recovery_sleep
+    elif pro_hooks is not None and pro_hooks.recovery_sleep is not None:
+        _sleep = pro_hooks.recovery_sleep
+    elif _recovery_sleep is not None:
+        _sleep = _recovery_sleep
     else:
+        _sleep = time.sleep
+    connectivity_monitor, _monitor_stop = _setup_connectivity_monitor(connectivity_monitor)
+
+    if pipeline_deps is not None:
+        if pipeline_deps.recovery_controller_factory is not None:
+            _controller, _ = pipeline_deps.recovery_controller_factory(state, policy_bundle, config)
+        else:
+            _controller, _ = _build_recovery_controller(state, policy_bundle, config)
+    elif pro_hooks is not None and pro_hooks.recovery_controller_factory is not None:
+        _controller, _ = pro_hooks.recovery_controller_factory(state, policy_bundle, config)
+    elif recovery_controller_factory is not None:
         _controller, _ = recovery_controller_factory(state, policy_bundle, config)
+    else:
+        _controller, _ = _build_recovery_controller(state, policy_bundle, config)
     _unsubscribe_bus = _subscribe_recovery_logger(_controller)
     logger.info("Starting pipeline: phase={}, budget_caps={}", state.phase, state.budget_caps)
     if pipeline_subscriber is None:
@@ -709,11 +751,22 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
     effective_pipeline_subscriber = _resolve_effective_subscriber(
         dashboard_subscriber, pipeline_subscriber, active_display
     )
-    _effective_marker_watcher_factory = marker_watcher_factory
-    if pipeline_deps is not None and pipeline_deps.marker_watcher_factory is not None:
+
+    _effective_marker_watcher_factory: Callable[[Path], ProMarkerWatcher] | None = None
+    if pipeline_deps is not None:
         _effective_marker_watcher_factory = pipeline_deps.marker_watcher_factory
-    if pipeline_deps is not None and pipeline_deps.snapshot_registry is not None:
-        snapshot_registry = pipeline_deps.snapshot_registry
+    elif pro_hooks is not None and pro_hooks.marker_watcher_factory is not None:
+        _effective_marker_watcher_factory = pro_hooks.marker_watcher_factory
+    else:
+        _effective_marker_watcher_factory = marker_watcher_factory
+
+    _effective_snapshot_registry: SnapshotRegistry | None = None
+    if pipeline_deps is not None:
+        _effective_snapshot_registry = pipeline_deps.snapshot_registry
+    elif pro_hooks is not None and pro_hooks.snapshot_registry is not None:
+        _effective_snapshot_registry = pro_hooks.snapshot_registry
+    else:
+        _effective_snapshot_registry = snapshot_registry
     _pro_watcher, _heartbeat_client = _start_pro_marker_watcher(
         workspace_scope.root,
         watcher_factory=_effective_marker_watcher_factory,
@@ -760,7 +813,7 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         is_quiet=is_quiet,
         heartbeat_client=_heartbeat_client,
         pro_watcher=_pro_watcher,
-        snapshot_registry=snapshot_registry,
+        snapshot_registry=_effective_snapshot_registry,
         pipeline_deps=pipeline_deps,
     )
     return _execute_with_cleanup(state, loop_ctx, state.phase, _unsubscribe_bus, _display_stop)

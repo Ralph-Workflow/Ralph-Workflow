@@ -123,6 +123,7 @@ class TestBuildDefaultPipelineDeps:
         assert deps.recovery_controller_factory is None
         assert deps.marker_watcher_factory is None
         assert deps.snapshot_registry is None
+        assert deps.recovery_sleep is None
 
     def test_deps_is_frozen(self, tmp_path: Path) -> None:
         display_ctx = _display_context()
@@ -150,6 +151,42 @@ class TestBuildDefaultPipelineDeps:
         )
 
         assert deps.display_context is display_ctx
+
+    def test_accepts_model_identity(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            model_identity=model_identity,
+        )
+
+        assert deps.model_identity is model_identity
+
+    def test_accepts_policy_bundle(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        bundle = _make_fake_bundle()
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            policy_bundle=bundle,
+        )
+
+        assert deps.policy_bundle is bundle
+
+    def test_pro_hooks_override_wins_over_policy_bundle_kwarg(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        bundle_from_kwarg = _make_fake_bundle()
+        bundle_from_hooks = _make_fake_bundle()
+        hooks = ProPipelineHooks(policy_bundle_override=bundle_from_hooks)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            policy_bundle=bundle_from_kwarg,
+            pro_hooks=hooks,
+        )
+
+        assert deps.policy_bundle is bundle_from_hooks
 
 
 class TestPipelineDepsCollaborators:
@@ -264,6 +301,54 @@ class TestProHooksComposition:
 
         assert deps.snapshot_registry is fake_registry
 
+    def test_recovery_sleep_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+
+        def recovery_sleep(_seconds: float) -> None:
+            return None
+
+        hooks = ProPipelineHooks(recovery_sleep=recovery_sleep)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.recovery_sleep is recovery_sleep
+
+    def test_recovery_sleep_argument_wins_over_default(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+
+        def recovery_sleep(_seconds: float) -> None:
+            return None
+
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            recovery_sleep=recovery_sleep,
+        )
+
+        assert deps.recovery_sleep is recovery_sleep
+
+    def test_pro_hooks_recovery_sleep_wins_over_argument(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+
+        def arg_sleep(_seconds: float) -> None:
+            return None
+
+        def hook_sleep(_seconds: float) -> None:
+            return None
+
+        hooks = ProPipelineHooks(recovery_sleep=hook_sleep)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            recovery_sleep=arg_sleep,
+            pro_hooks=hooks,
+        )
+
+        assert deps.recovery_sleep is hook_sleep
+
     def test_policy_bundle_factory_is_resolved_at_build_time(self, tmp_path: Path) -> None:
         display_ctx = _display_context()
         bundle = _make_fake_bundle()
@@ -290,6 +375,92 @@ class TestProHooksComposition:
 
         assert deps.policy_bundle is None
         assert deps.registry_factory is None
+
+    def test_display_context_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        override_ctx = _display_context()
+        hooks = ProPipelineHooks(display_context=override_ctx)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.display_context is override_ctx
+
+    def test_model_identity_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+        hooks = ProPipelineHooks(model_identity=model_identity)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.model_identity is model_identity
+
+    def test_system_prompt_materializer_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        fake_materializer = MagicMock(return_value="fake-system-prompt.md")
+        hooks = ProPipelineHooks(system_prompt_materializer=fake_materializer)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.system_prompt_materializer is fake_materializer
+
+    def test_phase_prompt_materializer_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        fake_materializer = MagicMock(return_value="fake-phase-prompt.md")
+        hooks = ProPipelineHooks(phase_prompt_materializer=fake_materializer)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.phase_prompt_materializer is fake_materializer
+
+    def test_artifact_requirements_resolver_override(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        fake_resolver = MagicMock(return_value=None)
+        hooks = ProPipelineHooks(artifact_requirements_resolver=fake_resolver)
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.artifact_requirements_resolver is fake_resolver
+
+    def test_all_collaborator_overrides_applied_together(self, tmp_path: Path) -> None:
+        display_ctx = _display_context()
+        override_ctx = _display_context()
+        model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
+        fake_system_materializer = MagicMock(return_value="fake-system-prompt.md")
+        fake_phase_materializer = MagicMock(return_value="fake-phase-prompt.md")
+        fake_resolver = MagicMock(return_value=None)
+        hooks = ProPipelineHooks(
+            display_context=override_ctx,
+            model_identity=model_identity,
+            system_prompt_materializer=fake_system_materializer,
+            phase_prompt_materializer=fake_phase_materializer,
+            artifact_requirements_resolver=fake_resolver,
+        )
+        deps = build_default_pipeline_deps(
+            _build_config(tmp_path),
+            display_ctx,
+            pro_hooks=hooks,
+        )
+
+        assert deps.display_context is override_ctx
+        assert deps.model_identity is model_identity
+        assert deps.system_prompt_materializer is fake_system_materializer
+        assert deps.phase_prompt_materializer is fake_phase_materializer
+        assert deps.artifact_requirements_resolver is fake_resolver
 
 
 class TestPipelineSharedExecutionCore:
@@ -334,6 +505,70 @@ class TestPipelineSharedExecutionCore:
         assert event == PipelineEvent.AGENT_SUCCESS
         assert len(factory.calls) == 1
         assert factory.calls[0]["drain"] == "development"
+
+    def test_execute_agent_effect_uses_pipeline_deps_artifact_requirements_resolver(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        display_context = _display_context()
+        config = UnifiedConfig(
+            agents={"dev": AgentConfig(cmd="opencode", output_flag="--json-stream")}
+        )
+        effect = InvokeAgentEffect(
+            agent_name="dev", phase="planning", prompt_file="plan.md", drain="planning"
+        )
+        bundle = _make_fake_bundle()
+        resolver_calls: list[dict[str, object]] = []
+
+        def recording_resolver(
+            pipeline_policy: object,
+            artifacts_policy: object,
+            *,
+            phase: str,
+            drain: str | None = None,
+        ) -> object:
+            resolver_calls.append(
+                {
+                    "pipeline_policy": pipeline_policy,
+                    "artifacts_policy": artifacts_policy,
+                    "phase": phase,
+                    "drain": drain,
+                }
+            )
+            return None
+
+        deps = make_test_pipeline_deps(
+            display_context=display_context,
+            artifact_requirements_resolver=recording_resolver,
+            policy_bundle=bundle,
+        )
+
+        def fake_invoke_agent(
+            _agent_config: AgentConfig,
+            _prompt_file: str,
+            *,
+            options: object = None,
+        ) -> list[str]:
+            del _agent_config, _prompt_file, options
+            return []
+
+        event = execute_agent_effect(
+            effect,
+            config,
+            deps,
+            WorkspaceScope(tmp_path),
+            display_context=display_context,
+            policy_bundle=bundle,
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=RuntimeError,
+        )
+
+        assert event == PipelineEvent.AGENT_SUCCESS
+        assert len(resolver_calls) == 1
+        assert resolver_calls[0]["phase"] == "planning"
+        assert resolver_calls[0]["drain"] == "planning"
+        assert resolver_calls[0]["pipeline_policy"] is bundle.pipeline
+        assert resolver_calls[0]["artifacts_policy"] is bundle.artifacts
 
 
 class TestPipelineFactoryProtocol:

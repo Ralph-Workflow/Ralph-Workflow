@@ -214,6 +214,42 @@ def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_pl
     assert "PLANNING EDIT MODE" not in rendered
 
 
+def test_materialize_agent_prompt_if_needed_routes_injected_phase_materializer(
+    tmp_path: Path,
+) -> None:
+    """The ``materialize_fn`` parameter routes an injected phase materializer."""
+    policy_bundle = _load_default_policy_bundle()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Create a fresh plan")
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="planning",
+        prompt_file="PROMPT.md",
+        drain="planning",
+        chain_name="planning",
+    )
+    state = PipelineState(phase="planning", previous_phase=None)
+    registry = MagicMock()
+    registry.get.return_value = None
+    calls: list[dict[str, object]] = []
+
+    def fake_materialize(**kwargs: object) -> str:
+        calls.append(kwargs)
+        return "fake-prompt.md"
+
+    runner_module.materialize_agent_prompt_if_needed(
+        effect,
+        state,
+        workspace,
+        policy_bundle,
+        registry,
+        materialize_fn=fake_materialize,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["phase"] == "planning"
+
+
 def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_analysis_loopback(
     tmp_path: Path,
 ) -> None:

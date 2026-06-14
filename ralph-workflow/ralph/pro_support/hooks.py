@@ -1,7 +1,7 @@
 """Pro DI seam: ``ProPipelineHooks`` frozen dataclass.
 
 Pro can inject custom pipeline collaborators into the run loop
-via ``ProPipelineHooks``. The dataclass bundles 7 fields:
+via ``ProPipelineHooks``. The dataclass bundles 13 fields:
 
 - 5 factory callables that, when supplied, REPLACE the
   corresponding runner helpers:
@@ -25,6 +25,20 @@ via ``ProPipelineHooks``. The dataclass bundles 7 fields:
   when set, the inner loop publishes a ``PipelineStateSnapshot``
   to this registry on each reduce step.
 
+- 6 collaborator overrides that are applied to ``PipelineDeps``
+  by ``build_default_pipeline_deps``:
+
+    - ``display_context``: overrides the display context.
+    - ``model_identity``: overrides the multimodal model identity.
+    - ``system_prompt_materializer``: overrides the system-prompt
+      materializer.
+    - ``phase_prompt_materializer``: overrides the phase-prompt
+      materializer.
+    - ``artifact_requirements_resolver``: overrides the artifact-
+      requirements resolver.
+    - ``recovery_sleep``: overrides the wall-clock sleep used
+      during recovery backoff.
+
 Invariant: every field is keyword-only with a default of
 ``None``; the dataclass is ``frozen=True, slots=True`` so it
 cannot be mutated after construction.
@@ -40,6 +54,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.config.models import UnifiedConfig
+    from ralph.display.context import DisplayContext
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+    from ralph.pipeline.factory import (
+        ArtifactRequirementsResolverFn,
+        MaterializeSystemPromptFn,
+        PhasePromptMaterializerFn,
+    )
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentsPolicy, PipelinePolicy, PolicyBundle
     from ralph.pro_support.state_query import SnapshotRegistry
@@ -68,6 +89,15 @@ class ProPipelineHooks:
     ``run()`` uses the production helper (the existing behaviour).
     When ``policy_bundle_override`` is not ``None``,
     ``policy_bundle_factory`` is short-circuited.
+
+    The six collaborator overrides (``display_context``,
+    ``model_identity``, ``system_prompt_materializer``,
+    ``phase_prompt_materializer``, ``artifact_requirements_resolver``,
+    ``recovery_sleep``) are applied to the ``PipelineDeps`` built by
+    ``build_default_pipeline_deps`` so Pro can inject custom
+    implementations of the primary pipeline collaborators
+    (display, model, prompt, artifact requirements, recovery sleep)
+    without changing the shared execution core.
     """
 
     policy_bundle_factory: PolicyBundleFactory | None = None
@@ -77,14 +107,23 @@ class ProPipelineHooks:
     marker_watcher_factory: MarkerWatcherFactory | None = None
     policy_bundle_override: PolicyBundle | None = None
     snapshot_registry: SnapshotRegistry | None = None
+    display_context: DisplayContext | None = None
+    model_identity: MultimodalModelIdentity | None = None
+    system_prompt_materializer: MaterializeSystemPromptFn | None = None
+    phase_prompt_materializer: PhasePromptMaterializerFn | None = None
+    artifact_requirements_resolver: ArtifactRequirementsResolverFn | None = None
+    recovery_sleep: Callable[[float], None] | None = None
 
     def to_runner_kwargs(self) -> dict[str, object]:
         """Return the 6 kwargs to forward to ``run()``.
 
-        ``policy_bundle_override`` is intentionally NOT included
-        here because it is not a ``run()`` kwarg; it is a field
-        that ``run()`` inspects separately to short-circuit
-        ``policy_bundle_factory``.
+        The 6 collaborator overrides (including ``recovery_sleep``)
+        are intentionally NOT included here because they are not
+        ``run()`` kwargs; they are fields that ``build_default_pipeline_deps``
+        inspects separately when composing ``PipelineDeps``.
+        ``policy_bundle_override`` is also intentionally excluded because
+        it is not a ``run()`` kwarg; it is a field that ``run()`` inspects
+        separately to short-circuit ``policy_bundle_factory``.
         """
         return {
             "policy_bundle_factory": self.policy_bundle_factory,

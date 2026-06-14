@@ -103,7 +103,7 @@ the marker after the engine has started, the engine runs
 
 Pro MAY inject custom pipeline collaborators into the engine via
 `ralph.pro_support.hooks.ProPipelineHooks`. The dataclass bundles
-seven fields:
+eight fields:
 
 - 5 factory callables that, when supplied, REPLACE the corresponding
   runner helpers:
@@ -118,14 +118,19 @@ seven fields:
 - 1 passthrough: `snapshot_registry: SnapshotRegistry | None`;
   when set, the engine publishes a `PipelineStateSnapshot` to the
   registry on each reduce step.
+- 1 collaborator override: `recovery_sleep: Callable[[float], None] | None`;
+  when set, the engine uses it instead of `time.sleep` during recovery
+  backoff. It is applied to `PipelineDeps` by
+  `build_default_pipeline_deps`, not forwarded as a `run()` kwarg.
 
 All fields are keyword-only with `None` defaults so the seam is
 zero-overhead for non-Pro runs. The dataclass is
 `frozen=True, slots=True`; mutations raise
 `dataclasses.FrozenInstanceError`. The `to_runner_kwargs()` method
 forwards exactly six entries to the engine's `run()` entry point
-and never `policy_bundle_override` (the override is a field that
-`run()` inspects separately to short-circuit the factory).
+and never `policy_bundle_override` or `recovery_sleep` (both are
+fields that `run()`/`build_default_pipeline_deps` inspects
+separately).
 
 ## State observability
 
