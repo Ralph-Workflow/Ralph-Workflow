@@ -100,6 +100,7 @@ if TYPE_CHECKING:
     from ralph.cli.commands._commit_chain_config import CommitChainConfig
     from ralph.config.models import AgentConfig
     from ralph.display.context import DisplayContext
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.mcp.server.lifecycle import RestartAwareMcpBridge, SessionBridgeLike
 
 # Late-binding reference for the test-patch surface: tests in
@@ -1102,7 +1103,9 @@ def _default_commit_bridge_factory(
     ``ralph.cli.commands.commit.start_commit_bridge`` attribute. The
     late-bound lookup lets tests monkeypatch the commit module's bridge
     starter and have the patch propagate through the shared PipelineDeps
-    path.
+    path. The injected ``model_identity`` is forwarded when the patched
+    starter accepts it, preserving the same model-context flow as the
+    main pipeline.
     """
     del (
         drain,
@@ -1110,7 +1113,6 @@ def _default_commit_bridge_factory(
         capabilities,
         session_id_prefix,
         run_id,
-        model_identity,
         parallel_worker,
         worker_namespace,
         worker_artifact_dir,
@@ -1120,18 +1122,32 @@ def _default_commit_bridge_factory(
         workspace_factory,
     )
     bridge_fn = _resolve_commit_start_commit_bridge()
+    policy = agents_policy or AgentsPolicy()
     try:
-        return bridge_fn(workspace_root, agents_policy=agents_policy or AgentsPolicy())
+        return bridge_fn(
+            workspace_root,
+            agents_policy=policy,
+            model_identity=model_identity,
+        )
     except TypeError:
-        return bridge_fn(workspace_root)
+        try:
+            return bridge_fn(workspace_root, agents_policy=policy)
+        except TypeError:
+            return bridge_fn(workspace_root)
 
 
-def _start_commit_bridge(repo_root: Path, *, agents_policy: AgentsPolicy) -> SessionBridgeLike:
+def _start_commit_bridge(
+    repo_root: Path,
+    *,
+    agents_policy: AgentsPolicy,
+    model_identity: MultimodalModelIdentity | None = None,
+) -> SessionBridgeLike:
     return build_session_bridge(
         workspace_root=repo_root,
         drain="commit",
         agents_policy=agents_policy,
         session_id_prefix="commit",
+        model_identity=model_identity,
     )
 
 
