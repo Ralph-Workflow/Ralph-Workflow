@@ -590,6 +590,7 @@ def _consume_attempt_output(
                 raw_output_sink=raw_output,
                 rendered_output_sink=rendered_output,
                 session_id_sink=capture_session_id,
+                agent_config=ctx.agent_config,
             )
             return
         for line in output_lines:

@@ -33,6 +33,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.config.enums import AgentTransport, JsonParserType
+
 from .agent_output_line import AgentOutputLine
 from .base import AgentParser
 from .claude import ClaudeParser
@@ -55,6 +57,7 @@ __all__ = [
     "GeminiParser",
     "GenericParser",
     "OpenCodeParser",
+    "resolve_parser_key",
 ]
 
 _PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
@@ -65,6 +68,42 @@ _PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
     "opencode": OpenCodeParser,
     "generic": GenericParser,
 }
+
+
+def resolve_parser_key(
+    command: str,
+    json_parser: JsonParserType,
+    transport: AgentTransport | None = None,
+) -> str:
+    """Resolve the parser-type key for an agent configuration.
+
+    The resolution order matches the runtime lookup path:
+
+    1. Interactive Claude always uses the ``claude_interactive`` parser.
+    2. When ``json_parser`` is ``JsonParserType.GENERIC`` and a parser has
+       been registered under the agent's command name, that command name is
+       the key. This lets agents registered via ``register_agent_support()``
+       use a custom parser without overriding ``json_parser``.
+    3. Otherwise fall back to ``str(json_parser)``.
+
+    Args:
+        command: The agent's configured command string (e.g. ``"claude"``).
+        json_parser: The parser type token from the agent configuration.
+        transport: Optional transport enum; ``CLAUDE_INTERACTIVE`` is special-cased.
+
+    Returns:
+        A parser-type key suitable for :func:`get_parser`.
+    """
+    if transport == AgentTransport.CLAUDE_INTERACTIVE:
+        return "claude_interactive"
+    command_name = command.split(maxsplit=1)[0].lower() if command else ""
+    if (
+        command_name
+        and command_name in _PARSER_REGISTRY
+        and json_parser == JsonParserType.GENERIC
+    ):
+        return command_name
+    return str(json_parser)
 
 
 def get_parser(parser_type: str) -> AgentParser:

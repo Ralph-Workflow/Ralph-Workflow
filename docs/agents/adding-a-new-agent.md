@@ -1,7 +1,8 @@
 # Adding a new agent
 
-Adding a new agent to Ralph Workflow is a single registration call. The
-infrastructure is built on three shared seams:
+Adding a new agent to Ralph Workflow is built around a single registration
+call, `register_agent_support()`. The infrastructure is built on three shared
+seams:
 
 - `BaseExecutionStrategy` — a template-method base class with sensible defaults
   for activity classification, idle classification, and exit classification.
@@ -18,10 +19,9 @@ transport, not by agent name. The headless vs interactive distinction is fully
 covered by the `AgentTransport` enum plus the strategy's
 `supports_session_continuation()` contract.
 
-Because the strategy dispatch is keyed by transport, only one custom agent can
-be registered per transport. Attempting to register a second agent on the same
-transport raises `ValueError`; use `AgentRegistry` directly if you need multiple
-agents that share a transport.
+The API keeps all additional state caller-owned: you pass the target
+`AgentRegistry`, and the only module-level lookup tables used are the existing
+`_PARSER_REGISTRY` and `_STRATEGY_DISPATCH` pure-data registries.
 
 ## Import path
 
@@ -90,6 +90,50 @@ assert config.transport == AgentTransport.CLAUDE_INTERACTIVE
 assert config.session_flag is not None
 ```
 
+## Custom command and flags
+
+By default the agent's executable command (`AgentConfig.cmd`) equals the
+registered `name`. For real agents you usually need to override that and other
+flags. Pass them as keyword arguments:
+
+```python
+register_agent_support(
+    "my-agent",
+    transport=AgentTransport.GENERIC,
+    parser_factory=MyAgentParser,
+    strategy_factory=MyAgentStrategy,
+    agent_registry=registry,
+    cmd="my-agent-cli",
+    output_flag="--json",
+    print_flag="--print",
+    session_flag="--continue {}",
+    can_commit=True,
+)
+```
+
+Supported overrides mirror `AgentConfig`: `cmd`, `output_flag`, `yolo_flag`,
+`verbose_flag`, `can_commit`, `model_flag`, `print_flag`, `streaming_flag`,
+`session_flag`, `display_name`, and `subagent_capability`.
+
+## Multiple agents on the same transport
+
+The transport-keyed strategy slot is a fallback used by
+`strategy_for_transport()`. Multiple custom agents may share a transport; each
+keeps its own parser entry and its own configuration. Retrieve a specific
+agent's strategy with `get_registered_agent_support(name)`:
+
+```python
+register_agent_support(
+    "agent-a", transport=AgentTransport.GENERIC, ...
+)
+register_agent_support(
+    "agent-b", transport=AgentTransport.GENERIC, ...
+)
+
+pair_a = get_registered_agent_support("agent-a")
+pair_b = get_registered_agent_support("agent-b")
+```
+
 ## Files to touch
 
 ```
@@ -113,10 +157,19 @@ When you add a new agent, cover these behaviours with fakes (`_FakeHandle`,
 - End-to-end round-trip: `get_parser(name)`,
   `strategy_for_transport(transport)`, and `registry.agents[name]` all retrieve
   the registered pieces.
+- Runtime parser resolution: `_parser_key_for_config(config)`,
+  `stream_parsed_agent_activity(..., agent_config=config)`, and
+  `collect_commit_agent_output(..., parser_type=resolve_parser_key(...))` all
+  select the registered parser when `json_parser` is `JsonParserType.GENERIC`.
+- Coexistence: two agents registered on the same transport both remain
+  retrievable via `get_registered_agent_support()`.
+- Dependency injection: a strategy factory that accepts `label_scope` and
+  `registry` receives those kwargs from `strategy_for_transport()`.
 
 ## Reference tests
 
-- `tests/agents/test_register_agent_support.py` — API contract and isolation.
+- `tests/agents/test_register_agent_support.py` — API contract, isolation,
+  same-transport coexistence, kwargs preservation, and parser-resolution paths.
 - `tests/agents/test_add_a_new_agent_recipe.py` — headless end-to-end recipe.
 - `tests/agents/test_add_a_new_interactive_agent_recipe.py` — interactive
   end-to-end recipe.
