@@ -29,6 +29,10 @@ You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, developme
 
 For Google Anti Gravity support, the MCP contract matters too: Ralph Workflow automatically injects its MCP endpoint at run time; use `ralph --check-mcp` to verify AGY transport compatibility before the first run. Ralph Workflow-owned MCP tools, completion signals such as `declare_complete`, and proxied upstream servers are part of the supported-agent story rather than an escape hatch.
 
+Ralph Workflow's AGY support is based on the upstream `agy` CLI source and the measured v1.0.8 wire format, not on assumptions. The canonical display names from `agy models` are the only valid `--model` values, and the flag order used by the harness matches what the real binary accepts. The eight canonical names are `Gemini 3.5 Flash (Medium)`, `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Low)`, `Gemini 3.1 Pro (Low)`, `Gemini 3.1 Pro (High)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`. See `tmp/agy-source-of-truth.txt` for the recorded upstream-source facts and local measurements.
+
+For CI or environments without a live AGY account, set `RALPH_AGY_BINARY` to `tests/_support/mock_agy.sh`. The deterministic mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin shell wrapper that passes through to it.
+
 ## Choose Ralph Workflow when
 
 Ralph Workflow is usually the better fit when you want to:

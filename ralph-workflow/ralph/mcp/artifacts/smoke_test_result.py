@@ -53,14 +53,24 @@ def normalize_smoke_test_result_content(content: dict[str, object]) -> dict[str,
 
 
 def read_smoke_test_result_artifact(repo_root: Path) -> dict[str, object] | None:
-    """Read the persisted smoke_test_result artifact content from the workspace."""
+    """Read and validate the persisted smoke_test_result artifact content from the workspace.
+
+    Returns ``None`` when the artifact file does not exist, cannot be read,
+    or fails schema validation against :class:`SmokeTestResult`.  This prevents
+    a malformed or incomplete artifact from influencing pass/fail decisions.
+    """
     artifact_dir = repo_root / ".agent" / "artifacts"
     try:
         artifact = get_artifact(artifact_dir, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     except Exception:
         return None
     payload = artifact.content
-    return {str(key): value for key, value in payload.items()}
+    content: dict[str, object] = {str(key): value for key, value in payload.items()}
+    try:
+        normalize_smoke_test_result_content(content)
+    except SmokeTestResultValidationError:
+        return None
+    return content
 
 
 __all__ = [

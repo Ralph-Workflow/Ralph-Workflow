@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shlex
 import subprocess
 import sys
 import threading
@@ -86,7 +87,7 @@ _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
 
 
 def _agent_command_name(config: AgentConfig) -> str:
-    return config.cmd.split()[0]
+    return shlex.split(config.cmd)[0]
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:

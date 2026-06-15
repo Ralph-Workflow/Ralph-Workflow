@@ -500,6 +500,34 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke report" in output
 
 
+@pytest.mark.timeout_seconds(10)
+def test_smoke_interactive_agy_with_mock_binary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``smoke_interactive_agy_command`` respects ``RALPH_AGY_BINARY``."""
+    stream = _attach_console(monkeypatch)
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    mock_agy = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_agy))
+    monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
+
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+    output = stream.getvalue()
+    assert "agy/Claude Sonnet 4.6 (Thinking)" in output
+    # The parity table row must show file=yes for the mock-backed run.
+    # The table may wrap the long agent name, so match the transport/file cells.
+    assert re.search(r"│\s*agy\s*│\s*yes\s*│", output) is not None
+
+
 def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
     """The captured AGY smoke run log documents the measured outcome.
 
@@ -560,3 +588,64 @@ def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
         assert "AGY --print returned empty stdout" in log_text, (
             "Detailed report is missing the upstream diagnostic"
         )
+
+
+def test_maybe_apply_agy_binary_override_ignores_nonexecutable_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-executable RALPH_AGY_BINARY path is ignored (WARNING logged, cmd unchanged)."""
+    agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
+    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    assert result.cmd == "agy"
+
+
+def test_maybe_apply_agy_binary_override_accepts_mock_shell_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid shell script override is accepted."""
+    mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
+    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    assert result.cmd != "agy"
+    assert str(mock_path) in result.cmd
+
+
+def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_apply_agy_binary_override_to_config`` ignores a non-executable override."""
+    config = UnifiedConfig(
+        agents={
+            "agy/Claude Sonnet 4.6 (Thinking)": AgentConfig(
+                cmd="agy", transport=AgentTransport.AGY
+            ),
+            "claude/haiku": AgentConfig(
+                cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE
+            ),
+        }
+    )
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
+    result = smoke_module._apply_agy_binary_override_to_config(config)
+    assert result.agents["agy/Claude Sonnet 4.6 (Thinking)"].cmd == "agy"
+    assert result.agents["claude/haiku"].cmd == "claude"
+
+
+def test_apply_agy_binary_override_to_config_accepts_mock_shell_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_apply_agy_binary_override_to_config`` accepts a valid mock shell script."""
+    mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    config = UnifiedConfig(
+        agents={
+            "agy/Claude Sonnet 4.6 (Thinking)": AgentConfig(
+                cmd="agy", transport=AgentTransport.AGY
+            ),
+        }
+    )
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
+    result = smoke_module._apply_agy_binary_override_to_config(config)
+    agy_cmd = result.agents["agy/Claude Sonnet 4.6 (Thinking)"].cmd
+    assert agy_cmd != "agy"
+    assert str(mock_path) in agy_cmd

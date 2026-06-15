@@ -49,6 +49,7 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
         """
         import json
         import os
+        import shlex
         import signal
         import sys
         import threading
@@ -83,7 +84,7 @@ def test_live_sigint_terminates_pty_backed_interactive_claude(tmp_path: Path) ->
         )
 
         claude_config = AgentConfig(
-            cmd=f"{sys.executable} {fixture} --sleep",
+            cmd=f"{shlex.quote(sys.executable)} {shlex.quote(str(fixture))} --sleep",
             output_flag=None,
             yolo_flag=None,
             json_parser=JsonParserType.CLAUDE,
