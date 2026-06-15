@@ -8,17 +8,16 @@ stays small and the registration seam remains explicit.
 Advanced use cases (CCS aliases, dynamic model parsing, custom
 ``AgentRegistry.ccs_defaults``) must still use ``AgentRegistry`` directly.
 
-The function writes into the existing parser-type registry
-(``ralph.agents.parsers._PARSER_REGISTRY``) and a collision-free custom-command
-registry (``ralph.agents.parsers._CUSTOM_COMMAND_REGISTRY``) keyed by the full
-executable command string.  Multiple custom agents may share a transport; each
-agent keeps its own parser and strategy entry keyed by both its registered
-``name`` and its full command.  Runtime invocation uses
-:func:`ralph.agents.execution_state.strategy_for_command`, which selects the
-strategy registered for the agent's full command before falling back to the
-transport-keyed ``strategy_for_transport`` slot.  The transport-keyed slot is
-never overwritten by a custom registration, so unrelated commands on the same
-transport continue to use the built-in fallback.
+The function writes into three existing lookup tables:
+
+* ``ralph.agents.parsers._PARSER_REGISTRY`` — parser-type-keyed registry.
+* ``ralph.agents.execution_state._factory._STRATEGY_DISPATCH`` — transport-keyed
+  strategy registry used by :func:`strategy_for_transport`.
+* ``ralph.agents.parsers._CUSTOM_COMMAND_REGISTRY`` — command-keyed registry used
+  by :func:`strategy_for_command` and parser resolution at runtime.
+
+The agent-name-keyed configuration is stored in the caller's own
+``AgentRegistry``; the function never creates a throwaway registry.
 """
 
 from __future__ import annotations
@@ -27,6 +26,7 @@ import inspect
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents.execution_state._base import BaseExecutionStrategy
+from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
 from ralph.agents.parsers import (
     _CUSTOM_COMMAND_REGISTRY,
     _PARSER_REGISTRY,
@@ -67,6 +67,16 @@ class _AnyKwargsStrategyFactory(Protocol):
 
 
 _UserStrategyFactory = type[BaseExecutionStrategy] | _StrategyFactoryWithKwargs
+
+
+def _is_built_in_parser_key(key: str) -> bool:
+    """Return True when ``key`` maps to a built-in parser class.
+
+    Custom registrations store a :class:`_ParserRegistryEntry`, so any existing
+    class value is a built-in that must not be overwritten.
+    """
+    existing = _PARSER_REGISTRY.get(key)
+    return existing is not None and not isinstance(existing, _ParserRegistryEntry)
 
 
 def _wrap_strategy_factory(
@@ -158,6 +168,10 @@ def register_agent_support(
 
     Returns:
         The registered ``AgentConfig``.
+
+    Raises:
+        ValueError: If ``name`` matches a reserved built-in parser key, or if
+            ``cmd`` is already registered for a different agent.
     """
     effective_session_flag = session_flag
     if effective_session_flag is None and interactive:
@@ -179,11 +193,25 @@ def register_agent_support(
         subagent_capability=subagent_capability,
     )
 
+    name_lower = name.lower()
+    if _is_built_in_parser_key(name_lower):
+        msg = f"Cannot register agent with reserved built-in parser name: {name}"
+        raise ValueError(msg)
+
+    cmd_lower = config.cmd.lower()
+    if cmd_lower in _CUSTOM_COMMAND_REGISTRY:
+        existing = _CUSTOM_COMMAND_REGISTRY[cmd_lower]
+        msg = (
+            f"Command {config.cmd!r} is already registered for transport "
+            f"{existing.transport.value!r}; choose a different cmd or transport"
+        )
+        raise ValueError(msg)
+
     wrapped_strategy = _wrap_strategy_factory(strategy_factory)
     entry = _ParserRegistryEntry(parser_factory, wrapped_strategy, transport)
-    _PARSER_REGISTRY[name] = entry
-    if config.cmd:
-        _CUSTOM_COMMAND_REGISTRY[config.cmd.lower()] = entry
+    _PARSER_REGISTRY[name_lower] = entry
+    _STRATEGY_DISPATCH[transport] = wrapped_strategy
+    _CUSTOM_COMMAND_REGISTRY[cmd_lower] = entry
     agent_registry.register(name, config)
     return config
 
@@ -200,7 +228,7 @@ def get_registered_agent_support(
         A ``(parser, strategy)`` tuple, or ``None`` if the name was not
         registered through this API.
     """
-    entry = _PARSER_REGISTRY.get(name)
+    entry = _PARSER_REGISTRY.get(name.lower())
     if not isinstance(entry, _ParserRegistryEntry):
         return None
     return entry.parser_factory(), entry.strategy_factory(label_scope=None, registry=None)

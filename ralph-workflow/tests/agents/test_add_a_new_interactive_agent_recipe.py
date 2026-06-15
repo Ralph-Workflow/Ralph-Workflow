@@ -9,7 +9,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.agents.activity import AgentActivityKind
-from ralph.agents.execution_state import BaseExecutionStrategy, strategy_for_command
+from ralph.agents.execution_state import (
+    BaseExecutionStrategy,
+    strategy_for_command,
+    strategy_for_transport,
+)
 from ralph.agents.parsers import AgentOutputLine, get_parser
 from ralph.agents.registration import get_registered_agent_support, register_agent_support
 from ralph.agents.registry import AgentRegistry
@@ -52,6 +56,11 @@ class TestAddANewInteractiveAgentRecipe:
             parser = get_parser("fake-interactive")
             assert isinstance(parser, FakeInteractiveAgentParser)
 
+            strategy = strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE)
+            assert isinstance(strategy, FakeInteractiveAgentStrategy)
+
+            # Runtime command resolution also finds the registered strategy
+            # when the command string matches.
             strategy = strategy_for_command(
                 "fake-interactive", AgentTransport.CLAUDE_INTERACTIVE
             )

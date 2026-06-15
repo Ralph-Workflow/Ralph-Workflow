@@ -27,7 +27,8 @@ class ClaudeInteractiveExecutionStrategy(
     lines into generic output.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, **kwargs: object) -> None:
+        del kwargs
         self._transcript_parser = ClaudeInteractiveTranscriptParser()
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
@@ -76,7 +77,4 @@ class ClaudeInteractiveExecutionStrategy(
         return AgentExecutionState.ACTIVE
 
     def supports_session_continuation(self) -> bool:
-        return True
-
-    def supports_completion_enforcement(self) -> bool:
         return True

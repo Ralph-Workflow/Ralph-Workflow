@@ -8,6 +8,3 @@ from .generic_execution_strategy import GenericExecutionStrategy
 
 class AgyExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
     """AGY strategy: completion evidence still required."""
-
-    def supports_completion_enforcement(self) -> bool:
-        return True

@@ -8,12 +8,13 @@ seams:
   for activity classification, idle classification, and exit classification.
 - `CompletionEnforcingStrategy` — a mixin for agents that require explicit
   completion evidence before a clean exit is considered terminal.
-- `register_agent_support()` — a one-call API that writes the parser and
-  strategy into the existing transport-keyed and parser-type-keyed registries,
-  and records the agent configuration in the caller's `AgentRegistry`.
+- `register_agent_support()` — a one-call API that writes the parser into the
+  parser-type-keyed registry, the strategy into the transport-keyed registry
+  used by `strategy_for_transport()`, and the agent configuration in the
+  caller's `AgentRegistry`.
 - `strategy_for_command()` — runtime strategy resolution that selects the
-  strategy registered for an agent's command name before falling back to the
-  transport-keyed slot used by `strategy_for_transport()`.
+  strategy registered for an agent's full command string before falling back to
+  the transport-keyed slot used by `strategy_for_transport()`.
 
 Command-builder wiring and role-classifier wiring remain transport-keyed
 because they are transport concerns: transport-specific flags (`--mcp-config`,
@@ -24,14 +25,14 @@ covered by the `AgentTransport` enum plus the strategy's
 
 The API keeps all additional state caller-owned: you pass the target
 `AgentRegistry`, and the only module-level lookup tables used are the existing
-`_PARSER_REGISTRY` parser registry and the `_CUSTOM_COMMAND_REGISTRY`
-collision-free custom-command registry.  A registered agent is keyed by both
-its `name` and its full executable command string, so runtime paths such as
-`invoke_agent()` and the smoke-test harness can resolve the correct parser and
-strategy even when the command string differs from the registered name.
-Custom commands are stored in a separate collision-free registry keyed by the
-full command; a custom command like `claude wrapper` does not replace the
-built-in `claude` parser or strategy.
+`_PARSER_REGISTRY` parser registry, `_STRATEGY_DISPATCH` transport-keyed
+strategy registry, and `_CUSTOM_COMMAND_REGISTRY` collision-free custom-command
+registry.  A registered agent is keyed by both its `name` and its full
+executable command string, so runtime paths such as `invoke_agent()` and the
+smoke-test harness can resolve the correct parser and strategy even when the
+command string differs from the registered name.  Custom commands are stored in
+a separate collision-free registry keyed by the full command; a custom command
+like `claude wrapper` does not replace the built-in `claude` parser or strategy.
 
 ## Import path
 
@@ -80,6 +81,9 @@ register_agent_support(
 
 assert isinstance(get_parser("my-agent"), MyAgentParser)
 assert isinstance(
+    strategy_for_transport(AgentTransport.GENERIC), MyAgentStrategy
+)
+assert isinstance(
     strategy_for_command("my-agent", AgentTransport.GENERIC), MyAgentStrategy
 )
 assert "my-agent" in registry.agents
@@ -104,6 +108,9 @@ register_agent_support(
 config = registry.agents["my-interactive-agent"]
 assert config.transport == AgentTransport.CLAUDE_INTERACTIVE
 assert config.session_flag is not None
+assert isinstance(
+    strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE), MyAgentStrategy
+)
 ```
 
 ## Custom command and flags
@@ -136,16 +143,18 @@ Supported overrides mirror `AgentConfig`: `cmd`, `output_flag`, `yolo_flag`,
 When `cmd` is overridden, both `get_parser("my-agent")` and
 `get_parser("my-agent-cli --json")` return the registered parser, and
 `strategy_for_command("my-agent-cli --json", AgentTransport.GENERIC)` returns
-the registered strategy.
+the registered strategy.  Registering a reserved built-in parser name such as
+`claude` or `opencode` raises `ValueError`, so a custom `claude wrapper`
+command cannot overwrite the built-in `claude` parser or strategy.
 
 ## Multiple agents on the same transport
 
 Multiple custom agents may share a transport.  Each keeps its own parser entry
-(keyed by `name` and by full command string) and its own strategy.  Runtime
-invocation uses `strategy_for_command(cmd, transport)`, which looks up the
-strategy by the full command string before falling back to the transport-keyed
-slot used by `strategy_for_transport()`.  You can also retrieve a specific
-agent's registered pieces with `get_registered_agent_support(name)`:
+(keyed by `name` and by full command string) and its own strategy.  The last
+registration for a given transport wins the transport-keyed slot used by
+`strategy_for_transport()`, while `strategy_for_command(cmd, transport)` still
+resolves each agent by its full command string.  You can also retrieve a
+specific agent's registered pieces with `get_registered_agent_support(name)`:
 
 ```python
 register_agent_support(
@@ -162,6 +171,9 @@ pair_a = get_registered_agent_support("agent-a")
 pair_b = get_registered_agent_support("agent-b")
 ```
 
+Duplicate full-command registrations are rejected with `ValueError` so two
+agents cannot silently clobber each other.
+
 ## Files to touch
 
 ```
@@ -171,9 +183,7 @@ your_project/
 
 No edits to `ralph/agents/parsers/__init__.py`,
 `ralph/agents/execution_state/_factory.py`, or `ralph/agents/registry.py` are
-required for a typical new agent.  The transport-keyed fallback used by
-`strategy_for_transport()` is never overwritten, so unrelated commands on the
-same transport continue to use the built-in strategy.
+required for a typical new agent.
 
 ## Test checklist
 
@@ -185,8 +195,8 @@ When you add a new agent, cover these behaviours with fakes (`_FakeHandle`,
 - Strategy classification: non-blank lines produce `OUTPUT_LINE`, JSON errors
   produce `ERROR_LINE`, lifecycle-only lines do not keep a quiet run alive.
 - End-to-end round-trip: `get_parser(name)`,
-  `strategy_for_command(cmd, transport)`, and `registry.agents[name]` all
-  retrieve the registered pieces.
+  `strategy_for_transport(transport)`, `strategy_for_command(cmd, transport)`,
+  and `registry.agents[name]` all retrieve the registered pieces.
 - Runtime parser resolution: `_parser_key_for_config(config)`,
   `stream_parsed_agent_activity(..., agent_config=config)`, and
   `collect_commit_agent_output(..., parser_type=resolve_parser_key(...))` all
@@ -195,12 +205,16 @@ When you add a new agent, cover these behaviours with fakes (`_FakeHandle`,
   retrievable via `get_registered_agent_support()` and via
   `strategy_for_command(cmd, transport)` for each command.
 - Dependency injection: a strategy factory that accepts `label_scope` and
-  `registry` receives those kwargs from `strategy_for_transport()`.
+  `registry` receives those kwargs from `strategy_for_transport()` and
+  `strategy_for_command()`.
+- Collision safety: registering a reserved built-in parser name raises
+  `ValueError`, and duplicate `cmd` registrations raise `ValueError`.
 
 ## Reference tests
 
 - `tests/agents/test_register_agent_support.py` — API contract, isolation,
-  same-transport coexistence, kwargs preservation, and parser-resolution paths.
+  same-transport coexistence, kwargs preservation, parser-resolution paths,
+  and collision guards.
 - `tests/agents/test_add_a_new_agent_recipe.py` — headless end-to-end recipe.
 - `tests/agents/test_add_a_new_interactive_agent_recipe.py` — interactive
   end-to-end recipe.

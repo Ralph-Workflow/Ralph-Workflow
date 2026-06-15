@@ -4,7 +4,8 @@ Strategies that require explicit completion evidence (terminal ACK, required
 artifact, or explicit completion marker) before a clean exit is considered
 terminal can inherit this mixin ahead of their base strategy. The mixin
 provides a single ``classify_exit`` implementation that delegates the terminal
-check to ``_check_signals_terminal``.
+check to ``_check_signals_terminal`` and is the sole source of truth for
+``supports_completion_enforcement()``.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from ._helpers import _check_signals_terminal
 from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
-    from types import MappingProxyType
+    from collections.abc import Mapping
 
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.liveness import LivenessProbe
@@ -26,24 +27,24 @@ if TYPE_CHECKING:
 class CompletionEnforcingStrategy:
     """Mixin that makes ``classify_exit`` depend on terminal completion signals.
 
-    Host classes must override ``supports_completion_enforcement()`` to return
-    ``True``; inheriting the default ``False`` from
-    :class:`BaseExecutionStrategy` bypasses the enforcement contract and is not
-    allowed.
+    Host classes must not override ``supports_completion_enforcement()``;
+    the mixin itself returns ``True`` and is the sole source of truth for the
+    capability.  Overriding the method hides that truth and breaks the
+    contract, so it is rejected at class-definition time.
     """
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        # Require an explicit override in the class body.  Inheriting the
-        # default ``False`` from :class:`BaseExecutionStrategy` bypasses the
-        # enforcement contract and is not allowed.
-        typed_dict = cast("MappingProxyType[str, object]", cls.__dict__)
-        if "supports_completion_enforcement" not in typed_dict:
+        class_dict = cast("Mapping[str, object]", cls.__dict__)
+        if "supports_completion_enforcement" in class_dict:
             msg = (
-                f"{cls.__name__} must override supports_completion_enforcement() "
-                "to return True when mixing in CompletionEnforcingStrategy"
+                f"{cls.__name__} must not override supports_completion_enforcement(); "
+                "CompletionEnforcingStrategy is the sole source of truth"
             )
             raise TypeError(msg)
+
+    def supports_completion_enforcement(self) -> bool:
+        return True
 
     def classify_exit(
         self,

@@ -6,7 +6,7 @@ itself never needs editing.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.config.enums import AgentTransport
 
@@ -39,54 +39,21 @@ def _make_opencode_strategy(
     *,
     label_scope: str | None = None,
     registry: ChildLivenessRegistry | None = None,
+    **_kwargs: object,
 ) -> BaseExecutionStrategy:
+    """Forward transport kwargs to the OpenCode strategy constructor."""
+    del _kwargs
     return OpenCodeExecutionStrategy(label_scope=label_scope, registry=registry)
-
-
-def _make_claude_strategy(
-    *,
-    label_scope: str | None = None,
-    registry: ChildLivenessRegistry | None = None,
-) -> BaseExecutionStrategy:
-    del label_scope, registry
-    return ClaudeExecutionStrategy()
-
-
-def _make_claude_interactive_strategy(
-    *,
-    label_scope: str | None = None,
-    registry: ChildLivenessRegistry | None = None,
-) -> BaseExecutionStrategy:
-    del label_scope, registry
-    return ClaudeInteractiveExecutionStrategy()
-
-
-def _make_agy_strategy(
-    *,
-    label_scope: str | None = None,
-    registry: ChildLivenessRegistry | None = None,
-) -> BaseExecutionStrategy:
-    del label_scope, registry
-    return AgyExecutionStrategy()
-
-
-def _make_generic_strategy(
-    *,
-    label_scope: str | None = None,
-    registry: ChildLivenessRegistry | None = None,
-) -> BaseExecutionStrategy:
-    del label_scope, registry
-    return GenericExecutionStrategy()
 
 
 _STRATEGY_DISPATCH: dict[AgentTransport, _StrategyFactory] = {
     AgentTransport.OPENCODE: _make_opencode_strategy,
-    AgentTransport.CLAUDE: _make_claude_strategy,
-    AgentTransport.CLAUDE_INTERACTIVE: _make_claude_interactive_strategy,
-    AgentTransport.AGY: _make_agy_strategy,
-    AgentTransport.CODEX: _make_generic_strategy,
-    AgentTransport.NANOCODER: _make_generic_strategy,
-    AgentTransport.GENERIC: _make_generic_strategy,
+    AgentTransport.CLAUDE: ClaudeExecutionStrategy,
+    AgentTransport.CLAUDE_INTERACTIVE: ClaudeInteractiveExecutionStrategy,
+    AgentTransport.AGY: AgyExecutionStrategy,
+    AgentTransport.CODEX: GenericExecutionStrategy,
+    AgentTransport.NANOCODER: GenericExecutionStrategy,
+    AgentTransport.GENERIC: GenericExecutionStrategy,
 }
 
 
@@ -97,10 +64,11 @@ def strategy_for_transport(
     registry: ChildLivenessRegistry | None = None,
 ) -> BaseExecutionStrategy:
     """Return the appropriate ExecutionStrategy for an agent transport."""
-    if isinstance(transport, AgentTransport):
-        factory = _STRATEGY_DISPATCH.get(transport, _make_generic_strategy)
-    else:
-        factory = _make_generic_strategy
+    # ``transport`` is typed as ``object`` for backward compatibility, but the
+    # dispatch table is keyed by ``AgentTransport``.  The ``dict.get`` default
+    # handles non-transport values at runtime; the cast keeps the lookup
+    # type-safe for mypy without introducing branching.
+    factory = _STRATEGY_DISPATCH.get(cast("AgentTransport", transport), GenericExecutionStrategy)
     return factory(label_scope=label_scope, registry=registry)
 
 
@@ -114,12 +82,10 @@ def strategy_for_command(
     """Return the execution strategy registered for ``cmd`` when one exists.
 
     Custom agents registered via ``register_agent_support()`` are keyed by
-    their full executable command string.  When a matching bundled entry
-    exists, its strategy factory is used; otherwise the transport-keyed
-    fallback from :func:`strategy_for_transport` is used.  This lets multiple
-    agents share a transport while keeping their own strategies and prevents
-    a custom ``claude wrapper`` command from replacing the built-in ``claude``
-    strategy.
+    their full executable command string.  When a matching entry exists and
+    its registered transport matches ``transport``, its strategy factory is
+    used; otherwise the transport-keyed fallback from
+    :func:`strategy_for_transport` is used.
     """
     command_lower = cmd.lower() if cmd else ""
     entry = _CUSTOM_COMMAND_REGISTRY.get(command_lower)

@@ -64,6 +64,7 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         label_scope: str | None = None,
         registry: ChildLivenessRegistry | None = None,
         subagent_activity_sink: Callable[[str], None] | None = None,
+        **_kwargs: object,
     ) -> None:
         self._label_scope = label_scope
         self._registry = registry

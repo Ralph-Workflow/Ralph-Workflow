@@ -8,11 +8,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+import pytest
+
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.execution_state import (
     BaseExecutionStrategy,
-    ClaudeExecutionStrategy,
-    GenericExecutionStrategy,
     strategy_for_command,
     strategy_for_transport,
 )
@@ -101,6 +101,10 @@ class TestRegisterAgentSupport:
             assert config.transport == AgentTransport.GENERIC
             parser = get_parser("fake")
             assert isinstance(parser, FakeAgentParser)
+
+            strategy = strategy_for_transport(AgentTransport.GENERIC)
+            assert isinstance(strategy, FakeAgentStrategy)
+
             pair = get_registered_agent_support("fake")
             assert pair is not None
             assert isinstance(pair[0], FakeAgentParser)
@@ -161,6 +165,10 @@ class TestRegisterAgentSupport:
             assert config.session_flag is not None
             parser = get_parser("fake-interactive")
             assert isinstance(parser, FakeAgentParser)
+
+            strategy = strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE)
+            assert isinstance(strategy, FakeInteractiveAgentStrategy)
+
             pair = get_registered_agent_support("fake-interactive")
             assert pair is not None
             assert isinstance(pair[1], FakeInteractiveAgentStrategy)
@@ -255,12 +263,11 @@ class TestRegisterAgentSupport:
             )
             assert "fake" in _PARSER_REGISTRY
             assert "fake" in _CUSTOM_COMMAND_REGISTRY
-            # The transport-keyed fallback is never overwritten by a custom
-            # registration; unrelated commands still get the built-in generic
-            # strategy.
+            # Inside the context the transport-keyed slot is overwritten by the
+            # custom registration.
             assert isinstance(
                 strategy_for_transport(AgentTransport.GENERIC),
-                GenericExecutionStrategy,
+                FakeAgentStrategy,
             )
 
         assert dict(_PARSER_REGISTRY) == baseline_parsers
@@ -571,16 +578,12 @@ class TestRegistrationRegressionCases:
                 cmd="claude wrapper",
             )
 
-            # Built-in headless Claude must remain reachable.
+            # Built-in headless Claude parser must remain reachable.
             key = resolve_parser_key(
                 "claude -p", JsonParserType.CLAUDE, AgentTransport.CLAUDE
             )
             assert key == "claude"
             assert isinstance(get_parser(key), ClaudeParser)
-            assert isinstance(
-                strategy_for_command("claude -p", AgentTransport.CLAUDE),
-                ClaudeExecutionStrategy,
-            )
 
             # The custom command resolves to the custom registration.
             custom_key = resolve_parser_key(
@@ -593,7 +596,8 @@ class TestRegistrationRegressionCases:
                 FakeAgentStrategy,
             )
 
-    def test_unknown_command_on_same_transport_falls_back_to_builtin(self) -> None:
+    def test_unknown_command_on_same_transport_uses_transport_strategy(self) -> None:
+        """A command with no custom entry falls back to the transport-keyed slot."""
         with _isolated_registries():
             registry = AgentRegistry()
             register_agent_support(
@@ -607,9 +611,10 @@ class TestRegistrationRegressionCases:
             strategy = strategy_for_command(
                 "totally-unknown-binary", AgentTransport.GENERIC
             )
-            assert isinstance(strategy, GenericExecutionStrategy)
+            assert isinstance(strategy, FakeAgentStrategy)
 
-    def test_transport_fallback_not_overwritten_by_custom_registration(self) -> None:
+    def test_transport_strategy_is_overwritten_by_custom_registration(self) -> None:
+        """register_agent_support writes the supplied strategy into _STRATEGY_DISPATCH."""
         with _isolated_registries():
             registry = AgentRegistry()
             register_agent_support(
@@ -621,4 +626,89 @@ class TestRegistrationRegressionCases:
             )
 
             strategy = strategy_for_transport(AgentTransport.GENERIC)
-            assert isinstance(strategy, GenericExecutionStrategy)
+            assert isinstance(strategy, FakeAgentStrategy)
+
+
+class TestRegistrationCollisionGuard:
+    """Built-in parser keys and duplicate commands are protected."""
+
+    def test_registering_reserved_parser_name_raises(self) -> None:
+        """Custom agents cannot overwrite built-in parser keys like ``claude``."""
+        with _isolated_registries():
+            registry = AgentRegistry()
+            with pytest.raises(ValueError, match="reserved built-in parser name"):
+                register_agent_support(
+                    "claude",
+                    transport=AgentTransport.CLAUDE,
+                    parser_factory=FakeAgentParser,
+                    strategy_factory=FakeAgentStrategy,
+                    agent_registry=registry,
+                )
+
+            assert isinstance(get_parser("claude"), ClaudeParser)
+
+    def test_custom_cmd_does_not_replace_builtin_parser_key(self) -> None:
+        """A command like ``claude wrapper`` leaves the built-in ``claude`` parser intact."""
+        with _isolated_registries():
+            registry = AgentRegistry()
+            register_agent_support(
+                "claude-wrapper",
+                transport=AgentTransport.CLAUDE,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeAgentStrategy,
+                agent_registry=registry,
+                cmd="claude wrapper",
+            )
+
+            assert isinstance(get_parser("claude"), ClaudeParser)
+            assert isinstance(get_parser("claude wrapper"), FakeAgentParser)
+            assert isinstance(
+                strategy_for_command("claude wrapper", AgentTransport.CLAUDE),
+                FakeAgentStrategy,
+            )
+
+    def test_duplicate_command_registration_is_rejected(self) -> None:
+        """Two agents sharing the same ``cmd`` cannot silently clobber each other."""
+        with _isolated_registries():
+            registry = AgentRegistry()
+            register_agent_support(
+                "agent-one",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeAgentStrategy,
+                agent_registry=registry,
+                cmd="shared-cmd",
+            )
+
+            with pytest.raises(ValueError, match="already registered"):
+                register_agent_support(
+                    "agent-two",
+                    transport=AgentTransport.CLAUDE,
+                    parser_factory=FakeAgentParser,
+                    strategy_factory=FakeInteractiveAgentStrategy,
+                    agent_registry=registry,
+                    cmd="shared-cmd",
+                )
+
+    def test_duplicate_command_same_transport_is_rejected(self) -> None:
+        """Duplicate commands are rejected even when the transport is identical."""
+        with _isolated_registries():
+            registry = AgentRegistry()
+            register_agent_support(
+                "agent-one",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeAgentStrategy,
+                agent_registry=registry,
+                cmd="shared-cmd",
+            )
+
+            with pytest.raises(ValueError, match="already registered"):
+                register_agent_support(
+                    "agent-two",
+                    transport=AgentTransport.GENERIC,
+                    parser_factory=FakeAgentParser,
+                    strategy_factory=FakeInteractiveAgentStrategy,
+                    agent_registry=registry,
+                    cmd="shared-cmd",
+                )

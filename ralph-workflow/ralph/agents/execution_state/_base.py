@@ -31,7 +31,14 @@ class BaseExecutionStrategy:
     that need transport-specific behaviour. The defaults replicate the behaviour
     that existed before the session-aware model was introduced so that
     Claude/Codex paths are unaffected.
+
+    The constructor accepts arbitrary keyword arguments so that direct class
+    references can be stored in the transport-keyed strategy dispatch table;
+    the base implementation ignores every extra argument.
     """
+
+    def __init__(self, **kwargs: object) -> None:
+        del kwargs
 
     def observe_line(self, line: str) -> None:
         """Observe a raw provider line for optional strategy-specific state updates."""
