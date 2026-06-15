@@ -378,7 +378,8 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
-    config_path = tmp_path / ".agents" / "mcp_config.json"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_path = tmp_path / ".gemini" / "antigravity-cli" / "mcp_config.json"
     endpoint = "http://127.0.0.1:9999/mcp"
     config_at_launch: list[dict[str, object]] = []
     env_at_launch: list[dict[str, str]] = []

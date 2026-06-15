@@ -523,8 +523,8 @@ def _make_artifact(tmp_path: Path, *, observed_breaks: list[str]) -> None:
 def test_detect_smoke_errors_agy_artifact_completion_skips_missing_signals(
     tmp_path: Path,
 ) -> None:
-    """AGY with a complete artifact but no stdout markers is not flagged for
-    declare_complete or session ID, but still reports missing tool activity."""
+    """AGY with a complete artifact is not flagged for declare_complete,
+    session ID, or tool activity when the artifact records all checks."""
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -551,6 +551,55 @@ def test_detect_smoke_errors_agy_artifact_completion_skips_missing_signals(
 
     assert "declare_complete marker was not observed" not in errors
     assert "session ID was not observed" not in errors
+    assert "no tool activity was observed" not in errors
+
+
+def test_detect_smoke_errors_agy_artifact_without_tool_activity_check_reports_missing(
+    tmp_path: Path,
+) -> None:
+    """AGY artifact that omits the tool-activity check still reports missing tool activity."""
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "name": "smoke_test_result",
+                "artifact_type": "smoke_test_result",
+                "content": {
+                    "status": "passed",
+                    "summary": "ok",
+                    "output_file": "tmp/interactive-agy-smoke/todo-list.js",
+                    "observed_working": ["tmp artifact created"],
+                    "observed_breaks": [],
+                    "headless_guide_checks": ["session capture"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = AgentConfig(
+        cmd="agy",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.AGY,
+    )
+    params = SmokeRunParams(
+        agent_name="agy/gemini-3.5-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
     assert "no tool activity was observed" in errors
 
 
@@ -616,3 +665,122 @@ def test_detect_smoke_errors_non_agy_transport_keeps_missing_signal_checks(
 
     assert "declare_complete marker was not observed" in errors
     assert "session ID was not observed" in errors
+
+
+def _make_agy_params(tmp_path: Path) -> SmokeRunParams:
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    config = AgentConfig(
+        cmd="agy",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.AGY,
+    )
+    return SmokeRunParams(
+        agent_name="agy/gemini-3.5-flash-low",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+
+def test_detect_smoke_errors_agy_empty_output_reports_quota_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When AGY emits no stdout and the CLI log shows quota exhaustion, the
+    smoke report includes an actionable upstream diagnostic."""
+    log_path = tmp_path / "cli.log"
+    log_path.write_text(
+        "...\n"
+        "agent executor error: RESOURCE_EXHAUSTED (code 429): "
+        "Individual quota reached. Contact your administrator...\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", log_path)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert any("quota exhausted" in err.lower() for err in errors), errors
+
+
+def test_detect_smoke_errors_agy_empty_output_reports_model_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When AGY emits no stdout and the CLI log shows an unknown model ID, the
+    smoke report names the rejected model."""
+    log_path = tmp_path / "cli.log"
+    log_path.write_text(
+        "...\n"
+        "model_resolver.go:62] Resolving model gemini-3.5-flash-low\n"
+        "model_config_manager.go:54] Failed to resolve model flag "
+        "gemini-3.5-flash-low: model gemini-3.5-flash-low is not recognized "
+        "as a known model or custom model in settings\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", log_path)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert any(
+        "gemini-3.5-flash-low" in err and "not recognized" in err for err in errors
+    ), errors
+
+
+def test_detect_smoke_errors_agy_empty_output_reports_generic_diagnostic_when_log_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When AGY emits no stdout and no CLI log is present, a generic pointer
+    to the CLI log is still reported."""
+    missing_log = tmp_path / "no_such_cli.log"
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", missing_log)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert any(
+        "AGY --print returned empty stdout" in err and "cli.log" in err for err in errors
+    ), errors
+
+
+def test_detect_smoke_errors_agy_no_diagnostic_when_stdout_present(
+    tmp_path: Path,
+) -> None:
+    """The upstream diagnostic is only added when AGY produced zero stdout."""
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path),
+        ["some stdout line\n"],
+        [],
+        None,
+        None,
+    )
+
+    assert not any("AGY --print returned empty stdout" in err for err in errors)
+
+
+def test_detect_smoke_errors_agy_no_diagnostic_when_artifact_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The upstream diagnostic is not added when AGY wrote the artifact file."""
+    _make_artifact(tmp_path, observed_breaks=[])
+    log_path = tmp_path / "cli.log"
+    log_path.write_text("RESOURCE_EXHAUSTED (code 429)\n", encoding="utf-8")
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", log_path)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert not any("AGY --print returned empty stdout" in err for err in errors)

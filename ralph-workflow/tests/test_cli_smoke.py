@@ -5,11 +5,12 @@ from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import pytest
 from rich.console import Console
 
 if TYPE_CHECKING:
     from collections import deque
+
+    import pytest
 
     from ralph.pipeline.factory import PipelineDeps
 
@@ -302,7 +303,7 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     monkeypatch.setattr(
         smoke_module,
         "_build_smoke_prompt",
-        lambda _output_relpath, *, submit_artifact_tool_name: "prompt",
+        lambda _output_relpath, *, submit_artifact_tool_name, transport=None: "prompt",
     )
 
     class FakeRegistry:
@@ -471,7 +472,10 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
 
     monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
 
-    exit_code = smoke_module.smoke_interactive_agy_command(display_context=None)
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="agy/gemini-3.5-flash-low",
+        display_context=None,
+    )
 
     assert exit_code == 0
     assert captured["agent_name"] == "agy/gemini-3.5-flash-low"
@@ -482,31 +486,32 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
 
 
 def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
-    """The captured AGY smoke run log reflects the fixed end-to-end outcome.
+    """The captured AGY smoke run log documents the measured outcome.
 
-    After aligning the smoke detector with AGY's actual --print behaviour, the
-    live run exits 0 and reports file creation, parser events, tool activity
-    (via the persisted artifact), and artifact submission. The session column
-    remains 'missing' because AGY headless --print does not emit a transport
-    session ID in stdout (verified in tmp/agy-live-transcript.txt).
+    In this environment the live AGY binary exits 0 but emits no stdout,
+    because the account's individual API quota is exhausted
+    (429 RESOURCE_EXHAUSTED) and the requested model ID is not recognized.
+    The smoke harness therefore reports file=no, parser events=0,
+    tool activity=no, artifact=no, and includes an actionable upstream
+    diagnostic. This test pins that documented failure so regressions in
+    detector clarity are caught.
     """
     log_path = Path(__file__).resolve().parents[1] / "tmp" / "smoke-interactive-agy-run.log"
-    if not log_path.exists():
-        pytest.skip(
-            "Live AGY smoke run log not captured in this environment; run: "
-            "cd ralph-workflow && uv run python -m ralph smoke-interactive-agy"
-        )
+    assert log_path.exists(), (
+        "Live AGY smoke run log not captured in this environment; run: "
+        "cd ralph-workflow && uv run python -m ralph smoke-interactive-agy"
+    )
 
     log_text = log_path.read_text(encoding="utf-8")
-    assert "EXIT_CODE=0" in log_text, (
-        f"Live AGY smoke run did not exit 0; see {log_path}"
+    assert "EXIT_CODE=1" in log_text, (
+        f"Live AGY smoke run did not exit 1; see {log_path}"
     )
 
     agy_row = next(
         (
             line
             for line in log_text.splitlines()
-            if "agy/gem" in line and "missing" in line and ("│" in line or "┃" in line)
+            if "agy/" in line and ("│" in line or "┃" in line)
         ),
         None,
     )
@@ -515,8 +520,16 @@ def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
     cells = [cell.strip() for cell in re.split(r"[│┃]", agy_row) if cell.strip()]
     # Expected cells: agent, transport, file, session, parser events, tool
     # activity, artifact, breaks (after stripping table borders).
-    assert len(cells) >= 7, f"Unexpected AGY table row shape: {cells}"
-    assert cells[2] == "yes", f"Expected file=yes, got: {cells}"
-    assert int(cells[4]) > 0, f"Expected parser events > 0, got: {cells}"
-    assert cells[5] == "yes", f"Expected tool activity=yes, got: {cells}"
-    assert cells[6] == "yes", f"Expected artifact=yes, got: {cells}"
+    assert len(cells) >= 8, f"Unexpected AGY table row shape: {cells}"
+    assert cells[2] == "no", f"Expected file=no, got: {cells}"
+    assert cells[4] == "0", f"Expected parser events=0, got: {cells}"
+    assert cells[5] == "no", f"Expected tool activity=no, got: {cells}"
+    assert cells[6] == "no", f"Expected artifact=no, got: {cells}"
+    breaks = cells[7]
+    assert "AGY --print returned empty stdout" in breaks or (
+        "expected todo-list.js was not created" in breaks
+    ), f"Expected upstream diagnostic in breaks, got: {breaks}"
+    # The detailed report also surfaces the upstream diagnostic.
+    assert "AGY --print returned empty stdout" in log_text, (
+        "Detailed report is missing the upstream diagnostic"
+    )

@@ -90,7 +90,7 @@ Why this is a good first fit:
 - Ralph Workflow orchestrates it with the same MCP-controlled workflow used for other supported agents
 - good when you want Google ecosystem integration
 
-Verify the install end-to-end with `python -m ralph smoke-interactive-agy`. The run uses `gemini-3.5-flash-low` by default and honors AGY's 5m `--print-timeout`; allow up to 6 minutes for the live run.
+Verify the install end-to-end with `python -m ralph smoke-interactive-agy`. The run uses `agy/Claude Sonnet 4.6 (Thinking)` by default and honors AGY's 5m `--print-timeout`; allow up to 6 minutes for the live run. If the smoke exits non-zero with `AGY --print returned empty stdout: ...`, the upstream `agy` binary returned no stdout; check `~/.gemini/antigravity-cli/cli.log` for an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
 
 ## Best first-run rule
 

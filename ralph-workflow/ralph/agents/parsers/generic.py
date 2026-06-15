@@ -9,7 +9,6 @@ accumulation for streaming text responses.
 from __future__ import annotations
 
 import json
-import re
 from typing import TYPE_CHECKING, cast
 
 from ralph.display.vt_normalizer import normalize_vt_text
@@ -29,30 +28,9 @@ _SHORT_CONTENT_THRESHOLD = 200
 
 _PLAIN_TOOL_PREFIX = "[plain] tool:"
 
-# Plain-text tool-call prefixes common in headless agent stdout. The captured
-# AGY transcript at tmp/agy-live-transcript.txt did not contain these markers
-# for the current binary, but detecting them keeps the generic parser useful
-# for agents that emit tool calls as plain text.
-_AGY_TOOL_USE_PATTERNS = (
-    re.compile(r"^(?:Calling tool|Using tool|Tool call):\s*(\S+)", re.IGNORECASE),
-    re.compile(r"^(?:rag_tap|Read|Write|Edit|Glob|Grep|Bash|LS)\s*\(", re.IGNORECASE),
-)
-_AGY_TOOL_RESULT_PATTERN = re.compile(
-    r"^(?:Tool result|Tool output|Result of):\s*(.*)",
-    re.IGNORECASE | re.DOTALL,
-)
-
 
 def _classify_plaintext_tool_line(stripped: str) -> tuple[str, str] | None:
     """Return (type, content) for plain-text tool announcements, or None."""
-    for pattern in _AGY_TOOL_USE_PATTERNS:
-        match = pattern.search(stripped)
-        if match is not None:
-            tool_name = match.group(1) if match.lastindex else stripped
-            return ("tool_use", tool_name)
-    result_match = _AGY_TOOL_RESULT_PATTERN.search(stripped)
-    if result_match is not None:
-        return ("tool_result", result_match.group(1))
     if stripped.startswith(_PLAIN_TOOL_PREFIX):
         tool_name = stripped[len(_PLAIN_TOOL_PREFIX) :].strip()
         return ("tool_use", tool_name)

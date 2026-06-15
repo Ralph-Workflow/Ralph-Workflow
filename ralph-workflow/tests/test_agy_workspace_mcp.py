@@ -1,4 +1,9 @@
-"""Tests for AGY workspace MCP config injection."""
+"""Tests for AGY MCP config injection.
+
+The helper mutates AGY's global ``~/.gemini/antigravity-cli/mcp_config.json``.
+Tests patch the private path helper so they do not touch the developer's real
+home directory.
+"""
 
 from __future__ import annotations
 
@@ -26,23 +31,37 @@ def _assert_ralph_only(config: dict[str, object], endpoint: str) -> None:
     assert ralph["serverUrl"] == endpoint
 
 
-def test_agy_workspace_mcp_endpoint_creates_config_when_absent(tmp_path: Path) -> None:
-    config_path = tmp_path / ".agents" / "mcp_config.json"
+@pytest.fixture
+def agy_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Return a temp file standing in for AGY's global MCP config.
+
+    The path is nested (``tmp_path / "gemini" / "mcp_config.json``) so the
+    parent-directory creation behaviour is exercised.
+    """
+    config_path = tmp_path / "gemini" / "mcp_config.json"
+    monkeypatch.setattr(
+        "ralph.mcp.transport.agy._agy_global_config_path", lambda: config_path
+    )
+    return config_path
+
+
+def test_agy_workspace_mcp_endpoint_creates_config_when_absent(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
     endpoint = "http://127.0.0.1:9999/mcp"
 
-    assert not config_path.exists()
+    assert not agy_config_path.exists()
 
     with agy_workspace_mcp_endpoint(tmp_path, endpoint):
-        assert config_path.exists()
-        _assert_ralph_only(_read_config(config_path), endpoint)
+        assert agy_config_path.exists()
+        _assert_ralph_only(_read_config(agy_config_path), endpoint)
 
-    assert not config_path.exists()
+    assert not agy_config_path.exists()
 
 
 def test_agy_workspace_mcp_endpoint_writes_ralph_only_when_existing_servers_present(
-    tmp_path: Path,
+    tmp_path: Path, agy_config_path: Path
 ) -> None:
-    config_path = tmp_path / ".agents" / "mcp_config.json"
     original_text = json.dumps(
         {
             "mcpServers": {
@@ -51,18 +70,19 @@ def test_agy_workspace_mcp_endpoint_writes_ralph_only_when_existing_servers_pres
         },
         indent=2,
     )
-    config_path.parent.mkdir(parents=True)
-    config_path.write_text(original_text, encoding="utf-8")
+    agy_config_path.parent.mkdir(parents=True, exist_ok=True)
+    agy_config_path.write_text(original_text, encoding="utf-8")
     endpoint = "http://127.0.0.1:9999/mcp"
 
     with agy_workspace_mcp_endpoint(tmp_path, endpoint):
-        _assert_ralph_only(_read_config(config_path), endpoint)
+        _assert_ralph_only(_read_config(agy_config_path), endpoint)
 
-    assert config_path.read_text(encoding="utf-8") == original_text
+    assert agy_config_path.read_text(encoding="utf-8") == original_text
 
 
-def test_agy_workspace_mcp_endpoint_overwrites_stale_ralph_entry(tmp_path: Path) -> None:
-    config_path = tmp_path / ".agents" / "mcp_config.json"
+def test_agy_workspace_mcp_endpoint_overwrites_stale_ralph_entry(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
     original_text = json.dumps(
         {
             "mcpServers": {
@@ -72,49 +92,54 @@ def test_agy_workspace_mcp_endpoint_overwrites_stale_ralph_entry(tmp_path: Path)
         },
         indent=2,
     )
-    config_path.parent.mkdir(parents=True)
-    config_path.write_text(original_text, encoding="utf-8")
+    agy_config_path.parent.mkdir(parents=True, exist_ok=True)
+    agy_config_path.write_text(original_text, encoding="utf-8")
     endpoint = "http://127.0.0.1:9999/mcp"
 
     with agy_workspace_mcp_endpoint(tmp_path, endpoint):
-        _assert_ralph_only(_read_config(config_path), endpoint)
+        _assert_ralph_only(_read_config(agy_config_path), endpoint)
 
-    assert config_path.read_text(encoding="utf-8") == original_text
+    assert agy_config_path.read_text(encoding="utf-8") == original_text
 
 
-def test_agy_workspace_mcp_endpoint_restores_on_exception(tmp_path: Path) -> None:
-    config_path = tmp_path / ".agents" / "mcp_config.json"
+def test_agy_workspace_mcp_endpoint_restores_on_exception(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
     original_text = json.dumps(
         {"mcpServers": {"other-server": {"serverUrl": "http://other.example/mcp"}}},
         indent=2,
     )
-    config_path.parent.mkdir(parents=True)
-    config_path.write_text(original_text, encoding="utf-8")
+    agy_config_path.parent.mkdir(parents=True, exist_ok=True)
+    agy_config_path.write_text(original_text, encoding="utf-8")
     endpoint = "http://127.0.0.1:9999/mcp"
 
-    with pytest.raises(RuntimeError, match="boom"), agy_workspace_mcp_endpoint(tmp_path, endpoint):
+    with pytest.raises(RuntimeError, match="boom"), agy_workspace_mcp_endpoint(
+        tmp_path, endpoint
+    ):
         raise RuntimeError("boom")
 
-    assert config_path.read_text(encoding="utf-8") == original_text
+    assert agy_config_path.read_text(encoding="utf-8") == original_text
 
 
-def test_agy_workspace_mcp_endpoint_creates_agents_dir_if_missing(tmp_path: Path) -> None:
-    config_path = tmp_path / ".agents" / "mcp_config.json"
+def test_agy_workspace_mcp_endpoint_creates_agents_dir_if_missing(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
     endpoint = "http://127.0.0.1:9999/mcp"
 
-    assert not config_path.parent.exists()
+    assert not agy_config_path.parent.exists()
 
     with agy_workspace_mcp_endpoint(tmp_path, endpoint):
-        assert config_path.exists()
-        _assert_ralph_only(_read_config(config_path), endpoint)
-        assert config_path.parent.exists()
+        assert agy_config_path.exists()
+        _assert_ralph_only(_read_config(agy_config_path), endpoint)
+        assert agy_config_path.parent.exists()
 
-    assert not config_path.exists()
+    assert not agy_config_path.exists()
 
 
-def test_agy_workspace_mcp_endpoint_merges_when_unsafe_mode(tmp_path: Path) -> None:
+def test_agy_workspace_mcp_endpoint_merges_when_unsafe_mode(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
     """unsafe_mode=True keeps the existing other-server entry alongside Ralph."""
-    config_path = tmp_path / ".agents" / "mcp_config.json"
     original_text = json.dumps(
         {
             "mcpServers": {
@@ -123,12 +148,12 @@ def test_agy_workspace_mcp_endpoint_merges_when_unsafe_mode(tmp_path: Path) -> N
         },
         indent=2,
     )
-    config_path.parent.mkdir(parents=True)
-    config_path.write_text(original_text, encoding="utf-8")
+    agy_config_path.parent.mkdir(parents=True, exist_ok=True)
+    agy_config_path.write_text(original_text, encoding="utf-8")
     endpoint = "http://127.0.0.1:9999/mcp"
 
     with agy_workspace_mcp_endpoint(tmp_path, endpoint, unsafe_mode=True):
-        config = _read_config(config_path)
+        config = _read_config(agy_config_path)
         servers = config["mcpServers"]
         assert isinstance(servers, dict)
         assert "other-server" in servers
@@ -138,12 +163,13 @@ def test_agy_workspace_mcp_endpoint_merges_when_unsafe_mode(tmp_path: Path) -> N
         assert ralph["serverUrl"] == endpoint
         assert "url" not in ralph
 
-    assert config_path.read_text(encoding="utf-8") == original_text
+    assert agy_config_path.read_text(encoding="utf-8") == original_text
 
 
-def test_agy_workspace_mcp_endpoint_unsafe_mode_overwrites_stale_ralph(tmp_path: Path) -> None:
+def test_agy_workspace_mcp_endpoint_unsafe_mode_overwrites_stale_ralph(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
     """unsafe_mode=True replaces a stale ralph entry but keeps other servers."""
-    config_path = tmp_path / ".agents" / "mcp_config.json"
     original_text = json.dumps(
         {
             "mcpServers": {
@@ -153,12 +179,12 @@ def test_agy_workspace_mcp_endpoint_unsafe_mode_overwrites_stale_ralph(tmp_path:
         },
         indent=2,
     )
-    config_path.parent.mkdir(parents=True)
-    config_path.write_text(original_text, encoding="utf-8")
+    agy_config_path.parent.mkdir(parents=True)
+    agy_config_path.write_text(original_text, encoding="utf-8")
     endpoint = "http://127.0.0.1:9999/mcp"
 
     with agy_workspace_mcp_endpoint(tmp_path, endpoint, unsafe_mode=True):
-        config = _read_config(config_path)
+        config = _read_config(agy_config_path)
         servers = config["mcpServers"]
         assert isinstance(servers, dict)
         ralph = servers["ralph"]
@@ -166,4 +192,4 @@ def test_agy_workspace_mcp_endpoint_unsafe_mode_overwrites_stale_ralph(tmp_path:
         assert ralph["serverUrl"] == endpoint
         assert "other-server" in servers
 
-    assert config_path.read_text(encoding="utf-8") == original_text
+    assert agy_config_path.read_text(encoding="utf-8") == original_text

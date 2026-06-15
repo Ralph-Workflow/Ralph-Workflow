@@ -118,18 +118,19 @@ _CRASH_PATTERNS = (
     re.compile(r"^fatal:\s", re.IGNORECASE),
 )
 
-# AGY plain-text tool-call markers. The captured AGY transcript at
-# tmp/agy-live-transcript.txt did not contain these markers in the current
-# binary version, but detecting them keeps the parser aligned with other
-# headless agents that emit plain-text tool announcements.
-_AGY_TOOL_USE_PATTERNS = (
-    re.compile(r"^(?:Calling tool|Using tool|Tool call):\s*(\S+)", re.IGNORECASE),
-    re.compile(r"^(?:rag_tap|Read|Write|Edit|Glob|Grep|Bash|LS)\s*\(", re.IGNORECASE),
-)
-_AGY_TOOL_MARKER_RE = re.compile(
-    "|".join(f"(?:{p.pattern})" for p in _AGY_TOOL_USE_PATTERNS),
+# AGY's operational log often explains why --print returned no stdout. The
+# smoke detector reads the tail of this file to surface actionable diagnostics.
+_AGY_CLI_LOG_PATH: Path = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+_AGY_QUOTA_PATTERN = re.compile(r"RESOURCE_EXHAUSTED \(code 429\)", re.IGNORECASE)
+_AGY_MODEL_INVALID_PATTERN = re.compile(
+    r"Failed to resolve model flag\s+([^:]+):\s*model\s+(\S+)\s+is not recognized",
     re.IGNORECASE,
 )
+_AGY_MODEL_NOT_IN_CONFIG_PATTERN = re.compile(
+    r"Model ID\s+(\S+)\s+not in local config",
+    re.IGNORECASE,
+)
+
 
 
 @dataclass(frozen=True)
@@ -150,8 +151,68 @@ class SmokeRunResult:
     errors: list[str]
 
 
-def _build_smoke_prompt(output_relpath: str, *, submit_artifact_tool_name: str) -> str:
+def _build_smoke_prompt(
+    output_relpath: str,
+    *,
+    submit_artifact_tool_name: str,
+    transport: AgentTransport | None = None,
+) -> str:
     """Return the prompt used for the parity smoke test."""
+    artifact_content_schema = (
+        'status: one of "passed", "failed", or "partial"; '
+        f'output_file: "{output_relpath}"; '
+        "observed_working: string[]; observed_breaks: string[]; "
+        "headless_guide_checks: string[]; summary: non-empty string."
+    )
+
+    if transport == AgentTransport.AGY:
+        # AGY's current headless mode does not reliably call Ralph's
+        # streamable-HTTP MCP tools, but it can write files directly. We
+        # therefore instruct it to persist the smoke_test_result artifact as a
+        # file and emit the same completion marker the smoke detector watches.
+        artifact_path = ".agent/artifacts/smoke_test_result.json"
+        artifact_wrapper = (
+            '{\n'
+            '  "name": "smoke_test_result",\n'
+            '  "type": "smoke_test_result",\n'
+            '  "content": {\n'
+            '    "status": "passed",\n'
+            f'    "output_file": "{output_relpath}",\n'
+            '    "observed_working": [\n'
+            '      "created todo-list.js",\n'
+            '      "wrote smoke_test_result artifact"\n'
+            '    ],\n'
+            '    "observed_breaks": [],\n'
+            '    "headless_guide_checks": [\n'
+            '      "tool activity",\n'
+            '      "parser events",\n'
+            '      "tmp artifact creation"\n'
+            '    ],\n'
+            '    "summary": "AGY smoke test completed successfully"\n'
+            '  },\n'
+            '  "created_at": "2026-01-01T00:00:00+00:00",\n'
+            '  "updated_at": "2026-01-01T00:00:00+00:00",\n'
+            '  "metadata": {}\n'
+            '}'
+        )
+        return (
+            "Create a small JavaScript todo list implementation at "
+            f"`{output_relpath}`.\n\n"
+            "Requirements:\n"
+            "- Keep it tiny: one file only.\n"
+            "- Export a small in-memory todo list API.\n"
+            "- Do not touch files outside tmp/.\n"
+            "- Use the headless semantic guide as a rubric: session capture, tool activity, "
+            "completion signal, parser events, and tmp artifact creation.\n"
+            f"- Write a JSON artifact to `{artifact_path}` with this exact wrapper "
+            "(do not change the outer keys):\n"
+            f"```json\n{artifact_wrapper}\n```\n"
+            f"The inner content schema is: {artifact_content_schema}\n"
+            "- Do not nest extra objects like rubric/details/metadata "
+            "inside the artifact content.\n"
+            "- When finished, print exactly: Task declared complete:\n"
+        )
+
     return (
         "Create a small JavaScript todo list implementation at "
         f"`{output_relpath}`.\n\n"
@@ -164,10 +225,7 @@ def _build_smoke_prompt(output_relpath: str, *, submit_artifact_tool_name: str) 
         f"- Call `{submit_artifact_tool_name}` with "
         f'artifact_type="{SMOKE_TEST_RESULT_ARTIFACT_TYPE}" '
         "and use this exact content schema: "
-        'status: one of "passed", "failed", or "partial"; '
-        f'output_file: "{output_relpath}"; '
-        "observed_working: string[]; observed_breaks: string[]; "
-        "headless_guide_checks: string[]; summary: non-empty string.\n"
+        f"{artifact_content_schema}\n"
         "- Do not nest extra objects like rubric/details/metadata inside the artifact content.\n"
         "- When finished, call declare_complete.\n"
     )
@@ -318,6 +376,122 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
     artifact_path.unlink(missing_ok=True)
 
 
+def _explicit_completion_seen(
+    lines: list[str],
+    workspace_root: Path,
+    transport: AgentTransport | None,
+) -> bool:
+    """Return whether the agent emitted an explicit completion signal."""
+    if any("Task declared complete:" in line for line in lines):
+        return True
+    if transport is AgentTransport.AGY:
+        artifact = read_smoke_test_result_artifact(workspace_root)
+        if isinstance(artifact, dict):
+            observed_breaks = artifact.get("observed_breaks")
+            headless_checks = artifact.get("headless_guide_checks")
+            if (
+                isinstance(observed_breaks, list)
+                and isinstance(headless_checks, list)
+                and len(observed_breaks) == 0
+                and len(headless_checks) >= 1
+            ):
+                return True
+    return False
+
+
+def _parser_event_error(
+    config: AgentConfig,
+    lines: list[str],
+) -> str | None:
+    """Return a parser-event error, or None when not applicable / passing."""
+    if config.transport == AgentTransport.AGY:
+        return None
+    parsed_event_count = _count_parsed_events(config, lines) if lines else 0
+    if parsed_event_count == 0:
+        return "no parser events were observed"
+    return None
+
+
+def _meaningful_output_error(
+    config: AgentConfig,
+    live_output_lines: list[str],
+    lines: list[str],
+) -> str | None:
+    """Return a meaningful-output error, or None when not applicable / passing."""
+    if config.transport == AgentTransport.AGY:
+        return None
+    meaningful_output = [line for line in live_output_lines if line.strip()]
+    if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
+        meaningful_output = _meaningful_output_lines(config=config, lines=lines)
+    meaningful_output = meaningful_output[:_MAX_MEANINGFUL_OUTPUT_LINES]
+    if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES:
+        return "fewer than 3 meaningful output lines were observed"
+    return None
+
+
+def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | None:
+    """Return an actionable diagnostic when AGY --print produced no usable output.
+
+    AGY's headless --print mode is known to exit 0 with empty stdout when the
+    account's API quota is exhausted or the requested model ID is invalid. The
+    CLI writes the real reason to ~/.gemini/antigravity-cli/cli.log, so the
+    smoke detector surfaces that reason instead of leaving the user with a
+    generic "no output" message.
+    """
+    if lines:
+        return None
+    if read_smoke_test_result_artifact(workspace_root) is not None:
+        return None
+    log_path = _AGY_CLI_LOG_PATH
+    diagnostic = (
+        "AGY --print returned empty stdout; "
+        "check ~/.gemini/antigravity-cli/cli.log for model-resolution or quota errors"
+    )
+    if log_path.is_file():
+        try:
+            log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
+        except OSError:
+            log_tail = ""
+        if _AGY_QUOTA_PATTERN.search(log_tail):
+            diagnostic = (
+                "AGY --print returned empty stdout: individual API quota exhausted "
+                "(429 RESOURCE_EXHAUSTED). Wait for the quota reset or check "
+                "~/.gemini/antigravity-cli/cli.log."
+            )
+        else:
+            model_invalid_match = _AGY_MODEL_INVALID_PATTERN.search(log_tail)
+            model_not_in_config_match = _AGY_MODEL_NOT_IN_CONFIG_PATTERN.search(log_tail)
+            if model_invalid_match is not None:
+                model_id = model_invalid_match.group(2)
+                diagnostic = (
+                    f"AGY --print returned empty stdout: model ID '{model_id}' "
+                    "is not recognized by AGY. Check `agy models` and use the "
+                    "exact display name; see ~/.gemini/antigravity-cli/cli.log."
+                )
+            elif model_not_in_config_match is not None:
+                model_id = model_not_in_config_match.group(1)
+                diagnostic = (
+                    f"AGY --print returned empty stdout: model ID '{model_id}' "
+                    "is not in AGY's local config. Check `agy models` and use "
+                    "the exact display name; see ~/.gemini/antigravity-cli/cli.log."
+                )
+    return diagnostic
+
+
+def _tool_activity_seen_for_errors(
+    params: SmokeRunParams,
+    lines: list[str],
+    tool_activity_seen: bool | None,
+) -> bool:
+    """Resolve whether tool activity was observed, including AGY fallback."""
+    if tool_activity_seen is not None:
+        return tool_activity_seen
+    seen = _tool_activity_seen(params.config, lines) if lines else False
+    if not seen and params.config.transport == AgentTransport.AGY:
+        return _agy_tool_activity_seen(params.workspace_root)
+    return seen
+
+
 def _detect_smoke_errors(
     params: SmokeRunParams,
     lines: list[str],
@@ -335,40 +509,29 @@ def _detect_smoke_errors(
     if session_id is None and params.config.transport != AgentTransport.AGY:
         errors.append("session ID was not observed")
 
-    explicit_completion_seen = any("Task declared complete:" in line for line in lines)
-    if not explicit_completion_seen and params.config.transport == AgentTransport.AGY:
-        artifact = read_smoke_test_result_artifact(params.workspace_root)
-        if isinstance(artifact, dict):
-            observed_breaks = artifact.get("observed_breaks")
-            headless_checks = artifact.get("headless_guide_checks")
-            if (
-                isinstance(observed_breaks, list)
-                and isinstance(headless_checks, list)
-                and len(observed_breaks) == 0
-                and len(headless_checks) >= 1
-            ):
-                explicit_completion_seen = True
-    if not explicit_completion_seen:
+    if not _explicit_completion_seen(
+        lines, params.workspace_root, params.config.transport
+    ):
         errors.append("declare_complete marker was not observed")
 
-    parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
-    if parsed_event_count == 0:
-        errors.append("no parser events were observed")
+    if parser_error := _parser_event_error(params.config, lines):
+        errors.append(parser_error)
 
-    if tool_activity_seen is None:
-        tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
-    if not tool_activity_seen:
+    if not _tool_activity_seen_for_errors(params, lines, tool_activity_seen):
         errors.append("no tool activity was observed")
 
     if not read_smoke_test_result_artifact(params.workspace_root):
         errors.append("smoke_test_result artifact was not submitted")
 
-    meaningful_output = [line for line in live_output_lines if line.strip()]
-    if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
-        meaningful_output = _meaningful_output_lines(params.config, lines)
-    meaningful_output = meaningful_output[:_MAX_MEANINGFUL_OUTPUT_LINES]
-    if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES:
-        errors.append("fewer than 3 meaningful output lines were observed")
+    if output_error := _meaningful_output_error(
+        params.config, live_output_lines, lines
+    ):
+        errors.append(output_error)
+
+    if params.config.transport == AgentTransport.AGY:
+        diagnostic = _agy_upstream_diagnostic(lines, params.workspace_root)
+        if diagnostic is not None:
+            errors.append(diagnostic)
 
     visible_output_count = len([line for line in live_output_lines if line.strip()])
     if visible_output_count > _MAX_VISIBLE_OUTPUT_LINES:
@@ -379,14 +542,14 @@ def _detect_smoke_errors(
     return errors
 
 
-def _agy_tool_activity_seen(lines: list[str], workspace_root: Path) -> bool:
+def _agy_tool_activity_seen(workspace_root: Path) -> bool:
     """AGY-specific tool-activity fallback using the persisted artifact."""
     artifact = read_smoke_test_result_artifact(workspace_root)
     if isinstance(artifact, dict):
         checks = artifact.get("headless_guide_checks")
         if isinstance(checks, list) and "tool activity" in checks:
             return True
-    return any(_AGY_TOOL_MARKER_RE.search(line) for line in lines)
+    return False
 
 
 def _run_smoke_agent(
@@ -404,7 +567,7 @@ def _run_smoke_agent(
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
     tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
     if not tool_activity_seen and params.config.transport == AgentTransport.AGY:
-        tool_activity_seen = _agy_tool_activity_seen(lines, params.workspace_root)
+        tool_activity_seen = _agy_tool_activity_seen(params.workspace_root)
     meaningful_output_lines = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES
     ]

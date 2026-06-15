@@ -275,8 +275,11 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
             return None
 
         base_config = deepcopy(builtin_agents()["agy"])
+        # AGY model IDs from `agy models` are display names and may contain
+        # spaces/parentheses (e.g. "Claude Sonnet 4.6 (Thinking)"). Quote the
+        # value so shlex.split in the command builder keeps it as one argument.
         agy_overrides: dict[str, object] = {
-            "model_flag": f"--model {segments[1]}",
+            "model_flag": f"--model {shlex.quote(segments[1])}",
             "can_commit": True,
         }
         resolved = base_config.model_copy(update=agy_overrides)

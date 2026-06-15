@@ -801,11 +801,11 @@ app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
 
 def smoke_interactive_agy(
     agent: str = typer.Option(
-        "agy/gemini-3.5-flash-low",
-        help="AGY model alias to smoke (e.g. agy/gemini-3.5-flash-low).",
+        "agy/Claude Sonnet 4.6 (Thinking)",
+        help="AGY model alias to smoke (e.g. agy/Claude Sonnet 4.6 (Thinking)).",
     ),
 ) -> None:
-    """Run the manual PTY smoke test for Google Anti Gravity using agy/gemini-3.5-flash-low."""
+    """Run the manual PTY smoke test for Google Anti Gravity."""
     raise typer.Exit(
         code=smoke_interactive_agy_command(
             agent_name=agent,

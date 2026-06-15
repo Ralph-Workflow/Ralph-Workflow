@@ -134,30 +134,3 @@ def test_ansi_decorated_tool_line_still_emits_tool_use() -> None:
     assert tool_uses[0].content == "mcp__ralph__list_directory"
 
 
-def test_agy_tool_use_patterns_detect_plain_text_tool_calls() -> None:
-    """Plain-text tool-call prefixes yield tool_use AgentOutputLine instances."""
-    parser = GenericParser()
-    transcript = [
-        "Calling tool: mcp__ralph__write_file",
-        "Tool call: mcp__ralph__list_directory",
-        "Read(tmp/agy-probe/hello.py)",
-    ]
-    results = list(parser.parse(iter(transcript)))
-    tool_uses = [r for r in results if r.type == "tool_use"]
-    assert len(tool_uses) == 3, f"Expected 3 tool_use lines, got: {results}"
-    assert tool_uses[0].content == "mcp__ralph__write_file"
-    assert tool_uses[1].content == "mcp__ralph__list_directory"
-
-
-def test_agy_tool_result_pattern_detects_plain_text_tool_results() -> None:
-    """Plain-text tool-result prefixes yield tool_result AgentOutputLine instances."""
-    parser = GenericParser()
-    transcript = [
-        "Tool result: wrote file",
-        "Result of: search complete",
-    ]
-    results = list(parser.parse(iter(transcript)))
-    tool_results = [r for r in results if r.type == "tool_result"]
-    assert len(tool_results) == 2, f"Expected 2 tool_result lines, got: {results}"
-    assert tool_results[0].content == "wrote file"
-    assert tool_results[1].content == "search complete"

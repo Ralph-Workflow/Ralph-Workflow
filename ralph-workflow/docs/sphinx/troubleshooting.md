@@ -76,11 +76,13 @@ The parity table reports five acceptance signals:
 |--------|-------------|
 | File | `tmp/interactive-agy-smoke/todo-list.js` was created |
 | Session | A session ID was observed in the transcript |
-| Parser events | The transcript produced parseable events |
-| Tool activity | Tool-use/tool-result signals were observed |
+| Parser events | The transcript produced parseable events (Claude parity only) |
+| Tool activity | Tool-use/tool-result signals or the artifact's `headless_guide_checks` were observed |
 | Artifact | The `smoke_test_result` artifact was submitted |
 
-A red column in File, Parser events, Tool activity, or Artifact still indicates a Ralph Workflow regression. The Session column may show `missing` on AGY headless `--print` runs when the captured `tmp/agy-live-transcript.txt` confirms the AGY binary emits no session ID in stdout; this is a measured AGY wire-format limitation, not a Ralph Workflow bug. The rationale for removing the non-functional `session_flag` from the builtin AGY config is recorded in `ralph-workflow/CHANGELOG.md` line 45. Use `--agent agy/<model>` to pin a different model alias.
+A red column in File, Tool activity, or Artifact indicates a Ralph Workflow regression. The Session and Parser events columns may show `missing`/`0` on AGY headless `--print` runs: AGY does not emit a session ID or parser-friendly stdout stream in `--print` mode (verified in `tmp/agy-live-transcript.txt`). Because AGY's headless `--print` mode does not reliably call Ralph Workflow's streamable-HTTP MCP tools, the smoke prompt instructs AGY to write the `smoke_test_result` artifact directly to `.agent/artifacts/smoke_test_result.json`; tool activity is then inferred from that artifact. The rationale for removing the non-functional `session_flag` from the builtin AGY config is recorded in `ralph-workflow/CHANGELOG.md` line 45.
+
+If AGY exits 0 but the parity table reports no file, no artifact, and the `Breaks` column contains `AGY --print returned empty stdout: ...`, the upstream `agy` binary itself produced no stdout. The smoke detector reads `~/.gemini/antigravity-cli/cli.log` and reports the measured root cause, which is most often an individual API quota exhausted error (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions; wait for the quota reset or use a recognized model alias from `agy models`. Use `--agent agy/<model>` to pin a different model alias.
 
 ## MCP servers fail to start
 

@@ -187,6 +187,7 @@ def smoke_harness_agent_command(
         _build_smoke_prompt(
             spec.output_file.as_posix(),
             submit_artifact_tool_name=submit_artifact_tool_name,
+            transport=agent_config.transport,
         ),
         encoding="utf-8",
     )
@@ -228,7 +229,7 @@ def smoke_interactive_claude_command(
 
 
 def smoke_interactive_agy_command(
-    agent_name: str = "agy/gemini-3.5-flash-low",
+    agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -236,9 +237,9 @@ def smoke_interactive_agy_command(
 ) -> int:
     """Run the manual AGY end-to-end smoke harness via the PTY contract.
 
-    This drives the live ``agy`` binary with ``--model`` set to the cheapest
-    tier by default (``agy/gemini-3.5-flash-low``). Use ``--agent`` to pin a
-    different ``agy/<model>`` alias.
+    This drives the live ``agy`` binary. The default alias is the model that
+    currently works in this environment (``agy/Claude Sonnet 4.6 (Thinking)``);
+    use ``--agent`` to pin a different ``agy/<model>`` alias from ``agy models``.
     """
     if shutil.which("agy") is None:
         logger.error(

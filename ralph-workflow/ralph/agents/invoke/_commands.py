@@ -409,7 +409,9 @@ def _build_agy_command(
         cmd.append(config.verbose_flag)
     effective_model = options.model_flag or config.model_flag
     if effective_model:
-        cmd.extend(effective_model.split())
+        # shlex.split preserves quoted model names that contain spaces (e.g.
+        # AGY display names like "Claude Sonnet 4.6 (Thinking)").
+        cmd.extend(shlex.split(effective_model))
     if config.print_flag:
         cmd.append(config.print_flag)
     prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
