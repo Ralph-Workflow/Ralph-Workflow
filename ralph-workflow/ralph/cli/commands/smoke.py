@@ -12,6 +12,7 @@ module is the thin CLI surface (option setup, report rendering, exit codes).
 
 from __future__ import annotations
 
+import os
 import shlex
 import shutil
 from pathlib import Path
@@ -65,7 +66,9 @@ def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
     override = _agy_binary_override_env()
     if not override or agent_config.transport is not AgentTransport.AGY:
         return agent_config
-    if shutil.which(override) is None and not Path(override).is_file():
+    if shutil.which(override) is None and not (
+        Path(override).is_file() and os.access(override, os.X_OK)
+    ):
         logger.warning(
             "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
             override,
@@ -82,7 +85,9 @@ def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig
     override = _agy_binary_override_env()
     if not override:
         return config
-    if shutil.which(override) is None and not Path(override).is_file():
+    if shutil.which(override) is None and not (
+        Path(override).is_file() and os.access(override, os.X_OK)
+    ):
         logger.warning(
             "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
             override,
@@ -314,7 +319,9 @@ def smoke_interactive_agy_command(
     use ``--agent`` to pin a different ``agy/<model>`` alias from ``agy models``.
     """
     agy_binary = get_agy_binary_override()
-    if shutil.which(agy_binary) is None and not Path(agy_binary).is_file():
+    if shutil.which(agy_binary) is None and not (
+        Path(agy_binary).is_file() and os.access(agy_binary, os.X_OK)
+    ):
         logger.error(
             "agy binary not found at '{}'. Install Google Anti Gravity and "
             "ensure `agy` is on PATH, or set RALPH_AGY_BINARY to a valid mock "

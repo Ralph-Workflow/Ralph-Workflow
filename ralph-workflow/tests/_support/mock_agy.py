@@ -144,6 +144,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"mock AGY: unknown MOCK_AGY_BEHAVIOR={behavior}", file=sys.stderr)
         return 2
 
+    if args.model is not None and args.model not in CANONICAL_MODELS:
+        return 0
+
     _write_todo_list(artifact_dir)
     _write_prompt_received(artifact_dir, args.prompt)
     _write_smoke_test_result_artifact(artifact_dir)

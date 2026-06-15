@@ -137,6 +137,22 @@ def test_mock_artifact_schema_validates(tmp_path: Path) -> None:
     assert validated.summary
 
 
+def test_mock_rejects_non_canonical_model(tmp_path: Path) -> None:
+    """A non-canonical ``--model`` is rejected (empty stdout, no artifact)."""
+    result = _run_mock_agy(
+        "--print",
+        "--dangerously-skip-permissions",
+        "--model",
+        "not-a-real-model",
+        "hello",
+        artifact_dir=tmp_path,
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    assert not artifact_path.exists()
+
+
 def test_mock_writes_todo_list_file(tmp_path: Path) -> None:
     """Normal behavior creates the todo-list.js output file."""
     _run_mock_agy(

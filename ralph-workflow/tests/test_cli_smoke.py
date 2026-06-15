@@ -588,3 +588,64 @@ def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
         assert "AGY --print returned empty stdout" in log_text, (
             "Detailed report is missing the upstream diagnostic"
         )
+
+
+def test_maybe_apply_agy_binary_override_ignores_nonexecutable_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-executable RALPH_AGY_BINARY path is ignored (WARNING logged, cmd unchanged)."""
+    agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
+    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    assert result.cmd == "agy"
+
+
+def test_maybe_apply_agy_binary_override_accepts_mock_shell_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid shell script override is accepted."""
+    mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
+    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    assert result.cmd != "agy"
+    assert str(mock_path) in result.cmd
+
+
+def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_apply_agy_binary_override_to_config`` ignores a non-executable override."""
+    config = UnifiedConfig(
+        agents={
+            "agy/Claude Sonnet 4.6 (Thinking)": AgentConfig(
+                cmd="agy", transport=AgentTransport.AGY
+            ),
+            "claude/haiku": AgentConfig(
+                cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE
+            ),
+        }
+    )
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
+    result = smoke_module._apply_agy_binary_override_to_config(config)
+    assert result.agents["agy/Claude Sonnet 4.6 (Thinking)"].cmd == "agy"
+    assert result.agents["claude/haiku"].cmd == "claude"
+
+
+def test_apply_agy_binary_override_to_config_accepts_mock_shell_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_apply_agy_binary_override_to_config`` accepts a valid mock shell script."""
+    mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    config = UnifiedConfig(
+        agents={
+            "agy/Claude Sonnet 4.6 (Thinking)": AgentConfig(
+                cmd="agy", transport=AgentTransport.AGY
+            ),
+        }
+    )
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
+    result = smoke_module._apply_agy_binary_override_to_config(config)
+    agy_cmd = result.agents["agy/Claude Sonnet 4.6 (Thinking)"].cmd
+    assert agy_cmd != "agy"
+    assert str(mock_path) in agy_cmd
