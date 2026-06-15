@@ -129,7 +129,7 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # smoke-plumbing helpers receive the value through call signatures, and
     # production agent invocation below this level receives the resolved
     # command through AgentConfig.
-    "pipeline/plumbing/smoke_plumbing.py:444",
+    "pipeline/plumbing/smoke_plumbing.py:435",
 )
 
 # Top-level entry points and the config package — the composition root for

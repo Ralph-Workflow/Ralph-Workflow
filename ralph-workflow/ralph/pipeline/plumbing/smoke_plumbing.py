@@ -391,22 +391,13 @@ def _explicit_completion_seen(
     workspace_root: Path,
     transport: AgentTransport | None,
 ) -> bool:
-    """Return whether the agent emitted an explicit completion signal."""
-    if any("Task declared complete:" in line for line in lines):
-        return True
-    if transport is AgentTransport.AGY:
-        artifact = read_smoke_test_result_artifact(workspace_root)
-        if isinstance(artifact, dict):
-            observed_breaks = artifact.get("observed_breaks")
-            headless_checks = artifact.get("headless_guide_checks")
-            if (
-                isinstance(observed_breaks, list)
-                and isinstance(headless_checks, list)
-                and len(observed_breaks) == 0
-                and len(headless_checks) >= 1
-            ):
-                return True
-    return False
+    """Return whether the agent emitted an explicit completion signal.
+
+    Only the ``Task declared complete:`` transcript marker counts.  Artifact
+    presence does **not** substitute for the completion signal so a malformed
+    or markerless smoke session fails cleanly.
+    """
+    return any("Task declared complete:" in line for line in lines)
 
 
 def _parser_event_error(
