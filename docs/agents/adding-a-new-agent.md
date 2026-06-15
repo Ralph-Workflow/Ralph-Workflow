@@ -11,6 +11,9 @@ seams:
 - `register_agent_support()` — a one-call API that writes the parser and
   strategy into the existing transport-keyed and parser-type-keyed registries,
   and records the agent configuration in the caller's `AgentRegistry`.
+- `strategy_for_command()` — runtime strategy resolution that selects the
+  strategy registered for an agent's command name before falling back to the
+  transport-keyed slot used by `strategy_for_transport()`.
 
 Command-builder wiring and role-classifier wiring remain transport-keyed
 because they are transport concerns: transport-specific flags (`--mcp-config`,
@@ -21,7 +24,11 @@ covered by the `AgentTransport` enum plus the strategy's
 
 The API keeps all additional state caller-owned: you pass the target
 `AgentRegistry`, and the only module-level lookup tables used are the existing
-`_PARSER_REGISTRY` and `_STRATEGY_DISPATCH` pure-data registries.
+`_PARSER_REGISTRY` and `_STRATEGY_DISPATCH` pure-data registries.  A registered
+agent is keyed by both its `name` and its executable command name, so runtime
+paths such as `invoke_agent()` and the smoke-test harness can resolve the
+correct parser and strategy even when the command string differs from the
+registered name.
 
 ## Import path
 
@@ -37,7 +44,11 @@ from ralph.agents.registration import register_agent_support, get_registered_age
 ```python
 from collections.abc import Iterator
 
-from ralph.agents.execution_state import BaseExecutionStrategy, strategy_for_transport
+from ralph.agents.execution_state import (
+    BaseExecutionStrategy,
+    strategy_for_command,
+    strategy_for_transport,
+)
 from ralph.agents.parsers import AgentOutputLine, get_parser
 from ralph.agents.parsers.base import AgentParser
 from ralph.agents.registration import register_agent_support
@@ -65,7 +76,9 @@ register_agent_support(
 )
 
 assert isinstance(get_parser("my-agent"), MyAgentParser)
-assert isinstance(strategy_for_transport(AgentTransport.GENERIC), MyAgentStrategy)
+assert isinstance(
+    strategy_for_command("my-agent", AgentTransport.GENERIC), MyAgentStrategy
+)
 assert "my-agent" in registry.agents
 ```
 
@@ -93,8 +106,10 @@ assert config.session_flag is not None
 ## Custom command and flags
 
 By default the agent's executable command (`AgentConfig.cmd`) equals the
-registered `name`. For real agents you usually need to override that and other
-flags. Pass them as keyword arguments:
+registered `name`. For real agents the command name usually differs from the
+registered name or includes flags.  Pass the command and other flags as keyword
+arguments; the parser and strategy are also registered under the executable
+command token so runtime resolution picks them up:
 
 ```python
 register_agent_support(
@@ -115,12 +130,19 @@ Supported overrides mirror `AgentConfig`: `cmd`, `output_flag`, `yolo_flag`,
 `verbose_flag`, `can_commit`, `model_flag`, `print_flag`, `streaming_flag`,
 `session_flag`, `display_name`, and `subagent_capability`.
 
+When `cmd` is overridden, both `get_parser("my-agent")` and
+`get_parser("my-agent-cli")` return the registered parser, and
+`strategy_for_command("my-agent-cli", AgentTransport.GENERIC)` returns the
+registered strategy.
+
 ## Multiple agents on the same transport
 
-The transport-keyed strategy slot is a fallback used by
-`strategy_for_transport()`. Multiple custom agents may share a transport; each
-keeps its own parser entry and its own configuration. Retrieve a specific
-agent's strategy with `get_registered_agent_support(name)`:
+Multiple custom agents may share a transport.  Each keeps its own parser entry
+(keyed by `name` and by command name) and its own strategy.  Runtime
+invocation uses `strategy_for_command(cmd, transport)`, which looks up the
+strategy by command name before falling back to the transport-keyed slot used
+by `strategy_for_transport()`.  You can also retrieve a specific agent's
+registered pieces with `get_registered_agent_support(name)`:
 
 ```python
 register_agent_support(
@@ -129,6 +151,9 @@ register_agent_support(
 register_agent_support(
     "agent-b", transport=AgentTransport.GENERIC, ...
 )
+
+strategy_a = strategy_for_command("agent-a", AgentTransport.GENERIC)
+strategy_b = strategy_for_command("agent-b", AgentTransport.GENERIC)
 
 pair_a = get_registered_agent_support("agent-a")
 pair_b = get_registered_agent_support("agent-b")
@@ -155,14 +180,15 @@ When you add a new agent, cover these behaviours with fakes (`_FakeHandle`,
 - Strategy classification: non-blank lines produce `OUTPUT_LINE`, JSON errors
   produce `ERROR_LINE`, lifecycle-only lines do not keep a quiet run alive.
 - End-to-end round-trip: `get_parser(name)`,
-  `strategy_for_transport(transport)`, and `registry.agents[name]` all retrieve
-  the registered pieces.
+  `strategy_for_command(cmd, transport)`, and `registry.agents[name]` all
+  retrieve the registered pieces.
 - Runtime parser resolution: `_parser_key_for_config(config)`,
   `stream_parsed_agent_activity(..., agent_config=config)`, and
   `collect_commit_agent_output(..., parser_type=resolve_parser_key(...))` all
   select the registered parser when `json_parser` is `JsonParserType.GENERIC`.
 - Coexistence: two agents registered on the same transport both remain
-  retrievable via `get_registered_agent_support()`.
+  retrievable via `get_registered_agent_support()` and via
+  `strategy_for_command(cmd, transport)` for each command.
 - Dependency injection: a strategy factory that accepts `label_scope` and
   `registry` receives those kwargs from `strategy_for_transport()`.
 

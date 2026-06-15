@@ -104,6 +104,12 @@ app = typer.Typer(
 _typer_get_command = typer.main.get_command
 
 
+def _as_click_command(command: object) -> click.Command:
+    """Bridge across typer versions that expose different Command types."""
+    return cast("click.Command", command)
+
+
+
 def _get_cli_context() -> DisplayContext:
     """Resolve a fresh DisplayContext for the current terminal environment."""
     return _make_display_context()
@@ -204,7 +210,7 @@ def _set_typer_testing_get_command(
 
 
 def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Command:
-    command = _typer_get_command(typer_instance)
+    command = _as_click_command(_typer_get_command(typer_instance))
     if typer_instance is app:
         original_main: _CommandMain = command.main
 
@@ -240,7 +246,7 @@ def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Comman
     return command
 
 
-typer.main.get_command = _get_command_with_optional_init
+object.__setattr__(typer.main, "get_command", _get_command_with_optional_init)
 _set_typer_testing_get_command(_get_command_with_optional_init)
 
 

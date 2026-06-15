@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from ralph.agents.execution_state import BaseExecutionStrategy
+from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.agents.execution_state import BaseExecutionStrategy, strategy_for_command
 from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
 from ralph.agents.parsers import (
     _PARSER_REGISTRY,
@@ -26,6 +27,7 @@ from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 from ralph.pipeline.plumbing.smoke_plumbing import (
     _count_parsed_events,
     _parser_key_for_config,
+    _tool_activity_seen,
 )
 
 from ._registration_test_utils import _isolated_registries
@@ -395,7 +397,26 @@ class TestResolveParserKey:
             assert key == "fake-cmd"
             assert isinstance(get_parser(key), FakeAgentParser)
 
-    def test_claude_interactive_transport_overrides_command_name(self) -> None:
+    def test_name_differs_from_cmd_registers_parser_under_command_token(self) -> None:
+        with _isolated_registries():
+            registry = AgentRegistry()
+            config = register_agent_support(
+                "my-agent",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeAgentStrategy,
+                agent_registry=registry,
+                cmd="my-agent-cli --json",
+            )
+
+            assert _parser_key_for_config(config) == "my-agent-cli"
+            assert isinstance(get_parser("my-agent-cli"), FakeAgentParser)
+            assert isinstance(get_parser("my-agent"), FakeAgentParser)
+            assert _count_parsed_events(config, ["hello"]) == 1
+
+    def test_registered_interactive_agent_command_wins_over_builtin_interactive_parser(
+        self,
+    ) -> None:
         with _isolated_registries():
             registry = AgentRegistry()
             register_agent_support(
@@ -412,4 +433,68 @@ class TestResolveParserKey:
                 JsonParserType.GENERIC,
                 AgentTransport.CLAUDE_INTERACTIVE,
             )
+            assert key == "fake-interactive"
+            assert isinstance(get_parser(key), FakeAgentParser)
+
+    def test_builtin_claude_interactive_transport_uses_claude_interactive_parser(
+        self,
+    ) -> None:
+        with _isolated_registries():
+            key = resolve_parser_key(
+                "claude", JsonParserType.GENERIC, AgentTransport.CLAUDE_INTERACTIVE
+            )
             assert key == "claude_interactive"
+
+
+class TestStrategyForCommand:
+    """Runtime strategy resolution prefers the agent's command name."""
+
+    def test_same_transport_agents_use_distinct_strategies(self) -> None:
+        with _isolated_registries():
+            registry = AgentRegistry()
+            register_agent_support(
+                "agent-a",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeAgentStrategy,
+                agent_registry=registry,
+            )
+            register_agent_support(
+                "agent-b",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeInteractiveAgentStrategy,
+                agent_registry=registry,
+            )
+
+            strategy_a = strategy_for_command("agent-a", AgentTransport.GENERIC)
+            strategy_b = strategy_for_command("agent-b", AgentTransport.GENERIC)
+            assert isinstance(strategy_a, FakeAgentStrategy)
+            assert isinstance(strategy_b, FakeInteractiveAgentStrategy)
+
+    def test_strategy_for_command_falls_back_to_transport(self) -> None:
+        with _isolated_registries():
+            strategy = strategy_for_command("unknown", AgentTransport.GENERIC)
+            assert type(strategy).__name__ == "GenericExecutionStrategy"
+
+    def test_smoke_tool_activity_uses_command_specific_strategy(self) -> None:
+        """A strategy registered for a command classifies activity for that command."""
+
+        class LineYieldingStrategy(BaseExecutionStrategy):
+            def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+                if line == "tool: hammer":
+                    return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=line)
+                return super().classify_activity_line(line)
+
+        with _isolated_registries():
+            registry = AgentRegistry()
+            config = register_agent_support(
+                "tool-agent",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=LineYieldingStrategy,
+                agent_registry=registry,
+            )
+
+            assert _tool_activity_seen(config, ["tool: hammer"]) is True
+            assert _tool_activity_seen(config, ["plain output"]) is False

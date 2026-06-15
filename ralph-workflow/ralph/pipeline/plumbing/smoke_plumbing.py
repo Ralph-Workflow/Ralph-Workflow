@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from ralph.agents.execution_state import strategy_for_transport
+from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
@@ -245,7 +245,9 @@ def _count_parsed_events(config: AgentConfig, lines: list[str]) -> int:
 
 
 def _tool_activity_seen(config: AgentConfig, lines: list[str]) -> bool:
-    strategy = strategy_for_transport(config.transport)
+    transport = config.transport
+    assert transport is not None
+    strategy = strategy_for_command(config.cmd, transport)
     for line in lines:
         signal = strategy.classify_activity_line(line)
         if signal is not None and signal.kind.value == "tool_use":

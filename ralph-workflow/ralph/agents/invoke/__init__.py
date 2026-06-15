@@ -24,7 +24,7 @@ from uuid import uuid4
 from loguru import logger
 
 from ralph.agents.completion_signals import evaluate_completion
-from ralph.agents.execution_state import strategy_for_transport
+from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._commands import (
     _agent_transport,
@@ -297,7 +297,8 @@ def invoke_agent(
     if runtime_env is not None:
         label_scope = runtime_env.get(str(AGENT_LABEL_SCOPE_ENV))
     registry = _make_child_registry(opts)
-    execution_strategy = strategy_for_transport(
+    execution_strategy = strategy_for_command(
+        config.cmd,
         _agent_transport(config),
         label_scope=label_scope,
         registry=registry,

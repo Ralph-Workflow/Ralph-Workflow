@@ -6,7 +6,7 @@ the execution strategies, and OpenCode registry routing helpers.
 
 from ._base import BaseExecutionStrategy
 from ._completion_mixin import CompletionEnforcingStrategy
-from ._factory import strategy_for_transport
+from ._factory import strategy_for_command, strategy_for_transport
 from ._helpers import _route_opencode_line_to_registry
 from ._live_descendant_handle import _LiveDescendantHandle
 from .agent_execution_state import AgentExecutionState
@@ -27,5 +27,6 @@ __all__ = [
     "OpenCodeExecutionStrategy",
     "_LiveDescendantHandle",
     "_route_opencode_line_to_registry",
+    "strategy_for_command",
     "strategy_for_transport",
 ]

@@ -12,9 +12,10 @@ The function writes into the existing parser-type registry
 (``ralph.agents.parsers._PARSER_REGISTRY``) and the existing transport-keyed
 strategy dispatch (``ralph.agents.execution_state._factory._STRATEGY_DISPATCH``).
 Multiple custom agents may share a transport; each agent keeps its own parser
-entry, while the transport-keyed strategy slot is a last-wins fallback used by
-``strategy_for_transport``.  Retrieve a specific agent's registered strategy
-with ``get_registered_agent_support(name)``.
+entry keyed by both its registered ``name`` and its executable command name.
+Runtime invocation uses :func:`ralph.agents.execution_state.strategy_for_command`,
+which selects the strategy registered for the agent's command name before
+falling back to the transport-keyed ``strategy_for_transport`` slot.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ import inspect
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents.execution_state._base import BaseExecutionStrategy
-from ralph.agents.parsers import _PARSER_REGISTRY
+from ralph.agents.parsers import _PARSER_REGISTRY, _ParserRegistryEntry
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 
@@ -61,29 +62,6 @@ class _AnyKwargsStrategyFactory(Protocol):
 
 
 _UserStrategyFactory = type[BaseExecutionStrategy] | _StrategyFactoryWithKwargs
-
-
-class _ParserRegistryEntry:
-    """Parser factory plus the strategy factory registered alongside it.
-
-    Instances are callable so they can be stored directly in
-    ``_PARSER_REGISTRY`` without changing that dict's public shape.
-    """
-
-    __slots__ = ("parser_factory", "strategy_factory", "transport")
-
-    def __init__(
-        self,
-        parser_factory: _ParserFactory,
-        strategy_factory: _StrategyFactory,
-        transport: AgentTransport,
-    ) -> None:
-        self.parser_factory = parser_factory
-        self.strategy_factory = strategy_factory
-        self.transport = transport
-
-    def __call__(self) -> AgentParser:
-        return self.parser_factory()
 
 
 def _wrap_strategy_factory(
@@ -190,9 +168,11 @@ def register_agent_support(
     )
 
     wrapped_strategy = _wrap_strategy_factory(strategy_factory)
-    _PARSER_REGISTRY[name] = _ParserRegistryEntry(
-        parser_factory, wrapped_strategy, transport
-    )
+    entry = _ParserRegistryEntry(parser_factory, wrapped_strategy, transport)
+    _PARSER_REGISTRY[name] = entry
+    command_name = config.cmd.split(maxsplit=1)[0].lower() if config.cmd else ""
+    if command_name and command_name != name:
+        _PARSER_REGISTRY[command_name] = entry
     _STRATEGY_DISPATCH[transport] = wrapped_strategy
     agent_registry.register(name, config)
     return config
