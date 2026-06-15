@@ -16,6 +16,8 @@ import json
 from collections import deque
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents.completion_signals import is_artifact_submitted
 from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport
@@ -32,6 +34,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
+
+pytestmark = pytest.mark.smoke
 
 
 def _smoke_payload() -> dict[str, object]:

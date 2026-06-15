@@ -80,12 +80,25 @@ The function:
 
 If the function raises, none of the run-scoped files are visible to the gate.
 
+## Run-id binding rule
+
+The bridge ``run_id`` is the receipt key. There is no separate label or
+secondary source of truth for the receipt namespace. Every caller — the MCP
+handler, the completion-signal layer, and the fallback promoter — threads the
+same ``run_id`` into ``submit_artifact_canonical``. The receipt is always
+written to ``.agent/receipts/<run_id>/<artifact_type>.json`` and the completion
+sentinel (for single-shot types) to ``.agent/completion_seen_<run_id>.json``.
+See ``commit_plumbing.py:611-620`` for the prior fix that locked this binding
+into the commit plumbing path.
+
 ## Fallback promotion
 
 Some single-shot prompts instruct the model to write the artifact directly to
-``.agent/tmp/<type>.json`` when MCP tool calling is unavailable. Before the
-run is considered complete, the fallback file must be promoted into the
-canonical chain:
+``.agent/tmp/<type>.json`` when MCP tool calling is unavailable. The AGY smoke
+branch likewise instructs the AGY agent to write the artifact directly to
+``.agent/artifacts/<type>.json`` because AGY headless mode does not reliably
+call Ralph's MCP tools. Before the run is considered complete, either fallback
+file must be promoted into the canonical chain:
 
 ```python
 from pathlib import Path
@@ -97,6 +110,13 @@ result = promote_fallback_artifact(
     run_id="run-123",
 )
 ```
+
+``promote_fallback_artifact`` checks ``.agent/tmp/<type>.json`` first, then
+``.agent/artifacts/<type>.json``. It tolerates both the bare inner payload and
+the outer ``{name, type, content, ...}`` envelope produced by the AGY smoke
+prompt wrapper, extracts the payload, and routes it through
+``submit_artifact_canonical`` so a canonical receipt is stamped under the
+current ``run_id``.
 
 ``is_artifact_submitted`` performs the same check during completion
 evaluation. If a fallback file exists, it is promoted and the run is treated
