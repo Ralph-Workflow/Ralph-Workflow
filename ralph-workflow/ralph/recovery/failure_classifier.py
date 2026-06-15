@@ -192,7 +192,6 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "weekly limit exceeded",
     "monthly limit exceeded",
     "rate_limited",
-    "insufficient_quota",
 )
 
 # Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.
