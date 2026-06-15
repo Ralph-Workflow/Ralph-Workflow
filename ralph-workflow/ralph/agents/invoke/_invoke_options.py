@@ -47,6 +47,10 @@ class InvokeOptions:
     process_monitor_enabled: bool | None = None
     subagent_output_capture_enabled: bool | None = None
     subagent_output_poll_interval_seconds: float | None = None
+    os_descendant_only_ceiling_seconds: float | None = None
+    os_descendant_only_suspect_seconds: float | None = None
+    cpu_idle_seconds: float | None = None
+    log_growth_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None

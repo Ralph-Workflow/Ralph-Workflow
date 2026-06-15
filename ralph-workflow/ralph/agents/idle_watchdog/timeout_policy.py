@@ -10,12 +10,16 @@ from ralph.agents.idle_watchdog._workspace_change_kind import (
 )
 from ralph.timeout_defaults import (
     AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
+    CPU_IDLE_SECONDS,
     DESCENDANT_WAIT_POLL_SECONDS,
     DESCENDANT_WAIT_TIMEOUT_SECONDS,
     DRAIN_WINDOW_SECONDS,
     IDLE_POLL_INTERVAL_SECONDS,
+    LOG_GROWTH_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    OS_DESCENDANT_ONLY_CEILING_SECONDS,
+    OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
@@ -185,6 +189,26 @@ class TimeoutPolicy:
     process_monitor_enabled: bool = PROCESS_MONITOR_ENABLED
     subagent_output_capture_enabled: bool = SUBAGENT_OUTPUT_CAPTURE_ENABLED
     subagent_output_poll_interval_seconds: float = SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS
+    # Short ceiling on cumulative WAITING_ON_CHILD time when alive_by is
+    # OS_DESCENDANT_ONLY_STALE_PROGRESS and no probe override has fired.
+    # When set, must be <= max_waiting_on_child_seconds. None disables
+    # the override and falls back to max_waiting_on_child_no_progress_seconds.
+    os_descendant_only_ceiling_seconds: float | None = OS_DESCENDANT_ONLY_CEILING_SECONDS
+    # Earlier SUSPECTED_FROZEN threshold when alive_by is OS_DESCENDANT_ONLY_STALE_PROGRESS.
+    # The watchdog fires suspect at min(suspect_waiting_on_child_seconds, this value).
+    # When set, must be < os_descendant_only_ceiling_seconds and
+    # < max_waiting_on_child_seconds. None disables the override.
+    os_descendant_only_suspect_seconds: float | None = OS_DESCENDANT_ONLY_SUSPECT_SECONDS
+    # A known descendant PID with 0 user+system CPU time over this window is reported
+    # as alive_by=CPU_IDLE_WHILE_ALIVE by the read-loop corroborator. The override
+    # short-circuits the OS-descendant-only ceiling and falls back to the no-progress
+    # ceiling. None disables the CPU probe.
+    cpu_idle_seconds: float | None = CPU_IDLE_SECONDS
+    # The per-run .agent/raw/{safe_id}.log file is reported as alive_by=LOG_STALE_WHILE_ALIVE
+    # when its size has not grown for this many seconds. The override short-circuits
+    # the OS-descendant-only ceiling and falls back to the no-progress ceiling.
+    # None disables the log-growth probe; the probe no-ops when the file is absent.
+    log_growth_seconds: float | None = LOG_GROWTH_SECONDS
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()
@@ -195,6 +219,7 @@ class TimeoutPolicy:
         self._validate_activity_evidence_ttl()
         self._validate_workspace_change_weights()
         self._validate_subagent_output_poll_interval()
+        self._validate_os_descendant_only_fields()
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
@@ -314,4 +339,50 @@ class TimeoutPolicy:
     def _validate_subagent_output_poll_interval(self) -> None:
         if self.subagent_output_poll_interval_seconds <= 0:
             msg = "subagent_output_poll_interval_seconds must be positive"
+            raise ValueError(msg)
+
+    def _validate_os_descendant_only_fields(self) -> None:
+        if self.os_descendant_only_ceiling_seconds is not None:
+            if self.os_descendant_only_ceiling_seconds <= 0:
+                msg = "os_descendant_only_ceiling_seconds must be positive when set"
+                raise ValueError(msg)
+            if self.os_descendant_only_ceiling_seconds > self.max_waiting_on_child_seconds:
+                msg = (
+                    "os_descendant_only_ceiling_seconds must be <="
+                    " max_waiting_on_child_seconds"
+                )
+                raise ValueError(msg)
+        if self.os_descendant_only_suspect_seconds is not None:
+            if self.os_descendant_only_suspect_seconds <= 0:
+                msg = "os_descendant_only_suspect_seconds must be positive when set"
+                raise ValueError(msg)
+            if (
+                self.os_descendant_only_ceiling_seconds is not None
+                and self.os_descendant_only_suspect_seconds
+                >= self.os_descendant_only_ceiling_seconds
+            ):
+                msg = (
+                    "os_descendant_only_suspect_seconds must be <"
+                    " os_descendant_only_ceiling_seconds"
+                )
+                raise ValueError(msg)
+            if (
+                self.os_descendant_only_suspect_seconds
+                >= self.max_waiting_on_child_seconds
+            ):
+                msg = (
+                    "os_descendant_only_suspect_seconds must be <"
+                    " max_waiting_on_child_seconds"
+                )
+                raise ValueError(msg)
+        if (
+            self.os_descendant_only_ceiling_seconds is not None
+            and self.max_waiting_on_child_no_progress_seconds is not None
+            and self.os_descendant_only_ceiling_seconds
+            > self.max_waiting_on_child_no_progress_seconds
+        ):
+            msg = (
+                "os_descendant_only_ceiling_seconds must be <="
+                " max_waiting_on_child_no_progress_seconds"
+            )
             raise ValueError(msg)

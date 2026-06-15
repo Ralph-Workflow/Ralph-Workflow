@@ -79,5 +79,22 @@ class RawOverflowLog:
         except ValueError:
             return self.path.as_posix()
 
+    @property
+    def size_bytes(self) -> int:
+        """Current on-disk size of the overflow log file in bytes.
+
+        Returns 0 when the file does not exist yet, has been deleted by a
+        different process, or is inaccessible due to an OS error. The
+        property is a probe — it never raises — so the log-growth
+        corroborator can read it without coordination with the append()
+        lock.
+        """
+        if self._disabled:
+            return self._bytes_written
+        try:
+            return self.path.stat().st_size
+        except (OSError, PermissionError):
+            return 0
+
 
 __all__ = ["DEFAULT_MAX_OVERFLOW_FILE_BYTES", "RawOverflowLog"]

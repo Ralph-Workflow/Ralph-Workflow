@@ -80,6 +80,10 @@ def build_invoke_options_from_config(
         child_heartbeat_ttl_seconds=general_config.agent_child_heartbeat_ttl_seconds,
         child_stale_label_ttl_seconds=general_config.agent_child_stale_label_ttl_seconds,
         child_exit_reconcile_seconds=general_config.agent_child_exit_reconcile_seconds,
+        os_descendant_only_ceiling_seconds=general_config.agent_os_descendant_only_ceiling_seconds,
+        os_descendant_only_suspect_seconds=general_config.agent_os_descendant_only_suspect_seconds,
+        cpu_idle_seconds=general_config.agent_cpu_idle_seconds,
+        log_growth_seconds=general_config.agent_log_growth_seconds,
     )
 
 
@@ -199,6 +203,26 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.subagent_output_poll_interval_seconds
             if opts.subagent_output_poll_interval_seconds is not None
             else _base.subagent_output_poll_interval_seconds
+        ),
+        os_descendant_only_ceiling_seconds=(
+            opts.os_descendant_only_ceiling_seconds
+            if opts.os_descendant_only_ceiling_seconds is not None
+            else _base.os_descendant_only_ceiling_seconds
+        ),
+        os_descendant_only_suspect_seconds=(
+            opts.os_descendant_only_suspect_seconds
+            if opts.os_descendant_only_suspect_seconds is not None
+            else _base.os_descendant_only_suspect_seconds
+        ),
+        cpu_idle_seconds=(
+            opts.cpu_idle_seconds
+            if opts.cpu_idle_seconds is not None
+            else _base.cpu_idle_seconds
+        ),
+        log_growth_seconds=(
+            opts.log_growth_seconds
+            if opts.log_growth_seconds is not None
+            else _base.log_growth_seconds
         ),
     )
 

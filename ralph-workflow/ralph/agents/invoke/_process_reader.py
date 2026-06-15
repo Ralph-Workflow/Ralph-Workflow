@@ -11,6 +11,7 @@ import threading
 from collections import deque
 from typing import IO, TYPE_CHECKING, cast
 
+import psutil
 from loguru import logger
 from tqdm import tqdm
 
@@ -117,6 +118,7 @@ class _ProcessLineReader:
         self._last_activity_meaningful: list[bool] = [False]
         self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
         self._reader_done: list[bool] = [False]
+        self._cpu_baselines: dict[int, tuple[float, float]] = {}
         self._last_activity_kind = "none"
         self._unsubscribe = get_process_manager().register_listener(self._on_process_event)
 
@@ -156,6 +158,46 @@ class _ProcessLineReader:
         if self._waiting_listener is not None:
             self._waiting_listener(evt)
 
+    def _probe_cpu_idle(
+        self,
+        scoped_active: bool | None,
+        alive_by: AliveBy | None,
+    ) -> bool:
+        if (
+            self._policy.cpu_idle_seconds is None
+            or not scoped_active
+            or alive_by not in (None, AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS)
+        ):
+            return False
+        _now = self._clock.monotonic()
+        try:
+            root_pid = self._handle.pid
+            try:
+                root_proc = psutil.Process(root_pid)
+                child_pids = [p.pid for p in root_proc.children(recursive=True)]
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                return False
+            for pid in child_pids:
+                try:
+                    cpu_times = psutil.Process(pid).cpu_times()
+                    current_cpu = cpu_times.user + cpu_times.system
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    self._cpu_baselines.pop(pid, None)
+                    continue
+                if pid in self._cpu_baselines:
+                    baseline_cpu, baseline_time = self._cpu_baselines[pid]
+                    if (
+                        _now - baseline_time >= self._policy.cpu_idle_seconds
+                        and current_cpu == baseline_cpu
+                    ):
+                        return True
+                    self._cpu_baselines[pid] = (current_cpu, _now)
+                else:
+                    self._cpu_baselines[pid] = (current_cpu, _now)
+        except Exception:
+            pass
+        return False
+
     def _corroborate(self) -> CorroborationSnapshot:
         ws_count: int | None = self._monitor.event_count if self._monitor is not None else None
         last_workspace_event_at: float | None = (
@@ -186,6 +228,12 @@ class _ProcessLineReader:
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
         elif scoped_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+
+        _cpu_idle = self._probe_cpu_idle(scoped_active, alive_by)
+
+        if _cpu_idle and alive_by in (None, AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS):
+            alive_by = AliveBy.CPU_IDLE_WHILE_ALIVE
+
         return CorroborationSnapshot(
             workspace_event_count=ws_count,
             last_workspace_event_at=last_workspace_event_at,

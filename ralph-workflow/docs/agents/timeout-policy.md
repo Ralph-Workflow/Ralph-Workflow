@@ -198,6 +198,68 @@ strategy returns an empty mapping when the expected log layout is
 not present on disk, so the watchdog degrades gracefully instead of
 inventing paths.
 
+## OS-descendant-only escalation
+
+A wedged-but-alive subprocess appears in the OS process tree but produces no
+observable progress signals (no output, no workspace changes, no MCP tool
+calls). The watchdog previously relied on the 600s no-progress ceiling for
+these cases, meaning a wedged opencode subprocess could run for 540s+ before
+the first PROGRESS event fired.
+
+Four new ``[general]`` tunables address this:
+
+| Config key | Default | Purpose |
+|------------|---------|---------|
+| ``agent_os_descendant_only_ceiling_seconds`` | ``120.0`` | Short ceiling (~120s) for the OS-descendant-only case; fires CHILDREN_PERSIST_TOO_LONG in ~120s instead of waiting for the no-progress ceiling. Set to ``null`` to disable and fall back to the no-progress ceiling. |
+| ``agent_os_descendant_only_suspect_seconds`` | ``60.0`` | Earlier SUSPECTED_FROZEN (~60s) for the OS-descendant-only case; fires at ``min(suspect_waiting_on_child_seconds, this value)``. Set to ``null`` to disable. |
+| ``agent_cpu_idle_seconds`` | ``60.0`` | A known descendant PID with 0 user+system CPU time over this window is reported as ``CPU_IDLE_WHILE_ALIVE`` by the read-loop corroborator. The 60s default tolerates sub-step quiescence (I/O wait, GC pause). Set to ``null`` to disable the CPU probe. |
+| ``agent_log_growth_seconds`` | ``30.0`` | The per-run ``.agent/raw/{safe_id}.log`` file not growing for this many seconds is reported as ``LOG_STALE_WHILE_ALIVE``. Set to ``null`` to disable the log-growth probe. |
+
+Setting any key to ``null`` in ``ralph-workflow.toml`` opts out:
+
+```toml
+[general]
+agent_cpu_idle_seconds = null   # disable CPU idle probe
+agent_log_growth_seconds = null  # disable log-growth probe
+```
+
+**Event timeline** (OS-descendant-only case):
+
+| Event | Trigger |
+|-------|--------|
+| ``ENTERED`` | ``idle_timeout_seconds`` deadline reached; child enters WAITING_ON_CHILD |
+| ``PROGRESS`` | ``waiting_status_interval_seconds`` cadence (default 30s) |
+| ``SUSPECTED_FROZEN`` | ``min(suspect_waiting_on_child_seconds, os_descendant_only_suspect_seconds)`` (default ~60s) |
+| ``HARD_STOP`` | ``os_descendant_only_ceiling_seconds`` (default ~120s) |
+
+**New alive_by labels**: the read-loop corroborator attaches
+``CPU_IDLE_WHILE_ALIVE`` or ``LOG_STALE_WHILE_ALIVE`` to the
+``CorroborationSnapshot`` when a known descendant has had zero CPU
+activity for ``cpu_idle_seconds`` or the overflow log has not grown
+for ``log_growth_seconds``. Both labels short-circuit the
+OS-descendant-only ceiling and fall back to the no-progress ceiling.
+``LOG_STALE_WHILE_ALIVE`` takes precedence over ``CPU_IDLE_WHILE_ALIVE``.
+
+**New diagnostic keys**: the ``HARD_STOP`` and ``SUSPECTED_FROZEN``
+diagnostics include ``effective_ceiling_label`` (``"os_descendant_only"``
+| ``"no_progress"`` | ``"standard"``) and ``suspect_reason``
+(``"os_descendant_only"`` | ``"standard"``):
+
+```
+idle watchdog: FIRE reason=CHILDREN_PERSIST_TOO_LONG ... effective_ceiling_label=os_descendant_only effective_ceiling=120.0
+```
+
+The five-channel ``evidence_summary`` surface (``stdout``, ``mcp_tool``,
+``subagent_output``, ``subagent_liveness``, ``workspace`` in fixed order)
+is **preserved unchanged**. The ``Tier-labelled per-channel evidence
+summary`` section below details the five channels.
+
+See also: ``tests/agents/idle_watchdog/test_os_descendant_only_escalation.py``,
+``ralph/agents/idle_watchdog/idle_watchdog.py``,
+``ralph/agents/idle_watchdog/timeout_policy.py``,
+``ralph/process/_alive_by.py``,
+``ralph/display/raw_overflow.py``.
+
 ## Per-transport subagent discovery
 
 The table below maps each supported transport to the
