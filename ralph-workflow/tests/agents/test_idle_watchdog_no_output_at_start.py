@@ -20,11 +20,15 @@ def _make_watchdog(
     start: float = 0.0,
     **kwargs: object,
 ) -> tuple[IdleWatchdog, FakeClock]:
+    max_waiting_on_child_seconds = kwargs.pop("max_waiting_on_child_seconds", 1800.0)
+    max_waiting_on_child_no_progress_seconds = kwargs.pop(
+        "max_waiting_on_child_no_progress_seconds", 600.0
+    )
     config = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         no_output_at_start_seconds=no_output_at_start_seconds,
-        max_waiting_on_child_seconds=1800.0,
-        max_waiting_on_child_no_progress_seconds=600.0,
+        max_waiting_on_child_seconds=max_waiting_on_child_seconds,
+        max_waiting_on_child_no_progress_seconds=max_waiting_on_child_no_progress_seconds,
         **kwargs,
     )
     clock = FakeClock(start=start)
@@ -38,6 +42,7 @@ def _no_activity_corroborator() -> WaitingCorroborator:
             scoped_child_active=True,
             oldest_child_seconds=0.0,
         )
+
     return mock
 
 
@@ -99,6 +104,7 @@ class TestNoOutputAtStart:
         watchdog, clock = _make_watchdog(
             idle_timeout=300.0,
             no_output_at_start_seconds=60.0,
+            activity_evidence_ttl_seconds=100.0,
         )
         watchdog.record_invocation_start()
         watchdog.record_mcp_tool_call()
@@ -113,6 +119,7 @@ class TestNoOutputAtStart:
             idle_timeout=300.0,
             no_output_at_start_seconds=60.0,
             max_waiting_on_child_no_progress_seconds=10000.0,
+            max_waiting_on_child_seconds=20000.0,
         )
         watchdog.record_invocation_start()
 
@@ -130,9 +137,7 @@ class TestNoOutputAtStart:
         watchdog.record_invocation_start()
 
         clock.advance(61)
-        verdict = watchdog.evaluate(
-            classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-        )
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
 
         assert verdict == WatchdogVerdict.FIRE
         assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START

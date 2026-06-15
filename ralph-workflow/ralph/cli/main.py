@@ -109,7 +109,6 @@ def _as_click_command(command: object) -> click.Command:
     return cast("click.Command", command)
 
 
-
 def _get_cli_context() -> DisplayContext:
     """Resolve a fresh DisplayContext for the current terminal environment."""
     return _make_display_context()
@@ -360,9 +359,7 @@ def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
     if any(result.action in {"created", "regenerated"} for result in results):
         emit_first_run_welcome(results, display_context=display_context)
         return
-    display.emit_status(
-        f"Local config files already exist in: {scope.local_config_path.parent}"
-    )
+    display.emit_status(f"Local config files already exist in: {scope.local_config_path.parent}")
 
 
 def _handle_prompt_helper(
@@ -396,9 +393,7 @@ def _handle_early_exit_flags(
         raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
 
-def _handle_force_init_skills(
-    *, workspace_root: RuntimePath
-) -> None:
+def _handle_force_init_skills(*, workspace_root: RuntimePath) -> None:
     """Run the ``--force-init-skills`` early-exit branch.
 
     Extracted from ``main()`` to keep its branch / statement count under
@@ -412,9 +407,7 @@ def _handle_force_init_skills(
     display_context = _get_cli_context()
     manager = SkillManager()
     cap_state, failures = manager.reinstall_baseline_skills(workspace_root=workspace_root)
-    print_capability_summary(
-        display_context.console, cap_state, workspace_root=workspace_root
-    )
+    print_capability_summary(display_context.console, cap_state, workspace_root=workspace_root)
     if failures:
         resolve_active_display(None, display_context).emit_skill_failure_warning(failures)
 
@@ -714,9 +707,7 @@ def main(
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = handle_check_config(
-        config, cli_overrides, check_config, console=_cli_ctx.console
-    )
+    exit_code = handle_check_config(config, cli_overrides, check_config, console=_cli_ctx.console)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
@@ -1151,6 +1142,7 @@ def handle_check_config(
     except Exception as e:
         logger.error("Configuration is invalid: {}", e)
         return 1
+
 
 if __name__ == "__main__":
     app()

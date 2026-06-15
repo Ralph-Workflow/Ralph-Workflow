@@ -30,5 +30,9 @@ def __getattr__(name: str) -> object:
         return cast("object", import_module("ralph.mcp.server.factory_impl"))
     if name == "run_standalone_server":
         return cast("object", getattr(import_module("ralph.mcp.server.runtime"), name))
+    try:
+        return import_module(f"ralph.mcp.server.{name}")
+    except ImportError:
+        pass
     msg = f"module {__name__!r} has no attribute {name!r}"
     raise AttributeError(msg)

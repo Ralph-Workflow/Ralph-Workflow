@@ -205,6 +205,7 @@ def test_signal_bridge_pgid_routing_uses_list_active() -> None:
     NOT ``kill_process_group(42, SIGKILL)``. This is the
     regression pin for the pid-vs-pgid mis-routing bug.
     """
+
     class _FakePM:
         def __init__(self) -> None:
             self.policy = ProcessManagerPolicy(default_grace_period_s=0.1)

@@ -228,9 +228,7 @@ def test_session_ceiling_unaffected_by_first_party_activity() -> None:
 
 def test_cumulative_waiting_ceiling_unaffected_by_activity() -> None:
     """AC-13: cumulative waiting ceiling fires despite first-party activity."""
-    wd, clock = _make_watchdog(
-        _make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0)
-    )
+    wd, clock = _make_watchdog(_make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0))
     wd.record_activity()
     clock.advance(0.1)
 
@@ -296,6 +294,5 @@ def test_fire_diagnostic_includes_evidence_summary() -> None:
     summary = wd.last_evidence_summary(clock.monotonic())
     assert len(summary.channels) == 5
     assert all(
-        c.tier in {EvidenceTier.FIRST_PARTY, EvidenceTier.SIDE_CHANNEL}
-        for c in summary.channels
+        c.tier in {EvidenceTier.FIRST_PARTY, EvidenceTier.SIDE_CHANNEL} for c in summary.channels
     )

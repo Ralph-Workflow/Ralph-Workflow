@@ -141,9 +141,7 @@ def test_force_init_skills_imports_public_capability_summary() -> None:
                 break
         if found:
             break
-    assert found, (
-        "main.py must import print_capability_summary from ralph.cli._capability_summary"
-    )
+    assert found, "main.py must import print_capability_summary from ralph.cli._capability_summary"
 
 
 def test_force_init_skills_branch_surfaces_force_init_skills_hint_when_failures(

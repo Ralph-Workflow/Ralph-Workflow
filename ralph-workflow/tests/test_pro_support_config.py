@@ -23,7 +23,7 @@ def _write_pro_owned_config_files(workspace_root: Path) -> None:
             "[pipeline]\n"
             'entry_phase = "planning"\n'
             'terminal_phase = "complete"\n'
-            "recovery = { failed_route = \"failed_terminal\" }\n"
+            'recovery = { failed_route = "failed_terminal" }\n'
             "[pipeline.phases.planning]\n"
             'drain = "planning"\n'
             "[pipeline.phases.complete]\n"

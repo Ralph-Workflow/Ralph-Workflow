@@ -32,9 +32,7 @@ def test_side_effect_registry_covers_every_ralph_tool() -> None:
     ``unknown`` contracts, so an unclassified tool silently loses its
     retry path. The closed registry forces a conscious choice.
     """
-    missing = sorted(
-        member.value for member in RalphToolName if member.value not in REGISTRY
-    )
+    missing = sorted(member.value for member in RalphToolName if member.value not in REGISTRY)
     assert not missing, f"RalphToolName members missing side-effect contract: {missing}"
 
 
@@ -91,9 +89,7 @@ def test_read_tools_have_idempotent_true() -> None:
     """All read-classified tools in REGISTRY are idempotent."""
     for name, contract in REGISTRY.items():
         if contract.classification == "read":
-            assert contract.idempotent is True, (
-                f"read-classified tool {name!r} must be idempotent"
-            )
+            assert contract.idempotent is True, f"read-classified tool {name!r} must be idempotent"
 
 
 def test_mutate_tools_have_idempotent_false() -> None:

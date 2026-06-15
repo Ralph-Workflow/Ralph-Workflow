@@ -122,8 +122,7 @@ def test_idle_watchdog_kill_subclass_with_misleading_str_still_agent() -> None:
     exc = _MisleadingIdleKillError(reason="idle", signal=15)
     classified = FailureClassifier().classify(exc, phase="p", agent="a")
     assert classified.category == FailureCategory.AGENT, (
-        f"subclass with misleading __str__ must still classify as AGENT, "
-        f"got {classified.category}"
+        f"subclass with misleading __str__ must still classify as AGENT, got {classified.category}"
     )
 
 
@@ -136,6 +135,7 @@ def test_idle_watchdog_kill_carries_typed_attributes() -> None:
 
 def test_idle_watchdog_kill_preserves_attrs_in_subclass() -> None:
     """A subclass inherits .reason and .signal from the base."""
+
     class _IdleKillError(IdleWatchdogKilledError):
         pass
 

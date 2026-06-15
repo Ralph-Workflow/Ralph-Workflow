@@ -44,17 +44,11 @@ def _display() -> tuple[ParallelDisplay, StringIO]:
 def test_emit_diagnose_inventory_table_with_one_row() -> None:
     """Single row renders with the section rule, title, and all 4 cells."""
     pd, buf = _display()
-    pd.emit_diagnose_inventory_table(
-        [("server-a", "workspace", "stdio", "local")]
-    )
+    pd.emit_diagnose_inventory_table([("server-a", "workspace", "stdio", "local")])
     pd.stop()
     output = buf.getvalue()
-    assert "[diagnose-inventory]" in output, (
-        f"expected section rule in output: {output!r}"
-    )
-    assert "Effective Session MCP Inventory" in output, (
-        f"missing table title: {output!r}"
-    )
+    assert "[diagnose-inventory]" in output, f"expected section rule in output: {output!r}"
+    assert "Effective Session MCP Inventory" in output, f"missing table title: {output!r}"
     for cell in ("server-a", "workspace", "stdio", "local"):
         assert cell in output, f"missing cell {cell!r}: {output!r}"
 
@@ -65,25 +59,17 @@ def test_emit_diagnose_inventory_table_with_empty_rows() -> None:
     pd.emit_diagnose_inventory_table([])
     pd.stop()
     output = buf.getvalue()
-    assert "[diagnose-inventory]" in output, (
-        f"expected section rule in output: {output!r}"
-    )
-    assert "Effective Session MCP Inventory" in output, (
-        f"missing table title: {output!r}"
-    )
+    assert "[diagnose-inventory]" in output, f"expected section rule in output: {output!r}"
+    assert "Effective Session MCP Inventory" in output, f"missing table title: {output!r}"
 
 
 def test_emit_diagnose_inventory_table_quiet_mode() -> None:
     """Quiet mode produces no output."""
     pd, buf = _display()
     pd._is_quiet = True
-    pd.emit_diagnose_inventory_table(
-        [("server-a", "workspace", "stdio", "local")]
-    )
+    pd.emit_diagnose_inventory_table([("server-a", "workspace", "stdio", "local")])
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -94,17 +80,11 @@ def test_emit_diagnose_inventory_table_quiet_mode() -> None:
 def test_emit_diagnose_probe_table_with_one_row() -> None:
     """Single row renders with the section rule, title, and all 5 cells."""
     pd, buf = _display()
-    pd.emit_diagnose_probe_table(
-        [("server-a", "yes", "no", "yes", "no")]
-    )
+    pd.emit_diagnose_probe_table([("server-a", "yes", "no", "yes", "no")])
     pd.stop()
     output = buf.getvalue()
-    assert "[diagnose-probe]" in output, (
-        f"expected section rule in output: {output!r}"
-    )
-    assert "Agent Transport Compatibility" in output, (
-        f"missing table title: {output!r}"
-    )
+    assert "[diagnose-probe]" in output, f"expected section rule in output: {output!r}"
+    assert "Agent Transport Compatibility" in output, f"missing table title: {output!r}"
     for cell in ("server-a", "yes", "no"):
         assert cell in output, f"missing cell {cell!r}: {output!r}"
 
@@ -113,13 +93,9 @@ def test_emit_diagnose_probe_table_quiet_mode() -> None:
     """Quiet mode produces no output."""
     pd, buf = _display()
     pd._is_quiet = True
-    pd.emit_diagnose_probe_table(
-        [("server-a", "yes", "no", "yes", "no")]
-    )
+    pd.emit_diagnose_probe_table([("server-a", "yes", "no", "yes", "no")])
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -130,14 +106,10 @@ def test_emit_diagnose_probe_table_quiet_mode() -> None:
 def test_emit_diagnose_servers_table_with_one_row() -> None:
     """Single row renders with the section rule, title, and all 5 cells."""
     pd, buf = _display()
-    pd.emit_diagnose_servers_table(
-        [("server-a", "stdio", "healthy", "5", "ok")]
-    )
+    pd.emit_diagnose_servers_table([("server-a", "stdio", "healthy", "5", "ok")])
     pd.stop()
     output = buf.getvalue()
-    assert "[diagnose-servers]" in output, (
-        f"expected section rule in output: {output!r}"
-    )
+    assert "[diagnose-servers]" in output, f"expected section rule in output: {output!r}"
     assert "Custom MCP Servers" in output, f"missing table title: {output!r}"
     for cell in ("server-a", "stdio", "healthy", "5", "ok"):
         assert cell in output, f"missing cell {cell!r}: {output!r}"
@@ -147,10 +119,6 @@ def test_emit_diagnose_servers_table_quiet_mode() -> None:
     """Quiet mode produces no output."""
     pd, buf = _display()
     pd._is_quiet = True
-    pd.emit_diagnose_servers_table(
-        [("server-a", "stdio", "healthy", "5", "ok")]
-    )
+    pd.emit_diagnose_servers_table([("server-a", "stdio", "healthy", "5", "ok")])
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"

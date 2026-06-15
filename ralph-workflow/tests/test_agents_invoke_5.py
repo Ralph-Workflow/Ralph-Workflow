@@ -126,11 +126,12 @@ class TestResolveInvocationRuntime:
         assert result.mcp_endpoint == "http://localhost:9999"
         assert result.agent_env is not None
 
-    def test_agy_runtime_early_exit_when_no_endpoint(self) -> None:
+    def test_agy_runtime_early_exit_when_no_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
         config = AgentConfig(
             cmd="agy",
             transport=AgentTransport.AGY,
         )
+        monkeypatch.delenv(str(MCP_ENDPOINT_ENV), raising=False)
 
         result = invoke_module.resolve_invocation_runtime(config, None, None)
 
@@ -243,14 +244,10 @@ def test_opencode_runtime_propagates_unsafe_mode(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(invoke_module, "merge_mcp_toml_into_upstreams", lambda u, m: u)
     monkeypatch.setattr(invoke_module, "set_upstream_mcp_config", lambda e, u: None)
 
-    invoke_module.resolve_invocation_runtime(
-        config, extra_env, None, unsafe_mode=True
-    )
+    invoke_module.resolve_invocation_runtime(config, extra_env, None, unsafe_mode=True)
     assert captured["unsafe_mode"] is True
 
-    invoke_module.resolve_invocation_runtime(
-        config, extra_env, None, unsafe_mode=False
-    )
+    invoke_module.resolve_invocation_runtime(config, extra_env, None, unsafe_mode=False)
     assert captured["unsafe_mode"] is False
 
 
@@ -285,9 +282,7 @@ def test_nanocoder_runtime_propagates_unsafe_mode(
 
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    invoke_module.resolve_invocation_runtime(
-        config, extra_env, workspace, unsafe_mode=True
-    )
+    invoke_module.resolve_invocation_runtime(config, extra_env, workspace, unsafe_mode=True)
     assert captured["unsafe_mode"] is True
     assert captured["workspace_path"] == workspace
 
@@ -343,9 +338,7 @@ def test_claude_command_propagates_unsafe_mode(
         captured["workspace_path"] = workspace_path
         return json.dumps({"mcpServers": {"ralph": {"url": endpoint}}})
 
-    monkeypatch.setattr(
-        "ralph.agents.invoke._commands.claude_mcp_config", fake_claude_mcp_config
-    )
+    monkeypatch.setattr("ralph.agents.invoke._commands.claude_mcp_config", fake_claude_mcp_config)
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")

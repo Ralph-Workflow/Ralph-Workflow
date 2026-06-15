@@ -452,6 +452,7 @@ def test_generate_commit_message_recovers_midstream_failure_using_raw_session_id
     ) -> object:
         calls.append(getattr(options, "session_id", None))
         if len(calls) == 1:
+
             def _failing_iter() -> object:
                 yield '{"type":"session","session_id":"sess-midstream"}'
                 yield '{"type":"tool_result","tool":"read_file"}'

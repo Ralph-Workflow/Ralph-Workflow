@@ -38,8 +38,7 @@ def test_emit_first_run_panel_renders_panel() -> None:
     pd.emit_first_run_panel([Text("hello-first-run")])
 
     assert len(printed) == 1, (
-        f"emit_first_run_panel should print exactly one Panel, got {len(printed)}: "
-        f"{printed!r}"
+        f"emit_first_run_panel should print exactly one Panel, got {len(printed)}: {printed!r}"
     )
     panel = printed[0]
     assert isinstance(panel, Panel), (

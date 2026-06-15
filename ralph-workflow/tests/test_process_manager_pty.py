@@ -158,9 +158,7 @@ def test_managed_pty_wait_raises_on_live_process(tmp_path: Path) -> None:
             del timeout
             raise TimeoutError("fake-pty-timeout")
 
-    handle._proc = _RaisingPty(
-        pid=proc.pid, master_fd=proc.master_fd, slave_fd=proc.slave_fd
-    )
+    handle._proc = _RaisingPty(pid=proc.pid, master_fd=proc.master_fd, slave_fd=proc.slave_fd)
     with pytest.raises(TimeoutError):
         handle.wait(timeout=0.001)
 
@@ -522,4 +520,3 @@ def test_managed_pty_fileno_returns_master_fd(tmp_path: Path) -> None:
     )
     handle = pm.spawn_pty(["claude"], PtySpawnOptions(cwd=str(tmp_path)))
     assert handle.fileno() == handle.master_fd
-

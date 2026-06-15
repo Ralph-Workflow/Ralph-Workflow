@@ -33,9 +33,7 @@ class GeminiParser(ParserTemplateBase):
     - Iterator exhaustion (final flush via ``flush_accumulators()``)
     """
 
-    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
-        {"done", "stop", "message_end"}
-    )
+    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"done", "stop", "message_end"})
 
     def __init__(self) -> None:
         self._text_accumulator: TextAccumulator | None = None

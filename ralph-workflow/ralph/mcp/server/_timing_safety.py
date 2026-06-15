@@ -56,9 +56,7 @@ KILL_ESCALATION_CEILING_MS: int = _KILL_ESCALATION_CEILING_MS
 #: request timeout — otherwise a slow client can hit its request
 #: timeout while the server is still dispatching, producing the
 #: ``-32001`` retry storm the architecture is built to prevent.
-SERVER_WORST_CASE_MS: int = (
-    DISPATCH_CAP_MS + DRAIN_CEILING_MS + KILL_ESCALATION_CEILING_MS
-)
+SERVER_WORST_CASE_MS: int = DISPATCH_CAP_MS + DRAIN_CEILING_MS + KILL_ESCALATION_CEILING_MS
 
 # Import-time invariant (NOT assert) — survives python -O.
 if not SERVER_WORST_CASE_MS < CLIENT_REQUEST_TIMEOUT_MS:

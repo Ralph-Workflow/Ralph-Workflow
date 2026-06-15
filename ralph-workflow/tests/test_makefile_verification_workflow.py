@@ -6,7 +6,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MAKEFILE_PATH = REPO_ROOT / "Makefile"
 
 
-
 def _target_body(name: str) -> list[str]:
     lines = MAKEFILE_PATH.read_text(encoding="utf-8").splitlines()
     body: list[str] = []
@@ -27,7 +26,6 @@ def _target_body(name: str) -> list[str]:
         raise AssertionError(f"target {name!r} not found")
 
     return body
-
 
 
 def _assert_all_lines_contain(body: list[str], needles: list[str]) -> None:
@@ -104,7 +102,7 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     assert e2e_body == [
         "uv run python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
-        "python -m pytest tests/ -q -n 1 -m \"subprocess_e2e and not smoke\""
+        'python -m pytest tests/ -q -n 1 -m "subprocess_e2e and not smoke"'
     ]
 
 
@@ -120,6 +118,3 @@ def test_makefile_exposes_explicit_twine_upload_targets() -> None:
     ]
     assert publish_body == twine_upload_body
     assert test_pypi_body == twine_upload_testpypi_body
-
-
-

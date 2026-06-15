@@ -347,9 +347,28 @@ def test_run_verify_single_step_within_budget(
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
     # all other steps take 0s.
     times = [
-        0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-        1.0, 1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
@@ -573,9 +592,28 @@ def test_run_verify_non_test_steps_not_counted(
     # Eleven steps (ruff, mypy, make test, seven audits) x 2 monotonic calls
     # per step = 22 entries.
     times = [
-        0.0, 100.0, 100.0, 200.0, 200.0, 300.0, 300.0, 400.0,
-        400.0, 500.0, 500.0, 600.0, 600.0, 700.0, 700.0, 800.0,
-        800.0, 900.0, 900.0, 1000.0, 1000.0, 1100.0,
+        0.0,
+        100.0,
+        100.0,
+        200.0,
+        200.0,
+        300.0,
+        300.0,
+        400.0,
+        400.0,
+        500.0,
+        500.0,
+        600.0,
+        600.0,
+        700.0,
+        700.0,
+        800.0,
+        800.0,
+        900.0,
+        900.0,
+        1000.0,
+        1000.0,
+        1100.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 

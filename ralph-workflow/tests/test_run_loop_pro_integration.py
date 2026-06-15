@@ -130,9 +130,7 @@ def _build_config(tmp_path: Path) -> UnifiedConfig:
     return cast("UnifiedConfig", config)
 
 
-def _install_display_context(
-    monkeypatch: pytest.MonkeyPatch, run_loop_module: ModuleType
-) -> None:
+def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: ModuleType) -> None:
     """Force ``make_display_context`` to return a deterministic context."""
     ctx = make_display_context()
     runner_module = _load_runner()
@@ -160,9 +158,7 @@ def _patch_runner_dependencies(
     )
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
-    monkeypatch.setattr(
-        runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle
-    )
+    monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle)
     monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
     monkeypatch.setattr(
         runner_module,
@@ -179,9 +175,7 @@ def _build_recovery_controller_mock() -> MagicMock:
     )
 
 
-def test_heartbeat_started_in_pro_mode(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_heartbeat_started_in_pro_mode(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     run_loop_module = _load_run_loop()
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     _seed_workspace(tmp_path)
@@ -253,9 +247,7 @@ def test_no_heartbeat_when_pro_mode_inactive(
 
     exit_code = run_loop_module.run(config, initial_state=state)
     assert exit_code == 0
-    assert started_clients == [] or all(
-        not getattr(c, "started", False) for c in started_clients
-    )
+    assert started_clients == [] or all(not getattr(c, "started", False) for c in started_clients)
 
 
 def test_pro_mode_exit_code_zero_on_clean_completion(
@@ -303,9 +295,7 @@ def test_pro_mode_exit_code_preserved_on_pipeline_failure(
     _seed_marker(tmp_path, run_id="run-fail", token="tok", port=7432)
 
     recording = _RecordingHeartbeat()
-    monkeypatch.setattr(
-        run_loop_module, "_start_pro_heartbeat_if_active", lambda _ws: recording
-    )
+    monkeypatch.setattr(run_loop_module, "_start_pro_heartbeat_if_active", lambda _ws: recording)
 
     config = _build_config(tmp_path)
     state = PipelineState(phase="planning")
@@ -346,9 +336,7 @@ def test_start_pro_heartbeat_returns_none_when_run_id_missing(
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     marker_dir = tmp_path / ".ralph"
     marker_dir.mkdir()
-    (marker_dir / "run.json").write_text(
-        json.dumps({"heartbeatToken": "x"}), encoding="utf-8"
-    )
+    (marker_dir / "run.json").write_text(json.dumps({"heartbeatToken": "x"}), encoding="utf-8")
     assert run_loop_module._start_pro_heartbeat_if_active(tmp_path) is None
 
 
@@ -359,9 +347,7 @@ def test_start_pro_heartbeat_returns_none_when_token_missing(
     monkeypatch.setenv("RALPH_WORKFLOW_PRO", "1")
     marker_dir = tmp_path / ".ralph"
     marker_dir.mkdir()
-    (marker_dir / "run.json").write_text(
-        json.dumps({"runId": "x"}), encoding="utf-8"
-    )
+    (marker_dir / "run.json").write_text(json.dumps({"runId": "x"}), encoding="utf-8")
     assert run_loop_module._start_pro_heartbeat_if_active(tmp_path) is None
 
 
@@ -611,9 +597,9 @@ def test_late_marker_adoption_starts_heartbeat_after_run(
 
     config = _build_config(tmp_path)
     hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
-    exit_code = cast(
-        "Callable[..., int]", run_loop_module.run
-    )(config, initial_state=state, pro_hooks=hooks)
+    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        config, initial_state=state, pro_hooks=hooks
+    )
     assert exit_code == 0
     assert recording.started, "late marker should have started the heartbeat"
     assert recording.stopped, "cleanup should have stopped the heartbeat"

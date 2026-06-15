@@ -291,9 +291,7 @@ def _produce_initial_artifact(
         None,
         user_idea,
     )
-    session_id = _run_single_invoke(
-        runtime, prompt_file, display_context=display_context
-    )
+    session_id = _run_single_invoke(runtime, prompt_file, display_context=display_context)
     return read_product_spec_artifact(workspace_root), session_id
 
 
@@ -424,8 +422,7 @@ def run_prompt_helper(config: UnifiedConfig, workspace_root: Path) -> None:
         if spec is None:
             display = resolve_active_display(None, ctx)
             display.emit_warning(
-                "The agent did not produce a product specification. "
-                "No PROMPT.md was written."
+                "The agent did not produce a product specification. No PROMPT.md was written."
             )
             return
         _run_review_loop(

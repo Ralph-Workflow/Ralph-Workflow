@@ -34,9 +34,7 @@ def test_welcome_panel_next_steps_still_mentions_agy_and_nanocoder() -> None:
     """
     output = "\n".join(welcome_panel_next_steps())
     for token in ("claude", "opencode", "nanocoder", "agy"):
-        assert token in output, (
-            f"Expected {token!r} in welcome_panel_next_steps, got: {output!r}"
-        )
+        assert token in output, f"Expected {token!r} in welcome_panel_next_steps, got: {output!r}"
 
 
 def test_welcome_panel_next_steps_mentions_project_canonical() -> None:
@@ -49,9 +47,7 @@ def test_welcome_panel_next_steps_mentions_project_canonical() -> None:
 def test_welcome_panel_next_steps_mentions_three_project_siblings() -> None:
     output = "\n".join(welcome_panel_next_steps())
     for path in PROJECT_SIBLING_SKILL_PATHS:
-        assert path in output, (
-            f"Expected {path!r} in welcome_panel_next_steps, got: {output!r}"
-        )
+        assert path in output, f"Expected {path!r} in welcome_panel_next_steps, got: {output!r}"
 
 
 def test_welcome_panel_next_steps_lists_opencode_skills_exactly_once() -> None:

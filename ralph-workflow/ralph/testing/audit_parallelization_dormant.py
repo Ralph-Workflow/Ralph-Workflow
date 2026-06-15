@@ -95,7 +95,7 @@ _INVARIANTS: tuple[Invariant, ...] = (
     ),
     Invariant(
         rel_path="policy/defaults/pipeline.toml",
-        present=("dispatch_mode = \"agent_subagents\"",),
+        present=('dispatch_mode = "agent_subagents"',),
     ),
     Invariant(
         rel_path="prompts/templates/planning_analysis.jinja",
@@ -141,9 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         problems.extend(invariant.violations())
 
     if problems:
-        print(
-            f"PARALLELIZATION-DORMANT AUDIT FAILED: {len(problems)} invariant violation(s)"
-        )
+        print(f"PARALLELIZATION-DORMANT AUDIT FAILED: {len(problems)} invariant violation(s)")
         print("=" * 72)
         for line in problems:
             print(f"  {line}")

@@ -31,6 +31,6 @@ def test_canonical_types_used_in_forbidden_path_patterns() -> None:
     patterns_3_and_4 = [p[0] for p in _FORBIDDEN_PATH_PATTERNS[2:]]
     for t in _CANONICAL_TYPES:
         for pattern in patterns_3_and_4:
-            assert (
-                re.search(re.escape(t), pattern) is not None
-            ), f"Canonical type {t!r} not found in pattern {pattern!r}"
+            assert re.search(re.escape(t), pattern) is not None, (
+                f"Canonical type {t!r} not found in pattern {pattern!r}"
+            )

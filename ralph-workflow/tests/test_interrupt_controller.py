@@ -98,9 +98,7 @@ def test_force_exit_uses_interrupt_exit_code_and_force_kill() -> None:
     def _shutdown_all(grace_period_s: float) -> None:
         events.append(("shutdown", grace_period_s))
         if grace_period_s == 0:
-            events.extend(
-                [("kill", (pgid, 9)) for pgid in bridge_pgids]
-            )
+            events.extend([("kill", (pgid, 9)) for pgid in bridge_pgids])
 
     controller = InterruptController(
         shutdown_all=_shutdown_all,

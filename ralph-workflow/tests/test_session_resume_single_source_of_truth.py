@@ -93,9 +93,7 @@ def test_resolve_rejects_prior_session_id_mismatch() -> None:
 def test_recovery_action_for_failure_reason(
     failure_reason: str, has_prior_session: bool, expected_action: str
 ) -> None:
-    action = recovery_action_for_failure_reason(
-        failure_reason, has_prior_session=has_prior_session
-    )
+    action = recovery_action_for_failure_reason(failure_reason, has_prior_session=has_prior_session)
     assert action == expected_action
 
 

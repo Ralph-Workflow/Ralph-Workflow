@@ -83,9 +83,7 @@ def test_path_read_text_is_violation(tmp_path: Path) -> None:
 def test_path_read_text_with_tmp_path_is_allowed(tmp_path: Path) -> None:
     """Path().read_text() with tmp_path in source should be allowed."""
     test_file = tmp_path / "test_example.py"
-    test_file.write_text(
-        "from pathlib import Path\np = tmp_path / 'f.txt'\nPath(p).read_text()\n"
-    )
+    test_file.write_text("from pathlib import Path\np = tmp_path / 'f.txt'\nPath(p).read_text()\n")
     violations = audit_test_file(test_file)
     assert len(violations) == 0
 

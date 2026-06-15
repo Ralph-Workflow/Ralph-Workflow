@@ -399,9 +399,7 @@ def _make_streaming_handle(
 ) -> ManagedProcess:
     pm = ProcessManager(
         policy=_FAST_POLICY,
-        sync_process_factory=lambda command, opts: _StreamingFakePopen(
-            stdout_data, stderr_data
-        ),
+        sync_process_factory=lambda command, opts: _StreamingFakePopen(stdout_data, stderr_data),
         psutil=None,
     )
     return pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="test:stream"))

@@ -237,9 +237,7 @@ def smoke_harness_agent_command(
     registry = AgentRegistry.from_config(config)
     agent_config = registry.get(agent_name)
     if agent_config is None:
-        raise RuntimeError(
-            f"Smoke test agent '{agent_name}' is unavailable in the registry"
-        )
+        raise RuntimeError(f"Smoke test agent '{agent_name}' is unavailable in the registry")
 
     agy_override = _agy_binary_override_env()
     if agy_override and agent_config.transport is AgentTransport.AGY:

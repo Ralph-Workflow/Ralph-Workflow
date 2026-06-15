@@ -44,9 +44,7 @@ def _policy(
 
 
 def _evaluate(watchdog: IdleWatchdog) -> WatchdogVerdict:
-    return watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.RESUMABLE_CONTINUE
-    )
+    return watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.RESUMABLE_CONTINUE)
 
 
 _TIMEOUT_ERROR = "MCP error -32001: Request timed out"
@@ -159,9 +157,7 @@ def test_window_rule_fires_even_when_a_distinct_line_trails_the_storm() -> None:
     """Regression: a single distinct trailing line must NOT mask a window-full
     storm of an earlier fingerprint."""
     clock = FakeClock()
-    watchdog = IdleWatchdog(
-        _policy(consecutive=None, window_count=8, window_seconds=600.0), clock
-    )
+    watchdog = IdleWatchdog(_policy(consecutive=None, window_count=8, window_seconds=600.0), clock)
     for _ in range(8):
         watchdog.record_error_activity(_TIMEOUT_ERROR)
         clock.advance(10.0)

@@ -42,9 +42,7 @@ def test_sync_calls_check_skills_for_updates_when_state_exists(
     mock_manager.check_skills_for_updates.assert_called_once_with()
 
 
-def test_sync_is_non_fatal_on_exception(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_sync_is_non_fatal_on_exception(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.side_effect = RuntimeError("simulated failure")
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
@@ -52,9 +50,7 @@ def test_sync_is_non_fatal_on_exception(
     run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)  # must not raise
 
 
-def test_sync_seeds_missing_project_skills(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_sync_seeds_missing_project_skills(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """When predicate is True, install_project_baseline_skills is called."""
     mock_manager = MagicMock()
     mock_manager.check_skills_for_updates.return_value = False
@@ -124,9 +120,9 @@ def test_sync_is_non_fatal_on_project_install_exception(
     finally:
         logger.remove(sink_id)
 
-    assert any(
-        "Project-scope skill install failed" in message for message in captured
-    ), f"Expected debug log line, got: {captured!r}"
+    assert any("Project-scope skill install failed" in message for message in captured), (
+        f"Expected debug log line, got: {captured!r}"
+    )
 
 
 def test_sync_surfaces_force_init_skills_hint_on_project_skill_conflict(
@@ -137,9 +133,7 @@ def test_sync_surfaces_force_init_skills_hint_on_project_skill_conflict(
     mock_manager.check_skills_for_updates.return_value = False
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
 
-    fake_install = MagicMock(
-        return_value=(MagicMock(), ["sibling-conflict-using-superpowers"])
-    )
+    fake_install = MagicMock(return_value=(MagicMock(), ["sibling-conflict-using-superpowers"]))
     monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: True)
     monkeypatch.setattr(run_module, "install_project_baseline_skills", fake_install)
 
@@ -204,14 +198,10 @@ def test_sync_seeds_default_gitignore_on_every_run(
     monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
 
     monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: False)
-    monkeypatch.setattr(
-        run_module, "install_project_baseline_skills", MagicMock()
-    )
+    monkeypatch.setattr(run_module, "install_project_baseline_skills", MagicMock())
 
     gitignore_mock = MagicMock()
-    monkeypatch.setattr(
-        "ralph.config.bootstrap.auto_seed_default_gitignore", gitignore_mock
-    )
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_gitignore", gitignore_mock)
 
     run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
 
@@ -239,9 +229,9 @@ def test_sync_gitignore_seed_is_non_fatal_on_exception(
     finally:
         logger.remove(sink_id)
 
-    assert any(
-        "Project .gitignore auto-seed failed" in message for message in captured
-    ), f"Expected debug log line, got: {captured!r}"
+    assert any("Project .gitignore auto-seed failed" in message for message in captured), (
+        f"Expected debug log line, got: {captured!r}"
+    )
 
 
 def test_sync_surfaces_force_init_skills_hint_on_user_global_update_available(

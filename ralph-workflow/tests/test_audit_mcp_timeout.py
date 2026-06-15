@@ -233,9 +233,7 @@ def test_audit_flags_unbounded_httpx_in_pro_support(tmp_path: Path) -> None:
     )
     violations, _checked = audit_mcp_directory(pro_dir)
     network_violations = [v for v in violations if v.category == "network"]
-    assert network_violations, (
-        "expected at least one network violation in pro_support/heartbeat.py"
-    )
+    assert network_violations, "expected at least one network violation in pro_support/heartbeat.py"
 
 
 def test_default_roots_includes_pro_support() -> None:

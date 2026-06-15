@@ -82,9 +82,7 @@ def test_teardown_subtree_reaps_orphaned_children_after_host_exit() -> None:
     it by signaling the process group.
     """
     child_script = (
-        "import signal, time; "
-        "signal.signal(signal.SIGHUP, signal.SIG_IGN); "
-        "time.sleep(600)"
+        "import signal, time; signal.signal(signal.SIGHUP, signal.SIG_IGN); time.sleep(600)"
     )
     host_script = (
         "import subprocess, sys, time; "

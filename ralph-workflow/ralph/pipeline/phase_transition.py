@@ -172,9 +172,7 @@ def _show_phase_start_with_context(
     with suppress(Exception):
         fallback = resolve_active_display(None, display_context)
         if fallback is not None and hasattr(fallback, "emit_phase_start"):
-            fallback.emit_phase_start(
-                phase, agent_name=agent_name, pipeline_policy=pipeline_policy
-            )
+            fallback.emit_phase_start(phase, agent_name=agent_name, pipeline_policy=pipeline_policy)
 
 
 @dataclass(frozen=True)
@@ -385,12 +383,8 @@ def _build_phase_change_render_data(
     *,
     pipeline_policy: PipelinePolicy,
 ) -> _PhaseChangeRenderData:
-    elapsed = (
-        display.last_phase_elapsed_seconds
-    )
-    waiting_status_line = (
-        display.subscriber.waiting_status_line
-    )
+    elapsed = display.last_phase_elapsed_seconds
+    waiting_status_line = display.subscriber.waiting_status_line
     content_blocks = 0
     thinking_blocks = 0
     tool_calls = 0
@@ -475,9 +469,7 @@ def _emit_phase_change_surfaces(
     display_context: DisplayContext,
     pipeline_policy: PipelinePolicy,
 ) -> None:
-    phase_close_already_emitted_attr: object = getattr(
-        display, "phase_close_emitted", False
-    )
+    phase_close_already_emitted_attr: object = getattr(display, "phase_close_emitted", False)
     phase_close_already_emitted: bool = bool(phase_close_already_emitted_attr)
     if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
         with suppress(Exception):

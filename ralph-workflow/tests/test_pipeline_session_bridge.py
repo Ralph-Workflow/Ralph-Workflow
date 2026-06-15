@@ -138,9 +138,7 @@ class TestBuildSessionBridge:
         assert isinstance(bridge, FakeSessionBridge)
         assert bridge.agent_endpoint_uri() == "http://localhost:8888"
 
-    def test_defaults_to_unknown_identity_when_model_identity_is_none(
-        self, tmp_path: Path
-    ) -> None:
+    def test_defaults_to_unknown_identity_when_model_identity_is_none(self, tmp_path: Path) -> None:
         bridge = build_session_bridge(
             workspace_root=tmp_path,
             drain="commit",
@@ -189,9 +187,7 @@ class TestBuildSessionBridge:
 
         assert bridge.run_id == "commit-plumbing"
 
-    def test_bridge_env_for_uses_bridge_run_id_after_build(
-        self, tmp_path: Path
-    ) -> None:
+    def test_bridge_env_for_uses_bridge_run_id_after_build(self, tmp_path: Path) -> None:
         """End-to-end binding: the env a fresh bridge produces must match
         the session's run_id, so the gate and the receipt share one identity.
         """
@@ -222,9 +218,7 @@ class TestBuildSessionBridge:
 
         assert isinstance(bridge, FakeSessionBridge)
 
-    def test_artifact_format_docs_are_materialized_into_workspace(
-        self, tmp_path: Path
-    ) -> None:
+    def test_artifact_format_docs_are_materialized_into_workspace(self, tmp_path: Path) -> None:
         """The pre-render hook must materialize every bundled format doc.
 
         The artifact submission macro tells the agent to read
@@ -283,9 +277,7 @@ class TestBridgeEnvFor:
     """
 
     def test_returns_exactly_two_keys(self, tmp_path: Path) -> None:
-        bridge = FakeSessionBridge(
-            endpoint="http://localhost:7777", run_id="commit-plumbing"
-        )
+        bridge = FakeSessionBridge(endpoint="http://localhost:7777", run_id="commit-plumbing")
         env = bridge_env_for(bridge)
 
         assert set(env.keys()) == {str(MCP_ENDPOINT_ENV), str(MCP_RUN_ID_ENV)}

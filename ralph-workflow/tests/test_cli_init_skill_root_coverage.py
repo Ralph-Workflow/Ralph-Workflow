@@ -108,18 +108,14 @@ def _install_fake_roots(
             is_canonical=False,
         ),
     )
-    monkeypatch.setattr(
-        "ralph.skills._agent_paths.agent_skill_roots", lambda: roots
-    )
+    monkeypatch.setattr("ralph.skills._agent_paths.agent_skill_roots", lambda: roots)
     # Pre-create SKILL.md in every baseline skill name under each root so
     # the table renders 'OK' for every row.
     for root_dir in (canonical_dir, opencode_dir, agy_dir):
         for name in BASELINE_SKILL_NAMES:
             skill_dir = root_dir / name
             skill_dir.mkdir(parents=True, exist_ok=True)
-            (skill_dir / "SKILL.md").write_text(
-                f"# {name}\n", encoding="utf-8"
-            )
+            (skill_dir / "SKILL.md").write_text(f"# {name}\n", encoding="utf-8")
     return canonical_dir, codex_dir, opencode_dir, agy_dir
 
 
@@ -194,9 +190,7 @@ def test_init_command_skill_summary_reports_missing_sibling(
     init_module.init_command(template="default")
 
     output = stream.getvalue()
-    assert "Skipped" in output, (
-        f"Expected 'Skipped' for the opencode sibling row, got: {output!r}"
-    )
+    assert "Skipped" in output, f"Expected 'Skipped' for the opencode sibling row, got: {output!r}"
     assert "opencode" in output
 
 
@@ -205,9 +199,7 @@ def test_init_command_skill_summary_reports_project_skill_root(
 ) -> None:
     """The skill root coverage table must include project-scope rows with a 'Scope' column."""
     stream = _attach_console_with_buffer(monkeypatch)
-    _canonical_dir, _codex_dir, _opencode_dir, _agy_dir = _install_fake_roots(
-        monkeypatch, tmp_path
-    )
+    _canonical_dir, _codex_dir, _opencode_dir, _agy_dir = _install_fake_roots(monkeypatch, tmp_path)
 
     # Pre-create project-scope canonical files so the rows render 'OK'.
     project_canonical = tmp_path / ".opencode" / "skills"
@@ -228,9 +220,7 @@ def test_init_command_skill_summary_reports_project_skill_root(
         for name in BASELINE_SKILL_NAMES:
             sibling_dir = sibling_root / name
             sibling_dir.mkdir(parents=True, exist_ok=True)
-            (sibling_dir / "SKILL.md").write_text(
-                f"# {name}\n", encoding="utf-8"
-            )
+            (sibling_dir / "SKILL.md").write_text(f"# {name}\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
 
@@ -256,16 +246,10 @@ def test_init_command_skill_summary_reports_project_skill_root(
     init_module.init_command(template="default")
 
     output = stream.getvalue()
-    assert "Scope" in output, (
-        f"Expected 'Scope' column header in output, got: {output!r}"
-    )
+    assert "Scope" in output, f"Expected 'Scope' column header in output, got: {output!r}"
     assert output.count("Scope") == 1, (
         f"Expected exactly one 'Scope' column header, got {output.count('Scope')}: {output!r}"
     )
-    assert "project" in output, (
-        f"Expected 'project' value in output, got: {output!r}"
-    )
+    assert "project" in output, f"Expected 'project' value in output, got: {output!r}"
     for agent in ("claude (project)", "codex (project)", "agy (project)"):
-        assert agent in output, (
-            f"Expected {agent!r} in project-scope rows, got: {output!r}"
-        )
+        assert agent in output, f"Expected {agent!r} in project-scope rows, got: {output!r}"

@@ -84,9 +84,7 @@ def _build_test_workspace(tmp_path: pathlib.Path) -> FsWorkspace:
     return FsWorkspace(tmp_path)
 
 
-def _server_with_budget(
-    budget: SessionWrapupBudget, *, tmp_path: pathlib.Path
-) -> McpServer:
+def _server_with_budget(budget: SessionWrapupBudget, *, tmp_path: pathlib.Path) -> McpServer:
     bridge = ToolBridge()
     bridge.register(
         ToolMetadata(
@@ -172,17 +170,14 @@ def test_mcp_server_reset_session_budget_rearms_after_soft_threshold_crossed(
     # Cross the soft threshold; the next tool call MUST carry the banner.
     clock.advance(3001.0)
     content_with_banner = _call_read_file(server)
-    assert any(
-        "declare_complete" in str(block.get("text", "")) for block in content_with_banner
-    )
+    assert any("declare_complete" in str(block.get("text", "")) for block in content_with_banner)
 
     # Reset the budget; the new run has elapsed ~0s on the same wall clock,
     # so the next tool call MUST NOT carry the banner.
     server.reset_session_budget()
     content_after_reset = _call_read_file(server)
     assert all(
-        "declare_complete" not in str(block.get("text", ""))
-        for block in content_after_reset
+        "declare_complete" not in str(block.get("text", "")) for block in content_after_reset
     )
 
 
@@ -366,7 +361,7 @@ def _http_post_jsonrpc(endpoint: str, payload: dict[str, object]) -> dict[str, o
     # The server responds with an SSE frame; the data line carries the JSON-RPC body.
     for line in raw.splitlines():
         if line.startswith("data: "):
-            decoded: object = json.loads(line[len("data: "):])
+            decoded: object = json.loads(line[len("data: ") :])
             if isinstance(decoded, dict):
                 return decoded
     # Notifications receive a 202 with empty body — return an empty dict.

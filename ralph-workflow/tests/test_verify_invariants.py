@@ -167,13 +167,13 @@ def _run_label_patched_import(
         old = '_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})'
         # Build replacement with the given labels sorted.
         labels_repr = sorted(known_test_step_labels)
-        new = f'_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({labels_repr!r})'
+        new = f"_KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({labels_repr!r})"
         patched = patched.replace(old, new)
 
     if budget_tracked_steps is not None:
         # Replace: _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
-        old = '_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})'
-        new = f'_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({sorted(budget_tracked_steps)!r})'
+        old = "_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})"
+        new = f"_BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({sorted(budget_tracked_steps)!r})"
         patched = patched.replace(old, new)
 
     with tempfile.NamedTemporaryFile(
@@ -234,9 +234,7 @@ def test_budget_tracked_steps_must_not_be_empty() -> None:
 
 def test_make_test_must_be_in_known_labels() -> None:
     """_KNOWN_TEST_STEP_LABELS without 'make test' should raise RuntimeError."""
-    result = _run_label_patched_import(
-        known_test_step_labels=frozenset({"other test"})
-    )
+    result = _run_label_patched_import(known_test_step_labels=frozenset({"other test"}))
     assert result.returncode != 0, (
         f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
     )

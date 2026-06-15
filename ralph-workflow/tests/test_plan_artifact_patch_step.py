@@ -35,9 +35,7 @@ if TYPE_CHECKING:
 def _write_draft(tmp_path: Path, draft: dict[str, object]) -> None:
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(
-        json.dumps(draft), encoding="utf-8"
-    )
+    (artifact_dir / ".plan_draft.json").write_text(json.dumps(draft), encoding="utf-8")
 
 
 def _read_draft(tmp_path: Path) -> dict[str, object]:
@@ -132,7 +130,8 @@ def test_patch_step_preserves_unmentioned_fields(tmp_path: Path) -> None:
 
 
 def test_patch_step_overwrite_depends_on_triggers_remap(tmp_path: Path) -> None:
-    """patch with {depends_on: [1, 2]} overwrites the depends_on and triggers the reindex/AC remap.
+    """patch with {depends_on: [1, 2]} overwrites the depends_on
+    and triggers the reindex/AC remap.
     """
     _write_draft(tmp_path, _three_step_draft())
     workspace = FsWorkspace(tmp_path)

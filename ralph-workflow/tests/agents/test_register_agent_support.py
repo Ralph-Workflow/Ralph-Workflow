@@ -549,9 +549,7 @@ class TestRegistrationRegressionCases:
         )
 
         # Built-in headless Claude parser must remain reachable.
-        key = resolve_parser_key(
-            "claude -p", JsonParserType.CLAUDE, AgentTransport.CLAUDE
-        )
+        key = resolve_parser_key("claude -p", JsonParserType.CLAUDE, AgentTransport.CLAUDE)
         assert key == "claude"
         assert isinstance(get_parser(key), ClaudeParser)
 
@@ -577,9 +575,7 @@ class TestRegistrationRegressionCases:
             agent_registry=registry,
         )
 
-        strategy = strategy_for_command(
-            "totally-unknown-binary", AgentTransport.GENERIC
-        )
+        strategy = strategy_for_command("totally-unknown-binary", AgentTransport.GENERIC)
         assert isinstance(strategy, GenericExecutionStrategy)
 
     def test_transport_strategy_is_overwritten_by_custom_registration(self) -> None:

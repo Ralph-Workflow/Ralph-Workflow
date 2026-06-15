@@ -134,9 +134,7 @@ def test_sibling_symlink_install_covers_every_sibling_root(
     )
     fake_siblings = fake_roots[1:]
 
-    monkeypatch.setattr(
-        "ralph.skills._installer.agent_skill_roots", lambda: fake_roots
-    )
+    monkeypatch.setattr("ralph.skills._installer.agent_skill_roots", lambda: fake_roots)
     monkeypatch.setattr(
         "ralph.skills._installer.canonical_agent_skill_root",
         lambda: fake_roots[0],

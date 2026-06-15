@@ -61,9 +61,7 @@ def test_build_agy_command_options_model_flag_overrides_config(tmp_path: Path) -
     cmd = build_command(
         config,
         str(prompt_file),
-        options=BuildCommandOptions(
-            model_flag=f"--model {shlex.quote(option_display_name)}"
-        ),
+        options=BuildCommandOptions(model_flag=f"--model {shlex.quote(option_display_name)}"),
     )
 
     assert cmd[cmd.index("--model") + 1] == option_display_name

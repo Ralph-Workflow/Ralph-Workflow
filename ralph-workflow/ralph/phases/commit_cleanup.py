@@ -40,25 +40,84 @@ if TYPE_CHECKING:
 
 COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
 
-_UNSAFE_EXTENSIONS: frozenset[str] = frozenset({
-    ".py", ".js", ".ts", ".go", ".rs", ".rb", ".java", ".c", ".cpp", ".h",
-    ".md", ".rst", ".txt",
-    ".toml", ".yaml", ".yml", ".json", ".ini", ".cfg",
-    # Additional source code extensions
-    ".swift", ".kt", ".kts", ".scala", ".php",
-    ".sh", ".bash", ".zsh", ".fish", ".ps1",
-    ".pl", ".pm", ".lua", ".r", ".m", ".mm",
-    ".cs", ".fs", ".fsx", ".vb", ".dart",
-    ".groovy", ".clj", ".cljs", ".hs", ".lhs",
-    ".elm", ".erl", ".ex", ".exs", ".ml", ".mli",
-    ".nim", ".cr", ".pas", ".pp", ".sql",
-    ".graphql", ".gql", ".prisma", ".proto",
-    ".asm", ".s", ".inc", ".def",
-    ".cmake", ".mak", ".ninja",
-    ".dockerfile", ".jenkinsfile",
-    # Config/data extensions
-    ".xml", ".csv", ".tsv",
-})
+_UNSAFE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".js",
+        ".ts",
+        ".go",
+        ".rs",
+        ".rb",
+        ".java",
+        ".c",
+        ".cpp",
+        ".h",
+        ".md",
+        ".rst",
+        ".txt",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".ini",
+        ".cfg",
+        # Additional source code extensions
+        ".swift",
+        ".kt",
+        ".kts",
+        ".scala",
+        ".php",
+        ".sh",
+        ".bash",
+        ".zsh",
+        ".fish",
+        ".ps1",
+        ".pl",
+        ".pm",
+        ".lua",
+        ".r",
+        ".m",
+        ".mm",
+        ".cs",
+        ".fs",
+        ".fsx",
+        ".vb",
+        ".dart",
+        ".groovy",
+        ".clj",
+        ".cljs",
+        ".hs",
+        ".lhs",
+        ".elm",
+        ".erl",
+        ".ex",
+        ".exs",
+        ".ml",
+        ".mli",
+        ".nim",
+        ".cr",
+        ".pas",
+        ".pp",
+        ".sql",
+        ".graphql",
+        ".gql",
+        ".prisma",
+        ".proto",
+        ".asm",
+        ".s",
+        ".inc",
+        ".def",
+        ".cmake",
+        ".mak",
+        ".ninja",
+        ".dockerfile",
+        ".jenkinsfile",
+        # Config/data extensions
+        ".xml",
+        ".csv",
+        ".tsv",
+    }
+)
 
 _UNSAFE_PATH_SEGMENTS: tuple[str, ...] = ("tests/", "test_", "_test.", "docs/", "doc/")
 
@@ -74,51 +133,55 @@ _HOUSEKEEPING_BASENAMES: frozenset[str] = frozenset({".coverage", "coverage.xml"
 # ``MAKEFILE``, ``License`` and similar are all covered. These names win over
 # every suffix-based check, including the ``.txt`` / ``.json`` generated-text
 # marker check (e.g. ``LICENSE.txt`` is protected).
-_PROTECTED_BASENAMES: frozenset[str] = frozenset({
-    "dockerfile",
-    "makefile",
-    "license",
-    "readme",
-})
+_PROTECTED_BASENAMES: frozenset[str] = frozenset(
+    {
+        "dockerfile",
+        "makefile",
+        "license",
+        "readme",
+    }
+)
 
-_GENERATED_TEXT_MARKERS: frozenset[str] = frozenset({
-    "agent",
-    "ai",
-    "analysis",
-    "artifact",
-    "brainstorm",
-    "capture",
-    "chat",
-    "checkpoint",
-    "completion",
-    "conversation",
-    "debug",
-    "dump",
-    "generated",
-    "generation",
-    "inference",
-    "interaction",
-    "llm",
-    "log",
-    "message",
-    "model",
-    "note",
-    "output",
-    "pipeline",
-    "plan",
-    "prompt",
-    "report",
-    "response",
-    "review",
-    "session",
-    "summary",
-    "temp",
-    "tmp",
-    "trace",
-    "transcript",
-    "verify",
-    "worker",
-})
+_GENERATED_TEXT_MARKERS: frozenset[str] = frozenset(
+    {
+        "agent",
+        "ai",
+        "analysis",
+        "artifact",
+        "brainstorm",
+        "capture",
+        "chat",
+        "checkpoint",
+        "completion",
+        "conversation",
+        "debug",
+        "dump",
+        "generated",
+        "generation",
+        "inference",
+        "interaction",
+        "llm",
+        "log",
+        "message",
+        "model",
+        "note",
+        "output",
+        "pipeline",
+        "plan",
+        "prompt",
+        "report",
+        "response",
+        "review",
+        "session",
+        "summary",
+        "temp",
+        "tmp",
+        "trace",
+        "transcript",
+        "verify",
+        "worker",
+    }
+)
 
 # Narrow allowlist of clearly-temporary source-file name tokens. Excludes
 # common programming terms (log, model, worker, session, message, plan, chat,
@@ -126,45 +189,49 @@ _GENERATED_TEXT_MARKERS: frozenset[str] = frozenset({
 # summary, debug, trace, transcript) to prevent false positives on legitimate
 # source files like log.py, debug.py, or worker.py. Only tokens that almost
 # always denote a disposable artifact are allowed.
-_SOURCE_FILE_GENERATED_MARKERS: frozenset[str] = frozenset({
-    "temp",
-    "tmp",
-    "scratch",
-    "generated",
-    "throwaway",
-    "dump",
-})
+_SOURCE_FILE_GENERATED_MARKERS: frozenset[str] = frozenset(
+    {
+        "temp",
+        "tmp",
+        "scratch",
+        "generated",
+        "throwaway",
+        "dump",
+    }
+)
 
-_GENERATED_TEXT_DIRECTORIES: frozenset[str] = frozenset({
-    ".agent",
-    ".cache",
-    ".gradle",
-    ".mypy_cache",
-    ".next",
-    ".nuxt",
-    ".output",
-    ".pytest_cache",
-    ".ruff_cache",
-    "artifacts",
-    "build",
-    "cache",
-    "caches",
-    "coverage",
-    "dist",
-    "htmlcov",
-    "logs",
-    "node_modules",
-    "out",
-    "output",
-    "outputs",
-    "reports",
-    "sessions",
-    "temp",
-    "tmp",
-    "traces",
-    "transcripts",
-    "vendor",
-})
+_GENERATED_TEXT_DIRECTORIES: frozenset[str] = frozenset(
+    {
+        ".agent",
+        ".cache",
+        ".gradle",
+        ".mypy_cache",
+        ".next",
+        ".nuxt",
+        ".output",
+        ".pytest_cache",
+        ".ruff_cache",
+        "artifacts",
+        "build",
+        "cache",
+        "caches",
+        "coverage",
+        "dist",
+        "htmlcov",
+        "logs",
+        "node_modules",
+        "out",
+        "output",
+        "outputs",
+        "reports",
+        "sessions",
+        "temp",
+        "tmp",
+        "traces",
+        "transcripts",
+        "vendor",
+    }
+)
 
 
 def _close_repo(repo: Repo | None) -> None:
@@ -249,8 +316,15 @@ def _is_protected_path(
     if any(seg in path_lower for seg in _UNSAFE_PATH_SEGMENTS):
         return True
     if candidate.name in {
-        "package-lock.json", "yarn.lock", "Cargo.lock", "poetry.lock",
-        "uv.lock", "Pipfile.lock", "composer.lock", "Gemfile.lock", "go.sum",
+        "package-lock.json",
+        "yarn.lock",
+        "Cargo.lock",
+        "poetry.lock",
+        "uv.lock",
+        "Pipfile.lock",
+        "composer.lock",
+        "Gemfile.lock",
+        "go.sum",
     }:
         return True
     if candidate.name.lower() in _PROTECTED_BASENAMES:
@@ -337,9 +411,7 @@ def _load_cleanup_artifact(
         return None
 
     try:
-        raw_artifact = load_phase_artifact(
-            ctx.workspace, COMMIT_CLEANUP_ARTIFACT_PATH
-        )
+        raw_artifact = load_phase_artifact(ctx.workspace, COMMIT_CLEANUP_ARTIFACT_PATH)
         artifact_content = unwrap_phase_artifact_content(
             raw_artifact, expected_type="commit_cleanup"
         )
@@ -384,8 +456,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
             PhaseFailureEvent(
                 phase=phase_name,
                 reason=(
-                    f"Missing or invalid commit_cleanup artifact at "
-                    f"{COMMIT_CLEANUP_ARTIFACT_PATH}"
+                    f"Missing or invalid commit_cleanup artifact at {COMMIT_CLEANUP_ARTIFACT_PATH}"
                 ),
                 recoverable=True,
                 retry_in_session=True,

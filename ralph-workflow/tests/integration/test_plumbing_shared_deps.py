@@ -408,9 +408,7 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
         lambda *args: True,
     )
 
-    output_file = _FakeOutputPath(
-        "/workspace/tmp/interactive-claude-smoke/todo-list.js"
-    )
+    output_file = _FakeOutputPath("/workspace/tmp/interactive-claude-smoke/todo-list.js")
 
     result = smoke_plumbing_module.run_smoke_plumbing(
         config=UnifiedConfig(),
@@ -597,9 +595,7 @@ def test_smoke_plumbing_resolves_display_context_from_pipeline_deps(
         lambda *args: True,
     )
 
-    output_file = _FakeOutputPath(
-        "/workspace/tmp/interactive-claude-smoke/todo-list.js"
-    )
+    output_file = _FakeOutputPath("/workspace/tmp/interactive-claude-smoke/todo-list.js")
 
     result = smoke_plumbing_module.run_smoke_plumbing(
         config=UnifiedConfig(),

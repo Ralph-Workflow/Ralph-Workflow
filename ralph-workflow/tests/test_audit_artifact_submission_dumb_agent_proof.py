@@ -72,9 +72,7 @@ def test_macro_includes_a_worked_mcp_call_example() -> None:
     assert '"artifact_type"' in content, (
         "macro must show a worked example containing the artifact_type key"
     )
-    assert '"content"' in content, (
-        "macro must show a worked example containing the content key"
-    )
+    assert '"content"' in content, "macro must show a worked example containing the content key"
     # The example must use the artifact_type placeholder so the rendered
     # output is self-describing per template.
     assert '"{{ artifact_type }}"' in content or '"{{artifact_type}}"' in content, (

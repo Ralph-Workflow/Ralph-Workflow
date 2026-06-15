@@ -108,33 +108,25 @@ class TestPlanningTemplatesShippedSkills:
         for hint in PLANNING_SKILLS_MCP_HINTS:
             assert hint in prompt, f"Missing skills_mcp hint: {hint}"
 
-    def test_planning_jinja_docs_mcp_false_branch_is_visible_text(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_jinja_docs_mcp_false_branch_is_visible_text(self, tmp_path: Path) -> None:
         """When has_docs_mcp=False, the false branch must render visible text."""
         prompt = _shared_render_planning(False, tmp_path=tmp_path)
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY:
             assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
 
-    def test_planning_jinja_docs_mcp_true_branch_active_when_true(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_jinja_docs_mcp_true_branch_active_when_true(self, tmp_path: Path) -> None:
         """When has_docs_mcp=True, the true branch should be active."""
         prompt = _shared_render_planning(True, tmp_path=tmp_path)
         assert "arabold/docs-mcp-server" in prompt
         assert "localhost:6280" in prompt
 
-    def test_planning_fallback_jinja_has_shipped_skills_section(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_fallback_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(
             False, template="planning_fallback.jinja", tmp_path=tmp_path
         )
         _assert_shipped_skills_discovery(prompt)
 
-    def test_planning_fallback_jinja_docs_mcp_false_branch_visible(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_fallback_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(
             False, template="planning_fallback.jinja", tmp_path=tmp_path
         )

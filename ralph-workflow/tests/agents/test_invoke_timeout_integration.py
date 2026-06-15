@@ -757,9 +757,7 @@ def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> No
             progress_yielded[0] = True
             yield json.dumps({"type": "child_started", "child_id": "child-x"}) + "\n"
             yield (
-                json.dumps(
-                    {"type": "child_progress", "child_id": "child-x", "phase": "running"}
-                )
+                json.dumps({"type": "child_progress", "child_id": "child-x", "phase": "running"})
                 + "\n"
             )
         _reader_release.wait(timeout=5.0)

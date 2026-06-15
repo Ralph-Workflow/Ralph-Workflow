@@ -82,9 +82,7 @@ def test_build_minimal_pipeline_core_forwards_model_identity() -> None:
     display_context = _fake_display_context()
     model_identity = MagicMock()
 
-    core = build_minimal_pipeline_core(
-        config, display_context, model_identity=model_identity
-    )
+    core = build_minimal_pipeline_core(config, display_context, model_identity=model_identity)
 
     assert core.model_identity is model_identity
 
@@ -161,9 +159,7 @@ def test_pipeline_deps_backward_compat_properties_read_from_core() -> None:
     display_context = _fake_display_context()
     model_identity = MagicMock()
 
-    deps = build_default_pipeline_deps(
-        config, display_context, model_identity=model_identity
-    )
+    deps = build_default_pipeline_deps(config, display_context, model_identity=model_identity)
 
     assert deps.display_context is display_context
     assert deps.model_identity is model_identity

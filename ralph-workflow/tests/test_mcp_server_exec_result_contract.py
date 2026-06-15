@@ -367,5 +367,3 @@ def test_exec_sse_streaming_post_clears_sink_on_dispatch_error() -> None:
     raw = frames_written[-1].decode("utf-8")
     assert "dispatch failed" in raw
     assert "-32603" in raw
-
-

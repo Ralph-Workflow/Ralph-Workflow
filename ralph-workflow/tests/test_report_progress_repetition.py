@@ -38,9 +38,7 @@ def _policy(
 
 
 def _evaluate(watchdog: IdleWatchdog) -> WatchdogVerdict:
-    return watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.RESUMABLE_CONTINUE
-    )
+    return watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.RESUMABLE_CONTINUE)
 
 
 _STUCK = "status='Verifying state from read-only tools; exec is timing out' note=''"

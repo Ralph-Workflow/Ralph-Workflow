@@ -86,9 +86,7 @@ def _interactive_default_settings(sentinel_path: Path) -> dict[str, object]:
     }
 
 
-def _merge_interactive_settings_json(
-    settings_json: str | None, sentinel_path: Path
-) -> str:
+def _merge_interactive_settings_json(settings_json: str | None, sentinel_path: Path) -> str:
     settings = _interactive_default_settings(sentinel_path)
     if settings_json is None:
         return json.dumps(settings)

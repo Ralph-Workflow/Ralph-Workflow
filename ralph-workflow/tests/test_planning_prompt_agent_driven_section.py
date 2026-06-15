@@ -14,11 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 _PLANNING_TEMPLATE = (
-    Path(__file__).resolve().parents[1]
-    / "ralph"
-    / "prompts"
-    / "templates"
-    / "planning.jinja"
+    Path(__file__).resolve().parents[1] / "ralph" / "prompts" / "templates" / "planning.jinja"
 )
 
 
@@ -56,4 +52,3 @@ def test_planning_prompt_keeps_unchanged_sections() -> None:
     assert "allowed_directories" in source
     assert ".agent" in source
     assert ".git" in source
-

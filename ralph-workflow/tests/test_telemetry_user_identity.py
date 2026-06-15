@@ -56,9 +56,7 @@ def test_user_id_file_contains_explanatory_comment(tmp_path: Path) -> None:
 
 def test_user_id_regenerated_if_wrong_length(tmp_path: Path) -> None:
     config_path = tmp_path / _CONFIG_FILENAME
-    config_path.write_text(
-        f"[{_CONFIG_SECTION}]\n{_USER_ID_KEY} = tooshort\n", encoding="utf-8"
-    )
+    config_path.write_text(f"[{_CONFIG_SECTION}]\n{_USER_ID_KEY} = tooshort\n", encoding="utf-8")
     uid = get_or_create_user_id(tmp_path)
     assert len(uid) == _USER_ID_LENGTH
 
@@ -66,9 +64,7 @@ def test_user_id_regenerated_if_wrong_length(tmp_path: Path) -> None:
 def test_user_id_regenerated_if_non_alphanumeric(tmp_path: Path) -> None:
     bad_id = "!" + "a" * 31
     config_path = tmp_path / _CONFIG_FILENAME
-    config_path.write_text(
-        f"[{_CONFIG_SECTION}]\n{_USER_ID_KEY} = {bad_id}\n", encoding="utf-8"
-    )
+    config_path.write_text(f"[{_CONFIG_SECTION}]\n{_USER_ID_KEY} = {bad_id}\n", encoding="utf-8")
     uid = get_or_create_user_id(tmp_path)
     assert all(c in string.ascii_letters + string.digits for c in uid)
 

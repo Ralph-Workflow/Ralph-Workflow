@@ -128,9 +128,7 @@ def _patch_runner_dependencies(
     )
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
-    monkeypatch.setattr(
-        runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle
-    )
+    monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle)
     monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
     monkeypatch.setattr(
         runner_module,
@@ -342,9 +340,7 @@ def _capture_run_ctx(
     )
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
-    monkeypatch.setattr(
-        runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle
-    )
+    monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle)
     monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
     monkeypatch.setattr(
         runner_module,
@@ -412,9 +408,7 @@ class TestInjectionPrecedence:
             registry_factory=MagicMock(return_value=deps_registry),
         )
 
-        ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
-        )
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks)
 
         assert ctx.registry is deps_registry
         assert not pro_hooks.registry_factory.called
@@ -455,9 +449,7 @@ class TestInjectionPrecedence:
             policy_bundle=deps_bundle,
         )
 
-        ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
-        )
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks)
 
         assert ctx.policy_bundle is deps_bundle
 
@@ -476,9 +468,7 @@ class TestInjectionPrecedence:
             policy_bundle_factory=deps_factory,
         )
 
-        ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
-        )
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks)
 
         assert ctx.policy_bundle is deps_bundle
         deps_factory.assert_called_once()
@@ -504,9 +494,7 @@ class TestInjectionPrecedence:
         runner_module = _load_runner()
         pro_bundle = _make_fake_bundle()
         kwarg_bundle = _make_fake_bundle()
-        pro_hooks = ProPipelineHooks(
-            policy_bundle_factory=MagicMock(return_value=pro_bundle)
-        )
+        pro_hooks = ProPipelineHooks(policy_bundle_factory=MagicMock(return_value=pro_bundle))
         kwarg_factory = MagicMock(return_value=kwarg_bundle)
         load_spy = MagicMock(return_value=_make_fake_bundle())
         monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", load_spy)
@@ -532,9 +520,7 @@ class TestInjectionPrecedence:
         load_spy = MagicMock(return_value=_make_fake_bundle())
         monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", load_spy)
 
-        ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, policy_bundle_factory=kwarg_factory
-        )
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, policy_bundle_factory=kwarg_factory)
 
         assert ctx.policy_bundle is kwarg_bundle
         load_spy.assert_not_called()
@@ -635,9 +621,7 @@ class TestInjectionPrecedence:
             "AgentRegistry",
             MagicMock(from_config=MagicMock(return_value=MagicMock())),
         )
-        monkeypatch.setattr(
-            runner_module, "create_initial_state", _make_default_state
-        )
+        monkeypatch.setattr(runner_module, "create_initial_state", _make_default_state)
         monkeypatch.setattr(
             run_loop_module,
             "_setup_active_display",
@@ -709,9 +693,7 @@ class TestInjectionPrecedence:
             "AgentRegistry",
             MagicMock(from_config=MagicMock(return_value=MagicMock())),
         )
-        monkeypatch.setattr(
-            runner_module, "create_initial_state", _make_default_state
-        )
+        monkeypatch.setattr(runner_module, "create_initial_state", _make_default_state)
         monkeypatch.setattr(
             run_loop_module,
             "_setup_active_display",
@@ -779,9 +761,7 @@ class TestInjectionPrecedence:
             "AgentRegistry",
             MagicMock(from_config=MagicMock(return_value=MagicMock())),
         )
-        monkeypatch.setattr(
-            runner_module, "create_initial_state", _make_default_state
-        )
+        monkeypatch.setattr(runner_module, "create_initial_state", _make_default_state)
         monkeypatch.setattr(
             run_loop_module,
             "_setup_active_display",
@@ -839,9 +819,7 @@ class TestInjectionPrecedence:
 
         monkeypatch.setattr(run_loop_module, "_start_pro_marker_watcher", _fake_start_watcher)
 
-        _ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
-        )
+        _ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks)
 
         assert captured_factories == [deps_factory]
 
@@ -882,9 +860,7 @@ class TestInjectionPrecedence:
 
         monkeypatch.setattr(run_loop_module, "_start_pro_marker_watcher", _fake_start_watcher)
 
-        _ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, marker_watcher_factory=kwarg_factory
-        )
+        _ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, marker_watcher_factory=kwarg_factory)
 
         assert captured_factories == [kwarg_factory]
 
@@ -899,9 +875,7 @@ class TestInjectionPrecedence:
             snapshot_registry=deps_registry,
         )
 
-        ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
-        )
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks)
 
         assert ctx.snapshot_registry is deps_registry
 
@@ -920,9 +894,7 @@ class TestInjectionPrecedence:
     ) -> None:
         kwarg_registry = object()
 
-        ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, snapshot_registry=kwarg_registry
-        )
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, snapshot_registry=kwarg_registry)
 
         assert ctx.snapshot_registry is kwarg_registry
 
@@ -945,9 +917,7 @@ class TestInjectionPrecedence:
         def _custom_sleep(_seconds: float) -> None:
             return None
 
-        ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, _recovery_sleep=_custom_sleep
-        )
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, _recovery_sleep=_custom_sleep)
 
         assert ctx.sleep is _custom_sleep
 
@@ -973,9 +943,7 @@ class TestInjectionPrecedence:
             recovery_sleep=deps_sleep,
         )
 
-        ctx, _ = _capture_run_ctx(
-            monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks
-        )
+        ctx, _ = _capture_run_ctx(monkeypatch, tmp_path, pipeline_deps=deps, pro_hooks=pro_hooks)
 
         assert ctx.sleep is deps_sleep
 
@@ -1001,9 +969,7 @@ class TestInjectionPrecedence:
             ("registry_factory", lambda _cfg: MagicMock()),
             (
                 "state_factory",
-                lambda _cfg, _agents, _pipeline, _overrides: PipelineState(
-                    phase="complete"
-                ),
+                lambda _cfg, _agents, _pipeline, _overrides: PipelineState(phase="complete"),
             ),
             (
                 "recovery_controller_factory",

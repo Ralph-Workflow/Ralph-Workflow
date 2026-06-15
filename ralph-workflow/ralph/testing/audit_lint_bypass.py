@@ -54,9 +54,7 @@ def _string_key_mapping(value: object) -> dict[str, object]:
         return {}
     mapping = cast("dict[object, object]", value)
     return {
-        raw_key: raw_value
-        for raw_key, raw_value in mapping.items()
-        if isinstance(raw_key, str)
+        raw_key: raw_value for raw_key, raw_value in mapping.items() if isinstance(raw_key, str)
     }
 
 
@@ -104,17 +102,19 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).
-_SKIP_DIRS: frozenset[str] = frozenset({
-    "__pycache__",
-    ".venv",
-    ".mypy_cache",
-    "tmp",
-    ".ruff_cache",
-    ".pytest_cache",
-    "htmlcov",
-    "build",
-    "dist",
-})
+_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        "__pycache__",
+        ".venv",
+        ".mypy_cache",
+        "tmp",
+        ".ruff_cache",
+        ".pytest_cache",
+        "htmlcov",
+        "build",
+        "dist",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Allowlist: legitimate per-file-ignores entries
@@ -150,17 +150,17 @@ _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*?))?(?:\s*$|\s+\S)")
 
 # Files that are explicitly testing or documenting lint-bypass behavior and must
 # contain simulated directives as fixtures. These are exempt from the noqa check.
-_TEST_NOQA_EXEMPT_STEMS: frozenset[str] = frozenset({
-    "test_audit_lint_bypass",
-    "audit_lint_bypass",
-})
+_TEST_NOQA_EXEMPT_STEMS: frozenset[str] = frozenset(
+    {
+        "test_audit_lint_bypass",
+        "audit_lint_bypass",
+    }
+)
 
 # Acceptable noqa codes — any code NOT in this set requires an allowlist entry.
 # Currently only complexity and global-state codes are acceptable when used
 # with a documented reason in the allowlist.
-_ACCEPTABLE_NOQA_CODES: frozenset[str] = frozenset(
-    {"PLR0911", "PLR0912", "PLW0603"}
-)
+_ACCEPTABLE_NOQA_CODES: frozenset[str] = frozenset({"PLR0911", "PLR0912", "PLW0603"})
 
 
 class LintBypassViolation:

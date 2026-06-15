@@ -112,10 +112,8 @@ def test_property_g_watchdog_caller_refuses_descendant_deferral() -> None:
     )
 
     original_classify = helpers_module.classify_child_snapshot
-    helpers_module.classify_child_snapshot = (
-        lambda snap, has_os_descendants=True: original_classify(
-            snap, has_os_descendants=True
-        )
+    helpers_module.classify_child_snapshot = lambda snap, has_os_descendants=True: (
+        original_classify(snap, has_os_descendants=True)
     )
     try:
         decided_state, scoped_stale = _registry_check_for_exit(registry, "agent:")
@@ -318,9 +316,7 @@ def test_transport_loop_detected_returns_503_with_specific_message() -> None:
     mcp_server = McpServer(session, workspace, registry)
 
     # Force the server's _dispatch_request to raise the same exception
-    def explode(
-        server: McpServer, request: JsonRpcRequest, state: ServerState
-    ) -> Never:
+    def explode(server: McpServer, request: JsonRpcRequest, state: ServerState) -> Never:
         raise TimeoutError("aabbccdd-1234-5678-90ab-cdef12345678 at 12:34:56")
 
     mcp_server._dispatch_request = lambda req, state: explode(mcp_server, req, state)
@@ -331,9 +327,7 @@ def test_transport_loop_detected_returns_503_with_specific_message() -> None:
     for i in range(3):
         status, _headers, body = drive_request(
             mcp_server,
-            json.dumps(
-                {"jsonrpc": "2.0", "id": i, "method": "tools/list", "params": {}}
-            ).encode(),
+            json.dumps({"jsonrpc": "2.0", "id": i, "method": "tools/list", "params": {}}).encode(),
         )
         statuses.append(status)
         bodies.append(body)

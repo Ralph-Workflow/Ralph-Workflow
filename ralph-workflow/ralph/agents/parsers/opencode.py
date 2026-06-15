@@ -24,9 +24,7 @@ class OpenCodeParser(ParserTemplateBase):
     - Iterator exhaustion (final flush via ``flush_accumulators()``)
     """
 
-    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
-        {"step_start", "step_finish", "done"}
-    )
+    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
 
     def __init__(self) -> None:
         self._accumulators: dict[str, TextAccumulator] = {}

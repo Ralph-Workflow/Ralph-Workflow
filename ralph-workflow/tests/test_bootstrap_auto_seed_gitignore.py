@@ -73,15 +73,7 @@ def test_auto_seed_covers_common_project_structures(tmp_path: Path) -> None:
     auto_seed_default_gitignore(tmp_path)
     gitignore_text = (tmp_path / ".gitignore").read_text(encoding="utf-8")
 
-    assert "__pycache__/" in gitignore_text, (
-        f"Python category missing; got:\n{gitignore_text}"
-    )
-    assert "node_modules/" in gitignore_text, (
-        f"Node category missing; got:\n{gitignore_text}"
-    )
-    assert ".idea/" in gitignore_text, (
-        f"editor category missing; got:\n{gitignore_text}"
-    )
-    assert ".DS_Store" in gitignore_text, (
-        f"OS category missing; got:\n{gitignore_text}"
-    )
+    assert "__pycache__/" in gitignore_text, f"Python category missing; got:\n{gitignore_text}"
+    assert "node_modules/" in gitignore_text, f"Node category missing; got:\n{gitignore_text}"
+    assert ".idea/" in gitignore_text, f"editor category missing; got:\n{gitignore_text}"
+    assert ".DS_Store" in gitignore_text, f"OS category missing; got:\n{gitignore_text}"

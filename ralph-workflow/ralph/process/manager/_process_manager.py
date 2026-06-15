@@ -608,13 +608,9 @@ class ProcessManager:
                     assert reap_target is not None
                     self._reap_sync_and_mark(record, reap_target, cause="zombie_reconciled")
                 elif async_proc is not None:
-                    self._reap_async_in_sync_and_mark(
-                        record, async_proc, cause="zombie_reconciled"
-                    )
+                    self._reap_async_in_sync_and_mark(record, async_proc, cause="zombie_reconciled")
                 else:
-                    self._mark_killed(
-                        record, returncode=None, cause="zombie_reconciled"
-                    )
+                    self._mark_killed(record, returncode=None, cause="zombie_reconciled")
                 logger.warning(f"Stale zombie entry reconciled: PID {pid} is zombie")
                 reconciled += 1
         return reconciled
@@ -722,10 +718,7 @@ class ProcessManager:
             for other_pid, other_record in list(self._records.items()):
                 if other_pid == record.pid:
                     continue
-                if (
-                    other_record.label is not None
-                    and other_record.label.startswith(label_prefix)
-                ):
+                if other_record.label is not None and other_record.label.startswith(label_prefix):
                     self._terminate_by_pid(other_record, self.policy.default_grace_period_s)
 
     def _kill_pgid(self, pgid: int) -> None:
@@ -835,9 +828,7 @@ class ProcessManager:
 
         with contextlib.suppress(ProcessLookupError):
             proc.terminate()
-        logger.debug(
-            f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s"
-        )
+        logger.debug(f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s")
         try:
             rc = proc.wait(timeout=grace_period_s)
         except (subprocess.TimeoutExpired, TimeoutError):
@@ -862,7 +853,8 @@ class ProcessManager:
                 self._mark_termination_failed(record, proc.poll())
                 logger.error("Process {} still alive after kill", record.pid)
                 raise ProcessTerminationError(
-                    record.pid, record.pgid,
+                    record.pid,
+                    record.pgid,
                     stage="force_kill",
                     reason="still alive",
                 ) from None
@@ -883,9 +875,7 @@ class ProcessManager:
 
         with contextlib.suppress(ProcessLookupError):
             proc.terminate()
-        logger.debug(
-            f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s"
-        )
+        logger.debug(f"Process {record.pid} graceful terminate sent, waiting {grace_period_s}s")
         try:
             rc = await asyncio.wait_for(
                 proc.wait(),  # mcp-timeout-ok: wait_for-bounded
@@ -916,7 +906,8 @@ class ProcessManager:
                 self._mark_termination_failed(record, proc.returncode)
                 logger.error("Process {} still alive after kill", record.pid)
                 raise ProcessTerminationError(
-                    record.pid, record.pgid,
+                    record.pid,
+                    record.pgid,
                     stage="force_kill",
                     reason="still alive",
                 ) from None
@@ -967,9 +958,7 @@ class ProcessManager:
             for p in still_alive:
                 pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
                 if pid_liveness == LivenessResult.ZOMBIE:
-                    logger.warning(
-                        f"Process {p.pid} is zombie after force kill — parent must reap"
-                    )
+                    logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
                     self._reap_psutil_zombie_and_mark(
                         record, p, psutil_mod, cause="zombie_after_kill"
                     )
@@ -977,7 +966,8 @@ class ProcessManager:
             self._mark_termination_failed(record)
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(
-                record.pid, record.pgid,
+                record.pid,
+                record.pgid,
                 stage="force_kill",
                 reason="still alive",
             )
@@ -1040,15 +1030,14 @@ class ProcessManager:
             for p in still_alive:
                 pid_liveness = verify_process_liveness(p.pid, psutil_mod=psutil_mod)
                 if pid_liveness == LivenessResult.ZOMBIE:
-                    logger.warning(
-                        f"Process {p.pid} is zombie after force kill — parent must reap"
-                    )
+                    logger.warning(f"Process {p.pid} is zombie after force kill — parent must reap")
                     self._reap_sync_and_mark(record, proc, cause="zombie_after_kill")
                     return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", record.pid)
             raise ProcessTerminationError(
-                record.pid, record.pgid,
+                record.pid,
+                record.pgid,
                 stage="force_kill",
                 reason="still alive",
             )
@@ -1127,15 +1116,14 @@ class ProcessManager:
             # Post-kill zombie/liveness check
             post_liveness = verify_process_liveness(record.pid, psutil_mod=psutil_mod)
             if post_liveness == LivenessResult.ZOMBIE:
-                logger.warning(
-                    f"Process {pid} is zombie after force kill — parent must reap"
-                )
+                logger.warning(f"Process {pid} is zombie after force kill — parent must reap")
                 await self._reap_async_and_mark(record, proc, cause="zombie_after_kill")
                 return
             self._mark_termination_failed(record, rc)
             logger.error("Process {} still alive after kill", pid)
             raise ProcessTerminationError(
-                record.pid, record.pgid,
+                record.pid,
+                record.pgid,
                 stage="force_kill",
                 reason="still alive",
             )
@@ -1236,7 +1224,8 @@ class ProcessManager:
         )
         logger.error("Access denied while terminating process {}", record.pid)
         raise ProcessTerminationError(
-            record.pid, record.pgid,
+            record.pid,
+            record.pgid,
             stage="access_denied",
             reason="Access denied while terminating process",
         )
@@ -1311,9 +1300,7 @@ class ProcessManager:
             self._async_procs.pop(record.pid, None)
             self._descendants.pop(record.pid, None)
             self._record_terminal_state(record)
-        logger.error(
-            f"Process {record.pid} termination failed: {reason}"
-        )
+        logger.error(f"Process {record.pid} termination failed: {reason}")
         self._emit(record, prev, ProcessStatus.FAILED)
 
     def _emit(

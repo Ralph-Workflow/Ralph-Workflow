@@ -546,4 +546,3 @@ def artifact_specs() -> list[ToolSpec]:
             handler_name="handle_coordinate",
         ),
     ]
-

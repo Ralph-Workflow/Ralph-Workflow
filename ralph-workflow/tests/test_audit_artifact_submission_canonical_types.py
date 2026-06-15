@@ -78,6 +78,4 @@ def test_canonical_set_is_non_empty() -> None:
         f"_KNOWN_ARTIFACT_TYPES is unexpectedly small: {sorted(_KNOWN_TYPES)!r}"
     )
     for required in ("commit_message", "plan", "development_result"):
-        assert required in _KNOWN_TYPES, (
-            f"_KNOWN_ARTIFACT_TYPES must contain {required!r}"
-        )
+        assert required in _KNOWN_TYPES, f"_KNOWN_ARTIFACT_TYPES must contain {required!r}"

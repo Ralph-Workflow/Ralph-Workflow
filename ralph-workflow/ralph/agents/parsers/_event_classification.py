@@ -45,6 +45,7 @@ def _extract_transport_session_id_inline(
 
     return extract_transport_session_id(raw_output)
 
+
 LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
     {
         "message_start",

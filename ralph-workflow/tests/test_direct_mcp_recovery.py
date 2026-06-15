@@ -75,7 +75,7 @@ def test_iter_direct_mcp_recovery_preserves_early_session_id_across_long_output(
                 )
 
             return _iter()
-        return ['recovered']
+        return ["recovered"]
 
     result = list(
         iter_with_direct_mcp_recovery(

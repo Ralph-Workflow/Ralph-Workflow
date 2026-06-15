@@ -431,9 +431,7 @@ def _format_design_subkey_suggestion(exc: ValidationError) -> str | None:
             continue
         loc_obj = err.get("loc", ())
         loc: tuple[object, ...] = (
-            cast("tuple[object, ...]", loc_obj)
-            if isinstance(loc_obj, tuple)
-            else ()
+            cast("tuple[object, ...]", loc_obj) if isinstance(loc_obj, tuple) else ()
         )
         if not loc:
             continue
@@ -497,9 +495,7 @@ def _design_subkey_suggestion_hint(exc: ValidationError) -> str | None:
             continue
         loc_obj = err.get("loc", ())
         loc: tuple[object, ...] = (
-            cast("tuple[object, ...]", loc_obj)
-            if isinstance(loc_obj, tuple)
-            else ()
+            cast("tuple[object, ...]", loc_obj) if isinstance(loc_obj, tuple) else ()
         )
         if not loc:
             continue

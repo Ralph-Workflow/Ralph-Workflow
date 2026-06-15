@@ -38,6 +38,4 @@ class _GeneralConfigStub:
     agent_system_prompt: str | None = None
     agent_provider: str | None = None
     verbose: bool = False
-    workflow: GeneralWorkflowFlags = field(
-        default_factory=GeneralWorkflowFlags
-    )
+    workflow: GeneralWorkflowFlags = field(default_factory=GeneralWorkflowFlags)

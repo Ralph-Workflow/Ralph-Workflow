@@ -67,7 +67,4 @@ def test_developer_prompt_keeps_development_result_block_intact() -> None:
     source = _read_developer_template()
     assert "## DEVELOPMENT RESULT ARTIFACT" in source
     assert "## PARALLEL EXECUTION" in source
-    assert source.index("## PARALLEL EXECUTION") < source.index(
-        "## DEVELOPMENT RESULT ARTIFACT"
-    )
-
+    assert source.index("## PARALLEL EXECUTION") < source.index("## DEVELOPMENT RESULT ARTIFACT")

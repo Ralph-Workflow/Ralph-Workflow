@@ -66,9 +66,7 @@ def _build_server_with_tool(name: str = "read_file") -> McpServer:
 
 
 def _tools_list(server: McpServer) -> list[dict[str, object]]:
-    request = JsonRpcRequest(
-        jsonrpc="2.0", method="tools/list", msg_id="1", params={}
-    )
+    request = JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id="1", params={})
     response, _ = server._handle_tools_list(request)
     assert response.result is not None
     return cast("list[dict[str, object]]", response.result["tools"])
@@ -169,15 +167,12 @@ def test_idle_watchdog_does_not_fire_no_output_deadline_after_long_silence_with_
     result = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
     assert result != WatchdogVerdict.FIRE, (
-        "watchdog fired during the post-tool-result wedge; "
-        "this would wedge the live run"
+        "watchdog fired during the post-tool-result wedge; this would wedge the live run"
     )
     assert watchdog._last_fire_reason != WatchdogFireReason.NO_OUTPUT_DEADLINE
 
 
-def test_idle_watchdog_fires_no_output_deadline_after_long_silence_with_terminated_quiet() -> (
-    None
-):
+def test_idle_watchdog_fires_no_output_deadline_after_long_silence_with_terminated_quiet() -> None:
     """The watchdog DOES fire ``NO_OUTPUT_DEADLINE`` when the agent
     has truly stopped (classify_quiet reports a terminal/quiet
     state, not ACTIVE). This is the negative case: the watchdog is
@@ -240,7 +235,5 @@ def test_idle_watchdog_with_active_quiet_defers_to_next_record_activity(
     # Recording activity resets the baseline.
     watchdog.record_activity()
     clock.advance(0.01)
-    result_after = watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.ACTIVE
-    )
+    result_after = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
     assert result_after == WatchdogVerdict.CONTINUE

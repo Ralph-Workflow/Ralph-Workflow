@@ -272,9 +272,7 @@ def _render_prompt_for_phase(
     if raw_prompt_path:
         # PROMPT_PATH is set: use the resolved absolute path (it
         # must be looked up via the real filesystem).
-        source_prompt_path = resolve_effective_prompt_path(
-            workspace_root_for_resolver, os.environ
-        )
+        source_prompt_path = resolve_effective_prompt_path(workspace_root_for_resolver, os.environ)
         prompt_content = _read_optional(workspace, str(source_prompt_path))
     else:
         # No PROMPT_PATH: keep the legacy "PROMPT.md" relative path
@@ -1121,4 +1119,3 @@ def _commit_phase_diff(workspace_root: Path) -> str:
         diff = ""
     combined = (diff + "\n\n" + _UNTRACKED_HEADER + "\n" + untracked).strip()
     return combined or "(no diff available)"
-

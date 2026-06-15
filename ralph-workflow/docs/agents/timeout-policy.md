@@ -244,6 +244,34 @@ ceiling. The per-kind weight policy is layered on top of the
 existing activity-aware verdict and does not extend any
 ceiling.
 
+## Per-reason backoff and the forever-wait state
+
+When an agent fails, it is classified with one of the following `UnavailabilityReason` values. Each reason has a specific exponential backoff policy (doubling on consecutive failures up to the cap):
+
+| Unavailability Reason | Base Backoff | Max Backoff | Rationale |
+|-----------------------|-------------:|------------:|-----------|
+| `out_of_credits` | 60s | 30m | High backoff to allow credit reset or operator replenishment |
+| `no_output_at_start` | 5s | 30s | Fast retry for agents that fail immediately with no output at start |
+| `no_output_after_activity` | 10s | 120s | Moderate backoff for agents that freeze midway |
+| `suspicious_timeout_no_output` | 10s | 60s | Backoff for hit waiting ceiling without progress |
+| `stale_child_quiet` | 15s | 300s | Backoff for stuck child process with stale progress |
+
+### The Forever-Wait Contract
+
+If all agents in the recovery chain for a given phase are temporarily unavailable, the pipeline enters a **forever-wait state**. Rather than crashing or exiting, the run loop:
+1. Emits a structured loguru `WAITING` line (at `INFO` level with `binding(recovery=True)`) containing the current phase, the last unavailability reason, details for all agents (cooldown, attempt counts), and the total wait duration.
+2. Emits a structured loguru `DEBUG` line confirming the sleep duration.
+3. Sleeps for the minimum duration required for the earliest agent to become available again.
+4. Emits a structured loguru `RESUMED` line (at `INFO` with `binding(recovery=True)`) when the sleep finishes and retries the phase with the newly available agent.
+
+This ensures the pipeline remains alive indefinitely under transient outages.
+
+### Default `no_output_at_start_seconds` tuning
+
+The default threshold for `no_output_at_start_seconds` is tuned to **30s** (down from 60s). This threshold is:
+- Long enough to accommodate typical 95th-percentile first-token latency of slower models (e.g. Claude Code or Opencode).
+- Short enough to fall over to the next agent before hitting cumulative session or waiting ceilings.
+
 ## See also
 
 - ``ralph-workflow/ralph/agents/idle_watchdog/idle_watchdog.py`` —

@@ -116,10 +116,10 @@ class TestFlushAccumulators:
         parser = _FixtureParser()
         acc1 = TextAccumulator()
         acc1.buffer = "First"
-        acc1.raw_lines = ['raw1']
+        acc1.raw_lines = ["raw1"]
         acc2 = TextAccumulator()
         acc2.buffer = "Second"
-        acc2.raw_lines = ['raw2']
+        acc2.raw_lines = ["raw2"]
         parser._accumulators["k1"] = acc1
         parser._accumulators["k2"] = acc2
         results = list(parser.flush_accumulators())
@@ -152,9 +152,7 @@ class TestParseTemplate:
 
     def test_valid_json_lines(self) -> None:
         parser = _FixtureParser()
-        results = list(
-            parser.parse(_make_lines(['{"text":"hello"}', '{"text":"world"}']))
-        )
+        results = list(parser.parse(_make_lines(['{"text":"hello"}', '{"text":"world"}'])))
         assert len(results) == 2
         assert all(r.type == "text" for r in results)
         assert results[0].content == "hello"

@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
+from ralph.agents.timeout_clock import FakeClock
+from ralph.recovery.agent_unavailability_tracker import AgentUnavailabilityTracker
 from ralph.recovery.classifier import FailureClassifier
 from ralph.recovery.events import FailureEvent, FalloverEvent
 from ralph.recovery.failure_classifier import _classify_unavailability_reason
@@ -203,6 +205,75 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
         )
         assert failure.is_unavailable is False
         assert failure.unavailability_reason is None
+
+    def test_out_of_credits_backoff_grows_exponentially_and_caps_at_thirty_minutes(self) -> None:
+        clock = FakeClock(start=0.0)
+        tracker = AgentUnavailabilityTracker(clock=clock)
+
+        cooldowns = []
+        for i in range(10):
+            entry = tracker.mark_unavailable(
+                "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
+            )
+            if i == 0:
+                assert entry.base_backoff_ms == 60_000
+                assert entry.max_backoff_ms == 1_800_000
+
+            cooldowns.append(entry.unavailable_until_ms - int(clock.monotonic() * 1000))
+            clock.advance((entry.unavailable_until_ms - int(clock.monotonic() * 1000)) / 1000.0)
+
+        expected_cooldowns = [
+            60_000,
+            120_000,
+            240_000,
+            480_000,
+            960_000,
+            1_800_000,
+            1_800_000,
+            1_800_000,
+            1_800_000,
+            1_800_000,
+        ]
+        assert cooldowns == expected_cooldowns
+        assert cooldowns[-1] == 1_800_000
+
+    def test_new_limit_substrings_classify_as_out_of_credits(self) -> None:
+        classifier = FailureClassifier()
+        new_substrings = [
+            "daily limit exceeded",
+            "weekly limit exceeded",
+            "monthly limit exceeded",
+            "rate_limited",
+            "insufficient_quota",
+        ]
+        for sub in new_substrings:
+            failure = classifier.classify(
+                f"Error: {sub} in api call",
+                phase="development",
+                agent="claude",
+                connectivity_state="online",
+            )
+            assert failure.category.value == "agent"
+            assert failure.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS
+
+    def test_offline_connectivity_does_not_match_credit_substrings(self) -> None:
+        classifier = FailureClassifier()
+        new_substrings = [
+            "daily limit exceeded",
+            "weekly limit exceeded",
+            "monthly limit exceeded",
+            "rate_limited",
+            "insufficient_quota",
+        ]
+        for sub in new_substrings:
+            failure = classifier.classify(
+                f"Error: {sub} in api call",
+                phase="development",
+                agent="claude",
+                connectivity_state="offline",
+            )
+            assert failure.unavailability_reason is None
+            assert failure.is_unavailable is False
 
 
 class TestFailureEventUnavailabilityReason:

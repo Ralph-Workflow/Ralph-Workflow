@@ -43,10 +43,7 @@ def test_empty_prompt_path_falls_back_to_default(tmp_path: Path) -> None:
 
 def test_resolver_does_not_read_prompt_path_at_import() -> None:
     """Importing the module must not consume the env var (no side effects)."""
-    assert (
-        "PROMPT_PATH" not in prompt_module.__dict__
-        or prompt_module.PROMPT_PATH == "PROMPT_PATH"
-    )
+    assert "PROMPT_PATH" not in prompt_module.__dict__ or prompt_module.PROMPT_PATH == "PROMPT_PATH"
 
 
 def test_resolver_handles_dotdot(tmp_path: Path) -> None:
@@ -85,9 +82,9 @@ def test_engine_does_not_modify_prompt_md_under_pro_mode(
             default_current_prompt=None,
         )
         assert result_path == workspace_root / ".agent" / "CURRENT_PROMPT.md"
-        assert (
-            result_path.read_text(encoding="utf-8") == prompt_text
-        ), "engine must mirror PROMPT.md into CURRENT_PROMPT.md"
+        assert result_path.read_text(encoding="utf-8") == prompt_text, (
+            "engine must mirror PROMPT.md into CURRENT_PROMPT.md"
+        )
 
         after_mtime_ns = prompt_path.stat().st_mtime_ns
         after_text = prompt_path.read_text(encoding="utf-8")
@@ -137,6 +134,6 @@ def test_engine_sync_uses_resolver_under_pro_mode(
         default_current_prompt=None,
     )
     assert result_path == workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    assert (
-        result_path.read_text(encoding="utf-8") == "# Custom prompt\n"
-    ), "engine must read the PROMPT_PATH-resolved file, not <workspace>/PROMPT.md"
+    assert result_path.read_text(encoding="utf-8") == "# Custom prompt\n", (
+        "engine must read the PROMPT_PATH-resolved file, not <workspace>/PROMPT.md"
+    )

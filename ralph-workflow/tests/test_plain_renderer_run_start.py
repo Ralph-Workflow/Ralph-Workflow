@@ -34,9 +34,7 @@ def test_emit_run_start_prints_milestone_header() -> None:
     assert lines, "expected at least one non-empty line"
     # The section rule "─── [run-start]" is now emitted first by ParallelDisplay.
     # The milestone header is the next non-empty line.
-    milestone_line = next(
-        (ln for ln in lines if "MILESTONE META [run-start]" in ln), None
-    )
+    milestone_line = next((ln for ln in lines if "MILESTONE META [run-start]" in ln), None)
     assert milestone_line is not None, (
         f"expected a line with 'MILESTONE META [run-start]', got: {lines!r}"
     )
@@ -126,16 +124,12 @@ def test_emit_run_start_milestone_glyph_ascii_fallback() -> None:
     """RALPH_FORCE_ASCII=1 uses ASCII milestone glyph (* not ◆) in run-start header."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    pd = ParallelDisplay(
-        make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"})
-    )
+    pd = ParallelDisplay(make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"}))
     pd.emit_run_start(_orientation())
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     assert lines, "expected at least one non-empty line"
-    milestone_line = next(
-        (ln for ln in lines if "Ralph Workflow run start" in ln), None
-    )
+    milestone_line = next((ln for ln in lines if "Ralph Workflow run start" in ln), None)
     assert milestone_line is not None
     assert "[run-start] * Ralph Workflow run start" in milestone_line
     assert "◆" not in milestone_line

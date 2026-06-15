@@ -181,26 +181,15 @@ _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
 # so the checks cannot be stripped by ``python -O``.
 
 if not _TOTAL_TEST_BUDGET_SECONDS > 0:
-    raise RuntimeError(
-        "_TOTAL_TEST_BUDGET_SECONDS must be positive"
-    )
-if not all(
-    isinstance(i, int) and 0 <= i < len(_VERIFY_STEPS)
-    for i in _BUDGET_TRACKED_STEPS
-):
-    raise RuntimeError(
-        "_BUDGET_TRACKED_STEPS indices must be valid indices into _VERIFY_STEPS"
-    )
+    raise RuntimeError("_TOTAL_TEST_BUDGET_SECONDS must be positive")
+if not all(isinstance(i, int) and 0 <= i < len(_VERIFY_STEPS) for i in _BUDGET_TRACKED_STEPS):
+    raise RuntimeError("_BUDGET_TRACKED_STEPS indices must be valid indices into _VERIFY_STEPS")
 for idx in _BUDGET_TRACKED_STEPS:
     _step = _VERIFY_STEPS[idx]
     if _step[3] is None:
-        raise RuntimeError(
-            f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout"
-        )
+        raise RuntimeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a non-None timeout")
     if not (isinstance(_step[3], (int, float)) and _step[3] > 0):
-        raise RuntimeError(
-            f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout"
-        )
+        raise RuntimeError(f"Budget-tracked step {idx} ({_step[0]!r}) must have a positive timeout")
 
 # Budget-constant integrity: the 60-second combined budget is ABSOLUTE and
 # IMMUTABLE. This epsilon check prevents any drift or accidental change.
@@ -221,9 +210,7 @@ if not abs(_INTEGRATION_PER_TEST_TIMEOUT_SECONDS - 1.0) < _BUDGET_EPSILON:
 # Zero or negative would disable per-step timeouts entirely, causing
 # ruff/mypy/audit steps to potentially hang.
 if not _VERIFY_STEP_TIMEOUT_SECONDS > 0:
-    raise RuntimeError(
-        "_VERIFY_STEP_TIMEOUT_SECONDS must be positive"
-    )
+    raise RuntimeError("_VERIFY_STEP_TIMEOUT_SECONDS must be positive")
 if _VERIFY_STEP_TIMEOUT_SECONDS < _MIN_VERIFY_STEP_TIMEOUT_SECONDS:
     raise RuntimeError(
         f"_VERIFY_STEP_TIMEOUT_SECONDS must be at least 5.0 (got {_VERIFY_STEP_TIMEOUT_SECONDS})"
@@ -249,44 +236,33 @@ _KNOWN_TEST_STEP_LABELS: frozenset[str] = frozenset({"make test"})
 
 # (a) _KNOWN_TEST_STEP_LABELS must not be empty.
 if not _KNOWN_TEST_STEP_LABELS:
-    raise RuntimeError(
-        "_KNOWN_TEST_STEP_LABELS must not be empty"
-    )
+    raise RuntimeError("_KNOWN_TEST_STEP_LABELS must not be empty")
 
 # (b) _BUDGET_TRACKED_STEPS must not be empty.
 if not _BUDGET_TRACKED_STEPS:
-    raise RuntimeError(
-        "_BUDGET_TRACKED_STEPS must not be empty"
-    )
+    raise RuntimeError("_BUDGET_TRACKED_STEPS must not be empty")
 
 # (c) The canonical test step label 'make test' must be present in
 # _KNOWN_TEST_STEP_LABELS. This prevents removing the primary test
 # step label to silently exclude it from budget tracking.
 if "make test" not in _KNOWN_TEST_STEP_LABELS:
     raise RuntimeError(
-        "_KNOWN_TEST_STEP_LABELS must contain 'make test' (got "
-        f"{sorted(_KNOWN_TEST_STEP_LABELS)})"
+        f"_KNOWN_TEST_STEP_LABELS must contain 'make test' (got {sorted(_KNOWN_TEST_STEP_LABELS)})"
     )
 
 # Enforce that _KNOWN_TEST_STEP_LABELS and _BUDGET_TRACKED_STEPS are in sync.
 for i, (label, *_rest) in enumerate(_VERIFY_STEPS):
     if label in _KNOWN_TEST_STEP_LABELS:
         if i not in _BUDGET_TRACKED_STEPS:
-            raise RuntimeError(
-                f"Test step {i} ({label!r}) must be in _BUDGET_TRACKED_STEPS"
-            )
+            raise RuntimeError(f"Test step {i} ({label!r}) must be in _BUDGET_TRACKED_STEPS")
     elif i in _BUDGET_TRACKED_STEPS:
-            raise RuntimeError(
-                f"Non-test step {i} ({label!r}) must NOT be in _BUDGET_TRACKED_STEPS"
-            )
+        raise RuntimeError(f"Non-test step {i} ({label!r}) must NOT be in _BUDGET_TRACKED_STEPS")
 
 # (d) The bounded-subprocess (MCP timeout) audit step must be present. This guards
 # the hang-prevention contract: without it, an unbounded blocking call could be
 # reintroduced and `make verify` would no longer catch it. Uses if/raise so it
 # survives ``python -O`` (assert would be stripped).
-if not any(
-    "audit_mcp_timeout" in label for label, *_rest in _VERIFY_STEPS
-):
+if not any("audit_mcp_timeout" in label for label, *_rest in _VERIFY_STEPS):
     raise RuntimeError(
         "A verify step running 'audit_mcp_timeout' must be present in _VERIFY_STEPS "
         "(the bounded-subprocess contract cannot be silently dropped)"
@@ -391,9 +367,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             if remaining_budget <= 0.0:
                 print(
                     format_verify_failure_banner(
-                        failed_command=_failed_command_label(
-                            label, 0, cumulative_exhausted=True
-                        ),
+                        failed_command=_failed_command_label(label, 0, cumulative_exhausted=True),
                     ),
                     file=sys.stderr,
                     flush=True,
@@ -404,8 +378,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             )
         else:
             effective_timeout = (
-                step_timeout if step_timeout is not None
-                else _VERIFY_STEP_TIMEOUT_SECONDS
+                step_timeout if step_timeout is not None else _VERIFY_STEP_TIMEOUT_SECONDS
             )
 
         step_start = time.monotonic()
@@ -421,8 +394,7 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
             print(result.stderr, end="", file=sys.stderr, flush=True)
         if result.returncode != 0:
             cumulative_exhausted = (
-                is_tracked
-                and cumulative_test_elapsed >= _TOTAL_TEST_BUDGET_SECONDS
+                is_tracked and cumulative_test_elapsed >= _TOTAL_TEST_BUDGET_SECONDS
             )
             print(
                 format_verify_failure_banner(

@@ -193,9 +193,7 @@ def execute_agent_effect(
         required_artifact=required_artifact,
         session_id=session_id,
         extra_env=extra_env,
-        on_retry_failure=cast(
-            "Callable[[list[str]], object] | None", opts.get("on_retry_failure")
-        ),
+        on_retry_failure=cast("Callable[[list[str]], object] | None", opts.get("on_retry_failure")),
         raise_resumable_exit=raise_resumable_exit,
         agent_invocation_error_sink=agent_invocation_error_sink,
     )
@@ -306,9 +304,7 @@ def _invoke_agent_with_recovery(
                     capture_session_id,
                     pipeline_deps,
                 )
-                final_session_id = (
-                    extract_transport_session_id(tuple(raw_output)) or session_id
-                )
+                final_session_id = extract_transport_session_id(tuple(raw_output)) or session_id
                 if ctx.deps.set_session_id_cb is not None:
                     ctx.deps.set_session_id_cb(final_session_id)
                 _set_last_captured_retry_intent(cleared_agent_retry_intent())
@@ -576,9 +572,7 @@ def _consume_attempt_output(
     get_heartbeat = pipeline_deps.heartbeat_policy_from_env_fn
 
     def _run_invocation() -> None:
-        output_lines = ctx.deps.invoke_agent(
-            ctx.agent_config, attempt_prompt_file, options=options
-        )
+        output_lines = ctx.deps.invoke_agent(ctx.agent_config, attempt_prompt_file, options=options)
         if verbosity_rank(ctx.verbosity) >= VERBOSITY_RANK[Verbosity.NORMAL]:
             stream_parsed_agent_activity(
                 output_lines,
@@ -620,9 +614,7 @@ def _enrich_invocation_error(
     if not isinstance(exc, AgentInvocationError):
         return exc
     extra = [
-        line
-        for line in (*raw_output, *rendered_output)
-        if line and line not in exc.parsed_output
+        line for line in (*raw_output, *rendered_output) if line and line not in exc.parsed_output
     ]
     exc.parsed_output = [*extra, *exc.parsed_output]
     return exc
@@ -841,12 +833,7 @@ def _write_agent_retry_prompt(
         # to the original prompt by path only if it needs context.
         tail = _resume_mode_tail(prompt_path)
         retry_prompt_path.write_text(
-            (
-                f"{error_block}\n\n"
-                "PREVIOUS OUTPUT SUMMARY EXCERPT:\n"
-                f"{summary}\n\n"
-                f"{tail}\n"
-            ),
+            (f"{error_block}\n\nPREVIOUS OUTPUT SUMMARY EXCERPT:\n{summary}\n\n{tail}\n"),
             encoding="utf-8",
         )
         return str(retry_prompt_path)

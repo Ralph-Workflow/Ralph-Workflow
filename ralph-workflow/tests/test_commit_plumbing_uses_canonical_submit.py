@@ -70,9 +70,7 @@ def test_commit_plumbing_never_directly_writes_receipt_or_sentinel() -> None:
 
     for pattern in protected_write_patterns:
         matches = re.findall(pattern, source_text)
-        assert (
-            not matches
-        ), f"Found direct write to protected path matching {pattern}: {matches}"
+        assert not matches, f"Found direct write to protected path matching {pattern}: {matches}"
 
 
 def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
@@ -112,9 +110,9 @@ def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
             calls_clear_run_receipts = True
             break
 
-    assert (
-        calls_clear_run_receipts
-    ), "_run_commit_agent_attempt_with_recovery does not call clear_run_receipts"
+    assert calls_clear_run_receipts, (
+        "_run_commit_agent_attempt_with_recovery does not call clear_run_receipts"
+    )
 
 
 def test_commit_plumbing_run_id_binding_is_stable() -> None:
@@ -144,9 +142,9 @@ def test_commit_plumbing_run_id_binding_is_stable() -> None:
         matches = re.findall(pattern, source_text)
         # Filter out the constant definition itself
         filtered_matches = [m for m in matches if "_COMMIT_RUN_ID" not in m]
-        assert (
-            not filtered_matches
-        ), f"Found run_id literal instead of _COMMIT_RUN_ID constant: {filtered_matches}"
+        assert not filtered_matches, (
+            f"Found run_id literal instead of _COMMIT_RUN_ID constant: {filtered_matches}"
+        )
 
 
 def test_commit_plumbing_uses_only_allowlisted_delete() -> None:
@@ -172,10 +170,7 @@ def test_commit_plumbing_uses_only_allowlisted_delete() -> None:
 
     for pattern in protected_delete_patterns:
         matches = re.findall(pattern, source_text)
-        assert (
-            not matches
-        ), f"Found direct delete to protected path matching {pattern}: {matches}"
-
+        assert not matches, f"Found direct delete to protected path matching {pattern}: {matches}"
 
 
 class _CommitSession:
@@ -238,11 +233,13 @@ def test_commit_plumbing_attempt_stamps_receipt_and_sentinel(
             MockWorkspace(tmp_path),
             {
                 "artifact_type": COMMIT_MESSAGE_TYPE,
-                "content": json.dumps({
-                    "type": "commit",
-                    "subject": "fix(plumbing): test commit",
-                    "body": "test",
-                }),
+                "content": json.dumps(
+                    {
+                        "type": "commit",
+                        "subject": "fix(plumbing): test commit",
+                        "body": "test",
+                    }
+                ),
             },
         )
         return PipelineEvent.AGENT_SUCCESS
@@ -270,12 +267,12 @@ def test_commit_plumbing_attempt_stamps_receipt_and_sentinel(
 
     assert error is None, f"Commit attempt raised: {error}"
     assert session_id is not None
-    assert artifact_receipt_present(
-        tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE
-    ), "Canonical receipt not found after commit attempt"
-    assert is_artifact_submitted(
-        tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE
-    ), "is_artifact_submitted returned False after canonical submission"
+    assert artifact_receipt_present(tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE), (
+        "Canonical receipt not found after commit attempt"
+    )
+    assert is_artifact_submitted(tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE), (
+        "is_artifact_submitted returned False after canonical submission"
+    )
 
 
 def test_commit_plumbing_attempt_uses_default_backend_when_not_injected(
@@ -310,11 +307,13 @@ def test_commit_plumbing_attempt_uses_default_backend_when_not_injected(
             MockWorkspace(tmp_path),
             {
                 "artifact_type": COMMIT_MESSAGE_TYPE,
-                "content": json.dumps({
-                    "type": "commit",
-                    "subject": "fix(plumbing): test commit",
-                    "body": "test body",
-                }),
+                "content": json.dumps(
+                    {
+                        "type": "commit",
+                        "subject": "fix(plumbing): test commit",
+                        "body": "test body",
+                    }
+                ),
             },
         )
         return PipelineEvent.AGENT_SUCCESS
@@ -341,9 +340,5 @@ def test_commit_plumbing_attempt_uses_default_backend_when_not_injected(
     )
 
     assert error is None
-    assert artifact_receipt_present(
-        tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE
-    )
-    assert is_artifact_submitted(
-        tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE
-    )
+    assert artifact_receipt_present(tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE)
+    assert is_artifact_submitted(tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE)

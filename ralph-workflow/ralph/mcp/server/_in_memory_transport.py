@@ -207,7 +207,7 @@ def parse_sse_data(body: bytes) -> dict[str, object]:
     for line in text.splitlines():
         if line.startswith("data: "):
             try:
-                return cast("dict[str, object]", json.loads(line[len("data: "):]))
+                return cast("dict[str, object]", json.loads(line[len("data: ") :]))
             except json.JSONDecodeError:
                 return {}
     return {}

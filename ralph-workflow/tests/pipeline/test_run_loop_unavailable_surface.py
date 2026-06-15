@@ -29,8 +29,7 @@ class TestRunLoopUnavailableSurface:
             },
         ).copy_with(
             last_error=(
-                "all agents unavailable (last reason: out_of_credits);"
-                " waiting for cooldown expiry"
+                "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
             ),
             last_retry_delay_ms=30_000,
             last_unavailability_reason="out_of_credits",

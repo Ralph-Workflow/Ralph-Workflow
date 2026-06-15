@@ -113,9 +113,7 @@ def test_no_progress_quiet_diagnostic_payload_contains_required_fields() -> None
             oldest_child_seconds=12.0,
         )
 
-    watchdog = IdleWatchdog(
-        policy, clock, listener=listener, corroborator=_corroborator
-    )
+    watchdog = IdleWatchdog(policy, clock, listener=listener, corroborator=_corroborator)
     watchdog.record_invocation_start()
 
     def _waiting() -> AgentExecutionState:

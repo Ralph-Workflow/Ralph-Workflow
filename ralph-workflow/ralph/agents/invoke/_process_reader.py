@@ -140,9 +140,7 @@ class _ProcessLineReader:
         spawned subagents as ``SPAWNED_SUBAGENT`` instead of guessing from
         the command line.
         """
-        registry = cast(
-            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
-        )
+        registry = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if registry is None:
             return None
         active_prefix_fn = cast(
@@ -157,9 +155,8 @@ class _ProcessLineReader:
     ) -> tuple[Token[ActivitySink | None], Token[ActivitySink | None]]:
         """Bind workspace monitor and MCP/subagent sinks to the watchdog."""
         if self._monitor is not None:
-            def _forward_event(
-                kind: WorkspaceChangeKind, weight: float
-            ) -> None:
+
+            def _forward_event(kind: WorkspaceChangeKind, weight: float) -> None:
                 watchdog.record_workspace_event(kind=kind, weight=weight)
 
             self._monitor.set_on_event(_forward_event)

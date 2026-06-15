@@ -141,9 +141,7 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
     log_file.write_text("line 1\n", encoding="utf-8")
 
     policy = _make_policy(activity_ttl=1000.0)
-    monitor = _FakeProcessMonitor(
-        captures={"w1": FileSubagentOutputCapture(str(log_file))}
-    )
+    monitor = _FakeProcessMonitor(captures={"w1": FileSubagentOutputCapture(str(log_file))})
     wd, clock = _make_watchdog(policy, monitor)
     wd.record_activity()
     clock.advance(1.0)

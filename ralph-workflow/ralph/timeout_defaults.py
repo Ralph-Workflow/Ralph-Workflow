@@ -182,7 +182,10 @@ NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
 #: (no stdout, no tool call, no file change, no subagent output) the watchdog
 #: fires NO_OUTPUT_AT_START instead of waiting for the 600s cumulative
 #: no-progress ceiling. Set to None to opt out.
-NO_OUTPUT_AT_START_SECONDS: float | None = 60.0
+# 30s is well under the 60s 95th-percentile first-token latency for opencode and
+# Claude Code while still short enough to fall over to the next agent before the
+# cumulative ceiling is reached.
+NO_OUTPUT_AT_START_SECONDS: float | None = 30.0
 
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults

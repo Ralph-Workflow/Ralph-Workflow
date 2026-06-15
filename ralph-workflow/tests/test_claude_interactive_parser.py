@@ -262,9 +262,7 @@ def test_plain_text_contains_thinking_symbol_still_classified_as_output() -> Non
     """Text containing '·' (middle dot) in normal sentences must not be mistaken for thinking."""
     parser = ClaudeInteractiveTranscriptParser()
 
-    events = parser.feed(
-        "You've hit your session limit · resets 3:45pm\n"
-    )
+    events = parser.feed("You've hit your session limit · resets 3:45pm\n")
 
     assert [event.kind for event in events] == ["output"]
 
@@ -299,9 +297,10 @@ def test_is_tui_chrome_pure_box_drawing_border() -> None:
 
 def test_is_tui_chrome_claude_code_splash_header() -> None:
 
-    assert _is_tui_chrome(
-        "\u256d\u2500\u2500\u2500ClaudeCodev2.1.158" + "\u2500" * 50 + "\u256e"
-    ) is True
+    assert (
+        _is_tui_chrome("\u256d\u2500\u2500\u2500ClaudeCodev2.1.158" + "\u2500" * 50 + "\u256e")
+        is True
+    )
 
 
 def test_is_tui_chrome_spinner_line() -> None:
@@ -340,27 +339,29 @@ def test_is_tui_chrome_does_not_filter_legitimate_output() -> None:
 
     assert _is_tui_chrome("hello world") is False
     assert _is_tui_chrome("def test_something(): assert True") is False
-    assert _is_tui_chrome(
-        "You are running in an AUTOMATED PIPELINE with NO human supervision."
-    ) is False
-    assert _is_tui_chrome(
-        "- DO NOT ask the user for input, clarification, or confirmation"
-    ) is False
+    assert (
+        _is_tui_chrome("You are running in an AUTOMATED PIPELINE with NO human supervision.")
+        is False
+    )
+    assert (
+        _is_tui_chrome("- DO NOT ask the user for input, clarification, or confirmation") is False
+    )
 
 
 def test_is_tui_chrome_does_not_filter_json_ndjson_events() -> None:
 
-    assert _is_tui_chrome(
-        '{"type":"assistant","message":{"content":[{"type":"text","text":"hello"}]}}'
-    ) is False
+    assert (
+        _is_tui_chrome(
+            '{"type":"assistant","message":{"content":[{"type":"text","text":"hello"}]}}'
+        )
+        is False
+    )
 
 
 def test_is_tui_chrome_agent_output_with_unicode_box_drawing_is_preserved() -> None:
     """Agent output containing Unicode box-drawing chars with substantial content."""
 
-    table_line = (
-        "\u2502 Name        \u2502 Status  \u2502 Description                    \u2502"
-    )
+    table_line = "\u2502 Name        \u2502 Status  \u2502 Description                    \u2502"
     assert _is_tui_chrome(table_line) is False
 
 
@@ -396,9 +397,7 @@ def test_event_for_text_returns_none_for_box_drawing_border() -> None:
 def test_event_for_text_returns_none_for_splash_header() -> None:
     parser = ClaudeInteractiveTranscriptParser()
 
-    event = parser._event_for_text(
-        "\u256d\u2500\u2500\u2500ClaudeCodev2.1.158\u256e"
-    )
+    event = parser._event_for_text("\u256d\u2500\u2500\u2500ClaudeCodev2.1.158\u256e")
 
     assert event is None
 
@@ -567,9 +566,7 @@ def test_lenient_thinking_does_not_false_positive_on_prose(text: str) -> None:
     event = parser._event_for_text(text)
 
     assert event is not None, f"Text {text!r} was dropped"
-    assert event.kind == "output", (
-        f"Text {text!r} classified as {event.kind}, expected output"
-    )
+    assert event.kind == "output", f"Text {text!r} classified as {event.kind}, expected output"
 
 
 # ---------------------------------------------------------------------------

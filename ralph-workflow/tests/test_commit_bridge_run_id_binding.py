@@ -145,4 +145,3 @@ def test_bridge_env_for_cannot_drift_from_bridge_run_id() -> None:
     first = bridge_env_for(bridge)[str(MCP_RUN_ID_ENV)]
     second = bridge_env_for(bridge)[str(MCP_RUN_ID_ENV)]
     assert first == second == "commit-plumbing"
-

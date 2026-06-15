@@ -55,9 +55,7 @@ def test_terminal_exit_with_no_output_logs_gracefully() -> None:
 
 def _capture_levels(exc: AgentInvocationError) -> list[str]:
     levels: list[str] = []
-    sink_id = logger.add(
-        lambda message: levels.append(message.record["level"].name), level="TRACE"
-    )
+    sink_id = logger.add(lambda message: levels.append(message.record["level"].name), level="TRACE")
     try:
         _log_invocation_exit(exc)
     finally:

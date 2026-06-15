@@ -103,32 +103,26 @@ class TestPlannerSubagentGuidance:
         prompt = _render("planning_edit.jinja", tmp_path)
         _assert_hints(prompt, PLANNER_SUBAGENT_HINTS)
 
-    def test_planning_edit_verifies_finding_closure_with_scouts(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_edit_verifies_finding_closure_with_scouts(self, tmp_path: Path) -> None:
         prompt = _render("planning_edit.jinja", tmp_path)
         assert "one scout per analyzer finding" in prompt
 
-    def test_planning_keeps_executor_side_parallel_section(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_keeps_executor_side_parallel_section(self, tmp_path: Path) -> None:
         """Planner-side subagent guidance must coexist with executor work_units."""
         prompt = _render(None, tmp_path)
         assert "## Agent-Driven Parallel Execution" in prompt
         assert "## PLANNING WITH SUBAGENTS" in prompt
 
-    def test_fallback_templates_keep_condensed_subagent_hint(
-        self, tmp_path: Path
-    ) -> None:
+    def test_fallback_templates_keep_condensed_subagent_hint(self, tmp_path: Path) -> None:
         for template in ("planning_fallback.jinja", "planning_edit_fallback.jinja"):
             prompt = _render(template, tmp_path)
             _assert_hints(prompt, FALLBACK_SUBAGENT_HINTS)
 
     def test_developer_fallback_keeps_work_unit_subagent_dispatch_hint(self) -> None:
         """Even the developer fallback must route work_units to agent sub-agents."""
-        source = (
-            packaged_template_root() / "developer_iteration_fallback.jinja"
-        ).read_text(encoding="utf-8")
+        source = (packaged_template_root() / "developer_iteration_fallback.jinja").read_text(
+            encoding="utf-8"
+        )
         assert "work_units" in source
         assert "sub-agents" in source
         assert "sequentially" in source
@@ -162,9 +156,9 @@ class TestPlanQualityRubric:
 
     def test_rubric_dimensions_match_planning_analysis_checklist(self) -> None:
         """Every rubric dimension must exist verbatim in the analyzer template."""
-        analysis_source = (
-            packaged_template_root() / "planning_analysis.jinja"
-        ).read_text(encoding="utf-8")
+        analysis_source = (packaged_template_root() / "planning_analysis.jinja").read_text(
+            encoding="utf-8"
+        )
         for dimension in RUBRIC_DIMENSIONS:
             assert dimension.upper() in analysis_source.upper(), (
                 f"Rubric dimension {dimension!r} is missing from "

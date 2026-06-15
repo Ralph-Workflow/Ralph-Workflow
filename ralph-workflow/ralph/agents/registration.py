@@ -201,6 +201,4 @@ def get_registered_agent_support(
     support = default_catalog().get(name)
     if support is None:
         return None
-    return support.parser_factory(), support.strategy_factory(
-        label_scope=None, registry=None
-    )
+    return support.parser_factory(), support.strategy_factory(label_scope=None, registry=None)

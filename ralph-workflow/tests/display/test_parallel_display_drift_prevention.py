@@ -136,9 +136,7 @@ def test_plain_log_renderer_status_line_uses_build_line() -> None:
     output = buffer.getvalue()
     assert "INFO" in output, f"status line missing INFO badge: {output!r}"
     assert "META" in output, f"status line missing META badge: {output!r}"
-    assert "[status][unit-1]" in output, (
-        f"status line missing [status][unit-1] tag: {output!r}"
-    )
+    assert "[status][unit-1]" in output, f"status line missing [status][unit-1] tag: {output!r}"
     assert "running" in output, f"status text 'running' missing: {output!r}"
 
 
@@ -159,8 +157,7 @@ def test_first_run_panel_helper_routes_through_display_context() -> None:
     pd.emit_first_run_panel([Text("hello")])
 
     assert len(printed) == 1, (
-        f"emit_first_run_panel should print exactly one Panel, got {len(printed)}: "
-        f"{printed!r}"
+        f"emit_first_run_panel should print exactly one Panel, got {len(printed)}: {printed!r}"
     )
     panel = printed[0]
     assert isinstance(panel, Panel), (
@@ -251,9 +248,7 @@ def test_parallel_display_exposes_all_36_emit_methods() -> None:
         "emit_run_end",
     }
     for name in explicit_pins:
-        assert name in members, (
-            f"ParallelDisplay is missing baseline method {name!r}"
-        )
+        assert name in members, f"ParallelDisplay is missing baseline method {name!r}"
     assert "emit_error" not in members, (
         "ParallelDisplay must NOT expose a separate emit_error method; "
         "error messages use emit_warning with theme.status.error styling."
@@ -286,6 +281,5 @@ def test_emit_methods_route_through_display_console_only() -> None:
         if "Console(" in source:
             violators.append(name)
     assert not violators, (
-        "emit_* methods that construct their own Console (free-function fan-out): "
-        f"{violators!r}"
+        f"emit_* methods that construct their own Console (free-function fan-out): {violators!r}"
     )

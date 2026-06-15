@@ -66,9 +66,7 @@ def test_grep_audit_finds_zero_fastmcp_hits_in_ralph() -> None:
             if token in text:
                 rel = path.relative_to(REPO)
                 hits.append(f"{rel}: contains {token!r}")
-    assert not hits, (
-        f"file walk should find no FastMCP references in ralph/, got: {hits}"
-    )
+    assert not hits, f"file walk should find no FastMCP references in ralph/, got: {hits}"
 
 
 def test_in_memory_transport_drives_dispatch_via_saturated_seam(
@@ -94,9 +92,7 @@ def test_in_memory_transport_drives_dispatch_via_saturated_seam(
     workspace = FsWorkspace(tmp_path)
     registry = build_ralph_tool_registry(session, workspace)
     mcp_server = McpServer(session, workspace, registry)
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-    ).encode()
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode()
     status, _headers, body = drive_request(mcp_server, payload)
     assert status == 200
     assert seen, "the dispatch must run through the saturated-dispatch seam"

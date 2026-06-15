@@ -137,9 +137,7 @@ def test_materialize_format_doc_returns_none_for_unsupported() -> None:
     workspace_root = Path("/virtual-ws")
 
     assert materialize_format_doc(workspace_root, "bogus", backend=backend) is None
-    assert not any(
-        str(p).endswith("bogus.md") for p in backend._files
-    )
+    assert not any(str(p).endswith("bogus.md") for p in backend._files)
 
 
 def test_materialize_all_format_docs_materializes_every_supported_type() -> None:
@@ -537,9 +535,7 @@ def test_minimal_preset_quickstart_example_round_trips() -> None:
                 "content": json.dumps(inner_payload),
             },
         )
-        assert result.is_error is False, (
-            f"Minimal preset quickstart did not round-trip: {result!r}"
-        )
+        assert result.is_error is False, f"Minimal preset quickstart did not round-trip: {result!r}"
 
 
 def test_format_doc_has_minimal_preset_quickstart_section() -> None:
@@ -743,9 +739,7 @@ def test_plan_format_doc_h2_count_increased_by_one() -> None:
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     h2_count = sum(1 for line in doc.split("\n") if line.startswith("## "))
-    assert h2_count == 25, (
-        f"Expected exactly 25 H2 sections in plan format doc, got {h2_count}"
-    )
+    assert h2_count == 25, f"Expected exactly 25 H2 sections in plan format doc, got {h2_count}"
 
 
 def test_plan_format_doc_extends_existing_model_tier_guidance() -> None:

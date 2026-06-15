@@ -23,6 +23,7 @@ from ralph.policy.loader import load_policy
 from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEventBus, FalloverEvent
 from ralph.recovery.failure_classifier import FailureClassifier
+from ralph.recovery.unavailability_reason import ReasonBackoffPolicy, UnavailabilityReason
 
 if TYPE_CHECKING:
     from pytest import MonkeyPatch
@@ -77,12 +78,18 @@ def test_recovery_controller_falls_over_on_no_progress_quiet() -> None:
     events: list[object] = []
     bus.subscribe(events.append)
 
+    policy = {
+        UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(
+            base_backoff_ms=5_000, max_backoff_ms=300_000
+        )
+    }
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
             clock=clock,
             policy_bundle=_minimal_policy_bundle(),
             event_bus=bus,
+            unavailability_backoff_policy=policy,
         )
     )
     state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
@@ -142,8 +149,10 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
     )
 
     emitted: list[str] = []
+
     def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
         emitted.append(text)
+
     monkeypatch.setattr("ralph.pipeline.run_loop.emit_activity_line", mock_emit_activity_line)
 
     slept: list[float] = []
@@ -171,6 +180,7 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
 
     def mock_run_pipeline_step(**_kwargs: object) -> PipelineState:
         return state.copy_with(phase="complete")
+
     monkeypatch.setattr("ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step)
 
     _run_inner_loop(state, ctx, prev_phase="development")
@@ -211,12 +221,15 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
     )
 
     emitted: list[str] = []
+
     def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
         emitted.append(text)
+
     monkeypatch.setattr("ralph.pipeline.run_loop.emit_activity_line", mock_emit_activity_line)
 
     def raising_sleep(seconds: float) -> None:
         raise RuntimeError("simulated sleep crash")
+
     ctx.sleep = raising_sleep
 
     ctx.active_display = MagicMock()
@@ -242,6 +255,7 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
 
     def mock_run_pipeline_step(**_kwargs: object) -> PipelineState:
         return state.copy_with(phase="complete")
+
     monkeypatch.setattr("ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step)
 
     new_state, _prev_phase, _exit_code = _run_inner_loop(state, ctx, prev_phase="development")
@@ -322,8 +336,10 @@ def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
     )
 
     emitted: list[str] = []
+
     def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
         emitted.append(text)
+
     monkeypatch.setattr("ralph.pipeline.run_loop.emit_activity_line", mock_emit_activity_line)
 
     slept: list[float] = []
@@ -350,32 +366,27 @@ def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
     )
 
     call_count = [0]
+
     def mock_run_pipeline_step(**_kwargs: object) -> PipelineState:
         call_count[0] += 1
         if call_count[0] == 1:
             return state.copy_with(phase="complete")
         return state.copy_with(phase="development")
-    monkeypatch.setattr(
-        "ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step
-    )
+
+    monkeypatch.setattr("ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step)
 
     waiting_count_before = len([s for s in emitted if "WAITING" in str(s)])
     _run_inner_loop(state, ctx, prev_phase="development")
     waiting_count_after_first = len([s for s in emitted if "WAITING" in str(s)])
-    assert (
-        waiting_count_after_first == waiting_count_before + 1
-    ), "WAITING should be emitted on first call"
+    assert waiting_count_after_first == waiting_count_before + 1, (
+        "WAITING should be emitted on first call"
+    )
 
     phase_before = ctx.last_waiting_state_phase
 
-    _run_inner_loop(
-        state.copy_with(phase="complete"), ctx, prev_phase="development"
-    )
+    _run_inner_loop(state.copy_with(phase="complete"), ctx, prev_phase="development")
     waiting_count_after_second = len([s for s in emitted if "WAITING" in str(s)])
-    assert (
-        waiting_count_after_second == waiting_count_after_first
-    ), "WAITING should be suppressed in same phase"
-    assert ctx.last_waiting_state_phase == phase_before, (
-        "Guard state should be preserved"
+    assert waiting_count_after_second == waiting_count_after_first, (
+        "WAITING should be suppressed in same phase"
     )
-
+    assert ctx.last_waiting_state_phase == phase_before, "Guard state should be preserved"

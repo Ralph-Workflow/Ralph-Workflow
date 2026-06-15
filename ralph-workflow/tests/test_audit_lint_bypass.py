@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 # _find_noqa_violations tests
 # ---------------------------------------------------------------------------
 
+
 def test_clean_code_passes() -> None:
     """No violations for code without noqa comments."""
     lines = [
@@ -56,7 +57,7 @@ def test_bare_noqa_with_trailing_text_detected() -> None:
 def test_forbidden_noqa_code_detected() -> None:
     """# noqa with a code not in acceptable set is flagged."""
     lines = [
-        'x = 1  # noqa: F841',
+        "x = 1  # noqa: F841",
     ]
     violations = _find_noqa_violations(lines, "src/vars.py")
     assert len(violations) == 1
@@ -67,7 +68,7 @@ def test_forbidden_noqa_code_detected() -> None:
 def test_legitimate_noqa_not_flagged() -> None:
     """Allowlisted noqa codes for allowlisted files pass."""
     lines = [
-        'global _CACHE  # noqa: PLW0603',
+        "global _CACHE  # noqa: PLW0603",
     ]
     violations = _find_noqa_violations(lines, "ralph/testing/audit_test_policy.py")
     assert len(violations) == 0
@@ -77,7 +78,7 @@ def test_unauthorized_noqa_code_for_wrong_file() -> None:
     """Allowlisted code used in a non-allowlisted file is flagged."""
     # PLR0911 is allowlisted for audit_test_policy, not for other_file.
     lines = [
-        'def my_func(): pass  # noqa: PLR0911',
+        "def my_func(): pass  # noqa: PLR0911",
     ]
     violations = _find_noqa_violations(lines, "src/other_file.py")
     assert len(violations) == 1
@@ -109,6 +110,7 @@ def test_noqa_inside_triple_quoted_string_skipped() -> None:
 # ---------------------------------------------------------------------------
 # _check_pyproject_config tests
 # ---------------------------------------------------------------------------
+
 
 def test_clean_pyproject_passes(tmp_path: Path) -> None:
     """pyproject.toml without per-file-ignores passes."""
@@ -162,6 +164,7 @@ def test_missing_pyproject_no_error(tmp_path: Path) -> None:
 # audit_codebase integration tests
 # ---------------------------------------------------------------------------
 
+
 def test_clean_codebase_passes(tmp_path: Path) -> None:
     """A clean codebase with no violations passes."""
     src_dir = tmp_path / "src"
@@ -207,6 +210,7 @@ def test_unreadable_file_skipped(tmp_path: Path) -> None:
 # main() entry point tests
 # ---------------------------------------------------------------------------
 
+
 def test_main_clean_returns_zero(tmp_path: Path) -> None:
     """main() returns 0 when no violations found."""
     src_dir = tmp_path / "src"
@@ -239,6 +243,7 @@ def test_main_missing_directory_returns_two() -> None:
 # Skip dirs test
 # ---------------------------------------------------------------------------
 
+
 def test_skipped_dirs_excluded(tmp_path: Path) -> None:
     """Files in __pycache__ and .venv are skipped."""
     cache_dir = tmp_path / "__pycache__"
@@ -253,6 +258,7 @@ def test_skipped_dirs_excluded(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # per-file-ignores allowlist tests
 # ---------------------------------------------------------------------------
+
 
 def test_per_file_ignores_with_allowlisted_codes_are_allowed(tmp_path: Path) -> None:
     """pyproject.toml with allowlisted per-file-ignores on matching patterns — no violation."""
@@ -303,6 +309,7 @@ select = ["E", "F"]
 # ---------------------------------------------------------------------------
 # extend-ignore detection tests
 # ---------------------------------------------------------------------------
+
 
 def test_check_pyproject_extend_ignore_is_violation(tmp_path: Path) -> None:
     """[tool.ruff.lint] extend-ignore in pyproject.toml is detected as a violation."""

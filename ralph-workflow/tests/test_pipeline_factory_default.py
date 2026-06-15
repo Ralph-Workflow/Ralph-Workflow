@@ -287,12 +287,8 @@ def test_run_commit_plumbing_routes_fallback_through_default_pipeline_factory(
         "DefaultPipelineFactory",
         lambda *_args, **_kwargs: recording_factory,
     )
-    monkeypatch.setattr(
-        commit_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime
-    )
-    monkeypatch.setattr(
-        commit_plumbing_module, "execute_agent_effect", fake_execute_agent_effect
-    )
+    monkeypatch.setattr(commit_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime)
+    monkeypatch.setattr(commit_plumbing_module, "execute_agent_effect", fake_execute_agent_effect)
     monkeypatch.setattr(
         commit_plumbing_module,
         "prompt_commit_message",
@@ -368,12 +364,8 @@ def test_run_smoke_plumbing_routes_fallback_through_default_pipeline_factory(
         "DefaultPipelineFactory",
         lambda *_args, **_kwargs: recording_factory,
     )
-    monkeypatch.setattr(
-        smoke_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime
-    )
-    monkeypatch.setattr(
-        smoke_plumbing_module, "execute_agent_effect", fake_execute_agent_effect
-    )
+    monkeypatch.setattr(smoke_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime)
+    monkeypatch.setattr(smoke_plumbing_module, "execute_agent_effect", fake_execute_agent_effect)
     monkeypatch.setattr(
         smoke_plumbing_module,
         "read_smoke_test_result_artifact",
@@ -429,9 +421,7 @@ def test_run_commit_plumbing_pro_hooks_reach_factory(
         "DefaultPipelineFactory",
         lambda *_args, **_kwargs: recording_factory,
     )
-    monkeypatch.setattr(
-        commit_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime
-    )
+    monkeypatch.setattr(commit_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime)
     monkeypatch.setattr(
         commit_plumbing_module,
         "execute_agent_effect",
@@ -500,9 +490,7 @@ def test_run_smoke_plumbing_pro_hooks_reach_factory(
         "DefaultPipelineFactory",
         lambda *_args, **_kwargs: recording_factory,
     )
-    monkeypatch.setattr(
-        smoke_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime
-    )
+    monkeypatch.setattr(smoke_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime)
     monkeypatch.setattr(
         smoke_plumbing_module,
         "execute_agent_effect",
@@ -589,12 +577,8 @@ def test_run_commit_plumbing_uses_hooked_display_context_at_dispatch_boundary(
         "DefaultPipelineFactory",
         lambda *_args, **_kwargs: recording_factory,
     )
-    monkeypatch.setattr(
-        commit_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime
-    )
-    monkeypatch.setattr(
-        commit_plumbing_module, "execute_agent_effect", fake_execute_agent_effect
-    )
+    monkeypatch.setattr(commit_plumbing_module, "with_bridge_lifetime", _fake_with_bridge_lifetime)
+    monkeypatch.setattr(commit_plumbing_module, "execute_agent_effect", fake_execute_agent_effect)
     monkeypatch.setattr(
         commit_plumbing_module,
         "collect_commit_agent_output",

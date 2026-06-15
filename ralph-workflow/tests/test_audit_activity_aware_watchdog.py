@@ -239,9 +239,8 @@ def test_audit_does_not_flag_production_call_sites() -> None:
     package_root = Path(__file__).parent.parent / "ralph"
     violations = audit.audit_activity_aware_watchdog(package_root)
 
-    assert violations == [], (
-        "expected zero violations against production code, got:\n"
-        + "\n".join(f"  {v}" for v in violations)
+    assert violations == [], "expected zero violations against production code, got:\n" + "\n".join(
+        f"  {v}" for v in violations
     )
 
 
@@ -387,9 +386,7 @@ def test_audit_flags_completion_error_path_missing_teardown(tmp_path: Path) -> N
     ``error_path_teardown``."""
     package_root = _write_fake_package(tmp_path)
     bad_module = package_root / "agents" / "invoke" / "_completion.py"
-    bad_module.write_text(
-        _completion_source_with_missing_error_path_teardown(), encoding="utf-8"
-    )
+    bad_module.write_text(_completion_source_with_missing_error_path_teardown(), encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
 

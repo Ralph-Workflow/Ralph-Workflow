@@ -124,9 +124,7 @@ def _patch_runner_dependencies(
     )
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
-    monkeypatch.setattr(
-        runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle
-    )
+    monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle)
     monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
     monkeypatch.setattr(
         runner_module,
@@ -136,9 +134,7 @@ def _patch_runner_dependencies(
     monkeypatch.setattr(runner_module, "create_initial_state", lambda *_a, **_kw: state)
 
 
-def _install_display_context(
-    monkeypatch: pytest.MonkeyPatch, run_loop_module: object
-) -> None:
+def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: object) -> None:
     ctx = make_display_context()
     runner_module = _load_runner()
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
@@ -205,9 +201,7 @@ def test_policy_bundle_override_routes_through_inner_loop(
     assert getattr(captured_ctx[0], "policy_bundle", None) is override_bundle
 
 
-def test_registry_factory_is_invoked(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_registry_factory_is_invoked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     run_loop_module = _load_run_loop()
     monkeypatch.delenv("RALPH_WORKFLOW_PRO", raising=False)
     _seed_workspace(tmp_path)
@@ -255,9 +249,7 @@ def test_registry_factory_is_invoked(
     assert captured_registry == [custom_registry]
 
 
-def test_state_factory_is_invoked(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_state_factory_is_invoked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     run_loop_module = _load_run_loop()
     monkeypatch.delenv("RALPH_WORKFLOW_PRO", raising=False)
     _seed_workspace(tmp_path)
@@ -266,9 +258,7 @@ def test_state_factory_is_invoked(
     custom_state = PipelineState(phase="complete")
     state_factory_calls: list[object] = []
 
-    def _state_factory(
-        _cfg: object, _ap: object, _pp: object, _co: object | None
-    ) -> PipelineState:
+    def _state_factory(_cfg: object, _ap: object, _pp: object, _co: object | None) -> PipelineState:
         state_factory_calls.append(object())
         return custom_state
 
@@ -316,9 +306,7 @@ def test_recovery_controller_factory_is_invoked(
     custom_controller.event_bus = MagicMock(subscribe=lambda _cb: lambda: None)
     controller_factory_calls: list[object] = []
 
-    def _controller_factory(
-        _st: object, _pb: object, _cfg: object
-    ) -> tuple[object, int]:
+    def _controller_factory(_st: object, _pb: object, _cfg: object) -> tuple[object, int]:
         controller_factory_calls.append(object())
         return custom_controller, 1
 
@@ -538,8 +526,7 @@ def test_pro_pipeline_hooks_to_runner_kwargs_shape() -> None:
         "snapshot_registry",
     }
     assert set(kwargs) == expected_keys, (
-        f"to_runner_kwargs() keys drifted; expected {sorted(expected_keys)} "
-        f"got {sorted(kwargs)}"
+        f"to_runner_kwargs() keys drifted; expected {sorted(expected_keys)} got {sorted(kwargs)}"
     )
     assert kwargs["policy_bundle_factory"] is sentinel_policy
     assert kwargs["registry_factory"] is sentinel_registry

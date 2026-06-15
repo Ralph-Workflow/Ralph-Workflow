@@ -72,6 +72,7 @@ def _make_watchdog(
         # max_waiting_on_child_no_progress_seconds) is satisfied.
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
         no_progress_quiet_seconds=no_progress_ceiling,
+        no_output_at_start_seconds=None,
     )
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock, listener, corroborator=corroborator), clock

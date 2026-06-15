@@ -47,9 +47,7 @@ def apply_session_capture(state: PipelineState) -> PipelineState:
     # Local import to avoid a circular dependency: effect_executor
     # imports from runner.py (transitively), so we cannot import
     # effect_executor at module load time.
-    effect_executor = cast(
-        "_EffectExecutorModule", import_module("ralph.pipeline.effect_executor")
-    )
+    effect_executor = cast("_EffectExecutorModule", import_module("ralph.pipeline.effect_executor"))
     pop_last_captured_retry_intent = effect_executor.pop_last_captured_retry_intent
 
     captured_session_id = pop_last_captured_session_id()

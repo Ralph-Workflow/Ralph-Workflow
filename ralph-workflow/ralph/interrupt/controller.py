@@ -36,8 +36,7 @@ INTERRUPT_EXIT_CODE = 130
 _INTERRUPT_EXIT_CODE_REQUIRED: int = 130
 if INTERRUPT_EXIT_CODE != _INTERRUPT_EXIT_CODE_REQUIRED:
     raise RuntimeError(
-        f"INTERRUPT_EXIT_CODE must be {_INTERRUPT_EXIT_CODE_REQUIRED} "
-        f"(got {INTERRUPT_EXIT_CODE})"
+        f"INTERRUPT_EXIT_CODE must be {_INTERRUPT_EXIT_CODE_REQUIRED} (got {INTERRUPT_EXIT_CODE})"
     )
 
 
@@ -108,9 +107,7 @@ class InterruptController:
         """
         bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
-            logger.warning(
-                "bridge_pids is deprecated; pass bridge_pgids instead"
-            )
+            logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
         del bridge_pgids, bridge_pids_legacy
         self.record_interrupt()
         if self.stop_connectivity is not None:
@@ -133,12 +130,8 @@ class InterruptController:
         """
         bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
-            logger.warning(
-                "bridge_pids is deprecated; pass bridge_pgids instead"
-            )
-        pgids: Iterable[int] = (
-            list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
-        )
+            logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
+        pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
         self.force_interrupt(bridge_pgids=pgids)
         hard_exit = self.hard_exit or os._exit
         hard_exit(INTERRUPT_EXIT_CODE)

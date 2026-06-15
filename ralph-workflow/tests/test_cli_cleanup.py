@@ -159,8 +159,7 @@ class TestCleanupNeverInvokesGit:
         assert not (workers_dir / "unit-a").exists(), "unit-a must have been removed"
         assert not (workers_dir / "unit-b").exists(), "unit-b must have been removed"
         assert invocations == [], (
-            f"cleanup must not invoke any subprocess, "
-            f"but these were recorded: {invocations!r}"
+            f"cleanup must not invoke any subprocess, but these were recorded: {invocations!r}"
         )
 
     def test_cleanup_source_does_not_reference_worktree_or_subprocess_git(self) -> None:

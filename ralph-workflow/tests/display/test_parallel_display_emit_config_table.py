@@ -55,17 +55,11 @@ def test_emit_config_table_renders_panel() -> None:
     pd.stop()
     output = buf.getvalue()
     panels = [item for item in captured if isinstance(item, Panel)]
-    assert len(panels) == 1, (
-        f"expected exactly 1 panel, got {len(panels)}: {panels!r}"
-    )
+    assert len(panels) == 1, f"expected exactly 1 panel, got {len(panels)}: {panels!r}"
     panel = panels[0]
-    assert panel.title == "Effective Configuration", (
-        f"unexpected panel title: {panel.title!r}"
-    )
+    assert panel.title == "Effective Configuration", f"unexpected panel title: {panel.title!r}"
     assert "[config]" in output, f"expected [config] section rule: {output!r}"
-    assert "Effective Configuration" in output, (
-        f"missing panel title: {output!r}"
-    )
+    assert "Effective Configuration" in output, f"missing panel title: {output!r}"
 
 
 def test_emit_config_table_renders_panel_via_mock_spec() -> None:
@@ -83,9 +77,7 @@ def test_emit_config_table_renders_panel_via_mock_spec() -> None:
     pd.stop()
     output = buf.getvalue()
     panels = [item for item in captured if isinstance(item, Panel)]
-    assert len(panels) == 1, (
-        f"expected exactly 1 panel from mock, got {len(panels)}"
-    )
+    assert len(panels) == 1, f"expected exactly 1 panel from mock, got {len(panels)}"
     assert "[config]" in output, f"expected [config] section rule: {output!r}"
 
 
@@ -95,9 +87,5 @@ def test_emit_config_table_quiet_mode_emits_nothing() -> None:
     pd._is_quiet = True
     pd.emit_config_table(UnifiedConfig())
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
-    assert captured == [], (
-        f"quiet mode must not call console.print, got: {captured!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"
+    assert captured == [], f"quiet mode must not call console.print, got: {captured!r}"

@@ -82,9 +82,7 @@ def test_all_public_symbols_still_importable() -> None:
 def test_submodule_owners(submodule_name: str, expected: tuple[str, ...]) -> None:
     mod = importlib.import_module(f"ralph.mcp.artifacts.plan.{submodule_name}")
     for name in expected:
-        assert hasattr(mod, name), (
-            f"submodule {submodule_name!r} is expected to own {name!r}"
-        )
+        assert hasattr(mod, name), f"submodule {submodule_name!r} is expected to own {name!r}"
 
 
 def test_parse_plan_payload_envelope_aware() -> None:

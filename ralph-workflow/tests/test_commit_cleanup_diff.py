@@ -140,9 +140,7 @@ def test_commit_cleanup_diff_caps_untracked_list(tmp_git_repo: Path) -> None:
     diff = commit_cleanup_diff(tmp_git_repo)
     assert _UNTRACKED_HEADER in diff
     # Exactly 500 paths should be visible.
-    visible_count = sum(
-        1 for line in diff.splitlines() if line.startswith("filler_")
-    )
+    visible_count = sum(1 for line in diff.splitlines() if line.startswith("filler_"))
     assert visible_count == 500
     # Truncation footer reports the remaining count.
     assert "and 100 more untracked files not shown" in diff
@@ -153,9 +151,7 @@ def test_commit_cleanup_diff_caps_untracked_list(tmp_git_repo: Path) -> None:
         (tmp_git_repo / f"zzz_after_cap_{i}.tmp").write_text("x")
     diff = commit_cleanup_diff(tmp_git_repo)
     assert _UNTRACKED_HEADER in diff
-    visible_after = sum(
-        1 for line in diff.splitlines() if line.startswith("filler_")
-    )
+    visible_after = sum(1 for line in diff.splitlines() if line.startswith("filler_"))
     assert visible_after == 500
     # The 10 zzz_after_cap files sort lexically after all filler files, so
     # they must be in the truncated tail (the footer reports 110 more, not

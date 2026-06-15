@@ -282,10 +282,7 @@ class TimeoutPolicy:
             raise ValueError(msg)
         limit = self.max_waiting_on_child_no_progress_seconds
         if limit is not None and self.no_progress_quiet_seconds > limit:
-            msg = (
-                "no_progress_quiet_seconds must be <= "
-                "max_waiting_on_child_no_progress_seconds"
-            )
+            msg = "no_progress_quiet_seconds must be <= max_waiting_on_child_no_progress_seconds"
             raise ValueError(msg)
 
     def _validate_no_output_at_start_seconds(self) -> None:
@@ -296,6 +293,9 @@ class TimeoutPolicy:
             raise ValueError(msg)
         limit = self.max_waiting_on_child_no_progress_seconds
         if limit is not None and self.no_output_at_start_seconds >= limit:
+            if self.no_output_at_start_seconds == NO_OUTPUT_AT_START_SECONDS:
+                object.__setattr__(self, "no_output_at_start_seconds", None)
+                return
             msg = (
                 "no_output_at_start_seconds must be strictly less than "
                 "max_waiting_on_child_no_progress_seconds"

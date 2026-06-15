@@ -180,6 +180,7 @@ def install_baseline_skills(
 # The project canonical NEVER appears in the sibling list (see PA-007 in
 # _agent_paths.py).
 
+
 def _materialize_project_sibling_dir(
     sibling_dir: Path, canonical_root: Path, skill_name: str
 ) -> str | None:

@@ -441,9 +441,9 @@ def test_upstream_proxy_does_not_invoke_sink_when_called_directly() -> None:
         assert sinks_called == [], (
             f"expected no sink calls from UpstreamProxyHandler directly, got {sinks_called}"
         )
-        assert upstream.calls == [
-            ("mcp__upstream__search", {"query": "hello"}, None)
-        ], f"expected exactly one upstream call, got {upstream.calls}"
+        assert upstream.calls == [("mcp__upstream__search", {"query": "hello"}, None)], (
+            f"expected exactly one upstream call, got {upstream.calls}"
+        )
     finally:
         reset_active_sink(token)
 

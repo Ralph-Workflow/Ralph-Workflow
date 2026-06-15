@@ -21,9 +21,7 @@ from ralph.pro_support.watcher import ProMarkerWatcher
 _BARE_JSON_LINE = re.compile(r"^\s*[\{\[].*[\}\]]\s*$")
 
 
-def _wait_for_event(
-    event: threading.Event, timeout: float = 2.0, *, label: str = "event"
-) -> None:
+def _wait_for_event(event: threading.Event, timeout: float = 2.0, *, label: str = "event") -> None:
     assert event.wait(timeout=timeout), f"timed out waiting for {label}"
 
 

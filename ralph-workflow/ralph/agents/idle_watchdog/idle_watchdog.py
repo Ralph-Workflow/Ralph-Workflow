@@ -99,6 +99,8 @@ class IdleWatchdog:
     _clock: Clock
     _last_activity: float = field(init=False)
     _session_started_at: float = field(init=False)
+    _last_meaningful_output_at: float | None = field(default=None, init=False)
+    _has_meaningful_output: bool = field(default=False, init=False)
     _invocation_started_at: float | None = field(default=None, init=False)
     _waiting_on_child_started_at: float | None = field(default=None, init=False)
     _cumulative_waiting_on_child_seconds: float = field(default=0.0, init=False)
@@ -165,6 +167,8 @@ class IdleWatchdog:
         self._last_activity = now
         self._session_started_at = now
         self._invocation_started_at = None
+        self._last_meaningful_output_at = None
+        self._has_meaningful_output = False
         self._waiting_on_child_started_at = None
         self._cumulative_waiting_on_child_seconds = 0.0
         self._in_drain_window = False
@@ -207,7 +211,10 @@ class IdleWatchdog:
 
     def record_invocation_start(self) -> None:
         """Record the start of the invocation."""
-        self._invocation_started_at = self._clock.monotonic()
+        now = self._clock.monotonic()
+        self._invocation_started_at = now
+        self._last_meaningful_output_at = now
+        self._has_meaningful_output = False
 
     @property
     def invocation_elapsed_seconds(self) -> float:
@@ -287,11 +294,12 @@ class IdleWatchdog:
         inside WAITING_ON_CHILD deferral when the agent HAS produced output at
         some point but is now stuck with stale-progress evidence.
         """
-        if self._config.no_output_at_start_seconds is None:
-            return None
-        if self.invocation_elapsed_seconds < self._config.no_output_at_start_seconds:
-            return None
-        if self._last_activity != self._session_started_at:
+        if (
+            self._config.no_output_at_start_seconds is None
+            or self._has_meaningful_output
+            or self._last_meaningful_output_at is None
+            or (now - self._last_meaningful_output_at) < self._config.no_output_at_start_seconds
+        ):
             return None
         quiet_state = classify_quiet()
         if quiet_state not in {
@@ -359,6 +367,8 @@ class IdleWatchdog:
         """
         self._reset_idle_baseline()
         self._repetition_tracker.note_progress()
+        self._last_meaningful_output_at = self._clock.monotonic()
+        self._has_meaningful_output = True
 
     def record_lifecycle_activity(self) -> None:
         """Record cosmetic, non-meaningful activity (e.g. lifecycle frames).
@@ -366,7 +376,8 @@ class IdleWatchdog:
         Resets the idle baseline exactly like ``record_activity()`` so the
         agent is not declared idle, but does NOT reset the repeated-error
         circuit breaker: cosmetic output interleaved between identical errors
-        must not mask a wedged retry loop.
+        must not mask a wedged retry loop. LIFECYCLE frames are deliberately
+        excluded from the NO_OUTPUT_AT_START baseline.
         """
         self._reset_idle_baseline()
 
@@ -928,7 +939,7 @@ class IdleWatchdog:
         *,
         now: float,
         idle_elapsed: float,
-        message_suffix: str = '',
+        message_suffix: str = "",
         **extra_fields: object,
     ) -> None:
         """Emit a fire log with per-channel evidence_summary in loguru extra."""
@@ -1023,9 +1034,9 @@ class IdleWatchdog:
                 now=now,
                 idle_elapsed=idle_elapsed,
                 message_suffix=(
-                    f' session_elapsed={round(now - self._session_started_at, 1)}s'
+                    f" session_elapsed={round(now - self._session_started_at, 1)}s"
                     if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
-                    else ''
+                    else ""
                 ),
             )
             self._last_fire_reason = fire_reason
@@ -1112,7 +1123,7 @@ class IdleWatchdog:
             WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
             now=now,
             idle_elapsed=idle_elapsed,
-            message_suffix=f' since_tool_result={round(since_tool_result, 1)}s',
+            message_suffix=f" since_tool_result={round(since_tool_result, 1)}s",
         )
         return True
 
@@ -1361,7 +1372,6 @@ class IdleWatchdog:
             round(self._cumulative_waiting_on_child_seconds, 1),
         )
         return WatchdogVerdict.CONTINUE
-
 
     def _evaluate_final_verdict(
         self,

@@ -277,6 +277,68 @@ def _emit_run_start(
         ctx.active_display.emit_run_start(_orientation)
 
 
+def _log_waiting_state(
+    state: PipelineState,
+    ctx: _LoopContext,
+    phase_str: str,
+    unavail_reason: str,
+    delay_ms: int,
+) -> None:
+    chain = state.chain_for_phase(state.phase)
+    agent_cooldowns = []
+    if chain is not None:
+        tracker = ctx.controller._unavailability_tracker
+        snap = tracker.snapshot()
+        cooldowns_dict = snap.get("unavailable_timeouts", {})
+        attempts_dict = snap.get("backoff_attempts", {})
+        now_ms = int(tracker._clock.monotonic() * 1000)
+        for agent in chain.agents:
+            key = f"{phase_str}:{agent}"
+            timeout_ms = cooldowns_dict.get(key)
+            attempt = attempts_dict.get(key, 0)
+            attempt_int = int(attempt) if isinstance(attempt, int) else 0
+            cooldown_ms = 0
+            if isinstance(timeout_ms, int):
+                cooldown_ms = max(0, timeout_ms - now_ms)
+            agent_cooldowns.append((agent, attempt_int, cooldown_ms))
+
+    logger.bind(recovery=True).info(
+        "Phase '{phase}' enters WAITING state: all agents unavailable. "
+        "Last unavailability reason: {reason}. Cooldowns: {cooldowns}. "
+        "Resuming in {wait_ms} ms.",
+        phase=phase_str,
+        reason=unavail_reason,
+        cooldowns=agent_cooldowns,
+        wait_ms=delay_ms,
+    )
+
+
+def _log_resumed_state(
+    state: PipelineState,
+    ctx: _LoopContext,
+    phase_str: str,
+    unavail_reason: str,
+    delay_ms: int,
+) -> None:
+    chain = state.chain_for_phase(state.phase)
+    agents_now_available = []
+    if chain is not None:
+        tracker = ctx.controller._unavailability_tracker
+        agents_now_available = [
+            agent for agent in chain.agents if tracker.is_available(phase_str, agent)
+        ]
+    logger.bind(recovery=True).info(
+        "Phase '{phase}' RESUMED: cooldown expired. "
+        "Agents now available: {agents}. "
+        "Expired reason: {reason}. "
+        "Waited for {waited_seconds:.3f} seconds.",
+        phase=phase_str,
+        agents=agents_now_available,
+        reason=unavail_reason,
+        waited_seconds=delay_ms / 1000.0,
+    )
+
+
 def _run_inner_loop(
     state: PipelineState,
     ctx: _LoopContext,
@@ -323,9 +385,9 @@ def _run_inner_loop(
                 ctx.last_waiting_state_phase = None
             try:
                 current_phase_str = str(state.phase)
+                unavail_reason = state.last_unavailability_reason or "unknown"
                 if is_all_unavailable and ctx.last_waiting_state_phase != current_phase_str:
                     ctx.last_waiting_state_phase = current_phase_str
-                    unavail_reason = state.last_unavailability_reason or "unknown"
                     emit_activity_line(
                         ctx.active_display,
                         None,
@@ -337,8 +399,17 @@ def _run_inner_loop(
                             "yellow",
                         ),
                     )
+                    _log_waiting_state(state, ctx, current_phase_str, unavail_reason, delay_ms)
 
                 state = state.copy_with(last_retry_delay_ms=0)
+                if is_all_unavailable:
+                    logger.debug(
+                        "Starting cooldown sleep for {delay_seconds:.3f} "
+                        "seconds in phase '{phase}'.",
+                        delay_seconds=delay_ms / 1000.0,
+                        phase=current_phase_str,
+                    )
+
                 ctx.sleep(delay_ms / 1000.0)
 
                 if is_all_unavailable:
@@ -351,17 +422,22 @@ def _run_inner_loop(
                             "green",
                         ),
                     )
+                    _log_resumed_state(state, ctx, current_phase_str, unavail_reason, delay_ms)
             except BaseException as e:
                 if isinstance(e, KeyboardInterrupt):
                     raise
                 chain = state.chain_for_phase(state.phase)
                 current_idx = chain.current_index if chain is not None else None
-                logger.error(
-                    "Error during cooldown sleep: {} (type={}) last_error={} chain_index={}",
+                logger.bind(recovery=True).error(
+                    "Error during cooldown sleep: {} (type={}) last_error={} "
+                    "chain_index={} phase={} wait_ms={} is_all_unavailable={}",
                     e,
                     type(e).__name__,
                     state.last_error,
                     current_idx,
+                    current_phase_str,
+                    delay_ms,
+                    is_all_unavailable,
                 )
                 state = state.copy_with(last_retry_delay_ms=1000)
         prev_phase = _runner_module.emit_phase_transition_if_changed(
@@ -838,9 +914,7 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         _module_legacy_obj = _self_dict["_start_pro_heartbeat_if_active"]
     except KeyError:
         _module_legacy_obj = _start_pro_marker_watcher
-    if _module_legacy_obj is not _start_pro_marker_watcher and callable(
-        _module_legacy_obj
-    ):
+    if _module_legacy_obj is not _start_pro_marker_watcher and callable(_module_legacy_obj):
         _module_legacy = cast(
             "Callable[[Path], ProHeartbeatClient | None]",
             _module_legacy_obj,

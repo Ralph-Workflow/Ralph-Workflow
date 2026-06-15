@@ -78,9 +78,7 @@ class FileSubagentOutputCapture:
             if last_nl == -1:
                 self._position -= len(encoded_tail)
                 return []
-            encoded_partial = data[last_nl + 1 :].encode(
-                self._encoding, errors="surrogateescape"
-            )
+            encoded_partial = data[last_nl + 1 :].encode(self._encoding, errors="surrogateescape")
             self._position -= len(encoded_partial)
             data = data[: last_nl + 1]
 

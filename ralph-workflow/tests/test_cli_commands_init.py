@@ -69,6 +69,7 @@ def test_init_command_calls_ensure_baseline_capabilities(
         nonlocal called
         called = True
         return CapabilityState(), []
+
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",
@@ -161,6 +162,7 @@ def test_init_command_runs_capability_refresh_on_every_run(
         nonlocal calls
         calls += 1
         return CapabilityState(), []
+
     monkeypatch.setattr(
         manager_module.SkillManager,
         "ensure_baseline_capabilities",

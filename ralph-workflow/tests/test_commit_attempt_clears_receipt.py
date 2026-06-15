@@ -93,11 +93,7 @@ def test_commit_attempt_clears_stale_receipt(
     plumbing_module = _plumbing_module()
     _seed_receipt(tmp_path, plumbing_module._COMMIT_RUN_ID, "commit_message")
     receipt_path = (
-        tmp_path
-        / ".agent"
-        / "receipts"
-        / plumbing_module._COMMIT_RUN_ID
-        / "commit_message.json"
+        tmp_path / ".agent" / "receipts" / plumbing_module._COMMIT_RUN_ID / "commit_message.json"
     )
     assert receipt_path.exists(), "test setup: receipt should be on disk before the attempt"
 

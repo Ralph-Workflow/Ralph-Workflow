@@ -254,6 +254,7 @@ def test_listener_receives_one_event_per_transition_and_unsubscribe_works() -> N
 
 def test_failed_exec_emits_failed_event() -> None:
     """Missing command emits exactly one FAILED event and raises OSError."""
+
     # Override factory to raise OSError (simulating missing binary)
     def raising_factory(*args: object, **kwargs: object) -> FakePopen:
         raise OSError("definitely-not-a-real-command-xyz-ralph")
@@ -635,6 +636,7 @@ def test_ec3_stubborn_process_sigkill_escalation() -> None:
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
 
+
 def test_ec4_sigterm_timeout_escalates_to_sigkill() -> None:
     """Graceful terminate times out; force kill succeeds via root-only escalation."""
 
@@ -680,6 +682,7 @@ def test_ec9_root_only_force_kill_still_alive_raises_error() -> None:
     assert handle.record.failure_message == "Process still alive after kill"
     assert pm.list_active() == []
 
+
 # EC5: spawn_async() result appears in list_active()
 @pytest.mark.asyncio
 async def test_ec5_spawn_async_appears_in_list_active() -> None:
@@ -692,10 +695,12 @@ async def test_ec5_spawn_async_appears_in_list_active() -> None:
     # Clean up
     await handle.terminate(grace_period_s=0.1)
 
+
 # EC6: SIGTERM sent before psutil.wait_procs timeout
 def test_ec6_sigterm_sent_before_psutil_timeout() -> None:
     """SIGTERM sent before psutil.wait_procs timeout."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+
     # Fake psutil that tracks terminate was called
     class _FakePsutilWithTrack(FakePsutil):
         terminate_called = False
@@ -723,6 +728,7 @@ def test_ec6_sigterm_sent_before_psutil_timeout() -> None:
     # Terminate should send SIGTERM
     handle.terminate(grace_period_s=0.5)
     assert handle.record.status == ProcessStatus.KILLED
+
 
 @pytest.mark.asyncio
 async def test_ec7_async_shutdown_all_with_psutil_escalates() -> None:
@@ -754,6 +760,7 @@ async def test_ec7_async_shutdown_all_with_psutil_escalates() -> None:
     # Should be terminated
     records = pm.list_records(include_active=False, include_terminal=True)
     assert any(r.pid == spawned_pid and r.status == ProcessStatus.KILLED for r in records)
+
 
 # EC8: concurrent shutdown_all with register_listener event count
 def test_ec8_concurrent_shutdown_all_single_event() -> None:
@@ -789,7 +796,8 @@ def test_ec8_concurrent_shutdown_all_single_event() -> None:
     terminal_for_pid = [
         e
         for e in terminal_events
-        if e.new_status in (
+        if e.new_status
+        in (
             ProcessStatus.EXITED,
             ProcessStatus.KILLED,
             ProcessStatus.FAILED,
@@ -797,6 +805,7 @@ def test_ec8_concurrent_shutdown_all_single_event() -> None:
         and e.record.pid == spawned_pid
     ]
     assert len(terminal_for_pid) == 1, f"Expected 1 terminal event, got {len(terminal_for_pid)}"
+
 
 def test_ec10_process_termination_error_when_kill_fails() -> None:
     """ProcessTerminationError raised when kill fails."""
@@ -825,6 +834,7 @@ def test_ec10_process_termination_error_when_kill_fails() -> None:
     with pytest.raises(ProcessTerminationError):
         handle.terminate(grace_period_s=0.0)
 
+
 # EC13: shutdown_all_for_label terminates only matching-label processes
 def test_ec13_shutdown_all_for_label_only_matching() -> None:
     """shutdown_all_for_label terminates only matching-label processes."""
@@ -846,6 +856,7 @@ def test_ec13_shutdown_all_for_label_only_matching() -> None:
     assert target.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
     assert bystander.record.status == ProcessStatus.RUNNING
 
+
 # EC19: after process exits, list_records contains EXITED record via public API
 def test_ec19_exit_record_accessible_via_public_api() -> None:
     """After process exits, list_records contains EXITED record via public API."""
@@ -864,6 +875,7 @@ def test_ec19_exit_record_accessible_via_public_api() -> None:
     assert record is not None
     assert record.status == ProcessStatus.EXITED
 
+
 @pytest.mark.asyncio
 async def test_ec21_shutdown_all_terminates_async_process() -> None:
     """shutdown_all() terminates an async process without error."""
@@ -878,6 +890,7 @@ async def test_ec21_shutdown_all_terminates_async_process() -> None:
     records = pm.list_records(include_active=False, include_terminal=True)
     assert any(r.pid == spawned_pid and r.status == ProcessStatus.KILLED for r in records)
 
+
 @pytest.mark.asyncio
 async def test_ec_async_live_process_still_alive_after_kill() -> None:
     """Process still alive after kill -> ProcessTerminationError raised."""
@@ -891,6 +904,7 @@ async def test_ec_async_live_process_still_alive_after_kill() -> None:
     )
 
     await pm.spawn_async([sys.executable, "-c", "pass"])
+
     # Monkeypatch os.kill to simulate process still alive after kill
     def fake_kill(pid: int, sig: int) -> None:
         if sig == 0:
@@ -901,6 +915,7 @@ async def test_ec_async_live_process_still_alive_after_kill() -> None:
 
     with patch.object(os, "kill", fake_kill), pytest.raises(ProcessTerminationError):
         pm.shutdown_all(grace_period_s=0.1)
+
 
 @pytest.mark.asyncio
 async def test_ec_async_gone_process_already_gone_after_kill() -> None:
@@ -927,6 +942,7 @@ async def test_ec_async_gone_process_already_gone_after_kill() -> None:
     assert record is not None
     assert record.status == ProcessStatus.KILLED
 
+
 def test_cat_mcp_spawn_with_mcp_server_label() -> None:
     """MCP server processes tracked and shutdown correctly."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
@@ -946,6 +962,7 @@ def test_cat_mcp_spawn_with_mcp_server_label() -> None:
     records = pm.list_records(include_active=False, include_terminal=True)
     assert any(r.pid == spawned_pid for r in records)
 
+
 def test_cat_exec_spawn_with_exec_label() -> None:
     """Exec helper processes tracked and terminated correctly."""
     sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
@@ -963,6 +980,7 @@ def test_cat_exec_spawn_with_exec_label() -> None:
     handle.terminate(grace_period_s=0.1)
 
     assert handle.record.status == ProcessStatus.KILLED
+
 
 @pytest.mark.asyncio
 async def test_cat_agent_pm_spawn_async_with_agent_label() -> None:
@@ -984,6 +1002,7 @@ async def test_cat_agent_pm_spawn_async_with_agent_label() -> None:
     # Verify in terminal records
     records = pm.list_records(include_active=False, include_terminal=True)
     assert any(r.pid == spawned_pid and r.status == ProcessStatus.KILLED for r in records)
+
 
 def _publish_named_process_manager_regressions() -> None:
     names = (

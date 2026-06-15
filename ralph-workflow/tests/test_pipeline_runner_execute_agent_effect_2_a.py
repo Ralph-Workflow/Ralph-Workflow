@@ -272,9 +272,7 @@ class TestExecuteAgentEffectA:
             "Agent process started; waiting for first output",
         }
 
-    def test_phase_banner_renders_before_invoke_start_activity(
-        self, tmp_path: Path
-    ) -> None:
+    def test_phase_banner_renders_before_invoke_start_activity(self, tmp_path: Path) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 

@@ -287,7 +287,7 @@ def test_opencode_upstream_env_var_includes_mcp_toml_server(
 
     sentinel = tmp_path / ".agent" / "completion_seen_test.json"
     sentinel.parent.mkdir(parents=True, exist_ok=True)
-    sentinel.write_text('{}', encoding="utf-8")
+    sentinel.write_text("{}", encoding="utf-8")
 
     list(
         invoke_agent(
@@ -495,7 +495,7 @@ def test_opencode_non_colliding_native_server_preserved(
 
     sentinel = tmp_path / ".agent" / "completion_seen_test.json"
     sentinel.parent.mkdir(parents=True, exist_ok=True)
-    sentinel.write_text('{}', encoding="utf-8")
+    sentinel.write_text("{}", encoding="utf-8")
 
     list(
         invoke_agent(

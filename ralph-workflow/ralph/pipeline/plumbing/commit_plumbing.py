@@ -236,12 +236,8 @@ def _commit_pipeline_deps(
     Routes through :class:`DefaultPipelineFactory` so a Pro subclassed
     factory is honored on the plumbing-direct-call path.
     """
-    deps = DefaultPipelineFactory().build(
-        config, display_context, pro_hooks=pro_hooks
-    )
-    return _apply_commit_deps_overrides(
-        deps, materializer=materializer, registry=registry
-    )
+    deps = DefaultPipelineFactory().build(config, display_context, pro_hooks=pro_hooks)
+    return _apply_commit_deps_overrides(deps, materializer=materializer, registry=registry)
 
 
 def run_commit_plumbing(
@@ -294,9 +290,7 @@ def run_commit_plumbing(
             display_context = pipeline_core.display_context
         effective_pipeline_deps = PipelineDeps(
             core=pipeline_core,
-            bridge_factory=bridge_factory
-            if bridge_factory is not None
-            else build_session_bridge,
+            bridge_factory=bridge_factory if bridge_factory is not None else build_session_bridge,
         )
         effective_pipeline_deps = _apply_commit_deps_overrides(
             effective_pipeline_deps,
@@ -661,9 +655,7 @@ def _run_commit_agent_attempt_with_recovery(
         )
         parsed_output, raw_lines, resume_session_id = collect_commit_agent_output(
             list(raw_output),
-            parser_type=resolve_parser_key(
-                agent.cmd, agent.json_parser, agent.transport
-            ),
+            parser_type=resolve_parser_key(agent.cmd, agent.json_parser, agent.transport),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
             display_context=display_context,
@@ -858,9 +850,7 @@ def invoke_commit_agent_attempt(
     try:
         parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
             lines,
-            parser_type=resolve_parser_key(
-                agent.cmd, agent.json_parser, agent.transport
-            ),
+            parser_type=resolve_parser_key(agent.cmd, agent.json_parser, agent.transport),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
             display_context=display_context,

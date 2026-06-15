@@ -23,9 +23,7 @@ from ralph.mcp.server._server_state import ServerState
 
 
 class _NonSerializableMcp:
-    def handle_request(
-        self, request: object, state: object
-    ) -> tuple[JsonRpcResponse, object]:
+    def handle_request(self, request: object, state: object) -> tuple[JsonRpcResponse, object]:
         # A set is not JSON-serializable; it passes through handle_request
         # (a valid JsonRpcResponse) and only fails at json.dumps in do_POST.
         msg_id = getattr(request, "msg_id", None)
@@ -55,9 +53,7 @@ class _Server(_FallbackHttpServer):
 
 
 def test_do_post_non_serializable_result_emits_jsonrpc_error_not_crash() -> None:
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "method": "tools/list", "id": "req-1"}
-    ).encode("utf-8")
+    payload = json.dumps({"jsonrpc": "2.0", "method": "tools/list", "id": "req-1"}).encode("utf-8")
 
     headers = Message()
     headers["Content-Length"] = str(len(payload))

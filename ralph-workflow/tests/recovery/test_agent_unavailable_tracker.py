@@ -112,9 +112,7 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
     registry = _make_registry_with_budget("development", "claude", max_retries=2)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
-    bus.subscribe(
-        lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
-    )
+    bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
     starting_timeout_ms = 1_000
     controller = RecoveryController(
         options=RecoveryControllerOptions(
@@ -125,9 +123,7 @@ def test_unavailable_agent_skipped_in_recovery_cycle() -> None:
             unavailable_timeouts={"development:claude": starting_timeout_ms},
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     new_state, _, evt = controller.handle(
         state,
@@ -175,9 +171,7 @@ def test_all_agents_unavailable_waits_for_cooldown() -> None:
             },
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     new_state, effects, _ = controller.handle(
         state,
@@ -226,9 +220,7 @@ def test_all_agents_unavailable_waits_and_resumes_after_earliest_cooldown() -> N
             },
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     # Every agent is unavailable: the session waits for the earliest cooldown.
     waiting_state, effects, _ = controller.handle(
@@ -281,9 +273,7 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     registry = _make_registry_with_budget("development", "opencode", max_retries=2)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
-    bus.subscribe(
-        lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
-    )
+    bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -293,9 +283,7 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
             policy_bundle=_minimal_policy_bundle(),
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     # A fails -> fall over to B.
     state_b, _, _ = controller.handle(
@@ -350,21 +338,23 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     registry = _make_registry_with_budget("development", "opencode", max_retries=2)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
-    bus.subscribe(
-        lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
-    )
+    bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
+    policy = {
+        UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(
+            base_backoff_ms=5_000, max_backoff_ms=300_000
+        )
+    }
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
             budget_registry=registry,
             clock=clock,
             event_bus=bus,
+            unavailability_backoff_policy=policy,
             policy_bundle=_minimal_policy_bundle(),
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     opts = InactivityTimeoutOpts(
         reason=WatchdogFireReason.NO_PROGRESS_QUIET,
@@ -465,9 +455,7 @@ def test_unavailable_skip_does_not_consume_budget() -> None:
             unavailable_timeouts={"development:claude": 60_000},
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     controller.handle(
         state,
@@ -721,7 +709,7 @@ def test_credit_exhaustion_failure_sets_timeout() -> None:
     )
 
     snap = controller.snapshot()
-    assert snap["unavailable_timeouts"]["development:claude"] == 5_000
+    assert snap["unavailable_timeouts"]["development:claude"] == 60_000
 
 
 def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
@@ -730,9 +718,7 @@ def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
     registry = _make_registry_with_budget("development", "claude", max_retries=2)
     fallovers: list[FalloverEvent] = []
     bus = FailureEventBus()
-    bus.subscribe(
-        lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
-    )
+    bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -742,9 +728,7 @@ def test_credit_exhaustion_agent_skipped_in_recovery_cycle() -> None:
             policy_bundle=_minimal_policy_bundle(),
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     new_state, _, evt = controller.handle(
         state,
@@ -772,9 +756,7 @@ def test_all_agents_unavailable_credit_exhaustion_waits_for_cooldown() -> None:
             },
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     new_state, effects, _ = controller.handle(
         state,
@@ -885,9 +867,7 @@ def test_all_agents_unavailable_event_reports_real_cooldown_delay() -> None:
             },
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     new_state, effects, evt = controller.handle(
         state,
@@ -904,11 +884,14 @@ def test_all_agents_unavailable_event_reports_real_cooldown_delay() -> None:
     assert any(e.retry_delay_ms == new_state.last_retry_delay_ms for e in collected)
 
 
-
 def test_out_of_credits_uses_30min_cap() -> None:
     """OUT_OF_CREDITS reason caps at 30 minutes."""
     clock = FakeClock(start=0.0)
-    policy = {UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(base=60_000, max=1_800_000)}
+    policy = {
+        UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
+            base_backoff_ms=60_000, max_backoff_ms=1_800_000
+        )
+    }
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -919,13 +902,14 @@ def test_out_of_credits_uses_30min_cap() -> None:
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
 
-    for _ in range(10):
+    for i in range(10):
         controller.handle(
             state,
             AgentInvocationError("claude", 1, "out of credits"),
             FailureContext(phase="development", agent="claude"),
         )
-        clock.advance(3000)
+        if i < 9:
+            clock.advance(3000)
 
     snap = controller.snapshot()
     current_time_ms = int(clock.monotonic() * 1000)
@@ -937,7 +921,11 @@ def test_out_of_credits_uses_30min_cap() -> None:
 def test_no_output_at_start_uses_30s_cap() -> None:
     """NO_OUTPUT_AT_START reason caps at 30 seconds."""
     clock = FakeClock(start=0.0)
-    policy = {UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(base=5_000, max=30_000)}
+    policy = {
+        UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(
+            base_backoff_ms=5_000, max_backoff_ms=30_000
+        )
+    }
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -947,14 +935,23 @@ def test_no_output_at_start_uses_30s_cap() -> None:
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+    exc = AgentInactivityTimeoutError(
+        "claude",
+        1,
+        opts=InactivityTimeoutOpts(
+            reason=WatchdogFireReason.NO_OUTPUT_AT_START,
+            diagnostic={"cumulative": 0.0},
+        ),
+    )
 
-    for _ in range(10):
+    for i in range(10):
         controller.handle(
             state,
-            AgentInvocationError("claude", 1, "no output"),
+            exc,
             FailureContext(phase="development", agent="claude"),
         )
-        clock.advance(3000)
+        if i < 9:
+            clock.advance(3000)
 
     snap = controller.snapshot()
     current_time_ms = int(clock.monotonic() * 1000)
@@ -966,7 +963,11 @@ def test_no_output_at_start_uses_30s_cap() -> None:
 def test_stale_child_quiet_uses_5min_cap() -> None:
     """STALE_CHILD_QUIET reason caps at 5 minutes."""
     clock = FakeClock(start=0.0)
-    policy = {UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(base=15_000, max=300_000)}
+    policy = {
+        UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(
+            base_backoff_ms=15_000, max_backoff_ms=300_000
+        )
+    }
     controller = RecoveryController(
         options=RecoveryControllerOptions(
             cycle_cap=10,
@@ -976,14 +977,23 @@ def test_stale_child_quiet_uses_5min_cap() -> None:
         )
     )
     state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+    exc = AgentInactivityTimeoutError(
+        "claude",
+        1,
+        opts=InactivityTimeoutOpts(
+            reason=WatchdogFireReason.NO_PROGRESS_QUIET,
+            diagnostic={"cumulative": 0.0},
+        ),
+    )
 
-    for _ in range(10):
+    for i in range(10):
         controller.handle(
             state,
-            AgentInvocationError("claude", 1, "no output"),
+            exc,
             FailureContext(phase="development", agent="claude"),
         )
-        clock.advance(3000)
+        if i < 9:
+            clock.advance(3000)
 
     snap = controller.snapshot()
     current_time_ms = int(clock.monotonic() * 1000)
@@ -1070,12 +1080,13 @@ def test_legacy_unavailable_timeouts_seam_still_works() -> None:
         options=RecoveryControllerOptions(
             cycle_cap=10,
             clock=FakeClock(start=0.0),
-            unavailable_timeouts={"development:claude": 60_000},
+            unavailable_timeouts={
+                "development:claude": 60_000,
+                "development:opencode": 60_000,
+            },
         )
     )
-    state = _make_state(["claude", "opencode"]).copy_with(
-        last_connectivity_state="online"
-    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
 
     new_state, _, _ = controller.handle(
         state,

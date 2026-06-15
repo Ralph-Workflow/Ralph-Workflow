@@ -54,9 +54,7 @@ class AgentInactivityTimeoutError(AgentInvocationError):
                 f" (last_tool={tool_name})"
             )
         elif _opts.reason == WatchdogFireReason.REPEATED_ERROR_LOOP:
-            fingerprint = (
-                _opts.diagnostic.get("error_fingerprint") if _opts.diagnostic else None
-            )
+            fingerprint = _opts.diagnostic.get("error_fingerprint") if _opts.diagnostic else None
             detail = f" (last error: {fingerprint})" if fingerprint else ""
             stderr_msg = (
                 "Agent repeated the same error without making forward progress"

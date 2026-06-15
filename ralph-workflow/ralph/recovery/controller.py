@@ -159,11 +159,7 @@ class RecoveryController:
             # Compute retry delay from chain config only when the failing
             # agent is currently available. An unavailable agent is skipped
             # (not retried), so no retry delay is charged for it.
-            if (
-                agent is not None
-                and failure.counts_against_budget
-                and not is_agent_unavailable
-            ):
+            if agent is not None and failure.counts_against_budget and not is_agent_unavailable:
                 retry_delay_ms = self._compute_retry_delay(phase, agent)
 
         failure_evt = FailureEvent(
@@ -178,9 +174,7 @@ class RecoveryController:
             retry_delay_ms=retry_delay_ms,
             watchdog_reason=failure.watchdog_reason,
             unavailability_reason=(
-                str(failure.unavailability_reason)
-                if failure.unavailability_reason
-                else None
+                str(failure.unavailability_reason) if failure.unavailability_reason else None
             ),
         )
         self._bus.publish(failure_evt)
@@ -251,9 +245,7 @@ class RecoveryController:
             self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
             new_state = new_state.copy_with(
                 last_unavailability_reason=(
-                    str(failure.unavailability_reason)
-                    if failure.unavailability_reason
-                    else None
+                    str(failure.unavailability_reason) if failure.unavailability_reason else None
                 )
             )
 
@@ -522,9 +514,7 @@ class RecoveryController:
                 reason=failure.reason,
                 watchdog_reason=failure.watchdog_reason,
                 unavailability_reason=(
-                    str(failure.unavailability_reason)
-                    if failure.unavailability_reason
-                    else None
+                    str(failure.unavailability_reason) if failure.unavailability_reason else None
                 ),
             )
             self._bus.publish(fallover_evt)
@@ -550,14 +540,10 @@ class RecoveryController:
         # terminating the run. The run loop will sleep on last_retry_delay_ms
         # and then retry the same phase. Otherwise the chain is truly exhausted
         # (available agents have no budget/retries left), so fail the phase.
-        if all(
-            not self._is_agent_available(phase, agent) for agent in chain.agents
-        ):
+        if all(not self._is_agent_available(phase, agent) for agent in chain.agents):
             wait_ms = self._earliest_unavailable_wait_ms(phase, chain)
             unavail_reason = (
-                failure.unavailability_reason.value
-                if failure.unavailability_reason
-                else "unknown"
+                failure.unavailability_reason.value if failure.unavailability_reason else "unknown"
             )
             reason = (
                 f"all agents unavailable (last reason: {unavail_reason});"
@@ -565,7 +551,10 @@ class RecoveryController:
             )
             logger.info(
                 "{} in phase={} (wait_ms={} unavailability_reason={})",
-                reason, phase, wait_ms, failure.unavailability_reason,
+                reason,
+                phase,
+                wait_ms,
+                failure.unavailability_reason,
             )
             updated_evt = replace(failure_evt, retry_delay_ms=wait_ms)
             self._bus.publish(updated_evt)
@@ -625,6 +614,8 @@ class RecoveryController:
     def snapshot(self) -> dict[str, object]:
         """Return a runtime observability snapshot of recovery state."""
         tracker_snapshot = self._unavailability_tracker.snapshot()
+        merged_attempts = dict(self._backoff_attempts)
+        merged_attempts.update(cast("dict[str, int]", tracker_snapshot.get("backoff_attempts", {})))
         return {
             "cycle_cap": self._cap.cap,
             "budgets": {
@@ -636,7 +627,7 @@ class RecoveryController:
                 }
                 for (phase, agent), budget in self._registry.items()
             },
-            "backoff_attempts": dict(self._backoff_attempts),
+            "backoff_attempts": merged_attempts,
             "technical_retry_cap": self._technical_retry_cap,
             "unavailable_timeouts": tracker_snapshot["unavailable_timeouts"],
         }

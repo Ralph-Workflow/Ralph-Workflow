@@ -108,8 +108,7 @@ def test_pass2_strict_mode_fails_on_cast_at_session_factory_boundary(
     )
 
     assert violations, (
-        "expected at least one PASS 2 violation for the forbidden cast(); "
-        "audit reported zero"
+        "expected at least one PASS 2 violation for the forbidden cast(); audit reported zero"
     )
     categories = {v.category for v in violations}
     assert "session_factory_cast" in categories, (
@@ -186,8 +185,7 @@ def test_strict_mode_returns_no_violations_on_clean_temp_package(
     package_root = _write_fake_package(tmp_path)
     clean_module = package_root / "mcp" / "server" / "clean_module.py"
     clean_module.write_text(
-        "def add(a: int, b: int) -> int:\n"
-        "    return a + b\n",
+        "def add(a: int, b: int) -> int:\n    return a + b\n",
         encoding="utf-8",
     )
 

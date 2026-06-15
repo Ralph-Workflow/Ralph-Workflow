@@ -130,9 +130,7 @@ AGENT_SKILL_ROOTS: tuple[AgentSkillRoot, ...] = (
     AgentSkillRoot(
         agent="codex",
         path_segments=(".codex", "skills"),
-        source_url=(
-            "https://github.com/openai/codex/blob/main/codex-rs/utils/home-dir/src/lib.rs"
-        ),
+        source_url=("https://github.com/openai/codex/blob/main/codex-rs/utils/home-dir/src/lib.rs"),
         is_canonical=False,
         last_verified_iso=_AGENT_PATH_LAST_VERIFIED,
     ),

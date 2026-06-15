@@ -230,9 +230,7 @@ def _make_record(pid: int) -> ProcessRecord:
 def _make_pm() -> ProcessManager:
     pid_iter = itertools.count(999)
 
-    def _sync_factory(
-        command: object, opts: object
-    ) -> _RecordingPopen:
+    def _sync_factory(command: object, opts: object) -> _RecordingPopen:
         del command, opts
         return _RecordingPopen(pid=next(pid_iter))
 
@@ -353,9 +351,7 @@ def test_reaps_zombie_before_mark_killed(path_name: str) -> None:
                     f"{path_name}: psutil.wait_procs must be called before _mark_killed"
                 )
                 # Verify bounded timeout
-                assert all(
-                    t <= 0.0 + 1e-9 for t in psutil_mod.wait_procs_calls
-                ), (
+                assert all(t <= 0.0 + 1e-9 for t in psutil_mod.wait_procs_calls), (
                     f"{path_name}: psutil.wait_procs timeout must be 0.0 (non-blocking)"
                 )
 
@@ -366,12 +362,8 @@ def test_reaps_zombie_before_mark_killed(path_name: str) -> None:
                 proc = _RecordingAsyncProcess(pid=pid)
                 # Patch os.waitpid only on POSIX; on non-POSIX, the helper must
                 # still record a returncode and mark the record KILLED.
-                with patch.object(
-                    os, "waitpid", wraps=getattr(os, "waitpid", None)
-                ) as mocked:
-                    pm._reap_async_in_sync_and_mark(
-                        record, proc, cause="zombie_after_kill"
-                    )
+                with patch.object(os, "waitpid", wraps=getattr(os, "waitpid", None)) as mocked:
+                    pm._reap_async_in_sync_and_mark(record, proc, cause="zombie_after_kill")
                 if hasattr(os, "waitpid"):
                     _ = mocked
 
@@ -410,9 +402,7 @@ async def _drive_async_reap(
     proc = _RecordingAsyncProcess(pid=pid)
     with patch.object(pm, "_mark_killed", side_effect=spy_mark_killed):
         await pm._reap_async_and_mark(record, proc, cause="zombie_after_kill")
-    assert proc.wait_called, (
-        f"proc.wait() must be called before _mark_killed for pid {pid}"
-    )
+    assert proc.wait_called, f"proc.wait() must be called before _mark_killed for pid {pid}"
 
 
 # --------------------------------------------------------------------------
@@ -441,12 +431,8 @@ def test_reap_helpers_are_idempotent_and_dont_double_mark() -> None:
     # Second call should be a no-op (record is already terminal).
     proc2 = _RecordingPopen(pid=pid)
     pm._reap_sync_and_mark(record, proc2, cause="zombie_after_kill")
-    assert proc2.poll_called is False, (
-        "idempotent reap must not re-poll once record is terminal"
-    )
-    assert record.ended_at == first_ended_at, (
-        "idempotent reap must not re-stamp ended_at"
-    )
+    assert proc2.poll_called is False, "idempotent reap must not re-poll once record is terminal"
+    assert record.ended_at == first_ended_at, "idempotent reap must not re-stamp ended_at"
     assert record.cause == "zombie_after_kill"
 
 
@@ -540,9 +526,7 @@ def test_reap_psutil_helper_calls_wait_procs_with_zero_timeout() -> None:
     record = _make_record(4242)
     psutil_mod = _RecordingPsutil()
     psutil_proc = psutil_mod.process_from_pid(4242)
-    pm._reap_psutil_zombie_and_mark(
-        record, psutil_proc, psutil_mod, cause="zombie_after_kill"
-    )
+    pm._reap_psutil_zombie_and_mark(record, psutil_proc, psutil_mod, cause="zombie_after_kill")
     assert psutil_mod.wait_procs_called
     assert all(t == 0.0 for t in psutil_mod.wait_procs_calls)
     assert record.status == ProcessStatus.KILLED

@@ -203,9 +203,7 @@ def _render_phase_artifact_handoff(
             phase_def = policy_bundle.pipeline.phases.get(phase)
             role = phase_def.role if phase_def is not None else None
             if role == "analysis":
-                _emit_via_display(
-                    ctx, "emit_analysis_decision", workspace_root, effective_drain
-                )
+                _emit_via_display(ctx, "emit_analysis_decision", workspace_root, effective_drain)
             else:
                 logger.debug(
                     "policy: no renderer for phase '{}' (role={});"
@@ -217,9 +215,7 @@ def _render_phase_artifact_handoff(
 
     artifact_type = required_artifact.artifact_type
     if artifact_type.endswith("_analysis_decision"):
-        _emit_via_display(
-            ctx, "emit_analysis_decision", workspace_root, effective_drain
-        )
+        _emit_via_display(ctx, "emit_analysis_decision", workspace_root, effective_drain)
         return
 
     if event == PipelineEvent.AGENT_SUCCESS:

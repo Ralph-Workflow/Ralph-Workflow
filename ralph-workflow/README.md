@@ -280,6 +280,9 @@ ceilings are checked BEFORE the deferral and remain absolute — no activity
 can extend the maximum session duration or the cumulative waiting-on-child
 ceiling.
 
+For more details on watchdog configuration, per-reason backoff, and the forever-wait recovery state, see the [Timeout Policy documentation](docs/agents/timeout-policy.md).
+
+
 ## Privacy & Error Reporting
 
 Ralph Workflow sends anonymous crash reports and performance metrics to help fix bugs and improve reliability. No personal data is collected.

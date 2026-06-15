@@ -40,9 +40,7 @@ def test_emit_renderable_prints_arbitrary_renderable() -> None:
     pd.emit_renderable(Text("custom-text-marker-xyz"))
     pd.stop()
     output = buf.getvalue()
-    assert "custom-text-marker-xyz" in output, (
-        f"missing arbitrary marker in output: {output!r}"
-    )
+    assert "custom-text-marker-xyz" in output, f"missing arbitrary marker in output: {output!r}"
 
 
 def test_emit_renderable_quiet_mode_emits_nothing() -> None:
@@ -51,6 +49,4 @@ def test_emit_renderable_quiet_mode_emits_nothing() -> None:
     pd._is_quiet = True
     pd.emit_renderable(Text("custom-text-marker-xyz"))
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"

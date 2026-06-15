@@ -78,9 +78,7 @@ class _RecordingManager:
     kill_process_group_calls: list[tuple[int, int]] = field(default_factory=list)
     _active_records: list[ProcessRecord] = field(default_factory=list)
 
-    def add_active(
-        self, pid: int, pgid: int, label: str = "invoke:fake"
-    ) -> ProcessRecord:
+    def add_active(self, pid: int, pgid: int, label: str = "invoke:fake") -> ProcessRecord:
         record = ProcessRecord(
             pid=pid,
             pgid=pgid,

@@ -181,9 +181,7 @@ def _extend_claude_transport_flags(
                 "--tools",
                 ",".join(CLAUDE_NATIVE_TOOLS_TO_KEEP),
                 "--allowedTools",
-                ",".join(
-                    (*build_options.allowed_mcp_tool_names, *CLAUDE_NATIVE_TOOLS_TO_KEEP)
-                ),
+                ",".join((*build_options.allowed_mcp_tool_names, *CLAUDE_NATIVE_TOOLS_TO_KEEP)),
             ]
         )
 
@@ -323,9 +321,7 @@ class ClaudeInteractiveCommandBuilder:
     ) -> list[str]:
         cmd = shlex.split(config.cmd)
         cmd.extend(_split_optional_flag(config.yolo_flag))
-        _extend_claude_transport_flags(
-            cmd, AgentTransport.CLAUDE_INTERACTIVE, options
-        )
+        _extend_claude_transport_flags(cmd, AgentTransport.CLAUDE_INTERACTIVE, options)
         if options.verbose and config.verbose_flag:
             cmd.append(config.verbose_flag)
         if config.session_flag and options.session_id:
@@ -337,9 +333,7 @@ class ClaudeInteractiveCommandBuilder:
         effective_model = options.model_flag or config.model_flag
         if effective_model:
             cmd.extend(effective_model.split())
-        _append_transport_prompt_arg(
-            cmd, AgentTransport.CLAUDE_INTERACTIVE, prompt_file, options
-        )
+        _append_transport_prompt_arg(cmd, AgentTransport.CLAUDE_INTERACTIVE, prompt_file, options)
         return cmd
 
 

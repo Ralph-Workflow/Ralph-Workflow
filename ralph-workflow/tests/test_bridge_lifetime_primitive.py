@@ -63,12 +63,15 @@ def test_with_bridge_lifetime_shuts_down_on_body_raise() -> None:
     class _BodyError(Exception):
         pass
 
-    with pytest.raises(_BodyError), with_bridge_lifetime(
-        core,
-        bridge_factory,
-        repo_root=Path("/workspace"),
-        drain="development",
-        session_id_prefix="smoke",
+    with (
+        pytest.raises(_BodyError),
+        with_bridge_lifetime(
+            core,
+            bridge_factory,
+            repo_root=Path("/workspace"),
+            drain="development",
+            session_id_prefix="smoke",
+        ),
     ):
         raise _BodyError("boom")
 

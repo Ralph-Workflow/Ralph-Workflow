@@ -121,9 +121,7 @@ def _make_pm_with_psutil(psutil_mod: _ZombieFakePsutil) -> ProcessManager:
     """Build a ProcessManager with the given psutil and a stub sync factory."""
     pid_iter = itertools.count(5000)
 
-    def _sync_factory(
-        command: object, opts: object
-    ) -> _ZombieFakePsutilProcess:
+    def _sync_factory(command: object, opts: object) -> _ZombieFakePsutilProcess:
         del command, opts
         return _ZombieFakePsutilProcess(pid=next(pid_iter))
 
@@ -189,9 +187,7 @@ def test_terminate_by_pid_leaves_no_unreaped_zombie_records() -> None:
     real_waitpid = os.waitpid if hasattr(os, "waitpid") else None
     waitpid_calls: list[tuple[int, int]] = []
 
-    def _fake_waitpid(
-        wait_pid: int, options: int
-    ) -> tuple[int, int]:
+    def _fake_waitpid(wait_pid: int, options: int) -> tuple[int, int]:
         waitpid_calls.append((wait_pid, options))
         psutil_mod.reap_zombie(psutil_proc)
         # Mimic the real OS: WNOHANG + already-reaped returns (0, 0)
@@ -212,25 +208,19 @@ def test_terminate_by_pid_leaves_no_unreaped_zombie_records() -> None:
     assert pm.list_active() == [], (
         f"Expected no active records after terminate; got {pm.list_active()}"
     )
-    assert record.status == ProcessStatus.KILLED, (
-        f"Record must be KILLED; got {record.status}"
-    )
+    assert record.status == ProcessStatus.KILLED, f"Record must be KILLED; got {record.status}"
     assert record.cause == "zombie_after_kill", (
         f"Record.cause must be 'zombie_after_kill'; got {record.cause!r}"
     )
 
     # The zombie was reaped: os.waitpid was called and the process is
     # no longer a zombie in the FakePsutil table.
-    assert waitpid_calls, (
-        f"Expected os.waitpid to be called; got calls: {waitpid_calls}"
-    )
+    assert waitpid_calls, f"Expected os.waitpid to be called; got calls: {waitpid_calls}"
     assert pid in psutil_mod.reaped_pids, (
         f"PID {pid} must be marked reaped; got {psutil_mod.reaped_pids}"
     )
     # And pid_exists() now returns False (process is gone).
-    assert psutil_mod.pid_exists(pid) is False, (
-        "Reaped PID must not be visible to pid_exists()"
-    )
+    assert psutil_mod.pid_exists(pid) is False, "Reaped PID must not be visible to pid_exists()"
 
 
 def test_terminate_root_only_async_zombie_path() -> None:
@@ -272,9 +262,7 @@ def test_terminate_root_only_async_zombie_path() -> None:
 
     async def _drive() -> None:
         with patch.object(pm_mod, "verify_process_liveness", _fake_verify):
-            await pm._terminate_root_only_async(
-                record, proc, grace_period_s=0.0
-            )
+            await pm._terminate_root_only_async(record, proc, grace_period_s=0.0)
 
     asyncio.run(_drive())
 
@@ -306,9 +294,7 @@ def test_terminate_by_pid_does_not_leave_unreaped_zombie_in_psutil_table() -> No
     real_waitpid = os.waitpid if hasattr(os, "waitpid") else None
     reaped: set[int] = set()
 
-    def _fake_waitpid(
-        wait_pid: int, options: int
-    ) -> tuple[int, int]:
+    def _fake_waitpid(wait_pid: int, options: int) -> tuple[int, int]:
         reaped.add(wait_pid)
         if real_waitpid is not None:
             try:
@@ -332,6 +318,4 @@ def test_terminate_by_pid_does_not_leave_unreaped_zombie_in_psutil_table() -> No
 
             assert record.status == ProcessStatus.KILLED
             assert record.cause == "zombie_after_kill"
-            assert pid in reaped, (
-                f"PID {pid} must be reaped via os.waitpid; reaped={reaped}"
-            )
+            assert pid in reaped, f"PID {pid} must be reaped via os.waitpid; reaped={reaped}"

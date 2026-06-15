@@ -39,13 +39,10 @@ def _make_exc(message: str, exc_type: type[Exception] = RuntimeError) -> Excepti
 
 def test_classifier_routes_no_such_tool_available_to_reset_tool_registry() -> None:
     live_error_message = (
-        "<tool_use_error>Error: No such tool available: "
-        "mcp__ralph__read_file</tool_use_error>"
+        "<tool_use_error>Error: No such tool available: mcp__ralph__read_file</tool_use_error>"
     )
     exc = _make_exc(live_error_message, RuntimeError)
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert isinstance(classified, ClassifiedFailure)
     assert classified.reset_tool_registry is True
     assert classified.category == FailureCategory.AGENT
@@ -54,9 +51,7 @@ def test_classifier_routes_no_such_tool_available_to_reset_tool_registry() -> No
 
 def test_classifier_routes_no_such_tool_available_case_insensitively() -> None:
     exc = _make_exc("NO SUCH TOOL AVAILABLE: mcp__ralph__read_file", RuntimeError)
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert classified.reset_tool_registry is True
 
 
@@ -70,9 +65,7 @@ def test_classifier_routes_no_such_tool_available_in_stderr_surface() -> None:
             self.stderr = stderr
 
     exc = _StderrError("Tool call failed", "no such tool available: mcp__ralph__read_file")
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert classified.reset_tool_registry is True
 
 
@@ -81,18 +74,14 @@ def test_classifier_routes_runtime_tool_dispatch_error_to_reset_tool_registry() 
     is the runtime-side mirror of the live No-such-tool-available error.
     The classifier must route it to reset_tool_registry=True."""
     exc = ToolDispatchError("Tool 'read_file' is not registered")
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert classified.reset_tool_registry is True
 
 
 def test_classifier_routes_empty_response_after_tool_result_to_reset_tool_registry() -> None:
     exc = RuntimeError("Model returned an empty response with no tool calls")
     exc.parsed_output = ['{"type":"tool_result","tool":"read_file","result":{"ok":true}}']
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert classified.reset_tool_registry is True
     assert classified.category == FailureCategory.AGENT
     assert classified.counts_against_budget is True
@@ -104,9 +93,7 @@ def test_classifier_does_not_route_programming_time_tool_registration_error() ->
     runtime tool-availability failure and must NOT trigger a registry
     reset — it indicates a code defect in the bridge builder."""
     exc = ToolRegistrationError("Tool 'read_file' is not registered")
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert classified.reset_tool_registry is False
     # The class name is "ToolRegistrationError" which is NOT in
     # _ARTIFACT_VALIDATION_TYPE_NAMES and is NOT in the typed
@@ -125,17 +112,13 @@ def test_classifier_does_not_route_unrelated_tool_bridge_error() -> None:
         pass
 
     exc = _CapDeniedError("Tool 'read_file' requires capability 'workspace.read'")
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert classified.reset_tool_registry is False
 
 
 def test_classifier_unrelated_message_does_not_trigger_reset() -> None:
     exc = _make_exc("Connection refused by upstream proxy", RuntimeError)
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert classified.reset_tool_registry is False
 
 
@@ -175,8 +158,7 @@ def test_tool_availability_substrings_constant_is_exact() -> None:
         ("no such tool available: mcp__ralph__read_file", True),
         ("No Such Tool Available: mcp__ralph__read_file", True),
         (
-            "<tool_use_error>Error: No such tool available: "
-            "mcp__ralph__read_file</tool_use_error>",
+            "<tool_use_error>Error: No such tool available: mcp__ralph__read_file</tool_use_error>",
             True,
         ),
         ("Model returned an empty response with no tool calls", False),
@@ -185,9 +167,7 @@ def test_tool_availability_substrings_constant_is_exact() -> None:
         ("Tool 'read_file' requires capability 'workspace.read'", False),
     ],
 )
-def test_classifier_substring_routing(
-    message: str, expected_reset: bool
-) -> None:
+def test_classifier_substring_routing(message: str, expected_reset: bool) -> None:
     classified = FailureClassifier().classify(
         _make_exc(message, RuntimeError),
         phase="development",

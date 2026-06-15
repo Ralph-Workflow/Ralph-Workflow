@@ -87,7 +87,6 @@ _ALLOWLIST: list[tuple[str, str]] = [
         "Ralph would have run",
         "parallelization rework: contraction of 'Ralph Workflow would have run' in planning prompt",
     ),
-
     # ASCII art logo lines — the banner spells out 'Ralph' as visual art
     ("|  _ \\", "ASCII art banner line"),
     ("| |_) /", "ASCII art banner line"),

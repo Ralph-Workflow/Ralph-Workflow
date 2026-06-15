@@ -124,9 +124,7 @@ def _patch_runner_dependencies(
     )
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
-    monkeypatch.setattr(
-        runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle
-    )
+    monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle)
     monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
     monkeypatch.setattr(
         runner_module,
@@ -136,9 +134,7 @@ def _patch_runner_dependencies(
     monkeypatch.setattr(runner_module, "create_initial_state", lambda *_a, **_kw: state)
 
 
-def _install_display_context(
-    monkeypatch: pytest.MonkeyPatch, run_loop_module: object
-) -> None:
+def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: object) -> None:
     ctx = make_display_context()
     runner_module = _load_runner()
     monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
@@ -164,9 +160,7 @@ def test_snapshot_metrics_is_a_plain_dict_copy_of_run_metrics(
 def test_snapshot_iteration_sourced_from_outer_progress(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    state = PipelineState(
-        phase="planning", outer_progress={"iteration": 4, "other": 1}
-    )
+    state = PipelineState(phase="planning", outer_progress={"iteration": 4, "other": 1})
     snapshot = build_pipeline_state_snapshot(state, tmp_path)
     assert snapshot.iteration == 4
 
@@ -178,9 +172,7 @@ def test_snapshot_iteration_sourced_from_outer_progress(
 def test_snapshot_analysis_iteration_sourced_from_loop_iterations(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    state = PipelineState(
-        phase="analysis", loop_iterations={"analysis_iteration": 3, "other": 1}
-    )
+    state = PipelineState(phase="analysis", loop_iterations={"analysis_iteration": 3, "other": 1})
     snapshot = build_pipeline_state_snapshot(state, tmp_path)
     assert snapshot.analysis_iteration == 3
 
@@ -220,9 +212,7 @@ def test_snapshot_does_not_share_state_with_live_state(
     assert mutated.phase == "analysis"
 
 
-def test_snapshot_dict_fields_are_copies(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_snapshot_dict_fields_are_copies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     state = PipelineState(phase="planning", outer_progress={"iteration": 1})
     snapshot = build_pipeline_state_snapshot(state, tmp_path)
     assert snapshot.outer_progress["iteration"] == 1
@@ -291,9 +281,9 @@ def test_run_loop_publishes_snapshot_on_each_reduce_step(
 
     config = _build_config()
     hooks = ProPipelineHooks(snapshot_registry=registry)
-    exit_code = cast(
-        "Callable[..., int]", run_loop_module.run
-    )(config, initial_state=initial_state, pro_hooks=hooks)
+    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        config, initial_state=initial_state, pro_hooks=hooks
+    )
     assert exit_code == 0
     assert publish_calls, "snapshot was never published"
     assert publish_calls[-1].phase == "complete"

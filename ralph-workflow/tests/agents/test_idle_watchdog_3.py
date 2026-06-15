@@ -559,9 +559,7 @@ def test_workspace_monitor_to_watchdog_integration(tmp_path: Path) -> None:
     assert wd._workspace_event_count_internal == 0
     # Wire the production-style 2-arg callback so the watchdog receives
     # the real (kind, weight) classification instead of the OTHER default.
-    monitor.set_on_event(
-        lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight)
-    )
+    monitor.set_on_event(lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight))
     # Advance both clocks together and trigger a file change.
     clock.advance(100.5)
     monitor.record_event("/tmp/foo.py")
@@ -592,9 +590,7 @@ def test_workspace_monitor_to_watchdog_defers_verdict(tmp_path: Path) -> None:
         now=clock.monotonic,
         classifier=_default_classifier(),
     )
-    monitor.set_on_event(
-        lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight)
-    )
+    monitor.set_on_event(lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight))
     # Quiet stdout for 5s of watchdog time. The monitor's clock is the
     # same as the watchdog's, so a single advance moves both.
     clock.advance(5.0)
@@ -627,9 +623,7 @@ def test_workspace_monitor_smart_filter_source_defers_log_does_not(tmp_path: Pat
         now=clock.monotonic,
         classifier=_default_classifier(),
     )
-    monitor.set_on_event(
-        lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight)
-    )
+    monitor.set_on_event(lambda kind, weight: wd.record_workspace_event(kind=kind, weight=weight))
 
     # Quiet stdout for 5s, then record a log file change.
     clock.advance(5.0)
@@ -650,9 +644,7 @@ def test_workspace_monitor_smart_filter_source_defers_log_does_not(tmp_path: Pat
         now=clock2.monotonic,
         classifier=_default_classifier(),
     )
-    monitor2.set_on_event(
-        lambda kind, weight: wd2.record_workspace_event(kind=kind, weight=weight)
-    )
+    monitor2.set_on_event(lambda kind, weight: wd2.record_workspace_event(kind=kind, weight=weight))
     clock2.advance(5.0)
     monitor2.record_event("/tmp/foo.py")
     verdict2 = wd2.evaluate(classify_quiet=_active_classifier())
@@ -944,6 +936,3 @@ def test_build_evidence_summary_diag_returns_freshest_age() -> None:
     diag2, freshest_age2 = wd2._build_evidence_summary_diag(clock2.monotonic())
     assert diag2["active_channel"] == "none"
     assert freshest_age2 is None
-
-
-

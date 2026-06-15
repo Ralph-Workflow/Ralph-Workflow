@@ -44,20 +44,14 @@ class TestAnalysisTemplatePayloadContract:
             "If your runtime provides a subagent, task, or parallel-agent mechanism, "
             "use it extensively"
         )
-        assert (
-            required_intro in source
-        ), (
-            f"{name}: must explicitly require extensive subagent usage"
-        )
+        assert required_intro in source, f"{name}: must explicitly require extensive subagent usage"
         assert "Fan out read-only subagents" in source, (
             f"{name}: must instruct read-only discovery/review fan-out"
         )
         assert "run independent analysis or verification work in parallel" in source, (
             f"{name}: must instruct safe parallel execution"
         )
-        assert input_phrase in source, (
-            f"{name}: must direct retrieval of the core analysis inputs"
-        )
+        assert input_phrase in source, f"{name}: must direct retrieval of the core analysis inputs"
         assert "Only you, in the main session, may submit the final analysis artifact" in source, (
             f"{name}: artifact submission must remain in the main session"
         )

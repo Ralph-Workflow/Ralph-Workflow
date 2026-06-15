@@ -190,16 +190,12 @@ def test_controller_from_process_manager_wires_shutdown_all_for_label() -> None:
         def __init__(self) -> None:
             self.shutdown_all_calls: list[float] = []
             self.shutdown_all_for_label_calls: list[tuple[str, float]] = []
-            self.policy = type(
-                "P", (), {"default_grace_period_s": 1.0}
-            )()
+            self.policy = type("P", (), {"default_grace_period_s": 1.0})()
 
         def shutdown_all(self, grace_period_s: float) -> None:
             self.shutdown_all_calls.append(grace_period_s)
 
-        def shutdown_all_for_label(
-            self, label_prefix: str, grace_period_s: float
-        ) -> None:
+        def shutdown_all_for_label(self, label_prefix: str, grace_period_s: float) -> None:
             self.shutdown_all_for_label_calls.append((label_prefix, grace_period_s))
 
     manager = FakeManager()
@@ -220,16 +216,12 @@ def test_controller_from_process_manager_empty_label_falls_back() -> None:
         def __init__(self) -> None:
             self.shutdown_all_calls: list[float] = []
             self.shutdown_all_for_label_calls: list[tuple[str, float]] = []
-            self.policy = type(
-                "P", (), {"default_grace_period_s": 1.0}
-            )()
+            self.policy = type("P", (), {"default_grace_period_s": 1.0})()
 
         def shutdown_all(self, grace_period_s: float) -> None:
             self.shutdown_all_calls.append(grace_period_s)
 
-        def shutdown_all_for_label(
-            self, label_prefix: str, grace_period_s: float
-        ) -> None:
+        def shutdown_all_for_label(self, label_prefix: str, grace_period_s: float) -> None:
             self.shutdown_all_for_label_calls.append((label_prefix, grace_period_s))
 
     manager = FakeManager()

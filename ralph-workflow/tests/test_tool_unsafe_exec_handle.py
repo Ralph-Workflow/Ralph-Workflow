@@ -91,9 +91,7 @@ class TestUnsafeExecTimeout:
     error (the 5-hour retry-storm pathology). The message must teach BOTH meanings
     of a timeout, matching what the tool description promises the agent."""
 
-    def test_timeout_returns_actionable_is_error_result_not_exception(
-        self, tmp_path: Path
-    ) -> None:
+    def test_timeout_returns_actionable_is_error_result_not_exception(self, tmp_path: Path) -> None:
         result = handle_unsafe_exec(
             MockSession({PROCESS_EXEC_UNBOUNDED_CAPABILITY}),
             MockWorkspaceRoot(tmp_path),

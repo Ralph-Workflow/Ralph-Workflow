@@ -215,6 +215,4 @@ def _print_fallback_next_steps(
     display.emit_fallback_next_steps(list(fallback_next_steps()))
     if failures:
         display.emit_skill_failure_warning(failures)
-    display.emit_status(
-        "\nTo reset configs later: ralph --regenerate-config"
-    )
+    display.emit_status("\nTo reset configs later: ralph --regenerate-config")

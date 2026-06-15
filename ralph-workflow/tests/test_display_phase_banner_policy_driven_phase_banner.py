@@ -106,9 +106,7 @@ def test_major_transition_analysis_to_commit_with_policy() -> None:
     policy = _make_two_phase_policy("analysis", "commit", "dev_analysis", "dev_commit")
     console = Console(record=True, width=120)
     display = resolve_active_display(None, _ctx_from_console(console))
-    display.emit_phase_transition(
-        "dev_analysis", "dev_commit", pipeline_policy=policy
-    )
+    display.emit_phase_transition("dev_analysis", "dev_commit", pipeline_policy=policy)
     output = console.export_text()
     assert "Dev Analysis" in output
     assert "Dev Commit" in output
@@ -152,9 +150,7 @@ def test_major_transition_review_to_terminal_with_policy() -> None:
     )
     console = Console(record=True, width=120)
     display = resolve_active_display(None, _ctx_from_console(console))
-    display.emit_phase_transition(
-        "review_phase", terminal_name, pipeline_policy=policy
-    )
+    display.emit_phase_transition("review_phase", terminal_name, pipeline_policy=policy)
     output = console.export_text()
     assert "Review Phase" in output
     assert "Done" in output
@@ -180,9 +176,7 @@ def test_major_role_pairs_transition_shows_no_duplicated_description() -> None:
         policy = _make_two_phase_policy(from_role, to_role, "phase_a", "phase_b")
         console = Console(record=True, width=120)
         display = resolve_active_display(None, _ctx_from_console(console))
-        display.emit_phase_transition(
-            "phase_a", "phase_b", pipeline_policy=policy
-        )
+        display.emit_phase_transition("phase_a", "phase_b", pipeline_policy=policy)
         output = console.export_text()
         # Transition must not contain status prose that the phase-close banner handles
         assert "complete" not in output.lower().split("—")[0] or "Phase A" in output, (

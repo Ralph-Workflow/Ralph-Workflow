@@ -47,11 +47,7 @@ def test_default_monitor_default_classifier_is_conservative() -> None:
         monitor = DefaultProcessMonitor(host.pid, poll_interval_seconds=0.0)
         classified = monitor.classified_processes()
         assert any(p.pid == host.pid for p in classified)
-        assert all(
-            p.role != ProcessRole.SPAWNED_SUBAGENT
-            for p in classified
-            if p.pid != host.pid
-        )
+        assert all(p.role != ProcessRole.SPAWNED_SUBAGENT for p in classified if p.pid != host.pid)
         assert monitor.live_subagent_count() == 0
     finally:
         host.terminate()
@@ -125,11 +121,7 @@ def test_default_monitor_includes_host_classification() -> None:
         classified = monitor.classified_processes()
         roles = {p.pid: p.role for p in classified}
         assert roles[host.pid] == ProcessRole.HOST
-        assert any(
-            p.role == ProcessRole.SPAWNED_SUBAGENT
-            for p in classified
-            if p.pid != host.pid
-        )
+        assert any(p.role == ProcessRole.SPAWNED_SUBAGENT for p in classified if p.pid != host.pid)
     finally:
         host.terminate()
         try:

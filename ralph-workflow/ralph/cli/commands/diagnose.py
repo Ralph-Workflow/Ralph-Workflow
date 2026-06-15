@@ -174,9 +174,7 @@ def _check_capability_state(*, display: object) -> bool:
     return True
 
 
-def _emit_simple_table(
-    display: object, title: str, rows: list[tuple[object, ...]]
-) -> None:
+def _emit_simple_table(display: object, title: str, rows: list[tuple[object, ...]]) -> None:
     """Emit a Table to a ParallelDisplay by routing through its console.
 
     Used by the diagnose helpers that need richer per-row formatting than
@@ -351,12 +349,8 @@ def _run_preflight_validation(
         validate_agent_chains_satisfiable(bundle, registry)
         validate_recovery_config(bundle)
 
-        rows.append(
-            ("Agent chains", Text("Satisfiable", style="theme.status.success"), "", "", "")
-        )
-        rows.append(
-            ("Recovery config", Text("Valid", style="theme.status.success"), "", "", "")
-        )
+        rows.append(("Agent chains", Text("Satisfiable", style="theme.status.success"), "", "", ""))
+        rows.append(("Recovery config", Text("Valid", style="theme.status.success"), "", "", ""))
         _emit_simple_table(display, "Pre-flight Validation", rows)
         return True
 
@@ -373,9 +367,7 @@ def _run_preflight_validation(
         _emit_simple_table(display, "Pre-flight Validation", rows)
         return False
     except Exception as e:
-        rows.append(
-            ("Pre-flight", _status_text("Error", str(e), "theme.status.error"), "", "", "")
-        )
+        rows.append(("Pre-flight", _status_text("Error", str(e), "theme.status.error"), "", "", ""))
         _emit_simple_table(display, "Pre-flight Validation", rows)
         return False
 
@@ -391,18 +383,14 @@ def _check_git_repo(*, display: object) -> bool:
         repo_root = find_repo_root()
         rows.append(("Repository root", str(repo_root), "", "", ""))
     except Exception as e:
-        rows.append(
-            ("Repository", _status_text("Error", str(e), "theme.status.error"), "", "", "")
-        )
+        rows.append(("Repository", _status_text("Error", str(e), "theme.status.error"), "", "", ""))
         _emit_simple_table(display, "Git Repository", rows)
         return False
 
     try:
         clean = is_repo_clean(repo_root)
         if clean:
-            rows.append(
-                ("Working tree", Text("Clean", style="theme.status.success"), "", "", "")
-            )
+            rows.append(("Working tree", Text("Clean", style="theme.status.success"), "", "", ""))
         else:
             rows.append(
                 (
@@ -507,9 +495,7 @@ def _check_agents_impl(
                 config_cell = _status_text("Configured", cmd, "theme.status.success")
                 rows.append((name, config_cell, path_status, "", ""))
     except Exception as e:
-        rows.append(
-            ("Agents", _status_text("Error", str(e), "theme.status.error"), "-", "", "")
-        )
+        rows.append(("Agents", _status_text("Error", str(e), "theme.status.error"), "-", "", ""))
         _emit_simple_table(display, "Agents", rows)
         return True
 

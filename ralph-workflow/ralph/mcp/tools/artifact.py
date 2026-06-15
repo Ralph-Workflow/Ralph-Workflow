@@ -520,9 +520,7 @@ def handle_validate_plan_draft(
     if draft is None:
         return ToolResult(
             content=[
-                ToolContent.json_content(
-                    {"valid": True, "errors": [], "staged_sections": []}
-                )
+                ToolContent.json_content({"valid": True, "errors": [], "staged_sections": []})
             ],
             is_error=False,
         )
@@ -649,15 +647,19 @@ def _check_parsed_content_type(
         return _submit_sections_error_result(
             index, f"Entry {index} (section '{section}') must be a JSON object"
         )
-    if section in PLAN_SECTION_LIST_ITEM_MODELS and mode == "replace" and not isinstance(
-        parsed_content, list
+    if (
+        section in PLAN_SECTION_LIST_ITEM_MODELS
+        and mode == "replace"
+        and not isinstance(parsed_content, list)
     ):
         return _submit_sections_error_result(
             index,
             f"Entry {index} (section '{section}') with mode='replace' must be a JSON array",
         )
-    if section in PLAN_SECTION_LIST_ITEM_MODELS and mode == "append" and not isinstance(
-        parsed_content, list
+    if (
+        section in PLAN_SECTION_LIST_ITEM_MODELS
+        and mode == "append"
+        and not isinstance(parsed_content, list)
     ):
         return _submit_sections_error_result(
             index,
@@ -668,11 +670,7 @@ def _check_parsed_content_type(
 
 def _submit_sections_error_result(index: int, message: str) -> ToolResult:
     return ToolResult(
-        content=[
-            ToolContent.json_content(
-                {"submitted": [], "failed_at": index, "error": message}
-            )
-        ],
+        content=[ToolContent.json_content({"submitted": [], "failed_at": index, "error": message})],
         is_error=True,
     )
 
@@ -723,16 +721,12 @@ def _merge_submit_plan_sections_batch(
                 for item in items:
                     fragment = validate_plan_section(section, item, mode="append")
                     existing_list.append(fragment)
-                new_sections = merge_plan_section(
-                    new_sections, section, existing_list, "replace"
-                )
+                new_sections = merge_plan_section(new_sections, section, existing_list, "replace")
             else:
                 fragment = validate_plan_section(section, parsed_content, mode=mode)
                 new_sections = merge_plan_section(new_sections, section, fragment, mode)
         except PlanArtifactValidationError as exc:
-            return _submit_sections_error_result(
-                len(submitted), f"[{section}] {exc}"
-            )
+            return _submit_sections_error_result(len(submitted), f"[{section}] {exc}")
         submitted.append(section)
     return new_sections, submitted
 
@@ -861,9 +855,7 @@ def _parse_plan_content(raw_content: str) -> dict[str, object]:
         raise InvalidParamsError(str(exc)) from exc
 
 
-def _decode_artifact_payload(
-    artifact_type: str, raw_content: str
-) -> dict[str, object]:
+def _decode_artifact_payload(artifact_type: str, raw_content: str) -> dict[str, object]:
     """Decode the artifact submission content with the type-appropriate parser.
 
     Plan artifacts use ``parse_plan_payload_strict`` so the four previously
@@ -973,10 +965,7 @@ def prepare_artifact_submission(
     try:
         parsed_content = _decode_artifact_payload(artifact_type, raw_content)
     except InvalidParamsError as exc:
-        if (
-            base_path is not None
-            and has_format_doc(artifact_type)
-        ):
+        if base_path is not None and has_format_doc(artifact_type):
             _raise_format_doc_error(artifact_type, base_path, backend, exc)
         raise
 
@@ -1002,19 +991,13 @@ def _resolve_artifact_content_source(
 
     if isinstance(raw_content_path, str):
         exc = InvalidParamsError(_artifact_content_format_error(artifact_type))
-        if (
-            base_path is not None
-            and has_format_doc(artifact_type)
-        ):
+        if base_path is not None and has_format_doc(artifact_type):
             _raise_format_doc_error(artifact_type, base_path, backend, exc)
         raise exc
 
     if not isinstance(raw_content, str):
         exc = InvalidParamsError("Missing 'content' parameter")
-        if (
-            base_path is not None
-            and has_format_doc(artifact_type)
-        ):
+        if base_path is not None and has_format_doc(artifact_type):
             _raise_format_doc_error(artifact_type, base_path, backend, exc)
         raise exc
 
@@ -1462,6 +1445,8 @@ def submit_ops_for_artifact(
         overwrite=True,
         metadata=None,
     )
+
+
 # === END CANONICAL SUBMIT OPS ===
 
 

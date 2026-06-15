@@ -49,9 +49,7 @@ def test_emit_agents_table_empty_dict() -> None:
 def test_emit_agents_table_with_one_agent() -> None:
     """Single agent renders the name, command, and table title."""
     parser = types.SimpleNamespace(value="A")
-    agent = types.SimpleNamespace(
-        cmd="/usr/bin/claude", json_parser=parser, can_commit=True
-    )
+    agent = types.SimpleNamespace(cmd="/usr/bin/claude", json_parser=parser, can_commit=True)
     pd, buf = _display()
     pd.emit_agents_table({"claude": agent})
     pd.stop()
@@ -68,6 +66,4 @@ def test_emit_agents_table_quiet_mode_emits_nothing() -> None:
     pd._is_quiet = True
     pd.emit_agents_table({})
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"

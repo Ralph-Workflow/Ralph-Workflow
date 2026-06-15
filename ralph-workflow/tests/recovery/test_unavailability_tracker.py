@@ -6,6 +6,7 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.recovery.agent_unavailability_tracker import (
     AgentUnavailabilityTracker,
     UnavailabilityEntry,
+    UnavailabilityStore,
 )
 from ralph.recovery.unavailability_reason import UnavailabilityReason
 
@@ -60,11 +61,12 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        for _ in range(10):
+        for i in range(10):
             tracker.mark_unavailable(
                 "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
             )
-            clock.advance(300)
+            if i < 9:
+                clock.advance(300)
 
         snap = tracker.snapshot()
         timeout = snap["unavailable_timeouts"]["development:claude"]
@@ -76,11 +78,10 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        for _ in range(10):
-            tracker.mark_unavailable(
-                "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-            )
-            clock.advance(3000)
+        for i in range(10):
+            tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
+            if i < 9:
+                clock.advance(3000)
 
         snap = tracker.snapshot()
         timeout = snap["unavailable_timeouts"]["development:claude"]
@@ -92,11 +93,12 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        for _ in range(10):
+        for i in range(10):
             tracker.mark_unavailable(
                 "development", "claude", UnavailabilityReason.STALE_CHILD_QUIET
             )
-            clock.advance(3000)
+            if i < 9:
+                clock.advance(3000)
 
         snap = tracker.snapshot()
         timeout = snap["unavailable_timeouts"]["development:claude"]
@@ -108,9 +110,7 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.NO_OUTPUT_AT_START)
         assert tracker.is_available("development", "claude") is False
 
         clock.advance(6)
@@ -120,12 +120,8 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-        )
-        tracker.mark_unavailable(
-            "development", "opencode", UnavailabilityReason.STALE_CHILD_QUIET
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
+        tracker.mark_unavailable("development", "opencode", UnavailabilityReason.STALE_CHILD_QUIET)
 
         wait = tracker.earliest_unavailable_wait_ms("development", ["claude", "opencode"])
         assert wait > 0
@@ -134,9 +130,7 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
         assert tracker.is_available("development", "claude") is False
 
         tracker.reset_backoff("development", "claude")
@@ -146,9 +140,7 @@ class TestAgentUnavailabilityTracker:
         clock = FakeClock(start=0.0)
         tracker = AgentUnavailabilityTracker(clock=clock)
 
-        tracker.mark_unavailable(
-            "development", "claude", UnavailabilityReason.OUT_OF_CREDITS
-        )
+        tracker.mark_unavailable("development", "claude", UnavailabilityReason.OUT_OF_CREDITS)
         snap1 = tracker.snapshot()
         snap2 = tracker.snapshot()
 
@@ -185,3 +177,11 @@ class TestAgentUnavailabilityTracker:
         entry = tracker.mark_unavailable("development", "claude", None)
         assert entry.base_backoff_ms == 5_000
         assert entry.max_backoff_ms == 300_000
+
+    def test_unavailability_store_protocol_is_runtime_checkable(self) -> None:
+        tracker = AgentUnavailabilityTracker()
+        assert isinstance(tracker, UnavailabilityStore) is True
+
+    def test_scope_defaults_to_session(self) -> None:
+        tracker = AgentUnavailabilityTracker()
+        assert tracker.scope == "session"

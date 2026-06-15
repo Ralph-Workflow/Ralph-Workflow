@@ -96,9 +96,7 @@ def test_phase_close_counts_tool_results_as_tool_calls() -> None:
 def test_phase_close_non_milestone_role_has_no_glyph() -> None:
     """Non-milestone roles (terminal, analysis) emit no glyph prefix."""
     pd, buf = _make_display()
-    pd.emit_phase_close(
-        "done", "result: done", options=PhaseCloseOptions(phase_role="terminal")
-    )
+    pd.emit_phase_close("done", "result: done", options=PhaseCloseOptions(phase_role="terminal"))
     out = buf.getvalue()
     assert "[phase-close] phase=done result: done" in out
     assert UNICODE_GLYPHS["milestone"] not in out
@@ -121,9 +119,7 @@ def test_phase_close_iteration_context_labels_appear_after_phase_name() -> None:
     """emit_phase_close with iteration_context includes canonical labels in output."""
     pd, buf = _make_display()
     ctx = PhaseIterationContext(outer_dev=2, inner_analysis=1)
-    pd.emit_phase_close(
-        "fix", "fix: applied", options=PhaseCloseOptions(iteration_context=ctx)
-    )
+    pd.emit_phase_close("fix", "fix: applied", options=PhaseCloseOptions(iteration_context=ctx))
     out = buf.getvalue()
     assert "phase=fix" in out
     assert "[Dev #2]" in out

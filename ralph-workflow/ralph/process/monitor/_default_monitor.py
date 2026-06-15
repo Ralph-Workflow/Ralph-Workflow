@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from ._subagent_pid_source import SubagentPidSource
 
 
-
 @dataclass(frozen=True)
 class _ClassifiedProcess:
     """Concrete implementation of ClassifiedProcess."""

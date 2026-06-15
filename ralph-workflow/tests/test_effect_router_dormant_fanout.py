@@ -69,17 +69,13 @@ def _write_plan_artifact(root: Path, work_units: list[dict[str, object]]) -> Non
                         ],
                     },
                     "skills_mcp": {"skills": ["test-driven-development"], "mcps": []},
-                    "steps": [
-                        {"number": 1, "title": "Implement", "content": "do the work"}
-                    ],
+                    "steps": [{"number": 1, "title": "Implement", "content": "do the work"}],
                     "critical_files": {
                         "primary_files": [{"path": "src/main.py", "action": "modify"}],
                         "reference_files": [],
                     },
                     "risks_mitigations": [{"risk": "drift", "mitigation": "verify"}],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                     "work_units": work_units,
                 },
             }
@@ -102,10 +98,7 @@ def test_dormant_default_falls_through_to_invoke_agent_effect(tmp_path: Path) ->
     _write_plan_artifact(tmp_path, _two_disjoint_units())
     state = PipelineState(phase="development")
     bundle = _default_policy_bundle()
-    assert (
-        bundle.pipeline.phases["development"].parallelization.dispatch_mode
-        == "agent_subagents"
-    )
+    assert bundle.pipeline.phases["development"].parallelization.dispatch_mode == "agent_subagents"
 
     effect = determine_effect_from_policy(
         state,

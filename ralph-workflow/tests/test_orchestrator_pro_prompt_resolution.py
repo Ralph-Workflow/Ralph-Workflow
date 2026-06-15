@@ -104,9 +104,7 @@ def test_determine_next_effect_uses_resolved_prompt_path_with_workspace_scope(
     state = _make_state("commit")
 
     workspace_scope = WorkspaceScope(tmp_path)
-    effect = determine_next_effect(
-        state, pipeline, agents, workspace_scope=workspace_scope
-    )
+    effect = determine_next_effect(state, pipeline, agents, workspace_scope=workspace_scope)
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.prompt_file == str(custom_prompt.resolve())
 
@@ -129,9 +127,7 @@ def test_determine_next_effect_default_when_scope_provided_but_no_env(
     state = _make_state("commit")
 
     workspace_scope = WorkspaceScope(tmp_path)
-    effect = determine_next_effect(
-        state, pipeline, agents, workspace_scope=workspace_scope
-    )
+    effect = determine_next_effect(state, pipeline, agents, workspace_scope=workspace_scope)
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.prompt_file == str((workspace_scope.root / "PROMPT.md").resolve())
 
@@ -149,8 +145,6 @@ def test_determine_next_effect_pro_prompt_relative_to_workspace(
     state = _make_state("commit")
 
     workspace_scope = WorkspaceScope(tmp_path)
-    effect = determine_next_effect(
-        state, pipeline, agents, workspace_scope=workspace_scope
-    )
+    effect = determine_next_effect(state, pipeline, agents, workspace_scope=workspace_scope)
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.prompt_file == str(custom.resolve())

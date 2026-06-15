@@ -7,7 +7,7 @@ instead of directly managing _unavailable_timeouts and _backoff_attempts dicts.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from ralph.agents.timeout_clock import SystemClock
 from ralph.recovery.unavailability_reason import (
@@ -18,6 +18,49 @@ from ralph.recovery.unavailability_reason import (
 
 if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
+
+
+@runtime_checkable
+class UnavailabilityStore(Protocol):
+    """Protocol defining the interface for an agent unavailability store.
+
+    This store tracks which agents are currently unavailable due to errors
+    (such as out of credits or suspicious timeouts) and computes backoff cooldowns.
+
+    Callers MUST NOT depend on the dict-shaped snapshot() output for any
+    cross-session use, as the snapshot format is legacy and the store may be swapped
+    for a persistent implementation (sqlite, redis, file) in the future.
+    """
+
+    @property
+    def scope(self) -> Literal["session", "persistent"]:
+        """The scope of the store (e.g. 'session' or 'persistent')."""
+        ...
+
+    def mark_unavailable(
+        self,
+        phase: str,
+        agent: str,
+        reason: UnavailabilityReason | None = None,
+    ) -> UnavailabilityEntry:
+        """Mark an agent unavailable with per-reason exponential backoff."""
+        ...
+
+    def is_available(self, phase: str, agent: str) -> bool:
+        """Return True when the agent is not currently marked unavailable."""
+        ...
+
+    def earliest_unavailable_wait_ms(self, phase: str, agents: list[str]) -> int:
+        """Return milliseconds until the earliest unavailable agent becomes available."""
+        ...
+
+    def reset_backoff(self, phase: str, agent: str) -> None:
+        """Clear the unavailable entry for a phase:agent."""
+        ...
+
+    def snapshot(self) -> dict[str, dict[str, object]]:
+        """Return a defensive copy of the internal state."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -50,6 +93,7 @@ class AgentUnavailabilityTracker:
         initial_timeouts: Legacy seam — optional pre-seeded timeouts dict
             (for backward compatibility with tests that use the old
             unavailable_timeouts dict).
+        scope: Literal 'session' or 'persistent' indicating the storage scope.
     """
 
     def __init__(
@@ -58,11 +102,12 @@ class AgentUnavailabilityTracker:
         backoff_policy: dict[UnavailabilityReason, ReasonBackoffPolicy] | None = None,
         initial_entries: dict[str, UnavailabilityEntry] | None = None,
         initial_timeouts: dict[str, int] | None = None,
+        scope: Literal["session", "persistent"] = "session",
     ) -> None:
+        self._scope = scope
         self._clock = clock or SystemClock()
         self._backoff_policy: dict[UnavailabilityReason, ReasonBackoffPolicy] = (
-            backoff_policy if backoff_policy is not None
-            else DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
+            backoff_policy if backoff_policy is not None else DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
         )
         self._entries: dict[str, UnavailabilityEntry] = dict(initial_entries or {})
         self._backoff_attempts: dict[str, int] = {}
@@ -114,8 +159,7 @@ class AgentUnavailabilityTracker:
 
         multiplier: int = pow(2, attempt)
         backoff_ms: int = base_ms_int * multiplier
-        if backoff_ms > cap_ms_int:
-            backoff_ms = cap_ms_int
+        backoff_ms = min(backoff_ms, cap_ms_int)
 
         unavailable_until_ms = current_time_ms + backoff_ms
         self._entries[key] = UnavailabilityEntry(
@@ -165,11 +209,15 @@ class AgentUnavailabilityTracker:
         """Return a defensive copy of the internal state."""
         return {
             "unavailable_timeouts": {
-                key: entry.unavailable_until_ms
-                for key, entry in self._entries.items()
+                key: entry.unavailable_until_ms for key, entry in self._entries.items()
             },
             "backoff_attempts": dict(self._backoff_attempts),
         }
 
+    @property
+    def scope(self) -> Literal["session", "persistent"]:
+        """The scope of the store (e.g. 'session' or 'persistent')."""
+        return self._scope
 
-__all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry"]
+
+__all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry", "UnavailabilityStore"]

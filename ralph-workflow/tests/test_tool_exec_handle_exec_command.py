@@ -127,7 +127,6 @@ class TestHandleExecCommand:
         result = handle_exec_command(session, workspace, params)
         assert result.is_error is True
 
-
     def test_thread_owned_session_sink_receives_chunks_before_final_result(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -203,8 +202,6 @@ class TestRunCommandAlwaysBounded:
                 stdout=b"", stderr=b"", returncode=0
             )
 
-        run_command(
-            "echo", [], MockWorkspaceRoot(tmp_path), 0, deps=ExecRunDeps(runner=_runner)
-        )
+        run_command("echo", [], MockWorkspaceRoot(tmp_path), 0, deps=ExecRunDeps(runner=_runner))
 
         assert captured == [DEFAULT_TIMEOUT_MS / 1000]

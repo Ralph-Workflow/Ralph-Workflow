@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 _psutil: _PsutilMod | None
 try:
     import psutil as _psutil_imported
+
     _psutil = cast("_PsutilMod", _psutil_imported)
 except ImportError:
     _psutil = None

@@ -129,9 +129,9 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # smoke-plumbing helpers receive the value through call signatures, and
     # production agent invocation below this level receives the resolved
     # command through AgentConfig.
-    "pipeline/plumbing/smoke_plumbing.py:435",
+    "pipeline/plumbing/smoke_plumbing.py:443",
     # os.environ.get(RALPH_AGY_BINARY) in _agy_binary_override_env
-    "pipeline/plumbing/smoke_plumbing.py:446",
+    "pipeline/plumbing/smoke_plumbing.py:445",
 )
 
 # Top-level entry points and the config package — the composition root for
@@ -407,13 +407,9 @@ def main(argv: list[str] | None = None) -> int:
 
     dry_run = _is_dry_run()
     if dry_run:
-        print(
-            "AUDIT_DI_SEAM_DRY_RUN=true — hits are reported but the audit does not fail."
-        )
+        print("AUDIT_DI_SEAM_DRY_RUN=true — hits are reported but the audit does not fail.")
     else:
-        print(
-            "AUDIT_DI_SEAM_DRY_RUN=false — strict mode; any hit fails the audit."
-        )
+        print("AUDIT_DI_SEAM_DRY_RUN=false — strict mode; any hit fails the audit.")
     print()
 
     pass1_violations, files_checked = audit_pass1(package_root)

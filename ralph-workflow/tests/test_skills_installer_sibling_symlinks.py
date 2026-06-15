@@ -93,9 +93,7 @@ def test_install_baseline_skills_creates_symlink_in_sibling_roots(
         sibling_dir = sibling.resolve()
         for name in BASELINE_SKILL_NAMES:
             entry_path = sibling_dir / name
-            assert entry_path.is_symlink(), (
-                f"Expected {entry_path} to be a symlink"
-            )
+            assert entry_path.is_symlink(), f"Expected {entry_path} to be a symlink"
             # Resolving through the symlink should land in the canonical root.
             target = entry_path.resolve()
             expected = (canonical_dir / name).resolve()
@@ -113,9 +111,7 @@ def test_install_baseline_skills_falls_back_to_copy_when_symlink_fails(
 
     # Force Path.symlink_to to raise OSError for any call so we exercise the
     # shutil.copytree fallback path.
-    def _raise_symlink(
-        self: Path, target: object, *args: object, **kwargs: object
-    ) -> None:
+    def _raise_symlink(self: Path, target: object, *args: object, **kwargs: object) -> None:
         del target, args, kwargs
         raise OSError("simulated symlink unsupported")
 

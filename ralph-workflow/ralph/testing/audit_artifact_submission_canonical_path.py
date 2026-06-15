@@ -206,10 +206,7 @@ class BypassFinding:
         self.detail = detail
 
     def __str__(self) -> str:
-        return (
-            f"{self.file_path}:{self.line}: [ARTIFACT-BYPASS] "
-            f"{self.category}: {self.detail}"
-        )
+        return f"{self.file_path}:{self.line}: [ARTIFACT-BYPASS] {self.category}: {self.detail}"
 
 
 def _collect_string_literals(node: ast.AST) -> list[str]:
@@ -401,9 +398,7 @@ def _find_write_text_finding(
     if isinstance(node.func, ast.Attribute):
         candidates.append(node.func.value)
     for path_expr in candidates:
-        finding = _finding_from_path_match(
-            _path_matches_forbidden(path_expr), rel_path, lineno
-        )
+        finding = _finding_from_path_match(_path_matches_forbidden(path_expr), rel_path, lineno)
         if finding is not None:
             return finding
     return None
@@ -421,9 +416,7 @@ def _find_write_bytes_finding(
     if isinstance(node.func, ast.Attribute):
         candidates.append(node.func.value)
     for path_expr in candidates:
-        finding = _finding_from_path_match(
-            _path_matches_forbidden(path_expr), rel_path, lineno
-        )
+        finding = _finding_from_path_match(_path_matches_forbidden(path_expr), rel_path, lineno)
         if finding is not None:
             return finding
     return None
@@ -437,20 +430,12 @@ def _find_open_finding(
     """Check an ``open`` call for forbidden paths."""
     if not node.args:
         return None
-    return _finding_from_path_match(
-        _path_matches_forbidden(node.args[0]), rel_path, lineno
-    )
+    return _finding_from_path_match(_path_matches_forbidden(node.args[0]), rel_path, lineno)
 
 
-_SHUTIL_METHODS: frozenset[str] = frozenset(
-    {"copy", "copy2", "copyfile", "copytree", "move"}
-)
-_OS_RENAME_METHODS: frozenset[str] = frozenset(
-    {"rename", "renames", "replace"}
-)
-_PATH_REPLACE_METHODS: frozenset[str] = frozenset(
-    {"replace", "rename"}
-)
+_SHUTIL_METHODS: frozenset[str] = frozenset({"copy", "copy2", "copyfile", "copytree", "move"})
+_OS_RENAME_METHODS: frozenset[str] = frozenset({"rename", "renames", "replace"})
+_PATH_REPLACE_METHODS: frozenset[str] = frozenset({"replace", "rename"})
 
 
 def _method_name(node: ast.Call) -> str | None:
@@ -472,9 +457,7 @@ def _is_os_rename_call(node: ast.Call) -> bool:
     if name is None or name not in _OS_RENAME_METHODS:
         return False
     dotted = _dotted_name(node.func)
-    if dotted is not None and (
-        dotted.startswith("Path.") or dotted.startswith("pathlib.")
-    ):
+    if dotted is not None and (dotted.startswith("Path.") or dotted.startswith("pathlib.")):
         return False
     if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Call):
         base_func = _dotted_name(node.func.value.func)
@@ -525,9 +508,7 @@ def _find_shutil_move_finding(
     dst = _find_shutil_destination(node)
     if dst is None:
         return None
-    return _finding_from_path_match(
-        _path_matches_forbidden(dst), rel_path, lineno
-    )
+    return _finding_from_path_match(_path_matches_forbidden(dst), rel_path, lineno)
 
 
 def _find_os_rename_finding(
@@ -539,9 +520,7 @@ def _find_os_rename_finding(
     dst = _find_os_rename_destination(node)
     if dst is None:
         return None
-    return _finding_from_path_match(
-        _path_matches_forbidden(dst), rel_path, lineno
-    )
+    return _finding_from_path_match(_path_matches_forbidden(dst), rel_path, lineno)
 
 
 def _find_path_replace_finding(
@@ -553,9 +532,7 @@ def _find_path_replace_finding(
     dst = _find_path_replace_destination(node)
     if dst is None:
         return None
-    return _finding_from_path_match(
-        _path_matches_forbidden(dst), rel_path, lineno
-    )
+    return _finding_from_path_match(_path_matches_forbidden(dst), rel_path, lineno)
 
 
 def _find_forbidden_call_finding(

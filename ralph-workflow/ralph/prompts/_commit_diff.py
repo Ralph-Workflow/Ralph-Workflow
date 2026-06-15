@@ -106,9 +106,7 @@ def commit_cleanup_diff(workspace_root: Path) -> str:
     if untracked_raw == _NO_DIFF_SENTINEL:
         untracked_paths: list[str] = []
     else:
-        untracked_paths = [
-            line for line in untracked_raw.splitlines() if line.strip()
-        ]
+        untracked_paths = [line for line in untracked_raw.splitlines() if line.strip()]
     untracked_section = _format_untracked_section(untracked_paths)
     if not untracked_section:
         return tracked

@@ -270,9 +270,7 @@ class _ModuleVisitor(ast.NodeVisitor):
         if self._function_defs is None:
             tree = self._tree if self._tree is not None else ast.parse(self.source)
             self._function_defs = {
-                child.name: child
-                for child in ast.walk(tree)
-                if isinstance(child, ast.FunctionDef)
+                child.name: child for child in ast.walk(tree) if isinstance(child, ast.FunctionDef)
             }
         return self._function_defs.get(name)
 

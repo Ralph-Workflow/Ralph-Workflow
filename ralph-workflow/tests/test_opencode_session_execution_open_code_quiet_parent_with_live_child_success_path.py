@@ -93,9 +93,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
                 super().__init__()
                 self.call_count = 0
 
-            def classify_quiet(
-                self, handle: object, liveness_probe: object
-            ) -> AgentExecutionState:
+            def classify_quiet(self, handle: object, liveness_probe: object) -> AgentExecutionState:
                 del handle, liveness_probe
                 self.call_count += 1
                 return AgentExecutionState.WAITING_ON_CHILD

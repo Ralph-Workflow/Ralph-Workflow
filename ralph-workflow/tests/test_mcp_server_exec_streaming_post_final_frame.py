@@ -33,9 +33,7 @@ class _RecordingMcp:
         self._session = _SessionWithoutStreamingSurface()
         self.calls: list[object] = []
 
-    def handle_request(
-        self, request: object, state: object
-    ) -> tuple[JsonRpcResponse, object]:
+    def handle_request(self, request: object, state: object) -> tuple[JsonRpcResponse, object]:
         self.calls.append(request)
         msg_id = getattr(request, "msg_id", None)
         return (

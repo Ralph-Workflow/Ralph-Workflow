@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-
     from ralph.agents.clock import Clock
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.agent_budget_registry import AgentBudgetRegistry

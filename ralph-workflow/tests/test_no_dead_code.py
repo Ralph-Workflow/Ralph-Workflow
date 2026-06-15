@@ -110,14 +110,12 @@ def test_no_module_level_console_globals_in_ralph_source() -> None:
         source = _read(path)
         for lineno, target, value in _module_level_console_globals(source):
             offenders.append(
-                f"{path.relative_to(RALPH_ROOT.parent)}:{lineno} "
-                f"{target} = {ast.unparse(value)}"
+                f"{path.relative_to(RALPH_ROOT.parent)}:{lineno} {target} = {ast.unparse(value)}"
             )
     assert offenders == [], (
         "Module-level Console construction found in ralph-workflow/ralph/; "
         "delete the offending module-level Console and inject it via "
-        "ParallelDisplay instead: "
-        + str(offenders)
+        "ParallelDisplay instead: " + str(offenders)
     )
 
 

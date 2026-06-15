@@ -106,9 +106,7 @@ class PtyLineReader:
         self._monitor = ctx.monitor
         self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
         self._clock = clock
-        self._strategy: BaseExecutionStrategy = (
-            ctx.execution_strategy or GenericExecutionStrategy()
-        )
+        self._strategy: BaseExecutionStrategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
         self._waiting_listener = ctx.waiting_listener
         self._pre_output_listener = cast(
@@ -657,9 +655,7 @@ class PtyLineReader:
             # counter receives the real classification; the
             # 0-arg bound method form would always yield
             # (OTHER, 1.0) and miss the AC #7 contract.
-            def _forward_event(
-                kind: WorkspaceChangeKind, weight: float
-            ) -> None:
+            def _forward_event(kind: WorkspaceChangeKind, weight: float) -> None:
                 watchdog.record_workspace_event(kind=kind, weight=weight)
 
             self._monitor.set_on_event(_forward_event)

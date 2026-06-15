@@ -68,23 +68,15 @@ class TestPlanningEditTemplatesShippedSkills:
     """planning_edit.jinja and planning_edit_fallback.jinja."""
 
     def test_planning_edit_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
-        prompt = _shared_render_planning(
-            False, template="planning_edit.jinja", tmp_path=tmp_path
-        )
+        prompt = _shared_render_planning(False, template="planning_edit.jinja", tmp_path=tmp_path)
         _assert_shipped_skills_discovery(prompt)
 
-    def test_planning_edit_jinja_docs_mcp_false_branch_visible(
-        self, tmp_path: Path
-    ) -> None:
-        prompt = _shared_render_planning(
-            False, template="planning_edit.jinja", tmp_path=tmp_path
-        )
+    def test_planning_edit_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
+        prompt = _shared_render_planning(False, template="planning_edit.jinja", tmp_path=tmp_path)
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY:
             assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
 
-    def test_planning_edit_fallback_jinja_has_shipped_skills_section(
-        self, tmp_path: Path
-    ) -> None:
+    def test_planning_edit_fallback_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
         prompt = _shared_render_planning(
             False, template="planning_edit_fallback.jinja", tmp_path=tmp_path
         )

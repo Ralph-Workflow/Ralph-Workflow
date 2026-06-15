@@ -120,12 +120,10 @@ class ExecutionError(ToolError):
         if self.max_workspace_bytes is not None:
             lines.append(f"  Limit: {self.max_workspace_bytes} bytes")
         lines.append(
-            "  Suggested exclusions: node_modules, .venv, .mypy_cache, "
-            "__pycache__, .tox, .nox"
+            "  Suggested exclusions: node_modules, .venv, .mypy_cache, __pycache__, .tox, .nox"
         )
         lines.append(
-            "  Suggestion: Add large generated directories to .gitignore "
-            "or reduce workspace scope"
+            "  Suggestion: Add large generated directories to .gitignore or reduce workspace scope"
         )
         if self.diagnostics:
             lines.append(f"  Diagnostics: {self.diagnostics}")

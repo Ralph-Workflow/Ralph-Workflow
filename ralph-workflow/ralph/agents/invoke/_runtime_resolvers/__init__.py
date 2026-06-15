@@ -56,9 +56,7 @@ class RuntimeResolver(Protocol):
         ...
 
 
-def _get_endpoint(
-    runtime_env: dict[str, str], base_env: Mapping[str, str]
-) -> str | None:
+def _get_endpoint(runtime_env: dict[str, str], base_env: Mapping[str, str]) -> str | None:
     """Get MCP endpoint from runtime_env or base_env."""
     return runtime_env.get(MCP_ENDPOINT_ENV) or base_env.get(MCP_ENDPOINT_ENV)
 
@@ -93,9 +91,9 @@ class OpencodeRuntimeResolver:
         if endpoint is None:
             raise RuntimeError("endpoint must be set for OPENCODE transport")
 
-        opencode_config = runtime_env.get(
+        opencode_config = runtime_env.get("OPENCODE_CONFIG_CONTENT") or _env.get(
             "OPENCODE_CONFIG_CONTENT"
-        ) or _env.get("OPENCODE_CONFIG_CONTENT")
+        )
         provider_config, upstreams = build_opencode_provider_config(
             opencode_config,
             endpoint,
@@ -137,10 +135,9 @@ class NanocoderRuntimeResolver:
             raise RuntimeError("endpoint must be set for NANOCODER transport")
 
         runtime_env.setdefault("NANOCODER_TRUST_DIRECTORY", "1")
-        nanocoder_mcp_servers = runtime_env.get(
+        nanocoder_mcp_servers = runtime_env.get("NANOCODER_MCPSERVERS") or _env.get(
             "NANOCODER_MCPSERVERS"
-        ) or _env.get("NANOCODER_MCPSERVERS")
-
+        )
 
         from ralph.agents.invoke import (  # noqa: PLC0415
             _canonical_http_mcp_tool_names,
@@ -329,10 +326,7 @@ class DefaultRuntimeResolver:
         endpoint = _get_endpoint(runtime_env, _env)
 
         if endpoint is not None:
-            msg = (
-                "Agent transport 'generic' does not declare how to receive "
-                "Ralph MCP wiring"
-            )
+            msg = "Agent transport 'generic' does not declare how to receive Ralph MCP wiring"
             raise UnsupportedMcpTransportError(msg)
 
         return ResolvedInvocationRuntime(

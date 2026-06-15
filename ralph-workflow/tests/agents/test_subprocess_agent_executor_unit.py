@@ -336,4 +336,3 @@ async def test_subprocess_executor_cleans_up_on_non_cancellation_exception() -> 
 
     # Verify no active records remain — the cleanup ran.
     assert pm.list_active() == []
-

@@ -68,11 +68,7 @@ def test_live_smoke_log_documents_real_agy_invocation() -> None:
     )
 
     agy_row = next(
-        (
-            line
-            for line in log_text.splitlines()
-            if "agy/" in line and ("│" in line or "┃" in line)
-        ),
+        (line for line in log_text.splitlines() if "agy/" in line and ("│" in line or "┃" in line)),
         None,
     )
     assert agy_row is not None, "AGY parity table row not found in smoke log"

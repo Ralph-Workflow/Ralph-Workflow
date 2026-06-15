@@ -16,9 +16,7 @@ GITHUB_MIRROR_GIT_URL = f"{GITHUB_MIRROR_URL}.git"
 # engine as a subprocess. It lives in its own Codeberg repository and
 # is referenced from the engine docs as the source of truth for the
 # Pro↔Ralph integration contract.
-RALPH_WORKFLOW_PRO_REPOSITORY_URL = (
-    "https://codeberg.org/RalphWorkflow/Ralph-Workflow-Pro"
-)
+RALPH_WORKFLOW_PRO_REPOSITORY_URL = "https://codeberg.org/RalphWorkflow/Ralph-Workflow-Pro"
 
 __all__ = [
     "CODEBERG_ISSUES_URL",

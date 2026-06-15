@@ -188,7 +188,8 @@ def _render_unit_id(unit_id: str) -> str:
     """Bound visible unit ids so prefixes cannot hide the activity payload."""
     if len(unit_id) <= _MAX_RENDERED_UNIT_ID_CHARS:
         return unit_id
-    return f"{unit_id[:_MAX_RENDERED_UNIT_ID_CHARS - 3]}..."
+    return f"{unit_id[: _MAX_RENDERED_UNIT_ID_CHARS - 3]}..."
+
 
 # ASCII banner art inlined from the deleted ralph.banner module so
 # emit_welcome_banner does not need a separate module-level import for
@@ -762,9 +763,7 @@ class ParallelDisplay:
 
         if base_tag == "thinking":
             preview = build_headline_or_placeholder(joined, max_chars=self._ctx.headline_max_chars)
-            preview_suffix = (
-                f"[{end_tag}][{rendered_unit_id}] \u21b3 preview: {_sanitize(preview)}"
-            )
+            preview_suffix = f"[{end_tag}][{rendered_unit_id}] \u21b3 preview: {_sanitize(preview)}"
             self._console.print(
                 self._build_line(timestamp, "INFO", "CONT", preview_suffix),
                 markup=False,

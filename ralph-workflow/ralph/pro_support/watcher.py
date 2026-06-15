@@ -118,9 +118,7 @@ def _default_heartbeat_factory() -> _HeartbeatFactory:
             pid=os.getpid(),
         )
         client.start()
-        logger.info(
-            "Pro heartbeat started: run_id=%s base_url=%s", run_id_obj, base_url
-        )
+        logger.info("Pro heartbeat started: run_id=%s base_url=%s", run_id_obj, base_url)
         return client
 
     return _factory
@@ -155,22 +153,16 @@ class ProMarkerWatcher:
         self._stop_event = threading.Event()
         self._clock: _Clock = clock if clock is not None else _default_clock
         self._sleeper: _Sleeper = (
-            sleeper
-            if sleeper is not None
-            else _default_sleeper_factory(self._stop_event)
+            sleeper if sleeper is not None else _default_sleeper_factory(self._stop_event)
         )
         if marker_loader is not None:
             self._loader: _MarkerLoader = marker_loader
         elif workspace_root is not None:
             self._loader = _default_marker_loader_factory(workspace_root)
         else:
-            raise ValueError(
-                "ProMarkerWatcher requires either workspace_root or marker_loader"
-            )
+            raise ValueError("ProMarkerWatcher requires either workspace_root or marker_loader")
         self._heartbeat_factory: _HeartbeatFactory = (
-            heartbeat_factory
-            if heartbeat_factory is not None
-            else _default_heartbeat_factory()
+            heartbeat_factory if heartbeat_factory is not None else _default_heartbeat_factory()
         )
         self._thread: threading.Thread | None = None
         self._heartbeat_started = False
