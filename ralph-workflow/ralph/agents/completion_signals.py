@@ -56,6 +56,11 @@ class CompletionSignals:
         artifact_optional: True when the phase marks its output artifact optional
             (artifact_required=False). A clean exit is terminal even without the
             artifact or an explicit declare_complete call.
+        completion_sentinel_present: True when the run-scoped completion sentinel
+            written by handle_declare_complete exists on disk. This is the
+            authoritative proof that the agent actually invoked the
+            declare_complete MCP tool; the plain-text marker alone can be
+            spoofed by agent output.
     """
 
     explicit_complete: bool
@@ -63,6 +68,7 @@ class CompletionSignals:
     artifact_types: tuple[str, ...]
     terminal_ack_seen: bool = False
     artifact_optional: bool = False
+    completion_sentinel_present: bool = False
 
 
 def extract_explicit_completion(raw_output: list[str]) -> bool:
@@ -160,11 +166,15 @@ def evaluate_completion(
     """
     explicit = extract_explicit_completion(raw_output or [])
     ra = required_artifact
+    sentinel_present = (
+        _check_completion_sentinel(workspace, run_id) if run_id is not None else False
+    )
     if ra is None:
         return CompletionSignals(
             explicit_complete=explicit,
             required_artifact_present=False,
             artifact_types=(),
+            completion_sentinel_present=sentinel_present,
         )
     artifact_path = workspace / ra.json_path
     # A run-scoped submission receipt is authoritative proof the artifact was
@@ -175,11 +185,15 @@ def evaluate_completion(
     ) else False
     present = present or _artifact_is_schema_valid(artifact_path)
     optional = not ra.artifact_required
+    sentinel_present = (
+        _check_completion_sentinel(workspace, run_id) if run_id is not None else False
+    )
     return CompletionSignals(
         explicit_complete=explicit,
         required_artifact_present=present,
         artifact_types=(ra.artifact_type,) if present else (),
         artifact_optional=optional,
+        completion_sentinel_present=sentinel_present,
     )
 
 

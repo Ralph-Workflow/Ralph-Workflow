@@ -269,11 +269,22 @@ def _check_process_result(
             else _check_completion_sentinel
         )
         sentinel_run_id = _completion_run_id(opts)
-        if not signals.explicit_complete and sentinel_check_fn(
+        sentinel_found = sentinel_check_fn(
             opts.workspace_path,
             sentinel_run_id,
-        ):
-            signals = replace(signals, explicit_complete=True)
+        )
+        if sentinel_found:
+            signals = replace(
+                signals,
+                explicit_complete=True,
+                completion_sentinel_present=True,
+            )
+        elif not signals.explicit_complete:
+            signals = replace(
+                signals,
+                explicit_complete=False,
+                completion_sentinel_present=False,
+            )
         exit_state = opts.execution_strategy.classify_exit(
             handle, signals, liveness_probe=opts.liveness_probe
         )
@@ -324,11 +335,22 @@ def _check_process_result(
             else _check_completion_sentinel
         )
         sentinel_run_id = _completion_run_id(opts)
-        if not signals.explicit_complete and sentinel_check_fn(
+        sentinel_found = sentinel_check_fn(
             opts.workspace_path,
             sentinel_run_id,
-        ):
-            signals = replace(signals, explicit_complete=True)
+        )
+        if sentinel_found:
+            signals = replace(
+                signals,
+                explicit_complete=True,
+                completion_sentinel_present=True,
+            )
+        elif not signals.explicit_complete:
+            signals = replace(
+                signals,
+                explicit_complete=False,
+                completion_sentinel_present=False,
+            )
         exit_state = opts.execution_strategy.classify_exit(
             handle, signals, liveness_probe=opts.liveness_probe
         )

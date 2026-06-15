@@ -38,6 +38,18 @@ def test_direct_receipt_write_text_is_flagged(tmp_path: Path) -> None:
     assert findings[0].category == "receipt_write"
 
 
+def test_direct_receipt_write_bytes_is_flagged(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "mod.py",
+        "from pathlib import Path\n"
+        "Path('.agent/receipts/x/commit_message.json').write_bytes(b'x')\n",
+    )
+    findings = audit_file(f, "mod.py")
+    assert len(findings) == 1
+    assert findings[0].category == "receipt_write"
+
+
 def test_direct_completion_sentinel_open_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,

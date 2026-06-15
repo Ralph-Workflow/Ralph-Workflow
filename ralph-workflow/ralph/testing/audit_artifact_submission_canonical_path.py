@@ -11,7 +11,8 @@ artifact layout modules, and ``tests/``). Uses AST analysis to find:
 
 - Direct writes to ``.agent/receipts/``, ``.agent/completion_seen_*.json``,
   ``.agent/artifacts/<canonical-type>.json``, or
-  ``.agent/tmp/<canonical-type>.json``.
+  ``.agent/tmp/<canonical-type>.json`` (via ``write_text``, ``write_bytes``,
+  ``open(...)``, or equivalent file-copy helpers).
 - Calls to the lower-level ``store.submit_artifact`` outside allowlisted sites.
 - Calls to ``write_artifact_receipt`` / ``delete_artifact_receipt`` outside
   allowlisted sites.
@@ -265,6 +266,13 @@ def _is_write_text_call(node: ast.Call) -> bool:
     return node.func.attr == "write_text"
 
 
+def _is_write_bytes_call(node: ast.Call) -> bool:
+    """Return True for backend.write_bytes / Path.write_bytes style calls."""
+    if not isinstance(node.func, ast.Attribute):
+        return False
+    return node.func.attr == "write_bytes"
+
+
 def _is_open_call(node: ast.Call) -> bool:
     """Return True for open(...) / io.open(...) calls."""
     name = _dotted_name(node.func)
@@ -337,6 +345,26 @@ def _find_write_text_finding(
     return None
 
 
+def _find_write_bytes_finding(
+    node: ast.Call,
+    rel_path: str,
+    lineno: int,
+) -> BypassFinding | None:
+    """Check a ``write_bytes`` call for forbidden paths."""
+    candidates: list[ast.expr] = []
+    if node.args:
+        candidates.append(node.args[0])
+    if isinstance(node.func, ast.Attribute):
+        candidates.append(node.func.value)
+    for path_expr in candidates:
+        finding = _finding_from_path_match(
+            _path_matches_forbidden(path_expr), rel_path, lineno
+        )
+        if finding is not None:
+            return finding
+    return None
+
+
 def _find_open_finding(
     node: ast.Call,
     rel_path: str,
@@ -372,6 +400,8 @@ def _process_call_node(
 
     if _is_write_text_call(node):
         return _find_write_text_finding(node, rel_path, lineno)
+    if _is_write_bytes_call(node):
+        return _find_write_bytes_finding(node, rel_path, lineno)
     if _is_open_call(node):
         return _find_open_finding(node, rel_path, lineno)
     return _find_forbidden_call_finding(node, rel_path, lineno)

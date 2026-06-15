@@ -62,6 +62,7 @@ def test_agy_missing_completion_does_not_retry(tmp_path: Path) -> None:
                         idle_timeout_seconds=None,
                         parent_exit_grace_seconds=0.0,
                     ),
+                    completion_run_id="agy",
                 ),
             )
 
@@ -104,6 +105,9 @@ def test_agy_completion_evidenced_run_does_not_fail(tmp_path: Path) -> None:
         del config, prompt_file, options
         invoke_count[0] += 1
         declare_line = "Task declared complete: session_id=agy, summary=done, timestamp=1"
+        sentinel = tmp_path / ".agent" / "completion_seen_agy.json"
+        sentinel.parent.mkdir(parents=True, exist_ok=True)
+        sentinel.write_text('{"run_id": "agy"}', encoding="utf-8")
 
         def _gen() -> Iterator[str]:
             yield declare_line
@@ -119,6 +123,7 @@ def test_agy_completion_evidenced_run_does_not_fail(tmp_path: Path) -> None:
                         idle_timeout_seconds=None,
                         parent_exit_grace_seconds=0.0,
                     ),
+                    completion_run_id="agy",
                 ),
             )
 

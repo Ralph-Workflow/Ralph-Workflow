@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 import ralph.mcp.artifacts as artifacts_package
-from ralph.agents.completion_signals import is_artifact_submitted
+from ralph.agents.completion_signals import CompletionSignals, is_artifact_submitted
+from ralph.agents.execution_state._helpers import _check_signals_terminal
 from ralph.mcp.artifacts.canonical_submit import SubmitResult, submit_artifact_canonical
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
@@ -344,3 +345,53 @@ def test_default_backend_is_used_when_deps_is_none(
 
     assert result.receipt_path is not None
     assert DEFAULT_FILE_BACKEND.exists(result.receipt_path)
+
+
+def test_fallback_promotion_continues_after_malformed_tmp_file(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    tmp_fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.json"
+    backend.write_text(tmp_fallback, "not valid json")
+
+    artifacts_fallback = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    backend.write_text(
+        artifacts_fallback,
+        json.dumps(
+            {
+                "status": "passed",
+                "output_file": "tmp/todo-list.js",
+                "observed_working": ["from artifacts"],
+                "observed_breaks": [],
+                "headless_guide_checks": ["tool activity"],
+                "summary": "from artifacts",
+            }
+        ),
+    )
+
+    assert is_artifact_submitted(tmp_path, "run-5", "smoke_test_result", deps=deps)
+    assert artifact_receipt_present(
+        tmp_path, "run-5", "smoke_test_result", backend=backend
+    )
+
+
+def test_explicit_completion_marker_alone_is_not_terminal() -> None:
+
+    signals = CompletionSignals(
+        explicit_complete=True,
+        required_artifact_present=False,
+        artifact_types=(),
+    )
+    assert _check_signals_terminal(signals) is False
+
+
+def test_explicit_completion_with_sentinel_is_terminal() -> None:
+
+    signals = CompletionSignals(
+        explicit_complete=True,
+        required_artifact_present=False,
+        artifact_types=(),
+        completion_sentinel_present=True,
+    )
+    assert _check_signals_terminal(signals) is True

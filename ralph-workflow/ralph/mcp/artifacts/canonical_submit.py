@@ -220,7 +220,9 @@ def promote_fallback_artifact(
             continue
         parsed = _read_fallback_payload(path, backend)
         if parsed is None:
-            return None
+            # A malformed file at this location does not preclude a valid
+            # fallback at the next location; continue scanning.
+            continue
         return submit_artifact_canonical(
             workspace_root,
             artifact_type,
