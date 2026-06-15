@@ -149,3 +149,29 @@ def test_no_known_bad_api_references() -> None:
 
     for bad in bad_strings:
         assert bad not in doc_content, f"adding-a-new-agent.md contains bad API reference: {bad}"
+
+
+def test_no_machine_local_file_links() -> None:
+    doc_content = Path("docs/agents/adding-a-new-agent.md").read_text(encoding="utf-8")
+    assert "file://" not in doc_content, (
+        "adding-a-new-agent.md must not contain machine-local file:// links. "
+        "Use relative repository paths or plain code references instead."
+    )
+
+
+def test_examples_have_required_imports() -> None:
+    doc_content = Path("docs/agents/adding-a-new-agent.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"```python\n(.*?)\n```", doc_content, re.DOTALL)
+
+    assert len(blocks) >= 2, "Must contain at least 2 python code examples"
+
+    register_blocks = [b for b in blocks if "register_agent_support" in b]
+    assert len(register_blocks) >= 2, (
+        "Must contain at least 2 register_agent_support examples"
+    )
+
+    for block in register_blocks:
+        assert "AgentRegistry" in block or "registry" in block, (
+            f"Example must import or reference AgentRegistry. "
+            f"Block content:\n{block[:200]}"
+        )

@@ -2,7 +2,7 @@
 
 This guide covers the workflows for managing agent support in Ralph. It describes how to register new agents, update existing ones, and remove agent definitions using the public catalog and registry APIs.
 
-The main public entry point for agent registration is [register_agent_support](file:///Volumes/Crucial%20X9/ext-Projects/Ralph-Workflow/wt-016-consolidate-agent/ralph-workflow/ralph/agents/registration.py). For advanced or test-specific scenarios, you can use the test-friendly seam [register_agent_support_to_catalog](file:///Volumes/Crucial%20X9/ext-Projects/Ralph-Workflow/wt-016-consolidate-agent/ralph-workflow/ralph/agents/registration.py) or directly call [AgentCatalog.add](file:///Volumes/Crucial%20X9/ext-Projects/Ralph-Workflow/wt-016-consolidate-agent/ralph-workflow/ralph/agents/catalog.py).
+The main public entry point for agent registration is `register_agent_support` (defined in `ralph/agents/registration.py`). For advanced or test-specific scenarios, you can use the test-friendly seam `register_agent_support_to_catalog` or directly call `AgentCatalog.add`.
 
 ---
 
@@ -15,24 +15,37 @@ To add support for a new agent, register it using the `register_agent_support` f
 A headless agent runs non-interactively. You can register it by specifying the transport, parser factory, strategy factory, and an agent registry:
 
 ```python
-from ralph.agents.registration import register_agent_support
 from ralph.agents.parsers._template import ParserTemplateBase
 from ralph.agents.execution_state._base import BaseExecutionStrategy
+from ralph.agents.registration import register_agent_support
+from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 
-def my_parser_factory():
-    return MyParser()
 
-def my_strategy_factory():
-    return MyStrategy()
+class MyParser(ParserTemplateBase):
+    _STOP_EVENT_TYPES = frozenset()
+
+    def classify_line(self, line: str):
+        from ralph.agents.parsers.agent_output_line import AgentOutputLine
+        stripped = line.strip()
+        result = self.parse_json_line(stripped)
+        if result is not None:
+            yield result
+        else:
+            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
+
+
+class MyStrategy(BaseExecutionStrategy):
+    pass
+
 
 my_registry = AgentRegistry()
 
 register_agent_support(
     name="my-headless-agent",
     transport=AgentTransport.GENERIC,
-    parser_factory=my_parser_factory,
-    strategy_factory=my_strategy_factory,
+    parser_factory=MyParser,
+    strategy_factory=MyStrategy,
     agent_registry=my_registry,
     cmd="my-agent-binary",
 )
@@ -43,24 +56,37 @@ register_agent_support(
 An interactive agent requires a pseudo-terminal (PTY) to handle user interaction. Set `interactive=True` and use a PTY-capable transport:
 
 ```python
-from ralph.agents.registration import register_agent_support
 from ralph.agents.parsers._template import ParserTemplateBase
 from ralph.agents.execution_state._base import BaseExecutionStrategy
+from ralph.agents.registration import register_agent_support
+from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 
-def my_parser_factory():
-    return MyParser()
 
-def my_strategy_factory():
-    return MyStrategy()
+class MyParser(ParserTemplateBase):
+    _STOP_EVENT_TYPES = frozenset()
+
+    def classify_line(self, line: str):
+        from ralph.agents.parsers.agent_output_line import AgentOutputLine
+        stripped = line.strip()
+        result = self.parse_json_line(stripped)
+        if result is not None:
+            yield result
+        else:
+            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
+
+
+class MyStrategy(BaseExecutionStrategy):
+    pass
+
 
 my_registry = AgentRegistry()
 
 register_agent_support(
     name="my-interactive-agent",
     transport=AgentTransport.CLAUDE_INTERACTIVE,
-    parser_factory=my_parser_factory,
-    strategy_factory=my_strategy_factory,
+    parser_factory=MyParser,
+    strategy_factory=MyStrategy,
     agent_registry=my_registry,
     interactive=True,
     cmd="my-agent-binary",
@@ -145,7 +171,7 @@ del registry.agents["my-agent"]
 
 ## See also
 
-* [Architecture Documentation](file:///Volumes/Crucial%20X9/ext-Projects/Ralph-Workflow/wt-016-consolidate-agent/ralph-workflow/docs/agents/architecture.md)
-* [Registration Module](file:///Volumes/Crucial%20X9/ext-Projects/Ralph-Workflow/wt-016-consolidate-agent/ralph-workflow/ralph/agents/registration.py)
-* [Headless Recipe Test](file:///Volumes/Crucial%20X9/ext-Projects/Ralph-Workflow/wt-016-consolidate-agent/ralph-workflow/tests/agents/test_add_a_new_agent_recipe.py)
-* [Interactive Recipe Test](file:///Volumes/Crucial%20X9/ext-Projects/Ralph-Workflow/wt-016-consolidate-agent/ralph-workflow/tests/agents/test_add_a_new_interactive_agent_recipe.py)
+* [Architecture Documentation](../agents/architecture.md)
+* [Registration Module](../../ralph/agents/registration.py)
+* [Headless Recipe Test](../../tests/agents/test_add_a_new_agent_recipe.py)
+* [Interactive Recipe Test](../../tests/agents/test_add_a_new_interactive_agent_recipe.py)
