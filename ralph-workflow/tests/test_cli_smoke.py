@@ -5,16 +5,14 @@ from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+import pytest
 from rich.console import Console
 
 if TYPE_CHECKING:
     from collections import deque
 
-    import pytest
-
     from ralph.pipeline.factory import PipelineDeps
 
-import pytest
 from ralph.cli.commands import smoke as smoke_module
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig

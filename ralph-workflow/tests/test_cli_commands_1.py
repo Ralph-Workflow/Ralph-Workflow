@@ -729,10 +729,20 @@ def test_generate_commit_prompt_mentions_claude_namespaced_submit_tool(
     assert captured_prompt
     assert "ralph_submit_artifact" in captured_prompt[0]
     assert "mcp__ralph__ralph_submit_artifact" in captured_prompt[0]
-    assert (
-        "write the raw commit payload json to `.agent/tmp/commit_message.json`"
-        in captured_prompt[0].lower()
-    )
+    # Architectural fix (2026-06-14): the template's REQUIRED PROCEDURE
+    # section (which carried the original "write the raw commit payload"
+    # text) was removed. The shared artifact submission macro is now
+    # the single source of truth for the unavailable-tool fallback;
+    # it uses the wording "raw inner payload" rather than "raw commit
+    # payload". Both surfaces point at the same
+    # ``.agent/tmp/commit_message.json`` path, so the test must assert
+    # against the macro's wording, not the (now-removed) duplicate
+    # procedure's wording. The macro's step 6 wraps onto two lines in
+    # the rendered output; match the substrings separately to avoid
+    # line-break brittleness.
+    assert "raw inner" in captured_prompt[0].lower()
+    assert "payload json" in captured_prompt[0].lower()
+    assert ".agent/tmp/commit_message.json" in captured_prompt[0]
 
 
 def test_generate_commit_falls_back_to_review_chain_when_commit_chain_unusable(
