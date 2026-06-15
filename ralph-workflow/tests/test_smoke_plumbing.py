@@ -710,6 +710,28 @@ def test_detect_smoke_errors_agy_empty_output_reports_quota_diagnostic(
     assert any("quota exhausted" in err.lower() for err in errors), errors
 
 
+def test_detect_smoke_errors_agy_empty_output_includes_quota_reset_window(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When the CLI log contains a 'Resets in ...' window, the diagnostic
+    includes it so the operator knows how long to wait."""
+    log_path = tmp_path / "cli.log"
+    log_path.write_text(
+        "...\n"
+        "agent executor error: RESOURCE_EXHAUSTED (code 429): "
+        "Individual quota reached. Resets in 2h54m12s.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", log_path)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert any("resets in 2h54m12s" in err.lower() for err in errors), errors
+
+
 def test_detect_smoke_errors_agy_empty_output_reports_model_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

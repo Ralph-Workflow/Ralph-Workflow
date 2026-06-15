@@ -210,7 +210,9 @@ def smoke_harness_agent_command(
     )
 
     _render_smoke_table([result], display_context=ctx, agent_name=agent_name)
-    return 0 if not result.errors else 1
+    exit_code = 0 if not result.errors else 1
+    print(f"EXIT_CODE={exit_code}")
+    return exit_code
 
 
 def smoke_interactive_claude_command(

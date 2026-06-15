@@ -130,6 +130,10 @@ _AGY_MODEL_NOT_IN_CONFIG_PATTERN = re.compile(
     r"Model ID\s+(\S+)\s+not in local config",
     re.IGNORECASE,
 )
+_AGY_QUOTA_RESET_PATTERN = re.compile(
+    r"Resets in\s+([^\s.]+)",
+    re.IGNORECASE,
+)
 
 
 
@@ -453,9 +457,11 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
         except OSError:
             log_tail = ""
         if _AGY_QUOTA_PATTERN.search(log_tail):
+            reset_match = _AGY_QUOTA_RESET_PATTERN.search(log_tail)
+            reset_window = f" (resets in {reset_match.group(1)})" if reset_match else ""
             diagnostic = (
                 "AGY --print returned empty stdout: individual API quota exhausted "
-                "(429 RESOURCE_EXHAUSTED). Wait for the quota reset or check "
+                f"(429 RESOURCE_EXHAUSTED){reset_window}. Wait for the quota reset or check "
                 "~/.gemini/antigravity-cli/cli.log."
             )
         else:
