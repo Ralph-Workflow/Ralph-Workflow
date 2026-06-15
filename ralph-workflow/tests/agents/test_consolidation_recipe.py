@@ -49,19 +49,37 @@ class _FakeInteractiveStrategy(BaseExecutionStrategy):
     pass
 
 
+_HEADLESS_SUPPORT = AgentSupport(
+    name="fake-headless",
+    spec=AgentSpec(name="fake-headless", transport=AgentTransport.GENERIC),
+    parser_factory=_FakeHeadlessParser,
+    strategy_factory=_FakeHeadlessStrategy,
+    config=AgentConfig(cmd="fake-headless"),
+)
+
+_INTERACTIVE_SPEC = AgentSpec(
+    name="fake-interactive",
+    transport=AgentTransport.CLAUDE_INTERACTIVE,
+    interactive=True,
+    requires_pty=True,
+    session_resume_template="--resume {}",
+    completion_required=True,
+)
+
+_INTERACTIVE_SUPPORT = AgentSupport(
+    name="fake-interactive",
+    spec=_INTERACTIVE_SPEC,
+    parser_factory=_FakeInteractiveParser,
+    strategy_factory=_FakeInteractiveStrategy,
+    config=AgentConfig(cmd="fake-interactive"),
+)
+
+
 class TestHeadlessAgentRecipe:
     def test_headless_agent_recipe(self) -> None:
         catalog = AgentCatalog()
-        support = AgentSupport(
-            name="fake-headless",
-            spec=AgentSpec(name="fake-headless", transport=AgentTransport.GENERIC),
-            parser_factory=_FakeHeadlessParser,
-            strategy_factory=_FakeHeadlessStrategy,
-            config=AgentConfig(cmd="fake-headless"),
-        )
-        catalog.add(support)
-        parser = catalog.get_parser("fake-headless")
-        assert isinstance(parser, _FakeHeadlessParser)
+        catalog.add(_HEADLESS_SUPPORT)
+        assert isinstance(catalog.get_parser("fake-headless"), _FakeHeadlessParser)
         strategy = catalog.get_strategy(AgentTransport.GENERIC, command="fake-headless")
         assert isinstance(strategy, _FakeHeadlessStrategy)
 
@@ -69,24 +87,7 @@ class TestHeadlessAgentRecipe:
 class TestInteractiveAgentRecipe:
     def test_interactive_agent_recipe(self) -> None:
         catalog = AgentCatalog()
-        support = AgentSupport(
-            name="fake-interactive",
-            spec=AgentSpec(
-                name="fake-interactive",
-                transport=AgentTransport.CLAUDE_INTERACTIVE,
-                interactive=True,
-                requires_pty=True,
-                session_resume_template="--resume {}",
-                completion_required=True,
-            ),
-            parser_factory=_FakeInteractiveParser,
-            strategy_factory=_FakeInteractiveStrategy,
-            config=AgentConfig(cmd="fake-interactive"),
-        )
-        catalog.add(support)
-        parser = catalog.get_parser("fake-interactive")
-        assert isinstance(parser, _FakeInteractiveParser)
-        strategy = catalog.get_strategy(
-            AgentTransport.CLAUDE_INTERACTIVE, command="fake-interactive"
-        )
-        assert isinstance(strategy, _FakeInteractiveStrategy)
+        catalog.add(_INTERACTIVE_SUPPORT)
+        assert isinstance(catalog.get_parser("fake-interactive"), _FakeInteractiveParser)
+        s = catalog.get_strategy(AgentTransport.CLAUDE_INTERACTIVE, command="fake-interactive")
+        assert isinstance(s, _FakeInteractiveStrategy)

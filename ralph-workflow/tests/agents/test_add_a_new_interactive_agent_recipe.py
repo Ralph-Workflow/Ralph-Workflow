@@ -34,52 +34,43 @@ class FakeInteractiveAgentStrategy(BaseExecutionStrategy):
     pass
 
 
+_INTERACTIVE_SPEC = AgentSpec(
+    name="fake-interactive",
+    transport=AgentTransport.CLAUDE_INTERACTIVE,
+    interactive=True,
+    requires_pty=True,
+    session_resume_template="--resume {}",
+    completion_required=True,
+)
+
+_INTERACTIVE_SUPPORT = AgentSupport(
+    name="fake-interactive",
+    spec=_INTERACTIVE_SPEC,
+    parser_factory=FakeInteractiveAgentParser,
+    strategy_factory=FakeInteractiveAgentStrategy,
+    config=AgentConfig(cmd="fake-interactive"),
+)
+
+_INTERACTIVE_DEFAULT_SUPPORT = AgentSupport(
+    name="fake-interactive-default",
+    spec=_INTERACTIVE_SPEC,
+    parser_factory=FakeInteractiveAgentParser,
+    strategy_factory=FakeInteractiveAgentStrategy,
+    config=AgentConfig(cmd="fake-interactive-default"),
+)
+
+
 class TestAddANewInteractiveAgentRecipe:
     def test_fresh_catalog_resolves_parser_and_strategy(self) -> None:
         catalog = AgentCatalog()
-        support = AgentSupport(
-            name="fake-interactive",
-            spec=AgentSpec(
-                name="fake-interactive",
-                transport=AgentTransport.CLAUDE_INTERACTIVE,
-                interactive=True,
-                requires_pty=True,
-                session_resume_template="--resume {}",
-                completion_required=True,
-            ),
-            parser_factory=FakeInteractiveAgentParser,
-            strategy_factory=FakeInteractiveAgentStrategy,
-            config=AgentConfig(cmd="fake-interactive"),
-        )
-        register_agent_support_to_catalog("fake-interactive", support, catalog)
-
-        parser = catalog.get_parser("fake-interactive")
-        assert isinstance(parser, FakeInteractiveAgentParser)
-
-        strategy = catalog.get_strategy(
-            AgentTransport.CLAUDE_INTERACTIVE, command="fake-interactive"
-        )
-        assert isinstance(strategy, FakeInteractiveAgentStrategy)
+        register_agent_support_to_catalog("fake-interactive", _INTERACTIVE_SUPPORT, catalog)
+        assert isinstance(catalog.get_parser("fake-interactive"), FakeInteractiveAgentParser)
+        s = catalog.get_strategy(AgentTransport.CLAUDE_INTERACTIVE, command="fake-interactive")
+        assert isinstance(s, FakeInteractiveAgentStrategy)
 
     def test_default_catalog_resolves_after_registration(self) -> None:
-        support = AgentSupport(
-            name="fake-interactive-default",
-            spec=AgentSpec(
-                name="fake-interactive-default",
-                transport=AgentTransport.CLAUDE_INTERACTIVE,
-                interactive=True,
-                requires_pty=True,
-                session_resume_template="--resume {}",
-                completion_required=True,
-            ),
-            parser_factory=FakeInteractiveAgentParser,
-            strategy_factory=FakeInteractiveAgentStrategy,
-            config=AgentConfig(cmd="fake-interactive-default"),
-        )
         register_agent_support_to_catalog(
-            "fake-interactive-default", support, default_catalog()
+            "fake-interactive-default", _INTERACTIVE_DEFAULT_SUPPORT, default_catalog()
         )
-
         found = default_catalog().get("fake-interactive-default")
-        assert found is not None
-        assert found.name == "fake-interactive-default"
+        assert found is not None and found.name == "fake-interactive-default"

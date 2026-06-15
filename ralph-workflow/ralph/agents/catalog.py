@@ -98,12 +98,24 @@ class AgentCatalog:
         _CUSTOM_COMMAND_REGISTRY[cmd_lower] = entry
 
     def remove(self, name: str) -> None:
-        """Remove an agent registration by name."""
+        """Remove an agent registration by name.
+
+        Reverses the compatibility writes made by ``add()``: removes the parser
+        entry from ``_PARSER_REGISTRY``, removes the command entry from
+        ``_CUSTOM_COMMAND_REGISTRY``, and removes the transport strategy entry
+        from ``_STRATEGY_DISPATCH`` only when the stored factory matches this
+        registration's strategy factory (preserving built-in transport fallbacks
+        for entries that existed before the removed registration).
+        """
         name_lower = name.lower()
         support = self._entries.pop(name_lower, None)
         if support is not None:
             cmd_lower = support.cmd.lower()
             self._by_command.pop(cmd_lower, None)
+            _PARSER_REGISTRY.pop(name_lower, None)
+            _CUSTOM_COMMAND_REGISTRY.pop(cmd_lower, None)
+            if _STRATEGY_DISPATCH.get(support.spec.transport) is support.strategy_factory:
+                del _STRATEGY_DISPATCH[support.spec.transport]
 
     def get(self, name_or_command: str) -> AgentSupport | None:
         """Look up by agent name first, then by command."""
