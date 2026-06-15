@@ -1194,8 +1194,7 @@ class IdleWatchdog:
                 "cumulative": round(candidate_total, 1),
                 "run_elapsed": round(current_run_elapsed, 1),
                 "idle_elapsed": round(idle_elapsed, 1),
-                "ceiling": effective_ceiling,
-                "effective_ceiling": _ceiling_lbl,
+                "effective_ceiling": effective_ceiling,
                 "effective_ceiling_label": _ceiling_lbl,
             }
             if effective_suspect is not None:
@@ -1253,8 +1252,7 @@ class IdleWatchdog:
             self._last_waiting_status_at = now
             corr_diag_pr = self._build_corroboration_diag(current_corr)
             _ceiling_lbl = self._effective_ceiling_label(current_corr, effective_ceiling)
-            corr_diag_pr["ceiling"] = effective_ceiling
-            corr_diag_pr["effective_ceiling"] = _ceiling_lbl
+            corr_diag_pr["effective_ceiling"] = effective_ceiling
             corr_diag_pr["effective_ceiling_label"] = _ceiling_lbl
             self._log.info(
                 "idle watchdog: WAITING_ON_CHILD progress cumulative={}s ceiling={}s",

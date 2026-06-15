@@ -15,6 +15,7 @@ from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationR
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
     from ralph.agents.execution_state import BaseExecutionStrategy
     from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
@@ -33,6 +34,7 @@ class _ProcessReaderCtx:
     pre_output_listener: Callable[[], None] | None = None
     monitor: WorkspaceMonitor | None = None
     expected_session_id: str | None = None
+    workspace_path: Path | None = None
 
 
 __all__ = [

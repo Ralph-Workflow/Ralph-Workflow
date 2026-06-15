@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 from collections import deque
+from pathlib import Path
 from typing import IO, TYPE_CHECKING, cast
 
 import psutil
@@ -44,6 +45,7 @@ from ralph.agents.invoke._session import (
 from ralph.agents.invoke._types import _AgentRunCtx, _ProcessReaderCtx
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.display.raw_overflow import RawOverflowLog
 from ralph.mcp.server._activity_sink import (
     reset_active_sink,
     reset_subagent_sink,
@@ -111,6 +113,7 @@ class _ProcessLineReader:
         self._pre_output_listener = ctx.pre_output_listener
         self._monitor = ctx.monitor
         self._clock = clock
+        self._workspace_path = ctx.workspace_path
         self._lines_queue: list[str] = []
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
@@ -119,6 +122,11 @@ class _ProcessLineReader:
         self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
         self._reader_done: list[bool] = [False]
         self._cpu_baselines: dict[int, tuple[float, float]] = {}
+        self._log_growth_state: dict[str, tuple[int, float]] = {}
+        self._raw_overflow = RawOverflowLog(
+            self._workspace_path or Path.cwd(),
+            _agent_command_name(self._config),
+        )
         self._last_activity_kind = "none"
         self._unsubscribe = get_process_manager().register_listener(self._on_process_event)
 
@@ -198,6 +206,29 @@ class _ProcessLineReader:
             pass
         return False
 
+    def _probe_log_growth(self, alive_by: AliveBy | None) -> bool:
+        if self._policy.log_growth_seconds is None:
+            return False
+        _is_initial_state = bool(
+            alive_by is None or alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        )
+        if not _is_initial_state:
+            return False
+        _now = self._clock.monotonic()
+        path_str = str(self._raw_overflow.path)
+        current_size = self._raw_overflow.size_bytes
+        if path_str in self._log_growth_state:
+            baseline_size, baseline_time = self._log_growth_state[path_str]
+            if (
+                _now - baseline_time >= self._policy.log_growth_seconds
+                and current_size == baseline_size
+            ):
+                return True
+            self._log_growth_state[path_str] = (current_size, _now)
+        else:
+            self._log_growth_state[path_str] = (current_size, _now)
+        return False
+
     def _corroborate(self) -> CorroborationSnapshot:
         ws_count: int | None = self._monitor.event_count if self._monitor is not None else None
         last_workspace_event_at: float | None = (
@@ -230,9 +261,14 @@ class _ProcessLineReader:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
 
         _cpu_idle = self._probe_cpu_idle(scoped_active, alive_by)
+        _log_stale = self._probe_log_growth(alive_by)
 
-        if _cpu_idle and alive_by in (None, AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS):
-            alive_by = AliveBy.CPU_IDLE_WHILE_ALIVE
+        if _cpu_idle or _log_stale:
+            _override: AliveBy = (
+                AliveBy.LOG_STALE_WHILE_ALIVE if _log_stale else AliveBy.CPU_IDLE_WHILE_ALIVE
+            )
+            if alive_by in (None, AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS):
+                alive_by = _override
 
         return CorroborationSnapshot(
             workspace_event_count=ws_count,
@@ -539,6 +575,7 @@ def _run_subprocess_and_read_lines(
             pre_output_listener=ctx.pre_output_listener,
             monitor=ctx.monitor,
             expected_session_id=ctx.expected_session_id,
+            workspace_path=ctx.workspace_path,
         )
         lines_iter = _ProcessLineReader(handle, reader_ctx, clock).read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)

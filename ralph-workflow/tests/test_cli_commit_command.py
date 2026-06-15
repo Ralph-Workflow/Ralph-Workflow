@@ -190,7 +190,7 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
 
     general_config = GeneralConfig(
         agent_idle_timeout_seconds=99.0,
-        agent_idle_no_progress_waiting_on_child_seconds=55.0,
+        agent_idle_no_progress_waiting_on_child_seconds=200.0,
     )
     attempt_context = CommitAttemptContext(
         repo_root=tmp_path,

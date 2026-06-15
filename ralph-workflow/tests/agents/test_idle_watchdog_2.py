@@ -412,7 +412,7 @@ def test_hard_stop_diagnostic_includes_effective_ceiling_classification() -> Non
     hard_stops = [e for e in events if e.kind == WaitingStatusKind.HARD_STOP]
     assert len(hard_stops) == 1
     diag = hard_stops[0].diagnostic
-    assert diag.get("effective_ceiling") == "no_progress"
+    assert diag.get("effective_ceiling_label") == "no_progress"
 
 
 def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies() -> None:
@@ -608,8 +608,8 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
     fire_diag_by_kind = {e.kind: e.diagnostic for e in events}
     assert WaitingStatusKind.HARD_STOP in fire_diag_by_kind
     hs_diag = fire_diag_by_kind[WaitingStatusKind.HARD_STOP]
-    assert hs_diag.get("effective_ceiling") == "no_progress", (
-        f"Expected effective_ceiling='no_progress', got {hs_diag.get('effective_ceiling')}."
+    assert hs_diag.get("effective_ceiling_label") == "no_progress", (
+        f"Expected 'no_progress', got {hs_diag.get('effective_ceiling_label')}."
     )
 
     # T2 diagnostics: SUSPECTED_FROZEN and PROGRESS must agree on alive_by

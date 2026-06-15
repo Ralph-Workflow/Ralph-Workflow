@@ -106,7 +106,7 @@ def test_short_ceiling_fires_at_os_descendant_only_ceiling() -> None:
     diag = hard_stop_events[0].diagnostic
     assert diag is not None
     assert diag.get("effective_ceiling_label") == "os_descendant_only"
-    assert diag.get("ceiling") == 120.0
+    assert diag.get("effective_ceiling") == 120.0
 
 
 def test_suspect_event_fires_at_os_descendant_only_suspect_seconds() -> None:
@@ -194,7 +194,7 @@ def test_cpu_idle_override_picks_no_progress_ceiling() -> None:
     diag = hard_stop_events[0].diagnostic
     assert diag is not None
     assert diag.get("effective_ceiling_label") == "no_progress"
-    assert diag.get("ceiling") == 180.0
+    assert diag.get("effective_ceiling") == 180.0
 
 
 def test_log_growth_override_picks_no_progress_ceiling() -> None:
@@ -241,7 +241,7 @@ def test_log_growth_override_picks_no_progress_ceiling() -> None:
     diag = hard_stop_events[0].diagnostic
     assert diag is not None
     assert diag.get("effective_ceiling_label") == "no_progress"
-    assert diag.get("ceiling") == 180.0
+    assert diag.get("effective_ceiling") == 180.0
 
 
 def test_fresh_progress_path_unchanged() -> None:
@@ -285,4 +285,4 @@ def test_fresh_progress_path_unchanged() -> None:
         diag = prog_ev.diagnostic
         assert diag is not None
         assert diag.get("effective_ceiling_label") == "standard"
-        assert diag.get("ceiling") == 600.0
+        assert diag.get("effective_ceiling") == 600.0

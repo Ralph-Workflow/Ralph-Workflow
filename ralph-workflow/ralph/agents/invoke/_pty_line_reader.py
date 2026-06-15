@@ -7,6 +7,7 @@ import contextlib
 import os
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import psutil
@@ -60,6 +61,7 @@ from ralph.agents.invoke._session import (
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
+from ralph.display.raw_overflow import RawOverflowLog
 from ralph.mcp.server._activity_sink import (
     reset_active_sink,
     reset_subagent_sink,
@@ -80,12 +82,10 @@ from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from pathlib import Path
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
     from ralph.agents.timeout_clock import Clock
-    from ralph.display.raw_overflow import RawOverflowLog
 
 type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
 
@@ -722,6 +722,10 @@ class PtyLineReader:
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
         process_monitor = _make_process_monitor(self._handle, self._config, self._policy)
+        self._raw_overflow = RawOverflowLog(
+            self._workspace_path or Path.cwd(),
+            self._agent_name,
+        )
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,

@@ -640,11 +640,11 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
     hard_stops = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
     assert len(hard_stops) == 1, f"Expected 1 HARD_STOP, got {len(hard_stops)}"
     diag = hard_stops[0].diagnostic
-    assert "effective_ceiling" in diag, (
-        f"Expected 'effective_ceiling' key in HARD_STOP diagnostic: {diag}"
+    assert "effective_ceiling_label" in diag, (
+        f"Expected 'effective_ceiling_label' key in HARD_STOP diagnostic: {diag}"
     )
-    assert diag["effective_ceiling"] == "no_progress", (
-        f"Expected effective_ceiling='no_progress', got {diag.get('effective_ceiling')}"
+    assert diag.get("effective_ceiling_label") == "no_progress", (
+        f"Expected effective_ceiling_label='no_progress', got {diag.get('effective_ceiling_label')}"
     )
     assert "alive_by" in diag, f"Expected 'alive_by' key in diagnostic: {diag}"
     assert diag["alive_by"] == "os_descendant_only_stale_progress", (
@@ -883,8 +883,8 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
     hard_stops = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
     assert len(hard_stops) == 1, f"Expected 1 HARD_STOP, got {len(hard_stops)}"
     diag = hard_stops[0].diagnostic
-    assert diag.get("effective_ceiling") == "no_progress", (
-        f"Expected effective_ceiling='no_progress', got {diag.get('effective_ceiling')}"
+    assert diag.get("effective_ceiling_label") == "no_progress", (
+        f"Expected effective_ceiling_label='no_progress', got {diag.get('effective_ceiling_label')}"
     )
     assert diag.get("alive_by") == "os_descendant_only_stale_progress", (
         f"Expected alive_by='os_descendant_only_stale_progress', got {diag.get('alive_by')}"
