@@ -60,7 +60,7 @@ class TestAddANewInteractiveAgentRecipe:
             assert isinstance(pair[0], FakeInteractiveAgentParser)
             assert isinstance(pair[1], FakeInteractiveAgentStrategy)
 
-            parsed = list(parser.parse(["hello"]))
+            parsed = list(parser.parse(iter(["hello"])))
             assert len(parsed) == 1
             signal = strategy.classify_activity_line(parsed[0].content)
             assert signal is not None

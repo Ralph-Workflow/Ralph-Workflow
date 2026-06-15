@@ -21,9 +21,9 @@ from ralph.agents.invoke import (
     extract_transport_session_id,
     invoke_agent,
 )
-from ralph.agents.parsers import get_parser
+from ralph.agents.parsers import _PARSER_REGISTRY, get_parser
 from ralph.agents.registry import AgentRegistry
-from ralph.config.enums import AgentTransport
+from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.display.vt_normalizer import normalize_vt_text
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
@@ -238,6 +238,16 @@ def _build_smoke_prompt(
 def _parser_key_for_config(config: AgentConfig) -> str:
     if config.transport == AgentTransport.CLAUDE_INTERACTIVE:
         return "claude_interactive"
+    # A custom parser registered under the agent's command name wins when no
+    # specific built-in parser type was requested. This lets register_agent_support()
+    # agents participate in the normal runtime parser-selection path.
+    command_name = config.cmd.split()[0].lower() if config.cmd else ""
+    if (
+        command_name
+        and command_name in _PARSER_REGISTRY
+        and config.json_parser == JsonParserType.GENERIC
+    ):
+        return command_name
     return config.json_parser
 
 

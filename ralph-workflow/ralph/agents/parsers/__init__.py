@@ -6,19 +6,24 @@ This package converts raw stdout lines from an agent subprocess into structured
 Main entry points:
 
 - ``get_parser(parser_type)`` — factory function; maps a parser type name string
-  (``'claude'``, ``'codex'``, ``'gemini'``, ``'opencode'``, ``'generic'``) to the
-  corresponding parser instance. Raises ``ValueError`` for unknown names.
-- ``AgentParser`` — the protocol that all parsers implement; defines ``parse_line``.
-- ``AgentOutputLine`` — structured parse result (content, kind, raw text).
+  (``'claude'``, ``'claude_interactive'``, ``'codex'``, ``'gemini'``, ``'opencode'``,
+  ``'generic'``) to the corresponding parser instance. Raises ``ValueError`` for
+  unknown names.
+- ``AgentParser`` — the protocol that all parsers implement; defines ``parse``.
+- ``AgentOutputLine`` — structured parse result (``type``, ``content``, ``raw``,
+  ``metadata``).
 - ``ClaudeParser`` — parses Claude stream-JSON NDJSON output.
+- ``ClaudeInteractiveParser`` — parses interactive Claude transcript output.
 - ``CodexParser`` — parses Codex per-event JSON output.
 - ``GeminiParser`` — parses Gemini output.
 - ``OpenCodeParser`` — parses OpenCode NDJSON stream output.
 - ``GenericParser`` — fallback parser for unknown or plain-text agent output.
 
 Parser selection is driven by ``AgentConfig.json_parser`` (a ``JsonParserType`` enum
-value in ``ralph.config.enums``). The invocation engine calls ``get_parser()`` at the
-start of each agent run and feeds every stdout line through ``parser.parse_line()``.
+value in ``ralph.config.enums``) or, for agents registered via
+``register_agent_support()``, by the agent's command name when
+``json_parser == JsonParserType.GENERIC``. The runtime calls ``get_parser()`` with the
+resolved key and consumes normalized lines through ``parser.parse()``.
 
 To add a parser for a new agent transport, create a module in this package, implement
 ``AgentParser``, and register the class in both ``_PARSER_REGISTRY`` and ``__all__``.

@@ -18,6 +18,11 @@ transport, not by agent name. The headless vs interactive distinction is fully
 covered by the `AgentTransport` enum plus the strategy's
 `supports_session_continuation()` contract.
 
+Because the strategy dispatch is keyed by transport, only one custom agent can
+be registered per transport. Attempting to register a second agent on the same
+transport raises `ValueError`; use `AgentRegistry` directly if you need multiple
+agents that share a transport.
+
 ## Import path
 
 The API is opt-in. It is intentionally **not** re-exported from

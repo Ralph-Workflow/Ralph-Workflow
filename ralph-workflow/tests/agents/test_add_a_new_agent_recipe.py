@@ -59,7 +59,7 @@ class TestAddANewAgentRecipe:
             assert isinstance(pair[0], FakeAgentParser)
             assert isinstance(pair[1], FakeAgentStrategy)
 
-            parsed = list(parser.parse(["hello"]))
+            parsed = list(parser.parse(iter(["hello"])))
             assert len(parsed) == 1
             signal = strategy.classify_activity_line(parsed[0].content)
             assert signal is not None

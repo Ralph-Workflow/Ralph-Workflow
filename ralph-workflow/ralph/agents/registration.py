@@ -7,6 +7,11 @@ stays small and the registration seam remains explicit.
 
 Advanced use cases (CCS aliases, dynamic model parsing, custom
 ``AgentRegistry.ccs_defaults``) must still use ``AgentRegistry`` directly.
+
+Only one custom agent can be registered per transport. The transport-keyed
+strategy dispatch is a single lookup table, so a second registration on the
+same transport would overwrite the first. Callers that need multiple agents
+on the same transport should use ``AgentRegistry`` directly.
 """
 
 from __future__ import annotations
@@ -43,6 +48,10 @@ class _UserStrategyFactory(Protocol):
 # from the agent name. Values are immutable AgentTransport enum members.
 _NAME_TRANSPORT_INDEX: dict[str, AgentTransport] = {}
 
+# Tracks which transports have already been customized by a registration.
+# Values are the agent name that owns the custom mapping.
+_CUSTOM_TRANSPORT_STRATEGIES: dict[AgentTransport, str] = {}
+
 
 def register_agent_support(
     name: str,
@@ -68,7 +77,31 @@ def register_agent_support(
 
     Returns:
         The registered ``AgentConfig``.
+
+    Raises:
+        ValueError: If ``name`` is already registered for a different transport,
+            or if ``transport`` already has a different custom agent registered.
     """
+    if name in _NAME_TRANSPORT_INDEX and _NAME_TRANSPORT_INDEX[name] != transport:
+        existing_transport = _NAME_TRANSPORT_INDEX[name]
+        msg = (
+            f"Agent {name!r} is already registered for transport "
+            f"{existing_transport!r}; cannot re-register for {transport!r}"
+        )
+        raise ValueError(msg)
+
+    if (
+        transport in _CUSTOM_TRANSPORT_STRATEGIES
+        and _CUSTOM_TRANSPORT_STRATEGIES[transport] != name
+    ):
+        existing_name = _CUSTOM_TRANSPORT_STRATEGIES[transport]
+        msg = (
+            f"Transport {transport!r} already has custom agent support "
+            f"registered under {existing_name!r}; only one custom agent per "
+            "transport is supported"
+        )
+        raise ValueError(msg)
+
     _PARSER_REGISTRY[name] = parser_factory
     # Wrap the user factory so strategy_for_transport() can pass label_scope/registry
     # kwargs without requiring every custom strategy to accept them.
@@ -83,6 +116,7 @@ def register_agent_support(
 
     _STRATEGY_DISPATCH[transport] = _wrapped_factory
     _NAME_TRANSPORT_INDEX[name] = transport
+    _CUSTOM_TRANSPORT_STRATEGIES[transport] = name
 
     config = AgentConfig(
         cmd=name,
