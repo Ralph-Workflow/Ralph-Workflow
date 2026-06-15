@@ -500,6 +500,7 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke report" in output
 
 
+@pytest.mark.timeout_seconds(10)
 def test_smoke_interactive_agy_with_mock_binary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -514,21 +515,6 @@ def test_smoke_interactive_agy_with_mock_binary(
     monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_agy))
     monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
 
-    class FakeRegistry:
-        @classmethod
-        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
-            return cls()
-
-        def get(self, name: str) -> AgentConfig | None:
-            if name == "agy/Claude Sonnet 4.6 (Thinking)":
-                return AgentConfig(
-                    cmd="agy",
-                    transport=AgentTransport.AGY,
-                )
-            return None
-
-    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
-
     exit_code = smoke_module.smoke_interactive_agy_command(
         agent_name="agy/Claude Sonnet 4.6 (Thinking)",
         display_context=None,
@@ -537,7 +523,9 @@ def test_smoke_interactive_agy_with_mock_binary(
     assert exit_code == 0
     output = stream.getvalue()
     assert "agy/Claude Sonnet 4.6 (Thinking)" in output
-    assert "file" in output.lower()
+    # The parity table row must show file=yes for the mock-backed run.
+    # The table may wrap the long agent name, so match the transport/file cells.
+    assert re.search(r"│\s*agy\s*│\s*yes\s*│", output) is not None
 
 
 def test_smoke_interactive_agy_documents_live_run_outcome() -> None:

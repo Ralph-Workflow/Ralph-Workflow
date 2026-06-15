@@ -12,6 +12,7 @@ module is the thin CLI surface (option setup, report rendering, exit codes).
 
 from __future__ import annotations
 
+import shlex
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -31,9 +32,9 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_MAX_SESSION_SECONDS,
     _SMOKE_MAX_TURNS,
     SmokeRunResult,
+    _agy_binary_override_env,
     _build_smoke_prompt,
     _execute_smoke_turns,
-    get_agy_binary_override,
     resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
@@ -41,12 +42,63 @@ from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pro_support.hooks import ProPipelineHooks
 
 # Re-export plumbing symbols so existing tests can still reach them.
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
+
+
+def get_agy_binary_override() -> str:
+    """Return the AGY binary path, honoring ``RALPH_AGY_BINARY``."""
+    return _agy_binary_override_env() or "agy"
+
+
+def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
+    """Return a copy of ``agent_config`` that uses ``RALPH_AGY_BINARY`` when set.
+
+    Validates the override path and leaves ``agent_config`` unchanged when the
+    path is not executable or not a regular file, logging a WARNING in that
+    case.
+    """
+    override = _agy_binary_override_env()
+    if not override or agent_config.transport is not AgentTransport.AGY:
+        return agent_config
+    if shutil.which(override) is None and not Path(override).is_file():
+        logger.warning(
+            "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
+            override,
+        )
+        return agent_config
+    logger.info("mock AGY binary in use: {}", override)
+    # Quote paths that contain spaces so downstream shlex.split keeps the
+    # binary path as a single argv token.
+    return agent_config.model_copy(update={"cmd": shlex.quote(override)})
+
+
+def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
+    """Return a config copy with AGY agents using ``RALPH_AGY_BINARY`` when set."""
+    override = _agy_binary_override_env()
+    if not override:
+        return config
+    if shutil.which(override) is None and not Path(override).is_file():
+        logger.warning(
+            "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
+            override,
+        )
+        return config
+    # Quote paths that contain spaces so downstream shlex.split keeps the
+    # binary path as a single argv token.
+    quoted = shlex.quote(override)
+    new_agents: dict[str, AgentConfig] = {}
+    for name, agent_config in config.agents.items():
+        if agent_config.transport is AgentTransport.AGY:
+            new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
+        else:
+            new_agents[name] = agent_config
+    return config.model_copy(update={"agents": new_agents})
+
 
 _INTERACTIVE_AGENT = "claude/haiku"
 _HEADLESS_SEMANTIC_GUIDE = (
@@ -183,6 +235,22 @@ def smoke_harness_agent_command(
         raise RuntimeError(
             f"Smoke test agent '{agent_name}' is unavailable in the registry"
         )
+
+    agy_override = _agy_binary_override_env()
+    if agy_override and agent_config.transport is AgentTransport.AGY:
+        logger.info(
+            "Using mock AGY binary at '{}' (RALPH_AGY_BINARY)",
+            agy_override,
+        )
+    agent_config = _maybe_apply_agy_binary_override(agent_config)
+    config = _apply_agy_binary_override_to_config(config)
+    # Dynamic agy/<model> aliases are resolved from builtins, not from
+    # config.agents, so inject the overridden config under the exact
+    # agent name to ensure RALPH_AGY_BINARY is honored.
+    if agy_override and agent_config.transport is AgentTransport.AGY:
+        overridden_agents = dict(config.agents)
+        overridden_agents[agent_name] = agent_config
+        config = config.model_copy(update={"agents": overridden_agents})
 
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
     prompt_file.write_text(

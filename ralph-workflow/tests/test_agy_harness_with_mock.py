@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands import smoke as smoke_module
 from ralph.config.loader import load_config
 from ralph.display.context import make_display_context
@@ -58,6 +59,18 @@ def _run_agy_smoke_plumbing(
 
     workspace_scope = WorkspaceScope(tmp_path)
     config = load_config(None, {}, workspace_scope=workspace_scope)
+    config = smoke_module._apply_agy_binary_override_to_config(config)
+    # Dynamic agy/<model> aliases are resolved from builtins, not from
+    # config.agents, so inject the overridden config under the exact
+    # agent name so the mock binary is honored.
+    agent_name = "agy/Claude Sonnet 4.6 (Thinking)"
+    agent_config = AgentRegistry.from_config(config).get(agent_name)
+    if agent_config is not None:
+        agent_config = smoke_module._maybe_apply_agy_binary_override(agent_config)
+        overridden_agents = dict(config.agents)
+        overridden_agents[agent_name] = agent_config
+        config = config.model_copy(update={"agents": overridden_agents})
+
     display_context = make_display_context()
     deps = DefaultPipelineFactory().build(config, display_context)
 
@@ -87,6 +100,7 @@ def test_agy_harness_produces_real_output_with_mock(
     assert result.explicit_completion_seen is True
     assert result.tool_activity_seen is True
     assert result.artifact_submitted is True
+    assert result.parsed_event_count > 0
     assert len(result.meaningful_output_lines) >= 3
     assert result.errors == []
 

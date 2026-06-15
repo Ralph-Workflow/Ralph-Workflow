@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -440,6 +439,11 @@ def _meaningful_output_error(
     return None
 
 
+def _agy_binary_override_env() -> str | None:
+    """Return the raw ``RALPH_AGY_BINARY`` env value, if set."""
+    return os.environ.get("RALPH_AGY_BINARY")
+
+
 def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | None:
     """Return an actionable diagnostic when AGY --print produced no usable output.
 
@@ -625,41 +629,6 @@ def _run_smoke_agent(
     )
 
 
-def _agy_binary_override_env() -> str | None:
-    """Return the raw ``RALPH_AGY_BINARY`` env value, if set."""
-    return os.environ.get("RALPH_AGY_BINARY")
-
-
-def get_agy_binary_override() -> str:
-    """Return the AGY binary path, honoring ``RALPH_AGY_BINARY``."""
-    return _agy_binary_override_env() or "agy"
-
-
-def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
-    """Return a copy of ``agent_config`` that uses ``RALPH_AGY_BINARY`` when set."""
-    override = _agy_binary_override_env()
-    if not override or agent_config.transport is not AgentTransport.AGY:
-        return agent_config
-    # Quote paths that contain spaces so downstream shlex.split keeps the
-    # binary path as a single argv token.
-    return agent_config.model_copy(update={"cmd": shlex.quote(override)})
-
-
-def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
-    """Return a config copy with AGY agents using ``RALPH_AGY_BINARY`` when set."""
-    override = _agy_binary_override_env()
-    if not override:
-        return config
-    quoted = shlex.quote(override)
-    new_agents: dict[str, AgentConfig] = {}
-    for name, agent_config in config.agents.items():
-        if agent_config.transport is AgentTransport.AGY:
-            new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
-        else:
-            new_agents[name] = agent_config
-    return config.model_copy(update={"agents": new_agents})
-
-
 def run_smoke_plumbing(
     *,
     config: UnifiedConfig,
@@ -718,14 +687,9 @@ def run_smoke_plumbing(
         raise RuntimeError(
             f"Smoke test agent '{agent_name}' is unavailable in the registry"
         )
-    agent_config = _maybe_apply_agy_binary_override(agent_config)
     agy_override = _agy_binary_override_env()
     if agy_override:
-        logger.info(
-            "Using mock AGY binary at '{}' (RALPH_AGY_BINARY)",
-            agy_override,
-        )
-
+        logger.info("mock AGY binary in use: {}", agy_override)
     effective_output_file = output_file if output_file is not None else spec.output_file
 
     agents_policy = None
@@ -760,14 +724,6 @@ def run_smoke_plumbing(
             }
         )
         smoke_config = config.model_copy(update={"general": smoke_general})
-        smoke_config = _apply_agy_binary_override_to_config(smoke_config)
-        # Dynamic agy/<model> aliases are resolved from builtins, not from
-        # config.agents, so inject the overridden config under the exact
-        # agent name to ensure RALPH_AGY_BINARY is honored.
-        if _agy_binary_override_env():
-            overridden_agents = dict(smoke_config.agents)
-            overridden_agents[agent_name] = agent_config
-            smoke_config = smoke_config.model_copy(update={"agents": overridden_agents})
 
         results = [
             _run_smoke_agent(
@@ -796,7 +752,6 @@ __all__ = [
     "_build_smoke_prompt",
     "_execute_smoke_turns",
     "_run_smoke_agent",
-    "get_agy_binary_override",
     "resolve_smoke_harness_spec",
     "run_smoke_plumbing",
 ]

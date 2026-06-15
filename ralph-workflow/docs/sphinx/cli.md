@@ -163,7 +163,18 @@ python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'
 
 Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream `agy` binary returned no stdout; the message is derived from `~/.gemini/antigravity-cli/cli.log` and usually points to an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
 
-Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI.
+Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`.
+
+The eight canonical `agy models` display names are the only valid `--model` values:
+
+- `Gemini 3.5 Flash (Medium)`
+- `Gemini 3.5 Flash (High)`
+- `Gemini 3.5 Flash (Low)`
+- `Gemini 3.1 Pro (Low)`
+- `Gemini 3.1 Pro (High)`
+- `Claude Sonnet 4.6 (Thinking)`
+- `Claude Opus 4.6 (Thinking)`
+- `GPT-OSS 120B (Medium)`
 
 ## Related pages
 

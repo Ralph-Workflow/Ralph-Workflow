@@ -1,15 +1,9 @@
-"""Unit tests for AGY-specific smoke plumbing contracts.
+"""Contract tests for AGY-specific smoke plumbing.
 
-These tests pin behavior that must run in the regular ``make test`` suite:
-
-* the AGY smoke prompt wording that resolves the ``.agent/artifacts/`` vs
-  ``tmp/`` contradiction,
-* the import-time invariant constants,
-* the mock-binary empty-stdout diagnostic branch.
-
-The negative import-time invariant tests (guards firing on bad values and
-surviving ``python -O``) are marked ``subprocess_e2e`` because they must
-re-import the module in a subprocess with patched constants.
+The prompt-contract and mock-diagnostic tests are fast unit tests that run
+under ``make test``. The negative import-time invariant tests (guards firing
+on bad values and surviving ``python -O``) are marked ``subprocess_e2e`` and
+run under ``make test-subprocess-e2e``.
 """
 
 from __future__ import annotations
