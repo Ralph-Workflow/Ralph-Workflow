@@ -21,13 +21,13 @@ Fire-reason precedence:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.idle_watchdog._watch_loop_base import WatchLoopBase
 from ralph.agents.post_exit_verdict import PostExitVerdict
 
 if TYPE_CHECKING:
@@ -42,13 +42,12 @@ __all__ = [
 ]
 
 
-@dataclass
-class PostExitWatchdog:
+class PostExitWatchdog(WatchLoopBase):
     """Post-exit wall-clock watchdog for process-exit, parent-exit grace, and descendant-wait.
 
-    All three wait methods poll at policy.descendant_wait_poll_seconds intervals
-    and delegate wall-clock reading to self._clock so tests can use FakeClock
-    for deterministic, sub-second test runs.
+    All three wait methods delegate polling to ``WatchLoopBase.wait_until``
+    and use the base's injected Clock so tests can use FakeClock for
+    deterministic, sub-second test runs.
 
     Attributes:
         last_verdict_reason: Set by wait_for_process_exit() when returning
@@ -56,14 +55,10 @@ class PostExitWatchdog:
             tests can assert the correct reason without introspecting private state.
     """
 
-    _policy: TimeoutPolicy
-    _clock: Clock
-    last_verdict_reason: PostExitVerdict | None = None
-
     def __init__(self, policy: TimeoutPolicy, clock: Clock) -> None:
+        super().__init__(clock)
         self._policy = policy
-        self._clock = clock
-        self.last_verdict_reason = None
+        self.last_verdict_reason: PostExitVerdict | None = None
         self._log = logger.bind(component="post_exit_watchdog")
 
     def wait_for_process_exit(self, predicate_exit_observed: Callable[[], bool]) -> PostExitVerdict:
@@ -79,18 +74,15 @@ class PostExitWatchdog:
             CONTINUE: subprocess exited (predicate returned True) before deadline.
             FIRE_PROCESS_EXIT_HANG: deadline elapsed with predicate still False.
         """
-        deadline = self._clock.monotonic() + self._policy.process_exit_wait_seconds
+        result = self.wait_until(
+            predicate=lambda: PostExitVerdict.CONTINUE if predicate_exit_observed() else None,
+            timeout_s=self._policy.process_exit_wait_seconds,
+            poll_interval_s=self._policy.descendant_wait_poll_seconds,
+        )
 
-        # Check-before-first-sleep preserves the original do-check-first ordering.
-        if predicate_exit_observed():
+        if result is not None:
             self.last_verdict_reason = PostExitVerdict.CONTINUE
             return PostExitVerdict.CONTINUE
-
-        while self._clock.monotonic() < deadline:
-            self._clock.sleep(self._policy.descendant_wait_poll_seconds)
-            if predicate_exit_observed():
-                self.last_verdict_reason = PostExitVerdict.CONTINUE
-                return PostExitVerdict.CONTINUE
 
         self.last_verdict_reason = PostExitVerdict.FIRE_PROCESS_EXIT_HANG
         self._log.warning(
@@ -118,19 +110,16 @@ class PostExitWatchdog:
             CHILDREN_ACTIVE: classify_exit_state returned WAITING_ON_CHILD.
             QUIESCED_NO_SIGNALS: deadline elapsed with RESUMABLE_CONTINUE.
         """
-        deadline = self._clock.monotonic() + self._policy.parent_exit_grace_seconds
+        result = self.wait_until(
+            predicate=lambda: self._classify_parent_exit_grace(classify_exit_state),
+            timeout_s=self._policy.parent_exit_grace_seconds,
+            poll_interval_s=self._policy.descendant_wait_poll_seconds,
+        )
 
-        while self._clock.monotonic() < deadline:
-            state = classify_exit_state()
-            if state == AgentExecutionState.TERMINAL_COMPLETE:
-                self.last_verdict_reason = PostExitVerdict.SIGNALS_PRESENT
-                return PostExitVerdict.SIGNALS_PRESENT
-            if state == AgentExecutionState.WAITING_ON_CHILD:
-                self.last_verdict_reason = PostExitVerdict.CHILDREN_ACTIVE
-                return PostExitVerdict.CHILDREN_ACTIVE
-            self._clock.sleep(self._policy.descendant_wait_poll_seconds)
+        if result is not None:
+            self.last_verdict_reason = result
+            return result
 
-        # Final recheck after deadline.
         state = classify_exit_state()
         if state == AgentExecutionState.TERMINAL_COMPLETE:
             self.last_verdict_reason = PostExitVerdict.SIGNALS_PRESENT
@@ -159,19 +148,16 @@ class PostExitWatchdog:
             QUIESCED_NO_SIGNALS: RESUMABLE_CONTINUE seen (tree quiet before deadline).
             FIRE_DESCENDANT_HANG: deadline elapsed with WAITING_ON_CHILD persistent.
         """
-        deadline = self._clock.monotonic() + self._policy.descendant_wait_timeout_seconds
+        result = self.wait_until(
+            predicate=lambda: self._classify_descendant_quiesce(classify_exit_state),
+            timeout_s=self._policy.descendant_wait_timeout_seconds,
+            poll_interval_s=self._policy.descendant_wait_poll_seconds,
+        )
 
-        while self._clock.monotonic() < deadline:
-            state = classify_exit_state()
-            if state == AgentExecutionState.TERMINAL_COMPLETE:
-                self.last_verdict_reason = PostExitVerdict.SIGNALS_PRESENT
-                return PostExitVerdict.SIGNALS_PRESENT
-            if state == AgentExecutionState.RESUMABLE_CONTINUE:
-                self.last_verdict_reason = PostExitVerdict.QUIESCED_NO_SIGNALS
-                return PostExitVerdict.QUIESCED_NO_SIGNALS
-            self._clock.sleep(self._policy.descendant_wait_poll_seconds)
+        if result is not None:
+            self.last_verdict_reason = result
+            return result
 
-        # Final recheck after deadline.
         state = classify_exit_state()
         if state == AgentExecutionState.TERMINAL_COMPLETE:
             self.last_verdict_reason = PostExitVerdict.SIGNALS_PRESENT
@@ -186,3 +172,27 @@ class PostExitWatchdog:
             return PostExitVerdict.FIRE_DESCENDANT_HANG
         self.last_verdict_reason = PostExitVerdict.QUIESCED_NO_SIGNALS
         return PostExitVerdict.QUIESCED_NO_SIGNALS
+
+    @staticmethod
+    def _classify_parent_exit_grace(
+        classify_exit_state: Callable[[], AgentExecutionState],
+    ) -> PostExitVerdict | None:
+        """Classify exit state for parent-exit grace; return verdict or None to keep polling."""
+        state = classify_exit_state()
+        if state == AgentExecutionState.TERMINAL_COMPLETE:
+            return PostExitVerdict.SIGNALS_PRESENT
+        if state == AgentExecutionState.WAITING_ON_CHILD:
+            return PostExitVerdict.CHILDREN_ACTIVE
+        return None
+
+    @staticmethod
+    def _classify_descendant_quiesce(
+        classify_exit_state: Callable[[], AgentExecutionState],
+    ) -> PostExitVerdict | None:
+        """Classify exit state for descendant quiesce; return verdict or None to keep polling."""
+        state = classify_exit_state()
+        if state == AgentExecutionState.TERMINAL_COMPLETE:
+            return PostExitVerdict.SIGNALS_PRESENT
+        if state == AgentExecutionState.RESUMABLE_CONTINUE:
+            return PostExitVerdict.QUIESCED_NO_SIGNALS
+        return None

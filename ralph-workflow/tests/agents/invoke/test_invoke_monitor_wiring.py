@@ -377,8 +377,8 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
     discovery strategy reporting fresh output each poll, the run completes.
     """
     monkeypatch.setattr(
-        "ralph.agents.invoke._commands._build_opencode_command",
-        lambda _config, _prompt_file, *, options: [
+        "ralph.agents.invoke._command_builders.OpencodeCommandBuilder.build",
+        lambda self, _config, _prompt_file, *, options: [
             "python",
             "-c",
             "import time; time.sleep(0.15)",

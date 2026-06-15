@@ -129,6 +129,8 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # smoke-plumbing helpers receive the value through call signatures, and
     # production agent invocation below this level receives the resolved
     # command through AgentConfig.
+    "pipeline/plumbing/smoke_plumbing.py:435",
+    # os.environ.get(RALPH_AGY_BINARY) in _agy_binary_override_env
     "pipeline/plumbing/smoke_plumbing.py:446",
 )
 

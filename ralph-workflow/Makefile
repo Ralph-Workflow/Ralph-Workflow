@@ -202,6 +202,8 @@ verify-drift:
 	    | grep -v "files/operations.py" \
 	    | grep -v "agents/invoke/__init__.py" \
 	    | grep -v "agents/invoke/_commands.py" \
+	    | grep -v "agents/invoke/_command_builders/" \
+	    | grep -v "agents/invoke/_runtime_resolvers/" \
 	    | grep -v "mcp/artifacts/product_spec.py" \
 	    | grep -v "mcp/server/_in_memory_transport.py" \
 	    | grep -v "mcp/server/_fallback_http_handler.py" \

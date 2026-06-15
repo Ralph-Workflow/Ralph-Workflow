@@ -14,8 +14,8 @@ from loguru import logger
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.execution_state import (
     AgentExecutionState,
+    BaseExecutionStrategy,
     GenericExecutionStrategy,
-    OpenCodeExecutionStrategy,
 )
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
@@ -106,7 +106,7 @@ class PtyLineReader:
         self._monitor = ctx.monitor
         self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
         self._clock = clock
-        self._strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy = (
+        self._strategy: BaseExecutionStrategy = (
             ctx.execution_strategy or GenericExecutionStrategy()
         )
         self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()

@@ -139,14 +139,14 @@ def _make_invocation_options(
 
 @pytest.fixture
 def patched_waiting_strategy(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Monkeypatch strategy_for_transport to a WAITING_ON_CHILD classifier.
+    """Monkeypatch strategy_for_command to a WAITING_ON_CHILD classifier.
 
     Used to drive the watchdog into the cumulative-WAITING branch so the
     CHILDREN_PERSIST_TOO_LONG ceiling fires before NO_OUTPUT_DEADLINE.
     """
     monkeypatch.setattr(
         invoke_module,
-        "strategy_for_transport",
+        "strategy_for_command",
         lambda *args, **kwargs: _WaitingStrategy(),
     )
 
@@ -413,7 +413,7 @@ def test_subprocess_reader_session_resume_safe_for_no_output_deadline(
 
     monkeypatch.setattr(
         invoke_module,
-        "strategy_for_transport",
+        "strategy_for_command",
         lambda *args, **kwargs: _ActiveStrategy(),
     )
 

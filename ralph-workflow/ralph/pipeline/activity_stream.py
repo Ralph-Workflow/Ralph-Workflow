@@ -13,7 +13,7 @@ from loguru import logger
 from rich.text import Text
 
 from ralph.agents.invoke import extract_transport_session_id
-from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
+from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
 from ralph.config.enums import AgentTransport, Verbosity
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.parallel_display import (
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
     from pathlib import Path
 
+    from ralph.config.agent_config import AgentConfig
     from ralph.display.artifact_reader import PlanSummary
     from ralph.display.context import DisplayContext
     from ralph.display.subscriber import PipelineSubscriber
@@ -245,6 +246,8 @@ def stream_parsed_agent_activity(
     parser_type: str,
     agent_name: str,
     display: ParallelDisplay | None = None,
+    *,
+    agent_config: AgentConfig | None = None,
     **kwargs: object,
 ) -> None:
     """Stream and render parsed agent output lines."""
@@ -254,9 +257,14 @@ def stream_parsed_agent_activity(
     rendered_output_sink = cast("deque[str] | list[str] | None", kwargs.get("rendered_output_sink"))
     session_id_sink = cast("Callable[[str], None] | None", kwargs.get("session_id_sink"))
 
-    parser_key = (
-        "claude_interactive" if transport == AgentTransport.CLAUDE_INTERACTIVE else parser_type
-    )
+    if agent_config is not None:
+        parser_key = resolve_parser_key(
+            agent_config.cmd, agent_config.json_parser, agent_config.transport
+        )
+    else:
+        parser_key = (
+            "claude_interactive" if transport == AgentTransport.CLAUDE_INTERACTIVE else parser_type
+        )
     parser = _resolve_parser(parser_key)
 
     def _iter_lines() -> Iterator[str]:

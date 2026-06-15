@@ -8,11 +8,7 @@ from typing import IO, TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.agents.completion_signals import _check_completion_sentinel, evaluate_completion
-from ralph.agents.execution_state import (
-    AgentExecutionState,
-    GenericExecutionStrategy,
-    OpenCodeExecutionStrategy,
-)
+from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
@@ -71,7 +67,7 @@ def _teardown_subtree_if_pid_available(handle: object) -> None:
 
 @dataclass(frozen=True)
 class _CompletionCheckOptions:
-    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
+    execution_strategy: BaseExecutionStrategy | None = None
     workspace_path: Path | None = None
     liveness_probe: LivenessProbe | None = None
     policy: TimeoutPolicy = field(default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None))

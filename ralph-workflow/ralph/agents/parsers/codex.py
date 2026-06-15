@@ -3,76 +3,67 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from ._event_classification import is_lifecycle_event
+from ._template import ParserTemplateBase
 from .agent_output_line import AgentOutputLine
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-
-class CodexParser:
+class CodexParser(ParserTemplateBase):
     """Parser for Codex's NDJSON streaming output with robust delta accumulation.
 
     Text deltas are accumulated into coherent blocks before emission, flushing on:
     - ``response.completed`` / ``turn.completed`` / ``message_stop`` (end of message)
     - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
-    - Iterator exhaustion (final flush via ``_flush_all_accumulators()``)
+    - Iterator exhaustion (final flush via ``flush_accumulators()``)
     """
 
-    _STOP_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
         {"turn.completed", "message_stop", "done", "stop", "response.completed"}
     )
 
     def __init__(self) -> None:
-        # Accumulator keyed by response id or synthetic stream key
-        self._text_accumulator: dict[str, TextAccumulator] = {}
+        self._accumulators: dict[str, TextAccumulator] = {}
         self._current_response_id: str | None = None
         self._stream_counter = 0
 
-    def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
-        """Parse Codex streaming NDJSON lines."""
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith("data:"):
-                stripped = stripped.removeprefix("data:").strip()
-            if not stripped:
-                continue
+    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
+        stripped = line.strip()
+        if stripped.startswith("data:"):
+            stripped = stripped.removeprefix("data:").strip()
+        if not stripped:
+            return
 
-            if stripped == "[DONE]":
-                yield AgentOutputLine(type="stop", raw=stripped)
-                continue
+        if stripped == "[DONE]":
+            yield AgentOutputLine(type="stop", raw=stripped)
+            return
 
-            try:
-                parsed: object = json.loads(stripped, strict=False)
-            except json.JSONDecodeError:
-                yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
-                continue
+        result = self.parse_json_line(stripped)
+        if result is not None:
+            yield result
+            return
 
-            if not isinstance(parsed, dict):
-                yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
-                continue
+        obj = cast("dict[str, object]", json.loads(stripped, strict=False))
+        yield from self._parse_object(obj, stripped)
 
-            obj = cast("dict[str, object]", parsed)
-            yield from self._parse_object(obj, stripped)
-
-        # Final flush: if iterator exhausted with pending accumulators, flush them all
-        yield from self._flush_all_accumulators()
+    def flush_accumulators(self) -> Iterator[AgentOutputLine]:
+        for key in list(self._accumulators.keys()):
+            yield from self._flush_accumulator(key)
 
     def _parse_object(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse a JSON object into AgentOutputLine instances."""
         event_type = str(obj.get("type", "unknown"))
 
-        # Handle lifecycle/flush events
         if event_type in self._STOP_EVENT_TYPES:
-            yield from self._flush_all_accumulators()
+            yield from self.flush_accumulators()
             self._current_response_id = None
             yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
             return
 
-        # Suppress known lifecycle events that carry no user payload
         if is_lifecycle_event(event_type):
             return
 
@@ -124,34 +115,26 @@ class CodexParser:
         if not content:
             return
 
-        # Get response id for accumulator keying
         response_id = str(obj.get("response_id", obj.get("responseId", "")) or "")
         if not response_id:
             if self._current_response_id:
                 response_id = self._current_response_id
             else:
-                # No active response context, yield immediately
                 yield AgentOutputLine(type="text", content=content, raw=stripped)
                 return
 
         key = response_id
-        if key not in self._text_accumulator:
-            self._text_accumulator[key] = TextAccumulator()
-        yield from self._text_accumulator[key].accumulate(
+        if key not in self._accumulators:
+            self._accumulators[key] = TextAccumulator()
+        yield from self._accumulators[key].accumulate(
             content, stripped, kind="text", keep_current_when_empty=True
         )
 
     def _flush_accumulator(self, key: str) -> Iterator[AgentOutputLine]:
-        """Flush a single accumulator and remove it."""
-        if key not in self._text_accumulator:
+        if key not in self._accumulators:
             return
-        acc = self._text_accumulator.pop(key)
+        acc = self._accumulators.pop(key)
         yield from acc.flush(kind="text")
-
-    def _flush_all_accumulators(self) -> Iterator[AgentOutputLine]:
-        """Flush all pending accumulators on stop or iterator exhaustion."""
-        for key in list(self._text_accumulator.keys()):
-            yield from self._flush_accumulator(key)
 
     def _parse_tool_use(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         tool_name = str(obj.get("tool", obj.get("name", "unknown")))
@@ -207,7 +190,6 @@ class CodexParser:
         item_type = str(item_obj.get("type", "unknown"))
         text = str(item_obj.get("text", ""))
 
-        # reasoning items map to 'thinking' so the display applies the thinking-preview treatment.
         if item_type == "reasoning" and text:
             yield AgentOutputLine(type="thinking", content=text, raw=stripped, metadata=item_obj)
             return

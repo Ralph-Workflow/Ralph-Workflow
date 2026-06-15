@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 
 from ralph.agents.completion_signals import is_artifact_submitted
-from ralph.agents.execution_state import strategy_for_transport
+from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
@@ -25,7 +25,7 @@ from ralph.agents.invoke import (
     extract_transport_session_id,
     invoke_agent,
 )
-from ralph.agents.parsers import get_parser
+from ralph.agents.parsers import get_parser, resolve_parser_key
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 from ralph.display.vt_normalizer import normalize_vt_text
@@ -246,9 +246,7 @@ def _build_smoke_prompt(
 
 
 def _parser_key_for_config(config: AgentConfig) -> str:
-    if config.transport == AgentTransport.CLAUDE_INTERACTIVE:
-        return "claude_interactive"
-    return config.json_parser
+    return resolve_parser_key(config.cmd, config.json_parser, config.transport)
 
 
 def _count_parsed_events(config: AgentConfig, lines: list[str]) -> int:
@@ -257,7 +255,9 @@ def _count_parsed_events(config: AgentConfig, lines: list[str]) -> int:
 
 
 def _tool_activity_seen(config: AgentConfig, lines: list[str]) -> bool:
-    strategy = strategy_for_transport(config.transport)
+    transport = config.transport
+    assert transport is not None
+    strategy = strategy_for_command(config.cmd, transport)
     for line in lines:
         signal = strategy.classify_activity_line(line)
         if signal is not None and signal.kind.value == "tool_use":

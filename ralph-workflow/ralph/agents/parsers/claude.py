@@ -7,6 +7,7 @@ import re
 from typing import TYPE_CHECKING, Final, cast
 
 from ._event_classification import is_lifecycle_event
+from ._template import ParserTemplateBase
 from .agent_output_line import AgentOutputLine
 from .base import stringify_text_blocks
 from .text_accumulator import TextAccumulator
@@ -14,17 +15,14 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-# Matches "claude" or "claude/<model>" at line start, followed by space, colon, or end.
 _CLAUDE_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^claude(?:/[^:\s]+)?(?=[ :]|$)")
 
-# Subset of LIFECYCLE_EVENT_TYPES used to gate the legacy top-level branch.
-# The full set is shared via _event_classification.LIFECYCLE_EVENT_TYPES.
 _CLAUDE_TOP_LEVEL_LIFECYCLE: Final[frozenset[str]] = frozenset(
     {"message_start", "message_stop", "content_block_stop"}
 )
 
 
-class ClaudeParser:
+class ClaudeParser(ParserTemplateBase):
     """Parser for Claude's NDJSON streaming output with robust delta accumulation.
 
     Text deltas are accumulated into coherent blocks before emission, flushing on:
@@ -37,7 +35,6 @@ class ClaudeParser:
     """
 
     def __init__(self) -> None:
-        # Accumulators keyed by (message_id, content_block_index)
         self._text_accumulator: dict[tuple[str, int], TextAccumulator] = {}
         self._thinking_accumulator: dict[tuple[str, int], TextAccumulator] = {}
         self._fallback_accumulator: TextAccumulator | None = None
@@ -45,33 +42,31 @@ class ClaudeParser:
         self._current_message_id: str | None = None
         self._seen_content_blocks: set[tuple[str, int]] = set()
 
-    def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
-        """Parse Claude streaming NDJSON lines."""
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
+    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
+        stripped = line.strip()
+        if not stripped:
+            return
 
-            prefixed_lines = self._parse_prefixed_transcript_line(stripped)
-            if prefixed_lines is not None:
-                yield from prefixed_lines
-                continue
+        prefixed_lines = self._parse_prefixed_transcript_line(stripped)
+        if prefixed_lines is not None:
+            yield from prefixed_lines
+            return
 
-            try:
-                parsed: object = json.loads(stripped, strict=False)
-            except json.JSONDecodeError:
-                yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
-                continue
+        result = self.parse_json_line(stripped)
+        if result is not None:
+            yield result
+            return
 
-            if not isinstance(parsed, dict):
-                yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
-                continue
+        obj = cast("dict[str, object]", json.loads(stripped, strict=False))
+        yield from self._parse_top_level_object(obj, stripped)
 
-            obj = cast("dict[str, object]", parsed)
-            yield from self._parse_top_level_object(obj, stripped)
-
-        # Final flush: if iterator exhausted with pending accumulators, flush them all
-        yield from self._flush_all_accumulators()
+    def flush_accumulators(self) -> Iterator[AgentOutputLine]:
+        for key in list(self._text_accumulator.keys()):
+            yield from self._flush_text_accumulator(key)
+        for key in list(self._thinking_accumulator.keys()):
+            yield from self._flush_thinking_accumulator(key)
+        yield from self._flush_fallback_accumulator()
+        yield from self._flush_fallback_thinking_accumulator()
 
     def _parse_top_level_object(
         self,
@@ -96,7 +91,7 @@ class ClaudeParser:
             self._record_message_start(obj)
             return iter(())
         if event_type == "message_stop":
-            flushed = self._flush_all_accumulators()
+            flushed = self.flush_accumulators()
             self._current_message_id = None
             self._seen_content_blocks.clear()
             return flushed
@@ -187,7 +182,6 @@ class ClaudeParser:
             return
 
         if event_type == "content_block_start":
-            # Track content block start for text and thinking blocks
             self._track_content_block_start(event)
             yield from self._parse_stream_content_block_start(event, raw)
             return
@@ -223,7 +217,6 @@ class ClaudeParser:
         if not text:
             return
 
-        # Get block index for accumulator keying
         index = obj.get("index")
         block_key: tuple[str, int] | None = None
 
@@ -235,7 +228,6 @@ class ClaudeParser:
                 )
                 return
 
-        # No keyed content block context - accumulate in a fallback stream bucket.
         if self._fallback_accumulator is None:
             self._fallback_accumulator = TextAccumulator()
         yield from self._fallback_accumulator.accumulate(
@@ -248,9 +240,7 @@ class ClaudeParser:
         delta: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        # thinking_delta uses field key "thinking" (not "text")
         text = str(delta.get("thinking", delta.get("text", "")))
-        # Skip whitespace-only deltas with no paragraph-boundary markers.
         if not text.strip() and "\n\n" not in text:
             return
 
@@ -264,7 +254,6 @@ class ClaudeParser:
                 )
                 return
 
-        # Fallback thinking accumulator
         if self._fallback_thinking_accumulator is None:
             self._fallback_thinking_accumulator = TextAccumulator()
         yield from self._fallback_thinking_accumulator.accumulate(
@@ -272,14 +261,12 @@ class ClaudeParser:
         )
 
     def _flush_text_accumulator(self, key: tuple[str, int]) -> Iterator[AgentOutputLine]:
-        """Flush a single text accumulator and remove it."""
         if key not in self._text_accumulator:
             return
         acc = self._text_accumulator.pop(key)
         yield from acc.flush(kind="text")
 
     def _flush_thinking_accumulator(self, key: tuple[str, int]) -> Iterator[AgentOutputLine]:
-        """Flush a single thinking accumulator and remove it."""
         if key not in self._thinking_accumulator:
             return
         acc = self._thinking_accumulator.pop(key)
@@ -298,15 +285,6 @@ class ClaudeParser:
         acc = self._fallback_thinking_accumulator
         self._fallback_thinking_accumulator = None
         yield from acc.flush(kind="thinking", require_strip=True)
-
-    def _flush_all_accumulators(self) -> Iterator[AgentOutputLine]:
-        """Flush all pending accumulators on message_stop or iterator exhaustion."""
-        for key in list(self._text_accumulator.keys()):
-            yield from self._flush_text_accumulator(key)
-        for key in list(self._thinking_accumulator.keys()):
-            yield from self._flush_thinking_accumulator(key)
-        yield from self._flush_fallback_accumulator()
-        yield from self._flush_fallback_thinking_accumulator()
 
     def _parse_result_event(
         self,
@@ -414,14 +392,12 @@ class ClaudeParser:
 
             if block_type == "thinking":
                 text = str(block_obj.get("thinking", block_obj.get("text", "")))
-                # Skip whitespace-only thinking content — carries no user payload.
                 if text.strip():
                     yield AgentOutputLine(
                         type="thinking", content=text, raw=raw, metadata=block_obj
                     )
                 continue
 
-            # Non-text, non-tool, non-thinking block types (e.g., image) are rejected
             yield AgentOutputLine(
                 type="error",
                 content=f"unsupported content block type '{block_type}' in agent output",
@@ -514,11 +490,9 @@ class ClaudeParser:
             yield from self._parse_tool_result(content_block, raw)
             return
 
-        # thinking blocks are handled via delta accumulation; no emission at block_start
         if block_type == "thinking":
             return
 
-        # Non-text, non-tool, non-thinking block types (e.g., image) are rejected
         yield AgentOutputLine(
             type="error",
             content=f"unsupported content block type '{block_type}' in agent output",
@@ -531,7 +505,6 @@ class ClaudeParser:
         block: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        """Parse a tool_result content block, preserving multimodal content as bounded summaries."""
         content = block.get("content")
         if content is None:
             yield AgentOutputLine(type="tool_result", content="", raw=raw, metadata=block)
@@ -547,5 +520,4 @@ class ClaudeParser:
             )
             return
 
-        # String content is passed through
         yield AgentOutputLine(type="tool_result", content=str(content), raw=raw, metadata=block)

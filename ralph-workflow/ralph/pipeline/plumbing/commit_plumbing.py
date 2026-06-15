@@ -52,7 +52,7 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     default_direct_mcp_retry_limit,
     summarize_retry_failure_evidence,
 )
-from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
+from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
 from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
@@ -661,7 +661,9 @@ def _run_commit_agent_attempt_with_recovery(
         )
         parsed_output, raw_lines, resume_session_id = collect_commit_agent_output(
             list(raw_output),
-            parser_type=str(agent.json_parser),
+            parser_type=resolve_parser_key(
+                agent.cmd, agent.json_parser, agent.transport
+            ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
             display_context=display_context,
@@ -856,7 +858,9 @@ def invoke_commit_agent_attempt(
     try:
         parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
             lines,
-            parser_type=str(agent.json_parser),
+            parser_type=resolve_parser_key(
+                agent.cmd, agent.json_parser, agent.transport
+            ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
             display_context=display_context,
