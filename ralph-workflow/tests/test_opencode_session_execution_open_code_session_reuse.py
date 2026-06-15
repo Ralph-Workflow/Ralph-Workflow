@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from ralph.agents.invoke import (
     BuildCommandOptions,
     CompletionCheckOptions,
-    build_opencode_command,
+    build_command,
     check_process_result,
 )
 from ralph.agents.registry import builtin_agents
@@ -31,7 +31,7 @@ _CompletionCheckOptions = CompletionCheckOptions
 
 class TestOpenCodeSessionReuse:
     def test_opencode_run_with_session_id_reuses_session(self, tmp_path: Path) -> None:
-        """_build_opencode_command includes the session flag when session_id is provided."""
+        """OpencodeCommandBuilder includes the session flag when session_id is provided."""
         config = builtin_agents()["opencode"]
 
         assert config.session_flag is not None, (
@@ -42,7 +42,7 @@ class TestOpenCodeSessionReuse:
         prompt_file.write_text("implement the task", encoding="utf-8")
 
         options = BuildCommandOptions(session_id="sess-x", workspace_path=tmp_path)
-        cmd = build_opencode_command(config, "PROMPT.md", options=options)
+        cmd = build_command(config, "PROMPT.md", options=options)
 
         assert "--session" in cmd or "-s" in cmd, f"Session flag must appear in command: {cmd}"
         assert "sess-x" in cmd, f"Session ID must appear in command: {cmd}"

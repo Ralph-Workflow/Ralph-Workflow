@@ -13,12 +13,11 @@ Key features:
 from __future__ import annotations
 
 import contextlib
-import os
 import shutil
 import subprocess
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from loguru import logger
@@ -29,7 +28,6 @@ from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._commands import (
     _agent_transport,
     _build_command,
-    _build_opencode_command,
     _command_for_log,
     _interactive_stop_sentinel_path,
     _merge_interactive_settings_json,
@@ -68,6 +66,7 @@ from ralph.agents.invoke._pty_helpers import (
     _plan_choice_menu_response,
 )
 from ralph.agents.invoke._pty_reader import _run_pty_and_read_lines as _run_pty_and_read_lines_impl
+from ralph.agents.invoke._runtime_resolvers import RUNTIME_RESOLVERS
 from ralph.agents.invoke._session import (
     _bounded_output_lines,
     extract_transport_session_id,
@@ -96,7 +95,7 @@ from ralph.api.opencode import validate_local_model_support
 from ralph.config.enums import AgentTransport
 from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
-from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import (
     PreflightError,
     ensure_no_preflight_error,
@@ -415,120 +414,14 @@ def resolve_invocation_runtime(
     ``ResolvedInvocationRuntime`` whose fields are ready to pass to the
     subprocess launcher.
     """
-    _env = _base_env if _base_env is not None else cast("Mapping[str, str]", os.environ)
-    runtime_env = dict(extra_env or {})
-    server_env: dict[str, str] = {}
-    endpoint = runtime_env.get(MCP_ENDPOINT_ENV)
-
-    transport = _agent_transport(config)
-
-    # Pre-compute early-exit result for transports that need one
-    early_result: ResolvedInvocationRuntime | None = None
-    if (
-        (transport == AgentTransport.OPENCODE and not endpoint)
-        or (transport == AgentTransport.CODEX and not endpoint and system_prompt_file is None)
-        or (transport == AgentTransport.AGY and not endpoint)
-        or (
-            transport
-            not in (
-                AgentTransport.OPENCODE,
-                AgentTransport.NANOCODER,
-                AgentTransport.CODEX,
-                AgentTransport.CLAUDE,
-                AgentTransport.CLAUDE_INTERACTIVE,
-                AgentTransport.AGY,
-            )
-            and not endpoint
-        )
-    ):
-        early_result = ResolvedInvocationRuntime(agent_env=runtime_env or None)
-
-    if early_result is not None:
-        return early_result
-
-    # Transport-specific setup
-    if transport == AgentTransport.OPENCODE:
-        if endpoint is None:
-            raise RuntimeError("endpoint must be set for OPENCODE transport")
-        opencode_config = runtime_env.get("OPENCODE_CONFIG_CONTENT") or _env.get(
-            "OPENCODE_CONFIG_CONTENT"
-        )
-        provider_config, upstreams = build_opencode_provider_config(
-            opencode_config,
-            endpoint,
-            unsafe_mode=unsafe_mode,
-        )
-        runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
-        _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
-
-    elif transport == AgentTransport.NANOCODER:
-        if endpoint is None:
-            raise RuntimeError("endpoint must be set for NANOCODER transport")
-        runtime_env.setdefault("NANOCODER_TRUST_DIRECTORY", "1")
-        nanocoder_mcp_servers = runtime_env.get("NANOCODER_MCPSERVERS") or _env.get(
-            "NANOCODER_MCPSERVERS"
-        )
-        mcp_config, env_upstreams = build_nanocoder_mcp_config(
-            nanocoder_mcp_servers,
-            endpoint,
-            always_allow=_canonical_http_mcp_tool_names(endpoint),
-            unsafe_mode=unsafe_mode,
-            workspace_path=workspace_path,
-            env=runtime_env or dict(_env),
-        )
-        runtime_env["NANOCODER_MCPSERVERS"] = mcp_config
-        _apply_upstream_env(
-            load_existing_nanocoder_upstream_servers(
-                workspace_path,
-                env=runtime_env or dict(_env),
-            )
-            + env_upstreams,
-            workspace_path,
-            runtime_env,
-            server_env,
-        )
-
-    elif transport == AgentTransport.CODEX:
-        codex_home, upstreams = prepare_codex_home_with_upstreams(
-            endpoint,
-            workspace_path=workspace_path,
-            existing_home=runtime_env.get("CODEX_HOME") or _env.get("CODEX_HOME"),
-            system_prompt_file=system_prompt_file,
-            unsafe_mode=unsafe_mode,
-        )
-        runtime_env["CODEX_HOME"] = codex_home
-        _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
-
-    elif transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        if endpoint:
-            _apply_upstream_env(
-                load_existing_claude_upstream_servers(workspace_path),
-                workspace_path,
-                runtime_env,
-                server_env,
-            )
-
-    elif transport == AgentTransport.AGY:
-        # AGY upstream servers from existing config files are loaded for Ralph
-        # upstream proxy. Ralph injects its own run-scoped endpoint via
-        # agy_workspace_mcp_endpoint in invoke_agent().
-        _apply_upstream_env(
-            load_existing_agy_upstream_servers(workspace_path),
-            workspace_path,
-            runtime_env,
-            server_env,
-        )
-
-    elif endpoint is not None:
-        # Unsupported transport with endpoint
-        raise UnsupportedMcpTransportError(
-            f"Agent transport '{transport}' does not declare how to receive Ralph MCP wiring"
-        )
-
-    return ResolvedInvocationRuntime(
-        agent_env=runtime_env or None,
-        server_env=server_env or None,
-        mcp_endpoint=endpoint,
+    resolver_cls = RUNTIME_RESOLVERS[_agent_transport(config)]
+    return resolver_cls().resolve(
+        config,
+        extra_env,
+        workspace_path,
+        base_env=_base_env,
+        system_prompt_file=system_prompt_file,
+        unsafe_mode=unsafe_mode,
     )
 
 
@@ -598,7 +491,6 @@ BuildCommandOptions = _BuildCommandOptions
 command_for_log = _command_for_log
 provider_allowed_mcp_tool_names = _provider_allowed_mcp_tool_names
 discover_http_mcp_tool_names = _discover_http_mcp_tool_names
-build_opencode_command = _build_opencode_command
 CompletionCheckOptions = _CompletionCheckOptions
 check_process_result = _check_process_result
 IdleStreamTimeoutError = _IdleStreamTimeoutError
@@ -625,10 +517,12 @@ __all__ = [
     "UnsupportedMcpTransportError",
     "WatchdogFireReason",
     "WorkspaceMonitor",
+    "agy_workspace_mcp_endpoint",
     "bounded_output_lines",
     "build_command",
     "build_invoke_options_from_config",
-    "build_opencode_command",
+    "build_nanocoder_mcp_config",
+    "build_opencode_provider_config",
     "check_agent_available",
     "check_process_result",
     "command_for_log",
@@ -642,10 +536,14 @@ __all__ = [
     "interactive_auto_response_for_prompt",
     "invoke_agent",
     "is_permission_prompt_line",
+    "load_existing_agy_upstream_servers",
+    "load_existing_claude_upstream_servers",
+    "load_existing_nanocoder_upstream_servers",
     "pending_vt_snapshot_line",
     "permission_prompt_action_message",
     "plan_choice_menu_response",
     "policy_from_options",
+    "prepare_codex_home_with_upstreams",
     "provider_allowed_mcp_tool_names",
     "read_lines_from_process",
     "recovery_action_for_failure_reason",
