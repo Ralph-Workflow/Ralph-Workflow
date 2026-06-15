@@ -436,7 +436,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
 
         monkeypatch.setattr(
             invoke_module,
-            "strategy_for_transport",
+            "strategy_for_command",
             lambda *args, **kwargs: _WaitingStrategy(),
         )
         monkeypatch.setattr(

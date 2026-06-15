@@ -60,6 +60,7 @@ def test_shutdown_called_on_dead_inner_before_respawn() -> None:
         inner=cast("object", old_inner),
         restart_fn=restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
+        run_id="test-run",
     )
 
     restarted = bridge.check_health_and_restart_if_needed()
@@ -84,6 +85,7 @@ def test_no_restart_when_process_is_healthy() -> None:
         inner=cast("object", healthy_inner),
         restart_fn=restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
+        run_id="test-run",
     )
     restarted = bridge.check_health_and_restart_if_needed()
     assert restarted is False
@@ -141,6 +143,7 @@ def test_adversarial_restart_fn_raises_propagates() -> None:
         inner=cast("object", old_inner),
         restart_fn=broken_restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
+        run_id="test-run",
     )
     with pytest.raises(RuntimeError, match="respawn failed"):
         bridge.check_health_and_restart_if_needed()
@@ -168,6 +171,7 @@ def test_restart_count_caps_at_max_restarts() -> None:
         inner=cast("object", inners[0]),
         restart_fn=rotating_restart_fn,
         restart_policy=McpRestartPolicy(max_restarts=1),
+        run_id="test-run",
     )
     # First restart succeeds
     bridge.check_health_and_restart_if_needed()

@@ -192,7 +192,11 @@ class ProHeartbeatClient:
     def _post_once(self) -> None:
         url = f"{self._base_url}/api/heartbeat"
         payload = self._build_payload()
-        client = self._client_factory()
+        try:
+            client = self._client_factory()
+        except Exception as exc:
+            logger.debug("Pro heartbeat client creation failed (transient): %s", exc)
+            return
         try:
             try:
                 response = client.post(url, json=payload, timeout=self._timeout)

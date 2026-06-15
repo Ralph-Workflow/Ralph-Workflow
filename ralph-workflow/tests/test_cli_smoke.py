@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import re
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+import pytest
 from rich.console import Console
 
 if TYPE_CHECKING:
     from collections import deque
-
-    import pytest
 
     from ralph.pipeline.factory import PipelineDeps
 
@@ -25,6 +25,18 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+
+# Policy (2026-06-14): smoke tests are NOT part of any test suite. They are
+# one-off manual debug harnesses for a SPECIFIC agent issue. Marked with
+# the ``smoke`` marker and excluded by default via ``addopts`` in
+# ``pytest.ini`` AND via ``-m "not smoke"`` in every Makefile target and
+# in ``ralph/test_suites.py``. To run one explicitly:
+#   pytest tests/test_cli_smoke.py -m smoke
+#   pytest tests/test_cli_smoke.py::test_specific_test -m smoke
+# These tests inspect real subprocess output (``tmp/smoke-interactive-agy-run.log``)
+# produced by a prior ``ralph smoke-interactive-agy`` invocation, which
+# is exactly the kind of real file I/O the test policy forbids in regular tests.
+pytestmark = pytest.mark.smoke
 
 
 class _FakePipelineFactory:
@@ -168,6 +180,10 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
             return None
 
     class FakeBridge:
+        @property
+        def run_id(self) -> str:
+            return "fake-run-id"
+
         def start(self) -> None:
             return None
 
@@ -302,7 +318,7 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     monkeypatch.setattr(
         smoke_module,
         "_build_smoke_prompt",
-        lambda _output_relpath, *, submit_artifact_tool_name: "prompt",
+        lambda _output_relpath, *, submit_artifact_tool_name, transport=None: "prompt",
     )
 
     class FakeRegistry:
@@ -383,3 +399,253 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     assert factory_call["pro_hooks"] is pro_hooks
     plumbing_kwargs = cast("dict[str, object]", captured["plumbing_kwargs"])
     assert plumbing_kwargs["pipeline_deps"] is expected_deps
+
+
+def test_smoke_interactive_agy_command_exits_when_agy_binary_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: None)
+
+    exit_code = smoke_module.smoke_interactive_agy_command(display_context=None)
+
+    assert exit_code == 2
+
+
+def test_smoke_interactive_agy_command_exits_when_agent_name_resolves_to_wrong_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/agy")
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, _name: str) -> AgentConfig | None:
+            return AgentConfig(
+                cmd="claude",
+                transport=AgentTransport.CLAUDE_INTERACTIVE,
+            )
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="claude/haiku",
+        display_context=None,
+    )
+
+    assert exit_code == 2
+
+
+def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_transport_matches(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch)
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/agy")
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "agy/Claude Sonnet 4.6 (Thinking)":
+                return AgentConfig(
+                    cmd="agy",
+                    transport=AgentTransport.AGY,
+                )
+            return None
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
+        captured["agent_name"] = kwargs["agent_name"]
+        return smoke_module.SmokeRunResult(
+            agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+            transport="agy",
+            output_file=tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js",
+            file_created=True,
+            session_id="agy-sess-1",
+            explicit_completion_seen=True,
+            raw_line_count=1,
+            parsed_event_count=1,
+            tool_activity_seen=True,
+            artifact_submitted=True,
+            meaningful_output_lines=["ok"],
+            errors=[],
+        )
+
+    monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
+
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+    assert captured["agent_name"] == "agy/Claude Sonnet 4.6 (Thinking)"
+    output = stream.getvalue()
+    assert "agy/Claude Sonnet 4.6 (Thinking)" in output
+    assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke test" in output
+    assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke report" in output
+
+
+@pytest.mark.timeout_seconds(10)
+def test_smoke_interactive_agy_with_mock_binary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``smoke_interactive_agy_command`` respects ``RALPH_AGY_BINARY``."""
+    stream = _attach_console(monkeypatch)
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    mock_agy = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_agy))
+    monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
+
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+    output = stream.getvalue()
+    assert "agy/Claude Sonnet 4.6 (Thinking)" in output
+    # The parity table row must show file=yes for the mock-backed run.
+    # The table may wrap the long agent name, so match the transport/file cells.
+    assert re.search(r"│\s*agy\s*│\s*yes\s*│", output) is not None
+
+
+def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
+    """The captured AGY smoke run log documents the measured outcome.
+
+    The live AGY binary in this environment exits with empty stdout because
+    the account's individual API quota is exhausted (429 RESOURCE_EXHAUSTED).
+    The smoke harness therefore reports file=no, parser events=0,
+    tool activity=no, artifact=no, and includes an actionable upstream
+    diagnostic. If the quota resets, the same log can show file=yes with an
+    empty Breaks column. This test accepts either measured outcome and fails
+    only if the log does not document a real AGY invocation.
+    """
+    log_path = Path(__file__).resolve().parents[1] / "tmp" / "smoke-interactive-agy-run.log"
+    assert log_path.exists(), (
+        "Live AGY smoke run log not captured in this environment; run: "
+        "cd ralph-workflow && uv run python -m ralph smoke-interactive-agy"
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+
+    assert "Invoking agent: agy --dangerously-skip-permissions" in log_text, (
+        "Live log does not show a real AGY invocation"
+    )
+    assert "--model Claude Sonnet 4.6 (Thinking)" in log_text, (
+        "Live log does not show the real AGY display name as a single argv token"
+    )
+
+    agy_row = next(
+        (
+            line
+            for line in log_text.splitlines()
+            if "agy/" in line and ("│" in line or "┃" in line)
+        ),
+        None,
+    )
+    assert agy_row is not None, "AGY parity table row not found in smoke log"
+
+    cells = [cell.strip() for cell in re.split(r"[│┃]", agy_row) if cell.strip()]
+    # Expected cells: agent, transport, file, session, parser events, tool
+    # activity, artifact, breaks (after stripping table borders).
+    assert len(cells) >= 8, f"Unexpected AGY table row shape: {cells}"
+
+    file_created = cells[2]
+    breaks = cells[7]
+
+    if file_created == "yes":
+        assert "AGY --print returned empty stdout" not in breaks, (
+            f"Expected empty breaks when file=yes, got: {breaks}"
+        )
+    else:
+        assert file_created == "no", f"Expected file=no or file=yes, got: {cells}"
+        assert cells[4] == "0", f"Expected parser events=0, got: {cells}"
+        assert cells[5] == "no", f"Expected tool activity=no, got: {cells}"
+        assert cells[6] == "no", f"Expected artifact=no, got: {cells}"
+        assert "AGY --print returned empty stdout" in breaks or (
+            "expected todo-list.js was not created" in breaks
+        ), f"Expected upstream diagnostic in breaks, got: {breaks}"
+        # The detailed report also surfaces the upstream diagnostic.
+        assert "AGY --print returned empty stdout" in log_text, (
+            "Detailed report is missing the upstream diagnostic"
+        )
+
+
+def test_maybe_apply_agy_binary_override_ignores_nonexecutable_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-executable RALPH_AGY_BINARY path is ignored (WARNING logged, cmd unchanged)."""
+    agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
+    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    assert result.cmd == "agy"
+
+
+def test_maybe_apply_agy_binary_override_accepts_mock_shell_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid shell script override is accepted."""
+    mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
+    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    assert result.cmd != "agy"
+    assert str(mock_path) in result.cmd
+
+
+def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_apply_agy_binary_override_to_config`` ignores a non-executable override."""
+    config = UnifiedConfig(
+        agents={
+            "agy/Claude Sonnet 4.6 (Thinking)": AgentConfig(
+                cmd="agy", transport=AgentTransport.AGY
+            ),
+            "claude/haiku": AgentConfig(
+                cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE
+            ),
+        }
+    )
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")
+    result = smoke_module._apply_agy_binary_override_to_config(config)
+    assert result.agents["agy/Claude Sonnet 4.6 (Thinking)"].cmd == "agy"
+    assert result.agents["claude/haiku"].cmd == "claude"
+
+
+def test_apply_agy_binary_override_to_config_accepts_mock_shell_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_apply_agy_binary_override_to_config`` accepts a valid mock shell script."""
+    mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    config = UnifiedConfig(
+        agents={
+            "agy/Claude Sonnet 4.6 (Thinking)": AgentConfig(
+                cmd="agy", transport=AgentTransport.AGY
+            ),
+        }
+    )
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
+    result = smoke_module._apply_agy_binary_override_to_config(config)
+    agy_cmd = result.agents["agy/Claude Sonnet 4.6 (Thinking)"].cmd
+    assert agy_cmd != "agy"
+    assert str(mock_path) in agy_cmd

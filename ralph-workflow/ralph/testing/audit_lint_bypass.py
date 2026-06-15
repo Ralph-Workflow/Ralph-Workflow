@@ -86,6 +86,9 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
     ("heartbeat", "PLC0415"),
+    ("canonical_submit", "PLC0415"),  # lazy import avoids cycle with tools.artifact
+    ("artifact", "PLC0415"),  # lazy import avoids cycle with canonical_submit
+    ("completion_signals", "PLC0415"),  # lazy import avoids cycle with invoke->tools
     ("pydantic_validation_errors", "PLR0911"),  # exhaustive error-type dispatch
     ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),
@@ -94,6 +97,10 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("_renderers", "PLR0912"),
     ("parallel_display", "PLR0912"),
     ("pydantic_validation_errors", "PLR0911"),
+    ("_command_builders", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
+    ("_runtime_resolvers", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
+    # __init__ modules use lazy imports to avoid circular deps; targeted per-file
+    ("__init__", "PLC0415"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

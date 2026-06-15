@@ -16,7 +16,7 @@ from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationR
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.agents.execution_state import GenericExecutionStrategy, OpenCodeExecutionStrategy
+    from ralph.agents.execution_state import BaseExecutionStrategy
     from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
     from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.config.models import AgentConfig
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 class _ProcessReaderCtx:
     config: AgentConfig
     policy: TimeoutPolicy
-    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
+    execution_strategy: BaseExecutionStrategy | None = None
     liveness_probe: LivenessProbe | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None

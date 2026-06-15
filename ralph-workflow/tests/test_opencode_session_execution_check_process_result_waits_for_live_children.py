@@ -63,7 +63,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         # Fake evaluate_completion to always return no signals
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 
@@ -118,7 +122,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         evaluate_calls = [0]
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             evaluate_calls[0] += 1
             return CompletionSignals(False, False, ())
@@ -178,7 +186,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         probe = FakeLivenessProbe(active=True)  # Always active
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 
@@ -245,7 +257,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
@@ -287,12 +303,21 @@ class TestCheckProcessResultWaitsForLiveChildren:
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
-                # Simulate explicit_complete appearing between polls
-                return CompletionSignals(True, False, ())
+                # Simulate explicit_complete appearing between polls. The
+                # completion marker alone is no longer terminal; corroborate
+                # it with the completion sentinel (written by the real
+                # declare_complete MCP tool).
+                return CompletionSignals(
+                    True, False, (), completion_sentinel_present=True
+                )
             return CompletionSignals(False, False, ())
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → explicit_complete (call 3) → TERMINAL_COMPLETE
@@ -341,7 +366,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
         def _fake_evaluate_completion_with_artifact(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
@@ -382,7 +411,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         _artifact_appears_on = 2  # first loop poll + final recheck
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             call_count[0] += 1
             # First poll (inside wait loop): no completion
@@ -437,7 +470,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             call_count[0] += 1
             if call_count[0] == 1:
@@ -480,7 +517,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         handle = _FakeHandle(returncode=0, has_descendants=False)
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 
@@ -554,7 +595,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
         handle = _FakeHandle(returncode=0, has_descendants=False)
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 

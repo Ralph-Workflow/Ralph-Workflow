@@ -11,7 +11,11 @@ from tqdm import tqdm
 
 from ralph.agents.execution_state import GenericExecutionStrategy
 from ralph.agents.idle_watchdog import WatchdogFireReason
-from ralph.agents.invoke._completion import _check_process_result, _CompletionCheckOptions
+from ralph.agents.invoke._completion import (
+    _check_process_result,
+    _CompletionCheckOptions,
+    completion_run_id_from_extra_env,
+)
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
     InactivityTimeoutOpts,
@@ -32,7 +36,6 @@ from ralph.agents.invoke._session import (
 )
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
-from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import PtySpawnOptions, get_process_manager
 from ralph.process.teardown import teardown_subtree
@@ -50,9 +53,7 @@ def run_pty_and_read_lines(
 ) -> Iterator[str]:
     _extras = extras or _PtyExtras()
     expected_session_id = _extras.expected_session_id
-    completion_run_id = None
-    if ctx.extra_env is not None:
-        completion_run_id = ctx.extra_env.get(str(MCP_RUN_ID_ENV))
+    completion_run_id = completion_run_id_from_extra_env(ctx.extra_env)
     if _extras.stop_sentinel_path is not None:
         with contextlib.suppress(FileNotFoundError):
             _extras.stop_sentinel_path.unlink()

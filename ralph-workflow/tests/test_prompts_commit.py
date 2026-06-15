@@ -26,7 +26,15 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "call the tool before emitting any final text" in prompt.lower()
     assert "commit artifact" in prompt.lower()
     assert "skip artifact" in prompt.lower()
-    assert "optionally echo only the commit subject line once" in prompt.lower()
+    # Architectural fix (2026-06-14): the template MUST NOT carry a
+    # "REQUIRED PROCEDURE" that duplicates the shared artifact submission
+    # macro. A duplicate procedure (e.g. "output only the commit subject
+    # line") used to mislead a small model into stopping without calling
+    # ``declare_complete``, leaving the gate to retry forever. The macro
+    # is the single source of truth for the completion contract.
+    assert "output only the commit subject line" not in prompt.lower()
+    assert "artifact submission procedure above is authoritative" in prompt.lower()
+    assert "declare_complete" in prompt.lower()
     assert '"type": "commit"' in prompt
     assert '"subject": "type(scope): description"' in prompt
     assert '"type": "skip"' in prompt
@@ -37,8 +45,10 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert prompt.startswith("Task:")
     assert "tool named" in prompt.lower()
     assert "do not call bash" in prompt.lower()
-    assert "if the submit-artifact mcp tool is unavailable in this turn" in prompt.lower()
-    assert "write the raw commit payload json to `.agent/tmp/commit_message.json`" in prompt.lower()
+    assert "submit-artifact mcp tool is unavailable" in prompt.lower()
+    # Macro wording replaces the old duplicate "REQUIRED PROCEDURE 5"
+    # text. The macro is the single source of truth.
+    assert "raw inner" in prompt.lower() and "payload json" in prompt.lower()
     assert '"artifact_type":"commit_message"' in prompt
     assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
     assert "do not use `content_path` for this task" in prompt.lower()
@@ -100,8 +110,17 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
     assert "The only tool you may call" in prompt
     assert "Do not call bash" in prompt
-    assert "If the submit-artifact MCP tool is unavailable in this turn" in prompt
-    assert "write the raw commit payload JSON to `.agent/tmp/commit_message.json`" in prompt
+    # Architectural fix (2026-06-14): the unavailable-tool fallback
+    # guidance lives in the SHARED artifact submission macro (step 6),
+    # not in a duplicate "REQUIRED PROCEDURE" section. The template is
+    # no longer the source of that text; the macro is. Assert against
+    # the macro's wording so a refactor of either side fails.
+    assert "submit-artifact MCP tool is unavailable" in prompt
+    assert ".agent/tmp/commit_message.json" in prompt
+    # The macro's step 6 wraps onto two lines in the rendered output;
+    # strip whitespace before substring-matching.
+    assert "raw inner" in prompt and "payload JSON" in prompt
+    assert "no outer envelope" in prompt
     assert '"artifact_type":"commit_message"' in prompt
     assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
     assert "Do not use `content_path` for this task" in prompt
@@ -122,7 +141,13 @@ def test_opencode_commit_prompt_skip_output_instruction_is_unambiguous() -> None
     # The old "<subject>" placeholder caused models to output "<skip>" for skip artifacts.
     # The instruction must now be explicit for both commit and skip cases.
     assert "<subject>" not in prompt
-    assert "output nothing" in prompt.lower() or "do not output" in prompt.lower()
+    # Architectural fix (2026-06-14): the skip-output instruction is no
+    # longer a duplicate "REQUIRED PROCEDURE 4" — it's a post-submit
+    # "you may optionally echo" line. The shared macro (step 5) is the
+    # authoritative completion contract. The template just needs to
+    # NOT carry conflicting duplicate procedure.
+    assert "output only the commit subject line" not in prompt.lower()
+    assert "artifact submission procedure above is authoritative" in prompt.lower()
 
 
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:

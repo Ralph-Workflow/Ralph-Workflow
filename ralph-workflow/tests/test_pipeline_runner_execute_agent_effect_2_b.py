@@ -186,6 +186,10 @@ class TestExecuteAgentEffectB:
         registry = _registry_factory(agent_config)
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def start(self) -> None:
                 return
 
@@ -238,6 +242,10 @@ class TestExecuteAgentEffectB:
         registry = _registry_factory(agent_config)
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def start(self) -> None:
                 return
 
@@ -306,6 +314,10 @@ class TestExecuteAgentEffectB:
         registry = _registry_factory(agent_config)
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def shutdown(self) -> None:
                 return
 
@@ -373,6 +385,10 @@ class TestExecuteAgentEffectB:
         registry = _registry_factory(agent_config)
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def shutdown(self) -> None:
                 return
 

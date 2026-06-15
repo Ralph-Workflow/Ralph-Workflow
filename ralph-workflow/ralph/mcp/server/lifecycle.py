@@ -136,12 +136,19 @@ class RestartAwareMcpBridge:
         *,
         restart_fn: Callable[[], StandaloneMcpProcess],
         restart_policy: McpRestartPolicy,
+        run_id: str,
         probe_fn: Callable[[str, timedelta], None] | None = None,
         probe_timeout_fn: Callable[[], timedelta] | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
         self._restart_policy = restart_policy
+        # The session's run_id is the single identity the receipt and the
+        # gate share. Storing it on the bridge lets ``bridge_env_for``
+        # derive ``MCP_RUN_ID_ENV`` from the same value the submission
+        # handler stamps receipts with — drift is structurally impossible
+        # because there is no separate label parameter to disagree.
+        self._run_id = run_id
         self._probe_fn = probe_fn
         self._probe_timeout_fn = probe_timeout_fn
         self._restart_count = 0
@@ -152,6 +159,16 @@ class RestartAwareMcpBridge:
         # policy's max_restarts. See _tool_registry_resets property.
         self._tool_registry_resets = 0
         self._lock = threading.Lock()
+
+    @property
+    def run_id(self) -> str:
+        """The session's run identity — the receipt key the gate reads.
+
+        See :class:`ralph.mcp.protocol._session_bridge_like.SessionBridgeLike`
+        for the full contract; the property is the bridge-side realization
+        of the protocol declaration.
+        """
+        return self._run_id
 
     @property
     def restart_count(self) -> int:
@@ -603,6 +620,7 @@ def start_mcp_server(
         inner,
         restart_fn=_restart_fn,
         restart_policy=effective_extras.restart_policy or McpRestartPolicy(),
+        run_id=session.run_id,
         probe_fn=lifecycle_deps.probe,
         probe_timeout_fn=lifecycle_deps.probe_timeout,
     )

@@ -47,11 +47,22 @@ class MemoryBackend(FileBackend):
         del self._files[path]
 
     def glob(self, path: Path, pattern: str) -> list[Path]:
-        if pattern != "*.json":
+        if pattern == "*.json":
+            prefix = f"{path}/"
+            return [
+                candidate
+                for candidate in self._files
+                if str(candidate).startswith(prefix) and candidate.suffix == ".json"
+            ]
+        elif pattern == "*/*.json":
+            # Match files in immediate subdirectories with .json extension
+            prefix = f"{path}/"
+            return [
+                candidate
+                for candidate in self._files
+                if str(candidate).startswith(prefix)
+                and candidate.suffix == ".json"
+                and candidate.parent != path  # Ensure it's in a subdirectory
+            ]
+        else:
             return []
-        prefix = f"{path}/"
-        return [
-            candidate
-            for candidate in self._files
-            if str(candidate).startswith(prefix) and candidate.suffix == ".json"
-        ]

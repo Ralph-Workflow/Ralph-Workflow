@@ -275,6 +275,11 @@ def test_smoke_plumbing_runs_on_pipeline_core(
         "_clear_smoke_artifact",
         lambda _root: None,
     )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "is_artifact_submitted",
+        lambda *args: True,
+    )
 
     output_file = _FakeOutputPath(
         "/workspace/tmp/interactive-claude-smoke/todo-list.js"

@@ -63,7 +63,7 @@ def test_test_cov_single_parallel_invocation_with_coverage() -> None:
     assert "--cov-report=" in test_cov_body[1]
     assert "-n $(PYTEST_WORKERS)" in test_cov_body[1]
     assert "--dist worksteal" in test_cov_body[1]
-    assert '"not subprocess_e2e"' in test_cov_body[1]
+    assert '"not subprocess_e2e and not smoke"' in test_cov_body[1]
     assert "python -m pytest tests/ -q" in test_cov_body[1]
     assert "uv run coverage report --data-file=.coverage.pytest --fail-under=80" in test_cov_body[2]
 
@@ -91,7 +91,7 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "--ignore=tests/integration" in unit_body[0]
     assert "-n $(PYTEST_WORKERS)" in unit_body[0]
     assert "--dist worksteal" in unit_body[0]
-    assert '"not subprocess_e2e"' in unit_body[0]
+    assert '"not subprocess_e2e and not smoke"' in unit_body[0]
 
     assert "uv run python -m ralph.verify_timeout" in integration_body[0]
     assert "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS)" in integration_body[0]
@@ -104,7 +104,7 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     assert e2e_body == [
         "uv run python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
-        "python -m pytest tests/ -q -n 1 -m subprocess_e2e"
+        "python -m pytest tests/ -q -n 1 -m \"subprocess_e2e and not smoke\""
     ]
 
 

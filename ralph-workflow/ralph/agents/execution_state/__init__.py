@@ -4,7 +4,9 @@ Provides AgentExecutionState (active/waiting/resumable/terminal),
 the execution strategies, and OpenCode registry routing helpers.
 """
 
-from ._factory import strategy_for_transport
+from ._base import BaseExecutionStrategy
+from ._completion_mixin import CompletionEnforcingStrategy
+from ._factory import strategy_for_command, strategy_for_transport
 from ._helpers import _route_opencode_line_to_registry
 from ._live_descendant_handle import _LiveDescendantHandle
 from .agent_execution_state import AgentExecutionState
@@ -17,11 +19,14 @@ from .opencode_execution_strategy import OpenCodeExecutionStrategy
 __all__ = [
     "AgentExecutionState",
     "AgyExecutionStrategy",
+    "BaseExecutionStrategy",
     "ClaudeExecutionStrategy",
     "ClaudeInteractiveExecutionStrategy",
+    "CompletionEnforcingStrategy",
     "GenericExecutionStrategy",
     "OpenCodeExecutionStrategy",
     "_LiveDescendantHandle",
     "_route_opencode_line_to_registry",
+    "strategy_for_command",
     "strategy_for_transport",
 ]

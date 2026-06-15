@@ -77,11 +77,21 @@ def test_clean_exit_without_completion_signal_raises_agent_invocation_error(
         )
 
 
-def test_declare_complete_marker_satisfies_completion_contract(tmp_path: Path) -> None:
-    """AGY raw output containing declare_complete marker does not raise."""
+def test_declare_complete_marker_with_sentinel_satisfies_completion_contract(
+    tmp_path: Path,
+) -> None:
+    """AGY raw output containing declare_complete marker plus sentinel does not raise.
+
+    The plain-text marker alone is no longer authoritative: it can be spoofed
+    by ordinary agent output. The completion sentinel written by the real
+    declare_complete MCP tool provides the required corroboration.
+    """
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
     raw_output = ["Task declared complete: session_id=abc, summary=done, timestamp=1"]
+    sentinel = tmp_path / ".agent" / "completion_seen_abc.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{"run_id": "abc"}', encoding="utf-8")
 
     _check_process_result(
         cast("ManagedProcess", handle),
@@ -90,6 +100,7 @@ def test_declare_complete_marker_satisfies_completion_contract(tmp_path: Path) -
         _CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
+            captured_session_id="abc",
             required_artifact=RequiredArtifact(
                 phase="development",
                 artifact_type="development_result",

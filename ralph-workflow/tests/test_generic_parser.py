@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from ralph.agents.parsers.generic import GenericParser
+
+pytestmark = pytest.mark.timeout_seconds(2)
 
 
 def test_thought_field_emits_thinking() -> None:
@@ -128,3 +132,5 @@ def test_ansi_decorated_tool_line_still_emits_tool_use() -> None:
     tool_uses = [r for r in results if r.type == "tool_use"]
     assert len(tool_uses) == 1, f"Expected 1 tool_use, got: {results}"
     assert tool_uses[0].content == "mcp__ralph__list_directory"
+
+

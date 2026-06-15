@@ -84,9 +84,9 @@ Do not rely on Codex for environments that require strict tool isolation. Ralph 
 
 Reference: https://platform.openai.com/docs/codex
 
-### Google Anti Gravity - Full Enforcement (Workspace-Config-Injection-Based)
+### Google Anti Gravity - Full Enforcement (Global-Config-Injection-Based)
 
-Google Anti Gravity (AGY) is a first-class supported agent path under the same MCP enforcement contract as Claude Code and OpenCode. Ralph Workflow automatically injects the run-scoped Ralph MCP endpoint into the workspace-level `.agents/mcp_config.json` before AGY launches using the `agy_workspace_mcp_endpoint` context manager, and restores the file after the run. The provider-visible `.agents/mcp_config.json` written by this context manager contains only the Ralph MCP server entry, matching Ralph's strict-authority-mode contract. No manual pre-configuration of the Ralph endpoint is required. Ralph Workflow still discovers user-configured AGY upstream servers from `~/.gemini/antigravity-cli/mcp_config.json` and workspace `.agents/mcp_config.json` for the upstream proxy.
+Google Anti Gravity (AGY) is a first-class supported agent path under the same MCP enforcement contract as Claude Code and OpenCode. Ralph Workflow automatically injects the run-scoped Ralph MCP endpoint into AGY's global `~/.gemini/antigravity-cli/mcp_config.json` before AGY launches using the `agy_workspace_mcp_endpoint` context manager, and restores the file after the run. Measured behaviour shows AGY's headless `--print` mode only initialises its MCP client when this global config file exists; the workspace-level `.agents/mcp_config.json` is not sufficient. The provider-visible config written by this context manager contains only the Ralph MCP server entry, matching Ralph's strict-authority-mode contract. No manual pre-configuration of the Ralph endpoint is required. Ralph Workflow still discovers user-configured AGY upstream servers from `~/.gemini/antigravity-cli/mcp_config.json` and workspace `.agents/mcp_config.json` for the upstream proxy.
 
 AGY participates fully in Ralph's upstream proxy model, capability-gated MCP model, and completion contract. This is a setup difference, not a capability limitation.
 

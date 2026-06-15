@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL
+
 from ..payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ..template_engine import render_template
 from ..template_registry import (
@@ -46,10 +48,13 @@ def prompt_commit_message(
         raise ValueError("empty diff provided; cannot build commit prompt")
 
     template = _select_template(template_registry)
+    submit_reference = _format_submit_artifact_tool_reference(submit_artifact_tool_names)
     variables = {
         "SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS": _format_submit_artifact_tool_instructions(
             submit_artifact_tool_names
         ),
+        "SUBMIT_ARTIFACT_TOOL_REFERENCE": submit_reference,
+        "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
     }
     variables.update(
         _commit_payload_variables(
@@ -78,6 +83,8 @@ def prompt_commit_message_for_opencode(
     template = (packaged_template_root() / "commit_simplified.jinja").read_text(encoding="utf-8")
     variables = {
         "SUBMIT_ARTIFACT_TOOL_NAME": submit_artifact_tool_name,
+        "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{submit_artifact_tool_name}`",
+        "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
     }
     variables.update(
         _commit_payload_variables(
@@ -116,6 +123,25 @@ def _format_submit_artifact_tool_instructions(tool_names: Sequence[str]) -> str:
 
     formatted = ", ".join(f"`{name}`" for name in unique_names[:-1])
     return f"one of the following tool names: {formatted}, or `{unique_names[-1]}`"
+
+
+def _format_submit_artifact_tool_reference(tool_names: Sequence[str]) -> str:
+    """Render the canonical submit-tool reference for the single-shot macro.
+
+    Returns a single backtick-quoted tool name so the rendered macro
+    surfaces one alias (the canonical MCP tool name) the agent can
+    call. When multiple aliases are registered for the active
+    transport, the first non-empty one wins; the macro's worked
+    example uses this same name to keep the call site and the example
+    in lock-step.
+    """
+    unique_list: list[str] = []
+    for name in tool_names:
+        if name and name not in unique_list:
+            unique_list.append(name)
+    if not unique_list:
+        return f"`{DEFAULT_SUBMIT_ARTIFACT_TOOL_NAME}`"
+    return f"`{unique_list[0]}`"
 
 
 def _default_commit_partials() -> dict[str, str]:

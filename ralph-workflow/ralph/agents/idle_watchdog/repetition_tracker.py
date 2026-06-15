@@ -25,16 +25,14 @@ from __future__ import annotations
 
 import re
 from collections import deque
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from ralph.agents.clock import Clock
+
 __all__ = ["RepetitionTracker"]
-
-
-class _Clock(Protocol):
-    def monotonic(self) -> float: ...
 
 
 # Per-occurrence noise patterns, stripped (in this order) during fingerprinting.
@@ -56,7 +54,7 @@ class RepetitionTracker:
 
     def __init__(
         self,
-        clock: _Clock,
+        clock: Clock,
         *,
         consecutive_threshold: int | None,
         window_count: int | None,

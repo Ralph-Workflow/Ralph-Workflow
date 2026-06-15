@@ -60,6 +60,7 @@ def _make_bridge(*, max_restarts: int) -> RestartAwareMcpBridge:
         cast("StandaloneMcpProcess", inner),
         restart_fn=_restart_fn,
         restart_policy=MagicMock(max_restarts=max_restarts),
+        run_id="test-run",
     )
 
 

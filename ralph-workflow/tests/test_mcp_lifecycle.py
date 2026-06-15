@@ -254,6 +254,7 @@ def test_restart_aware_bridge_returns_false_when_process_alive() -> None:
         inner,
         restart_fn=_make_standalone,
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
     )
     result = bridge.check_health_and_restart_if_needed()
     assert result is False
@@ -268,6 +269,7 @@ def test_restart_aware_bridge_restarts_dead_process() -> None:
         inner,
         restart_fn=lambda: new_inner,
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
     )
     result = bridge.check_health_and_restart_if_needed()
     assert result is True
@@ -281,6 +283,7 @@ def test_restart_aware_bridge_raises_when_budget_exhausted() -> None:
         inner,
         restart_fn=lambda: _make_standalone(poll_result=1),
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=2),
+        run_id="test-run",
     )
     bridge.check_health_and_restart_if_needed()  # restart 1
     bridge.check_health_and_restart_if_needed()  # restart 2
@@ -304,6 +307,7 @@ def test_restart_aware_bridge_calls_restart_fn_on_each_restart() -> None:
         inner,
         restart_fn=counting_restart_fn,
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
     )
     bridge.check_health_and_restart_if_needed()
     bridge.check_health_and_restart_if_needed()
@@ -314,6 +318,10 @@ def test_check_mcp_bridge_health_noop_for_non_restart_bridge() -> None:
     """check_mcp_bridge_health is safe to call on bridges that are not RestartAwareMcpBridge."""
 
     class FakeBridge:
+        @property
+        def run_id(self) -> str:
+            return "fake-run-id"
+
         def start(self) -> None: ...
         def agent_endpoint_uri(self) -> str:
             return "http://x"
@@ -421,6 +429,7 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
         inner,
         restart_fn=lambda: restarted,
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
     )
 
     # Process is alive — health check returns False
@@ -457,6 +466,7 @@ def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> N
         inner,
         restart_fn=lambda: (restart_calls.append(1), new_inner)[-1],
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
@@ -478,6 +488,7 @@ def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None
         inner,
         restart_fn=lambda: _make_standalone(poll_result=None),
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=0),
+        run_id="test-run",
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
@@ -506,6 +517,7 @@ def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path
         inner,
         restart_fn=lambda: new_inner,
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
         probe_fn=failing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )
@@ -520,6 +532,7 @@ def test_restart_aware_bridge_no_probe_fn_means_alive_is_healthy() -> None:
         inner,
         restart_fn=_make_standalone,
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
         probe_fn=None,
     )
     result = bridge.check_health_and_restart_if_needed()
@@ -539,6 +552,7 @@ def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
         inner,
         restart_fn=_make_standalone,
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
         probe_fn=passing_probe,
         probe_timeout_fn=lambda: timedelta(seconds=1),
     )

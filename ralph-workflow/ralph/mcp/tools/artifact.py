@@ -20,6 +20,10 @@ from ralph.mcp.artifacts.commit_message import (
     normalize_commit_message_content,
     write_commit_message_artifact,
 )
+from ralph.mcp.artifacts.completion_receipts import (
+    delete_artifact_receipt,
+    write_artifact_receipt,
+)
 from ralph.mcp.artifacts.development_result import (
     DEVELOPMENT_RESULT_ARTIFACT_TYPE,
     DevelopmentResultValidationError,
@@ -77,6 +81,7 @@ from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.tools._submit_op import SubmitOp
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
+    COMPLETION_SENTINEL_RELPATHFMT,
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
@@ -111,6 +116,20 @@ _TYPED_ARTIFACT_TYPES = frozenset(
 _KNOWN_ARTIFACT_TYPES = frozenset(
     {PLAN_ARTIFACT_TYPE, COMMIT_MESSAGE_TYPE, DEVELOPMENT_RESULT_ARTIFACT_TYPE}
     | _TYPED_ARTIFACT_TYPES
+    | {"review", "verification"}
+)
+
+# Multi-step planning artifact types: each phase has its own submit, and
+# completion is the explicit ``finalize_plan`` / ``declare_complete`` call.
+# These MUST be excluded from the auto-complete-on-submit path so a phase
+# submit does not prematurely satisfy the gate.
+_PLANNING_DECISION_ARTIFACT_TYPES: frozenset[str] = frozenset(
+    {
+        PLAN_ARTIFACT_TYPE,
+        "development_analysis_decision",
+        "planning_analysis_decision",
+        "review_analysis_decision",
+    }
 )
 
 
@@ -209,22 +228,27 @@ def handle_submit_artifact(
         backend=resolved_deps.backend,
     )
 
-    artifact_dir = _resolve_artifact_dir(session, workspace)
     history_enabled = _resolve_history_enabled(artifact_type, workspace_root, drain)
     effective_deps = ArtifactHandlerDeps(
         backend=resolved_deps.backend,
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
     )
-    execute_ops_with_rollback(
-        submit_ops_for_artifact(
-            artifact_type,
-            workspace_root,
-            artifact_dir,
-            parsed_content,
-            deps=effective_deps,
-        )
+    artifact_dir = _resolve_artifact_dir(session, workspace)
+    # === BEGIN CANONICAL SUBMIT OPS ===
+    from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
+        submit_artifact_canonical,
     )
+
+    submit_artifact_canonical(
+        workspace_root=workspace_root,
+        artifact_type=artifact_type,
+        parsed_content=parsed_content,
+        deps=effective_deps,
+        run_id=_session_run_id(session),
+        artifact_dir=artifact_dir,
+    )
+    # === END CANONICAL SUBMIT OPS ===
 
     # Post-submission verification: development_result artifacts require status="completed"
     # or status="partial" (from instructions). If status is neither, surface a verification
@@ -358,15 +382,20 @@ def handle_finalize_plan(
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
     )
-    execute_ops_with_rollback(
-        submit_ops_for_artifact(
-            PLAN_ARTIFACT_TYPE,
-            workspace_root,
-            artifact_dir,
-            normalized,
-            deps=effective_deps,
-        )
+    # === BEGIN CANONICAL SUBMIT OPS ===
+    from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
+        submit_artifact_canonical,
     )
+
+    submit_artifact_canonical(
+        workspace_root=workspace_root,
+        artifact_type=PLAN_ARTIFACT_TYPE,
+        parsed_content=normalized,
+        deps=effective_deps,
+        run_id=_session_run_id(session),
+        artifact_dir=artifact_dir,
+    )
+    # === END CANONICAL SUBMIT OPS ===
 
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {PLAN_ARTIFACT_TYPE}")],
@@ -1066,6 +1095,11 @@ def _accepted_persisted_types(artifact_type: str) -> set[str]:
     return accepted
 
 
+def _session_run_id(session: CoordinationSessionLike) -> str | None:
+    run_id = cast("object", getattr(session, "run_id", None))
+    return run_id if isinstance(run_id, str) and run_id else None
+
+
 def _session_drain(session: CoordinationSessionLike) -> str | None:
     try:
         attributes = cast("dict[str, object]", vars(session))
@@ -1256,15 +1290,26 @@ def _raise_format_doc_error(
     raise InvalidParamsError(msg) from original_exc
 
 
-def submit_ops_for_artifact(
+# === BEGIN CANONICAL SUBMIT OPS ===
+def _submit_ops_for_artifact_with_options(
     artifact_type: str,
     workspace_root: Path,
     artifact_dir: Path,
     parsed_content: dict[str, object],
     *,
     deps: ArtifactHandlerDeps,
+    run_id: str | None = None,
+    name: str | None = None,
+    overwrite: bool = True,
+    metadata: dict[str, object] | None = None,
 ) -> list[SubmitOp]:
-    """Return the ordered (op, undo) pairs for a complete artifact submit."""
+    """Return the ordered (op, undo) pairs for a complete artifact submit.
+
+    This private helper is the implementation shared by the public
+    :func:`submit_ops_for_artifact` and the canonical submission path. It
+    allows bridge callers to supply a custom ``name``, ``overwrite`` policy, and
+    ``metadata`` without widening the public op-builder API.
+    """
     ops: list[SubmitOp] = []
 
     if artifact_type == COMMIT_MESSAGE_TYPE:
@@ -1278,19 +1323,24 @@ def submit_ops_for_artifact(
             )
         )
 
-    _options = ArtifactSubmitOptions(overwrite=True, persistence=deps.artifact_persistence)
+    _options = ArtifactSubmitOptions(
+        overwrite=overwrite,
+        persistence=deps.artifact_persistence,
+        metadata=metadata,
+    )
     _at = artifact_type
+    _name = name or _at
     _content2 = parsed_content
     ops.append(
         SubmitOp(
             run=lambda: submit_artifact(
                 artifact_dir,
-                name=_at,
+                name=_name,
                 artifact_type=_at,
                 content=_content2,
                 options=_options,
             ),
-            undo=lambda: delete_artifact(artifact_dir, _at, backend=deps.backend),
+            undo=lambda: delete_artifact(artifact_dir, _name, backend=deps.backend),
         )
     )
 
@@ -1333,7 +1383,86 @@ def submit_ops_for_artifact(
             )
         )
 
+    if run_id is not None:
+        _rid = run_id
+        _at_receipt = artifact_type
+        _wr_receipt = workspace_root
+        ops.append(
+            SubmitOp(
+                run=lambda: write_artifact_receipt(
+                    _wr_receipt, _rid, _at_receipt, backend=deps.backend
+                ),
+                undo=lambda: delete_artifact_receipt(
+                    _wr_receipt, _rid, _at_receipt, backend=deps.backend
+                ),
+            )
+        )
+
+    # Architectural fix (2026-06-14): for SINGLE-SHOT artifact types
+    # (commit_message, development_result, commit_cleanup, issues, etc.),
+    # receipt + completion-sentinel are atomically the same event — the
+    # agent has nothing left to do. Mark completion implicitly so a model
+    # that interprets "Artifact submitted: <type>" as "done" and stops
+    # without calling ``declare_complete`` does not get force-retried in
+    # a loop. Multi-step planning artifacts (``plan``,
+    # ``*_analysis_decision``) are EXCLUDED: their completion is the
+    # explicit ``finalize_plan`` / ``declare_complete`` call.
+    if (
+        run_id is not None
+        and artifact_type != PLAN_ARTIFACT_TYPE
+        and artifact_type not in _PLANNING_DECISION_ARTIFACT_TYPES
+    ):
+        _rid_sentinel = run_id
+        _wr_sentinel = workspace_root
+        _sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=_rid_sentinel)
+        _backend = deps.backend
+        _sentinel_dict: dict[str, str] = {"run_id": _rid_sentinel}
+        _sentinel_payload = json.dumps(_sentinel_dict, ensure_ascii=False)
+
+        def _run_write_sentinel() -> None:
+            sentinel_path = _wr_sentinel / _sentinel_relpath
+            _backend.mkdir(sentinel_path.parent, parents=True, exist_ok=True)
+            _backend.write_text(sentinel_path, _sentinel_payload, encoding="utf-8")
+
+        def _undo_write_sentinel() -> None:
+            sentinel_path = _wr_sentinel / _sentinel_relpath
+            with suppress(OSError):
+                _backend.unlink(sentinel_path, missing_ok=True)
+
+        ops.append(SubmitOp(run=_run_write_sentinel, undo=_undo_write_sentinel))
+
     return ops
+
+
+def submit_ops_for_artifact(
+    artifact_type: str,
+    workspace_root: Path,
+    artifact_dir: Path,
+    parsed_content: dict[str, object],
+    *,
+    deps: ArtifactHandlerDeps,
+    run_id: str | None = None,
+) -> list[SubmitOp]:
+    """Return the ordered (op, undo) pairs for a complete artifact submit.
+
+    When ``run_id`` is provided, the final op stamps a run-scoped completion
+    receipt for ``artifact_type``. Because it is the last op in the
+    rollback-protected sequence, the receipt exists only when the artifact and
+    its handoff were fully persisted — binding "submitted" and "gate-visible"
+    into one atomic fact regardless of where the artifact bytes landed.
+    """
+    return _submit_ops_for_artifact_with_options(
+        artifact_type,
+        workspace_root,
+        artifact_dir,
+        parsed_content,
+        deps=deps,
+        run_id=run_id,
+        name=artifact_type,
+        overwrite=True,
+        metadata=None,
+    )
+# === END CANONICAL SUBMIT OPS ===
 
 
 __all__ = [

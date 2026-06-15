@@ -11,6 +11,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.lifecycle import McpServerExtras, SessionBridgeLike, start_mcp_server
@@ -177,6 +178,14 @@ def build_session_bridge(
         allowed_roots=allowed_roots or (),
     )
     workspace = workspace_fn(workspace_root)
+    # Pre-render hook: materialize every bundled artifact format doc into
+    # the workspace so the agent can read ``.agent/artifact-formats/<type>.md``
+    # the moment the prompt tells it to. Without this, the agent's first read
+    # fails with ENOENT and the artifact submission silently breaks. (Bug
+    # surfaced on 2026-06-14 when the commit prompt pointed at a format doc
+    # that hadn't been written yet.) Idempotent — re-running on a workspace
+    # that already has the docs is a no-op overwrite.
+    materialize_all_format_docs(workspace_root)
     bridge = server_fn(
         session,
         workspace,
@@ -186,11 +195,21 @@ def build_session_bridge(
     return bridge
 
 
-def bridge_env_for(bridge: SessionBridgeLike, *, run_id_label: str) -> dict[str, str]:
-    """Return the two-key MCP environment dict used by plumbing commands."""
+def bridge_env_for(bridge: SessionBridgeLike) -> dict[str, str]:
+    """Return the two-key MCP environment dict used by plumbing commands.
+
+    The ``MCP_RUN_ID_ENV`` value is derived from the bridge's ``run_id``
+    property — the SAME identity the submission handler stamps receipts
+    with. A free-form label is no longer accepted: a caller passing a
+    label that disagreed with the session's run_id produced the
+    artifact-handoff drift bug (receipt stamped under one value, gate
+    looked it up under another). The single-source-of-truth contract
+    here is the structural fix: there is no separate label parameter
+    to drift.
+    """
     return {
         str(MCP_ENDPOINT_ENV): bridge.agent_endpoint_uri(),
-        str(MCP_RUN_ID_ENV): run_id_label,
+        str(MCP_RUN_ID_ENV): bridge.run_id,
     }
 
 

@@ -12,7 +12,7 @@ Ralph Workflow is invoked as `ralph` (or `python -m ralph`). Running `ralph` wit
 | `--list-providers` | | `False` | List available AI providers (OpenCode API) |
 | `--diagnose` | `-d` | `False` | Run pre-flight diagnostics and print a status table |
 | `--check-config` | `-C` | `False` | Load and validate configuration, then exit |
-| `--check-mcp` | | `False` | Validate custom MCP server definitions, then exit |
+| `--check-mcp` | | `False` | Validate custom MCP server definitions and AGY transport compatibility, then exit. Set `RALPH_AGY_BINARY` to point at a non-PATH `agy` binary. |
 | `--check-policy` | | `False` | Validate the active pipeline policy and print a summary |
 | `--inspect-checkpoint` | | `False` | Print the current checkpoint contents |
 
@@ -151,6 +151,30 @@ Remove Ralph Workflow-generated working files from the current project, such as 
 ```bash
 ralph cleanup
 ```
+
+### `ralph smoke-interactive-agy`
+
+Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the canonical verification command for the AGY transport: it drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports a parity table with file creation, session capture, parser events, tool activity, and artifact submission. The default model is `agy/Claude Sonnet 4.6 (Thinking)`; override it with `--agent agy/<model>`.
+
+```bash
+python -m ralph smoke-interactive-agy
+python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'
+```
+
+Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream `agy` binary returned no stdout; the message is derived from `~/.gemini/antigravity-cli/cli.log` and usually points to an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
+
+Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`.
+
+The eight canonical `agy models` display names are the only valid `--model` values:
+
+- `Gemini 3.5 Flash (Medium)`
+- `Gemini 3.5 Flash (High)`
+- `Gemini 3.5 Flash (Low)`
+- `Gemini 3.1 Pro (Low)`
+- `Gemini 3.1 Pro (High)`
+- `Claude Sonnet 4.6 (Thinking)`
+- `Claude Opus 4.6 (Thinking)`
+- `GPT-OSS 120B (Medium)`
 
 ## Related pages
 

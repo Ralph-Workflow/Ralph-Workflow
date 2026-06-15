@@ -34,7 +34,7 @@ ARTIFACT_SUBMIT_CAPABILITY = "artifact.submit"
 # broader artifact.submit held by every drain.
 ARTIFACT_PLAN_WRITE_CAPABILITY = "artifact.plan_write"
 ENV_READ_CAPABILITY = "env.read"
-_COMPLETION_SENTINEL_RELPATHFMT = ".agent/completion_seen_{run_id}.json"
+COMPLETION_SENTINEL_RELPATHFMT = ".agent/completion_seen_{run_id}.json"
 
 
 def _timestamp() -> int:
@@ -72,7 +72,7 @@ def _write_completion_sentinel(
     """Write a run-scoped completion sentinel as best-effort evidence."""
     if workspace is None:
         return
-    sentinel_relpath = _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
+    sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
     sentinel_abspath = workspace.absolute_path(sentinel_relpath)
     sentinel_payload: dict[str, str] = {"run_id": run_id}
     payload = json.dumps(sentinel_payload, ensure_ascii=False)

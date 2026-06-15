@@ -31,7 +31,10 @@ from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
 from ralph.cli.commands.prompt_helper import run_prompt_helper
 from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
-from ralph.cli.commands.smoke import smoke_interactive_claude_command
+from ralph.cli.commands.smoke import (
+    smoke_interactive_agy_command,
+    smoke_interactive_claude_command,
+)
 from ralph.cli.commands.star import star
 from ralph.config.bootstrap import (
     ensure_global_config,
@@ -99,6 +102,12 @@ app = typer.Typer(
 )
 
 _typer_get_command = typer.main.get_command
+
+
+def _as_click_command(command: object) -> click.Command:
+    """Bridge across typer versions that expose different Command types."""
+    return cast("click.Command", command)
+
 
 
 def _get_cli_context() -> DisplayContext:
@@ -201,7 +210,7 @@ def _set_typer_testing_get_command(
 
 
 def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Command:
-    command = _typer_get_command(typer_instance)
+    command = _as_click_command(_typer_get_command(typer_instance))
     if typer_instance is app:
         original_main: _CommandMain = command.main
 
@@ -237,7 +246,7 @@ def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Comman
     return command
 
 
-typer.main.get_command = _get_command_with_optional_init
+object.__setattr__(typer.main, "get_command", _get_command_with_optional_init)
 _set_typer_testing_get_command(_get_command_with_optional_init)
 
 
@@ -794,6 +803,24 @@ def smoke_interactive_claude() -> None:
 
 
 app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
+
+
+def smoke_interactive_agy(
+    agent: str = typer.Option(
+        "agy/Claude Sonnet 4.6 (Thinking)",
+        help="AGY model alias to smoke (e.g. agy/Claude Sonnet 4.6 (Thinking)).",
+    ),
+) -> None:
+    """Run the manual PTY smoke test for Google Anti Gravity."""
+    raise typer.Exit(
+        code=smoke_interactive_agy_command(
+            agent_name=agent,
+            display_context=_get_cli_context(),
+        )
+    )
+
+
+app.command(name="smoke-interactive-agy")(smoke_interactive_agy)
 app.command()(star)
 
 

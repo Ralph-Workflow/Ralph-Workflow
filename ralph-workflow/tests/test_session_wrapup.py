@@ -399,6 +399,7 @@ def _build_bridge_with_server(
         inner,
         restart_fn=_restart_fn,
         restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
     )
 
 

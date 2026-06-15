@@ -60,6 +60,14 @@ def render_template(
         filters["split_items"] = split_loop_items
         globals_dict = environment.globals
         globals_dict["raise_error"] = _raise_template_error
+        # Macros imported via ``{% from %}`` do NOT see the calling template's
+        # local variables in Jinja2 — only the environment globals and the
+        # explicit macro args. Forward every caller-supplied variable as a
+        # global so macros (e.g. ``render_artifact_submission``) can
+        # reference variables like ``DECLARE_COMPLETE_TOOL_REFERENCE``
+        # without each call site having to thread the dict through.
+        for name, value in variables.items():
+            globals_dict[name] = value
 
         template = environment.get_template("__main__.j2")
         return template.render(**dict(variables))

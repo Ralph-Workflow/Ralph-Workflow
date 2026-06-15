@@ -6,23 +6,34 @@ This package converts raw stdout lines from an agent subprocess into structured
 Main entry points:
 
 - ``get_parser(parser_type)`` — factory function; maps a parser type name string
-  (``'claude'``, ``'codex'``, ``'gemini'``, ``'opencode'``, ``'generic'``) to the
-  corresponding parser instance. Raises ``ValueError`` for unknown names.
-- ``AgentParser`` — the protocol that all parsers implement; defines ``parse_line``.
-- ``AgentOutputLine`` — structured parse result (content, kind, raw text).
+  (``'claude'``, ``'claude_interactive'``, ``'codex'``, ``'gemini'``, ``'opencode'``,
+  ``'generic'``) to the corresponding parser instance. Raises ``ValueError`` for
+  unknown names.
+- ``AgentParser`` — the protocol that all parsers implement; defines ``parse``.
+- ``AgentOutputLine`` — structured parse result (``type``, ``content``, ``raw``,
+  ``metadata``).
 - ``ClaudeParser`` — parses Claude stream-JSON NDJSON output.
+- ``ClaudeInteractiveParser`` — parses interactive Claude transcript output.
 - ``CodexParser`` — parses Codex per-event JSON output.
 - ``GeminiParser`` — parses Gemini output.
 - ``OpenCodeParser`` — parses OpenCode NDJSON stream output.
 - ``GenericParser`` — fallback parser for unknown or plain-text agent output.
 
 Parser selection is driven by ``AgentConfig.json_parser`` (a ``JsonParserType`` enum
-value in ``ralph.config.enums``). The invocation engine calls ``get_parser()`` at the
-start of each agent run and feeds every stdout line through ``parser.parse_line()``.
+value in ``ralph.config.enums``) or, for agents registered via
+``register_agent_support()``, by the agent's command name when
+``json_parser == JsonParserType.GENERIC``. The runtime calls ``get_parser()`` with the
+resolved key and consumes normalized lines through ``parser.parse()``.
 
 To add a parser for a new agent transport, create a module in this package, implement
-``AgentParser``, and register the class in both ``get_parser()`` and ``__all__``.
+``AgentParser``, and register the class in both ``_PARSER_REGISTRY`` and ``__all__``.
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from ralph.config.enums import AgentTransport, JsonParserType
 
 from .agent_output_line import AgentOutputLine
 from .base import AgentParser
@@ -33,7 +44,14 @@ from .gemini import GeminiParser
 from .generic import GenericParser
 from .opencode import OpenCodeParser
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ralph.agents._contracts import StrategyFactory
+
 __all__ = [
+    "_CUSTOM_COMMAND_REGISTRY",
+    "_PARSER_REGISTRY",
     "AgentOutputLine",
     "AgentParser",
     "ClaudeInteractiveParser",
@@ -42,14 +60,107 @@ __all__ = [
     "GeminiParser",
     "GenericParser",
     "OpenCodeParser",
+    "resolve_parser_key",
 ]
 
 
-def get_parser(parser_type: str) -> AgentParser:
-    """Get parser instance by type name.
+class _ParserRegistryEntry:
+    """Parser factory bundled with the strategy factory registered alongside it.
+
+    Instances are callable so they can be stored directly in
+    ``_PARSER_REGISTRY`` without changing that dict's public shape.  The
+    bundled ``strategy_factory`` lets runtime resolution select the correct
+    strategy for a specific agent command, not just its transport.
+    """
+
+    __slots__ = ("parser_factory", "strategy_factory", "transport")
+
+    def __init__(
+        self,
+        parser_factory: Callable[[], AgentParser],
+        strategy_factory: StrategyFactory,
+        transport: AgentTransport,
+    ) -> None:
+        self.parser_factory = parser_factory
+        self.strategy_factory = strategy_factory
+        self.transport = transport
+
+    def __call__(self) -> AgentParser:
+        return self.parser_factory()
+
+
+# DEPRECATED: write-through state populated atomically by AgentCatalog.add().
+# New code should use ralph.agents.catalog.default_catalog() or construct an
+# AgentCatalog explicitly. The dicts will be removed in a future release.
+_PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
+    "claude": ClaudeParser,
+    "claude_interactive": ClaudeInteractiveParser,
+    "codex": CodexParser,
+    "gemini": GeminiParser,
+    "opencode": OpenCodeParser,
+    "generic": GenericParser,
+}
+
+# Custom agents registered via ``register_agent_support()`` are keyed here by
+# their full executable command string.  This keeps custom command names like
+# ``claude wrapper`` from colliding with built-in parser keys like ``claude``.
+# DEPRECATED: write-through state populated atomically by AgentCatalog.add().
+# New code should use ralph.agents.catalog.default_catalog() or construct an
+# AgentCatalog explicitly. The dicts will be removed in a future release.
+_CUSTOM_COMMAND_REGISTRY: dict[str, _ParserRegistryEntry] = {}
+
+
+def resolve_parser_key(
+    command: str,
+    json_parser: JsonParserType,
+    transport: AgentTransport | None = None,
+) -> str:
+    """Resolve the parser-type key for an agent configuration.
+
+    The resolution order matches the runtime lookup path:
+
+    1. Agents registered via ``register_agent_support()`` are keyed by their
+       command name.  When the command name is present in ``_PARSER_REGISTRY``
+       as a bundled entry and the registered transport matches ``transport``,
+       that command name is the key.  This lets custom interactive agents
+       override the built-in ``claude_interactive`` parser.
+    2. Built-in interactive Claude still falls back to the
+       ``claude_interactive`` parser when no registered entry matched.
+    3. When ``json_parser`` is ``JsonParserType.GENERIC`` and a built-in
+       parser is registered under the agent's command name, that command name
+       is the key.
+    4. Otherwise fall back to ``str(json_parser)``.
 
     Args:
-        parser_type: Parser type name (claude, codex, gemini, opencode, generic).
+        command: The agent's configured command string (e.g. ``"claude"``).
+        json_parser: The parser type token from the agent configuration.
+        transport: Optional transport enum; ``CLAUDE_INTERACTIVE`` is special-cased.
+
+    Returns:
+        A parser-type key suitable for :func:`get_parser`.
+    """
+    command_lower = command.lower() if command else ""
+    custom_entry = _CUSTOM_COMMAND_REGISTRY.get(command_lower)
+    if isinstance(custom_entry, _ParserRegistryEntry) and custom_entry.transport == transport:
+        return command_lower
+    if transport == AgentTransport.CLAUDE_INTERACTIVE:
+        return "claude_interactive"
+    command_name = command.split(maxsplit=1)[0].lower() if command else ""
+    if (
+        command_name
+        and command_name in _PARSER_REGISTRY
+        and json_parser == JsonParserType.GENERIC
+    ):
+        return command_name
+    return str(json_parser)
+
+
+def get_parser(parser_type: str) -> AgentParser:
+    """Get parser instance by type name or by a registered custom command.
+
+    Args:
+        parser_type: Parser type name (claude, codex, gemini, opencode, generic)
+            or the full executable command of a custom-registered agent.
 
     Returns:
         Parser instance implementing AgentParser protocol.
@@ -57,17 +168,11 @@ def get_parser(parser_type: str) -> AgentParser:
     Raises:
         ValueError: If parser type is unknown.
     """
-    parsers: dict[str, type[AgentParser]] = {
-        "claude": ClaudeParser,
-        "claude_interactive": ClaudeInteractiveParser,
-        "codex": CodexParser,
-        "gemini": GeminiParser,
-        "opencode": OpenCodeParser,
-        "generic": GenericParser,
-    }
-
-    parser_cls = parsers.get(parser_type.lower())
-    if parser_cls is None:
-        msg = f"Unknown parser type: {parser_type}"
-        raise ValueError(msg)
-    return parser_cls()
+    parser_cls = _PARSER_REGISTRY.get(parser_type.lower())
+    if parser_cls is not None:
+        return parser_cls()
+    custom_entry = _CUSTOM_COMMAND_REGISTRY.get(parser_type.lower())
+    if isinstance(custom_entry, _ParserRegistryEntry):
+        return custom_entry.parser_factory()
+    msg = f"Unknown parser type: {parser_type}"
+    raise ValueError(msg)

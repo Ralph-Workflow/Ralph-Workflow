@@ -12,11 +12,17 @@ module is the thin CLI surface (option setup, report rendering, exit codes).
 
 from __future__ import annotations
 
+import os
+import shlex
+import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
+from loguru import logger
 from rich.table import Table
 
 from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.parallel_display import resolve_active_display
@@ -26,23 +32,78 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _SMOKE_IDLE_TIMEOUT_SECONDS,
     _SMOKE_MAX_SESSION_SECONDS,
     _SMOKE_MAX_TURNS,
-    _SMOKE_OUTPUT_FILE,
-    _SMOKE_RELATIVE_DIR,
     SmokeRunResult,
+    _agy_binary_override_env,
     _build_smoke_prompt,
     _execute_smoke_turns,
+    resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
 from ralph.prompts.materialize import submit_artifact_tool_name_for_transport
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from ralph.config.models import UnifiedConfig
+    from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pro_support.hooks import ProPipelineHooks
 
 # Re-export plumbing symbols so existing tests can still reach them.
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
+
+
+def get_agy_binary_override() -> str:
+    """Return the AGY binary path, honoring ``RALPH_AGY_BINARY``."""
+    return _agy_binary_override_env() or "agy"
+
+
+def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
+    """Return a copy of ``agent_config`` that uses ``RALPH_AGY_BINARY`` when set.
+
+    Validates the override path and leaves ``agent_config`` unchanged when the
+    path is not executable or not a regular file, logging a WARNING in that
+    case.
+    """
+    override = _agy_binary_override_env()
+    if not override or agent_config.transport is not AgentTransport.AGY:
+        return agent_config
+    if shutil.which(override) is None and not (
+        Path(override).is_file() and os.access(override, os.X_OK)
+    ):
+        logger.warning(
+            "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
+            override,
+        )
+        return agent_config
+    logger.info("mock AGY binary in use: {}", override)
+    # Quote paths that contain spaces so downstream shlex.split keeps the
+    # binary path as a single argv token.
+    return agent_config.model_copy(update={"cmd": shlex.quote(override)})
+
+
+def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
+    """Return a config copy with AGY agents using ``RALPH_AGY_BINARY`` when set."""
+    override = _agy_binary_override_env()
+    if not override:
+        return config
+    if shutil.which(override) is None and not (
+        Path(override).is_file() and os.access(override, os.X_OK)
+    ):
+        logger.warning(
+            "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
+            override,
+        )
+        return config
+    # Quote paths that contain spaces so downstream shlex.split keeps the
+    # binary path as a single argv token.
+    quoted = shlex.quote(override)
+    new_agents: dict[str, AgentConfig] = {}
+    for name, agent_config in config.agents.items():
+        if agent_config.transport is AgentTransport.AGY:
+            new_agents[name] = agent_config.model_copy(update={"cmd": quoted})
+        else:
+            new_agents[name] = agent_config
+    return config.model_copy(update={"agents": new_agents})
+
 
 _INTERACTIVE_AGENT = "claude/haiku"
 _HEADLESS_SEMANTIC_GUIDE = (
@@ -60,6 +121,7 @@ __all__ = [
     "_execute_smoke_turns",
     "build_smoke_prompt",
     "render_smoke_report",
+    "smoke_interactive_agy_command",
     "smoke_interactive_claude_command",
 ]
 
@@ -67,10 +129,14 @@ __all__ = [
 build_smoke_prompt = _build_smoke_prompt
 
 
-def _render_smoke_report(results: list[SmokeRunResult]) -> str:
+def _render_smoke_report(
+    results: list[SmokeRunResult],
+    *,
+    agent_name: str = "claude",
+) -> str:
     """Render a human-readable parity report."""
     lines = [
-        "Interactive Claude parity smoke report",
+        f"{agent_name} parity smoke report",
         "",
         f"Headless semantic guide: {_HEADLESS_SEMANTIC_GUIDE}",
         "",
@@ -112,9 +178,14 @@ def _render_smoke_report(results: list[SmokeRunResult]) -> str:
     return "\n".join(lines).rstrip()
 
 
-def _render_smoke_table(results: list[SmokeRunResult], *, display_context: DisplayContext) -> None:
+def _render_smoke_table(
+    results: list[SmokeRunResult],
+    *,
+    display_context: DisplayContext,
+    agent_name: str = "claude",
+) -> None:
     display = resolve_active_display(None, display_context)
-    table = Table(title="Interactive Claude parity smoke test", show_lines=False)
+    table = Table(title=f"{agent_name} parity smoke test", show_lines=False)
     table.add_column("Agent")
     table.add_column("Transport")
     table.add_column("File")
@@ -138,41 +209,60 @@ def _render_smoke_table(results: list[SmokeRunResult], *, display_context: Displ
     display.emit_renderable(table)
     display.emit_info_panel(
         title="Detailed report",
-        content=_render_smoke_report(results),
+        content=_render_smoke_report(results, agent_name=agent_name),
     )
 
 
 render_smoke_report = _render_smoke_report
 
 
-def smoke_interactive_claude_command(
+def smoke_harness_agent_command(
+    agent_name: str,
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
     model_identity: MultimodalModelIdentity | None = None,
 ) -> int:
-    """Run a token-consuming manual parity smoke test for interactive Claude."""
+    """Run the interactive smoke harness for ``agent_name`` and report parity."""
     ctx = display_context if display_context is not None else make_display_context()
     workspace_scope = resolve_workspace_scope()
     workspace_root = workspace_scope.root
-    smoke_dir = workspace_root / _SMOKE_RELATIVE_DIR
+    spec = resolve_smoke_harness_spec(agent_name)
+    smoke_dir = workspace_root / spec.relative_dir
     smoke_dir.mkdir(parents=True, exist_ok=True)
-    prompt_file = workspace_root / _SMOKE_RELATIVE_DIR / "PROMPT.md"
-    output_file = workspace_root / _SMOKE_OUTPUT_FILE
+    prompt_file = workspace_root / spec.relative_dir / "PROMPT.md"
+    output_file = workspace_root / spec.output_file
 
     config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
     registry = AgentRegistry.from_config(config)
-    agent_config = registry.get(_INTERACTIVE_AGENT)
+    agent_config = registry.get(agent_name)
     if agent_config is None:
         raise RuntimeError(
-            f"Smoke test agent '{_INTERACTIVE_AGENT}' is unavailable in the registry"
+            f"Smoke test agent '{agent_name}' is unavailable in the registry"
         )
+
+    agy_override = _agy_binary_override_env()
+    if agy_override and agent_config.transport is AgentTransport.AGY:
+        logger.info(
+            "Using mock AGY binary at '{}' (RALPH_AGY_BINARY)",
+            agy_override,
+        )
+    agent_config = _maybe_apply_agy_binary_override(agent_config)
+    config = _apply_agy_binary_override_to_config(config)
+    # Dynamic agy/<model> aliases are resolved from builtins, not from
+    # config.agents, so inject the overridden config under the exact
+    # agent name to ensure RALPH_AGY_BINARY is honored.
+    if agy_override and agent_config.transport is AgentTransport.AGY:
+        overridden_agents = dict(config.agents)
+        overridden_agents[agent_name] = agent_config
+        config = config.model_copy(update={"agents": overridden_agents})
 
     submit_artifact_tool_name = submit_artifact_tool_name_for_transport(agent_config.transport)
     prompt_file.write_text(
         _build_smoke_prompt(
-            _SMOKE_OUTPUT_FILE.as_posix(),
+            spec.output_file.as_posix(),
             submit_artifact_tool_name=submit_artifact_tool_name,
+            transport=agent_config.transport,
         ),
         encoding="utf-8",
     )
@@ -187,12 +277,82 @@ def smoke_interactive_claude_command(
     result = run_smoke_plumbing(
         config=config,
         workspace_root=workspace_root,
-        agent_name=_INTERACTIVE_AGENT,
+        agent_name=agent_name,
         prompt_file=prompt_file,
         output_file=output_file,
         display_context=ctx,
         pipeline_deps=deps,
     )
 
-    _render_smoke_table([result], display_context=ctx)
-    return 0 if not result.errors else 1
+    _render_smoke_table([result], display_context=ctx, agent_name=agent_name)
+    exit_code = 0 if not result.errors else 1
+    print(f"EXIT_CODE={exit_code}")
+    return exit_code
+
+
+def smoke_interactive_claude_command(
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+) -> int:
+    """Run a token-consuming manual parity smoke test for interactive Claude."""
+    return smoke_harness_agent_command(
+        _INTERACTIVE_AGENT,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+    )
+
+
+def smoke_interactive_agy_command(
+    agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
+    *,
+    display_context: DisplayContext | None = None,
+    pro_hooks: ProPipelineHooks | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
+) -> int:
+    """Run the manual AGY end-to-end smoke harness via the PTY contract.
+
+    This drives the live ``agy`` binary. The default alias is the model that
+    currently works in this environment (``agy/Claude Sonnet 4.6 (Thinking)``);
+    use ``--agent`` to pin a different ``agy/<model>`` alias from ``agy models``.
+    """
+    agy_binary = get_agy_binary_override()
+    if shutil.which(agy_binary) is None and not (
+        Path(agy_binary).is_file() and os.access(agy_binary, os.X_OK)
+    ):
+        logger.error(
+            "agy binary not found at '{}'. Install Google Anti Gravity and "
+            "ensure `agy` is on PATH, or set RALPH_AGY_BINARY to a valid mock "
+            "binary for testing.",
+            agy_binary,
+        )
+        return 2
+
+    workspace_scope = resolve_workspace_scope()
+    config: UnifiedConfig = load_config(None, {}, workspace_scope=workspace_scope)
+    registry = AgentRegistry.from_config(config)
+    agent_config = registry.get(agent_name)
+    if agent_config is None:
+        logger.error(
+            "Agent '{}' is not available. Use --agent with an agy/<model> alias, "
+            "e.g. --agent 'agy/Claude Sonnet 4.6 (Thinking)'.",
+            agent_name,
+        )
+        return 2
+    if agent_config.transport is None or agent_config.transport != AgentTransport.AGY:
+        logger.error(
+            "Agent '{}' resolves to transport '{}', not AGY. "
+            "Use --agent with an agy/<model> alias.",
+            agent_name,
+            agent_config.transport.value if agent_config.transport else "None",
+        )
+        return 2
+
+    return smoke_harness_agent_command(
+        agent_name,
+        display_context=display_context,
+        pro_hooks=pro_hooks,
+        model_identity=model_identity,
+    )

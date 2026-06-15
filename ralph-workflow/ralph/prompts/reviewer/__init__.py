@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_ARTIFACT_TOOL
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
 from ralph.prompts.template_registry import (
@@ -9,6 +10,9 @@ from ralph.prompts.template_registry import (
     TemplateRegistry,
     packaged_template_root,
 )
+
+_SUBMIT_ARTIFACT_TOOL_REFERENCE = f"`{SUBMIT_ARTIFACT_TOOL}`"
+_DECLARE_COMPLETE_TOOL_REFERENCE = DECLARE_COMPLETE_TOOL
 
 __all__ = [
     "CHANGES_PLACEHOLDER",
@@ -64,6 +68,9 @@ def render_review_prompt(
                 "FIX_RESULT": "(no fix result available)",
                 "FIX_RESULT_PATH": "",
                 "LAST_RETRY_ERROR": "",
+                "SUBMIT_ARTIFACT_TOOL_REFERENCE": _SUBMIT_ARTIFACT_TOOL_REFERENCE,
+                "SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS": f"the tool named {SUBMIT_ARTIFACT_TOOL}",
+                "DECLARE_COMPLETE_TOOL_REFERENCE": _DECLARE_COMPLETE_TOOL_REFERENCE,
             },
             partials,
         )

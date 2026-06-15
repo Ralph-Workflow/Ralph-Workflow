@@ -52,7 +52,7 @@ from ralph.agents.invoke._direct_mcp_recovery import (
     default_direct_mcp_retry_limit,
     summarize_retry_failure_evidence,
 )
-from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
+from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
 from ralph.cli.commands._commit_agent_attempt import CommitAgentAttempt
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
 from ralph.config.enums import AgentTransport
@@ -65,6 +65,7 @@ from ralph.mcp.artifacts.commit_message import (
     normalize_commit_message_content,
     read_commit_message_artifact,
 )
+from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import RequiredArtifact, build_retry_hint
 from ralph.pipeline.effect_executor import execute_agent_effect
@@ -609,6 +610,14 @@ def _run_commit_agent_attempt_with_recovery(
         _commit_module, "delete_commit_message_artifacts", delete_commit_message_artifacts
     )
     delete_artifacts(attempt_context.repo_root)
+    # The commit run_id is fixed ("commit-plumbing") and reused across
+    # attempts so the receipt ↔ gate key stays stable. A receipt left
+    # over from a prior attempt would otherwise satisfy the gate's
+    # "already submitted → done" check on a fresh attempt whose agent
+    # never even ran, producing a false completion. Mirrors the AGY
+    # branch's per-attempt clear in :mod:`ralph.agents.invoke` so a
+    # retry that reuses ``run_id`` cannot inherit stale success state.
+    clear_run_receipts(attempt_context.repo_root, _COMMIT_RUN_ID)
 
     try:
         effect = InvokeAgentEffect(
@@ -652,7 +661,9 @@ def _run_commit_agent_attempt_with_recovery(
         )
         parsed_output, raw_lines, resume_session_id = collect_commit_agent_output(
             list(raw_output),
-            parser_type=str(agent.json_parser),
+            parser_type=resolve_parser_key(
+                agent.cmd, agent.json_parser, agent.transport
+            ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
             display_context=display_context,
@@ -847,7 +858,9 @@ def invoke_commit_agent_attempt(
     try:
         parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
             lines,
-            parser_type=str(agent.json_parser),
+            parser_type=resolve_parser_key(
+                agent.cmd, agent.json_parser, agent.transport
+            ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
             display_context=display_context,
@@ -1252,11 +1265,16 @@ def _start_commit_bridge(
         agents_policy=agents_policy,
         session_id_prefix="commit",
         model_identity=model_identity,
+        # BINDING: the session's run_id is the same value the completion
+        # gate reads from MCP_RUN_ID_ENV (threaded via _commit_bridge_env
+        # → bridge.run_id). Pre-fix this was None → uuid4() and the receipt
+        # was stamped under a value the gate could never find.
+        run_id=_COMMIT_RUN_ID,
     )
 
 
 def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:
-    return bridge_env_for(bridge, run_id_label=_COMMIT_RUN_ID)
+    return bridge_env_for(bridge)
 
 
 # Module-level alias so the test-patch surface in

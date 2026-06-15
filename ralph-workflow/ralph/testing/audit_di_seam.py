@@ -122,6 +122,16 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # is non-deterministic enough that injecting it would add no test
     # value.
     "pipeline/runner.py:804",
+    # pipeline/plumbing/smoke_plumbing.py - RALPH_AGY_BINARY is the
+    # composition-root seam that lets tests and mock binaries inject a
+    # different AGY executable without changing config files. The single
+    # ambient read is isolated to ``_agy_binary_override_env``; all other
+    # smoke-plumbing helpers receive the value through call signatures, and
+    # production agent invocation below this level receives the resolved
+    # command through AgentConfig.
+    "pipeline/plumbing/smoke_plumbing.py:435",
+    # os.environ.get(RALPH_AGY_BINARY) in _agy_binary_override_env
+    "pipeline/plumbing/smoke_plumbing.py:446",
 )
 
 # Top-level entry points and the config package — the composition root for

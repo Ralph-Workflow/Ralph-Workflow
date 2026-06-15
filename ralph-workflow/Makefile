@@ -75,19 +75,19 @@ test:
 	$(RUN_PYTHON) -m ralph.test_suites
 
 test-unit:
-	$(RUN_PYTHON) -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e"
+	$(RUN_PYTHON) -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e and not smoke"
 
 test-integration:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke"
 
 test-subprocess-e2e:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m subprocess_e2e
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "subprocess_e2e and not smoke"
 
 coverage: test-cov
 
 test-cov:
 	rm -f .coverage.pytest .coverage.pytest.*
-	uv run python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e" --cov=ralph --cov-report=
+	uv run python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke" --cov=ralph --cov-report=
 	uv run coverage report --data-file=.coverage.pytest --fail-under=80
 
 # Linting
@@ -202,6 +202,8 @@ verify-drift:
 	    | grep -v "files/operations.py" \
 	    | grep -v "agents/invoke/__init__.py" \
 	    | grep -v "agents/invoke/_commands.py" \
+	    | grep -v "agents/invoke/_command_builders/" \
+	    | grep -v "agents/invoke/_runtime_resolvers/" \
 	    | grep -v "mcp/artifacts/product_spec.py" \
 	    | grep -v "mcp/server/_in_memory_transport.py" \
 	    | grep -v "mcp/server/_fallback_http_handler.py" \

@@ -7,18 +7,19 @@ from typing import TYPE_CHECKING
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveTranscriptParser
 
-from ._helpers import _check_signals_terminal
+from ._completion_mixin import CompletionEnforcingStrategy
 from .agent_execution_state import AgentExecutionState
 from .claude_execution_strategy import ClaudeExecutionStrategy
 
 if TYPE_CHECKING:
-    from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.liveness import LivenessProbe
 
     from ._live_descendant_handle import _LiveDescendantHandle
 
 
-class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
+class ClaudeInteractiveExecutionStrategy(
+    CompletionEnforcingStrategy, ClaudeExecutionStrategy
+):
     """Interactive Claude session strategy.
 
     Uses a VT-aware transcript parser before falling back to the headless Claude
@@ -26,7 +27,8 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
     lines into generic output.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, **kwargs: object) -> None:
+        del kwargs
         self._transcript_parser = ClaudeInteractiveTranscriptParser()
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
@@ -66,9 +68,6 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
             return None
         return super().classify_activity_line(line)
 
-    def supports_session_continuation(self) -> bool:
-        return True
-
     def classify_quiet(
         self,
         handle: _LiveDescendantHandle,
@@ -77,13 +76,5 @@ class ClaudeInteractiveExecutionStrategy(ClaudeExecutionStrategy):
         del handle, liveness_probe
         return AgentExecutionState.ACTIVE
 
-    def classify_exit(
-        self,
-        handle: _LiveDescendantHandle,
-        completion_signals: CompletionSignals,
-        liveness_probe: LivenessProbe | None = None,
-    ) -> AgentExecutionState:
-        del handle, liveness_probe
-        if _check_signals_terminal(completion_signals):
-            return AgentExecutionState.TERMINAL_COMPLETE
-        return AgentExecutionState.RESUMABLE_CONTINUE
+    def supports_session_continuation(self) -> bool:
+        return True

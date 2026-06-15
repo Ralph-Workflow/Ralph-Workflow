@@ -12,6 +12,11 @@ from ralph.mcp.artifacts._artifact_persistence import (
     DEFAULT_ARTIFACT_PERSISTENCE,
     ArtifactPersistence,
 )
+from ralph.mcp.artifacts.canonical_submit import (
+    SubmitResult,
+    promote_fallback_artifact,
+    submit_artifact_canonical,
+)
 from ralph.mcp.artifacts.store import (
     Artifact,
     ArtifactExistsError,
@@ -34,9 +39,12 @@ __all__ = [
     "ArtifactPersistence",
     "ArtifactSubmitOptions",
     "ArtifactUpdateOptions",
+    "SubmitResult",
     "delete_artifact",
     "get_artifact",
     "list_artifacts",
+    "promote_fallback_artifact",
     "submit_artifact",
+    "submit_artifact_canonical",
     "update_artifact",
 ]

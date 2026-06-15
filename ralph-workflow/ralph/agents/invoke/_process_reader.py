@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shlex
 import subprocess
 import sys
 import threading
@@ -23,7 +24,11 @@ from ralph.agents.idle_watchdog import (
     WatchdogFireReason,
     WatchdogVerdict,
 )
-from ralph.agents.invoke._completion import _check_process_result, _CompletionCheckOptions
+from ralph.agents.invoke._completion import (
+    _check_process_result,
+    _CompletionCheckOptions,
+    completion_run_id_from_extra_env,
+)
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -82,7 +87,7 @@ _TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
 
 
 def _agent_command_name(config: AgentConfig) -> str:
-    return config.cmd.split()[0]
+    return shlex.split(config.cmd)[0]
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -570,6 +575,7 @@ def _run_subprocess_and_read_lines(
                 required_artifact=ctx.required_artifact,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
+                completion_run_id=completion_run_id_from_extra_env(ctx.extra_env),
                 evaluate_completion_fn=ctx.evaluate_completion_fn,
             ),
             _clock=clock,

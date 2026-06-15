@@ -31,7 +31,7 @@ Ralph acts as an **MCP server** when advertising tools to connected AI agents.
 | `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show` |
 | `exec.py` | `handle_exec_command`, `run_command` — bounded subprocess execution routed through the reusable sandbox pool; `_build_effective_deps` captures the thread-owned sink from `session.current_thread_tool_output_sink()` once at dispatch and wires it into `on_output_chunk` for SSE streaming |
 | `exec_sandbox.py` | `ExecSandboxManager` — lock-free bounded round-robin sandbox pool: per-workspace `_next_slot_index` counter selects slot `(counter % max_slots) + 1` without filesystem locks; `_active_slots` set prevents capacity recovery from deleting live slots; cleanup runs only when `base_dir > max_total_bytes` (capacity-gated, never under budget) |
-| `artifact.py` | `handle_submit_artifact`, `handle_submit_plan_section`, `handle_finalize_plan`, etc. |
+| `artifact.py` | `handle_submit_artifact`, `handle_submit_plan_section`, `handle_finalize_plan`, etc. (canonical contract: `docs/agents/artifact-submission-contract.md`) |
 | `coordination.py` | `handle_report_progress`, `handle_declare_complete`, `handle_coordinate`, `handle_read_env` |
 | `websearch.py` | `handle_web_search` |
 
@@ -313,7 +313,7 @@ The following table lists the canonical import path for each public symbol:
 | `handle_read_file`, `handle_write_file`, etc. | `from ralph.mcp.tools.workspace import ...` |
 | `handle_git_status`, `handle_git_diff`, etc. | `from ralph.mcp.tools.git_read import ...` |
 | `handle_exec_command` | `from ralph.mcp.tools.exec import ...` |
-| `handle_submit_artifact`, `handle_submit_plan_section`, etc. | `from ralph.mcp.tools.artifact import ...` |
+| `handle_submit_artifact`, `handle_submit_plan_section`, etc. | `from ralph.mcp.tools.artifact import ...` (canonical contract: `docs/agents/artifact-submission-contract.md`) |
 | `handle_report_progress`, `handle_declare_complete`, etc. | `from ralph.mcp.tools.coordination import ...` |
 | `handle_web_search` | `from ralph.mcp.tools.websearch import ...` |
 | `HttpUpstreamClient`, `StdioUpstreamClient`, `make_upstream_client` | `from ralph.mcp.upstream.client import ...` |

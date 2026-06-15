@@ -55,7 +55,7 @@ def test_run_test_suites_runs_single_budgeted_verification_command(
         "--dist",
         "worksteal",
         "-m",
-        "not subprocess_e2e",
+        "not subprocess_e2e and not smoke",
     )
     runner = StubRunner({command: _result(command)})
 
@@ -91,7 +91,7 @@ def test_run_test_suites_returns_non_zero_exit_code(
         "--dist",
         "worksteal",
         "-m",
-        "not subprocess_e2e",
+        "not subprocess_e2e and not smoke",
     )
     runner = StubRunner({command: _result(command, returncode=2)})
 

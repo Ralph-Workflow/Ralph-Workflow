@@ -58,6 +58,46 @@ The PATH column in the Agents table should show `on PATH` in green.
 - Use WSL2 or a POSIX-compatible environment on Windows.
 - Or route the phase to another headless transport such as Codex, OpenCode, or Nanocoder.
 
+## AGY transport end-to-end smoke
+
+**Symptom:** You want to verify that the AGY transport is wired correctly from Ralph Workflow through the live `agy` binary.
+
+**Fix:**
+
+- Run the canonical AGY smoke test on Linux or macOS:
+
+```bash
+python -m ralph smoke-interactive-agy
+```
+
+The parity table reports five acceptance signals:
+
+| Column | Green means |
+|--------|-------------|
+| File | `tmp/interactive-agy-smoke/todo-list.js` was created |
+| Session | A session ID was observed in the transcript |
+| Parser events | The transcript produced parseable events (Claude parity only) |
+| Tool activity | Tool-use/tool-result signals or the artifact's `headless_guide_checks` were observed |
+| Artifact | The `smoke_test_result` artifact was submitted |
+
+A red column in File, Tool activity, or Artifact indicates a Ralph Workflow regression. The Session and Parser events columns may show `missing`/`0` on AGY headless `--print` runs: AGY does not emit a session ID or parser-friendly stdout stream in `--print` mode (verified in `tmp/agy-live-transcript.txt`). Because AGY's headless `--print` mode does not reliably call Ralph Workflow's streamable-HTTP MCP tools, the smoke prompt instructs AGY to write the `smoke_test_result` artifact directly to `.agent/artifacts/smoke_test_result.json`; tool activity is then inferred from that artifact. The rationale for removing the non-functional `session_flag` from the builtin AGY config is recorded in `ralph-workflow/CHANGELOG.md` under the 'Google Anti Gravity (AGY) is now a first-class supported agent path' entry.
+
+If AGY exits 0 but the parity table reports no file, no artifact, and the `Breaks` column contains `AGY --print returned empty stdout: ...`, the upstream `agy` binary itself produced no stdout. The smoke detector reads `~/.gemini/antigravity-cli/cli.log` and reports the measured root cause in the `Breaks` column. The most common upstream conditions are an individual API quota exhausted error (`429 RESOURCE_EXHAUSTED`), whose diagnostic names the reset window, or an unrecognized model ID. Lowercased or slashed slugs such as `agy/gemini-3.5-flash-low` are not accepted by AGY v1.0.8; use the exact display names from `agy models`. The eight canonical names are `Gemini 3.5 Flash (Medium)`, `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Low)`, `Gemini 3.1 Pro (Low)`, `Gemini 3.1 Pro (High)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`. See `tmp/agy-source-of-truth.txt` for the current measured wire format. These are upstream AGY conditions, not Ralph Workflow regressions; wait for the quota reset or use a recognized model alias. Use `--agent agy/<model>` to pin a different model alias.
+
+### Distinguishing live-quota failure from mock-quota output
+
+#### Live binary re-measured (2026-06-15)
+
+The live `agy` v1.0.8 binary was re-measured on 2026-06-15T13:32:29Z. The upstream source URLs were re-fetched and confirmed (CHANGELOG, README, release tag 1.0.8, issue #76, cli-using docs, cli-reference docs). The local binary was probed with the canonical Ralph Workflow flag order `agy --dangerously-skip-permissions --model 'Claude Sonnet 4.6 (Thinking)' --print 'Reply with exactly the word: hello'` and returned stdout `hello` (exit 0). The `~/.gemini/antigravity-cli/cli.log` shows no `RESOURCE_EXHAUSTED (429)` condition — quota has fully reset. A live `python -m ralph smoke-interactive-agy` run captured to `tmp/smoke-interactive-agy-run.log` reports file=yes, tool activity=yes, artifact=yes, breaks=none. See `tmp/agy-source-of-truth.txt` sections `=== UPSTREAM SOURCE RE-VALIDATION (2026-06-15T13:32:29Z) ===` and `=== LOCAL RE-MEASUREMENT (2026-06-15T13:32:29Z) ===`.
+
+When running with `RALPH_AGY_BINARY` set (for example to the deterministic mock at `tests/_support/mock_agy.sh` for CI), an empty stdout with `MOCK_AGY_BEHAVIOR=quota_exhausted` is expected and reported as an informational break, not as the live upstream quota diagnostic. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`. To verify the harness itself, run the mock without that variable:
+
+```bash
+RALPH_AGY_BINARY=tests/_support/mock_agy.sh python -m ralph smoke-interactive-agy
+```
+
+This should report file=yes, artifact=yes, and no upstream-quota break.
+
 ## MCP servers fail to start
 
 **Symptom:** `ralph --check-mcp` or `ralph --diagnose` reports MCP server errors.

@@ -285,6 +285,10 @@ def test_opencode_upstream_env_var_includes_mcp_toml_server(
     monkeypatch.setattr("ralph.agents.invoke._start_workspace_monitor", lambda *_a, **_k: None)
     monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
 
+    sentinel = tmp_path / ".agent" / "completion_seen_test.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{}', encoding="utf-8")
+
     list(
         invoke_agent(
             config,
@@ -378,7 +382,8 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
-    config_path = tmp_path / ".agents" / "mcp_config.json"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config_path = tmp_path / ".gemini" / "antigravity-cli" / "mcp_config.json"
     endpoint = "http://127.0.0.1:9999/mcp"
     config_at_launch: list[dict[str, object]] = []
     env_at_launch: list[dict[str, str]] = []
@@ -487,6 +492,10 @@ def test_opencode_non_colliding_native_server_preserved(
             }
         ),
     )
+
+    sentinel = tmp_path / ".agent" / "completion_seen_test.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{}', encoding="utf-8")
 
     list(
         invoke_agent(

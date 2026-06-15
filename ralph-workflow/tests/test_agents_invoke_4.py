@@ -87,6 +87,9 @@ def _run_agy_transport_proxy_payload_check(
 
     monkeypatch.setattr("ralph.agents.invoke.run_pty_and_read_lines", fake_run_pty_agy)
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
+    sentinel = tmp_path / ".agent" / "completion_seen_test.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{"run_id": "test"}', encoding="utf-8")
     agy_config_dir = fake_home / ".gemini" / "antigravity-cli"
     agy_config_dir.mkdir(parents=True)
     (agy_config_dir / "mcp_config.json").write_text(
@@ -498,6 +501,9 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
+    sentinel = tmp_path / ".agent" / "completion_seen_test.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{"run_id": "test"}', encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_env: list[dict[str, str]] = []
 
@@ -674,6 +680,9 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
+    sentinel = tmp_path / ".agent" / "completion_seen_test.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{"run_id": "test"}', encoding="utf-8")
 
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
     seen_envs: dict[str, dict[str, str]] = {}

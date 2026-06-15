@@ -169,7 +169,11 @@ class TestOptionalArtifactCompletion:
         )
 
         def _fake_evaluate_completion(
-            workspace: object, raw_output: object, *, required_artifact: object = None
+            workspace: object,
+            raw_output: object,
+            *,
+            required_artifact: object = None,
+            run_id: object = None,
         ) -> object:
             return CompletionSignals(False, False, ())
 

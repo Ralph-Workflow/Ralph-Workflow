@@ -27,6 +27,7 @@ from ralph.mcp.artifacts.plan import (
     PLAN_DRAFT_PATH,
 )
 from ralph.mcp.tools.names import (
+    DECLARE_COMPLETE_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     claude_tool_name,
     claude_tool_name_prefix,
@@ -577,6 +578,8 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
             "description": unit.description,
             "allowed_directories": json.dumps(unit.allowed_directories, indent=2),
             "base_prompt": base_prompt,
+            "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{SUBMIT_ARTIFACT_TOOL}`",
+            "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
         },
         context.partials,
     )

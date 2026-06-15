@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import sys
 from pathlib import Path
 
@@ -33,7 +34,7 @@ def test_claude_interactive_pty_runtime_behaves_like_tty_session(tmp_path: Path)
     prompt_file.write_text("Ship the PTY runtime.", encoding="utf-8")
     fixture = Path(__file__).resolve().parents[1] / "fixtures" / "fake_claude_interactive_pty.py"
     config = AgentConfig(
-        cmd=f"{sys.executable} {fixture}",
+        cmd=f"{shlex.quote(sys.executable)} {shlex.quote(str(fixture))}",
         output_flag=None,
         yolo_flag=None,
         json_parser=JsonParserType.CLAUDE,

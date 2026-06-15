@@ -1503,10 +1503,24 @@ ralph.mcp.artifacts.bridge
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.canonical_submit
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.canonical_submit
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts.commit_message
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.mcp.artifacts.commit_message
+   :members:
+   :show-inheritance:
+
+ralph.mcp.artifacts.completion_receipts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.completion_receipts
    :members:
    :show-inheritance:
 
@@ -3074,6 +3088,13 @@ ralph.testing.pytest_timeout_plugin
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.pytest_timeout_plugin
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_artifact_submission_canonical_path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_artifact_submission_canonical_path
    :members:
    :show-inheritance:
 
