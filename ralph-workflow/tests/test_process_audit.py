@@ -57,7 +57,7 @@ TESTS_ALLOWLIST: set[str] = {
     # spawns python -O to verify size-limit import-time invariants
     "test_plan_artifact_size_limits.py",
     "test_mock_agy_binary.py",  # black-box subprocess tests for the deterministic AGY mock
-    "test_agy_plumbing_contract.py",  # contract tests for AGY smoke plumbing
+    "test_agy_plumbing_mock.py",  # contract tests for AGY smoke plumbing
     "test_monitor.py",  # live psutil process-tree black-box coverage needs a real subprocess
     "test_teardown.py",  # live process-subtree teardown black-box coverage needs a real subprocess
     "test_e2e_activity_aware.py",  # e2e watchdog coverage needs real subprocesses

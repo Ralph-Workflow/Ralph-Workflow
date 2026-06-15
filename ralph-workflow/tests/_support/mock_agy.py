@@ -122,7 +122,8 @@ def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
     print("Writing smoke_test_result artifact ...")
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"
-    print(f"Task declared complete: session_id={session_id}")
+    print(f"Session ID: {session_id}")
+    print("Task declared complete:")
 
 
 def main(argv: list[str] | None = None) -> int:

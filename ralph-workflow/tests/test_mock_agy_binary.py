@@ -51,8 +51,8 @@ def test_mock_normal_prints_and_writes_artifact(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert result.stdout.strip()
     lines = result.stdout.strip().splitlines()
-    assert lines[-1].startswith("Task declared complete:")
-    assert "session_id=interactive-agy-smoke-" in lines[-1]
+    assert lines[-1] == "Task declared complete:"
+    assert any(line.startswith("Session ID: interactive-agy-smoke-") for line in lines)
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.exists()
 
