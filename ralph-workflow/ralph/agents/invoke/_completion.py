@@ -212,6 +212,7 @@ def _check_process_result(
             ),
         )
         _log_invocation_exit(exc)
+        _teardown_subtree_if_pid_available(handle)
         raise exc
 
     opts = check_options
@@ -312,6 +313,7 @@ def _check_process_result(
             handle, signals, liveness_probe=opts.liveness_probe
         )
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+            _teardown_subtree_if_pid_available(handle)
             raise AgentInvocationError(
                 agent_name,
                 0,

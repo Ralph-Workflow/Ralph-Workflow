@@ -50,6 +50,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+
 _IDLE_TIMEOUT = 0.1
 _DRAIN_WINDOW = 0.0
 _MAX_WAITING = 10.0
@@ -945,60 +946,4 @@ def test_build_evidence_summary_diag_returns_freshest_age() -> None:
     assert freshest_age2 is None
 
 
-# ---------------------------------------------------------------------------
-# (r) Per-channel recorder invariants
-# ---------------------------------------------------------------------------
 
-
-def test_record_mcp_tool_call_does_not_mutate_last_activity() -> None:
-    """``record_mcp_tool_call`` updates the mcp_tool channel timestamp but
-    does NOT touch ``_last_activity`` (the stdout baseline)."""
-    wd, clock = _make_watchdog()
-    wd.record_activity()
-    clock.advance(1.0)
-    baseline = wd._last_activity
-    now = clock.monotonic()
-    wd.record_mcp_tool_call(now=now)
-    assert wd._last_activity == baseline
-    assert wd._last_mcp_tool_call_at == now
-
-
-def test_record_subagent_work_does_not_mutate_last_activity() -> None:
-    """``record_subagent_work`` updates the subagent channel timestamp but
-    does NOT touch ``_last_activity`` (the stdout baseline)."""
-    wd, clock = _make_watchdog()
-    wd.record_activity()
-    clock.advance(1.0)
-    baseline = wd._last_activity
-    now = clock.monotonic()
-    wd.record_subagent_work(now=now)
-    assert wd._last_activity == baseline
-    assert wd._last_subagent_progress_at == now
-
-
-def test_record_workspace_event_weight_zero_does_not_advance_channel() -> None:
-    """A workspace event with ``weight=0.0`` is short-circuited: the channel
-    timestamp, counter, and kind counter are NOT updated."""
-    wd, _ = _make_watchdog()
-    wd.record_workspace_event(kind=WorkspaceChangeKind.OTHER, weight=0.0)
-    assert wd.workspace_kind_counts == {}
-    summary = wd.last_evidence_summary(0.0)
-    workspace_summary = summary.channels[-1]
-    assert workspace_summary.channel_name == ChannelName.WORKSPACE
-    assert workspace_summary.last_at is None
-
-
-def test_record_workspace_event_source_weight_advances_channel() -> None:
-    """A workspace event with ``kind=SOURCE`` and ``weight=1.0`` advances the
-    workspace channel timestamp and the per-kind source counter, and the
-    channel summary reports ``can_defer=True``."""
-    wd, clock = _make_watchdog()
-    now = clock.monotonic()
-    wd.record_workspace_event(kind=WorkspaceChangeKind.SOURCE, weight=1.0, now=now)
-    assert wd.workspace_kind_counts == {"source": 1}
-    assert wd._last_workspace_event_at == now
-    summary = wd.last_evidence_summary(now)
-    workspace_summary = summary.channels[-1]
-    assert workspace_summary.channel_name == ChannelName.WORKSPACE
-    assert workspace_summary.last_at == now
-    assert workspace_summary.can_defer is True

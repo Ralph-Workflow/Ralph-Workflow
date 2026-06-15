@@ -4,11 +4,19 @@ Ensures that every subagent spawned by a host process is reaped when a phase,
 iteration, or session ends. The teardown walks the entire process tree (all
 descendants, transitively) and escalates from SIGTERM to SIGKILL after a short
 grace window.
+
+When the host process has already exited, the descendants are reaped by
+signaling the host's process group (the host is the session leader because
+agents are spawned with ``start_new_session=True``). This closes the race where
+a dead host PID can no longer be enumerated with psutil but its children still
+exist.
 """
 
 from __future__ import annotations
 
 import contextlib
+import os
+import signal
 import time
 from typing import Protocol, runtime_checkable
 
@@ -51,6 +59,11 @@ class DefaultProcessTeardown:
         try:
             host = psutil.Process(host_pid)
         except psutil.Error:
+            # The host already exited. Because agents are spawned with
+            # ``start_new_session=True``, the host PID is also the process
+            # group ID. Signal the group so any descendants that outlived
+            # the session leader are reaped.
+            self._signal_process_group(host_pid)
             return
 
         procs: list[psutil.Process] = []
@@ -89,6 +102,29 @@ class DefaultProcessTeardown:
                     proc.kill()
             except psutil.Error:
                 pass
+
+    def _signal_process_group(self, pgid: int) -> None:
+        """Escalate from SIGTERM to SIGKILL for every process in ``pgid``.
+
+        The call is best-effort and silently ignores missing or empty groups.
+        """
+        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+            os.killpg(pgid, signal.SIGTERM)
+
+        deadline = time.monotonic() + (self._kill_escalation_ms / 1000.0)
+        while time.monotonic() < deadline:
+            try:
+                # When the group no longer exists, the kernel raises
+                # ProcessLookupError and we are done.
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return
+            except (PermissionError, OSError):
+                return
+            time.sleep(0.05)
+
+        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+            os.killpg(pgid, signal.SIGKILL)
 
 
 def teardown_subtree(

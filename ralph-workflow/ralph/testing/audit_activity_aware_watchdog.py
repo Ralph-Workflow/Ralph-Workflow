@@ -15,6 +15,8 @@ in the wiring that keeps the watchdog activity-aware:
     method).
   * ``teardown_subtree`` must be called on every fire path after
     ``self._handle.terminate``.
+  * ``teardown_subtree`` (or ``_teardown_subtree_if_pid_available``) must be
+    called on every error/crash path that raises ``AgentInvocationError``.
   * ``DefaultProcessMonitor`` must be constructed with injected
     ``role_classifier=``, ``discovery_strategy=``, and
     ``subagent_pid_source=``, and ``role_classifier=`` must come from
@@ -307,6 +309,7 @@ class _ModuleVisitor(ast.NodeVisitor):
         if not self._has_set_subagent_sink:
             self._add("subagent_sink", 1)
         self._scan_function_bodies_for_teardown()
+        self._scan_function_bodies_for_error_path_teardown()
 
     def _scan_function_bodies_for_teardown(self) -> None:
         """Flag any function body that terminates without teardown_subtree."""
@@ -328,6 +331,62 @@ class _ModuleVisitor(ast.NodeVisitor):
             if not has_teardown:
                 first_line = terminate_calls[0].lineno
                 self._add("teardown_subtree", first_line)
+
+    def _scan_function_bodies_for_error_path_teardown(self) -> None:
+        """Flag any function body that raises AgentInvocationError without teardown.
+
+        The error/crash paths in ``ralph/agents/invoke/_completion.py`` raise
+        ``AgentInvocationError`` when the host process exits abnormally or
+        without required completion evidence. Just like the watchdog fire path
+        that calls ``self._handle.terminate``, these error paths must reap the
+        entire process subtree so subagents never outlive the phase. This
+        detector catches regressions where a new ``raise AgentInvocationError``
+        is added without also calling ``teardown_subtree`` or the
+        ``_teardown_subtree_if_pid_available`` helper.
+        """
+        tree = self._tree if self._tree is not None else ast.parse(self.source)
+        for func in ast.walk(tree):
+            if not isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            raise_nodes = [
+                node
+                for node in ast.walk(func)
+                if isinstance(node, ast.Raise) and self._is_agent_invocation_error_raise(node)
+            ]
+            if not raise_nodes:
+                continue
+            has_teardown = any(
+                isinstance(node, ast.Call) and self._is_teardown_call(node)
+                for node in ast.walk(func)
+            )
+            if not has_teardown:
+                first_line = raise_nodes[0].lineno
+                self._add("error_path_teardown", first_line)
+
+    def _is_agent_invocation_error_raise(self, node: ast.Raise) -> bool:
+        """Return True when ``node`` is ``raise AgentInvocationError(...)``.
+
+        Accepts either a direct ``AgentInvocationError`` name or a dotted
+        attribute such as ``_errors.AgentInvocationError``.
+        """
+        exc = node.exc
+        if exc is None:
+            return False
+        if isinstance(exc, ast.Call):
+            name = _func_call_name(exc)
+            if name is None:
+                return False
+            return name == "AgentInvocationError" or name.endswith(".AgentInvocationError")
+        # ``raise AgentInvocationError`` without parentheses (rare).
+        name = _dotted_name(exc)
+        if name is None:
+            return False
+        return name == "AgentInvocationError" or name.endswith(".AgentInvocationError")
+
+    def _is_teardown_call(self, node: ast.Call) -> bool:
+        """Return True for ``teardown_subtree(...)`` or its helper."""
+        name = _func_call_name(node)
+        return name in {"teardown_subtree", "_teardown_subtree_if_pid_available"}
 
     def _constructs_idle_watchdog(self) -> bool:
         """Return True if this file contains any ``IdleWatchdog(...)`` call."""
@@ -403,7 +462,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Fix the wiring: pass process_monitor= to IdleWatchdog, wire "
             "set_active_sink/set_subagent_sink, bind WorkspaceMonitor.set_on_event "
             "with a 2-arg (kind, weight) forwarding lambda, call teardown_subtree "
-            "after self._handle.terminate, and construct DefaultProcessMonitor with "
+            "after self._handle.terminate, call teardown_subtree (or "
+            "_teardown_subtree_if_pid_available) before raise AgentInvocationError "
+            "on error/crash paths, and construct DefaultProcessMonitor with "
             "role_classifier=role_classifier_for_transport(...), discovery_strategy=, "
             "and subagent_pid_source=."
         )

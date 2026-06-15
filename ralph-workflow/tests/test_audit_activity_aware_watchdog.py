@@ -3,7 +3,7 @@
 The activity-aware watchdog audit
 (``ralph.testing.audit_activity_aware_watchdog``) is the gate that makes
 the subagent/tool-visibility contract from PROMPT.md a hard fail. It
-locks six invariants:
+locks seven invariants:
 
   * ``IdleWatchdog`` is constructed with ``process_monitor=``.
   * ``set_active_sink`` is wired after watchdog construction.
@@ -12,6 +12,8 @@ locks six invariants:
     callable (not the legacy 0-arg bound method).
   * ``teardown_subtree`` is called on every fire path after
     ``self._handle.terminate``.
+  * ``teardown_subtree`` (or ``_teardown_subtree_if_pid_available``) is
+    called on every error/crash path that raises ``AgentInvocationError``.
   * ``DefaultProcessMonitor`` is constructed with injected
     ``role_classifier=``, ``discovery_strategy=``, and
     ``subagent_pid_source=``, and the role classifier comes from
@@ -357,3 +359,42 @@ def test_audit_teardown_subtree_allowlisted_when_present(tmp_path: Path) -> None
     assert teardown_violations == [], (
         f"expected no teardown_subtree violation, got {teardown_violations}"
     )
+
+
+def _completion_source_with_missing_error_path_teardown() -> str:
+    return (
+        "from ralph.agents.idle_watchdog import IdleWatchdog\n"
+        "from ralph.agents.invoke._errors import AgentInvocationError\n"
+        "from ralph.agents.timeout_clock import FakeClock\n"
+        "\n"
+        "class Reader:\n"
+        "    def read_lines(self):\n"
+        "        watchdog = IdleWatchdog(\n"
+        "            self._policy, FakeClock(), process_monitor=None\n"
+        "        )\n"
+        "        yield 'x'\n"
+        "\n"
+        "def _check_process_result(handle, agent_name):\n"
+        "    returncode = int(handle.returncode or 0)\n"
+        "    if returncode != 0:\n"
+        "        raise AgentInvocationError(agent_name, returncode, 'stderr')\n"
+    )
+
+
+def test_audit_flags_completion_error_path_missing_teardown(tmp_path: Path) -> None:
+    """A function in an invoke file that raises ``AgentInvocationError``
+    without calling ``teardown_subtree`` (or the helper) is flagged as
+    ``error_path_teardown``."""
+    package_root = _write_fake_package(tmp_path)
+    bad_module = package_root / "ralph" / "agents" / "invoke" / "_completion.py"
+    bad_module.write_text(
+        _completion_source_with_missing_error_path_teardown(), encoding="utf-8"
+    )
+
+    violations = audit.audit_activity_aware_watchdog(package_root)
+
+    assert violations, "expected an error_path_teardown violation"
+    categories = {v.category for v in violations}
+    assert "error_path_teardown" in categories, f"got {categories}"
+    paths = {v.file_path for v in violations}
+    assert "ralph/agents/invoke/_completion.py" in paths, f"got {paths}"
