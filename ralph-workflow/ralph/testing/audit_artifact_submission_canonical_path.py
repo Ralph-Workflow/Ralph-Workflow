@@ -104,11 +104,13 @@ _FORBIDDEN_PATH_PATTERNS: tuple[tuple[str, str, str], ...] = (
 )
 
 # Lower-level functions that may only be called from allowlisted sites.
+# ``submit_artifact`` matches both ``store.submit_artifact(...)`` and the
+# directly-imported ``submit_artifact(...)`` form used by bridge.py.
 _FORBIDDEN_CALLS: tuple[tuple[str, str, str], ...] = (
     (
-        "store.submit_artifact",
+        "submit_artifact",
         "store_submit_artifact",
-        "call to store.submit_artifact outside canonical submit",
+        "call to submit_artifact (store helper) outside canonical submit",
     ),
     (
         "write_artifact_receipt",
@@ -298,6 +300,83 @@ def _line_in_canonical_block(source_lines: list[str], lineno: int) -> bool:
     return False
 
 
+def _finding_from_path_match(
+    match: tuple[str, str] | None,
+    rel_path: str,
+    lineno: int,
+) -> BypassFinding | None:
+    """Return a finding from a forbidden-path match, or None."""
+    if match is None:
+        return None
+    category, detail = match
+    return BypassFinding(
+        file_path=rel_path,
+        line=lineno,
+        category=category,
+        detail=detail,
+    )
+
+
+def _find_write_text_finding(
+    node: ast.Call,
+    rel_path: str,
+    lineno: int,
+) -> BypassFinding | None:
+    """Check a ``write_text`` call for forbidden paths."""
+    candidates: list[ast.expr] = []
+    if node.args:
+        candidates.append(node.args[0])
+    if isinstance(node.func, ast.Attribute):
+        candidates.append(node.func.value)
+    for path_expr in candidates:
+        finding = _finding_from_path_match(
+            _path_matches_forbidden(path_expr), rel_path, lineno
+        )
+        if finding is not None:
+            return finding
+    return None
+
+
+def _find_open_finding(
+    node: ast.Call,
+    rel_path: str,
+    lineno: int,
+) -> BypassFinding | None:
+    """Check an ``open`` call for forbidden paths."""
+    if not node.args:
+        return None
+    return _finding_from_path_match(
+        _path_matches_forbidden(node.args[0]), rel_path, lineno
+    )
+
+
+def _find_forbidden_call_finding(
+    node: ast.Call,
+    rel_path: str,
+    lineno: int,
+) -> BypassFinding | None:
+    """Check a function call for forbidden lower-level helpers."""
+    match = _is_forbidden_function_call(node)
+    return _finding_from_path_match(match, rel_path, lineno)
+
+
+def _process_call_node(
+    node: ast.Call,
+    rel_path: str,
+    source_lines: list[str],
+) -> BypassFinding | None:
+    """Inspect a single AST call node and return any bypass finding."""
+    lineno: int = node.lineno if isinstance(node.lineno, int) else 0
+    if _line_in_canonical_block(source_lines, lineno):
+        return None
+
+    if _is_write_text_call(node):
+        return _find_write_text_finding(node, rel_path, lineno)
+    if _is_open_call(node):
+        return _find_open_finding(node, rel_path, lineno)
+    return _find_forbidden_call_finding(node, rel_path, lineno)
+
+
 def audit_file(file_path: Path, rel_path: str) -> list[BypassFinding]:
     """Audit a single Python file for canonical-path bypasses."""
     findings: list[BypassFinding] = []
@@ -316,61 +395,9 @@ def audit_file(file_path: Path, rel_path: str) -> list[BypassFinding]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-
-        lineno: int = node.lineno if isinstance(node.lineno, int) else 0
-        if _line_in_canonical_block(source_lines, lineno):
-            continue
-
-        if _is_write_text_call(node):
-            # ``backend.write_text(path, ...)`` carries the path in args[0];
-            # ``Path(path).write_text(...)`` carries it in func.value. Check both
-            # so pathlib-style direct writes are caught as well.
-            candidates: list[ast.expr] = []
-            if node.args:
-                candidates.append(node.args[0])
-            if isinstance(node.func, ast.Attribute):
-                candidates.append(node.func.value)
-            for path_expr in candidates:
-                match = _path_matches_forbidden(path_expr)
-                if match is not None:
-                    category, detail = match
-                    findings.append(
-                        BypassFinding(
-                            file_path=rel_path,
-                            line=lineno,
-                            category=category,
-                            detail=detail,
-                        )
-                    )
-                    break
-            continue
-
-        if _is_open_call(node):
-            if node.args:
-                match = _path_matches_forbidden(node.args[0])
-                if match is not None:
-                    category, detail = match
-                    findings.append(
-                        BypassFinding(
-                            file_path=rel_path,
-                            line=lineno,
-                            category=category,
-                            detail=detail,
-                        )
-                    )
-            continue
-
-        match = _is_forbidden_function_call(node)
-        if match is not None:
-            category, detail = match
-            findings.append(
-                BypassFinding(
-                    file_path=rel_path,
-                    line=lineno,
-                    category=category,
-                    detail=detail,
-                )
-            )
+        finding = _process_call_node(node, rel_path, source_lines)
+        if finding is not None:
+            findings.append(finding)
 
     return findings
 

@@ -37,6 +37,9 @@ class _ToolsArtifactModule(Protocol):
         *,
         deps: ArtifactHandlerDeps,
         run_id: str | None = ...,
+        name: str | None = ...,
+        overwrite: bool = ...,
+        metadata: dict[str, object] | None = ...,
     ) -> list[SubmitOp]: ...
 
     def execute_ops_with_rollback(self, ops: list[SubmitOp]) -> None: ...
@@ -106,6 +109,9 @@ def submit_artifact_canonical(
     *,
     deps: ArtifactHandlerDeps | None = None,
     run_id: str | None = None,
+    name: str | None = None,
+    overwrite: bool = True,
+    metadata: dict[str, object] | None = None,
 ) -> SubmitResult:
     """Submit an artifact through the canonical, receipt-stamping path.
 
@@ -120,6 +126,9 @@ def submit_artifact_canonical(
         parsed_content: Normalized artifact payload dictionary.
         deps: Injectable dependencies; defaults to ``DEFAULT_ARTIFACT_HANDLER_DEPS``.
         run_id: Run identifier used as the receipt/sentinel key.
+        name: Optional artifact filename stem; defaults to ``artifact_type``.
+        overwrite: Whether to overwrite an existing artifact file.
+        metadata: Optional metadata dictionary for the artifact envelope.
 
     Returns:
         A frozen :class:`SubmitResult` describing the files that were written.
@@ -135,11 +144,14 @@ def submit_artifact_canonical(
         parsed_content,
         deps=resolved_deps,
         run_id=run_id,
+        name=name,
+        overwrite=overwrite,
+        metadata=metadata,
     )
     tools_artifact.execute_ops_with_rollback(ops)
 
     backend = resolved_deps.backend
-    candidate_artifact = artifact_dir / f"{artifact_type}.json"
+    candidate_artifact = artifact_dir / f"{name or artifact_type}.json"
     artifact_path: Path | None = (
         candidate_artifact if backend.exists(candidate_artifact) else None
     )

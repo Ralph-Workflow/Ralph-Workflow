@@ -1295,6 +1295,9 @@ def submit_ops_for_artifact(
     *,
     deps: ArtifactHandlerDeps,
     run_id: str | None = None,
+    name: str | None = None,
+    overwrite: bool = True,
+    metadata: dict[str, object] | None = None,
 ) -> list[SubmitOp]:
     """Return the ordered (op, undo) pairs for a complete artifact submit.
 
@@ -1317,14 +1320,19 @@ def submit_ops_for_artifact(
             )
         )
 
-    _options = ArtifactSubmitOptions(overwrite=True, persistence=deps.artifact_persistence)
+    _options = ArtifactSubmitOptions(
+        overwrite=overwrite,
+        persistence=deps.artifact_persistence,
+        metadata=metadata,
+    )
     _at = artifact_type
+    _name = name or _at
     _content2 = parsed_content
     ops.append(
         SubmitOp(
             run=lambda: submit_artifact(
                 artifact_dir,
-                name=_at,
+                name=_name,
                 artifact_type=_at,
                 content=_content2,
                 options=_options,

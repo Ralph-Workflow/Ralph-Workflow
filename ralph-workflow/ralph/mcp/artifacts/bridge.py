@@ -6,25 +6,28 @@ Exposes tools for agent interactions, artifact submission, and state queries.
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.mcp.artifacts._artifact_persistence import ArtifactPersistence
 from ralph.mcp.artifacts._bridge_artifact_deps import BridgeArtifactDeps
 from ralph.mcp.artifacts._bridge_config import BridgeConfig
 from ralph.mcp.artifacts._bridge_error import BridgeError
 from ralph.mcp.artifacts._mcp_tool import MCPTool
+from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 from ralph.mcp.artifacts.store import (
     ArtifactExistsError,
     ArtifactNotFoundError,
-    ArtifactSubmitOptions,
     get_artifact,
     list_artifacts,
-    submit_artifact,
 )
 from ralph.mcp.protocol.transport import MCPMessage, StdioTransport
 
 if TYPE_CHECKING:
+    from ralph.mcp.tools.artifact import ArtifactHandlerDeps
 
     class _ToolHandler(Protocol):
         """Protocol for MCP tool handler callables."""
@@ -123,17 +126,36 @@ class MCPBridge:
             Artifact submission result.
         """
         try:
-            artifact = submit_artifact(
-                self._config.artifact_dir,
-                name,
-                artifact_type,
-                content,
-                ArtifactSubmitOptions(
-                    metadata=metadata,
-                    persistence=self._config.artifact_deps.persistence,
+            bridge_deps = self._config.artifact_deps
+            deps = cast(
+                "ArtifactHandlerDeps",
+                SimpleNamespace(
+                    backend=bridge_deps.backend,
+                    now_iso=bridge_deps.now_iso,
+                    history_enabled=False,
+                    artifact_persistence=ArtifactPersistence(
+                        backend=bridge_deps.backend,
+                        now_iso=bridge_deps.now_iso,
+                    ),
                 ),
             )
-            return {"success": True, "artifact": artifact.to_dict()}
+            result = submit_artifact_canonical(
+                workspace_root=self._config.workspace_root,
+                artifact_type=artifact_type,
+                parsed_content=content,
+                deps=deps,
+                run_id=self._config.run_id,
+                name=name,
+                overwrite=False,
+                metadata=metadata,
+            )
+            if result.artifact_path is None:
+                return {"success": False, "error": "Artifact submission failed"}
+            raw = self._config.artifact_deps.backend.read_text(
+                result.artifact_path, encoding="utf-8"
+            )
+            artifact_data = cast("dict[str, object]", json.loads(raw))
+            return {"success": True, "artifact": artifact_data}
         except ArtifactExistsError as exc:
             return {"success": False, "error": str(exc)}
 
