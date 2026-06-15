@@ -11,6 +11,7 @@ Use these first, in this order:
 1. `PROMPT.md`
 2. `ralph-workflow/CONTRIBUTING.md`
 3. `docs/agents/verification.md`
+3.5. `docs/agents/artifact-submission-contract.md`
 4. `ralph-workflow/README.md`
 5. Python source and docstrings under `ralph-workflow/ralph/`
 

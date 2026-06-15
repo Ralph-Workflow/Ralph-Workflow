@@ -86,6 +86,9 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
     ("heartbeat", "PLC0415"),
+    ("canonical_submit", "PLC0415"),  # lazy import avoids cycle with tools.artifact
+    ("artifact", "PLC0415"),  # lazy import avoids cycle with canonical_submit
+    ("completion_signals", "PLC0415"),  # lazy import avoids cycle with invoke->tools
     ("pydantic_validation_errors", "PLR0911"),  # exhaustive error-type dispatch
     ("commit_plumbing", "UP047"),
     ("claude_interactive_transcript_parser", "PLR0911"),

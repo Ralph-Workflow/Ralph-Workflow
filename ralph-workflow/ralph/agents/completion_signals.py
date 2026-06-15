@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.mcp.tools.artifact import ArtifactHandlerDeps
     from ralph.phases.required_artifacts import RequiredArtifact
 
 from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
@@ -109,6 +110,34 @@ def _artifact_is_schema_valid(artifact_path: Path) -> bool:
         return False
 
 
+def is_artifact_submitted(
+    workspace: Path,
+    run_id: str,
+    artifact_type: str,
+    *,
+    deps: ArtifactHandlerDeps | None = None,
+) -> bool:
+    """Return True when a canonical receipt exists or can be promoted from fallback.
+
+    This is the completion-signal layer's single entry point for artifact
+    presence. It first checks for a receipt; if none exists it attempts to
+    promote a fallback file written by the agent (``.agent/tmp/<type>.json`` or
+    ``.agent/artifacts/<type>.json``) through the canonical submit path so a
+    receipt is stamped.
+    """
+    if artifact_receipt_present(workspace, run_id, artifact_type):
+        return True
+    # Local import avoids a circular dependency: canonical_submit imports
+    # ArtifactHandlerDeps from tools.artifact at runtime, and tools.artifact
+    # imports this module's evaluate_completion indirectly via invoke.
+    from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
+        promote_fallback_artifact,
+    )
+
+    result = promote_fallback_artifact(workspace, artifact_type, deps=deps, run_id=run_id)
+    return result is not None and result.receipt_path is not None
+
+
 def evaluate_completion(
     workspace: Path,
     raw_output: list[str] | None = None,
@@ -146,7 +175,7 @@ def evaluate_completion(
     # A run-scoped submission receipt is authoritative proof the artifact was
     # persisted, independent of where it landed; fall back to the on-disk path
     # check only when no receipt is available (e.g. run_id not threaded).
-    present = artifact_receipt_present(workspace, run_id, ra.artifact_type) if (
+    present = is_artifact_submitted(workspace, run_id, ra.artifact_type) if (
         run_id is not None
     ) else False
     present = present or _artifact_is_schema_valid(artifact_path)
@@ -163,4 +192,5 @@ __all__ = [
     "CompletionSignals",
     "evaluate_completion",
     "extract_explicit_completion",
+    "is_artifact_submitted",
 ]

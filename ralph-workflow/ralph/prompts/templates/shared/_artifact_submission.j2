@@ -26,10 +26,10 @@
 **DO STEPS 1-5 IN ORDER. SKIPPING STEP 5 = SILENT FAILURE = GATE RETRIES FOREVER.**
 
 1. **Read the format doc** at `.agent/artifact-formats/{{ artifact_type }}.md`
-   (or `artifact_formats_index.md` if absent). Do NOT guess the schema.
+   (or `artifact_formats_index.md`). Do NOT guess.
 
 2. **Build the inner payload object** (e.g. for `commit_message`:
-   `{{ example_payload }}`). This is the `content` in step 3.
+   `{{ example_payload }}`). This becomes `content`.
 
 3. **Call {{ submit_tool_reference }}** with this exact shape (`content`
    is a JSON STRING — escape inner quotes):
@@ -38,28 +38,27 @@
    {"artifact_type": "{{ artifact_type }}", "content": "<JSON string of the inner payload>"}
    ```
 
-4. **Wait for the tool result.** Success starts with
-   `Artifact submitted: <type>`. That text is NOT your completion signal.
+4. **Wait for the tool result.** Success text starts with
+   `Artifact submitted:`; that is NOT completion.
 
 5. **>>> CALL `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}` AS YOUR FINAL ACTION. <<<**
 
-   The gate's completion signal. Optional param `summary` (string).
+   The gate's completion signal. Optional `summary` param.
    Example: `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}(summary="commit_message")`.
-   You may echo a single short line AFTER, but the MCP call is the
-   contract. The run is NOT complete until declare_complete is observed.
+   You may echo one short line AFTER, but the MCP call is the contract.
 
 6. **If submit-artifact MCP tool is unavailable**, write the raw inner
    payload JSON to `.agent/tmp/{{ artifact_type }}.json` via `write_file`
-   (no outer envelope, do NOT wrap it in an outer envelope).
-   STILL call `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}` as the last action.
+   (no outer envelope). STILL call `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}`
+   as the last action. Ralph Workflow detects this fallback file at
+   completion-check time and stamps a canonical receipt, so it is equivalent
+   to a successful submit_artifact call.
 
 ## Do NOT
 
-- **Stop after step 3 or step 4 without calling
-  `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}`.** Submit success text is
-  NOT the gate's completion signal.
-- Send `artifact_type="commit"` or `"skip"` — use canonical
-  `{{ artifact_type }}`.
-- Wrap the inner payload in `{"type":..., "content":...}` in the fallback file.
+- **Stop after step 3 or step 4.** Submit success text is NOT completion.
+- Send `artifact_type="commit"` or `"skip"` — use canonical `{{ artifact_type }}`.
+- Wrap the fallback file in `{"type":..., "content":...}`; do not wrap
+  the inner payload in an outer envelope. Use the bare inner payload.
 - Echo the payload as your ONLY action — the MCP declare_complete call is the contract.
 {%- endmacro %}

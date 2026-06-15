@@ -227,23 +227,25 @@ def handle_submit_artifact(
         backend=resolved_deps.backend,
     )
 
-    artifact_dir = _resolve_artifact_dir(session, workspace)
     history_enabled = _resolve_history_enabled(artifact_type, workspace_root, drain)
     effective_deps = ArtifactHandlerDeps(
         backend=resolved_deps.backend,
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
     )
-    execute_ops_with_rollback(
-        submit_ops_for_artifact(
-            artifact_type,
-            workspace_root,
-            artifact_dir,
-            parsed_content,
-            deps=effective_deps,
-            run_id=_session_run_id(session),
-        )
+    # === BEGIN CANONICAL SUBMIT OPS ===
+    from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
+        submit_artifact_canonical,
     )
+
+    submit_artifact_canonical(
+        workspace_root=workspace_root,
+        artifact_type=artifact_type,
+        parsed_content=parsed_content,
+        deps=effective_deps,
+        run_id=_session_run_id(session),
+    )
+    # === END CANONICAL SUBMIT OPS ===
 
     # Post-submission verification: development_result artifacts require status="completed"
     # or status="partial" (from instructions). If status is neither, surface a verification
@@ -377,16 +379,19 @@ def handle_finalize_plan(
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
     )
-    execute_ops_with_rollback(
-        submit_ops_for_artifact(
-            PLAN_ARTIFACT_TYPE,
-            workspace_root,
-            artifact_dir,
-            normalized,
-            deps=effective_deps,
-            run_id=_session_run_id(session),
-        )
+    # === BEGIN CANONICAL SUBMIT OPS ===
+    from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
+        submit_artifact_canonical,
     )
+
+    submit_artifact_canonical(
+        workspace_root=workspace_root,
+        artifact_type=PLAN_ARTIFACT_TYPE,
+        parsed_content=normalized,
+        deps=effective_deps,
+        run_id=_session_run_id(session),
+    )
+    # === END CANONICAL SUBMIT OPS ===
 
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {PLAN_ARTIFACT_TYPE}")],
@@ -1281,6 +1286,7 @@ def _raise_format_doc_error(
     raise InvalidParamsError(msg) from original_exc
 
 
+# === BEGIN CANONICAL SUBMIT OPS ===
 def submit_ops_for_artifact(
     artifact_type: str,
     workspace_root: Path,
@@ -1415,6 +1421,7 @@ def submit_ops_for_artifact(
         ops.append(SubmitOp(run=_run_write_sentinel, undo=_undo_write_sentinel))
 
     return ops
+# === END CANONICAL SUBMIT OPS ===
 
 
 __all__ = [

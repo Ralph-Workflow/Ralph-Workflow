@@ -174,6 +174,9 @@ def _build_smoke_prompt(
         # streamable-HTTP MCP tools, but it can write files directly. We
         # therefore instruct it to persist the smoke_test_result artifact as a
         # file and emit the same completion marker the smoke detector watches.
+        # The completion-signal layer auto-promotes this direct write to a
+        # canonical receipt at completion-check time, so the AGY branch still
+        # satisfies the same single-source-of-truth contract as the MCP path.
         artifact_path = ".agent/artifacts/smoke_test_result.json"
         artifact_wrapper = (
             '{\n'

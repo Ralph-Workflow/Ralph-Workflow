@@ -19,6 +19,7 @@ make verify
 5. Typecheck bypass audit (`ralph/testing/audit_typecheck_bypass.py`) — detects non-compliant type:ignore, mypy config weakening (including `disable_error_code`)
 6. Policy audit (`ralph/testing/audit_test_policy.py`) — detects slow test patterns, I/O in tests (including `os.system` and `os.popen` subprocess calls)
 7. Bounded-subprocess audit (`ralph/testing/audit_mcp_timeout.py`) — enforces the bounded-subprocess contract (below)
+8. Artifact-submission canonical-path audit (`ralph/testing/audit_artifact_submission_canonical_path.py`) — enforces the single-writer contract for artifact submission (see `docs/agents/artifact-submission-contract.md`)
 
 ### Bounded-subprocess contract — every MCP and git operation is bounded
 
