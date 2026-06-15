@@ -384,6 +384,13 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
     artifact_path.unlink(missing_ok=True)
 
 
+def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_ID) -> bool:
+    """Return whether a smoke test result artifact was submitted via canonical path."""
+    return is_artifact_submitted(
+        workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE
+    )
+
+
 def _explicit_completion_seen(
     lines: list[str],
     workspace_root: Path,
@@ -585,9 +592,7 @@ def _run_smoke_agent(
     if not meaningful_output_lines:
         meaningful_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
 
-    artifact_submitted = is_artifact_submitted(
-        params.workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE
-    )
+    artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
 
     errors = _detect_smoke_errors(
         params,

@@ -158,11 +158,10 @@ ralph/evil.py:42: [ARTIFACT-BYPASS] receipt_write: direct write to .agent/receip
 ## Adding a new canonical artifact type
 
 1. Add the type to ``_KNOWN_ARTIFACT_TYPES`` in
-   ``ralph/mcp/tools/artifact.py``.
-2. Add the type to ``_CANONICAL_TYPES`` in
-   ``ralph/testing/audit_artifact_submission_canonical_path.py``.
-3. Add a format doc under ``ralph/mcp/artifacts/format_docs/``.
-4. If the type needs custom layout logic, add it in a type-specific module
+   ``ralph/mcp/tools/artifact.py``. The audit's ``_CANONICAL_TYPES`` is
+   derived from this set via import, so no separate audit update is needed.
+2. Add a format doc under ``ralph/mcp/artifacts/format_docs/``.
+3. If the type needs custom layout logic, add it in a type-specific module
    under ``ralph/mcp/artifacts/`` and add the module path to
    ``_FILE_ALLOWLIST`` in the audit.
 
@@ -194,7 +193,7 @@ ensures every allowlisted module actually exists on disk; a renamed or deleted
 layout module causes an immediate import failure rather than a silent audit
 gap.
 
-Every invariant is tested in ``test_audit_artifact_submission_canonical_types_sync.py``
+Every invariant is tested in ``test_audit_artifact_submission_canonical_path.py``
 under normal ``python`` execution and under ``python -O`` to confirm immunity
 to optimization stripping.
 

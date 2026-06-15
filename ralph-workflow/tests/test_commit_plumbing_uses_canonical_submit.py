@@ -8,8 +8,39 @@ through the MCP tool handle_submit_artifact. No direct writes to
 from __future__ import annotations
 
 import ast
+import importlib
+import json
 import re
+from collections import deque
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from ralph.agents.completion_signals import is_artifact_submitted
+from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import make_display_context
+from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_TYPE
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+from ralph.mcp.tools.artifact import handle_submit_artifact
+from ralph.pipeline.events import PipelineEvent
+from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
+
+if TYPE_CHECKING:
+    import types
+
+    from _pytest.monkeypatch import MonkeyPatch
+
+
+def _plumbing_module() -> types.ModuleType:
+    """Lazily resolve commit_plumbing to avoid circular import.
+
+    The cycle is: commit_plumbing imports ralph.cli.commands.commit,
+    which imports commit_plumbing. Resolving lazily (after the first
+    import_module call) unwinds the cycle cleanly.
+    """
+    importlib.import_module("ralph.cli.commands.commit")
+    return importlib.import_module("ralph.pipeline.plumbing.commit_plumbing")
 
 
 def test_commit_plumbing_never_directly_writes_receipt_or_sentinel() -> None:
@@ -144,3 +175,175 @@ def test_commit_plumbing_uses_only_allowlisted_delete() -> None:
         assert (
             not matches
         ), f"Found direct delete to protected path matching {pattern}: {matches}"
+
+
+
+class _CommitSession:
+    session_id = "sess-commit"
+    run_id = "commit-plumbing"
+    drain = "commit"
+
+    def check_capability(self, capability: str) -> object:
+        del capability
+        return "approved"
+
+
+def _make_attempt_context(
+    tmp_path: Path,
+) -> CommitAttemptContext:
+    return CommitAttemptContext(
+        repo_root=tmp_path,
+        verbose=False,
+        extra_env={},
+        general_config=None,
+        bridge=None,
+    )
+
+
+def _make_agent() -> AgentConfig:
+    return AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        can_commit=False,
+        json_parser="claude",
+        transport=AgentTransport.CLAUDE,
+    )
+
+
+def test_commit_plumbing_attempt_stamps_receipt_and_sentinel(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A commit attempt that calls handle_submit_artifact stamps receipt and sentinel."""
+
+    def _fake_execute_agent_effect(
+        effect: object,
+        config: UnifiedConfig,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            raw_sink.append('{"type":"session","session_id":"sess-commit"}')
+            raw_sink.append('{"type":"tool_use","tool":"submit_artifact"}')
+            raw_sink.append('{"type":"tool_result","tool":"submit_artifact"}')
+            raw_sink.append("Task declared complete: commit done")
+        rendered_sink = kwargs.get("rendered_output_sink")
+        if isinstance(rendered_sink, deque):
+            rendered_sink.append("tool_use: submit_artifact")
+            rendered_sink.append("tool_result: submit_artifact")
+        handle_submit_artifact(
+            _CommitSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": COMMIT_MESSAGE_TYPE,
+                "content": json.dumps({
+                    "type": "commit",
+                    "subject": "fix(plumbing): test commit",
+                    "body": "test",
+                }),
+            },
+        )
+        return PipelineEvent.AGENT_SUCCESS
+
+    plumbing = _plumbing_module()
+    monkeypatch.setattr(
+        plumbing,
+        "execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    attempt_ctx = _make_attempt_context(tmp_path)
+    agent = _make_agent()
+    display_ctx = make_display_context()
+
+    _, session_id, error = plumbing._run_commit_agent_attempt_with_recovery(
+        agent_name="test-agent",
+        agent=agent,
+        prompt_file=str(tmp_path / "PROMPT.md"),
+        attempt_context=attempt_ctx,
+        display_context=display_ctx,
+        max_retries=1,
+        pipeline_deps=None,
+    )
+
+    assert error is None, f"Commit attempt raised: {error}"
+    assert session_id is not None
+    assert artifact_receipt_present(
+        tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE
+    ), "Canonical receipt not found after commit attempt"
+    assert is_artifact_submitted(
+        tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE
+    ), "is_artifact_submitted returned False after canonical submission"
+
+
+def test_commit_plumbing_attempt_uses_default_backend_when_not_injected(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A commit attempt without a custom backend injection still succeeds.
+
+    This verifies that the plumbing works with the default ArtifactHandlerDeps
+    (DEFAULT_ARTIFACT_HANDLER_DEPS) rather than requiring an injected backend.
+    """
+
+    def _fake_execute_agent_effect(
+        effect: object,
+        config: UnifiedConfig,
+        pipeline_deps: object,
+        workspace_scope: object,
+        **kwargs: object,
+    ) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            raw_sink.append('{"type":"session","session_id":"sess-commit"}')
+            raw_sink.append('{"type":"tool_use","tool":"submit_artifact"}')
+            raw_sink.append('{"type":"tool_result","tool":"submit_artifact"}')
+            raw_sink.append("Task declared complete: commit done")
+        rendered_sink = kwargs.get("rendered_output_sink")
+        if isinstance(rendered_sink, deque):
+            rendered_sink.append("tool_use: submit_artifact")
+            rendered_sink.append("tool_result: submit_artifact")
+        handle_submit_artifact(
+            _CommitSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": COMMIT_MESSAGE_TYPE,
+                "content": json.dumps({
+                    "type": "commit",
+                    "subject": "fix(plumbing): test commit",
+                    "body": "test body",
+                }),
+            },
+        )
+        return PipelineEvent.AGENT_SUCCESS
+
+    plumbing = _plumbing_module()
+    monkeypatch.setattr(
+        plumbing,
+        "execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    attempt_ctx = _make_attempt_context(tmp_path)
+    agent = _make_agent()
+    display_ctx = make_display_context()
+
+    _, _, error = plumbing._run_commit_agent_attempt_with_recovery(
+        agent_name="test-agent",
+        agent=agent,
+        prompt_file=str(tmp_path / "PROMPT.md"),
+        attempt_context=attempt_ctx,
+        display_context=display_ctx,
+        max_retries=1,
+        pipeline_deps=None,
+    )
+
+    assert error is None
+    assert artifact_receipt_present(
+        tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE
+    )
+    assert is_artifact_submitted(
+        tmp_path, plumbing._COMMIT_RUN_ID, COMMIT_MESSAGE_TYPE
+    )

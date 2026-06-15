@@ -8,16 +8,15 @@ pin the detection rules and the allow-list behavior.
 
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
-
-import pytest
 
 from ralph.mcp.tools.artifact import _KNOWN_ARTIFACT_TYPES
 from ralph.testing.audit_artifact_submission_canonical_path import (
     _CANONICAL_TYPES,
-    _assert_invariants,
     audit,
     audit_file,
     main,
@@ -293,87 +292,180 @@ def test_main_returns_nonzero_when_bypass_exists(tmp_path: Path) -> None:
 # =============================================================================
 
 
-def test_audit_invariants_fire_when_canonical_types_is_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        "ralph.testing.audit_artifact_submission_canonical_path._CANONICAL_TYPES",
-        frozenset(),
+def _get_audit_module_path() -> str:
+    """Return the absolute path to ralph/testing/audit_artifact_submission_canonical_path.py."""
+    test_dir = Path(__file__).parent
+    return str(
+        test_dir.parent / "ralph" / "testing" / "audit_artifact_submission_canonical_path.py"
     )
-    with pytest.raises(RuntimeError, match="_CANONICAL_TYPES must not be empty"):
-        _assert_invariants()
 
 
-def test_audit_invariants_fire_when_required_canonical_type_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    missing = frozenset(t for t in _CANONICAL_TYPES if t != "commit_message")
-    monkeypatch.setattr(
-        "ralph.testing.audit_artifact_submission_canonical_path._CANONICAL_TYPES",
-        missing,
+def _run_patched_audit_import(
+    patch_pattern: str, patch_replacement: str, *, minus_o: bool = False
+) -> subprocess.CompletedProcess[str]:
+    """Run a subprocess that patches the audit module and imports it.
+
+    Creates a temporary copy of the audit module with the given pattern
+    replaced, then tries to import it. Returns the subprocess result.
+    """
+    audit_path = _get_audit_module_path()
+    repo_root = str(Path(audit_path).parent.parent.parent)
+    original = Path(audit_path).read_text(encoding="utf-8")
+
+    # Also patch _AUDIT_MODULE_ROOT so the patched module finds files correctly
+    patched = original.replace(
+        "_AUDIT_MODULE_ROOT = Path(__file__).parent.parent.parent",
+        f"_AUDIT_MODULE_ROOT = Path({repo_root!r})",
     )
-    with pytest.raises(
-        RuntimeError, match="_CANONICAL_TYPES must contain 'commit_message'"
-    ):
-        _assert_invariants()
+
+    # Apply the user-provided patch
+    patched = patched.replace(patch_pattern, patch_replacement)
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", prefix="audit_patched_", delete=False
+    ) as f:
+        f.write(patched)
+        f.flush()
+        tmp_path = f.name
+
+    try:
+        # Create a runner script that imports the patched audit module
+        runner = (
+            "import sys\n"
+            f"sys.path.insert(0, {repo_root!r})\n"
+            f"import importlib.util\n"
+            f"spec = importlib.util.spec_from_file_location(\n"
+            f"    'ralph.testing.audit_artifact_submission_canonical_path',\n"
+            f"    {tmp_path!r})\n"
+            f"mod = importlib.util.module_from_spec(spec)\n"
+            f"spec.loader.exec_module(mod)\n"
+            "print('OK')\n"
+        )
+
+        cmd = [sys.executable]
+        if minus_o:
+            cmd.append("-O")
+        cmd.extend(["-c", runner])
+
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=repo_root,
+            check=False,
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            Path(tmp_path).unlink()
 
 
-def test_audit_invariants_fire_when_file_allowlist_is_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        "ralph.testing.audit_artifact_submission_canonical_path._FILE_ALLOWLIST",
-        frozenset(),
+# --- Positive: clean import works ---
+
+
+def test_audit_invariants_import_clean_via_subprocess() -> None:
+    """Importing audit module with correct constants should succeed."""
+    result = _run_patched_audit_import(
+        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
     )
-    with pytest.raises(RuntimeError, match="_FILE_ALLOWLIST must not be empty"):
-        _assert_invariants()
-
-
-def test_audit_invariants_fire_when_allowlist_file_missing(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    fake_root = tmp_path / "nonexistent"
-    monkeypatch.setattr(
-        "ralph.testing.audit_artifact_submission_canonical_path._AUDIT_MODULE_ROOT",
-        fake_root,
+    assert result.returncode == 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
     )
-    with pytest.raises(RuntimeError, match="_FILE_ALLOWLIST entry does not exist"):
-        _assert_invariants()
+    assert "OK" in result.stdout
 
 
-def test_audit_invariants_fire_when_marker_block_start_is_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        "ralph.testing.audit_artifact_submission_canonical_path._CANONICAL_BLOCK_START",
-        "",
+def test_audit_invariants_import_clean_under_minus_o() -> None:
+    """Importing audit module under -O with correct constants should succeed."""
+    result = _run_patched_audit_import(
+        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        minus_o=True,
     )
-    with pytest.raises(
-        RuntimeError, match="_CANONICAL_BLOCK_START must not be empty"
-    ):
-        _assert_invariants()
-
-
-def test_audit_invariants_fire_under_python_minus_o() -> None:
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-O",
-            "-c",
-            (
-                "from ralph.testing.audit_artifact_submission_canonical_path"
-                " import _CANONICAL_TYPES; print(len(_CANONICAL_TYPES))"
-            ),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        cwd=str(Path(__file__).resolve().parent.parent),
-        check=False,
+    assert result.returncode == 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
     )
-    assert result.returncode == 0
-    assert int(result.stdout.strip()) >= 1
+    assert "OK" in result.stdout
+
+
+# --- Negative: invariant violations ---
+
+
+def test_audit_invariants_fire_when_canonical_types_is_empty() -> None:
+    """_CANONICAL_TYPES = frozenset() should raise RuntimeError at import time."""
+    result = _run_patched_audit_import(
+        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = frozenset()",
+    )
+    assert result.returncode != 0
+    assert "RuntimeError" in result.stderr
+    assert "_CANONICAL_TYPES must not be empty" in result.stderr
+
+
+def test_audit_invariants_fire_when_required_canonical_type_missing() -> None:
+    """Missing 'commit_message' from _CANONICAL_TYPES should raise RuntimeError at import time."""
+    # Replace the _CANONICAL_TYPES assignment with one missing 'commit_message'
+    result = _run_patched_audit_import(
+        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = frozenset({'plan', 'development_result'})",
+    )
+    assert result.returncode != 0
+    assert "RuntimeError" in result.stderr
+    assert "_CANONICAL_TYPES must contain 'commit_message'" in result.stderr
+
+
+def test_audit_invariants_fire_when_file_allowlist_is_empty() -> None:
+    """_FILE_ALLOWLIST = frozenset() should raise RuntimeError at import time."""
+    result = _run_patched_audit_import(
+        (
+            "_FILE_ALLOWLIST: frozenset[str] = frozenset(\n"
+            "    {\n"
+            "        \"ralph/mcp/artifacts/canonical_submit.py\",\n"
+            "        \"ralph/mcp/artifacts/commit_message.py\",\n"
+            "        \"ralph/mcp/artifacts/smoke_test_result.py\",\n"
+            "    }\n"
+            ")\n"
+            "\n"
+        ),
+        "_FILE_ALLOWLIST: frozenset[str] = frozenset()\n\n",
+    )
+    assert result.returncode != 0
+    assert "RuntimeError" in result.stderr
+    assert "_FILE_ALLOWLIST must not be empty" in result.stderr
+
+
+def test_audit_invariants_fire_when_allowlist_file_missing() -> None:
+    """Non-existent _FILE_ALLOWLIST entry should raise RuntimeError at import time."""
+    result = _run_patched_audit_import(
+        '"ralph/mcp/artifacts/canonical_submit.py",',
+        '"ralph/mcp/artifacts/nonexistent.py",',
+    )
+    assert result.returncode != 0
+    assert "RuntimeError" in result.stderr
+    assert "_FILE_ALLOWLIST entry does not exist" in result.stderr
+
+
+def test_audit_invariants_fire_when_marker_block_start_is_empty() -> None:
+    """Empty _CANONICAL_BLOCK_START should raise RuntimeError at import time."""
+    result = _run_patched_audit_import(
+        '_CANONICAL_BLOCK_START = "# === BEGIN CANONICAL SUBMIT OPS ==="',
+        '_CANONICAL_BLOCK_START = ""',
+    )
+    assert result.returncode != 0
+    assert "RuntimeError" in result.stderr
+    assert "_CANONICAL_BLOCK_START must not be empty" in result.stderr
+
+
+def test_audit_invariants_survive_minus_o() -> None:
+    """Invariant violations must still raise RuntimeError under python -O."""
+    result = _run_patched_audit_import(
+        "_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES",
+        "_CANONICAL_TYPES: frozenset[str] = frozenset()",
+        minus_o=True,
+    )
+    assert result.returncode != 0
+    assert "RuntimeError" in result.stderr
+    assert "_CANONICAL_TYPES must not be empty" in result.stderr
 
 
 def test_canonical_types_equals_known_artifact_types() -> None:
