@@ -99,6 +99,7 @@ def _make_fake_restart_aware_bridge() -> RestartAwareMcpBridge:
         inner,
         restart_fn=lambda: inner,
         restart_policy=McpRestartPolicy(max_restarts=3),
+        run_id="test-run",
     )
 
 

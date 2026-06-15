@@ -577,6 +577,8 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
             "description": unit.description,
             "allowed_directories": json.dumps(unit.allowed_directories, indent=2),
             "base_prompt": base_prompt,
+            "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{SUBMIT_ARTIFACT_TOOL}`",
+            "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
         },
         context.partials,
     )

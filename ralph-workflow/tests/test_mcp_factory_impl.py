@@ -99,6 +99,7 @@ def test_build_accepts_restart_aware_bridge_from_real_lifecycle(tmp_path: Path) 
         inner,
         restart_fn=lambda: inner,
         restart_policy=McpRestartPolicy(),
+        run_id="test-run",
     )
 
     def fake_start_server(

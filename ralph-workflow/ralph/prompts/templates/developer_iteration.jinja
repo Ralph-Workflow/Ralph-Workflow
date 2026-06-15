@@ -1,5 +1,6 @@
 You are in IMPLEMENTATION MODE. Execute the plan and make progress.
 
+{% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -80,3 +81,5 @@ You MUST submit a `development_result` artifact before declaring completion. The
 - `proof`: Concrete evidence of how it was resolved.
 
 Each `plan_item` and each `how_to_fix_item` must be distinct — duplicate entries will fail validation. Unknown references (ones that don't match an actual plan step, work_unit id, or analysis item) will also fail validation and trigger a re-prompt.
+
+{{ render_artifact_submission('development_result', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}

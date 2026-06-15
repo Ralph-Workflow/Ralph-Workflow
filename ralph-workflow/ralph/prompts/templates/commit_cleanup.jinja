@@ -7,6 +7,7 @@ listed by name only (no diff body). If they are machine-local artifacts, use
 they are actual binary or generated artifacts that should never enter the repo,
 use `delete_file`.
 
+{% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -78,9 +79,9 @@ Only recommend removing files from the commit if they match these categories:
 
 ## OUTPUT FORMAT
 
-Submit a `commit_cleanup` artifact using the submission tool below with:
-- `artifact_type="commit_cleanup"`
-- `content` set to a JSON string with `analysis_complete` (boolean) and `actions` (array)
+Submit a `commit_cleanup` artifact. The `content` JSON string must decode to:
+- `analysis_complete` (boolean) and
+- `actions` (array)
 
 **If the diff contains nothing that needs cleanup**, set `analysis_complete: true` with an empty `actions` array.
 
@@ -91,6 +92,6 @@ The artifact content JSON schema:
 {"analysis_complete": true|false, "actions": [{"action": "delete_file"|"add_to_gitignore"|"add_to_git_exclude", "path"|"pattern": "value"}]}
 ```
 
-{{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }}
+{{ render_artifact_submission('commit_cleanup', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}

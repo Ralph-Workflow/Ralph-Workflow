@@ -194,6 +194,10 @@ class TestPipelineDepsCollaborators:
 
     def test_bridge_factory_collaborator_is_overridable(self, tmp_path: Path) -> None:
         class FakeBridgeFactory:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def __call__(
                 self,
                 *,

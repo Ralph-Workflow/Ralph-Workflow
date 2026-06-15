@@ -91,6 +91,10 @@ def _simple_config() -> SimpleNamespace:
 
 def _stub_commit_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeBridge:
+        @property
+        def run_id(self) -> str:
+            return "fake-run-id"
+
         def agent_endpoint_uri(self) -> str:
             return "http://127.0.0.1:9999/mcp"
 

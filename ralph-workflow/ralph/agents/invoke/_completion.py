@@ -20,6 +20,7 @@ from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableE
 from ralph.agents.invoke._session import _bounded_output_lines, extract_transport_session_id
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.teardown import teardown_subtree
@@ -32,6 +33,29 @@ if TYPE_CHECKING:
     from ralph.agents.invoke._agent_run_ctx import _EvalCompletionFn
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.process.manager import ManagedProcess, ManagedPtyProcess
+
+
+def completion_run_id_from_extra_env(extra_env: dict[str, str] | None) -> str | None:
+    """Resolve the gate's run identity from the agent's MCP_RUN_ID_ENV variable.
+
+    The launcher sets this env var to the MCP session's run_id (the same value the
+    artifact handler stamps receipts with), so resolving it here lets the gate
+    correlate a receipt to the submission that produced it — for subprocess
+    agents that report no usable transport session id.
+    """
+    if extra_env is None:
+        return None
+    return extra_env.get(str(MCP_RUN_ID_ENV)) or None
+
+
+def _completion_run_id(opts: _CompletionCheckOptions) -> str | None:
+    """The run identity used to correlate completion receipts and the sentinel.
+
+    Both the submission handler (which writes receipts keyed by the MCP session's
+    run_id) and the gate must agree on this value; it is the completion_run_id
+    when threaded, else the transport session id captured from agent output.
+    """
+    return opts.completion_run_id or opts.captured_session_id
 
 
 def _teardown_subtree_if_pid_available(handle: object) -> None:
@@ -96,6 +120,7 @@ def _wait_for_completion_grace(
                 explicit_completion_seen=opts.explicit_completion_seen,
             ),
             required_artifact=opts.required_artifact,
+            run_id=_completion_run_id(opts),
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
@@ -157,6 +182,7 @@ def _wait_for_descendants_then_recheck(
                 explicit_completion_seen=opts.explicit_completion_seen,
             ),
             required_artifact=opts.required_artifact,
+            run_id=_completion_run_id(opts),
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
@@ -235,17 +261,14 @@ def _check_process_result(
             opts.workspace_path,
             bounded_output,
             required_artifact=opts.required_artifact,
+            run_id=_completion_run_id(opts),
         )
         sentinel_check_fn = (
             opts._sentinel_check_fn
             if opts._sentinel_check_fn is not None
             else _check_completion_sentinel
         )
-        sentinel_run_id = (
-            opts.completion_run_id
-            if opts.completion_run_id is not None
-            else opts.captured_session_id
-        )
+        sentinel_run_id = _completion_run_id(opts)
         if not signals.explicit_complete and sentinel_check_fn(
             opts.workspace_path,
             sentinel_run_id,
@@ -293,17 +316,14 @@ def _check_process_result(
             opts.workspace_path,
             bounded_output,
             required_artifact=opts.required_artifact,
+            run_id=_completion_run_id(opts),
         )
         sentinel_check_fn = (
             opts._sentinel_check_fn
             if opts._sentinel_check_fn is not None
             else _check_completion_sentinel
         )
-        sentinel_run_id = (
-            opts.completion_run_id
-            if opts.completion_run_id is not None
-            else opts.captured_session_id
-        )
+        sentinel_run_id = _completion_run_id(opts)
         if not signals.explicit_complete and sentinel_check_fn(
             opts.workspace_path,
             sentinel_run_id,

@@ -23,7 +23,11 @@ from ralph.agents.idle_watchdog import (
     WatchdogFireReason,
     WatchdogVerdict,
 )
-from ralph.agents.invoke._completion import _check_process_result, _CompletionCheckOptions
+from ralph.agents.invoke._completion import (
+    _check_process_result,
+    _CompletionCheckOptions,
+    completion_run_id_from_extra_env,
+)
 from ralph.agents.invoke._errors import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -570,6 +574,7 @@ def _run_subprocess_and_read_lines(
                 required_artifact=ctx.required_artifact,
                 explicit_completion_seen=explicit_completion_seen,
                 captured_session_id=captured_session_id,
+                completion_run_id=completion_run_id_from_extra_env(ctx.extra_env),
                 evaluate_completion_fn=ctx.evaluate_completion_fn,
             ),
             _clock=clock,

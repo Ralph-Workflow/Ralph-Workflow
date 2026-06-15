@@ -20,6 +20,10 @@ from ralph.mcp.artifacts.commit_message import (
     normalize_commit_message_content,
     write_commit_message_artifact,
 )
+from ralph.mcp.artifacts.completion_receipts import (
+    delete_artifact_receipt,
+    write_artifact_receipt,
+)
 from ralph.mcp.artifacts.development_result import (
     DEVELOPMENT_RESULT_ARTIFACT_TYPE,
     DevelopmentResultValidationError,
@@ -80,6 +84,7 @@ from ralph.mcp.tools.coordination import (
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
+    _write_completion_sentinel,
     ToolResult,
     WorkspaceLike,
     require_capability,
@@ -111,6 +116,19 @@ _TYPED_ARTIFACT_TYPES = frozenset(
 _KNOWN_ARTIFACT_TYPES = frozenset(
     {PLAN_ARTIFACT_TYPE, COMMIT_MESSAGE_TYPE, DEVELOPMENT_RESULT_ARTIFACT_TYPE}
     | _TYPED_ARTIFACT_TYPES
+)
+
+# Multi-step planning artifact types: each phase has its own submit, and
+# completion is the explicit ``finalize_plan`` / ``declare_complete`` call.
+# These MUST be excluded from the auto-complete-on-submit path so a phase
+# submit does not prematurely satisfy the gate.
+_PLANNING_DECISION_ARTIFACT_TYPES: frozenset[str] = frozenset(
+    {
+        PLAN_ARTIFACT_TYPE,
+        "development_analysis_decision",
+        "planning_analysis_decision",
+        "review_analysis_decision",
+    }
 )
 
 
@@ -223,6 +241,7 @@ def handle_submit_artifact(
             artifact_dir,
             parsed_content,
             deps=effective_deps,
+            run_id=_session_run_id(session),
         )
     )
 
@@ -365,6 +384,7 @@ def handle_finalize_plan(
             artifact_dir,
             normalized,
             deps=effective_deps,
+            run_id=_session_run_id(session),
         )
     )
 
@@ -1066,6 +1086,11 @@ def _accepted_persisted_types(artifact_type: str) -> set[str]:
     return accepted
 
 
+def _session_run_id(session: CoordinationSessionLike) -> str | None:
+    run_id = cast("object", getattr(session, "run_id", None))
+    return run_id if isinstance(run_id, str) and run_id else None
+
+
 def _session_drain(session: CoordinationSessionLike) -> str | None:
     try:
         attributes = cast("dict[str, object]", vars(session))
@@ -1263,8 +1288,16 @@ def submit_ops_for_artifact(
     parsed_content: dict[str, object],
     *,
     deps: ArtifactHandlerDeps,
+    run_id: str | None = None,
 ) -> list[SubmitOp]:
-    """Return the ordered (op, undo) pairs for a complete artifact submit."""
+    """Return the ordered (op, undo) pairs for a complete artifact submit.
+
+    When ``run_id`` is provided, the final op stamps a run-scoped completion
+    receipt for ``artifact_type``. Because it is the last op in the
+    rollback-protected sequence, the receipt exists only when the artifact and
+    its handoff were fully persisted — binding "submitted" and "gate-visible"
+    into one atomic fact regardless of where the artifact bytes landed.
+    """
     ops: list[SubmitOp] = []
 
     if artifact_type == COMMIT_MESSAGE_TYPE:
@@ -1332,6 +1365,48 @@ def submit_ops_for_artifact(
                 undo=lambda: None,
             )
         )
+
+    if run_id is not None:
+        _rid = run_id
+        _at_receipt = artifact_type
+        _wr_receipt = workspace_root
+        ops.append(
+            SubmitOp(
+                run=lambda: write_artifact_receipt(
+                    _wr_receipt, _rid, _at_receipt, backend=deps.backend
+                ),
+                undo=lambda: delete_artifact_receipt(
+                    _wr_receipt, _rid, _at_receipt, backend=deps.backend
+                ),
+            )
+        )
+
+    # Architectural fix (2026-06-14): for SINGLE-SHOT artifact types
+    # (commit_message, development_result, commit_cleanup, issues, etc.),
+    # receipt + completion-sentinel are atomically the same event — the
+    # agent has nothing left to do. Mark completion implicitly so a model
+    # that interprets "Artifact submitted: <type>" as "done" and stops
+    # without calling ``declare_complete`` does not get force-retried in
+    # a loop. Multi-step planning artifacts (``plan``,
+    # ``*_analysis_decision``) are EXCLUDED: their completion is the
+    # explicit ``finalize_plan`` / ``declare_complete`` call.
+    if (
+        run_id is not None
+        and artifact_type != PLAN_ARTIFACT_TYPE
+        and artifact_type not in _PLANNING_DECISION_ARTIFACT_TYPES
+    ):
+        _rid_sentinel = run_id
+        _wr_sentinel = workspace_root
+        _sentinel_path = _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=_rid_sentinel)
+
+        def _run_write_sentinel() -> None:
+            _write_completion_sentinel(_wr_sentinel, _rid_sentinel)
+
+        def _undo_write_sentinel() -> None:
+            with suppress(OSError):
+                Path(_wr_sentinel.absolute_path(_sentinel_path)).unlink()
+
+        ops.append(SubmitOp(run=_run_write_sentinel, undo=_undo_write_sentinel))
 
     return ops
 

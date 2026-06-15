@@ -1,0 +1,65 @@
+{# Single-shot artifact submission contract. Single source of truth so the
+   prose cannot drift between commit_message, development_analysis, review,
+   worker_developer, etc. The planning multi-step flow
+   (submit_plan_section / finalize_plan) does NOT use this macro.
+
+   Designed for cheap / small / "dumb" agents that follow numbered steps
+   and pattern-match examples. Failure modes the macro defuses: wrong
+   artifact_type alias, outer envelope wrapper, legacy content_path,
+   schema guessing, missing declare_complete, prose echo.
+
+   declare_complete is the LOAD-BEARING final step. The completion gate
+   checks TWO things atomically: a submission receipt for (run_id,
+   artifact_type) on disk AND a declare_complete sentinel for the same
+   run_id. Receipt without declare_complete ⇒ "no completion evidence"
+   ⇒ forced retry. A real production failure: a small model that called
+   submit_artifact successfully then stopped (interpreting the submit's
+   success text as "done") — the gate retried forever because there was
+   no declare_complete to correlate against. The macro therefore makes
+   declare_complete step 5, emboldened, repeated in DO-NOT. If the gate
+   ever changes so receipts alone satisfy completion, REMOVE step 5 in
+   the same change.
+#}
+{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_payload='<inner payload JSON object — see format doc>') -%}
+## Submit a `{{ artifact_type }}` artifact
+
+**DO STEPS 1-5 IN ORDER. SKIPPING STEP 5 = SILENT FAILURE = GATE RETRIES FOREVER.**
+
+1. **Read the format doc** at `.agent/artifact-formats/{{ artifact_type }}.md`
+   (or `artifact_formats_index.md` if absent). Do NOT guess the schema.
+
+2. **Build the inner payload object** (e.g. for `commit_message`:
+   `{{ example_payload }}`). This is the `content` in step 3.
+
+3. **Call {{ submit_tool_reference }}** with this exact shape (`content`
+   is a JSON STRING — escape inner quotes):
+
+   ```
+   {"artifact_type": "{{ artifact_type }}", "content": "<JSON string of the inner payload>"}
+   ```
+
+4. **Wait for the tool result.** Success starts with
+   `Artifact submitted: <type>`. That text is NOT your completion signal.
+
+5. **>>> CALL `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}` AS YOUR FINAL ACTION. <<<**
+
+   The gate's completion signal. Optional param `summary` (string).
+   Example: `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}(summary="commit_message")`.
+   You may echo a single short line AFTER, but the MCP call is the
+   contract. The run is NOT complete until declare_complete is observed.
+
+6. **If submit-artifact MCP tool is unavailable**, write the raw inner
+   payload JSON to `.agent/tmp/{{ artifact_type }}.json` via `write_file`
+   (no outer envelope, do NOT wrap it in an outer envelope).
+   STILL call `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}` as the last action.
+
+## Do NOT
+
+- **Stop after step 3 or step 4 without calling
+  `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}`.** Submit success text is
+  NOT the gate's completion signal.
+- Send `artifact_type="commit"` or `"skip"` — use canonical
+  `{{ artifact_type }}`.
+- Wrap the inner payload in `{"type":..., "content":...}` in the fallback file.
+- Echo the payload as your ONLY action — the MCP declare_complete call is the contract.
+{%- endmacro %}

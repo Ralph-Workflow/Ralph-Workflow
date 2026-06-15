@@ -205,6 +205,7 @@ def test_supervisor_calls_restart_within_configured_probe_timeout() -> None:
         inner=cast("object", inner),
         restart_fn=cast("Callable[[], object]", restart_fn),
         restart_policy=McpRestartPolicy(max_restarts=1),
+        run_id="test-run",
     )
 
     # process_exited=True, so restart fires immediately
@@ -245,6 +246,7 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
         inner=cast("object", inner),
         restart_fn=cast("Callable[[], object]", restart_fn),
         restart_policy=McpRestartPolicy(max_restarts=1),
+        run_id="test-run",
         probe_fn=cast("Callable[[str, timedelta], None]", probe_fn),
     )
     restarted = bridge.check_health_and_restart_if_needed()

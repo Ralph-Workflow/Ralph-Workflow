@@ -127,6 +127,10 @@ class TestSmokePlumbingCharacterization:
         bridge_shutdown: list[bool] = []
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def start(self) -> None:
                 return None
 

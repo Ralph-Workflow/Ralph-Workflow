@@ -54,6 +54,7 @@ def _make_bridge() -> RestartAwareMcpBridge:
         cast("StandaloneMcpProcess", inner),
         restart_fn=_restart_fn,
         restart_policy=MagicMock(max_restarts=1000),
+        run_id="test-run",
     )
 
 
@@ -188,6 +189,7 @@ def test_bridge_reset_tool_registry_fails_closed_when_alias_probe_fails(
         cast("StandaloneMcpProcess", inner),
         restart_fn=lambda: cast("StandaloneMcpProcess", restarted),
         restart_policy=MagicMock(max_restarts=1000),
+        run_id="test-run",
     )
     monkeypatch.setattr(
         lifecycle_module,

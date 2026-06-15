@@ -1,6 +1,7 @@
 REVIEW MODE
 Your only job is to analyze the implementation, not to edit code or commit changes.
 
+{% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -42,6 +43,8 @@ For any review that finds issues, the following two fields are mandatory and mus
 
 When `status` is `"no_issues"`, `issues`, `what_came_up_short`, and `how_to_fix` may be empty arrays.
 When `status` is `"issues_found"`, all three arrays must be non-empty.
+
+{{ render_artifact_submission('issues', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
 
 Example issues artifact:
 

@@ -223,6 +223,10 @@ class TestExecuteAgentEffectA:
         registry = _registry_factory(MagicMock())
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def shutdown(self) -> None:
                 return
 
@@ -275,6 +279,10 @@ class TestExecuteAgentEffectA:
         registry = _registry_factory(MagicMock())
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def shutdown(self) -> None:
                 return
 
@@ -337,6 +345,10 @@ class TestExecuteAgentEffectA:
         registry = _registry_factory(MagicMock())
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def shutdown(self) -> None:
                 return
 
@@ -1151,6 +1163,10 @@ class TestExecuteAgentEffectA:
         created: list[int] = []
 
         class FakeBridge:
+            @property
+            def run_id(self) -> str:
+                return "fake-run-id"
+
             def __init__(self, marker: int) -> None:
                 self.marker = marker
 

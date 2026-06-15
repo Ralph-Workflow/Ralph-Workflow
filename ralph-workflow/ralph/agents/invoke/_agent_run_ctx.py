@@ -25,6 +25,7 @@ if TYPE_CHECKING:
             raw_output: list[str] | None = None,
             *,
             required_artifact: RequiredArtifact | None = None,
+            run_id: str | None = None,
         ) -> CompletionSignals: ...
 
 

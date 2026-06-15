@@ -69,6 +69,14 @@ _IO_ALLOWLIST: set[str] = {
     # from the repo to enforce structural invariants.
     "test_parallel_no_worktree_imports",
     "test_repo_root_operational_docs_sync",
+    # Artifact-submission prompt audits that read the packaged Jinja
+    # templates (production source) to enforce that every single-shot
+    # template embeds the shared ``_artifact_submission.j2`` macro with
+    # the canonical artifact type. The template body is the subject under
+    # test — a mock would defeat the audit's purpose.
+    "test_audit_artifact_submission_canonical_types",
+    "test_audit_artifact_submission_dumb_agent_proof",
+    "test_audit_artifact_submission_standardization",
     # Git integration tests using the tmp_git_repo fixture (which wraps
     # tmp_path). The write_text calls go to the fixture's temp directory.
     "test_git_rebase_preconditions",

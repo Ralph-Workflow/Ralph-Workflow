@@ -1,3 +1,4 @@
+{% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
 {% from 'shared/_payload_section.j2' import render_payload_section, render_payload_path %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -224,6 +225,8 @@ Return a JSON object.
 
 - The review found major incompleteness or an otherwise unusable result; stronger remediation may be needed, including possible redo or starting over from the work phase:
   `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
+
+{{ render_artifact_submission('review_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
 
 ---
 

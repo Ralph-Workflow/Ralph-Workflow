@@ -1510,6 +1510,13 @@ ralph.mcp.artifacts.commit_message
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.completion_receipts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.completion_receipts
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts.development_result
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

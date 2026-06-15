@@ -225,6 +225,10 @@ def test_commit_default_bridge_forwards_model_identity(
     model_identity = MultimodalModelIdentity(provider="claude", model_id="sonnet")
 
     class FakeBridge:
+        @property
+        def run_id(self) -> str:
+            return "fake-run-id"
+
         def agent_endpoint_uri(self) -> str:
             return "http://127.0.0.1:9999/mcp"
 

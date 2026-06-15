@@ -24,6 +24,8 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
@@ -110,6 +112,7 @@ def evaluate_completion(
     raw_output: list[str] | None = None,
     *,
     required_artifact: RequiredArtifact | None = None,
+    run_id: str | None = None,
 ) -> CompletionSignals:
     """Check whether the agent run produced a required artifact or explicit completion.
 
@@ -138,7 +141,13 @@ def evaluate_completion(
             artifact_types=(),
         )
     artifact_path = workspace / ra.json_path
-    present = _artifact_is_schema_valid(artifact_path)
+    # A run-scoped submission receipt is authoritative proof the artifact was
+    # persisted, independent of where it landed; fall back to the on-disk path
+    # check only when no receipt is available (e.g. run_id not threaded).
+    present = artifact_receipt_present(workspace, run_id, ra.artifact_type) if (
+        run_id is not None
+    ) else False
+    present = present or _artifact_is_schema_valid(artifact_path)
     optional = not ra.artifact_required
     return CompletionSignals(
         explicit_complete=explicit,

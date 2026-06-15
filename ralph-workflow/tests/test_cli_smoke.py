@@ -168,6 +168,10 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
             return None
 
     class FakeBridge:
+        @property
+        def run_id(self) -> str:
+            return "fake-run-id"
+
         def start(self) -> None:
             return None
 
