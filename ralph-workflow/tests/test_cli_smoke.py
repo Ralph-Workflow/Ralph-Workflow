@@ -500,6 +500,46 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke report" in output
 
 
+def test_smoke_interactive_agy_with_mock_binary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``smoke_interactive_agy_command`` respects ``RALPH_AGY_BINARY``."""
+    stream = _attach_console(monkeypatch)
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    mock_agy = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_agy))
+    monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "agy/Claude Sonnet 4.6 (Thinking)":
+                return AgentConfig(
+                    cmd="agy",
+                    transport=AgentTransport.AGY,
+                )
+            return None
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+    output = stream.getvalue()
+    assert "agy/Claude Sonnet 4.6 (Thinking)" in output
+    assert "file" in output.lower()
+
+
 def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
     """The captured AGY smoke run log documents the measured outcome.
 

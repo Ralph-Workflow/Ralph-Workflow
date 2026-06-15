@@ -399,7 +399,7 @@ def _build_agy_command(
     AGY uses: agy [--dangerously-skip-permissions] [--model <name>]
     [--add-dir <path>] [--verbose] --print <prompt>
     """
-    cmd = config.cmd.split()
+    cmd = shlex.split(config.cmd)
     cmd.extend(_split_optional_flag(config.yolo_flag))
     if config.session_flag and options.session_id:
         cmd.extend(config.session_flag.format(options.session_id).split())
@@ -425,7 +425,7 @@ def _build_claude_interactive_command(
     *,
     options: _BuildCommandOptions,
 ) -> list[str]:
-    cmd = config.cmd.split()
+    cmd = shlex.split(config.cmd)
     cmd.extend(_split_optional_flag(config.yolo_flag))
     _extend_claude_transport_flags(cmd, AgentTransport.CLAUDE_INTERACTIVE, options)
     if options.verbose and config.verbose_flag:

@@ -13,6 +13,7 @@ module is the thin CLI surface (option setup, report rendering, exit codes).
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -32,6 +33,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunResult,
     _build_smoke_prompt,
     _execute_smoke_turns,
+    get_agy_binary_override,
     resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
@@ -243,10 +245,13 @@ def smoke_interactive_agy_command(
     currently works in this environment (``agy/Claude Sonnet 4.6 (Thinking)``);
     use ``--agent`` to pin a different ``agy/<model>`` alias from ``agy models``.
     """
-    if shutil.which("agy") is None:
+    agy_binary = get_agy_binary_override()
+    if shutil.which(agy_binary) is None and not Path(agy_binary).is_file():
         logger.error(
-            "agy binary not found in PATH. Install Google Anti Gravity and "
-            "ensure `agy` is on PATH before running this smoke test."
+            "agy binary not found at '{}'. Install Google Anti Gravity and "
+            "ensure `agy` is on PATH, or set RALPH_AGY_BINARY to a valid mock "
+            "binary for testing.",
+            agy_binary,
         )
         return 2
 

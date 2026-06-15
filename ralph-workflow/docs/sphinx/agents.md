@@ -14,6 +14,12 @@ Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocod
 
 Every supported agent has a manual smoke entry-point for live end-to-end verification against the real binary. Claude is verified with `python -m ralph smoke-interactive-claude` and AGY is verified with `python -m ralph smoke-interactive-agy`. Run the corresponding command on Linux or macOS to confirm the transport, MCP wiring, and tool invocation pipeline produce real output.
 
+### Google Anti Gravity (AGY)
+
+AGY is discovered from `PATH` like any other agent. Set `RALPH_AGY_BINARY` to point at a custom executable or at the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock simulates AGY v1.0.8's measured wire format and is the supported path for proving real output end-to-end without a live account.
+
+The canonical display names accepted by `agy models` are the only valid `--model` values; lowercased or dashed slugs are rejected by the upstream binary. Use `ralph --check-mcp` to validate AGY transport compatibility before the first run.
+
 ## Project-local skills
 
 In addition to the user-global skill bundle, every `ralph` run auto-seeds a project-local skill fan-out so the same baseline is available to every supported agent at the project scope (not just in your user home).

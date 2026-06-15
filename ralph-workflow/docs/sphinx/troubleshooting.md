@@ -84,6 +84,16 @@ A red column in File, Tool activity, or Artifact indicates a Ralph Workflow regr
 
 If AGY exits 0 but the parity table reports no file, no artifact, and the `Breaks` column contains `AGY --print returned empty stdout: ...`, the upstream `agy` binary itself produced no stdout. The smoke detector reads `~/.gemini/antigravity-cli/cli.log` and reports the measured root cause in the `Breaks` column. The most common upstream conditions are an individual API quota exhausted error (`429 RESOURCE_EXHAUSTED`), whose diagnostic names the reset window, or an unrecognized model ID. Lowercased or slashed slugs such as `agy/gemini-3.5-flash-low` are not accepted by AGY v1.0.8; use the exact display names from `agy models` (e.g. `agy/Claude Sonnet 4.6 (Thinking)`). See `tmp/agy-source-of-truth.txt` for the current measured wire format. These are upstream AGY conditions, not Ralph Workflow regressions; wait for the quota reset or use a recognized model alias. Use `--agent agy/<model>` to pin a different model alias.
 
+### Distinguishing live-quota failure from mock-quota output
+
+When running with `RALPH_AGY_BINARY` set (for example to the deterministic mock at `tests/_support/mock_agy.sh` for CI), an empty stdout with `MOCK_AGY_BEHAVIOR=quota_exhausted` is expected and reported as an informational break, not as the live upstream quota diagnostic. To verify the harness itself, run the mock without that variable:
+
+```bash
+RALPH_AGY_BINARY=tests/_support/mock_agy.sh python -m ralph smoke-interactive-agy
+```
+
+This should report file=yes, artifact=yes, and no upstream-quota break.
+
 ## MCP servers fail to start
 
 **Symptom:** `ralph --check-mcp` or `ralph --diagnose` reports MCP server errors.

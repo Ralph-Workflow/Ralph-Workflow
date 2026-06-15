@@ -12,7 +12,7 @@ Ralph Workflow is invoked as `ralph` (or `python -m ralph`). Running `ralph` wit
 | `--list-providers` | | `False` | List available AI providers (OpenCode API) |
 | `--diagnose` | `-d` | `False` | Run pre-flight diagnostics and print a status table |
 | `--check-config` | `-C` | `False` | Load and validate configuration, then exit |
-| `--check-mcp` | | `False` | Validate custom MCP server definitions, then exit |
+| `--check-mcp` | | `False` | Validate custom MCP server definitions and AGY transport compatibility, then exit. Set `RALPH_AGY_BINARY` to point at a non-PATH `agy` binary. |
 | `--check-policy` | | `False` | Validate the active pipeline policy and print a summary |
 | `--inspect-checkpoint` | | `False` | Print the current checkpoint contents |
 
@@ -162,6 +162,8 @@ python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'
 ```
 
 Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream `agy` binary returned no stdout; the message is derived from `~/.gemini/antigravity-cli/cli.log` and usually points to an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
+
+Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI.
 
 ## Related pages
 
