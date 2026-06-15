@@ -37,9 +37,9 @@ from ralph.testing import audit_activity_aware_watchdog as audit
 
 
 def _write_fake_package(tmp_path: Path) -> Path:
-    """Create a minimal ``ralph/agents/invoke/`` package layout."""
+    """Create a minimal ``agents/invoke/`` package layout."""
     package_root = tmp_path / "fake_ralph"
-    (package_root / "ralph" / "agents" / "invoke").mkdir(parents=True)
+    (package_root / "agents" / "invoke").mkdir(parents=True)
     return package_root
 
 
@@ -164,7 +164,7 @@ def test_audit_flags_idle_watchdog_without_process_monitor(tmp_path: Path) -> No
     """A reader that constructs ``IdleWatchdog`` without ``process_monitor=``
     is flagged as a ``process_monitor_injection`` violation."""
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_bad_reader.py"
+    bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_process_monitor(), encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
@@ -173,14 +173,14 @@ def test_audit_flags_idle_watchdog_without_process_monitor(tmp_path: Path) -> No
     categories = {v.category for v in violations}
     assert "process_monitor_injection" in categories, f"got {categories}"
     paths = {v.file_path for v in violations}
-    assert "ralph/agents/invoke/_bad_reader.py" in paths, f"got {paths}"
+    assert "agents/invoke/_bad_reader.py" in paths, f"got {paths}"
 
 
 def test_audit_flags_reader_missing_active_sink(tmp_path: Path) -> None:
     """A reader that constructs ``IdleWatchdog`` with ``process_monitor=`` but
     does not call ``set_active_sink`` is flagged as ``mcp_tool_sink``."""
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_bad_reader.py"
+    bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_active_sink(), encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
@@ -194,7 +194,7 @@ def test_audit_flags_reader_missing_subagent_sink(tmp_path: Path) -> None:
     """A reader that calls ``set_active_sink`` but not ``set_subagent_sink``
     is flagged as ``subagent_sink``."""
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_bad_reader.py"
+    bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_subagent_sink(), encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
@@ -208,7 +208,7 @@ def test_audit_flags_legacy_zero_arg_set_on_event_binding(tmp_path: Path) -> Non
     """A reader that binds ``monitor.set_on_event(watchdog.record_workspace_event)``
     (0-arg bound method) is flagged as ``workspace_event_binding``."""
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_bad_reader.py"
+    bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_zero_arg_set_on_event(), encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
@@ -223,7 +223,7 @@ def test_audit_flags_reader_missing_teardown_subtree_on_fire_path(tmp_path: Path
     ``teardown_subtree(...)`` in the same function body is flagged as
     ``teardown_subtree``."""
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_bad_reader.py"
+    bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_teardown_subtree(), encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
@@ -280,7 +280,7 @@ def test_audit_main_exit_code_is_one_on_violation(tmp_path: Path) -> None:
     test-policy audit excludes it from the fast suite.
     """
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_bad_reader.py"
+    bad_module = package_root / "agents" / "invoke" / "_bad_reader.py"
     bad_module.write_text(_reader_source_with_missing_process_monitor(), encoding="utf-8")
 
     result = subprocess.run(
@@ -308,7 +308,7 @@ def test_audit_default_process_monitor_injection_violation(tmp_path: Path) -> No
         "    return DefaultProcessMonitor(123)\n"
     )
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_bad_factory.py"
+    bad_module = package_root / "agents" / "invoke" / "_bad_factory.py"
     bad_module.write_text(source, encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
@@ -337,7 +337,7 @@ def test_audit_role_classifier_must_be_role_classifier_for_transport(tmp_path: P
         "    )\n"
     )
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_bad_factory.py"
+    bad_module = package_root / "agents" / "invoke" / "_bad_factory.py"
     bad_module.write_text(source, encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
@@ -350,7 +350,7 @@ def test_audit_role_classifier_must_be_role_classifier_for_transport(tmp_path: P
 def test_audit_teardown_subtree_allowlisted_when_present(tmp_path: Path) -> None:
     """A reader that calls ``teardown_subtree`` on the terminate path is clean."""
     package_root = _write_fake_package(tmp_path)
-    good_module = package_root / "ralph" / "agents" / "invoke" / "_good_reader.py"
+    good_module = package_root / "agents" / "invoke" / "_good_reader.py"
     good_module.write_text(_reader_source_with_valid_teardown_subtree(), encoding="utf-8")
 
     violations = audit.audit_activity_aware_watchdog(package_root)
@@ -386,7 +386,7 @@ def test_audit_flags_completion_error_path_missing_teardown(tmp_path: Path) -> N
     without calling ``teardown_subtree`` (or the helper) is flagged as
     ``error_path_teardown``."""
     package_root = _write_fake_package(tmp_path)
-    bad_module = package_root / "ralph" / "agents" / "invoke" / "_completion.py"
+    bad_module = package_root / "agents" / "invoke" / "_completion.py"
     bad_module.write_text(
         _completion_source_with_missing_error_path_teardown(), encoding="utf-8"
     )
@@ -397,4 +397,4 @@ def test_audit_flags_completion_error_path_missing_teardown(tmp_path: Path) -> N
     categories = {v.category for v in violations}
     assert "error_path_teardown" in categories, f"got {categories}"
     paths = {v.file_path for v in violations}
-    assert "ralph/agents/invoke/_completion.py" in paths, f"got {paths}"
+    assert "agents/invoke/_completion.py" in paths, f"got {paths}"

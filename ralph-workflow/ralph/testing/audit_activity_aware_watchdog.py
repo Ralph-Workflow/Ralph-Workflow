@@ -67,11 +67,11 @@ _SKIP_DIRS: frozenset[str] = frozenset(
 
 # Only these two production reader files are allowed to contain the
 # production-style 2-arg ``set_on_event`` binding. Any other file under
-# ``ralph/agents/invoke/`` that binds a 0-arg callable is flagged.
+# ``agents/invoke/`` that binds a 0-arg callable is flagged.
 _WORKSPACE_EVENT_BINDING_ALLOWLIST: frozenset[str] = frozenset(
     {
-        "ralph/agents/invoke/_pty_line_reader.py",
-        "ralph/agents/invoke/_process_reader.py",
+        "agents/invoke/_pty_line_reader.py",
+        "agents/invoke/_process_reader.py",
     }
 )
 
@@ -96,6 +96,26 @@ def _iter_py_files(root: Path) -> list[Path]:
         for p in root.rglob("*.py")
         if not any(part in _SKIP_DIRS for part in p.relative_to(root).parts)
     )
+
+
+# Fast pre-filter substrings.  A file that contains none of these cannot
+# trigger any detector, so we skip the expensive ast.parse pass.
+_IDLE_WATCHDOG_MARKER: str = "IdleWatchdog("
+_DEFAULT_MONITOR_MARKER: str = "DefaultProcessMonitor("
+_INVOKE_ONLY_MARKERS: tuple[str, ...] = (
+    "set_on_event",
+    "self._handle.terminate",
+    "AgentInvocationError",
+)
+
+
+def _file_needs_parse(rel_path: str, source: str) -> bool:
+    """Return True when the file may contain an audit-relevant construct."""
+    if _IDLE_WATCHDOG_MARKER in source or _DEFAULT_MONITOR_MARKER in source:
+        return True
+    if rel_path.startswith("agents/invoke/"):
+        return any(marker in source for marker in _INVOKE_ONLY_MARKERS)
+    return False
 
 
 def _dotted_name(node: ast.expr) -> str | None:
@@ -163,7 +183,7 @@ class _ModuleVisitor(ast.NodeVisitor):
 
     def _is_invoke_file(self) -> bool:
         """True for files where reader-style wiring is expected."""
-        return self.rel_path.startswith("ralph/agents/invoke/")
+        return self.rel_path.startswith("agents/invoke/")
 
     def visit_Call(self, node: ast.Call) -> None:
         name = _func_call_name(node)
@@ -409,7 +429,7 @@ def audit_reader_file(path: Path) -> list[ActivityAwareWatchdogViolation]:
     except (OSError, SyntaxError):
         return []
 
-    rel_path = f"ralph/agents/invoke/{path.name}"
+    rel_path = f"agents/invoke/{path.name}"
     visitor = _ModuleVisitor(rel_path, source, tree=tree)
     visitor.visit(tree)
     visitor.finalize_invoke_file()
@@ -426,13 +446,15 @@ def audit_activity_aware_watchdog(package_root: Path) -> list[ActivityAwareWatch
         rel_path = py_file.relative_to(package_root).as_posix()
         try:
             source = py_file.read_text(encoding="utf-8")
+            if not _file_needs_parse(rel_path, source):
+                continue
             tree = ast.parse(source, filename=str(py_file))
         except (OSError, SyntaxError):
             continue
 
         visitor = _ModuleVisitor(rel_path, source, tree=tree)
         visitor.visit(tree)
-        if rel_path.startswith("ralph/agents/invoke/"):
+        if rel_path.startswith("agents/invoke/"):
             visitor.finalize_invoke_file()
         all_violations.extend(visitor.violations)
 
