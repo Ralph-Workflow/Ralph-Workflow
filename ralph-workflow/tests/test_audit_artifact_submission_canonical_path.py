@@ -87,6 +87,53 @@ def test_direct_fallback_tmp_write_text_is_flagged(tmp_path: Path) -> None:
     assert findings[0].category == "fallback_tmp_write"
 
 
+def test_os_rename_into_sentinel_is_flagged(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "mod.py",
+        "import os\n"
+        "os.rename('src.txt', '.agent/completion_seen_run-1.json')\n",
+    )
+    findings = audit_file(f, "mod.py")
+    assert len(findings) == 1
+    assert findings[0].category == "sentinel_write"
+
+
+def test_shutil_copy_with_keyword_dst_is_flagged(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "mod.py",
+        "import shutil\n"
+        "shutil.copy('src.txt', dst='.agent/receipts/x.json')\n",
+    )
+    findings = audit_file(f, "mod.py")
+    assert len(findings) == 1
+    assert findings[0].category == "receipt_write"
+
+
+def test_aliased_shutil_copy_is_flagged(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "mod.py",
+        "import shutil as s\n"
+        "s.copy('src.txt', '.agent/receipts/x.json')\n",
+    )
+    findings = audit_file(f, "mod.py")
+    assert len(findings) == 1
+    assert findings[0].category == "receipt_write"
+
+
+def test_shutil_copy_outside_protected_path_is_not_flagged(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "mod.py",
+        "import shutil\n"
+        "shutil.copy('src.txt', '/tmp/somewhere/safe')\n",
+    )
+    findings = audit_file(f, "mod.py")
+    assert not findings
+
+
 def test_store_submit_artifact_call_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,

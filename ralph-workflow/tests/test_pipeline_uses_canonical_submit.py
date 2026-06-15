@@ -14,12 +14,15 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.agents.completion_signals import is_artifact_submitted
+from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.mcp.artifacts.completion_receipts import (
     artifact_receipt_present,
 )
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps, handle_submit_artifact
+from ralph.pipeline.effects.invoke_agent_effect import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.testing.audit_artifact_submission_canonical_path import audit
+from ralph.workspace.scope import WorkspaceScope
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
@@ -70,9 +73,28 @@ def test_pipeline_phase_stamps_canonical_receipt(
     )
 
     runner_mod = importlib.import_module("ralph.pipeline.runner")
-    result = runner_mod.execute_agent_effect()
-    assert result == PipelineEvent.AGENT_SUCCESS
 
+    effect = InvokeAgentEffect(
+        agent_name="agent1",
+        phase="execution",
+        prompt_file=str(tmp_path / "PROMPT.md"),
+        drain="execution",
+    )
+    config = UnifiedConfig(general=GeneralConfig())
+    workspace_scope = WorkspaceScope(
+        root=tmp_path,
+        allowed_roots=(tmp_path,),
+        local_config_path=tmp_path / ".agent" / "pipeline.toml",
+        propagated_config_paths=(),
+    )
+
+    result = runner_mod._execute_effect(
+        effect, config, workspace_scope,
+        pipeline_deps=object(),
+        display_context=object(),
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
     assert artifact_receipt_present(tmp_path, _RUN_ID, "development_result", backend=backend)
     sentinel_path = tmp_path / ".agent" / f"completion_seen_{_RUN_ID}.json"
     assert backend.exists(sentinel_path)

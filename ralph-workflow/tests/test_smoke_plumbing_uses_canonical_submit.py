@@ -27,9 +27,6 @@ from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.smoke_test_result import (
     SMOKE_TEST_RESULT_ARTIFACT_TYPE,
 )
-from ralph.mcp.artifacts.smoke_test_result import (
-    read_smoke_test_result_artifact as real_read,
-)
 from ralph.mcp.tools.artifact import handle_submit_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_plumbing import SmokeRunParams, _run_smoke_agent
@@ -271,13 +268,18 @@ def test_smoke_artifact_submitted_uses_canonical_helper_not_raw_file_presence(
 ) -> None:
     call_args: list[tuple] = []
 
-    def _spy_read(*args: object, **kwargs: object) -> dict[str, object] | None:
-        call_args.append((args, kwargs))
-        return real_read(*args, **kwargs)
+    def _spy_is_artifact_submitted(
+        workspace_root: Path,
+        run_id: str,
+        artifact_type: str,
+        **kwargs: object,
+    ) -> bool:
+        call_args.append((workspace_root, run_id, artifact_type))
+        return is_artifact_submitted(workspace_root, run_id, artifact_type)
 
     monkeypatch.setattr(
-        "ralph.pipeline.plumbing.smoke_plumbing.read_smoke_test_result_artifact",
-        _spy_read,
+        "ralph.pipeline.plumbing.smoke_plumbing.is_artifact_submitted",
+        _spy_is_artifact_submitted,
     )
 
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
@@ -302,5 +304,7 @@ def test_smoke_artifact_submitted_uses_canonical_helper_not_raw_file_presence(
     _run_smoke_agent(params, run_id=run_id)
 
     assert len(call_args) >= 1
-    first_args = call_args[0][0]
-    assert first_args[0] == tmp_path
+    first_workspace, first_run_id, first_type = call_args[0]
+    assert first_workspace == tmp_path
+    assert first_run_id == "interactive-claude-smoke"
+    assert first_type == SMOKE_TEST_RESULT_ARTIFACT_TYPE

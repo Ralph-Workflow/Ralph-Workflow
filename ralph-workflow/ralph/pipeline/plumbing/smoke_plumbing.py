@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from ralph.agents.completion_signals import is_artifact_submitted
 from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -604,7 +605,9 @@ def _run_smoke_agent(
         raw_line_count=len([line for line in lines if line.strip()]),
         parsed_event_count=parsed_event_count,
         tool_activity_seen=tool_activity_seen,
-        artifact_submitted=read_smoke_test_result_artifact(params.workspace_root) is not None,
+        artifact_submitted=is_artifact_submitted(
+            params.workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE
+        ),
         meaningful_output_lines=meaningful_output_lines,
         errors=errors,
     )
