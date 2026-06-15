@@ -198,6 +198,42 @@ strategy returns an empty mapping when the expected log layout is
 not present on disk, so the watchdog degrades gracefully instead of
 inventing paths.
 
+## Per-transport subagent discovery
+
+The table below maps each supported transport to the
+documentation-grounded discovery strategy and command-line role
+classifier used by the agent-agnostic process monitor. The upstream
+source of truth for documentation citations and fallback rationales
+is ``ralph/process/monitor/documentation-sources.md``; this table is
+a renderer of that file, not a parallel copy.
+
+| Transport | Documentation source | Subagent output discovery strategy | Role classifier from ``role_classifier_for_transport`` | Conservative fallback |
+|-----------|----------------------|------------------------------------|--------------------------------------------------------|-----------------------|
+| ``CLAUDE`` | ``documentation-sources.md`` § Claude Code | ``ClaudeCodeSubagentOutputDiscovery`` (reports channel unavailable) | ``_claude_code_role_classifier`` | ``INCIDENTAL_HELPER`` |
+| ``CLAUDE_INTERACTIVE`` | ``documentation-sources.md`` § Claude Code | ``ClaudeCodeSubagentOutputDiscovery`` (reports channel unavailable) | ``_claude_code_role_classifier`` | ``INCIDENTAL_HELPER`` |
+| ``OPENCODE`` | ``documentation-sources.md`` § OpenCode | ``OpencodeSubagentOutputDiscovery`` (reports channel unavailable) | ``_opencode_role_classifier`` | ``INCIDENTAL_HELPER`` |
+| ``CODEX`` | ``documentation-sources.md`` § Codex CLI | none / channel unavailable | ``_codex_role_classifier`` | ``INCIDENTAL_HELPER`` |
+| ``NANOCODER`` | ``documentation-sources.md`` § Nanocoder | none / channel unavailable | ``_nanocoder_role_classifier`` | ``INCIDENTAL_HELPER`` |
+| ``AGY`` | ``documentation-sources.md`` § AGY | none / channel unavailable | ``_agy_role_classifier`` | ``INCIDENTAL_HELPER`` |
+| ``GENERIC`` | ``documentation-sources.md`` § Fallback policy | none / channel unavailable | ``_generic_role_classifier`` | ``INCIDENTAL_HELPER`` |
+
+For transports with no documented subagent output log path, the
+discovery strategy reports the channel as unavailable. The watchdog
+then degrades gracefully to the stdout, MCP tool-call, and workspace
+evidence channels, and the diagnostic output records
+``subagent output channel unavailable for transport X`` so the
+operator can see which channels were observable.
+
+For ``OPENCODE``, spawned subagent PIDs are also tracked through the
+structured ``child_started`` lifecycle events that OpenCode emits on
+stdout. That first-party evidence is independent of the command-line
+classifier and is described in
+``ralph/process/monitor/documentation-sources.md``.
+
+See ``ralph/process/monitor/documentation-sources.md`` for the
+per-agent documentation URLs, citations, and the procedure followed
+when adding a new transport.
+
 ## Absolute ceilings are unaffected
 
 The ``SESSION_CEILING_EXCEEDED`` and ``CHILDREN_PERSIST_TOO_LONG``
