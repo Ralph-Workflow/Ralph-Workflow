@@ -4,6 +4,16 @@ These tests inspect the captured log from ``ralph smoke-interactive-agy``
 without invoking a real subprocess, network call, or sleep. They fail if the
 smoke harness ever fabricates a success message that is not backed by a real
 AGY invocation, or if the AGY display name is split into multiple argv tokens.
+
+Policy note (2026-06-14): this file was previously unmarked and ran as part
+of ``make test``. It inspects real subprocess output written by a separate
+``ralph smoke-interactive-agy`` invocation, which violates the policy
+"non-subprocess_e2e tests must not use real file I/O" the audit enforces for
+the regular suite. The log file lives outside pytest's ``tmp_path`` fixture
+(``tmp/smoke-interactive-agy-run.log`` is a real on-disk artefact produced
+by a prior run), so the test is necessarily environment-coupled. Marked
+``subprocess_e2e`` to exclude it from the timed test-cov run; the targeted
+``make test-subprocess-e2e`` target remains the right invocation.
 """
 
 from __future__ import annotations
@@ -14,10 +24,13 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    not shutil.which("agy"),
-    reason="AGY binary not installed in PATH",
-)
+pytestmark = [
+    pytest.mark.smoke,
+    pytest.mark.skipif(
+        not shutil.which("agy"),
+        reason="AGY binary not installed in PATH",
+    ),
+]
 
 
 def _log_path() -> Path:

@@ -388,6 +388,61 @@ class TestPolicyAuditor(ast.NodeVisitor):
         return "tmp_path" in "\n".join(self.source_lines)
 
 
+def _collect_markers_for_file(py_file: Path) -> set[str]:
+    """Return every pytest marker name used in ``py_file`` (AST-based).
+
+    Used to verify that test files matching the ``*smoke*`` naming
+    convention are actually marked with the ``smoke`` marker. A file
+    whose name contains ``smoke`` but whose markers do not include
+    ``smoke`` is a smoke test in disguise — it would not be excluded
+    by ``-m "not smoke"`` in addopts/Makefile, and would silently
+    leak into the regular suite, burning the 60s budget on a one-off
+    manual debug harness.
+    """
+    try:
+        source = py_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return set()
+
+    try:
+        tree = ast.parse(source, filename=str(py_file))
+    except SyntaxError:
+        return set()
+
+    markers: set[str] = set()
+    for node in ast.walk(tree):
+        # Module-level pytestmark assignment: collect every marker name.
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "pytestmark":
+                    _harvest_markers_from_value(node.value, markers)
+        # Decorator on a test function/class: collect marker names.
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            for decorator in node.decorator_list:
+                _harvest_markers_from_value(decorator, markers)
+    return markers
+
+
+def _harvest_markers_from_value(value: ast.AST, markers: set[str]) -> None:
+    """Walk a single marker expression and record its name."""
+    if isinstance(value, ast.Attribute):
+        # ``pytest.mark.smoke`` → attr name is the marker.
+        if (
+            isinstance(value.value, ast.Attribute)
+            and value.value.attr == "mark"
+            and isinstance(value.value.value, ast.Name)
+            and value.value.value.id == "pytest"
+        ):
+            markers.add(value.attr)
+    elif isinstance(value, ast.Call):
+        # ``pytest.mark.smoke(...)`` — the func is the marker name.
+        if isinstance(value.func, ast.Attribute):
+            _harvest_markers_from_value(value.func, markers)
+    elif isinstance(value, ast.List):
+        for elt in value.elts:
+            _harvest_markers_from_value(elt, markers)
+
+
 def _collect_subprocess_e2e_files(tests_root: Path) -> set[str]:
     """Find all test files marked with @pytest.mark.subprocess_e2e.
 
@@ -568,6 +623,30 @@ def audit_tests_directory(tests_root: Path) -> tuple[list[TestPolicyViolation], 
         violations = audit_test_file(py_file)
         if violations:
             all_violations.extend(violations)
+        # Policy (2026-06-14): smoke tests are NOT part of any test suite.
+        # Any test file whose name contains ``smoke`` MUST be marked with
+        # ``@pytest.mark.smoke`` (or have ``pytestmark = pytest.mark.smoke``)
+        # so the ``-m "not smoke"`` exclusion in pytest.ini/addopts and
+        # every Makefile target excludes it. A file with "smoke" in the
+        # name that LACKS the marker is a regression waiting to happen —
+        # it would silently run as a regular test, leak real file I/O
+        # into the suite, and burn the 60s budget.
+        if "smoke" in py_file.stem.lower() and "smoke" not in _collect_markers_for_file(py_file):
+            all_violations.append(
+                TestPolicyViolation(
+                    file_path=str(py_file),
+                    line=1,
+                    category="smoke-unmarked",
+                    detail=(
+                        f"Test file '{py_file.name}' has 'smoke' in the name "
+                        f"but is not marked with @pytest.mark.smoke. Without "
+                        f"the marker, pytest's -m 'not smoke' addopts will "
+                        f"NOT exclude it and it will leak into the regular "
+                        f"test suite. Mark it: 'pytestmark = pytest.mark.smoke' "
+                        f"or '@pytest.mark.smoke' on each test."
+                    ),
+                )
+            )
         files_checked += 1
 
     return all_violations, files_checked

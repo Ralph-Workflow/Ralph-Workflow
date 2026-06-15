@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.factory import PipelineDeps
 
+import pytest
 from ralph.cli.commands import smoke as smoke_module
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -26,6 +27,18 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
 from tests._pipeline_deps_factory import make_test_pipeline_deps
+
+# Policy (2026-06-14): smoke tests are NOT part of any test suite. They are
+# one-off manual debug harnesses for a SPECIFIC agent issue. Marked with
+# the ``smoke`` marker and excluded by default via ``addopts`` in
+# ``pytest.ini`` AND via ``-m "not smoke"`` in every Makefile target and
+# in ``ralph/test_suites.py``. To run one explicitly:
+#   pytest tests/test_cli_smoke.py -m smoke
+#   pytest tests/test_cli_smoke.py::test_specific_test -m smoke
+# These tests inspect real subprocess output (``tmp/smoke-interactive-agy-run.log``)
+# produced by a prior ``ralph smoke-interactive-agy`` invocation, which
+# is exactly the kind of real file I/O the test policy forbids in regular tests.
+pytestmark = pytest.mark.smoke
 
 
 class _FakePipelineFactory:

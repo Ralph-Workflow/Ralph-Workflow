@@ -91,7 +91,7 @@ def _verification_command() -> tuple[str, ...]:
         "--dist",
         "worksteal",
         "-m",
-        "not subprocess_e2e",
+        "not subprocess_e2e and not smoke",
     )
 
 

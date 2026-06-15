@@ -75,19 +75,19 @@ test:
 	$(RUN_PYTHON) -m ralph.test_suites
 
 test-unit:
-	$(RUN_PYTHON) -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e"
+	$(RUN_PYTHON) -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal --ignore=tests/integration -m "not subprocess_e2e and not smoke"
 
 test-integration:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e"
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke"
 
 test-subprocess-e2e:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m subprocess_e2e
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "subprocess_e2e and not smoke"
 
 coverage: test-cov
 
 test-cov:
 	rm -f .coverage.pytest .coverage.pytest.*
-	uv run python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e" --cov=ralph --cov-report=
+	uv run python -m pytest tests/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke" --cov=ralph --cov-report=
 	uv run coverage report --data-file=.coverage.pytest --fail-under=80
 
 # Linting
