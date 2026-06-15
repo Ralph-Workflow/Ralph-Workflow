@@ -22,6 +22,7 @@ from ralph.timeout_defaults import (
     MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    NO_PROGRESS_QUIET_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
@@ -191,6 +192,17 @@ class GeneralConfig(RalphBaseModel):
             " the child is alive but not making progress (heartbeat-only, stale-label,"
             " or OS-descendant-only evidence). Must be <= agent_idle_max_waiting_on_child_seconds."
             " When None, the no-progress ceiling is disabled."
+        ),
+    )
+    agent_no_progress_quiet_seconds: float | None = Field(
+        default=NO_PROGRESS_QUIET_SECONDS,
+        gt=0.0,
+        description=(
+            "Fast no-progress ceiling: fires when the agent has been alive but idle"
+            " for this many seconds with only stale-progress children and no useful"
+            " stdout output, BEFORE the standard no-progress ceiling (600s)."
+            " Must be <= agent_idle_no_progress_waiting_on_child_seconds when set."
+            " When None, the fast no-progress trip is disabled."
         ),
     )
     agent_child_progress_ttl_seconds: float = Field(

@@ -42,7 +42,15 @@ def _make_state(agents: list[str]) -> PipelineState:
 
 
 def test_classifier_flags_structured_unavailable_without_text_match() -> None:
-    """FailureClassifier flags is_unavailable based on the structured error reason alone."""
+    """FailureClassifier flags is_unavailable based on the structured error reason alone.
+
+    The structured watchdog_reason (NO_PROGRESS_QUIET) short-circuits the OR chain in
+    is_unavailable before text matching is evaluated. Even though the
+    AgentInactivityTimeoutError message for NO_PROGRESS_QUIET contains
+    'produced no output' (which is in UNAVAILABLE_AGENT_SUBSTRINGS), the
+    structured reason is checked FIRST in the OR chain, so text matching is
+    never evaluated. This proves the structured reason is the deciding signal.
+    """
     classifier = FailureClassifier()
     opts = InactivityTimeoutOpts(
         reason=WatchdogFireReason.NO_PROGRESS_QUIET,
@@ -59,6 +67,7 @@ def test_classifier_flags_structured_unavailable_without_text_match() -> None:
 
     assert failure.is_unavailable is True
     assert failure.watchdog_reason == "no_progress_quiet"
+    assert failure.category.value == "agent"
 
 
 def test_recovery_controller_falls_over_on_no_progress_quiet() -> None:
