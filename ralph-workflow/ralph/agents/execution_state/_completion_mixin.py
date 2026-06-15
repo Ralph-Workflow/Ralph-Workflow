@@ -9,12 +9,14 @@ check to ``_check_signals_terminal``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ._helpers import _check_signals_terminal
 from .agent_execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
+    from types import MappingProxyType
+
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.liveness import LivenessProbe
 
@@ -22,14 +24,24 @@ if TYPE_CHECKING:
 
 
 class CompletionEnforcingStrategy:
-    """Mixin that makes ``classify_exit`` depend on terminal completion signals."""
+    """Mixin that makes ``classify_exit`` depend on terminal completion signals.
+
+    Host classes must override ``supports_completion_enforcement()`` to return
+    ``True``; inheriting the default ``False`` from
+    :class:`BaseExecutionStrategy` bypasses the enforcement contract and is not
+    allowed.
+    """
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        if not hasattr(cls, "supports_completion_enforcement"):
+        # Require an explicit override in the class body.  Inheriting the
+        # default ``False`` from :class:`BaseExecutionStrategy` bypasses the
+        # enforcement contract and is not allowed.
+        typed_dict = cast("MappingProxyType[str, object]", cls.__dict__)
+        if "supports_completion_enforcement" not in typed_dict:
             msg = (
-                f"{cls.__name__} must expose supports_completion_enforcement() "
-                "when mixing in CompletionEnforcingStrategy"
+                f"{cls.__name__} must override supports_completion_enforcement() "
+                "to return True when mixing in CompletionEnforcingStrategy"
             )
             raise TypeError(msg)
 

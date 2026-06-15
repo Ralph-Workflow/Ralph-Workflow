@@ -9,13 +9,16 @@ Advanced use cases (CCS aliases, dynamic model parsing, custom
 ``AgentRegistry.ccs_defaults``) must still use ``AgentRegistry`` directly.
 
 The function writes into the existing parser-type registry
-(``ralph.agents.parsers._PARSER_REGISTRY``) and the existing transport-keyed
-strategy dispatch (``ralph.agents.execution_state._factory._STRATEGY_DISPATCH``).
-Multiple custom agents may share a transport; each agent keeps its own parser
-entry keyed by both its registered ``name`` and its executable command name.
-Runtime invocation uses :func:`ralph.agents.execution_state.strategy_for_command`,
-which selects the strategy registered for the agent's command name before
-falling back to the transport-keyed ``strategy_for_transport`` slot.
+(``ralph.agents.parsers._PARSER_REGISTRY``) and a collision-free custom-command
+registry (``ralph.agents.parsers._CUSTOM_COMMAND_REGISTRY``) keyed by the full
+executable command string.  Multiple custom agents may share a transport; each
+agent keeps its own parser and strategy entry keyed by both its registered
+``name`` and its full command.  Runtime invocation uses
+:func:`ralph.agents.execution_state.strategy_for_command`, which selects the
+strategy registered for the agent's full command before falling back to the
+transport-keyed ``strategy_for_transport`` slot.  The transport-keyed slot is
+never overwritten by a custom registration, so unrelated commands on the same
+transport continue to use the built-in fallback.
 """
 
 from __future__ import annotations
@@ -24,11 +27,13 @@ import inspect
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents.execution_state._base import BaseExecutionStrategy
-from ralph.agents.parsers import _PARSER_REGISTRY, _ParserRegistryEntry
+from ralph.agents.parsers import (
+    _CUSTOM_COMMAND_REGISTRY,
+    _PARSER_REGISTRY,
+    _ParserRegistryEntry,
+)
 from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport, JsonParserType
-
-from .execution_state._factory import _STRATEGY_DISPATCH
 
 if TYPE_CHECKING:
     from ralph.agents.parsers.base import AgentParser
@@ -72,12 +77,19 @@ def _wrap_strategy_factory(
     ``strategy_for_transport`` forwards ``label_scope`` and ``registry`` to every
     factory.  Custom factories that do not accept those kwargs (for example a
     plain ``BaseExecutionStrategy`` subclass) still work: the wrapper only
-    forwards kwargs the underlying callable actually accepts.
+    forwards kwargs the underlying callable actually accepts, including
+    factories that accept arbitrary kwargs via ``**kwargs``.
     """
     sig = inspect.signature(factory)
     params = sig.parameters
     accepts_label_scope = "label_scope" in params
     accepts_registry = "registry" in params
+    # ``inspect.Parameter.VAR_KEYWORD`` is 4; using the literal avoids an
+    # ``Any``-typed expression from the ``inspect`` stubs under mypy strict.
+    _var_keyword_kind = 4
+    accepts_any_kwargs = any(
+        param.kind == _var_keyword_kind for param in params.values()
+    )
 
     def wrapped(
         *,
@@ -86,9 +98,9 @@ def _wrap_strategy_factory(
         **_kwargs: object,
     ) -> BaseExecutionStrategy:
         kwargs: dict[str, object] = {}
-        if accepts_label_scope:
+        if accepts_label_scope or accepts_any_kwargs:
             kwargs["label_scope"] = label_scope
-        if accepts_registry:
+        if accepts_registry or accepts_any_kwargs:
             kwargs["registry"] = registry
         # Runtime inspection guarantees we only forward kwargs the underlying
         # factory accepts, so the cast is safe.
@@ -170,10 +182,8 @@ def register_agent_support(
     wrapped_strategy = _wrap_strategy_factory(strategy_factory)
     entry = _ParserRegistryEntry(parser_factory, wrapped_strategy, transport)
     _PARSER_REGISTRY[name] = entry
-    command_name = config.cmd.split(maxsplit=1)[0].lower() if config.cmd else ""
-    if command_name and command_name != name:
-        _PARSER_REGISTRY[command_name] = entry
-    _STRATEGY_DISPATCH[transport] = wrapped_strategy
+    if config.cmd:
+        _CUSTOM_COMMAND_REGISTRY[config.cmd.lower()] = entry
     agent_registry.register(name, config)
     return config
 

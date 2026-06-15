@@ -24,11 +24,14 @@ covered by the `AgentTransport` enum plus the strategy's
 
 The API keeps all additional state caller-owned: you pass the target
 `AgentRegistry`, and the only module-level lookup tables used are the existing
-`_PARSER_REGISTRY` and `_STRATEGY_DISPATCH` pure-data registries.  A registered
-agent is keyed by both its `name` and its executable command name, so runtime
-paths such as `invoke_agent()` and the smoke-test harness can resolve the
-correct parser and strategy even when the command string differs from the
-registered name.
+`_PARSER_REGISTRY` parser registry and the `_CUSTOM_COMMAND_REGISTRY`
+collision-free custom-command registry.  A registered agent is keyed by both
+its `name` and its full executable command string, so runtime paths such as
+`invoke_agent()` and the smoke-test harness can resolve the correct parser and
+strategy even when the command string differs from the registered name.
+Custom commands are stored in a separate collision-free registry keyed by the
+full command; a custom command like `claude wrapper` does not replace the
+built-in `claude` parser or strategy.
 
 ## Import path
 
@@ -108,8 +111,8 @@ assert config.session_flag is not None
 By default the agent's executable command (`AgentConfig.cmd`) equals the
 registered `name`. For real agents the command name usually differs from the
 registered name or includes flags.  Pass the command and other flags as keyword
-arguments; the parser and strategy are also registered under the executable
-command token so runtime resolution picks them up:
+arguments; the parser and strategy are also registered under the full
+executable command string so runtime resolution picks them up:
 
 ```python
 register_agent_support(
@@ -118,7 +121,7 @@ register_agent_support(
     parser_factory=MyAgentParser,
     strategy_factory=MyAgentStrategy,
     agent_registry=registry,
-    cmd="my-agent-cli",
+    cmd="my-agent-cli --json",
     output_flag="--json",
     print_flag="--print",
     session_flag="--continue {}",
@@ -131,18 +134,18 @@ Supported overrides mirror `AgentConfig`: `cmd`, `output_flag`, `yolo_flag`,
 `session_flag`, `display_name`, and `subagent_capability`.
 
 When `cmd` is overridden, both `get_parser("my-agent")` and
-`get_parser("my-agent-cli")` return the registered parser, and
-`strategy_for_command("my-agent-cli", AgentTransport.GENERIC)` returns the
-registered strategy.
+`get_parser("my-agent-cli --json")` return the registered parser, and
+`strategy_for_command("my-agent-cli --json", AgentTransport.GENERIC)` returns
+the registered strategy.
 
 ## Multiple agents on the same transport
 
 Multiple custom agents may share a transport.  Each keeps its own parser entry
-(keyed by `name` and by command name) and its own strategy.  Runtime
+(keyed by `name` and by full command string) and its own strategy.  Runtime
 invocation uses `strategy_for_command(cmd, transport)`, which looks up the
-strategy by command name before falling back to the transport-keyed slot used
-by `strategy_for_transport()`.  You can also retrieve a specific agent's
-registered pieces with `get_registered_agent_support(name)`:
+strategy by the full command string before falling back to the transport-keyed
+slot used by `strategy_for_transport()`.  You can also retrieve a specific
+agent's registered pieces with `get_registered_agent_support(name)`:
 
 ```python
 register_agent_support(
@@ -168,7 +171,9 @@ your_project/
 
 No edits to `ralph/agents/parsers/__init__.py`,
 `ralph/agents/execution_state/_factory.py`, or `ralph/agents/registry.py` are
-required for a typical new agent.
+required for a typical new agent.  The transport-keyed fallback used by
+`strategy_for_transport()` is never overwritten, so unrelated commands on the
+same transport continue to use the built-in strategy.
 
 ## Test checklist
 

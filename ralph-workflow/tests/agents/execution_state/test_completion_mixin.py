@@ -54,4 +54,21 @@ class TestCompletionEnforcingStrategy:
 
     def test_mixin_requires_supports_completion_enforcement(self) -> None:
         with pytest.raises(TypeError):
-            type("_MissingEnforcement", (CompletionEnforcingStrategy,), {})
+            type(
+                "_MissingEnforcement",
+                (CompletionEnforcingStrategy,),
+                dict[str, object](),
+            )
+
+    def test_mixin_rejects_host_that_inherits_false_default(self) -> None:
+        """A host inheriting False from BaseExecutionStrategy cannot mix in enforcement."""
+        with pytest.raises(TypeError):
+            type(
+                "_FalseEnforcementHost",
+                (CompletionEnforcingStrategy, GenericExecutionStrategy),
+                dict[str, object](),
+            )
+
+    def test_intended_concrete_host_reports_enforcement_enabled(self) -> None:
+        strategy = _HostWithCompletionEnforcement()
+        assert strategy.supports_completion_enforcement() is True

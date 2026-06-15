@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
-from ralph.agents.parsers import _PARSER_REGISTRY
+from ralph.agents.parsers import _CUSTOM_COMMAND_REGISTRY, _PARSER_REGISTRY
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -21,11 +21,14 @@ if TYPE_CHECKING:
 def _isolated_registries() -> Iterator[None]:
     """Save parser and strategy registries, restore them after the block."""
     original_parsers = dict(_PARSER_REGISTRY)
+    original_custom = dict(_CUSTOM_COMMAND_REGISTRY)
     original_strategies = dict(_STRATEGY_DISPATCH)
     try:
         yield
     finally:
         _PARSER_REGISTRY.clear()
         _PARSER_REGISTRY.update(original_parsers)
+        _CUSTOM_COMMAND_REGISTRY.clear()
+        _CUSTOM_COMMAND_REGISTRY.update(original_custom)
         _STRATEGY_DISPATCH.clear()
         _STRATEGY_DISPATCH.update(original_strategies)

@@ -67,4 +67,5 @@ class TestBaseExecutionStrategyDefaults:
 
     def test_observe_line_is_no_op(self) -> None:
         strategy = BaseExecutionStrategy()
-        assert strategy.observe_line("anything") is None
+        strategy.observe_line("anything")
+        assert strategy.supports_session_continuation() is False

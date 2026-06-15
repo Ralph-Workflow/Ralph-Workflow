@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from ralph.config.enums import AgentTransport
 
-from ..parsers import _PARSER_REGISTRY, _ParserRegistryEntry
+from ..parsers import _CUSTOM_COMMAND_REGISTRY, _ParserRegistryEntry
 from .agy_execution_strategy import AgyExecutionStrategy
 from .claude_execution_strategy import ClaudeExecutionStrategy
 from .claude_interactive_execution_strategy import ClaudeInteractiveExecutionStrategy
@@ -114,13 +114,15 @@ def strategy_for_command(
     """Return the execution strategy registered for ``cmd`` when one exists.
 
     Custom agents registered via ``register_agent_support()`` are keyed by
-    their command name.  When a matching bundled entry exists, its strategy
-    factory is used; otherwise the transport-keyed fallback from
-    :func:`strategy_for_transport` is used.  This lets multiple agents share
-    a transport while keeping their own strategies.
+    their full executable command string.  When a matching bundled entry
+    exists, its strategy factory is used; otherwise the transport-keyed
+    fallback from :func:`strategy_for_transport` is used.  This lets multiple
+    agents share a transport while keeping their own strategies and prevents
+    a custom ``claude wrapper`` command from replacing the built-in ``claude``
+    strategy.
     """
-    command_name = cmd.split(maxsplit=1)[0].lower() if cmd else ""
-    entry = _PARSER_REGISTRY.get(command_name)
+    command_lower = cmd.lower() if cmd else ""
+    entry = _CUSTOM_COMMAND_REGISTRY.get(command_lower)
     if isinstance(entry, _ParserRegistryEntry) and entry.transport == transport:
         return entry.strategy_factory(label_scope=label_scope, registry=registry)
     return strategy_for_transport(transport, label_scope=label_scope, registry=registry)

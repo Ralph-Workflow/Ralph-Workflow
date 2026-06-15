@@ -51,6 +51,7 @@ if TYPE_CHECKING:
     from ralph.process.child_liveness import ChildLivenessRegistry
 
 __all__ = [
+    "_CUSTOM_COMMAND_REGISTRY",
     "_PARSER_REGISTRY",
     "AgentOutputLine",
     "AgentParser",
@@ -109,6 +110,11 @@ _PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
     "generic": GenericParser,
 }
 
+# Custom agents registered via ``register_agent_support()`` are keyed here by
+# their full executable command string.  This keeps custom command names like
+# ``claude wrapper`` from colliding with built-in parser keys like ``claude``.
+_CUSTOM_COMMAND_REGISTRY: dict[str, _ParserRegistryEntry] = {}
+
 
 def resolve_parser_key(
     command: str,
@@ -139,12 +145,13 @@ def resolve_parser_key(
     Returns:
         A parser-type key suitable for :func:`get_parser`.
     """
-    command_name = command.split(maxsplit=1)[0].lower() if command else ""
-    entry = _PARSER_REGISTRY.get(command_name)
-    if isinstance(entry, _ParserRegistryEntry) and entry.transport == transport:
-        return command_name
+    command_lower = command.lower() if command else ""
+    custom_entry = _CUSTOM_COMMAND_REGISTRY.get(command_lower)
+    if isinstance(custom_entry, _ParserRegistryEntry) and custom_entry.transport == transport:
+        return command_lower
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
         return "claude_interactive"
+    command_name = command.split(maxsplit=1)[0].lower() if command else ""
     if (
         command_name
         and command_name in _PARSER_REGISTRY
@@ -155,10 +162,11 @@ def resolve_parser_key(
 
 
 def get_parser(parser_type: str) -> AgentParser:
-    """Get parser instance by type name.
+    """Get parser instance by type name or by a registered custom command.
 
     Args:
-        parser_type: Parser type name (claude, codex, gemini, opencode, generic).
+        parser_type: Parser type name (claude, codex, gemini, opencode, generic)
+            or the full executable command of a custom-registered agent.
 
     Returns:
         Parser instance implementing AgentParser protocol.
@@ -167,7 +175,10 @@ def get_parser(parser_type: str) -> AgentParser:
         ValueError: If parser type is unknown.
     """
     parser_cls = _PARSER_REGISTRY.get(parser_type.lower())
-    if parser_cls is None:
-        msg = f"Unknown parser type: {parser_type}"
-        raise ValueError(msg)
-    return parser_cls()
+    if parser_cls is not None:
+        return parser_cls()
+    custom_entry = _CUSTOM_COMMAND_REGISTRY.get(parser_type.lower())
+    if isinstance(custom_entry, _ParserRegistryEntry):
+        return custom_entry.parser_factory()
+    msg = f"Unknown parser type: {parser_type}"
+    raise ValueError(msg)

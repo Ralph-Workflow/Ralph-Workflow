@@ -9,11 +9,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.agents.execution_state import BaseExecutionStrategy, strategy_for_command
-from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
+from ralph.agents.execution_state import (
+    BaseExecutionStrategy,
+    ClaudeExecutionStrategy,
+    GenericExecutionStrategy,
+    strategy_for_command,
+    strategy_for_transport,
+)
 from ralph.agents.parsers import (
+    _CUSTOM_COMMAND_REGISTRY,
     _PARSER_REGISTRY,
     AgentOutputLine,
+    ClaudeParser,
     get_parser,
     resolve_parser_key,
 )
@@ -234,7 +241,8 @@ class TestRegisterAgentSupport:
 
     def test_isolation_context_restores_registries(self) -> None:
         baseline_parsers = dict(_PARSER_REGISTRY)
-        baseline_strategies = dict(_STRATEGY_DISPATCH)
+        baseline_custom = dict(_CUSTOM_COMMAND_REGISTRY)
+        baseline_generic_strategy = strategy_for_transport(AgentTransport.GENERIC)
 
         with _isolated_registries():
             registry = AgentRegistry()
@@ -246,10 +254,20 @@ class TestRegisterAgentSupport:
                 agent_registry=registry,
             )
             assert "fake" in _PARSER_REGISTRY
-            assert AgentTransport.GENERIC in _STRATEGY_DISPATCH
+            assert "fake" in _CUSTOM_COMMAND_REGISTRY
+            # The transport-keyed fallback is never overwritten by a custom
+            # registration; unrelated commands still get the built-in generic
+            # strategy.
+            assert isinstance(
+                strategy_for_transport(AgentTransport.GENERIC),
+                GenericExecutionStrategy,
+            )
 
         assert dict(_PARSER_REGISTRY) == baseline_parsers
-        assert dict(_STRATEGY_DISPATCH) == baseline_strategies
+        assert dict(_CUSTOM_COMMAND_REGISTRY) == baseline_custom
+        assert type(strategy_for_transport(AgentTransport.GENERIC)) is type(
+            baseline_generic_strategy
+        )
 
     def test_strategy_factory_kwargs_are_preserved_when_accepted(self) -> None:
         with _isolated_registries():
@@ -271,11 +289,15 @@ class TestRegisterAgentSupport:
             assert strategy.received_label_scope is None
             assert strategy.received_registry is None
 
-            strategy_factory = _STRATEGY_DISPATCH[AgentTransport.GENERIC]
-            strategy = strategy_factory(label_scope="scope-x", registry=fake_registry)
+            strategy = strategy_for_command(
+                "fake-kwargs",
+                AgentTransport.GENERIC,
+                label_scope="scope-x",
+                registry=fake_registry,
+            )
             assert isinstance(strategy, KwargsAwareStrategy)
             assert strategy.received_label_scope == "scope-x"
-            assert strategy.received_registry is fake_registry
+            assert strategy.received_registry == fake_registry
 
     def test_strategy_factory_without_kwargs_still_works(self) -> None:
         with _isolated_registries():
@@ -289,9 +311,11 @@ class TestRegisterAgentSupport:
                 agent_registry=registry,
             )
 
-            strategy_factory = _STRATEGY_DISPATCH[AgentTransport.GENERIC]
-            strategy = strategy_factory(
-                label_scope="scope-x", registry=cast("ChildLivenessRegistry", object())
+            strategy = strategy_for_command(
+                "fake-no-kwargs",
+                AgentTransport.GENERIC,
+                label_scope="scope-x",
+                registry=cast("ChildLivenessRegistry", object()),
             )
             assert isinstance(strategy, FakeAgentStrategy)
 
@@ -394,10 +418,10 @@ class TestResolveParserKey:
             key = resolve_parser_key(
                 "fake-cmd --verbose", JsonParserType.GENERIC, AgentTransport.GENERIC
             )
-            assert key == "fake-cmd"
+            assert key == "fake-cmd --verbose"
             assert isinstance(get_parser(key), FakeAgentParser)
 
-    def test_name_differs_from_cmd_registers_parser_under_command_token(self) -> None:
+    def test_name_differs_from_cmd_registers_parser_under_full_command(self) -> None:
         with _isolated_registries():
             registry = AgentRegistry()
             config = register_agent_support(
@@ -409,8 +433,8 @@ class TestResolveParserKey:
                 cmd="my-agent-cli --json",
             )
 
-            assert _parser_key_for_config(config) == "my-agent-cli"
-            assert isinstance(get_parser("my-agent-cli"), FakeAgentParser)
+            assert _parser_key_for_config(config) == "my-agent-cli --json"
+            assert isinstance(get_parser("my-agent-cli --json"), FakeAgentParser)
             assert isinstance(get_parser("my-agent"), FakeAgentParser)
             assert _count_parsed_events(config, ["hello"]) == 1
 
@@ -498,3 +522,103 @@ class TestStrategyForCommand:
 
             assert _tool_activity_seen(config, ["tool: hammer"]) is True
             assert _tool_activity_seen(config, ["plain output"]) is False
+
+
+class _AnyKwargsStrategy(BaseExecutionStrategy):
+    """Strategy that only accepts arbitrary kwargs."""
+
+    def __init__(self, **kwargs: object) -> None:
+        self.received_kwargs = kwargs
+
+
+class TestRegistrationRegressionCases:
+    """Regression coverage for collision, fallback, and kwargs forwarding."""
+
+    def test_kwargs_forwarded_through_var_keyword_factory(self) -> None:
+        with _isolated_registries():
+            registry = AgentRegistry()
+            fake_registry = cast("ChildLivenessRegistry", object())
+
+            register_agent_support(
+                "kwargs-agent",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=_AnyKwargsStrategy,
+                agent_registry=registry,
+            )
+
+            strategy = strategy_for_command(
+                "kwargs-agent",
+                AgentTransport.GENERIC,
+                label_scope="scope-x",
+                registry=fake_registry,
+            )
+            assert isinstance(strategy, _AnyKwargsStrategy)
+            assert strategy.received_kwargs == {
+                "label_scope": "scope-x",
+                "registry": fake_registry,
+            }
+
+    def test_custom_command_does_not_collide_with_builtin_claude_family(self) -> None:
+        with _isolated_registries():
+            registry = AgentRegistry()
+            register_agent_support(
+                "claude-wrapper",
+                transport=AgentTransport.CLAUDE,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeAgentStrategy,
+                agent_registry=registry,
+                cmd="claude wrapper",
+            )
+
+            # Built-in headless Claude must remain reachable.
+            key = resolve_parser_key(
+                "claude -p", JsonParserType.CLAUDE, AgentTransport.CLAUDE
+            )
+            assert key == "claude"
+            assert isinstance(get_parser(key), ClaudeParser)
+            assert isinstance(
+                strategy_for_command("claude -p", AgentTransport.CLAUDE),
+                ClaudeExecutionStrategy,
+            )
+
+            # The custom command resolves to the custom registration.
+            custom_key = resolve_parser_key(
+                "claude wrapper", JsonParserType.GENERIC, AgentTransport.CLAUDE
+            )
+            assert custom_key == "claude wrapper"
+            assert isinstance(get_parser(custom_key), FakeAgentParser)
+            assert isinstance(
+                strategy_for_command("claude wrapper", AgentTransport.CLAUDE),
+                FakeAgentStrategy,
+            )
+
+    def test_unknown_command_on_same_transport_falls_back_to_builtin(self) -> None:
+        with _isolated_registries():
+            registry = AgentRegistry()
+            register_agent_support(
+                "custom-generic",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeAgentStrategy,
+                agent_registry=registry,
+            )
+
+            strategy = strategy_for_command(
+                "totally-unknown-binary", AgentTransport.GENERIC
+            )
+            assert isinstance(strategy, GenericExecutionStrategy)
+
+    def test_transport_fallback_not_overwritten_by_custom_registration(self) -> None:
+        with _isolated_registries():
+            registry = AgentRegistry()
+            register_agent_support(
+                "custom-generic",
+                transport=AgentTransport.GENERIC,
+                parser_factory=FakeAgentParser,
+                strategy_factory=FakeAgentStrategy,
+                agent_registry=registry,
+            )
+
+            strategy = strategy_for_transport(AgentTransport.GENERIC)
+            assert isinstance(strategy, GenericExecutionStrategy)
