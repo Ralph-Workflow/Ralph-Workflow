@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
 from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT, InvalidParamsError
 
@@ -92,6 +93,34 @@ def _sentinel_path(workspace_root: Path, run_id: str) -> Path:
 def _tools_artifact() -> _ToolsArtifactModule:
     """Return the ``ralph.mcp.tools.artifact`` module lazily to avoid cycles."""
     return cast("_ToolsArtifactModule", importlib.import_module("ralph.mcp.tools.artifact"))
+
+
+def _clear_fallback_artifacts(
+    workspace_root: Path,
+    run_id: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Clear fallback artifacts that could be promoted for this run.
+
+    Prevents a fresh run from inheriting stale fallback artifacts from a
+    previous run. Removes .agent/tmp/<artifact_type>.json files, which are
+    always fallback files written by agents.
+
+    Note: This does NOT clear .agent/artifacts/<artifact_type>.json, which is
+    the canonical artifact location and is managed separately by receipt-based
+    validation.
+
+    Args:
+        workspace_root: Root of the workspace.
+        run_id: The run ID being cleared (used only for documentation; tmp
+            directory is shared across runs).
+        backend: File backend for I/O operations.
+    """
+    tmp_dir = workspace_root / ".agent" / "tmp"
+    if backend.exists(tmp_dir):
+        for path in backend.glob(tmp_dir, "*.json"):
+            backend.unlink(path, missing_ok=True)
 
 
 def _read_fallback_payload(path: Path, backend: FileBackend) -> dict[str, object] | None:
@@ -221,6 +250,10 @@ def promote_fallback_artifact(
     envelope) and route it through :func:`submit_artifact_canonical` so a receipt
     is stamped.
 
+    Does NOT promote canonical artifacts from ``.agent/artifacts/`` that already
+    have a receipt for ANY run_id (including the current one), preventing stale
+    artifacts from previous runs from being promoted to a new receipt.
+
     Returns:
         The :class:`SubmitResult` from the canonical submit, or ``None`` when no
         fallback file exists or parsing fails.
@@ -235,6 +268,35 @@ def promote_fallback_artifact(
     for path in (tmp_fallback, artifact_fallback):
         if not backend.exists(path):
             continue
+
+        # For canonical artifacts (not tmp files), check if this is a stale
+        # artifact from a previous run. If a receipt exists for ANY other run_id
+        # (but not the current run), this artifact was already submitted through
+        # the canonical path and should not be promoted again. This prevents a
+        # fresh run from inheriting stale artifacts from previous runs.
+        if path != tmp_fallback and run_id is not None:
+            receipts_dir = workspace_root / ".agent" / "receipts"
+            if backend.exists(receipts_dir):
+                has_other_run_receipt = False
+                # Check each run directory by looking for receipt files
+                # Use glob pattern to find all receipt files across all run directories
+                for receipt_path in backend.glob(receipts_dir, "*/*.json"):
+                    # Extract run_id from the path: receipts_dir/run_id/artifact_type.json
+                    parts = receipt_path.relative_to(receipts_dir).parts
+                    if len(parts) >= len(["run_id", "artifact_type.json"]):
+                        receipt_run_id = parts[0]
+                        receipt_artifact_type = receipt_path.stem
+                        # Check if this is the same artifact type and a different run
+                        if (
+                            receipt_artifact_type == artifact_type
+                            and receipt_run_id != run_id
+                        ):
+                            # A receipt exists for a different run - this is stale
+                            has_other_run_receipt = True
+                            break
+                if has_other_run_receipt:
+                    return None
+
         parsed = _read_fallback_payload(path, backend)
         if parsed is None:
             # A malformed file at this location does not preclude a valid
@@ -258,6 +320,7 @@ def promote_fallback_artifact(
 
 __all__ = [
     "SubmitResult",
+    "_clear_fallback_artifacts",
     "promote_fallback_artifact",
     "submit_artifact_canonical",
 ]

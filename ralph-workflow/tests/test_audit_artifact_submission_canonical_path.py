@@ -104,7 +104,7 @@ def test_shutil_copy_with_keyword_dst_is_flagged(tmp_path: Path) -> None:
         tmp_path,
         "mod.py",
         "import shutil\n"
-        "shutil.copy('src.txt', dst='.agent/receipts/x.json')\n",
+        "shutil.copy('src.txt', dst='.agent/receipts/commit_message.json')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1

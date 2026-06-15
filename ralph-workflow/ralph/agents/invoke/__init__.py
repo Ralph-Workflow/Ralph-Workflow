@@ -94,6 +94,7 @@ from ralph.agents.invoke._workspace_change_classifier import (
 )
 from ralph.api.opencode import validate_local_model_support
 from ralph.config.enums import AgentTransport
+from ralph.mcp.artifacts.canonical_submit import _clear_fallback_artifacts
 from ralph.mcp.artifacts.completion_receipts import clear_run_receipts
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
 from ralph.mcp.protocol.startup import (
@@ -205,10 +206,14 @@ def _clear_session_completion_sentinel(workspace_path: Path, run_id: str) -> Non
     Clearing both together prevents a resumed session that reuses ``run_id`` from
     inheriting stale "completed" / "artifact submitted" signals from a prior
     attempt.
+
+    Also clears fallback artifacts in .agent/tmp/ to prevent a fresh run from
+    promoting stale fallback files from previous runs.
     """
     sentinel_path = workspace_path / f".agent/completion_seen_{run_id}.json"
     sentinel_path.unlink(missing_ok=True)
     clear_run_receipts(workspace_path, run_id)
+    _clear_fallback_artifacts(workspace_path, run_id)
 
 
 def _apply_upstream_env(

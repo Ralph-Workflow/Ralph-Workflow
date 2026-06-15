@@ -308,3 +308,33 @@ def test_smoke_artifact_submitted_uses_canonical_helper_not_raw_file_presence(
     assert first_workspace == tmp_path
     assert first_run_id == "interactive-claude-smoke"
     assert first_type == SMOKE_TEST_RESULT_ARTIFACT_TYPE
+
+
+def test_smoke_tmp_fallback_promotion_consistent_with_errors(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    ".agent/tmp fallback promoted by canonical helper should not report submission error."
+    params = _make_params(tmp_path, "claude/haiku", _claude_config())
+    run_id = "interactive-claude-smoke"
+    artifact_type = SMOKE_TEST_RESULT_ARTIFACT_TYPE
+    tmp_artifact_path = tmp_path / ".agent" / "tmp" / f"{artifact_type}.json"
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        tmp_artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_artifact_path.write_text(json.dumps(_outer_envelope()), encoding="utf-8")
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    assert not artifact_receipt_present(tmp_path, run_id, artifact_type)
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    assert result.artifact_submitted is True
+    assert is_artifact_submitted(tmp_path, run_id, artifact_type)
+    assert artifact_receipt_present(tmp_path, run_id, artifact_type)
+    assert "smoke_test_result artifact was not submitted" not in result.errors

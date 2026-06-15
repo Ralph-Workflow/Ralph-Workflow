@@ -15,7 +15,7 @@ import pytest
 import ralph.mcp.artifacts as artifacts_package
 from ralph.agents.completion_signals import CompletionSignals, is_artifact_submitted
 from ralph.agents.execution_state._helpers import _check_signals_terminal
-from ralph.mcp.artifacts.canonical_submit import SubmitResult, submit_artifact_canonical
+from ralph.mcp.artifacts import SubmitResult, submit_artifact_canonical
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.tools.artifact import ArtifactHandlerDeps
@@ -594,3 +594,50 @@ def test_atomic_rollback_preserves_artifact_dir_state(
 
     post_failure_files = set(failing_backend.glob(artifact_dir, "*.json"))
     assert post_failure_files == pre_submit_files
+def test_stale_fallback_not_promoted_for_fresh_run(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    """Test that stale fallback artifacts from previous runs are not promoted to fresh runs.
+
+    Scenario:
+    - Previous run (run-old) successfully submitted a development_result artifact
+    - Current run (run-new) has no completed artifacts
+    - Fallback artifact exists from run-old in .agent/artifacts/
+    - Fallback artifact should NOT be promoted to run-new because it's stale
+
+    This ensures artifact isolation between runs and prevents cross-contamination.
+    """
+    # Create receipt from previous run to indicate it was successfully submitted
+    receipt_dir = tmp_path / ".agent" / "receipts" / "run-old"
+    backend.write_text(
+        receipt_dir / "development_result.json",
+        json.dumps(
+            {
+                "artifact_type": "development_result",
+                "run_id": "run-old",
+                "timestamp": "2025-01-01T00:00:00Z",
+            }
+        ),
+    )
+
+    # Create stale fallback artifact from previous run
+    backend.write_text(
+        tmp_path / ".agent" / "artifacts" / "development_result.json",
+        json.dumps(
+            {
+                "status": "completed",
+                "summary": "from old run",
+                "files_changed": "- x.py",
+            }
+        ),
+    )
+
+    # Current run should not see stale artifact as submitted
+    assert not is_artifact_submitted(
+        tmp_path, "run-new", "development_result", deps=deps
+    )
+    assert not artifact_receipt_present(
+        tmp_path, "run-new", "development_result", backend=backend
+    )

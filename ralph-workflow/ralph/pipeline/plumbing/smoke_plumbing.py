@@ -509,6 +509,7 @@ def _detect_smoke_errors(
     session_id: str | None,
     final_exception: AgentInvocationError | None,
     tool_activity_seen: bool | None = None,
+    artifact_submitted: bool = False,
 ) -> list[str]:
     """Detect errors in smoke run results."""
     errors = _detect_break_indicators(lines)
@@ -530,7 +531,7 @@ def _detect_smoke_errors(
     if not _tool_activity_seen_for_errors(params, lines, tool_activity_seen):
         errors.append("no tool activity was observed")
 
-    if not read_smoke_test_result_artifact(params.workspace_root):
+    if not artifact_submitted:
         errors.append("smoke_test_result artifact was not submitted")
 
     if output_error := _meaningful_output_error(
@@ -584,6 +585,10 @@ def _run_smoke_agent(
     if not meaningful_output_lines:
         meaningful_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
 
+    artifact_submitted = is_artifact_submitted(
+        params.workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE
+    )
+
     errors = _detect_smoke_errors(
         params,
         lines,
@@ -591,6 +596,7 @@ def _run_smoke_agent(
         session_id,
         final_exception,
         tool_activity_seen=tool_activity_seen,
+        artifact_submitted=artifact_submitted,
     )
 
     config = params.config
@@ -605,9 +611,7 @@ def _run_smoke_agent(
         raw_line_count=len([line for line in lines if line.strip()]),
         parsed_event_count=parsed_event_count,
         tool_activity_seen=tool_activity_seen,
-        artifact_submitted=is_artifact_submitted(
-            params.workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE
-        ),
+        artifact_submitted=artifact_submitted,
         meaningful_output_lines=meaningful_output_lines,
         errors=errors,
     )
