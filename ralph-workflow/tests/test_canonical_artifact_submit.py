@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import ralph.mcp.artifacts as artifacts_package
 from ralph.agents.completion_signals import is_artifact_submitted
 from ralph.mcp.artifacts.canonical_submit import SubmitResult, submit_artifact_canonical
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
@@ -51,6 +52,12 @@ def workspace(tmp_path: Path) -> MockWorkspace:
 @pytest.fixture
 def deps(backend: MemoryBackend) -> ArtifactHandlerDeps:
     return _deps(backend)
+
+
+def test_canonical_submit_symbols_exported_from_artifacts_package() -> None:
+    assert hasattr(artifacts_package, "SubmitResult")
+    assert hasattr(artifacts_package, "submit_artifact_canonical")
+    assert hasattr(artifacts_package, "promote_fallback_artifact")
 
 
 def test_submit_artifact_canonical_exists_and_returns_frozen_result(

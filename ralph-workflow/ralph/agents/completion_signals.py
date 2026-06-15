@@ -24,6 +24,7 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 
 if TYPE_CHECKING:
@@ -127,12 +128,6 @@ def is_artifact_submitted(
     """
     if artifact_receipt_present(workspace, run_id, artifact_type):
         return True
-    # Local import avoids a circular dependency: canonical_submit imports
-    # ArtifactHandlerDeps from tools.artifact at runtime, and tools.artifact
-    # imports this module's evaluate_completion indirectly via invoke.
-    from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
-        promote_fallback_artifact,
-    )
 
     result = promote_fallback_artifact(workspace, artifact_type, deps=deps, run_id=run_id)
     return result is not None and result.receipt_path is not None

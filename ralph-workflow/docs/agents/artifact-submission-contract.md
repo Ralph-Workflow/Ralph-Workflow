@@ -8,10 +8,10 @@ what it protects, and how to stay on the right side of the audit.
 
 Artifact submission touches several run-scoped files:
 
-- ``.agent/artifacts/<type>.json`` — the canonical artifact file
-- ``.agent/receipts/<run-id>-<type>.json`` — the completion receipt
-- ``.agent/completion_seen_<run-id>.json`` — the completion sentinel
-- ``.agent/tmp/<type>.json`` — the prompt-side fallback file
+- ``.agent/artifacts/<artifact_type>.json`` — the canonical artifact file
+- ``.agent/receipts/<run_id>/<artifact_type>.json`` — the completion receipt
+- ``.agent/completion_seen_<run_id>.json`` — the completion sentinel
+- ``.agent/tmp/<artifact_type>.json`` — the prompt-side fallback file
 
 When different code paths write these files directly, the following failures
 become possible:
@@ -61,9 +61,9 @@ from pathlib import Path
 from ralph.mcp.artifacts.canonical_submit import submit_artifact_canonical
 
 result = submit_artifact_canonical(
-    artifact_type="commit_message",
     workspace_root=Path("."),
-    content={"subject": "fix: typo", "body": "..."},
+    artifact_type="commit_message",
+    parsed_content={"subject": "fix: typo", "body": "..."},
     run_id="run-123",
 )
 ```
@@ -92,8 +92,8 @@ from pathlib import Path
 from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 
 result = promote_fallback_artifact(
-    artifact_type="commit_message",
     workspace_root=Path("."),
+    artifact_type="commit_message",
     run_id="run-123",
 )
 ```

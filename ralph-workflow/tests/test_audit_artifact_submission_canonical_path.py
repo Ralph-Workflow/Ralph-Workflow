@@ -173,6 +173,32 @@ def test_audit_discovers_bypasses_across_package(tmp_path: Path) -> None:
     assert findings[0].file_path == "ralph/evil.py"
 
 
+def test_path_composition_with_div_is_flagged(tmp_path: Path) -> None:
+    f = _write(
+        tmp_path,
+        "ralph/mod.py",
+        "from pathlib import Path\nrun_id = 'run-1'\nartifact_type = 'commit_message'\n"
+        "(Path('.agent') / 'receipts' / run_id / f'{artifact_type}.json').write_text('{}')\n",
+    )
+    findings = audit_file(f, "ralph/mod.py")
+    assert len(findings) == 1
+    assert findings[0].category == "receipt_write"
+
+
+def test_pre_marker_bypass_write_is_flagged(tmp_path: Path) -> None:
+    src = """\
+from pathlib import Path
+Path('.agent/receipts/x.json').write_text('{}')
+# === BEGIN CANONICAL SUBMIT OPS ===
+x = 1
+# === END CANONICAL SUBMIT OPS ===
+"""
+    f = _write(tmp_path, "ralph/mod.py", src)
+    findings = audit_file(f, "ralph/mod.py")
+    assert len(findings) == 1
+    assert findings[0].category == "receipt_write"
+
+
 def test_main_returns_zero_when_clean(tmp_path: Path) -> None:
     _write(tmp_path, "ralph/good.py", "x = 1\n")
     assert main([str(tmp_path)]) == 0

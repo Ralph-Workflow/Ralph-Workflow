@@ -162,15 +162,83 @@ def _collect_string_literals(node: ast.AST) -> list[str]:
     return literals
 
 
+def _path_segments(node: ast.AST) -> list[str | None]:
+    """Return path segments for a ``Path(...) / ... / ...`` expression.
+
+    Literal segments are returned as strings; non-literal segments (names,
+    attribute lookups, pure f-string placeholders, etc.) are returned as
+    ``None``. This preserves the structure needed to reconstruct a path with
+    ``/`` separators while still detecting variable-composed paths.
+    """
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        return _path_segments(node.left) + _path_segments(node.right)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    if isinstance(node, ast.JoinedStr):
+        parts = [
+            value.value
+            for value in node.values
+            if isinstance(value, ast.Constant) and isinstance(value.value, str)
+        ]
+        if parts:
+            return ["".join(parts)]
+        return [None]
+    if isinstance(node, ast.Call):
+        func_name = _dotted_name(node.func)
+        if func_name == "Path" and node.args:
+            return _path_segments(node.args[0])
+    return [None]
+
+
+def _join_path_segments(segments: list[str | None]) -> str | None:
+    """Join literal path segments with ``/``, skipping non-literal segments."""
+    literal_segments = [segment for segment in segments if segment is not None]
+    if not literal_segments:
+        return None
+    return "/".join(literal_segments)
+
+
+def _path_has_variable_segment(segments: list[str | None]) -> bool:
+    return any(segment is None for segment in segments)
+
+
 def _path_matches_forbidden(path_expr: ast.expr) -> tuple[str, str] | None:
     """Return (category, detail) if the path expression contains a forbidden pattern."""
+    # Candidate 1: legacy flat concatenation of all string literals in the
+    # expression. Catches simple cases like ``Path('.agent/receipts/x.json')``.
     literals = _collect_string_literals(path_expr)
-    if not literals:
-        return None
-    combined = "".join(literals)
-    for pattern, category, detail in _FORBIDDEN_PATH_PATTERNS:
-        if re.search(pattern, combined):
-            return category, detail
+    if literals:
+        combined = "".join(literals)
+        for pattern, category, detail in _FORBIDDEN_PATH_PATTERNS:
+            if re.search(pattern, combined):
+                return category, detail
+
+    # Candidate 2: reconstructed ``Path(...) / ...`` composition with ``/``
+    # separators. Catches ``Path('.agent') / 'receipts' / run_id / ...``.
+    segments = _path_segments(path_expr)
+    joined = _join_path_segments(segments)
+    if joined is not None:
+        for pattern, category, detail in _FORBIDDEN_PATH_PATTERNS:
+            if re.search(pattern, joined):
+                return category, detail
+
+        # Candidate 3: variable-composed paths under ``.agent/artifacts/`` or
+        # ``.agent/tmp/`` whose filename we cannot resolve statically. Because
+        # the type may be a canonical artifact type, treat the write as a
+        # bypass; literal fully-known paths are handled by candidate 2.
+        if _path_has_variable_segment(segments):
+            lower = joined.lower()
+            if lower.startswith(".agent/artifacts/") and joined.endswith(".json"):
+                return (
+                    "canonical_artifact_write",
+                    "direct write to .agent/artifacts/<variable>.json outside canonical submit",
+                )
+            if lower.startswith(".agent/tmp/") and joined.endswith(".json"):
+                return (
+                    "fallback_tmp_write",
+                    "direct write to .agent/tmp/<variable>.json outside canonical submit",
+                )
+
     return None
 
 
@@ -213,16 +281,21 @@ def _is_forbidden_function_call(node: ast.Call) -> tuple[str, str] | None:
 
 
 def _line_in_canonical_block(source_lines: list[str], lineno: int) -> bool:
-    """Return True when lineno lies inside a canonical submit ops marker block."""
-    in_block = False
+    """Return True when lineno lies inside a canonical submit ops marker block.
+
+    A line is allowlisted only when it falls between a matched begin/end marker
+    pair. Lines before the first begin marker or after the last end marker are
+    never allowlisted, even if markers appear elsewhere in the file.
+    """
+    block_start: int | None = None
     for idx, line in enumerate(source_lines, start=1):
         if _CANONICAL_BLOCK_START in line:
-            in_block = True
+            block_start = idx
         if _CANONICAL_BLOCK_END in line:
-            if in_block and idx >= lineno:
+            if block_start is not None and block_start <= lineno <= idx:
                 return True
-            in_block = False
-    return in_block
+            block_start = None
+    return False
 
 
 def audit_file(file_path: Path, rel_path: str) -> list[BypassFinding]:

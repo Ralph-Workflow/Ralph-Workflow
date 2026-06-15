@@ -9,23 +9,37 @@ Markdown handoff are written atomically (or rolled back together).
 
 from __future__ import annotations
 
+import importlib
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
-from ralph.mcp.tools.artifact import (
-    DEFAULT_ARTIFACT_HANDLER_DEPS,
-    execute_ops_with_rollback,
-    submit_ops_for_artifact,
-)
 from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.mcp.artifacts.file_backend import FileBackend
+    from ralph.mcp.tools._submit_op import SubmitOp
     from ralph.mcp.tools.artifact import ArtifactHandlerDeps
+
+
+class _ToolsArtifactModule(Protocol):
+    DEFAULT_ARTIFACT_HANDLER_DEPS: ArtifactHandlerDeps
+
+    def submit_ops_for_artifact(
+        self,
+        artifact_type: str,
+        workspace_root: Path,
+        artifact_dir: Path,
+        parsed_content: dict[str, object],
+        *,
+        deps: ArtifactHandlerDeps,
+        run_id: str | None = ...,
+    ) -> list[SubmitOp]: ...
+
+    def execute_ops_with_rollback(self, ops: list[SubmitOp]) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -61,6 +75,11 @@ def _receipt_path(workspace_root: Path, run_id: str, artifact_type: str) -> Path
 
 def _sentinel_path(workspace_root: Path, run_id: str) -> Path:
     return workspace_root / COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
+
+
+def _tools_artifact() -> _ToolsArtifactModule:
+    """Return the ``ralph.mcp.tools.artifact`` module lazily to avoid cycles."""
+    return cast("_ToolsArtifactModule", importlib.import_module("ralph.mcp.tools.artifact"))
 
 
 def _read_fallback_payload(path: Path, backend: FileBackend) -> dict[str, object] | None:
@@ -105,10 +124,11 @@ def submit_artifact_canonical(
     Returns:
         A frozen :class:`SubmitResult` describing the files that were written.
     """
-    resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    tools_artifact = _tools_artifact()
+    resolved_deps = deps or tools_artifact.DEFAULT_ARTIFACT_HANDLER_DEPS
     artifact_dir = _artifact_dir(workspace_root)
 
-    ops = submit_ops_for_artifact(
+    ops = tools_artifact.submit_ops_for_artifact(
         artifact_type,
         workspace_root,
         artifact_dir,
@@ -116,7 +136,7 @@ def submit_artifact_canonical(
         deps=resolved_deps,
         run_id=run_id,
     )
-    execute_ops_with_rollback(ops)
+    tools_artifact.execute_ops_with_rollback(ops)
 
     backend = resolved_deps.backend
     candidate_artifact = artifact_dir / f"{artifact_type}.json"
@@ -171,7 +191,8 @@ def promote_fallback_artifact(
         The :class:`SubmitResult` from the canonical submit, or ``None`` when no
         fallback file exists or parsing fails.
     """
-    resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    tools_artifact = _tools_artifact()
+    resolved_deps = deps or tools_artifact.DEFAULT_ARTIFACT_HANDLER_DEPS
     backend = resolved_deps.backend
 
     tmp_fallback = workspace_root / ".agent" / "tmp" / f"{artifact_type}.json"
