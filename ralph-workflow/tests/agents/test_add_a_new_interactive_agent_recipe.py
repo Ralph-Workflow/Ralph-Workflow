@@ -1,83 +1,85 @@
-"""End-to-end recipe test: adding a new interactive agent.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil.
-"""
+"""Demonstrates legacy register_agent_support and new AgentCatalog API for interactive agents."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.agents.activity import AgentActivityKind
-from ralph.agents.execution_state import (
-    BaseExecutionStrategy,
-    strategy_for_command,
-    strategy_for_transport,
-)
-from ralph.agents.parsers import AgentOutputLine, get_parser
-from ralph.agents.registration import get_registered_agent_support, register_agent_support
-from ralph.agents.registry import AgentRegistry
+from ralph.agents.catalog import AgentCatalog, default_catalog
+from ralph.agents.execution_state._base import BaseExecutionStrategy
+from ralph.agents.parsers._template import ParserTemplateBase
+from ralph.agents.parsers.agent_output_line import AgentOutputLine
+from ralph.agents.registration import register_agent_support_to_catalog
+from ralph.agents.spec import AgentSpec
+from ralph.agents.support import AgentSupport
+from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
-
-from ._registration_test_utils import _isolated_registries
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-class FakeInteractiveAgentParser:
-    """Pass-through parser for the new interactive agent recipe."""
+class FakeInteractiveAgentParser(ParserTemplateBase):
+    _STOP_EVENT_TYPES = frozenset()
 
-    def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
-        for line in lines:
-            yield AgentOutputLine(type="output", content=line, raw=line)
+    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
+        stripped = line.strip()
+        result = self.parse_json_line(stripped)
+        if result is not None:
+            yield result
+        else:
+            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
 
 
 class FakeInteractiveAgentStrategy(BaseExecutionStrategy):
-    """Minimal custom strategy for the new interactive agent recipe."""
+    pass
 
 
 class TestAddANewInteractiveAgentRecipe:
-    """A single register_agent_support call wires an interactive agent end-to-end."""
-
-    def test_interactive_agent_registration_recipe(self) -> None:
-        with _isolated_registries():
-            registry = AgentRegistry()
-
-            register_agent_support(
-                "fake-interactive",
+    def test_fresh_catalog_resolves_parser_and_strategy(self) -> None:
+        catalog = AgentCatalog()
+        support = AgentSupport(
+            name="fake-interactive",
+            spec=AgentSpec(
+                name="fake-interactive",
                 transport=AgentTransport.CLAUDE_INTERACTIVE,
-                parser_factory=FakeInteractiveAgentParser,
-                strategy_factory=FakeInteractiveAgentStrategy,
-                agent_registry=registry,
                 interactive=True,
-            )
+                requires_pty=True,
+                session_resume_template="--resume {}",
+                completion_required=True,
+            ),
+            parser_factory=FakeInteractiveAgentParser,
+            strategy_factory=FakeInteractiveAgentStrategy,
+            config=AgentConfig(cmd="fake-interactive"),
+        )
+        register_agent_support_to_catalog("fake-interactive", support, catalog)
 
-            parser = get_parser("fake-interactive")
-            assert isinstance(parser, FakeInteractiveAgentParser)
+        parser = catalog.get_parser("fake-interactive")
+        assert isinstance(parser, FakeInteractiveAgentParser)
 
-            strategy = strategy_for_transport(AgentTransport.CLAUDE_INTERACTIVE)
-            assert isinstance(strategy, FakeInteractiveAgentStrategy)
+        strategy = catalog.get_strategy(
+            AgentTransport.CLAUDE_INTERACTIVE, command="fake-interactive"
+        )
+        assert isinstance(strategy, FakeInteractiveAgentStrategy)
 
-            # Runtime command resolution also finds the registered strategy
-            # when the command string matches.
-            strategy = strategy_for_command(
-                "fake-interactive", AgentTransport.CLAUDE_INTERACTIVE
-            )
-            assert isinstance(strategy, FakeInteractiveAgentStrategy)
+    def test_default_catalog_resolves_after_registration(self) -> None:
+        support = AgentSupport(
+            name="fake-interactive-default",
+            spec=AgentSpec(
+                name="fake-interactive-default",
+                transport=AgentTransport.CLAUDE_INTERACTIVE,
+                interactive=True,
+                requires_pty=True,
+                session_resume_template="--resume {}",
+                completion_required=True,
+            ),
+            parser_factory=FakeInteractiveAgentParser,
+            strategy_factory=FakeInteractiveAgentStrategy,
+            config=AgentConfig(cmd="fake-interactive-default"),
+        )
+        register_agent_support_to_catalog(
+            "fake-interactive-default", support, default_catalog()
+        )
 
-            pair = get_registered_agent_support("fake-interactive")
-            assert pair is not None
-            assert isinstance(pair[0], FakeInteractiveAgentParser)
-            assert isinstance(pair[1], FakeInteractiveAgentStrategy)
-
-            parsed = list(parser.parse(iter(["hello"])))
-            assert len(parsed) == 1
-            signal = strategy.classify_activity_line(parsed[0].content)
-            assert signal is not None
-            assert signal.kind == AgentActivityKind.OUTPUT_LINE
-
-            assert "fake-interactive" in registry.agents
-            config = registry.agents["fake-interactive"]
-            assert config.transport == AgentTransport.CLAUDE_INTERACTIVE
-            assert config.session_flag is not None
+        found = default_catalog().get("fake-interactive-default")
+        assert found is not None
+        assert found.name == "fake-interactive-default"

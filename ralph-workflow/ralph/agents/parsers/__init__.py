@@ -31,7 +31,7 @@ To add a parser for a new agent transport, create a module in this package, impl
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport, JsonParserType
 
@@ -47,8 +47,7 @@ from .opencode import OpenCodeParser
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.agents.execution_state._base import BaseExecutionStrategy
-    from ralph.process.child_liveness import ChildLivenessRegistry
+    from ralph.agents._contracts import StrategyFactory
 
 __all__ = [
     "_CUSTOM_COMMAND_REGISTRY",
@@ -65,17 +64,6 @@ __all__ = [
 ]
 
 
-class _StrategyFactory(Protocol):
-    """Factory that returns a ``BaseExecutionStrategy`` with runtime kwargs."""
-
-    def __call__(
-        self,
-        *,
-        label_scope: str | None,
-        registry: ChildLivenessRegistry | None,
-    ) -> BaseExecutionStrategy: ...
-
-
 class _ParserRegistryEntry:
     """Parser factory bundled with the strategy factory registered alongside it.
 
@@ -90,7 +78,7 @@ class _ParserRegistryEntry:
     def __init__(
         self,
         parser_factory: Callable[[], AgentParser],
-        strategy_factory: _StrategyFactory,
+        strategy_factory: StrategyFactory,
         transport: AgentTransport,
     ) -> None:
         self.parser_factory = parser_factory
@@ -101,6 +89,9 @@ class _ParserRegistryEntry:
         return self.parser_factory()
 
 
+# DEPRECATED: write-through state populated atomically by AgentCatalog.add().
+# New code should use ralph.agents.catalog.default_catalog() or construct an
+# AgentCatalog explicitly. The dicts will be removed in a future release.
 _PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
     "claude": ClaudeParser,
     "claude_interactive": ClaudeInteractiveParser,
@@ -113,6 +104,9 @@ _PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
 # Custom agents registered via ``register_agent_support()`` are keyed here by
 # their full executable command string.  This keeps custom command names like
 # ``claude wrapper`` from colliding with built-in parser keys like ``claude``.
+# DEPRECATED: write-through state populated atomically by AgentCatalog.add().
+# New code should use ralph.agents.catalog.default_catalog() or construct an
+# AgentCatalog explicitly. The dicts will be removed in a future release.
 _CUSTOM_COMMAND_REGISTRY: dict[str, _ParserRegistryEntry] = {}
 
 

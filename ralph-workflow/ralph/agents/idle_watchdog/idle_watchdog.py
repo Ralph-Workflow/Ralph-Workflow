@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
@@ -32,12 +32,10 @@ from .watchdog_verdict import WatchdogVerdict
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.agents.clock import Clock
     from ralph.process.monitor import ProcessMonitor, SubagentOutputCapture
 
     from .timeout_policy import TimeoutPolicy
-
-    class Clock(Protocol):
-        def monotonic(self) -> float: ...
 
 
 @dataclass

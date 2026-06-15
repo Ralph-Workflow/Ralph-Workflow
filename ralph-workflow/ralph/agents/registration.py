@@ -22,24 +22,20 @@ The agent-name-keyed configuration is stored in the caller's own
 
 from __future__ import annotations
 
-import inspect
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.agents._contracts import StrategyFactory
+from ralph.agents.catalog import default_catalog
 from ralph.agents.execution_state._base import BaseExecutionStrategy
-from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
-from ralph.agents.parsers import (
-    _CUSTOM_COMMAND_REGISTRY,
-    _PARSER_REGISTRY,
-    _ParserRegistryEntry,
-)
-from ralph.config.agent_config import AgentConfig
+from ralph.agents.support import AgentSupport
 from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
+    from ralph.agents.catalog import AgentCatalog
     from ralph.agents.parsers.base import AgentParser
+    from ralph.config.agent_config import AgentConfig
     from ralph.process.child_liveness import ChildLivenessRegistry
 
-    from .execution_state._factory import _StrategyFactory
     from .registry import AgentRegistry
 
 
@@ -49,71 +45,36 @@ class _ParserFactory(Protocol):
     def __call__(self) -> AgentParser: ...
 
 
-class _StrategyFactoryWithKwargs(Protocol):
-    """Factory that accepts the runtime kwargs forwarded by ``strategy_for_transport``."""
-
-    def __call__(
-        self,
-        *,
-        label_scope: str | None,
-        registry: ChildLivenessRegistry | None,
-    ) -> BaseExecutionStrategy: ...
-
-
 class _AnyKwargsStrategyFactory(Protocol):
     """Internal cast target used to forward a dynamic kwargs dict."""
 
     def __call__(self, **kwargs: object) -> BaseExecutionStrategy: ...
 
 
-_UserStrategyFactory = type[BaseExecutionStrategy] | _StrategyFactoryWithKwargs
-
-
-def _is_built_in_parser_key(key: str) -> bool:
-    """Return True when ``key`` maps to a built-in parser class.
-
-    Custom registrations store a :class:`_ParserRegistryEntry`, so any existing
-    class value is a built-in that must not be overwritten.
-    """
-    existing = _PARSER_REGISTRY.get(key)
-    return existing is not None and not isinstance(existing, _ParserRegistryEntry)
+_UserStrategyFactory = type[BaseExecutionStrategy] | StrategyFactory
 
 
 def _wrap_strategy_factory(
     factory: _UserStrategyFactory,
-) -> _StrategyFactory:
-    """Wrap a user strategy factory so transport kwargs are preserved when accepted.
+) -> StrategyFactory:
+    """Wrap a user strategy factory so runtime kwargs are forwarded correctly.
 
-    ``strategy_for_transport`` forwards ``label_scope`` and ``registry`` to every
-    factory.  Custom factories that do not accept those kwargs (for example a
-    plain ``BaseExecutionStrategy`` subclass) still work: the wrapper only
-    forwards kwargs the underlying callable actually accepts, including
-    factories that accept arbitrary kwargs via ``**kwargs``.
+    ``strategy_for_transport`` forwards ``label_scope`` and ``registry`` to
+    every factory. This wrapper only forwards those two kwargs if the factory
+    accepts them, preserving backward compatibility with strategies that have
+    different signatures.
     """
-    sig = inspect.signature(factory)
-    params = sig.parameters
-    accepts_label_scope = "label_scope" in params
-    accepts_registry = "registry" in params
-    # ``inspect.Parameter.VAR_KEYWORD`` is 4; using the literal avoids an
-    # ``Any``-typed expression from the ``inspect`` stubs under mypy strict.
-    _var_keyword_kind = 4
-    accepts_any_kwargs = any(
-        param.kind == _var_keyword_kind for param in params.values()
-    )
 
     def wrapped(
         *,
         label_scope: str | None = None,
         registry: ChildLivenessRegistry | None = None,
-        **_kwargs: object,
     ) -> BaseExecutionStrategy:
         kwargs: dict[str, object] = {}
-        if accepts_label_scope or accepts_any_kwargs:
+        if label_scope is not None:
             kwargs["label_scope"] = label_scope
-        if accepts_registry or accepts_any_kwargs:
+        if registry is not None:
             kwargs["registry"] = registry
-        # Runtime inspection guarantees we only forward kwargs the underlying
-        # factory accepts, so the cast is safe.
         return cast("_AnyKwargsStrategyFactory", factory)(**kwargs)
 
     return wrapped
@@ -142,6 +103,13 @@ def register_agent_support(
 ) -> AgentConfig:
     """Register support for a new agent in one call.
 
+    Delegates to ``AgentSupport.from_registration_kwargs`` +
+    ``default_catalog().add(support)``. The legacy module-level dicts
+    (``_PARSER_REGISTRY``, ``_CUSTOM_COMMAND_REGISTRY``,
+    ``_STRATEGY_DISPATCH``) are write-through state populated atomically by
+    ``AgentCatalog.add()`` and are deprecated; new code should use
+    ``AgentCatalog`` directly.
+
     Args:
         name: Agent name used by ``AgentRegistry`` and as the parser-type key.
         transport: Transport enum value that selects the execution strategy.
@@ -159,9 +127,7 @@ def register_agent_support(
         model_flag: Optional model/provider flag.
         print_flag: Optional print flag for non-interactive output mode.
         streaming_flag: Optional streaming flag for partial JSON messages.
-        session_flag: Optional session continuation flag template.  When
-            ``interactive=True`` and this is omitted, a ``--resume {}`` template
-            is used.
+        session_flag: Optional session continuation flag template.
         display_name: Human-readable display name for UI/UX.
         subagent_capability: Whether the agent runtime exposes usable sub-agent
             tooling.
@@ -173,47 +139,51 @@ def register_agent_support(
         ValueError: If ``name`` matches a reserved built-in parser key, or if
             ``cmd`` is already registered for a different agent.
     """
-    effective_session_flag = session_flag
-    if effective_session_flag is None and interactive:
-        effective_session_flag = "--resume {}"
+    wrapped_strategy = _wrap_strategy_factory(strategy_factory)
 
-    config = AgentConfig(
-        cmd=cmd if cmd is not None else name,
+    support = AgentSupport.from_registration_kwargs(
+        name,
+        transport=transport,
+        parser_factory=parser_factory,
+        strategy_factory=wrapped_strategy,
+        agent_registry=agent_registry,
+        json_parser=json_parser,
+        interactive=interactive,
+        cmd=cmd,
         output_flag=output_flag,
         yolo_flag=yolo_flag,
         verbose_flag=verbose_flag,
         can_commit=can_commit,
-        json_parser=json_parser,
         model_flag=model_flag,
         print_flag=print_flag,
         streaming_flag=streaming_flag,
-        session_flag=effective_session_flag,
+        session_flag=session_flag,
         display_name=display_name,
-        transport=transport,
         subagent_capability=subagent_capability,
     )
 
-    name_lower = name.lower()
-    if _is_built_in_parser_key(name_lower):
-        msg = f"Cannot register agent with reserved built-in parser name: {name}"
-        raise ValueError(msg)
+    default_catalog().add(support)
+    agent_registry.register(name, support.config)
+    return support.config
 
-    cmd_lower = config.cmd.lower()
-    if cmd_lower in _CUSTOM_COMMAND_REGISTRY:
-        existing = _CUSTOM_COMMAND_REGISTRY[cmd_lower]
-        msg = (
-            f"Command {config.cmd!r} is already registered for transport "
-            f"{existing.transport.value!r}; choose a different cmd or transport"
-        )
-        raise ValueError(msg)
 
-    wrapped_strategy = _wrap_strategy_factory(strategy_factory)
-    entry = _ParserRegistryEntry(parser_factory, wrapped_strategy, transport)
-    _PARSER_REGISTRY[name_lower] = entry
-    _STRATEGY_DISPATCH[transport] = wrapped_strategy
-    _CUSTOM_COMMAND_REGISTRY[cmd_lower] = entry
-    agent_registry.register(name, config)
-    return config
+def register_agent_support_to_catalog(
+    name: str,
+    support: AgentSupport,
+    catalog: AgentCatalog,
+) -> AgentConfig:
+    """Register an AgentSupport into a specific catalog (test-friendly entry point).
+
+    Args:
+        name: Agent name.
+        support: Pre-built AgentSupport instance.
+        catalog: Target AgentCatalog.
+
+    Returns:
+        The registered ``AgentConfig``.
+    """
+    catalog.add(support)
+    return support.config
 
 
 def get_registered_agent_support(
@@ -228,7 +198,9 @@ def get_registered_agent_support(
         A ``(parser, strategy)`` tuple, or ``None`` if the name was not
         registered through this API.
     """
-    entry = _PARSER_REGISTRY.get(name.lower())
-    if not isinstance(entry, _ParserRegistryEntry):
+    support = default_catalog().get(name)
+    if support is None:
         return None
-    return entry.parser_factory(), entry.strategy_factory(label_scope=None, registry=None)
+    return support.parser_factory(), support.strategy_factory(
+        label_scope=None, registry=None
+    )

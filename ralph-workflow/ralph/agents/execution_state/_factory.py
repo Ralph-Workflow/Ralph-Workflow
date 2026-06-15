@@ -6,7 +6,7 @@ itself never needs editing.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, cast
 
 from ralph.config.enums import AgentTransport
 
@@ -18,21 +18,10 @@ from .generic_execution_strategy import GenericExecutionStrategy
 from .opencode_execution_strategy import OpenCodeExecutionStrategy
 
 if TYPE_CHECKING:
+    from ralph.agents._contracts import StrategyFactory
     from ralph.process.child_liveness import ChildLivenessRegistry
 
     from ._base import BaseExecutionStrategy
-
-
-class _StrategyFactory(Protocol):
-    """Factory that accepts the transport-keyed kwargs from strategy_for_transport."""
-
-    def __call__(
-        self,
-        *,
-        label_scope: str | None,
-        registry: ChildLivenessRegistry | None,
-    ) -> BaseExecutionStrategy:
-        ...
 
 
 def _make_opencode_strategy(
@@ -46,7 +35,10 @@ def _make_opencode_strategy(
     return OpenCodeExecutionStrategy(label_scope=label_scope, registry=registry)
 
 
-_STRATEGY_DISPATCH: dict[AgentTransport, _StrategyFactory] = {
+# DEPRECATED: write-through state populated atomically by AgentCatalog.add().
+# New code should use ralph.agents.catalog.default_catalog() or construct an
+# AgentCatalog explicitly. The dicts will be removed in a future release.
+_STRATEGY_DISPATCH: dict[AgentTransport, StrategyFactory] = {
     AgentTransport.OPENCODE: _make_opencode_strategy,
     AgentTransport.CLAUDE: ClaudeExecutionStrategy,
     AgentTransport.CLAUDE_INTERACTIVE: ClaudeInteractiveExecutionStrategy,

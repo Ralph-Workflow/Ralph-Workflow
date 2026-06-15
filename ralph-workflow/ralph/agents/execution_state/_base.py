@@ -19,6 +19,7 @@ from .agent_execution_state import AgentExecutionState
 if TYPE_CHECKING:
     from ralph.agents.activity import AgentActivitySignal
     from ralph.agents.completion_signals import CompletionSignals
+    from ralph.process.child_liveness import ChildLivenessRegistry
     from ralph.process.liveness import LivenessProbe
 
     from ._live_descendant_handle import _LiveDescendantHandle
@@ -32,13 +33,20 @@ class BaseExecutionStrategy:
     that existed before the session-aware model was introduced so that
     Claude/Codex paths are unaffected.
 
-    The constructor accepts arbitrary keyword arguments so that direct class
-    references can be stored in the transport-keyed strategy dispatch table;
-    the base implementation ignores every extra argument.
+    For legacy callers that pass arbitrary kwargs (e.g. direct class refs in
+    _STRATEGY_DISPATCH), the new __init__ only accepts label_scope and registry.
+    The wrapper _wrap_strategy_factory in registration.py now drops unknown kwargs
+    before calling the factory, so the strict-superset-safe refactor is preserved.
     """
 
-    def __init__(self, **kwargs: object) -> None:
-        del kwargs
+    def __init__(
+        self,
+        *,
+        label_scope: str | None = None,
+        registry: ChildLivenessRegistry | None = None,
+    ) -> None:
+        self._label_scope = label_scope
+        self._registry = registry
 
     def observe_line(self, line: str) -> None:
         """Observe a raw provider line for optional strategy-specific state updates."""

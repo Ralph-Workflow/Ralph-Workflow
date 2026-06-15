@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.agents.execution_state import BaseExecutionStrategy
     from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
+    from ralph.agents.invocation_context import InvocationContext
     from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.agents.timeout_clock import Clock
     from ralph.config.models import AgentConfig
@@ -45,3 +46,4 @@ class _AgentRunCtx:
     clock: Clock | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
     expected_session_id: str | None = None
+    context: InvocationContext | None = None

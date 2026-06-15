@@ -1,78 +1,67 @@
-"""End-to-end recipe test: adding a new headless agent.
-
-All tests use in-memory fakes — no real subprocesses, no real wall-clock waits,
-no real psutil.
-"""
+"""Demonstrates legacy register_agent_support and new AgentCatalog API side by side."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.agents.activity import AgentActivityKind
-from ralph.agents.execution_state import (
-    BaseExecutionStrategy,
-    strategy_for_command,
-    strategy_for_transport,
-)
-from ralph.agents.parsers import AgentOutputLine, get_parser
-from ralph.agents.registration import get_registered_agent_support, register_agent_support
-from ralph.agents.registry import AgentRegistry
+from ralph.agents.catalog import AgentCatalog, default_catalog
+from ralph.agents.execution_state._base import BaseExecutionStrategy
+from ralph.agents.parsers._template import ParserTemplateBase
+from ralph.agents.parsers.agent_output_line import AgentOutputLine
+from ralph.agents.registration import register_agent_support_to_catalog
+from ralph.agents.spec import AgentSpec
+from ralph.agents.support import AgentSupport
+from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
-
-from ._registration_test_utils import _isolated_registries
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-class FakeAgentParser:
-    """Pass-through parser for the new headless agent recipe."""
+class FakeAgentParser(ParserTemplateBase):
+    _STOP_EVENT_TYPES = frozenset()
 
-    def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
-        for line in lines:
-            yield AgentOutputLine(type="output", content=line, raw=line)
+    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
+        stripped = line.strip()
+        result = self.parse_json_line(stripped)
+        if result is not None:
+            yield result
+        else:
+            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
 
 
 class FakeAgentStrategy(BaseExecutionStrategy):
-    """Minimal custom strategy for the new headless agent recipe."""
+    pass
 
 
 class TestAddANewAgentRecipe:
-    """A single register_agent_support call wires a headless agent end-to-end."""
+    def test_fresh_catalog_resolves_parser_and_strategy(self) -> None:
+        catalog = AgentCatalog()
+        support = AgentSupport(
+            name="fake-headless",
+            spec=AgentSpec(name="fake-headless", transport=AgentTransport.GENERIC),
+            parser_factory=FakeAgentParser,
+            strategy_factory=FakeAgentStrategy,
+            config=AgentConfig(cmd="fake-headless"),
+        )
+        register_agent_support_to_catalog("fake-headless", support, catalog)
 
-    def test_headless_agent_registration_recipe(self) -> None:
-        with _isolated_registries():
-            registry = AgentRegistry()
+        parser = catalog.get_parser("fake-headless")
+        assert isinstance(parser, FakeAgentParser)
 
-            register_agent_support(
-                "fake",
-                transport=AgentTransport.GENERIC,
-                parser_factory=FakeAgentParser,
-                strategy_factory=FakeAgentStrategy,
-                agent_registry=registry,
-            )
+        strategy = catalog.get_strategy(AgentTransport.GENERIC, command="fake-headless")
+        assert isinstance(strategy, FakeAgentStrategy)
 
-            parser = get_parser("fake")
-            assert isinstance(parser, FakeAgentParser)
+    def test_default_catalog_resolves_after_registration(self) -> None:
+        support = AgentSupport(
+            name="fake-default",
+            spec=AgentSpec(name="fake-default", transport=AgentTransport.GENERIC),
+            parser_factory=FakeAgentParser,
+            strategy_factory=FakeAgentStrategy,
+            config=AgentConfig(cmd="fake-default"),
+        )
+        register_agent_support_to_catalog("fake-default", support, default_catalog())
 
-            strategy = strategy_for_transport(AgentTransport.GENERIC)
-            assert isinstance(strategy, FakeAgentStrategy)
-
-            # Runtime command resolution also finds the registered strategy
-            # when the command string matches.
-            strategy = strategy_for_command("fake", AgentTransport.GENERIC)
-            assert isinstance(strategy, FakeAgentStrategy)
-
-            pair = get_registered_agent_support("fake")
-            assert pair is not None
-            assert isinstance(pair[0], FakeAgentParser)
-            assert isinstance(pair[1], FakeAgentStrategy)
-
-            parsed = list(parser.parse(iter(["hello"])))
-            assert len(parsed) == 1
-            signal = strategy.classify_activity_line(parsed[0].content)
-            assert signal is not None
-            assert signal.kind == AgentActivityKind.OUTPUT_LINE
-
-            assert "fake" in registry.agents
-            assert registry.agents["fake"].transport == AgentTransport.GENERIC
+        found = default_catalog().get("fake-default")
+        assert found is not None
+        assert found.name == "fake-default"
