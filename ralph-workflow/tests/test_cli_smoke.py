@@ -442,7 +442,7 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
             return cls()
 
         def get(self, name: str) -> AgentConfig | None:
-            if name == "agy/gemini-3.5-flash-low":
+            if name == "agy/Claude Sonnet 4.6 (Thinking)":
                 return AgentConfig(
                     cmd="agy",
                     transport=AgentTransport.AGY,
@@ -456,7 +456,7 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
         captured["agent_name"] = kwargs["agent_name"]
         return smoke_module.SmokeRunResult(
-            agent_name="agy/gemini-3.5-flash-low",
+            agent_name="agy/Claude Sonnet 4.6 (Thinking)",
             transport="agy",
             output_file=tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js",
             file_created=True,
@@ -473,28 +473,28 @@ def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_
     monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
 
     exit_code = smoke_module.smoke_interactive_agy_command(
-        agent_name="agy/gemini-3.5-flash-low",
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
         display_context=None,
     )
 
     assert exit_code == 0
-    assert captured["agent_name"] == "agy/gemini-3.5-flash-low"
+    assert captured["agent_name"] == "agy/Claude Sonnet 4.6 (Thinking)"
     output = stream.getvalue()
-    assert "agy/gemini-3.5-flash-low" in output
-    assert "agy/gemini-3.5-flash-low parity smoke test" in output
-    assert "agy/gemini-3.5-flash-low parity smoke report" in output
+    assert "agy/Claude Sonnet 4.6 (Thinking)" in output
+    assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke test" in output
+    assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke report" in output
 
 
 def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
     """The captured AGY smoke run log documents the measured outcome.
 
-    In this environment the live AGY binary exits 0 but emits no stdout,
-    because the account's individual API quota is exhausted
-    (429 RESOURCE_EXHAUSTED) and the requested model ID is not recognized.
+    The live AGY binary in this environment exits with empty stdout because
+    the account's individual API quota is exhausted (429 RESOURCE_EXHAUSTED).
     The smoke harness therefore reports file=no, parser events=0,
     tool activity=no, artifact=no, and includes an actionable upstream
-    diagnostic. This test pins that documented failure so regressions in
-    detector clarity are caught.
+    diagnostic. If the quota resets, the same log can show file=yes with an
+    empty Breaks column. This test accepts either measured outcome and fails
+    only if the log does not document a real AGY invocation.
     """
     log_path = Path(__file__).resolve().parents[1] / "tmp" / "smoke-interactive-agy-run.log"
     assert log_path.exists(), (
@@ -503,8 +503,12 @@ def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
     )
 
     log_text = log_path.read_text(encoding="utf-8")
-    assert "EXIT_CODE=1" in log_text, (
-        f"Live AGY smoke run did not exit 1; see {log_path}"
+
+    assert "Invoking agent: agy --dangerously-skip-permissions" in log_text, (
+        "Live log does not show a real AGY invocation"
+    )
+    assert "--model Claude Sonnet 4.6 (Thinking)" in log_text, (
+        "Live log does not show the real AGY display name as a single argv token"
     )
 
     agy_row = next(
@@ -521,15 +525,23 @@ def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
     # Expected cells: agent, transport, file, session, parser events, tool
     # activity, artifact, breaks (after stripping table borders).
     assert len(cells) >= 8, f"Unexpected AGY table row shape: {cells}"
-    assert cells[2] == "no", f"Expected file=no, got: {cells}"
-    assert cells[4] == "0", f"Expected parser events=0, got: {cells}"
-    assert cells[5] == "no", f"Expected tool activity=no, got: {cells}"
-    assert cells[6] == "no", f"Expected artifact=no, got: {cells}"
+
+    file_created = cells[2]
     breaks = cells[7]
-    assert "AGY --print returned empty stdout" in breaks or (
-        "expected todo-list.js was not created" in breaks
-    ), f"Expected upstream diagnostic in breaks, got: {breaks}"
-    # The detailed report also surfaces the upstream diagnostic.
-    assert "AGY --print returned empty stdout" in log_text, (
-        "Detailed report is missing the upstream diagnostic"
-    )
+
+    if file_created == "yes":
+        assert "AGY --print returned empty stdout" not in breaks, (
+            f"Expected empty breaks when file=yes, got: {breaks}"
+        )
+    else:
+        assert file_created == "no", f"Expected file=no or file=yes, got: {cells}"
+        assert cells[4] == "0", f"Expected parser events=0, got: {cells}"
+        assert cells[5] == "no", f"Expected tool activity=no, got: {cells}"
+        assert cells[6] == "no", f"Expected artifact=no, got: {cells}"
+        assert "AGY --print returned empty stdout" in breaks or (
+            "expected todo-list.js was not created" in breaks
+        ), f"Expected upstream diagnostic in breaks, got: {breaks}"
+        # The detailed report also surfaces the upstream diagnostic.
+        assert "AGY --print returned empty stdout" in log_text, (
+            "Detailed report is missing the upstream diagnostic"
+        )

@@ -158,7 +158,7 @@ Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the 
 
 ```bash
 python -m ralph smoke-interactive-agy
-python -m ralph smoke-interactive-agy --agent agy/gemini-3.5-flash-low
+python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'
 ```
 
 Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream `agy` binary returned no stdout; the message is derived from `~/.gemini/antigravity-cli/cli.log` and usually points to an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.

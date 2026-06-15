@@ -255,7 +255,7 @@ def smoke_interactive_agy_command(
     if agent_config is None:
         logger.error(
             "Agent '{}' is not available. Use --agent with an agy/<model> alias, "
-            "e.g. --agent agy/gemini-3.5-flash-low.",
+            "e.g. --agent 'agy/Claude Sonnet 4.6 (Thinking)'.",
             agent_name,
         )
         return 2
