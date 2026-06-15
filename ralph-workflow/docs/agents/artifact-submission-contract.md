@@ -181,3 +181,62 @@ write_artifact_receipt(workspace_root, run_id, artifact_type)
 
 Do not use the markers to hide unrelated writes. The audit is a guardrail,
 not a general-purpose escape hatch.
+
+## Audit invariants
+
+Five module-level constants are guarded by ``if``/``raise RuntimeError`` checks
+at import time: ``_CANONICAL_TYPES``, ``_FILE_ALLOWLIST``,
+``_CANONICAL_BLOCK_START``, ``_CANONICAL_BLOCK_END``, ``_SKIP_DIRS``.
+``RuntimeError`` is used instead of ``assert`` because Python's ``-O`` flag
+strips all ``assert`` statements, which would silently disable the invariants
+in optimized builds. The path-existence check on ``_FILE_ALLOWLIST`` entries
+ensures every allowlisted module actually exists on disk; a renamed or deleted
+layout module causes an immediate import failure rather than a silent audit
+gap.
+
+Every invariant is tested in ``test_audit_artifact_submission_canonical_types_sync.py``
+under normal ``python`` execution and under ``python -O`` to confirm immunity
+to optimization stripping.
+
+## Detection coverage
+
+Four new AST detection categories have been added to the audit:
+
+- ``shutil.copy``, ``shutil.copy2``, ``shutil.copyfile``, ``shutil.copytree``,
+  ``shutil.move`` — file-copy operations that could duplicate a protected file
+  outside the canonical chain.
+- ``os.rename``, ``os.renames``, ``os.replace`` — filesystem renames that could
+  move a receipt or artifact file out from under the canonical bookkeeping.
+- ``pathlib.Path.replace``, ``pathlib.Path.rename`` — the pathlib equivalents
+  of the ``os``-module rename operations.
+
+All ``shutil`` and ``os`` detections work through import aliasing (e.g.
+``import shutil as s; s.copy(src, dst)`` is caught, not just
+``import shutil; shutil.copy(src, dst)``). A call to ``shutil.move(src, dst)``
+where ``dst`` resolves to ``.agent/receipts/x.json`` would be flagged.
+
+## Canonical types sync
+
+The audit module now imports ``_CANONICAL_TYPES`` directly from
+``ralph.mcp.tools.artifact._KNOWN_ARTIFACT_TYPES`` instead of maintaining a
+separate hardcoded set. ``'review'`` and ``'verification'`` were added to
+``_KNOWN_ARTIFACT_TYPES`` to unify the 13-element canonical set.
+
+This single-source-of-truth arrangement means any future canonical type added
+to ``_KNOWN_ARTIFACT_TYPES`` propagates automatically to the audit — no
+manual sync is needed. ``test_audit_artifact_submission_canonical_types_sync.py``
+pins the equality so drift is caught at test time.
+
+## Smoke plumbing
+
+``artifact_submitted`` in ``SmokeRunResult`` is now computed by calling
+``is_artifact_submitted`` — which promotes the AGY-direct fallback to a
+canonical receipt — instead of ``read_smoke_test_result_artifact(file) is not
+None``. The behavioral change is that a malformed artifact file now correctly
+results in ``artifact_submitted=False``, whereas the old raw file-presence
+check would have returned ``True`` for a corrupt or unparseable file.
+
+The AGY-direct fallback promotion (``.agent/artifacts/<type>.json``) now runs
+at smoke-report time rather than being deferred to the completion-signal
+layer, ensuring the receipt namespace is populated before the gate evaluates
+the run.

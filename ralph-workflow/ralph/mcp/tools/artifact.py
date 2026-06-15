@@ -116,6 +116,7 @@ _TYPED_ARTIFACT_TYPES = frozenset(
 _KNOWN_ARTIFACT_TYPES = frozenset(
     {PLAN_ARTIFACT_TYPE, COMMIT_MESSAGE_TYPE, DEVELOPMENT_RESULT_ARTIFACT_TYPE}
     | _TYPED_ARTIFACT_TYPES
+    | {"review", "verification"}
 )
 
 # Multi-step planning artifact types: each phase has its own submit, and

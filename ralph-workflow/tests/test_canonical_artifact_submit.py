@@ -416,3 +416,181 @@ def test_explicit_completion_with_sentinel_is_terminal() -> None:
         completion_sentinel_present=True,
     )
     assert _check_signals_terminal(signals) is True
+
+
+def test_atomic_rollback_when_artifact_write_fails(
+    tmp_path: Path,
+) -> None:
+    class _FailingBackend(MemoryBackend):
+        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+            if ".agent/artifacts/" in str(path):
+                raise RuntimeError("artifact write failed")
+            super().write_text(path, content, encoding=encoding)
+
+    failing_backend = _FailingBackend()
+    deps = ArtifactHandlerDeps(backend=failing_backend)
+
+    with pytest.raises(RuntimeError):
+        submit_artifact_canonical(
+            workspace_root=tmp_path,
+            artifact_type="development_result",
+            parsed_content={
+                "status": "completed",
+                "summary": "done",
+                "files_changed": "- x.py",
+            },
+            deps=deps,
+            run_id="run-1",
+        )
+
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "artifacts" / "development_result.json"
+    )
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
+    )
+    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+
+
+def test_atomic_rollback_when_handoff_sync_fails(
+    tmp_path: Path,
+) -> None:
+    class _FailingBackend(MemoryBackend):
+        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+            if ".agent/DEVELOPMENT_RESULT.md" in str(path):
+                raise RuntimeError("handoff write failed")
+            super().write_text(path, content, encoding=encoding)
+
+    failing_backend = _FailingBackend()
+    deps = ArtifactHandlerDeps(backend=failing_backend)
+
+    with pytest.raises(RuntimeError):
+        submit_artifact_canonical(
+            workspace_root=tmp_path,
+            artifact_type="development_result",
+            parsed_content={
+                "status": "completed",
+                "summary": "done",
+                "files_changed": "- x.py",
+            },
+            deps=deps,
+            run_id="run-1",
+        )
+
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "artifacts" / "development_result.json"
+    )
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
+    )
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
+    )
+    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+
+
+def test_atomic_rollback_when_receipt_write_fails(
+    tmp_path: Path,
+) -> None:
+    class _FailingBackend(MemoryBackend):
+        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+            if ".agent/receipts/" in str(path):
+                raise RuntimeError("receipt write failed")
+            super().write_text(path, content, encoding=encoding)
+
+    failing_backend = _FailingBackend()
+    deps = ArtifactHandlerDeps(backend=failing_backend)
+
+    with pytest.raises(RuntimeError):
+        submit_artifact_canonical(
+            workspace_root=tmp_path,
+            artifact_type="development_result",
+            parsed_content={
+                "status": "completed",
+                "summary": "done",
+                "files_changed": "- x.py",
+            },
+            deps=deps,
+            run_id="run-1",
+        )
+
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "artifacts" / "development_result.json"
+    )
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
+    )
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
+    )
+    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+
+
+def test_atomic_rollback_when_sentinel_write_fails(
+    tmp_path: Path,
+) -> None:
+    class _FailingBackend(MemoryBackend):
+        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+            if ".agent/completion_seen_" in str(path):
+                raise RuntimeError("sentinel write failed")
+            super().write_text(path, content, encoding=encoding)
+
+    failing_backend = _FailingBackend()
+    deps = ArtifactHandlerDeps(backend=failing_backend)
+
+    with pytest.raises(RuntimeError):
+        submit_artifact_canonical(
+            workspace_root=tmp_path,
+            artifact_type="development_result",
+            parsed_content={
+                "status": "completed",
+                "summary": "done",
+                "files_changed": "- x.py",
+            },
+            deps=deps,
+            run_id="run-1",
+        )
+
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "artifacts" / "development_result.json"
+    )
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
+    )
+    assert not failing_backend.exists(
+        tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
+    )
+    assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
+
+
+def test_atomic_rollback_preserves_artifact_dir_state(
+    tmp_path: Path,
+) -> None:
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+
+    class _FailingBackend(MemoryBackend):
+        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+            if ".agent/receipts/" in str(path):
+                raise RuntimeError("receipt write failed")
+            super().write_text(path, content, encoding=encoding)
+
+    failing_backend = _FailingBackend()
+    deps = ArtifactHandlerDeps(backend=failing_backend)
+
+    pre_submit_files = set(failing_backend.glob(artifact_dir, "*.json"))
+
+    with pytest.raises(RuntimeError):
+        submit_artifact_canonical(
+            workspace_root=tmp_path,
+            artifact_type="development_result",
+            parsed_content={
+                "status": "completed",
+                "summary": "done",
+                "files_changed": "- x.py",
+            },
+            deps=deps,
+            run_id="run-1",
+        )
+
+    post_failure_files = set(failing_backend.glob(artifact_dir, "*.json"))
+    assert post_failure_files == pre_submit_files

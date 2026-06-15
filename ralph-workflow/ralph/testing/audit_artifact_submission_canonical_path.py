@@ -30,6 +30,8 @@ import re
 import sys
 from pathlib import Path
 
+from ralph.mcp.tools.artifact import _KNOWN_ARTIFACT_TYPES
+
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
         "__pycache__",
@@ -44,23 +46,8 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-_CANONICAL_TYPES: frozenset[str] = frozenset(
-    {
-        "commit_message",
-        "plan",
-        "smoke_test_result",
-        "issues",
-        "fix_result",
-        "development_result",
-        "review_analysis_decision",
-        "planning_analysis_decision",
-        "development_analysis_decision",
-        "product_spec",
-        "review",
-        "commit_cleanup",
-        "verification",
-    }
-)
+_CANONICAL_TYPES: frozenset[str] = _KNOWN_ARTIFACT_TYPES
+
 
 # File paths (relative to codebase root) that are allowed to perform the
 # audited writes/calls because they are part of the canonical chain or
@@ -79,6 +66,7 @@ _FILE_ALLOWLIST: frozenset[str] = frozenset(
 # have a clear seam and the audit stays narrow.
 _CANONICAL_BLOCK_START = "# === BEGIN CANONICAL SUBMIT OPS ==="
 _CANONICAL_BLOCK_END = "# === END CANONICAL SUBMIT OPS ==="
+_ARG_INDEX_2 = 2
 
 # Forbidden path patterns. Stored as (regex, category, detail) tuples.
 _FORBIDDEN_PATH_PATTERNS: tuple[tuple[str, str, str], ...] = (
@@ -123,7 +111,83 @@ _FORBIDDEN_CALLS: tuple[tuple[str, str, str], ...] = (
         "receipt_helper",
         "call to delete_artifact_receipt outside canonical submit",
     ),
+    (
+        "shutil.copy",
+        "shutil_bypass",
+        "shutil.copy into protected path outside canonical submit",
+    ),
+    (
+        "shutil.copy2",
+        "shutil_bypass",
+        "shutil.copy2 into protected path outside canonical submit",
+    ),
+    (
+        "shutil.copyfile",
+        "shutil_bypass",
+        "shutil.copyfile into protected path outside canonical submit",
+    ),
+    (
+        "shutil.copytree",
+        "shutil_bypass",
+        "shutil.copytree into protected path outside canonical submit",
+    ),
+    (
+        "shutil.move",
+        "shutil_bypass",
+        "shutil.move into protected path outside canonical submit",
+    ),
+    (
+        "os.rename",
+        "os_rename_bypass",
+        "os.rename into protected path outside canonical submit",
+    ),
+    (
+        "os.renames",
+        "os_rename_bypass",
+        "os.renames into protected path outside canonical submit",
+    ),
+    (
+        "os.replace",
+        "os_rename_bypass",
+        "os.replace into protected path outside canonical submit",
+    ),
+    (
+        "Path.replace",
+        "path_replace_bypass",
+        "Path.replace into protected path outside canonical submit",
+    ),
+    (
+        "Path.rename",
+        "path_replace_bypass",
+        "Path.rename into protected path outside canonical submit",
+    ),
 )
+
+_AUDIT_MODULE_ROOT = Path(__file__).parent.parent.parent
+
+
+def _assert_invariants() -> None:
+    """Import-time guard: if/raise RuntimeError (NOT assert) so python -O cannot strip."""
+    if not _CANONICAL_TYPES:
+        raise RuntimeError("_CANONICAL_TYPES must not be empty")
+    if "commit_message" not in _CANONICAL_TYPES:
+        raise RuntimeError("_CANONICAL_TYPES must contain 'commit_message'")
+    if "plan" not in _CANONICAL_TYPES:
+        raise RuntimeError("_CANONICAL_TYPES must contain 'plan'")
+    if not _FILE_ALLOWLIST:
+        raise RuntimeError("_FILE_ALLOWLIST must not be empty")
+    for _path in _FILE_ALLOWLIST:
+        if not (_AUDIT_MODULE_ROOT / _path).is_file():
+            raise RuntimeError(f"_FILE_ALLOWLIST entry does not exist: {_path}")
+    if not _CANONICAL_BLOCK_START:
+        raise RuntimeError("_CANONICAL_BLOCK_START must not be empty")
+    if not _CANONICAL_BLOCK_END:
+        raise RuntimeError("_CANONICAL_BLOCK_END must not be empty")
+    if not _SKIP_DIRS:
+        raise RuntimeError("_SKIP_DIRS must not be empty")
+
+
+_assert_invariants()
 
 
 class BypassFinding:
@@ -378,6 +442,122 @@ def _find_open_finding(
     )
 
 
+_SHUTIL_METHODS: frozenset[str] = frozenset(
+    {"copy", "copy2", "copyfile", "copytree", "move"}
+)
+_OS_RENAME_METHODS: frozenset[str] = frozenset(
+    {"rename", "renames", "replace"}
+)
+_PATH_REPLACE_METHODS: frozenset[str] = frozenset(
+    {"replace", "rename"}
+)
+
+
+def _method_name(node: ast.Call) -> str | None:
+    """Return the method name for a call like obj.method(...), or None."""
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _is_shutil_move_call(node: ast.Call) -> bool:
+    """Return True for any call whose method name matches a shutil copy/move function."""
+    name = _method_name(node)
+    return name is not None and name in _SHUTIL_METHODS
+
+
+def _is_os_rename_call(node: ast.Call) -> bool:
+    """Return True for any call whose method name matches os.rename/renames/replace."""
+    name = _method_name(node)
+    if name is None or name not in _OS_RENAME_METHODS:
+        return False
+    dotted = _dotted_name(node.func)
+    if dotted is not None and (
+        dotted.startswith("Path.") or dotted.startswith("pathlib.")
+    ):
+        return False
+    if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Call):
+        base_func = _dotted_name(node.func.value.func)
+        if base_func in {"Path", "pathlib.Path"}:
+            return False
+    return True
+
+
+def _is_path_replace_call(node: ast.Call) -> bool:
+    """Return True for any call whose method name matches Path.replace/rename."""
+    name = _method_name(node)
+    if name is None or name not in _PATH_REPLACE_METHODS:
+        return False
+    dotted = _dotted_name(node.func)
+    return not (dotted is not None and dotted.startswith("os."))
+
+
+def _find_shutil_destination(node: ast.Call) -> ast.expr | None:
+    """Extract the destination argument from a shutil call (2nd positional or dst= keyword)."""
+    if len(node.args) >= _ARG_INDEX_2:
+        return node.args[1]
+    for kw in node.keywords:
+        if kw.arg == "dst":
+            return kw.value
+    return None
+
+
+def _find_os_rename_destination(node: ast.Call) -> ast.expr | None:
+    """Extract the destination argument from os.rename/replace (2nd positional)."""
+    if len(node.args) >= _ARG_INDEX_2:
+        return node.args[1]
+    return None
+
+
+def _find_path_replace_destination(node: ast.Call) -> ast.expr | None:
+    """Extract the destination argument from Path.replace/rename (1st positional)."""
+    if node.args:
+        return node.args[0]
+    return None
+
+
+def _find_shutil_move_finding(
+    node: ast.Call,
+    rel_path: str,
+    lineno: int,
+) -> BypassFinding | None:
+    """Check a shutil copy/move call for forbidden destination paths."""
+    dst = _find_shutil_destination(node)
+    if dst is None:
+        return None
+    return _finding_from_path_match(
+        _path_matches_forbidden(dst), rel_path, lineno
+    )
+
+
+def _find_os_rename_finding(
+    node: ast.Call,
+    rel_path: str,
+    lineno: int,
+) -> BypassFinding | None:
+    """Check an os.rename/replace call for forbidden destination paths."""
+    dst = _find_os_rename_destination(node)
+    if dst is None:
+        return None
+    return _finding_from_path_match(
+        _path_matches_forbidden(dst), rel_path, lineno
+    )
+
+
+def _find_path_replace_finding(
+    node: ast.Call,
+    rel_path: str,
+    lineno: int,
+) -> BypassFinding | None:
+    """Check a Path.replace/rename call for forbidden destination paths."""
+    dst = _find_path_replace_destination(node)
+    if dst is None:
+        return None
+    return _finding_from_path_match(
+        _path_matches_forbidden(dst), rel_path, lineno
+    )
+
+
 def _find_forbidden_call_finding(
     node: ast.Call,
     rel_path: str,
@@ -398,13 +578,22 @@ def _process_call_node(
     if _line_in_canonical_block(source_lines, lineno):
         return None
 
+    finding: BypassFinding | None = None
     if _is_write_text_call(node):
-        return _find_write_text_finding(node, rel_path, lineno)
-    if _is_write_bytes_call(node):
-        return _find_write_bytes_finding(node, rel_path, lineno)
-    if _is_open_call(node):
-        return _find_open_finding(node, rel_path, lineno)
-    return _find_forbidden_call_finding(node, rel_path, lineno)
+        finding = _find_write_text_finding(node, rel_path, lineno)
+    elif _is_write_bytes_call(node):
+        finding = _find_write_bytes_finding(node, rel_path, lineno)
+    elif _is_open_call(node):
+        finding = _find_open_finding(node, rel_path, lineno)
+    elif _is_shutil_move_call(node):
+        finding = _find_shutil_move_finding(node, rel_path, lineno)
+    elif _is_os_rename_call(node):
+        finding = _find_os_rename_finding(node, rel_path, lineno)
+    elif _is_path_replace_call(node):
+        finding = _find_path_replace_finding(node, rel_path, lineno)
+    else:
+        finding = _find_forbidden_call_finding(node, rel_path, lineno)
+    return finding
 
 
 def audit_file(file_path: Path, rel_path: str) -> list[BypassFinding]:

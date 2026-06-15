@@ -9,6 +9,7 @@ cannot silently bypass it.
 from __future__ import annotations
 
 import importlib
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.cli.commands._commit_attempt_context import CommitAttemptContext
@@ -23,7 +24,6 @@ from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
 if TYPE_CHECKING:
     import types
-    from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
 
@@ -172,3 +172,64 @@ def test_commit_plumbing_attempt_uses_default_backend_when_not_injected(
     )
     sentinel_path = tmp_path / ".agent" / f"completion_seen_{plumbing_module._COMMIT_RUN_ID}.json"
     assert DEFAULT_FILE_BACKEND.exists(sentinel_path)
+
+
+def test_commit_plumbing_never_directly_writes_receipt_or_sentinel() -> None:
+    """No direct file write to .agent/receipts/ or .agent/completion_seen_*.json."""
+    source = Path(__file__).parent.parent / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
+    text = source.read_text(encoding="utf-8")
+    findings: list[str] = []
+    for i, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if ".agent/receipts" in stripped or ".agent/completion_seen_" in stripped:
+            findings.append(f"  line {i}: {stripped}")
+    assert not findings, (
+        "Found direct receipt/sentinel references (expected 0):\n" + "\n".join(findings)
+    )
+
+
+def test_commit_plumbing_receipt_cleared_before_each_attempt() -> None:
+    """clear_run_receipts must appear before execute_agent_effect in the recovery function."""
+    source = Path(__file__).parent.parent / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
+    body = source.read_text(encoding="utf-8")
+    func_start = body.find("def _run_commit_agent_attempt_with_recovery(")
+    assert func_start != -1, "function not found"
+    func_lines = body[func_start:].splitlines()
+    clear_line = -1
+    execute_line = -1
+    for i, line in enumerate(func_lines):
+        stripped = line.strip()
+        if "clear_run_receipts" in stripped and clear_line == -1:
+            clear_line = i
+        if "execute_agent_effect" in stripped and execute_line == -1:
+            execute_line = i
+    assert clear_line != -1, "clear_run_receipts not found in function"
+    assert execute_line != -1, "execute_agent_effect not found in function"
+    assert clear_line < execute_line, (
+        f"clear_run_receipts (offset {clear_line}) must appear "
+        f"before execute_agent_effect (offset {execute_line})"
+    )
+
+
+def test_commit_plumbing_run_id_binding_is_stable() -> None:
+    """_COMMIT_RUN_ID must be the constant string "commit-plumbing"."""
+    plumbing = _plumbing_module()
+    assert plumbing._COMMIT_RUN_ID == "commit-plumbing"
+
+
+def test_commit_plumbing_uses_only_allowlisted_delete() -> None:
+    """No ad-hoc unlink/remove of .agent/receipts/* files outside clear_run_receipts."""
+    source = Path(__file__).parent.parent / "ralph" / "pipeline" / "plumbing" / "commit_plumbing.py"
+    text = source.read_text(encoding="utf-8")
+    findings: list[str] = []
+    for i, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if "unlink" in stripped and ".agent/receipts" in stripped:
+            findings.append(f"  line {i}: {stripped}")
+        if ".remove" in stripped and ".agent/receipts" in stripped:
+            findings.append(f"  line {i}: {stripped}")
+        if "os.remove" in stripped and ".agent/receipts" in stripped:
+            findings.append(f"  line {i}: {stripped}")
+    assert not findings, (
+        "Found disallowed direct delete calls (expected 0):\n" + "\n".join(findings)
+    )

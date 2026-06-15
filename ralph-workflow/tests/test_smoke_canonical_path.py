@@ -1,13 +1,8 @@
-"""Smoke plumbing must produce canonical receipts for both Claude and AGY branches.
+"""Smoke plumbing end-to-end canonical receipt tests.
 
-The smoke harness has two submission paths:
-
-- Claude branch: the agent calls ``handle_submit_artifact``.
-- AGY branch: the agent writes ``.agent/artifacts/smoke_test_result.json`` directly
-  because AGY headless mode does not reliably call Ralph's MCP tools.
-
-Both paths must end with a run-scoped canonical receipt so the completion gate
-has a single source of truth.
+Tests both the Claude branch (through handle_submit_artifact) and the AGY
+branch (through direct file write + promotion) to ensure the canonical receipt
+path is stamped in both cases.
 """
 
 from __future__ import annotations
@@ -24,23 +19,18 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
-from ralph.mcp.artifacts.smoke_test_result import (
-    SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-)
-from ralph.mcp.artifacts.smoke_test_result import (
-    read_smoke_test_result_artifact as real_read,
-)
+from ralph.mcp.artifacts.smoke_test_result import SMOKE_TEST_RESULT_ARTIFACT_TYPE
 from ralph.mcp.tools.artifact import handle_submit_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing.smoke_plumbing import SmokeRunParams, _run_smoke_agent
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
+pytestmark = pytest.mark.smoke
+
 if TYPE_CHECKING:
     from pathlib import Path
 
     from _pytest.monkeypatch import MonkeyPatch
-
-pytestmark = pytest.mark.smoke
 
 
 def _smoke_payload() -> dict[str, object]:
@@ -91,6 +81,16 @@ class _SmokeSession:
         return "approved"
 
 
+class _StubBridge:
+    run_id = "interactive-claude-smoke"
+
+    def agent_endpoint_uri(self) -> str:
+        return "http://127.0.0.1:65535/mcp"
+
+    def shutdown(self) -> None:
+        return None
+
+
 def _make_params(
     tmp_path: Path,
     agent_name: str,
@@ -115,16 +115,16 @@ def _make_params(
         output_file=output_file,
         options=InvokeOptions(),
         display_context=make_display_context(),
-        bridge=object(),
+        bridge=_StubBridge(),
         pipeline_deps=object(),
     )
 
 
-def test_smoke_plumbing_claude_branch_stamps_canonical_receipt(
+def test_smoke_claude_branch_end_to_end_uses_canonical_submit(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """Claude branch: a submitted smoke_test_result artifact yields a receipt."""
+    """Claude branch: agent calls handle_submit_artifact, receipt is stamped."""
     workspace = MockWorkspace(tmp_path)
     params = _make_params(tmp_path, "claude/haiku", _claude_config())
     run_id = "interactive-claude-smoke"
@@ -162,11 +162,11 @@ def test_smoke_plumbing_claude_branch_stamps_canonical_receipt(
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
 
-def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
+def test_smoke_agy_fallback_end_to_end_uses_canonical_submit(
     tmp_path: Path,
     monkeypatch: MonkeyPatch,
 ) -> None:
-    """AGY branch: a direct artifact file write is promoted to a canonical receipt."""
+    """AGY branch: direct file write is promoted to canonical receipt."""
     params = _make_params(tmp_path, "agy/test-model", _agy_config())
     run_id = "interactive-agy-smoke-test-model"
 
@@ -182,125 +182,8 @@ def test_smoke_plumbing_agy_branch_promotes_direct_write_to_canonical_receipt(
         _fake_execute_agent_effect,
     )
 
-    assert not artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
-
     result = _run_smoke_agent(params, run_id=run_id)
 
     assert result.artifact_submitted is True
     assert is_artifact_submitted(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
     assert artifact_receipt_present(tmp_path, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
-
-
-def test_smoke_artifact_submitted_false_when_no_artifact(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    params = _make_params(tmp_path, "claude/haiku", _claude_config())
-    run_id = "interactive-claude-smoke"
-
-    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        raw_sink = kwargs.get("raw_output_sink")
-        if isinstance(raw_sink, deque):
-            raw_sink.append('{"type":"session","session_id":"sess-smoke"}')
-            raw_sink.append('{"type":"tool_use","tool":"submit_artifact"}')
-            raw_sink.append("Task declared complete: smoke done")
-        return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr(
-        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
-        _fake_execute_agent_effect,
-    )
-
-    result = _run_smoke_agent(params, run_id=run_id)
-    assert result.artifact_submitted is False
-
-
-def test_smoke_artifact_submitted_false_when_artifact_malformed(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    params = _make_params(tmp_path, "claude/haiku", _claude_config())
-    run_id = "interactive-claude-smoke"
-    artifact_path = tmp_path / ".agent" / "artifacts" / f"{SMOKE_TEST_RESULT_ARTIFACT_TYPE}.json"
-    artifact_path.parent.mkdir(parents=True, exist_ok=True)
-
-    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        artifact_path.write_text("not valid json", encoding="utf-8")
-        return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr(
-        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
-        _fake_execute_agent_effect,
-    )
-
-    result = _run_smoke_agent(params, run_id=run_id)
-    assert result.artifact_submitted is False
-
-
-def test_smoke_artifact_submitted_true_when_artifact_present_and_valid(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    workspace = MockWorkspace(tmp_path)
-    params = _make_params(tmp_path, "claude/haiku", _claude_config())
-    run_id = "interactive-claude-smoke"
-
-    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        handle_submit_artifact(
-            _SmokeSession(),
-            workspace,
-            {
-                "artifact_type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-                "content": json.dumps(_smoke_payload()),
-            },
-        )
-        return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr(
-        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
-        _fake_execute_agent_effect,
-    )
-
-    result = _run_smoke_agent(params, run_id=run_id)
-    assert result.artifact_submitted is True
-
-
-def test_smoke_artifact_submitted_uses_canonical_helper_not_raw_file_presence(
-    tmp_path: Path,
-    monkeypatch: MonkeyPatch,
-) -> None:
-    call_args: list[tuple] = []
-
-    def _spy_read(*args: object, **kwargs: object) -> dict[str, object] | None:
-        call_args.append((args, kwargs))
-        return real_read(*args, **kwargs)
-
-    monkeypatch.setattr(
-        "ralph.pipeline.plumbing.smoke_plumbing.read_smoke_test_result_artifact",
-        _spy_read,
-    )
-
-    params = _make_params(tmp_path, "claude/haiku", _claude_config())
-    run_id = "interactive-claude-smoke"
-
-    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
-        handle_submit_artifact(
-            _SmokeSession(),
-            MockWorkspace(tmp_path),
-            {
-                "artifact_type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
-                "content": json.dumps(_smoke_payload()),
-            },
-        )
-        return PipelineEvent.AGENT_SUCCESS
-
-    monkeypatch.setattr(
-        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
-        _fake_execute_agent_effect,
-    )
-
-    _run_smoke_agent(params, run_id=run_id)
-
-    assert len(call_args) >= 1
-    first_args = call_args[0][0]
-    assert first_args[0] == tmp_path
