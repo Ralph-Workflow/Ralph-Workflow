@@ -272,6 +272,107 @@ The default threshold for `no_output_at_start_seconds` is tuned to **30s** (down
 - Long enough to accommodate typical 95th-percentile first-token latency of slower models (e.g. Claude Code or Opencode).
 - Short enough to fall over to the next agent before hitting cumulative session or waiting ceilings.
 
+### LIFECYCLE frames do NOT reset the NO_OUTPUT_AT_START baseline
+
+The watchdog distinguishes between **meaningful output** and **cosmetic
+lifecycle frames** (e.g. the opencode ``process started; waiting for first
+output`` frame). Only meaningful output advances the NO_OUTPUT_AT_START
+baseline; a LIFECYCLE frame resets the idle baseline (``_last_activity``) so
+the agent is not declared idle, but it is deliberately excluded from the
+``_last_meaningful_output_at`` timestamp that gates the NO_OUTPUT_AT_START
+trip.
+
+This fix closes a real-world bug in which an opencode subprocess that
+produced a single LIFECYCLE frame at process startup and then emitted no
+output for 15 minutes would silently defeat the fast-fallover path. With
+the fix, the watchdog fast-fires NO_OUTPUT_AT_START at the 30s default and
+the operator sees the agent in the structured WAITING log within tens of
+seconds instead of waiting for the cumulative 600s no-progress ceiling.
+
+The three semantic baselines are now independent:
+
+| Field | Reset by | Purpose |
+|-------|----------|---------|
+| ``_last_activity`` | ``record_activity()``, ``record_lifecycle_activity()``, ``record_progress_report()`` (fingerprint change) | The idle baseline used by NO_PROGRESS_QUIET and the cumulative ceiling |
+| ``_last_meaningful_output_at`` | ``record_invocation_start()``, ``record_activity()``, ``record_progress_report()`` (fingerprint change) | The NO_OUTPUT_AT_START baseline. LIFECYCLE frames are excluded by design |
+| Per-channel ``_last_at`` (mcp_tool, subagent_output, workspace) | The corresponding ``record_*`` side-channel recorder | The positive-waiting suppression baseline (see below) |
+
+LIFECYCLE frames are a real production signal — they are the only
+evidence we have that the agent subprocess is alive at startup — but they
+are NOT a substitute for real output. The watchdog therefore records them
+in the idle baseline (so the agent is not declared idle) while leaving the
+NO_OUTPUT_AT_START baseline untouched (so a hung agent is still caught).
+
+### Positive-waiting suppression channels
+
+The NO_OUTPUT_AT_START trip is suppressed (returns ``CONTINUE`` instead
+of ``FIRE``) when ANY of three side-channel evidence recorders has been
+called recently — i.e. while the channel timestamp is fresher than
+``activity_evidence_ttl_seconds``. This is the prompt's
+**"we are running some subagents and are just waiting"** branch: a
+productive session that is busy on a non-stdout channel must not be
+misclassified as unavailable.
+
+The three channels are:
+
+| Channel | Recorder | Tier | Evidence source |
+|---------|----------|------|-----------------|
+| `mcp_tool` | ``record_mcp_tool_call()`` | first-party | Ralph MCP server tools/call invocations / completions |
+| `subagent_output` | ``record_subagent_work()`` / ``record_subagent_output()`` | first-party | Subagent heartbeat / phase-change / observable log-stream lines |
+| `workspace` | ``record_workspace_event(kind=...)`` | side-channel | ``WorkspaceMonitor`` file-change events, quality-filtered by ``WorkspaceChangeKind`` weight |
+
+The deferral logic in ``_channel_evidence_active`` consults the full
+tier-aware evidence summary (see the [Tier-labelled per-channel evidence
+summary](#tier-labelled-per-channel-evidence-summary) section above) and
+defers the NO_OUTPUT_AT_START trip while any first-party or
+quality-filtered side-channel is fresh. A bare subagent PID with no
+observable output is reported in the summary under
+``subagent_liveness`` with ``can_defer=False``; it is informational and
+does NOT reset the idle clock.
+
+These three channels are locked behind black-box tests in
+``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``:
+``test_subagent_work_progress_defers_no_output_at_start``,
+``test_workspace_event_progress_defers_no_output_at_start``, and
+``test_mcp_tool_call_progress_defers_no_output_at_start``. The first
+``TestNoOutputAtStartLifecycleBypass`` class in the same file proves
+that a LIFECYCLE frame does NOT defer the trip (the bug-expose test).
+
+### Session-scoped `UnavailabilityStore` Protocol seam
+
+The recovery controller delegates unavailable storage to an
+``AgentUnavailabilityTracker`` instance, which implements a runtime-
+checkable ``UnavailabilityStore`` ``Protocol`` defined in
+``ralph/recovery/agent_unavailability_tracker.py``. The Protocol is the
+single seam for swapping the current in-memory implementation for a
+persistent one (sqlite, redis, file) without changing the controller or
+any of the 25+ existing call sites.
+
+Key contract points:
+
+- **Scope is session by default.** The tracker exposes a ``.scope``
+  property that returns ``"session"`` (the current in-memory default).
+  A future persistent implementor overrides the constructor's ``scope``
+  keyword to ``"persistent"`` and provides the I/O. Callers MUST NOT
+  depend on the dict-shaped ``snapshot()`` output for any cross-session
+  use; the snapshot format is legacy and may change when a persistent
+  store is introduced.
+- **Per-reason backoff is doubled on each consecutive unavailable mark**
+  and capped at the reason's ``max_backoff_ms`` (see the table above).
+  The cap is enforced by the tracker; the controller never bypasses it.
+- **Public surface is additive.** The existing ``mark_unavailable``,
+  ``is_available``, ``earliest_unavailable_wait_ms``, ``reset_backoff``,
+  and ``snapshot`` methods keep their signatures. Test-only seams
+  (``initial_entries`` and ``initial_timeouts`` on
+  ``RecoveryControllerOptions``) are also public.
+
+The Protocol is enforced at typecheck time by ``typing.Protocol`` and at
+runtime by ``@runtime_checkable``; the
+``test_unavailability_store_protocol_is_runtime_checkable`` test in
+``tests/recovery/test_unavailability_tracker.py`` asserts
+``isinstance(tracker, UnavailabilityStore) is True`` (and the test
+passes under ``python -O``).
+
 ## See also
 
 - ``ralph-workflow/ralph/agents/idle_watchdog/idle_watchdog.py`` —
