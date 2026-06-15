@@ -982,10 +982,14 @@ class IdleWatchdog:
 
         idle_elapsed = now - self._last_activity
 
-        # Check fast no-progress quiet ceiling
-        no_progress_verdict = self._evaluate_no_progress_quiet(now, idle_elapsed)
-        if no_progress_verdict is not None:
-            return no_progress_verdict
+        quiet_state = classify_quiet()
+        if (
+            quiet_state == AgentExecutionState.WAITING_ON_CHILD
+            and self._config.no_progress_quiet_seconds is not None
+        ):
+            no_progress_verdict = self._evaluate_no_progress_quiet(now, idle_elapsed)
+            if no_progress_verdict is not None:
+                return no_progress_verdict
 
         if idle_elapsed < self._config.idle_timeout_seconds:
             self._accumulate_waiting_run(now)

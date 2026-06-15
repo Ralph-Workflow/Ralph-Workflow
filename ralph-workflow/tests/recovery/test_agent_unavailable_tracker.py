@@ -416,6 +416,39 @@ def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() 
     assert snap2["unavailable_timeouts"]["development:claude"] - current_time_ms == 10_000
     assert snap2["backoff_attempts"]["development:claude"] == 2
 
+    # Advance past A's cooldown so A can be reconsidered when B fails again.
+    clock.advance(10)
+
+    # Cycle 4: B fails -> fall back to A, and A's backoff grows to 20s.
+    state_a2, _, _ = controller.handle(
+        state_b2,
+        exc_b,
+        FailureContext(phase="development", agent="opencode"),
+    )
+    assert state_a2.chain_for_phase("development").current_index == 0
+    assert fallovers[-1].from_agent == "opencode"
+    assert fallovers[-1].to_agent == "claude"
+    assert fallovers[-1].watchdog_reason == "no_progress_quiet"
+
+    # Advance past A's cooldown so A can be reconsidered.
+    clock.advance(20)
+
+    # Cycle 5: A fails again -> fall over to B, and A's backoff reaches cap.
+    state_b3, _, _ = controller.handle(
+        state_a2,
+        exc_a,
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert state_b3.chain_for_phase("development").current_index == 1
+    assert fallovers[-1].from_agent == "claude"
+    assert fallovers[-1].to_agent == "opencode"
+    assert fallovers[-1].watchdog_reason == "no_progress_quiet"
+
+    snap3 = controller.snapshot()
+    current_time_ms3 = int(clock.monotonic() * 1000)
+    assert snap3["unavailable_timeouts"]["development:claude"] - current_time_ms3 == 20_000
+    assert snap3["backoff_attempts"]["development:claude"] == 3
+
 
 def test_unavailable_skip_does_not_consume_budget() -> None:
     """Falling over from an unavailable agent must not debit its budget."""
