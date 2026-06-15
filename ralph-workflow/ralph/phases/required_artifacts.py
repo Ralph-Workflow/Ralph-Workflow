@@ -175,7 +175,9 @@ def build_retry_hint(
     if json_path is not None:
         lines.append(
             f"If the submit-artifact MCP tool is unavailable, write the raw payload "
-            f"JSON to {json_path} instead. Do not use content_path for this retry."
+            f"JSON to {json_path} instead. Do not use content_path for this retry. "
+            "Ralph detects this fallback file at completion-check time and stamps a "
+            "canonical receipt from it."
         )
     if prior_output:
         echoed = "\n".join(prior_output[-12:])

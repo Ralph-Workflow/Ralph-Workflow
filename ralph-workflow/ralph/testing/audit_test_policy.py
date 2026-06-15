@@ -77,6 +77,10 @@ _IO_ALLOWLIST: set[str] = {
     "test_audit_artifact_submission_canonical_types",
     "test_audit_artifact_submission_dumb_agent_proof",
     "test_audit_artifact_submission_standardization",
+    # Spawns python -O to verify import-time invariants survive -O.
+    # This cannot be tested from the same process because -O is a
+    # per-process flag; a subprocess is the only way to test this.
+    "test_audit_artifact_submission_canonical_path",
     # Git integration tests using the tmp_git_repo fixture (which wraps
     # tmp_path). The write_text calls go to the fixture's temp directory.
     "test_git_rebase_preconditions",

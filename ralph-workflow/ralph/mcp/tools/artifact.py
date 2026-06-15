@@ -116,6 +116,7 @@ _TYPED_ARTIFACT_TYPES = frozenset(
 _KNOWN_ARTIFACT_TYPES = frozenset(
     {PLAN_ARTIFACT_TYPE, COMMIT_MESSAGE_TYPE, DEVELOPMENT_RESULT_ARTIFACT_TYPE}
     | _TYPED_ARTIFACT_TYPES
+    | {"review", "verification"}
 )
 
 # Multi-step planning artifact types: each phase has its own submit, and
@@ -227,23 +228,27 @@ def handle_submit_artifact(
         backend=resolved_deps.backend,
     )
 
-    artifact_dir = _resolve_artifact_dir(session, workspace)
     history_enabled = _resolve_history_enabled(artifact_type, workspace_root, drain)
     effective_deps = ArtifactHandlerDeps(
         backend=resolved_deps.backend,
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
     )
-    execute_ops_with_rollback(
-        submit_ops_for_artifact(
-            artifact_type,
-            workspace_root,
-            artifact_dir,
-            parsed_content,
-            deps=effective_deps,
-            run_id=_session_run_id(session),
-        )
+    artifact_dir = _resolve_artifact_dir(session, workspace)
+    # === BEGIN CANONICAL SUBMIT OPS ===
+    from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
+        submit_artifact_canonical,
     )
+
+    submit_artifact_canonical(
+        workspace_root=workspace_root,
+        artifact_type=artifact_type,
+        parsed_content=parsed_content,
+        deps=effective_deps,
+        run_id=_session_run_id(session),
+        artifact_dir=artifact_dir,
+    )
+    # === END CANONICAL SUBMIT OPS ===
 
     # Post-submission verification: development_result artifacts require status="completed"
     # or status="partial" (from instructions). If status is neither, surface a verification
@@ -377,16 +382,20 @@ def handle_finalize_plan(
         now_iso=resolved_deps.now_iso,
         history_enabled=history_enabled,
     )
-    execute_ops_with_rollback(
-        submit_ops_for_artifact(
-            PLAN_ARTIFACT_TYPE,
-            workspace_root,
-            artifact_dir,
-            normalized,
-            deps=effective_deps,
-            run_id=_session_run_id(session),
-        )
+    # === BEGIN CANONICAL SUBMIT OPS ===
+    from ralph.mcp.artifacts.canonical_submit import (  # noqa: PLC0415
+        submit_artifact_canonical,
     )
+
+    submit_artifact_canonical(
+        workspace_root=workspace_root,
+        artifact_type=PLAN_ARTIFACT_TYPE,
+        parsed_content=normalized,
+        deps=effective_deps,
+        run_id=_session_run_id(session),
+        artifact_dir=artifact_dir,
+    )
+    # === END CANONICAL SUBMIT OPS ===
 
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {PLAN_ARTIFACT_TYPE}")],
@@ -1281,7 +1290,8 @@ def _raise_format_doc_error(
     raise InvalidParamsError(msg) from original_exc
 
 
-def submit_ops_for_artifact(
+# === BEGIN CANONICAL SUBMIT OPS ===
+def _submit_ops_for_artifact_with_options(
     artifact_type: str,
     workspace_root: Path,
     artifact_dir: Path,
@@ -1289,14 +1299,16 @@ def submit_ops_for_artifact(
     *,
     deps: ArtifactHandlerDeps,
     run_id: str | None = None,
+    name: str | None = None,
+    overwrite: bool = True,
+    metadata: dict[str, object] | None = None,
 ) -> list[SubmitOp]:
     """Return the ordered (op, undo) pairs for a complete artifact submit.
 
-    When ``run_id`` is provided, the final op stamps a run-scoped completion
-    receipt for ``artifact_type``. Because it is the last op in the
-    rollback-protected sequence, the receipt exists only when the artifact and
-    its handoff were fully persisted — binding "submitted" and "gate-visible"
-    into one atomic fact regardless of where the artifact bytes landed.
+    This private helper is the implementation shared by the public
+    :func:`submit_ops_for_artifact` and the canonical submission path. It
+    allows bridge callers to supply a custom ``name``, ``overwrite`` policy, and
+    ``metadata`` without widening the public op-builder API.
     """
     ops: list[SubmitOp] = []
 
@@ -1311,19 +1323,24 @@ def submit_ops_for_artifact(
             )
         )
 
-    _options = ArtifactSubmitOptions(overwrite=True, persistence=deps.artifact_persistence)
+    _options = ArtifactSubmitOptions(
+        overwrite=overwrite,
+        persistence=deps.artifact_persistence,
+        metadata=metadata,
+    )
     _at = artifact_type
+    _name = name or _at
     _content2 = parsed_content
     ops.append(
         SubmitOp(
             run=lambda: submit_artifact(
                 artifact_dir,
-                name=_at,
+                name=_name,
                 artifact_type=_at,
                 content=_content2,
                 options=_options,
             ),
-            undo=lambda: delete_artifact(artifact_dir, _at, backend=deps.backend),
+            undo=lambda: delete_artifact(artifact_dir, _name, backend=deps.backend),
         )
     )
 
@@ -1415,6 +1432,37 @@ def submit_ops_for_artifact(
         ops.append(SubmitOp(run=_run_write_sentinel, undo=_undo_write_sentinel))
 
     return ops
+
+
+def submit_ops_for_artifact(
+    artifact_type: str,
+    workspace_root: Path,
+    artifact_dir: Path,
+    parsed_content: dict[str, object],
+    *,
+    deps: ArtifactHandlerDeps,
+    run_id: str | None = None,
+) -> list[SubmitOp]:
+    """Return the ordered (op, undo) pairs for a complete artifact submit.
+
+    When ``run_id`` is provided, the final op stamps a run-scoped completion
+    receipt for ``artifact_type``. Because it is the last op in the
+    rollback-protected sequence, the receipt exists only when the artifact and
+    its handoff were fully persisted — binding "submitted" and "gate-visible"
+    into one atomic fact regardless of where the artifact bytes landed.
+    """
+    return _submit_ops_for_artifact_with_options(
+        artifact_type,
+        workspace_root,
+        artifact_dir,
+        parsed_content,
+        deps=deps,
+        run_id=run_id,
+        name=artifact_type,
+        overwrite=True,
+        metadata=None,
+    )
+# === END CANONICAL SUBMIT OPS ===
 
 
 __all__ = [

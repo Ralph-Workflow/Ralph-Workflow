@@ -61,8 +61,9 @@ TESTS_ALLOWLIST: set[str] = {
     "test_monitor.py",  # live psutil process-tree black-box coverage needs a real subprocess
     "test_teardown.py",  # live process-subtree teardown black-box coverage needs a real subprocess
     "test_e2e_activity_aware.py",  # e2e watchdog coverage needs real subprocesses
-    "test_smoke_agy_live.py",  # live AGY binary black-box coverage via subprocess
     "test_agy_live_regression.py",  # live AGY binary black-box coverage via subprocess
+    "test_audit_artifact_submission_canonical_path.py",
+    # spawns python -O to verify import-time invariants survive -O
 }
 
 _MCP_FIXTURE_FILES = {

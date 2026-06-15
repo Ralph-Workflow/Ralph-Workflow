@@ -402,6 +402,11 @@ def test_smoke_plumbing_uses_shared_pipeline_deps_path(
         "_clear_smoke_artifact",
         lambda _root: None,
     )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "is_artifact_submitted",
+        lambda *args: True,
+    )
 
     output_file = _FakeOutputPath(
         "/workspace/tmp/interactive-claude-smoke/todo-list.js"
@@ -585,6 +590,11 @@ def test_smoke_plumbing_resolves_display_context_from_pipeline_deps(
         smoke_plumbing_module,
         "_clear_smoke_artifact",
         lambda _root: None,
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "is_artifact_submitted",
+        lambda *args: True,
     )
 
     output_file = _FakeOutputPath(

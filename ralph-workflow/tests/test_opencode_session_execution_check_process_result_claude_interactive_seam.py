@@ -40,11 +40,19 @@ _CompletionCheckOptions = CompletionCheckOptions
 class TestCheckProcessResultClaudeInteractiveSeam:
     """Completion contract with ClaudeInteractiveExecutionStrategy."""
 
-    def test_explicit_completion_without_artifact_does_not_raise(self, tmp_path: Path) -> None:
-        """declare_complete marker prevents OpenCodeResumableExitError without artifact."""
+    def test_explicit_completion_with_sentinel_does_not_raise(self, tmp_path: Path) -> None:
+        """declare_complete marker plus completion sentinel is terminal without artifact.
+
+        The plain-text marker alone is no longer authoritative: it can be spoofed
+        by ordinary agent output. The completion sentinel written by the real
+        declare_complete MCP tool provides the required corroboration.
+        """
         strategy = ClaudeInteractiveExecutionStrategy()
         handle = _FakeHandle(returncode=0)
         raw_output = ["Task declared complete: session_id=abc, summary=done, timestamp=1"]
+        sentinel = tmp_path / ".agent" / "completion_seen_abc.json"
+        sentinel.parent.mkdir(parents=True, exist_ok=True)
+        sentinel.write_text('{"run_id": "abc"}', encoding="utf-8")
 
         _check_process_result(
             cast("ManagedProcess", handle),
@@ -53,6 +61,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
             _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
+                captured_session_id="abc",
             ),
         )
 

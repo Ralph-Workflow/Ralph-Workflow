@@ -24,12 +24,14 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.artifacts.canonical_submit import promote_fallback_artifact
 from ralph.mcp.artifacts.completion_receipts import artifact_receipt_present
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from ralph.mcp.tools.artifact import ArtifactHandlerDeps
     from ralph.phases.required_artifacts import RequiredArtifact
 
 from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
@@ -54,6 +56,11 @@ class CompletionSignals:
         artifact_optional: True when the phase marks its output artifact optional
             (artifact_required=False). A clean exit is terminal even without the
             artifact or an explicit declare_complete call.
+        completion_sentinel_present: True when the run-scoped completion sentinel
+            written by handle_declare_complete exists on disk. This is the
+            authoritative proof that the agent actually invoked the
+            declare_complete MCP tool; the plain-text marker alone can be
+            spoofed by agent output.
     """
 
     explicit_complete: bool
@@ -61,6 +68,7 @@ class CompletionSignals:
     artifact_types: tuple[str, ...]
     terminal_ack_seen: bool = False
     artifact_optional: bool = False
+    completion_sentinel_present: bool = False
 
 
 def extract_explicit_completion(raw_output: list[str]) -> bool:
@@ -109,6 +117,28 @@ def _artifact_is_schema_valid(artifact_path: Path) -> bool:
         return False
 
 
+def is_artifact_submitted(
+    workspace: Path,
+    run_id: str,
+    artifact_type: str,
+    *,
+    deps: ArtifactHandlerDeps | None = None,
+) -> bool:
+    """Return True when a canonical receipt exists or can be promoted from fallback.
+
+    This is the completion-signal layer's single entry point for artifact
+    presence. It first checks for a receipt; if none exists it attempts to
+    promote a fallback file written by the agent (``.agent/tmp/<type>.json`` or
+    ``.agent/artifacts/<type>.json``) through the canonical submit path so a
+    receipt is stamped.
+    """
+    if artifact_receipt_present(workspace, run_id, artifact_type):
+        return True
+
+    result = promote_fallback_artifact(workspace, artifact_type, deps=deps, run_id=run_id)
+    return result is not None and result.receipt_path is not None
+
+
 def evaluate_completion(
     workspace: Path,
     raw_output: list[str] | None = None,
@@ -136,26 +166,34 @@ def evaluate_completion(
     """
     explicit = extract_explicit_completion(raw_output or [])
     ra = required_artifact
+    sentinel_present = (
+        _check_completion_sentinel(workspace, run_id) if run_id is not None else False
+    )
     if ra is None:
         return CompletionSignals(
             explicit_complete=explicit,
             required_artifact_present=False,
             artifact_types=(),
+            completion_sentinel_present=sentinel_present,
         )
     artifact_path = workspace / ra.json_path
     # A run-scoped submission receipt is authoritative proof the artifact was
     # persisted, independent of where it landed; fall back to the on-disk path
     # check only when no receipt is available (e.g. run_id not threaded).
-    present = artifact_receipt_present(workspace, run_id, ra.artifact_type) if (
+    present = is_artifact_submitted(workspace, run_id, ra.artifact_type) if (
         run_id is not None
     ) else False
     present = present or _artifact_is_schema_valid(artifact_path)
     optional = not ra.artifact_required
+    sentinel_present = (
+        _check_completion_sentinel(workspace, run_id) if run_id is not None else False
+    )
     return CompletionSignals(
         explicit_complete=explicit,
         required_artifact_present=present,
         artifact_types=(ra.artifact_type,) if present else (),
         artifact_optional=optional,
+        completion_sentinel_present=sentinel_present,
     )
 
 
@@ -163,4 +201,5 @@ __all__ = [
     "CompletionSignals",
     "evaluate_completion",
     "extract_explicit_completion",
+    "is_artifact_submitted",
 ]

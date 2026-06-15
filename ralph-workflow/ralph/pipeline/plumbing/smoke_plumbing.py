@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
+from ralph.agents.completion_signals import is_artifact_submitted
 from ralph.agents.execution_state import strategy_for_command
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -177,6 +178,9 @@ def _build_smoke_prompt(
         # streamable-HTTP MCP tools, but it can write files directly. We
         # therefore instruct it to persist the smoke_test_result artifact as a
         # file and emit the same completion marker the smoke detector watches.
+        # The completion-signal layer auto-promotes this direct write to a
+        # canonical receipt at completion-check time, so the AGY branch still
+        # satisfies the same single-source-of-truth contract as the MCP path.
         artifact_path = ".agent/artifacts/smoke_test_result.json"
         artifact_wrapper = (
             '{\n'
@@ -386,6 +390,13 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
     artifact_path.unlink(missing_ok=True)
 
 
+def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_ID) -> bool:
+    """Return whether a smoke test result artifact was submitted via canonical path."""
+    return is_artifact_submitted(
+        workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE
+    )
+
+
 def _explicit_completion_seen(
     lines: list[str],
     workspace_root: Path,
@@ -518,6 +529,7 @@ def _detect_smoke_errors(
     session_id: str | None,
     final_exception: AgentInvocationError | None,
     tool_activity_seen: bool | None = None,
+    artifact_submitted: bool = False,
 ) -> list[str]:
     """Detect errors in smoke run results."""
     errors = _detect_break_indicators(lines)
@@ -539,7 +551,7 @@ def _detect_smoke_errors(
     if not _tool_activity_seen_for_errors(params, lines, tool_activity_seen):
         errors.append("no tool activity was observed")
 
-    if not read_smoke_test_result_artifact(params.workspace_root):
+    if not artifact_submitted:
         errors.append("smoke_test_result artifact was not submitted")
 
     if output_error := _meaningful_output_error(
@@ -593,6 +605,8 @@ def _run_smoke_agent(
     if not meaningful_output_lines:
         meaningful_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
 
+    artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
+
     errors = _detect_smoke_errors(
         params,
         lines,
@@ -600,6 +614,7 @@ def _run_smoke_agent(
         session_id,
         final_exception,
         tool_activity_seen=tool_activity_seen,
+        artifact_submitted=artifact_submitted,
     )
 
     config = params.config
@@ -614,7 +629,7 @@ def _run_smoke_agent(
         raw_line_count=len([line for line in lines if line.strip()]),
         parsed_event_count=parsed_event_count,
         tool_activity_seen=tool_activity_seen,
-        artifact_submitted=read_smoke_test_result_artifact(params.workspace_root) is not None,
+        artifact_submitted=artifact_submitted,
         meaningful_output_lines=meaningful_output_lines,
         errors=errors,
     )

@@ -217,11 +217,28 @@ def _check_signals_terminal(completion_signals: CompletionSignals) -> bool:
     except AttributeError:
         pass
     try:
-        return bool(
-            completion_signals.explicit_complete or completion_signals.required_artifact_present
-        )
-    except Exception:
-        return False
+        if completion_signals.required_artifact_present:
+            return True
+    except AttributeError:
+        pass
+    # ``explicit_complete`` by itself is not authoritative: the plain-text
+    # marker emitted by handle_declare_complete can be spoofed by ordinary
+    # agent output. Require corroboration from either the completion sentinel
+    # (written by the real declare_complete MCP tool) or a present artifact.
+    try:
+        if completion_signals.explicit_complete:
+            try:
+                if completion_signals.completion_sentinel_present:
+                    return True
+            except AttributeError:
+                pass
+            try:
+                return bool(completion_signals.required_artifact_present)
+            except AttributeError:
+                pass
+    except AttributeError:
+        pass
+    return False
 
 
 def _os_descendant_state(

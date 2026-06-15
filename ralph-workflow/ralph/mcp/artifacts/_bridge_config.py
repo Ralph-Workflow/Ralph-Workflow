@@ -20,6 +20,7 @@ class BridgeConfig:
     workspace_root: Path = Path()
     transport: MCPTransport | None = None
     artifact_deps: BridgeArtifactDeps = field(default_factory=BridgeArtifactDeps)
+    run_id: str = "mcp-bridge"
 
 
 __all__ = ["BridgeConfig"]

@@ -419,7 +419,9 @@ def test_claude_interactive_execution_strategy_supports_session_continuation() -
 
 def test_claude_interactive_execution_strategy_classify_exit_terminal_on_completion() -> None:
     strategy = ClaudeInteractiveExecutionStrategy()
-    signals = CompletionSignals(True, False, ())
+    signals = CompletionSignals(
+        True, False, (), completion_sentinel_present=True
+    )
 
     class _FakeHandle:
         def has_live_descendants(self) -> bool:

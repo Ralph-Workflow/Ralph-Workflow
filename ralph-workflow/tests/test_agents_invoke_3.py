@@ -149,6 +149,9 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
     prompt_file = tmp_path / ".agent" / "tmp" / "commit_prompt.md"
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("hello", encoding="utf-8")
+    sentinel = tmp_path / ".agent" / "completion_seen_test.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{"run_id": "test"}', encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_env: list[dict[str, str]] = []
 
@@ -260,6 +263,9 @@ def test_invoke_agent_merges_existing_opencode_config_content(
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
+    sentinel = tmp_path / ".agent" / "completion_seen_test.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{"run_id": "test"}', encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_env: list[dict[str, str]] = []
 
@@ -439,6 +445,9 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
+    sentinel = tmp_path / ".agent" / "completion_seen_test.json"
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('{"run_id": "test"}', encoding="utf-8")
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_env: list[dict[str, str]] = []
 
