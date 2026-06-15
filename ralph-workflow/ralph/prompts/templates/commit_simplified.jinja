@@ -5,12 +5,7 @@ The diff below contains only the current pending work — changes not yet commit
 
 {{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
 
-REQUIRED PROCEDURE:
-1. Read the diff and decide whether the correct result is a commit artifact or a skip artifact.
-2. Build the JSON content with the exact schema above.
-3. Immediately call the tool with `artifact_type="commit_message"` and the JSON string as the `content` argument.
-4. After the tool call succeeds, if you submitted a commit artifact output only the commit subject line; if you submitted a skip artifact output nothing.
-5. If the submit-artifact MCP tool is unavailable in this turn, use `write_file` to write the raw commit payload JSON to `.agent/tmp/commit_message.json` instead. Write ONLY the inner payload object such as {"type":"commit","subject":"fix(scope): message"} or {"type":"skip","reason":"..."}. Do not wrap it in artifact metadata.
+Read the diff and decide whether the correct result is a commit artifact or a skip artifact. Then follow the artifact submission procedure above — it is the SINGLE source of truth for steps 1-5 and the completion contract. This template does NOT duplicate it.
 
 {% include 'shared/_unattended_mode.j2' %}
 

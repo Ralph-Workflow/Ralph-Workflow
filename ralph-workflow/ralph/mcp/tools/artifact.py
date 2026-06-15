@@ -81,10 +81,10 @@ from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.tools._submit_op import SubmitOp
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
+    COMPLETION_SENTINEL_RELPATHFMT,
     CoordinationSessionLike,
     InvalidParamsError,
     ToolContent,
-    _write_completion_sentinel,
     ToolResult,
     WorkspaceLike,
     require_capability,
@@ -1397,14 +1397,20 @@ def submit_ops_for_artifact(
     ):
         _rid_sentinel = run_id
         _wr_sentinel = workspace_root
-        _sentinel_path = _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=_rid_sentinel)
+        _sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=_rid_sentinel)
+        _backend = deps.backend
+        _sentinel_dict: dict[str, str] = {"run_id": _rid_sentinel}
+        _sentinel_payload = json.dumps(_sentinel_dict, ensure_ascii=False)
 
         def _run_write_sentinel() -> None:
-            _write_completion_sentinel(_wr_sentinel, _rid_sentinel)
+            sentinel_path = _wr_sentinel / _sentinel_relpath
+            _backend.mkdir(sentinel_path.parent, parents=True, exist_ok=True)
+            _backend.write_text(sentinel_path, _sentinel_payload, encoding="utf-8")
 
         def _undo_write_sentinel() -> None:
+            sentinel_path = _wr_sentinel / _sentinel_relpath
             with suppress(OSError):
-                Path(_wr_sentinel.absolute_path(_sentinel_path)).unlink()
+                _backend.unlink(sentinel_path, missing_ok=True)
 
         ops.append(SubmitOp(run=_run_write_sentinel, undo=_undo_write_sentinel))
 

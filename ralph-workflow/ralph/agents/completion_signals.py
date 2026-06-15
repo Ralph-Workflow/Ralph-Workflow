@@ -32,8 +32,10 @@ if TYPE_CHECKING:
 
     from ralph.phases.required_artifacts import RequiredArtifact
 
+from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
+
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
-_COMPLETION_SENTINEL_RELPATHFMT = ".agent/completion_seen_{run_id}.json"
+_COMPLETION_SENTINEL_RELPATHFMT = COMPLETION_SENTINEL_RELPATHFMT
 
 
 @dataclass(frozen=True)

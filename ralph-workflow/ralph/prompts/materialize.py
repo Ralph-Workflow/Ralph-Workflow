@@ -27,6 +27,7 @@ from ralph.mcp.artifacts.plan import (
     PLAN_DRAFT_PATH,
 )
 from ralph.mcp.tools.names import (
+    DECLARE_COMPLETE_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     claude_tool_name,
     claude_tool_name_prefix,

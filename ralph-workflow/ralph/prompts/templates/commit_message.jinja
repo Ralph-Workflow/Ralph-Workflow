@@ -89,12 +89,7 @@ Submit the MCP arguments in this shape:
 
 Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields, never both, and only include files/excluded_files when you need selective commit scope. `files` must be an array of strings. `excluded_files` must be an array of objects with exactly `path` and `reason` fields. Valid `excluded_files.reason` values: internal_ignore, not_task_related, sensitive, deferred.
 
-REQUIRED PROCEDURE:
-1. Read the diff and decide whether the correct result is a commit artifact or a skip artifact.
-2. Build the JSON content with the exact schema above.
-3. Immediately call the tool with `artifact_type="commit_message"` and the JSON string as the `content` argument.
-4. After the MCP call succeeds, optionally echo only the commit subject line once and nothing else. If you submitted a skip artifact, do not emit extra prose.
-5. If the submit-artifact MCP tool is unavailable in this turn, use `write_file` to write the raw commit payload JSON to `.agent/tmp/commit_message.json` instead. Write ONLY the inner payload object such as `{"type":"commit","subject":"fix(scope): message"}` or `{"type":"skip","reason":"..."}`. Do not wrap it in artifact metadata.
+Read the diff and decide whether the correct result is a commit artifact or a skip artifact. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
 
 {{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
 
@@ -102,4 +97,5 @@ REQUIRED PROCEDURE:
 
 After the MCP submission, you may optionally echo the same single-line subject as plain text,
 but the MCP artifact is the authoritative output. Do not emit markdown, bullets, or explanations
-as the final answer.
+as the final answer. The artifact submission procedure above is authoritative for the
+completion contract; this template does NOT duplicate it.

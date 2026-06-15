@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL
+from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, SUBMIT_ARTIFACT_TOOL
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
 from ralph.prompts.template_registry import (
