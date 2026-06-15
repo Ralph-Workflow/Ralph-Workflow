@@ -59,32 +59,35 @@ def _build_recovery_controller_with_unavailable(
     reason_value: str,
     attempts: dict[str, int] | None = None,
 ) -> MagicMock:
-    """Build a MagicMock RecoveryController whose ``snapshot()`` reports a
-    public, deterministic unavailable state for the given phase/agents.
+    """Build a MagicMock RecoveryController whose public surface
+    (``waiting_state_payload`` and ``agents_now_available``) reports a
+    deterministic unavailable state for the given phase/agents.
 
-    This avoids poking at private tracker attributes (e.g.
-    ``mock_tracker._clock``) while still letting the run loop call
-    ``tracker.snapshot()`` and ``tracker.is_available(...)`` to build the
-    structured WAITING/RESUMED logs.
+    The run loop consumes the unavailability state only through these
+    two public controller methods; the private ``_unavailability_tracker``
+    attribute is no longer touched. The mock's ``waiting_state_payload``
+    returns ``[(agent, attempt, cooldown_ms_remaining)]`` tuples with
+    ``cooldown_ms_remaining = unavailable_until_ms`` (the run loop
+    contract is non-negative, so the test asserts on a range, not the
+    exact value).
     """
     attempts = attempts or {}
-    mock_tracker = MagicMock()
     timeouts = {f"{phase}:{a}": unavailable_until_ms for a in agents}
     backoff_attempts = {f"{phase}:{a}": attempts.get(a, 1) for a in agents}
-    mock_tracker.snapshot.return_value = {
-        "unavailable_timeouts": timeouts,
-        "backoff_attempts": backoff_attempts,
-    }
-    # is_available is consulted twice per WAITING/RESUMED cycle: once for
-    # the cooldown list and once for the agents_now_available list on RESUMED.
-    mock_tracker.is_available.return_value = True
 
     mock_controller = MagicMock()
     mock_controller.snapshot.return_value = {
         "unavailable_timeouts": timeouts,
         "backoff_attempts": backoff_attempts,
     }
-    mock_controller._unavailability_tracker = mock_tracker
+    # Public surface only: the run loop calls these two methods. The
+    # implementation detail of how the controller derives the payload
+    # is irrelevant to the test; the run loop consumes only the public
+    # surface.
+    mock_controller.waiting_state_payload.return_value = [
+        (a, backoff_attempts[f"{phase}:{a}"], unavailable_until_ms) for a in agents
+    ]
+    mock_controller.agents_now_available.return_value = list(agents)
     return mock_controller
 
 
@@ -146,10 +149,18 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
         phase="development",
         phase_chains={"development": chain_state},
     )
+    # Use the structured ``is_waiting_state`` flag as the wait-state signal;
+    # the previous ``last_error`` text parser was brittle and was replaced
+    # with this boolean. The ``last_error`` text remains as operator
+    # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
-        last_error="all agents unavailable; waiting for cooldown expiry",
+        last_error=(
+            "all agents unavailable (last reason: out_of_credits);"
+            " waiting for cooldown expiry"
+        ),
         last_retry_delay_ms=200,
         last_unavailability_reason="out_of_credits",
+        is_waiting_state=True,
     )
 
     calls = 0

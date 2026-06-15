@@ -285,22 +285,14 @@ def _log_waiting_state(
     delay_ms: int,
 ) -> None:
     chain = state.chain_for_phase(state.phase)
-    agent_cooldowns = []
+    agent_cooldowns: list[tuple[str, int, int]] = []
     if chain is not None:
-        tracker = ctx.controller._unavailability_tracker
-        snap = tracker.snapshot()
-        cooldowns_dict = snap.get("unavailable_timeouts", {})
-        attempts_dict = snap.get("backoff_attempts", {})
-        now_ms = int(tracker._clock.monotonic() * 1000)
-        for agent in chain.agents:
-            key = f"{phase_str}:{agent}"
-            timeout_ms = cooldowns_dict.get(key)
-            attempt = attempts_dict.get(key, 0)
-            attempt_int = int(attempt) if isinstance(attempt, int) else 0
-            cooldown_ms = 0
-            if isinstance(timeout_ms, int):
-                cooldown_ms = max(0, timeout_ms - now_ms)
-            agent_cooldowns.append((agent, attempt_int, cooldown_ms))
+        # Public surface only: the controller exposes a structured payload
+        # that wraps the unavailability-store access so the run loop does
+        # not reach through to the private ``_unavailability_tracker`` or
+        # the tracker's ``_clock``. This is the seam for a future
+        # persistent (sqlite, redis, file) store.
+        agent_cooldowns = ctx.controller.waiting_state_payload(phase_str, chain.agents)
 
     logger.bind(recovery=True).info(
         "Phase '{phase}' enters WAITING state: all agents unavailable. "
@@ -321,12 +313,13 @@ def _log_resumed_state(
     delay_ms: int,
 ) -> None:
     chain = state.chain_for_phase(state.phase)
-    agents_now_available = []
+    agents_now_available: list[str] = []
     if chain is not None:
-        tracker = ctx.controller._unavailability_tracker
-        agents_now_available = [
-            agent for agent in chain.agents if tracker.is_available(phase_str, agent)
-        ]
+        # Public surface only: the controller exposes
+        # ``agents_now_available`` so the run loop does not reach through
+        # to the private ``_unavailability_tracker``. This is the seam
+        # for a future persistent (sqlite, redis, file) store.
+        agents_now_available = ctx.controller.agents_now_available(phase_str, chain.agents)
     logger.bind(recovery=True).info(
         "Phase '{phase}' RESUMED: cooldown expired. "
         "Agents now available: {agents}. "
@@ -377,10 +370,14 @@ def _run_inner_loop(
             )
         delay_ms = state.last_retry_delay_ms
         if isinstance(delay_ms, int) and delay_ms > 0:
-            is_all_unavailable = (
-                state.last_error is not None
-                and "all agents unavailable; waiting for cooldown expiry" in state.last_error
-            )
+            # Structured wait-state detection: the controller sets
+            # ``state.is_waiting_state`` to True when it enters the
+            # all-agents-unavailable wait branch. The previous text
+            # parser on ``state.last_error`` was brittle (the controller
+            # and the run loop could disagree about the exact string) so
+            # it was replaced with this boolean. The ``last_error`` text
+            # remains as operator-readable context only.
+            is_all_unavailable = state.is_waiting_state
             if not is_all_unavailable:
                 ctx.last_waiting_state_phase = None
             try:

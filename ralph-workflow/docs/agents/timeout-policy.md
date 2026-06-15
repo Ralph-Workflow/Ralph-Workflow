@@ -266,6 +266,18 @@ If all agents in the recovery chain for a given phase are temporarily unavailabl
 
 This ensures the pipeline remains alive indefinitely under transient outages.
 
+The wait state is detected by the run loop via the structured
+`PipelineState.is_waiting_state: bool` flag (set by `RecoveryController`
+when it enters the wait branch), NOT via parsing the `last_error` text.
+The `last_error` text remains as operator-readable context; the
+structured flag is the single source of truth and the only signal the
+run loop keys off. This separation matters because the controller and
+the run loop are decoupled and have historically disagreed about the
+exact text of the `last_error` string (the controller inserts the
+`(last reason: ...)` segment which the run loop's previous text parser
+did not match). The structured flag eliminates the entire class of
+mismatch bugs.
+
 ### Default `no_output_at_start_seconds` tuning
 
 The default threshold for `no_output_at_start_seconds` is tuned to **30s** (down from 60s). This threshold is:
@@ -372,6 +384,34 @@ runtime by ``@runtime_checkable``; the
 ``tests/recovery/test_unavailability_tracker.py`` asserts
 ``isinstance(tracker, UnavailabilityStore) is True`` (and the test
 passes under ``python -O``).
+
+#### Controller injection and public surface
+
+The `RecoveryController` constructor accepts a Protocol-typed dependency
+via `RecoveryControllerOptions.unavailability_store: UnavailabilityStore |
+None = None`. When the option is not provided, the controller constructs
+a default `AgentUnavailabilityTracker`; when it IS provided, the
+controller uses the caller's implementation as-is (the caller is
+responsible for the store's initial state, so the legacy
+`unavailable_timeouts` and `unavailability_entries` options are
+ignored). The controller exposes the store via a public
+`controller.unavailability_store` property — callers MUST consume it
+through this property, NOT through the private
+`_unavailability_tracker` attribute.
+
+Two public methods wrap the store access so the run loop never reaches
+through to the private store / clock fields:
+
+| Method | Returns | Purpose |
+|--------|---------|---------|
+| `controller.waiting_state_payload(phase, agents)` | `list[tuple[str, int, int]]` of `(agent, attempt, cooldown_ms_remaining)` | The WAITING structured log payload (replaces the previous `ctx.controller._unavailability_tracker` / `tracker._clock` reach-through) |
+| `controller.agents_now_available(phase, agents)` | `list[str]` of agent names | The RESUMED structured log payload (replaces the previous `tracker.is_available(phase, agent)` reach-through) |
+
+A source-level guard test
+(`tests/pipeline/test_run_loop_waiting_state_real_controller.py::test_run_loop_does_not_reach_through_private_tracker_attributes`)
+fails CI if a future contributor reintroduces the
+`ctx.controller._unavailability_tracker` or `tracker._clock` patterns in
+`ralph/pipeline/run_loop.py`.
 
 ## See also
 

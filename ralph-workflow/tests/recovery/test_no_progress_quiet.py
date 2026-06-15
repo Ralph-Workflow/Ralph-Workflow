@@ -173,10 +173,22 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
         phase="development",
         phase_chains={"development": chain_state},
     )
+    # Use the structured ``is_waiting_state`` flag as the wait-state signal;
+    # the previous ``last_error`` text parser was brittle and was replaced
+    # with this boolean. The ``last_error`` text remains as operator
+    # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
-        last_error="all agents unavailable; waiting for cooldown expiry",
+        last_error=(
+            "all agents unavailable (last reason: out_of_credits);"
+            " waiting for cooldown expiry"
+        ),
         last_retry_delay_ms=200,
+        is_waiting_state=True,
     )
+    # The MagicMock controller is consumed by the run loop through the
+    # public ``waiting_state_payload`` and ``agents_now_available`` methods.
+    ctx.controller.waiting_state_payload.return_value = [("claude", 1, 200)]
+    ctx.controller.agents_now_available.return_value = ["claude"]
 
     def mock_run_pipeline_step(**_kwargs: object) -> PipelineState:
         return state.copy_with(phase="complete")
@@ -248,10 +260,22 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
         phase="development",
         phase_chains={"development": chain_state},
     )
+    # Use the structured ``is_waiting_state`` flag as the wait-state signal;
+    # the previous ``last_error`` text parser was brittle and was replaced
+    # with this boolean. The ``last_error`` text remains as operator
+    # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
-        last_error="all agents unavailable; waiting for cooldown expiry",
+        last_error=(
+            "all agents unavailable (last reason: out_of_credits);"
+            " waiting for cooldown expiry"
+        ),
         last_retry_delay_ms=200,
+        is_waiting_state=True,
     )
+    # The MagicMock controller is consumed by the run loop through the
+    # public ``waiting_state_payload`` and ``agents_now_available`` methods.
+    ctx.controller.waiting_state_payload.return_value = [("claude", 1, 200)]
+    ctx.controller.agents_now_available.return_value = ["claude"]
 
     def mock_run_pipeline_step(**_kwargs: object) -> PipelineState:
         return state.copy_with(phase="complete")
@@ -360,10 +384,22 @@ def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
         phase="development",
         phase_chains={"development": chain_state},
     )
+    # Use the structured ``is_waiting_state`` flag as the wait-state signal;
+    # the previous ``last_error`` text parser was brittle and was replaced
+    # with this boolean. The ``last_error`` text remains as operator
+    # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
-        last_error="all agents unavailable; waiting for cooldown expiry",
+        last_error=(
+            "all agents unavailable (last reason: out_of_credits);"
+            " waiting for cooldown expiry"
+        ),
         last_retry_delay_ms=200,
+        is_waiting_state=True,
     )
+    # The MagicMock controller is consumed by the run loop through the
+    # public ``waiting_state_payload`` and ``agents_now_available`` methods.
+    ctx.controller.waiting_state_payload.return_value = [("claude", 1, 200)]
+    ctx.controller.agents_now_available.return_value = ["claude"]
 
     call_count = [0]
 
