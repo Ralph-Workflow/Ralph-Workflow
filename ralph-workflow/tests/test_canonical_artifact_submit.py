@@ -347,6 +347,27 @@ def test_default_backend_is_used_when_deps_is_none(
     assert DEFAULT_FILE_BACKEND.exists(result.receipt_path)
 
 
+def test_fallback_promotion_returns_false_on_schema_invalid_payload(
+    tmp_path: Path,
+    backend: MemoryBackend,
+    deps: ArtifactHandlerDeps,
+) -> None:
+    """A schema-invalid fallback payload must not stamp a receipt or artifact."""
+    fallback = tmp_path / ".agent" / "tmp" / "smoke_test_result.json"
+    backend.write_text(
+        fallback,
+        json.dumps({"bogus": "value"}),
+    )
+
+    assert not is_artifact_submitted(tmp_path, "run-x", "smoke_test_result", deps=deps)
+    assert not artifact_receipt_present(
+        tmp_path, "run-x", "smoke_test_result", backend=backend
+    )
+    assert not backend.exists(
+        tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    )
+
+
 def test_fallback_promotion_continues_after_malformed_tmp_file(
     tmp_path: Path,
     backend: MemoryBackend,

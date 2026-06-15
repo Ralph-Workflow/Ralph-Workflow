@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
-from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT
+from ralph.mcp.tools.coordination import COMPLETION_SENTINEL_RELPATHFMT, InvalidParamsError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,6 +43,15 @@ class _ToolsArtifactModule(Protocol):
     ) -> list[SubmitOp]: ...
 
     def execute_ops_with_rollback(self, ops: list[SubmitOp]) -> None: ...
+
+    def _normalize_artifact_payload(
+        self,
+        artifact_type: str,
+        parsed_content: dict[str, object],
+        *,
+        workspace_root: Path | None = ...,
+        backend: object = ...,
+    ) -> dict[str, object]: ...
 
 
 @dataclass(frozen=True)
@@ -142,6 +151,14 @@ def submit_artifact_canonical(
         artifact_dir if artifact_dir is not None else _artifact_dir(workspace_root)
     )
 
+    resolved_backend = cast("object", resolved_deps.backend)
+    parsed_content = tools_artifact._normalize_artifact_payload(
+        artifact_type,
+        parsed_content,
+        workspace_root=workspace_root,
+        backend=resolved_backend,
+    )
+
     ops = tools_artifact._submit_ops_for_artifact_with_options(
         artifact_type,
         workspace_root,
@@ -223,13 +240,18 @@ def promote_fallback_artifact(
             # A malformed file at this location does not preclude a valid
             # fallback at the next location; continue scanning.
             continue
-        return submit_artifact_canonical(
-            workspace_root,
-            artifact_type,
-            parsed,
-            deps=resolved_deps,
-            run_id=run_id,
-        )
+        try:
+            return submit_artifact_canonical(
+                workspace_root,
+                artifact_type,
+                parsed,
+                deps=resolved_deps,
+                run_id=run_id,
+            )
+        except InvalidParamsError:
+            # Schema-invalid fallback content means no promotion; continue
+            # scanning in case a valid copy exists at the next location.
+            continue
 
     return None
 
