@@ -86,6 +86,10 @@ If AGY exits 0 but the parity table reports no file, no artifact, and the `Break
 
 ### Distinguishing live-quota failure from mock-quota output
 
+#### Live binary re-measured (2026-06-15)
+
+The live `agy` v1.0.8 binary was re-measured on 2026-06-15T13:32:29Z. The upstream source URLs were re-fetched and confirmed (CHANGELOG, README, release tag 1.0.8, issue #76, cli-using docs, cli-reference docs). The local binary was probed with the canonical Ralph Workflow flag order `agy --dangerously-skip-permissions --model 'Claude Sonnet 4.6 (Thinking)' --print 'Reply with exactly the word: hello'` and returned stdout `hello` (exit 0). The `~/.gemini/antigravity-cli/cli.log` shows no `RESOURCE_EXHAUSTED (429)` condition — quota has fully reset. A live `python -m ralph smoke-interactive-agy` run captured to `tmp/smoke-interactive-agy-run.log` reports file=yes, tool activity=yes, artifact=yes, breaks=none. See `tmp/agy-source-of-truth.txt` sections `=== UPSTREAM SOURCE RE-VALIDATION (2026-06-15T13:32:29Z) ===` and `=== LOCAL RE-MEASUREMENT (2026-06-15T13:32:29Z) ===`.
+
 When running with `RALPH_AGY_BINARY` set (for example to the deterministic mock at `tests/_support/mock_agy.sh` for CI), an empty stdout with `MOCK_AGY_BEHAVIOR=quota_exhausted` is expected and reported as an informational break, not as the live upstream quota diagnostic. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`. To verify the harness itself, run the mock without that variable:
 
 ```bash
