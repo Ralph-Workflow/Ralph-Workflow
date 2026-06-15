@@ -11,6 +11,7 @@ actual time.monotonic() to confirm the budget holds on the current machine.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -39,6 +40,7 @@ def test_make_test_completes_within_budget() -> None:
         text=True,
         timeout=120,
         check=False,
+        env={**os.environ, "PYTEST_WORKERS": "auto"},
     )
 
     elapsed = time.monotonic() - start

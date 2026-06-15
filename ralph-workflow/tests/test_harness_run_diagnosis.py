@@ -16,6 +16,7 @@ from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.mcp.artifacts.smoke_test_result import read_smoke_test_result_artifact
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
@@ -524,11 +525,12 @@ def _make_artifact(tmp_path: Path, *, observed_breaks: list[str]) -> None:
     )
 
 
-def test_detect_smoke_errors_agy_artifact_completion_skips_missing_signals(
+def test_detect_smoke_errors_agy_artifact_requires_transcript_completion_marker(
     tmp_path: Path,
 ) -> None:
-    """AGY with a complete artifact is not flagged for declare_complete,
-    session ID, or tool activity when the artifact records all checks."""
+    """AGY with a complete artifact but no transcript marker still fails for
+    declare_complete.  Artifact presence does **not** substitute for the
+    completion signal."""
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -553,7 +555,7 @@ def test_detect_smoke_errors_agy_artifact_completion_skips_missing_signals(
 
     errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
 
-    assert "declare_complete marker was not observed" not in errors
+    assert "declare_complete marker was not observed" in errors
     assert "session ID was not observed" not in errors
     assert "no tool activity was observed" not in errors
 
@@ -793,6 +795,67 @@ def test_detect_smoke_errors_agy_no_diagnostic_when_stdout_present(
     )
 
     assert not any("AGY --print returned empty stdout" in err for err in errors)
+
+
+def test_read_smoke_test_result_artifact_returns_none_for_invalid_content(
+    tmp_path: Path,
+) -> None:
+    """An artifact with invalid content (missing required field) returns None."""
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    artifact_path = artifact_dir / "smoke_test_result.json"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps({
+            "name": "smoke_test_result",
+            "type": "smoke_test_result",
+            "content": {
+                "status": "passed",
+                # missing summary, output_file, headless_guide_checks
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    result = read_smoke_test_result_artifact(tmp_path)
+    assert result is None
+
+
+def test_read_smoke_test_result_artifact_returns_none_for_missing_file(
+    tmp_path: Path,
+) -> None:
+    """A missing artifact file returns None."""
+
+    result = read_smoke_test_result_artifact(tmp_path)
+    assert result is None
+
+
+def test_read_smoke_test_result_artifact_returns_validated_content(
+    tmp_path: Path,
+) -> None:
+    """A fully valid artifact returns the validated content dict."""
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    artifact_path = artifact_dir / "smoke_test_result.json"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps({
+            "name": "smoke_test_result",
+            "type": "smoke_test_result",
+            "content": {
+                "status": "passed",
+                "summary": "all checks passed",
+                "output_file": "tmp/smoke/output.js",
+                "observed_working": ["created output"],
+                "observed_breaks": [],
+                "headless_guide_checks": ["tool activity"],
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    result = read_smoke_test_result_artifact(tmp_path)
+    assert result is not None
+    assert result["status"] == "passed"
+    assert result["summary"] == "all checks passed"
 
 
 def test_detect_smoke_errors_agy_no_diagnostic_when_artifact_present(

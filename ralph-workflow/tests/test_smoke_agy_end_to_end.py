@@ -108,3 +108,9 @@ def test_invoking_line_uses_single_model_argv_token() -> None:
     assert "--model Claude Sonnet 4.6 (Thinking) --print" in invoking_line, (
         "AGY display name was not passed as a single argv token: " + invoking_line
     )
+    skip_idx = invoking_line.find("--dangerously-skip-permissions")
+    model_idx = invoking_line.find("--model")
+    assert skip_idx != -1 and model_idx != -1 and skip_idx < model_idx, (
+        "AGY flag order is wrong: --dangerously-skip-permissions must precede --model: "
+        + invoking_line
+    )
