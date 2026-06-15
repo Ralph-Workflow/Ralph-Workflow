@@ -14,6 +14,7 @@ from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
 from .failure_details import contains_casefolded_marker, failure_detail_parts
+from .unavailability_reason import UnavailabilityReason
 
 # drift-audit: FailureClassifier( is the single-source classifier. The
 # 8-file allowlist (enforced by
@@ -377,6 +378,64 @@ def _is_suspicious_timeout_without_output(
     )
 
 
+def _classify_unavailability_reason(
+    watchdog_reason: str | None,
+    detail_parts: tuple[str, ...] | list[str],
+    raw_message: str,
+    connectivity_state: str | None,
+) -> UnavailabilityReason | None:
+    """Classify the unavailability reason from failure signals.
+
+    Priority order (first match wins):
+    1. watchdog_reason == "no_output_at_start" -> NO_OUTPUT_AT_START
+    2. watchdog_reason == "no_progress_quiet" -> STALE_CHILD_QUIET
+       (child alive with stale-progress evidence: heartbeat-only,
+        stale-label, or OS-descendant-only — a NEGATIVE signal)
+    3. watchdog_reason == "children_persist_too_long" -> SUSPICIOUS_TIMEOUT_NO_OUTPUT
+       (cumulative waiting ceiling hit; also a NEGATIVE/stuck signal)
+    4. connectivity=online and subscription limit -> OUT_OF_CREDITS
+    5. connectivity=online and suspicious timeout -> SUSPICIOUS_TIMEOUT_NO_OUTPUT
+    6. unavailable_agent_message text -> NO_OUTPUT_AT_START
+    7. post-tool empty response -> NO_OUTPUT_AFTER_ACTIVITY
+    8. else None
+
+    NOTE: watchdog_reason takes precedence over text-based detection because
+    the watchdog provides structural evidence (alive_by, channel freshness)
+    whereas text can be ambiguous.
+    """
+    reason: UnavailabilityReason | None = None
+    if watchdog_reason == "no_output_at_start":
+        reason = UnavailabilityReason.NO_OUTPUT_AT_START
+    elif watchdog_reason == "no_progress_quiet":
+        reason = UnavailabilityReason.STALE_CHILD_QUIET
+    elif watchdog_reason == "children_persist_too_long":
+        reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
+    elif (connectivity_state or "").casefold() == "online":
+        reason = _connectivity_unavailability_reason(detail_parts)
+    if reason is None and _is_unavailable_agent_message(raw_message):
+        reason = UnavailabilityReason.NO_OUTPUT_AT_START
+    if reason is None and contains_casefolded_marker(
+        detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+    ):
+        reason = UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY
+    return reason
+
+
+def _connectivity_unavailability_reason(
+    detail_parts: tuple[str, ...] | list[str],
+) -> UnavailabilityReason | None:
+    """Check connectivity-based unavailability reasons.
+
+    Called when connectivity_state == "online" to check subscription limit
+    and suspicious timeout conditions.
+    """
+    if _is_subscription_limit_message(detail_parts):
+        return UnavailabilityReason.OUT_OF_CREDITS
+    if _is_suspicious_timeout_without_output(detail_parts, None):
+        return UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
+    return None
+
+
 class FailureClassifier:
     """Classify failures into categories for intelligent recovery routing.
 
@@ -470,6 +529,15 @@ class FailureClassifier:
             )
         )
 
+        unavailability_reason: UnavailabilityReason | None = None
+        if is_unavailable:
+            unavailability_reason = _classify_unavailability_reason(
+                watchdog_reason,
+                detail_parts,
+                raw_message,
+                connectivity_state,
+            )
+
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
                 "Ambiguous failure classification in phase={} agent={}: "
@@ -491,6 +559,7 @@ class FailureClassifier:
             reset_tool_registry=reset_tool_registry,
             is_unavailable=is_unavailable,
             watchdog_reason=watchdog_reason,
+            unavailability_reason=unavailability_reason,
         )
 
     def _is_tool_availability_failure(

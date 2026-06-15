@@ -177,6 +177,13 @@ MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS: float | None = 600.0
 #: and stdout has been idle. None disables it.
 NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
 
+#: Default fast-fire window for the new NO_OUTPUT_AT_START watchdog reason. When
+#: the agent has been alive for this many seconds with zero recorded activity
+#: (no stdout, no tool call, no file change, no subagent output) the watchdog
+#: fires NO_OUTPUT_AT_START instead of waiting for the 600s cumulative
+#: no-progress ceiling. Set to None to opt out.
+NO_OUTPUT_AT_START_SECONDS: float | None = 60.0
+
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults
 # ---------------------------------------------------------------------------

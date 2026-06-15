@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .failure_category import FailureCategory
+    from .unavailability_reason import UnavailabilityReason
 
 
 @dataclass(frozen=True)
@@ -34,3 +35,4 @@ class ClassifiedFailure:
     # backoff instead of retrying immediately.
     is_unavailable: bool = field(default=False)
     watchdog_reason: str | None = field(default=None)
+    unavailability_reason: UnavailabilityReason | None = field(default=None)

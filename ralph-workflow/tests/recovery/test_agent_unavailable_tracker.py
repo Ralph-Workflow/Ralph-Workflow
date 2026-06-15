@@ -24,6 +24,10 @@ from ralph.recovery.controller import (
 )
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.testing import FakeConnectivityMonitor
+from ralph.recovery.unavailability_reason import (
+    ReasonBackoffPolicy,
+    UnavailabilityReason,
+)
 
 
 def _minimal_policy_bundle() -> object:
@@ -898,3 +902,186 @@ def test_all_agents_unavailable_event_reports_real_cooldown_delay() -> None:
     assert "all agents unavailable" in new_state.last_error.lower()
     # At least one published event carries the real cooldown delay.
     assert any(e.retry_delay_ms == new_state.last_retry_delay_ms for e in collected)
+
+
+
+def test_out_of_credits_uses_30min_cap() -> None:
+    """OUT_OF_CREDITS reason caps at 30 minutes."""
+    clock = FakeClock(start=0.0)
+    policy = {UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(base=60_000, max=1_800_000)}
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailability_backoff_policy=policy,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+
+    for _ in range(10):
+        controller.handle(
+            state,
+            AgentInvocationError("claude", 1, "out of credits"),
+            FailureContext(phase="development", agent="claude"),
+        )
+        clock.advance(3000)
+
+    snap = controller.snapshot()
+    current_time_ms = int(clock.monotonic() * 1000)
+    timeout = snap["unavailable_timeouts"]["development:claude"]
+    remaining = timeout - current_time_ms
+    assert remaining == 1_800_000
+
+
+def test_no_output_at_start_uses_30s_cap() -> None:
+    """NO_OUTPUT_AT_START reason caps at 30 seconds."""
+    clock = FakeClock(start=0.0)
+    policy = {UnavailabilityReason.NO_OUTPUT_AT_START: ReasonBackoffPolicy(base=5_000, max=30_000)}
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailability_backoff_policy=policy,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+
+    for _ in range(10):
+        controller.handle(
+            state,
+            AgentInvocationError("claude", 1, "no output"),
+            FailureContext(phase="development", agent="claude"),
+        )
+        clock.advance(3000)
+
+    snap = controller.snapshot()
+    current_time_ms = int(clock.monotonic() * 1000)
+    timeout = snap["unavailable_timeouts"]["development:claude"]
+    remaining = timeout - current_time_ms
+    assert remaining == 30_000
+
+
+def test_stale_child_quiet_uses_5min_cap() -> None:
+    """STALE_CHILD_QUIET reason caps at 5 minutes."""
+    clock = FakeClock(start=0.0)
+    policy = {UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(base=15_000, max=300_000)}
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            unavailability_backoff_policy=policy,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+
+    for _ in range(10):
+        controller.handle(
+            state,
+            AgentInvocationError("claude", 1, "no output"),
+            FailureContext(phase="development", agent="claude"),
+        )
+        clock.advance(3000)
+
+    snap = controller.snapshot()
+    current_time_ms = int(clock.monotonic() * 1000)
+    timeout = snap["unavailable_timeouts"]["development:claude"]
+    remaining = timeout - current_time_ms
+    assert remaining == 300_000
+
+
+def test_failure_event_carries_unavailability_reason() -> None:
+    """FailureEvent carries the unavailability_reason string."""
+    collected: list[FailureEvent] = []
+    bus = FailureEventBus()
+    bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=FakeClock(start=0.0),
+            event_bus=bus,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+
+    controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "out of credits"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert len(collected) >= 1
+    evt = collected[0]
+    assert evt.unavailability_reason == "out_of_credits"
+
+
+def test_fallover_event_carries_unavailability_reason() -> None:
+    """FalloverEvent carries the unavailability_reason string when available."""
+    fallovers: list[FalloverEvent] = []
+    bus = FailureEventBus()
+    bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            budget_registry=_make_registry_with_budget("development", "claude", max_retries=2),
+            clock=FakeClock(start=0.0),
+            event_bus=bus,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
+
+    controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "out of credits"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert len(fallovers) == 1
+    assert fallovers[0].unavailability_reason == "out_of_credits"
+
+
+def test_state_carries_last_unavailability_reason() -> None:
+    """PipelineState carries last_unavailability_reason after handle()."""
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=FakeClock(start=0.0),
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude"]).copy_with(last_connectivity_state="online")
+
+    new_state, _, _ = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "out of credits"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert new_state.last_unavailability_reason == "out_of_credits"
+
+
+def test_legacy_unavailable_timeouts_seam_still_works() -> None:
+    """Pre-seeding unavailable_timeouts dict still routes 'all agents unavailable' branch."""
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=FakeClock(start=0.0),
+            unavailable_timeouts={"development:claude": 60_000},
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
+
+    new_state, _, _ = controller.handle(
+        state,
+        AgentInvocationError("claude", 1, "agent produced no output for 60s"),
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    assert "all agents unavailable" in new_state.last_error.lower()
+    assert new_state.last_retry_delay_ms > 0

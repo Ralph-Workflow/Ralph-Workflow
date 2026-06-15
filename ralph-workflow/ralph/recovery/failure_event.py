@@ -23,3 +23,4 @@ class FailureEvent:
     recovery_cycle: int
     retry_delay_ms: int = 0
     watchdog_reason: str | None = None
+    unavailability_reason: str | None = None

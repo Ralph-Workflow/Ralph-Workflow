@@ -158,6 +158,7 @@ class PipelineState(_FrozenPipelineStateModel):
     last_retry_delay_ms: int = 0
     last_agent_session_id: str | None = None
     agent_retry_intent: AgentRetryIntent = Field(default_factory=AgentRetryIntent)
+    last_unavailability_reason: str | None = None
 
     @model_validator(mode="after")
     def _validate_phase_set(self) -> PipelineState:

@@ -275,6 +275,63 @@ class IdleWatchdog:
         )
         return WatchdogVerdict.FIRE
 
+    def _evaluate_no_output_at_start(
+        self,
+        now: float,
+        idle_elapsed: float,
+        classify_quiet: Callable[[], AgentExecutionState],
+    ) -> WatchdogVerdict | None:
+        """Evaluate if the watchdog should fire due to no output at start.
+
+        Fires when the agent has been alive for no_output_at_start_seconds with
+        ZERO recorded activity (no stdout, no tool call, no file change, no
+        subagent output). This is different from NO_PROGRESS_QUIET which fires
+        inside WAITING_ON_CHILD deferral when the agent HAS produced output at
+        some point but is now stuck with stale-progress evidence.
+        """
+        if self._config.no_output_at_start_seconds is None:
+            return None
+        if self.invocation_elapsed_seconds < self._config.no_output_at_start_seconds:
+            return None
+        if self._last_activity != self._session_started_at:
+            return None
+        quiet_state = classify_quiet()
+        if quiet_state not in {
+            AgentExecutionState.ACTIVE,
+            AgentExecutionState.WAITING_ON_CHILD,
+        }:
+            return None
+        if self._channel_evidence_active(now):
+            return None
+
+        self._last_fire_reason = WatchdogFireReason.NO_OUTPUT_AT_START
+        diag: dict[str, object] = {
+            "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),
+            "no_output_at_start_seconds": self._config.no_output_at_start_seconds,
+            "last_activity_equals_started_at": True,
+        }
+        evidence_block, _ = self._build_evidence_summary_diag(now)
+        for ev_key, ev_val in evidence_block.items():
+            if ev_key not in diag:
+                diag[ev_key] = ev_val
+
+        self._emit(
+            WaitingStatusKind.HARD_STOP,
+            current_run_seconds=round(self.invocation_elapsed_seconds, 1),
+            idle_elapsed=idle_elapsed,
+            ceiling_seconds=self._config.no_output_at_start_seconds,
+            diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        )
+        self._emit_fire_log(
+            WatchdogFireReason.NO_OUTPUT_AT_START,
+            now=now,
+            idle_elapsed=idle_elapsed,
+            message_suffix=(
+                f" no_output_at_start_seconds={self._config.no_output_at_start_seconds}s"
+            ),
+        )
+        return WatchdogVerdict.FIRE
+
     def idle_elapsed_seconds(self, now: float) -> float:
         """Seconds since the last recorded activity (the idle duration).
 
@@ -954,35 +1011,39 @@ class IdleWatchdog:
         # subagent output is treated as first-party activity on this tick.
         self.poll_subagent_output(now=now)
 
+        fire_reason: WatchdogFireReason | None = None
         if self._config.max_session_seconds is not None:
             session_elapsed = now - self._session_started_at
             if session_elapsed >= self._config.max_session_seconds:
-                self._last_fire_reason = WatchdogFireReason.SESSION_CEILING_EXCEEDED
-                idle_elapsed = now - self._last_activity
-                self._emit_fire_log(
-                    WatchdogFireReason.SESSION_CEILING_EXCEEDED,
-                    now=now,
-                    idle_elapsed=idle_elapsed,
-                    message_suffix=f' session_elapsed={round(session_elapsed, 1)}s',
-                )
-                return WatchdogVerdict.FIRE
-
-        if self._repetition_tracker.tripped():
-            self._last_fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
+                fire_reason = WatchdogFireReason.SESSION_CEILING_EXCEEDED
+        elif self._repetition_tracker.tripped():
+            fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
+        if fire_reason is not None:
             idle_elapsed = now - self._last_activity
             self._emit_fire_log(
-                WatchdogFireReason.REPEATED_ERROR_LOOP,
+                fire_reason,
                 now=now,
                 idle_elapsed=idle_elapsed,
+                message_suffix=(
+                    f' session_elapsed={round(now - self._session_started_at, 1)}s'
+                    if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+                    else ''
+                ),
             )
+            self._last_fire_reason = fire_reason
             return WatchdogVerdict.FIRE
+
+        idle_elapsed = now - self._last_activity
+        quiet_state = classify_quiet()
+        no_output_at_start_verdict = self._evaluate_no_output_at_start(
+            now, idle_elapsed, classify_quiet
+        )
+        if no_output_at_start_verdict is not None:
+            return no_output_at_start_verdict
 
         if self._config.idle_timeout_seconds is None:
             return WatchdogVerdict.CONTINUE
 
-        idle_elapsed = now - self._last_activity
-
-        quiet_state = classify_quiet()
         if (
             quiet_state == AgentExecutionState.WAITING_ON_CHILD
             and self._config.no_progress_quiet_seconds is not None
@@ -995,23 +1056,7 @@ class IdleWatchdog:
             self._accumulate_waiting_run(now)
             return WatchdogVerdict.CONTINUE
 
-        if self._in_drain_window:
-            verdict = self._handle_drain_window(now, classify_quiet)
-        elif self._post_tool_result_stalled(now, idle_elapsed):
-            verdict = WatchdogVerdict.FIRE
-        else:
-            quiet_state = classify_quiet()
-            if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
-                # Cumulative ceiling path; the activity channel does NOT
-                # defer this branch (CHILDREN_PERSIST_TOO_LONG is absolute
-                # and must fire regardless of non-stdout activity).
-                verdict = self._handle_waiting_branch(now, classify_quiet)
-            elif self._channel_evidence_active(now):
-                # Activity channel defers the ACTIVE-branch fire
-                # (NO_OUTPUT_DEADLINE) but not the cumulative ceiling.
-                verdict = self._handle_evidence_deferral(now, idle_elapsed)
-            else:
-                verdict = self._handle_active_branch(now)
+        verdict = self._evaluate_final_verdict(now, idle_elapsed, classify_quiet)
         return verdict
 
     def _handle_evidence_deferral(
@@ -1318,3 +1363,27 @@ class IdleWatchdog:
             round(self._cumulative_waiting_on_child_seconds, 1),
         )
         return WatchdogVerdict.CONTINUE
+
+
+    def _evaluate_final_verdict(
+        self,
+        now: float,
+        idle_elapsed: float,
+        classify_quiet: Callable[[], AgentExecutionState],
+    ) -> WatchdogVerdict:
+        """Compute the final verdict after idle timeout.
+
+        Called from evaluate() when the idle deadline has elapsed. Handles
+        drain_window, post-tool stall, waiting branch, evidence deferral,
+        and active branch cases.
+        """
+        if self._in_drain_window:
+            return self._handle_drain_window(now, classify_quiet)
+        if self._post_tool_result_stalled(now, idle_elapsed):
+            return WatchdogVerdict.FIRE
+        quiet_state = classify_quiet()
+        if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
+            return self._handle_waiting_branch(now, classify_quiet)
+        if self._channel_evidence_active(now):
+            return self._handle_evidence_deferral(now, idle_elapsed)
+        return self._handle_active_branch(now)

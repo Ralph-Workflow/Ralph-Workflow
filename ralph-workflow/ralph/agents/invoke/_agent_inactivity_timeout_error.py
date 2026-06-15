@@ -68,6 +68,12 @@ class AgentInactivityTimeoutError(AgentInvocationError):
                 "Agent produced no output and only stale-progress children "
                 f"for {duration} (no_progress_quiet trip)"
             )
+        elif _opts.reason == WatchdogFireReason.NO_OUTPUT_AT_START:
+            duration = f"{timeout_seconds:.0f}s"
+            stderr_msg = (
+                f"Agent produced no output for {duration} (no_output_at_start trip"
+                " — invocation never recorded any activity)"
+            )
         else:
             stderr_msg = f"Agent produced no output for {timeout_seconds:.0f}s"
         super().__init__(

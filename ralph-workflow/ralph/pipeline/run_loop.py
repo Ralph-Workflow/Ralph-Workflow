@@ -325,13 +325,14 @@ def _run_inner_loop(
                 current_phase_str = str(state.phase)
                 if is_all_unavailable and ctx.last_waiting_state_phase != current_phase_str:
                     ctx.last_waiting_state_phase = current_phase_str
+                    unavail_reason = state.last_unavailability_reason or "unknown"
                     emit_activity_line(
                         ctx.active_display,
                         None,
                         status_text(
                             "WAITING",
-                            "all agents unavailable; resuming in "
-                            f"{int(delay_ms / 1000.0)} seconds "
+                            f"all agents unavailable (last reason: {unavail_reason});"
+                            f" resuming in {int(delay_ms / 1000.0)} seconds "
                             f"(next agent attempt: {current_phase_str})",
                             "yellow",
                         ),
@@ -459,7 +460,8 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
                         remaining = budget_info.get("remaining")
             logger.bind(recovery=True).info(
                 "FAILURE phase={} agent={} category={} counted={}"
-                " chain_cap={} cycle={} delay_ms={} remaining={}",
+                " chain_cap={} cycle={} delay_ms={} remaining={}"
+                " unavailability_reason={}",
                 evt.phase,
                 evt.agent,
                 evt.category,
@@ -468,15 +470,18 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
                 evt.recovery_cycle,
                 evt.retry_delay_ms,
                 remaining,
+                evt.unavailability_reason,
             )
         elif isinstance(evt, _FalloverEvent):
             logger.bind(recovery=True).info(
-                "FALLOVER phase={} from={} to={} reason={} watchdog_reason={}",
+                "FALLOVER phase={} from={} to={} reason={}"
+                " watchdog_reason={} unavailability_reason={}",
                 evt.phase,
                 evt.from_agent,
                 evt.to_agent,
                 evt.reason,
                 evt.watchdog_reason,
+                evt.unavailability_reason,
             )
 
     return controller.event_bus.subscribe(_log_recovery_event)

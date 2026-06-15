@@ -16,6 +16,7 @@ class FalloverEvent:
     to_agent: str
     reason: str
     watchdog_reason: str | None = None
+    unavailability_reason: str | None = None
 
     @classmethod
     def now(
@@ -26,6 +27,7 @@ class FalloverEvent:
         to_agent: str,
         reason: str,
         watchdog_reason: str | None = None,
+        unavailability_reason: str | None = None,
     ) -> FalloverEvent:
         return cls(
             timestamp=datetime.now(UTC),
@@ -34,4 +36,5 @@ class FalloverEvent:
             to_agent=to_agent,
             reason=reason,
             watchdog_reason=watchdog_reason,
+            unavailability_reason=unavailability_reason,
         )
