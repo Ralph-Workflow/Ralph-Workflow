@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
@@ -233,8 +234,70 @@ class CommandBuilder(Protocol):
         ...
 
 
-class OpencodeCommandBuilder:
-    """CommandBuilder for AgentTransport.OPENCODE."""
+@dataclass(frozen=True, slots=True)
+class CommandBuilderSpec:
+    base_argv: tuple[str, ...]
+    format_flag: tuple[str, str] | None
+    output_flag: str | None
+    yolo_flag: str | None
+    model_flag_template: str | None
+    positional_prompt: bool
+    print_flag: str | None
+    extra_flags_before_prompt: tuple[str, ...] = ()
+
+
+class ConfigurableCommandBuilder:
+    """A command builder configured by a CommandBuilderSpec."""
+
+    def __init__(self, spec: CommandBuilderSpec) -> None:
+        self.spec = spec
+
+    def _init_cmd(self, config: AgentConfig) -> list[str]:
+        cmd = list(self.spec.base_argv)
+        if not cmd:
+            return []
+        if "codex" in cmd[0]:
+            return config.cmd.split()
+        if "agy" in cmd[0]:
+            return shlex.split(config.cmd)
+        return [_agent_command_name(config), *cmd[1:]]
+
+    def _build_yolo_session_flags(
+        self,
+        config: AgentConfig,
+        options: _BuildCommandOptions,
+    ) -> list[str]:
+        flags: list[str] = []
+        yolo = config.yolo_flag if config.yolo_flag is not None else self.spec.yolo_flag
+
+        if "agy" in self.spec.base_argv[0]:
+            if yolo is not None:
+                flags.extend(_split_optional_flag(yolo))
+            if config.session_flag and options.session_id:
+                flags.extend(config.session_flag.format(options.session_id).split())
+        else:
+            if config.session_flag and options.session_id:
+                flags.extend(config.session_flag.format(options.session_id).split())
+            if yolo is not None:
+                flags.extend(_split_optional_flag(yolo))
+        return flags
+
+    def _build_model_flag(
+        self,
+        config: AgentConfig,
+        options: _BuildCommandOptions,
+    ) -> list[str]:
+        effective_model = options.model_flag or config.model_flag
+        if not effective_model:
+            return []
+        if self.spec.model_flag_template is not None:
+            if " " in effective_model or effective_model.startswith("-"):
+                return _normalize_opencode_model_flag(effective_model)
+            formatted = self.spec.model_flag_template.format(effective_model)
+            return formatted.split()
+        if "codex" in self.spec.base_argv[0]:
+            return effective_model.split()
+        return shlex.split(effective_model)
 
     def build(
         self,
@@ -243,72 +306,98 @@ class OpencodeCommandBuilder:
         *,
         options: _BuildCommandOptions,
     ) -> list[str]:
-        prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
-        cmd = [_agent_command_name(config), "run"]
-        if options.pure:
+        cmd = self._init_cmd(config)
+
+        if options.pure and "opencode" in self.spec.base_argv[0]:
             cmd.append("--pure")
-        cmd.extend(["--format", "json"])
 
-        if config.session_flag and options.session_id:
-            cmd.extend(config.session_flag.format(options.session_id).split())
+        if self.spec.format_flag is not None:
+            cmd.extend(self.spec.format_flag)
 
-        cmd.extend(_split_optional_flag(config.yolo_flag))
+        output_flag = (
+            config.output_flag
+            if config.output_flag is not None
+            else self.spec.output_flag
+        )
+        if output_flag is not None and "opencode" not in self.spec.base_argv[0]:
+            cmd.append(output_flag)
+
+        cmd.extend(self._build_yolo_session_flags(config, options))
+
+        if options.workspace_path is not None and "agy" in self.spec.base_argv[0]:
+            cmd.extend(["--add-dir", str(options.workspace_path)])
 
         if options.verbose and config.verbose_flag:
             cmd.append(config.verbose_flag)
 
-        effective_model = options.model_flag or config.model_flag
-        if effective_model:
-            cmd.extend(_normalize_opencode_model_flag(effective_model))
+        cmd.extend(self._build_model_flag(config, options))
 
-        cmd.append(prompt_text)
+        if self.spec.extra_flags_before_prompt:
+            cmd.extend(self.spec.extra_flags_before_prompt)
+
+        print_flag = config.print_flag if config.print_flag is not None else self.spec.print_flag
+        if print_flag is not None:
+            cmd.append(print_flag)
+
+        if self.spec.positional_prompt:
+            prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
+            cmd.append(prompt_text)
+
         return cmd
 
 
-class NanocoderCommandBuilder:
+class OpencodeCommandBuilder(ConfigurableCommandBuilder):
+    """CommandBuilder for AgentTransport.OPENCODE."""
+
+    SPEC = CommandBuilderSpec(
+        base_argv=("opencode", "run"),
+        format_flag=("--format", "json"),
+        output_flag="--json-stream",
+        yolo_flag=None,
+        model_flag_template="--model {}",
+        positional_prompt=True,
+        print_flag=None,
+        extra_flags_before_prompt=(),
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.SPEC)
+
+
+class NanocoderCommandBuilder(ConfigurableCommandBuilder):
     """CommandBuilder for AgentTransport.NANOCODER."""
 
-    def build(
-        self,
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: _BuildCommandOptions,
-    ) -> list[str]:
-        prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
-        cmd = [_agent_command_name(config), "--mode", "yolo", "run"]
+    SPEC = CommandBuilderSpec(
+        base_argv=("nanocoder", "--mode", "yolo", "run"),
+        format_flag=None,
+        output_flag=None,
+        yolo_flag=None,
+        model_flag_template=None,
+        positional_prompt=True,
+        print_flag=None,
+        extra_flags_before_prompt=(),
+    )
 
-        effective_model = options.model_flag or config.model_flag
-        if effective_model:
-            cmd.extend(shlex.split(effective_model))
-
-        cmd.append(prompt_text)
-        return cmd
+    def __init__(self) -> None:
+        super().__init__(self.SPEC)
 
 
-class CodexCommandBuilder:
+class CodexCommandBuilder(ConfigurableCommandBuilder):
     """CommandBuilder for AgentTransport.CODEX."""
 
-    def build(
-        self,
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: _BuildCommandOptions,
-    ) -> list[str]:
-        prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
-        cmd = config.cmd.split()
-        if config.output_flag is not None:
-            cmd.append(config.output_flag)
+    SPEC = CommandBuilderSpec(
+        base_argv=("codex", "exec"),
+        format_flag=None,
+        output_flag="--json",
+        yolo_flag="--dangerously-bypass-approvals-and-sandbox",
+        model_flag_template=None,
+        positional_prompt=True,
+        print_flag=None,
+        extra_flags_before_prompt=(),
+    )
 
-        cmd.extend(_split_optional_flag(config.yolo_flag))
-
-        effective_model = options.model_flag or config.model_flag
-        if effective_model:
-            cmd.extend(effective_model.split())
-
-        cmd.append(prompt_text)
-        return cmd
+    def __init__(self) -> None:
+        super().__init__(self.SPEC)
 
 
 class ClaudeInteractiveCommandBuilder:
@@ -343,32 +432,22 @@ class ClaudeInteractiveCommandBuilder:
         return cmd
 
 
-class AgyCommandBuilder:
+class AgyCommandBuilder(ConfigurableCommandBuilder):
     """CommandBuilder for AgentTransport.AGY."""
 
-    def build(
-        self,
-        config: AgentConfig,
-        prompt_file: str,
-        *,
-        options: _BuildCommandOptions,
-    ) -> list[str]:
-        cmd = shlex.split(config.cmd)
-        cmd.extend(_split_optional_flag(config.yolo_flag))
-        if config.session_flag and options.session_id:
-            cmd.extend(config.session_flag.format(options.session_id).split())
-        if options.workspace_path is not None:
-            cmd.extend(["--add-dir", str(options.workspace_path)])
-        if options.verbose and config.verbose_flag:
-            cmd.append(config.verbose_flag)
-        effective_model = options.model_flag or config.model_flag
-        if effective_model:
-            cmd.extend(shlex.split(effective_model))
-        if config.print_flag:
-            cmd.append(config.print_flag)
-        prompt_text = _load_prompt_text(prompt_file, options.workspace_path)
-        cmd.append(prompt_text)
-        return cmd
+    SPEC = CommandBuilderSpec(
+        base_argv=("agy",),
+        format_flag=None,
+        output_flag=None,
+        yolo_flag="--dangerously-skip-permissions",
+        model_flag_template=None,
+        positional_prompt=True,
+        print_flag="--print",
+        extra_flags_before_prompt=(),
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.SPEC)
 
 
 class DefaultCommandBuilder:

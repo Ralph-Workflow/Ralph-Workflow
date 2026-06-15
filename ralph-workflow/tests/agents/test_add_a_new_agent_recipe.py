@@ -1,4 +1,8 @@
-"""Demonstrates legacy register_agent_support and new AgentCatalog API side by side."""
+"""Demonstrates legacy register_agent_support and new AgentCatalog API side by side.
+
+Canonical recipe: docs/agents/adding-a-new-agent.md
+This test file acts as the executable form of the Add section.
+"""
 
 from __future__ import annotations
 

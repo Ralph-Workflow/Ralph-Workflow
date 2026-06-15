@@ -14,7 +14,15 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from ralph.agents.invoke import resolve_invocation_runtime
+from ralph.agents.invoke import BuildCommandOptions, resolve_invocation_runtime
+from ralph.agents.invoke._command_builders import (
+    AgyCommandBuilder,
+    CodexCommandBuilder,
+    CommandBuilderSpec,
+    ConfigurableCommandBuilder,
+    NanocoderCommandBuilder,
+    OpencodeCommandBuilder,
+)
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
@@ -436,3 +444,154 @@ class TestResolveInvocationRuntimeParity:
 
         assert isinstance(result, ResolvedInvocationRuntime)
         assert result.mcp_endpoint is None
+
+    @pytest.mark.parametrize(
+        (
+            "transport",
+            "spec",
+            "cmd",
+            "session_flag",
+            "yolo_flag",
+            "verbose_flag",
+            "print_flag",
+            "expected_argv",
+        ),
+        [
+            (
+                AgentTransport.OPENCODE,
+                OpencodeCommandBuilder.SPEC,
+                "opencode",
+                "--session {}",
+                "--skip-stuff",
+                "--verbose",
+                None,
+                [
+                    "opencode",
+                    "run",
+                    "--pure",
+                    "--format",
+                    "json",
+                    "--session",
+                    "sess-123",
+                    "--skip-stuff",
+                    "--verbose",
+                    "--model",
+                    "some-model",
+                    "hello world",
+                ],
+            ),
+            (
+                AgentTransport.NANOCODER,
+                NanocoderCommandBuilder.SPEC,
+                "nanocoder",
+                None,
+                None,
+                None,
+                None,
+                [
+                    "nanocoder",
+                    "--mode",
+                    "yolo",
+                    "run",
+                    "--provider",
+                    "openai",
+                    "--model",
+                    "gpt-4",
+                    "hello world",
+                ],
+            ),
+            (
+                AgentTransport.CODEX,
+                CodexCommandBuilder.SPEC,
+                "codex exec",
+                None,
+                "--bypass",
+                None,
+                None,
+                [
+                    "codex",
+                    "exec",
+                    "--json",
+                    "--bypass",
+                    "--model",
+                    "gpt-4",
+                    "hello world",
+                ],
+            ),
+            (
+                AgentTransport.AGY,
+                AgyCommandBuilder.SPEC,
+                "agy",
+                "--session {}",
+                "--skip-perms",
+                "--verbose",
+                "--print",
+                [
+                    "agy",
+                    "--skip-perms",
+                    "--session",
+                    "sess-123",
+                    "--add-dir",
+                    "WORKSPACE_PATH_PLACEHOLDER",
+                    "--verbose",
+                    "--model",
+                    "claude-3",
+                    "--print",
+                    "hello world",
+                ],
+            ),
+        ],
+    )
+    def test_configurable_command_builder_parity(
+        self,
+        transport: AgentTransport,
+        spec: CommandBuilderSpec,
+        cmd: str,
+        session_flag: str | None,
+        yolo_flag: str | None,
+        verbose_flag: str | None,
+        print_flag: str | None,
+        expected_argv: list[str],
+        tmp_path: Path,
+    ) -> None:
+        """Assert ConfigurableCommandBuilder produces byte-identical command line.
+
+        This checks each headless transport.
+        """
+        prompt_file = tmp_path / "PROMPT.md"
+        prompt_file.write_text("hello world", encoding="utf-8")
+
+        config = AgentConfig(
+            cmd=cmd,
+            session_flag=session_flag,
+            yolo_flag=yolo_flag,
+            verbose_flag=verbose_flag,
+            print_flag=print_flag,
+            transport=transport,
+        )
+
+        model_flag = "--model gpt-4"
+        if transport == AgentTransport.OPENCODE:
+            model_flag = "--model opencode/some-model"
+        elif transport == AgentTransport.AGY:
+            model_flag = "--model claude-3"
+        elif transport == AgentTransport.NANOCODER:
+            model_flag = "--provider openai --model gpt-4"
+
+        options = BuildCommandOptions(
+            pure=True,
+            session_id="sess-123",
+            verbose=True,
+            model_flag=model_flag,
+            workspace_path=tmp_path,
+        )
+
+        # Replace WORKSPACE_PATH_PLACEHOLDER in expected_argv with actual tmp_path
+        expected = [
+            str(tmp_path) if x == "WORKSPACE_PATH_PLACEHOLDER" else x
+            for x in expected_argv
+        ]
+
+        builder = ConfigurableCommandBuilder(spec)
+        res = builder.build(config, str(prompt_file), options=options)
+        assert res == expected

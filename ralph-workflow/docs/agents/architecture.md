@@ -27,3 +27,8 @@ No `AgentTransport` enum change, no private helper, no production-code edit beyo
 ## Guard Test
 
 The guard test at `tests/agents/invoke/test_dispatch_table_covers_every_transport.py` iterates every `AgentTransport` value and asserts both `COMMAND_BUILDERS[transport]` and `RUNTIME_RESOLVERS[transport]` are non-None. Adding a new `AgentTransport` value without registering both classes fails this test before reaching production.
+
+## Adding a new agent
+
+To learn how to register a new agent, perform updates, or remove an agent, see the canonical recipe in [adding-a-new-agent.md](adding-a-new-agent.md).
+

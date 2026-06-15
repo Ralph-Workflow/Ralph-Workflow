@@ -67,6 +67,7 @@ _IO_ALLOWLIST: set[str] = {
     "test_no_hardcoded_phase_names_runner_has_no_canonical_phase_names",
     # Static analysis tests that read Python source or documentation files
     # from the repo to enforce structural invariants.
+    "test_doc_adding_a_new_agent",
     "test_parallel_no_worktree_imports",
     "test_repo_root_operational_docs_sync",
     # Artifact-submission prompt audits that read the packaged Jinja

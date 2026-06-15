@@ -1,4 +1,8 @@
-"""Demonstrates legacy register_agent_support and new AgentCatalog API for interactive agents."""
+"""Demonstrates legacy register_agent_support and new AgentCatalog API for interactive agents.
+
+Canonical recipe: docs/agents/adding-a-new-agent.md
+This test file acts as the executable form of the interactive Add example.
+"""
 
 from __future__ import annotations
 

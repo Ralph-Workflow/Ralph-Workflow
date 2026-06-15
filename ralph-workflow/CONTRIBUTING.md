@@ -329,3 +329,12 @@ rm -rf dist
 uv run hatch build
 uv run python -m twine check dist/*
 ```
+
+## How to add a new agent
+
+To add, update, or remove agent support in Ralph Workflow, refer to the canonical recipe in [adding-a-new-agent.md](docs/agents/adding-a-new-agent.md).
+
+It covers three primary workflows:
+- **Add**: Registering a new headless or interactive agent using `register_agent_support`.
+- **Update**: Modifying catalog entries (requiring a prior `remove`) or updating the caller's `AgentRegistry`.
+- **Remove**: Deleting catalog entries via `default_catalog().remove(name)` or registry entries via `del registry.agents[name]`.
