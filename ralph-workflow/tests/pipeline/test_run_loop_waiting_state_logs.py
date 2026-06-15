@@ -91,28 +91,21 @@ def _build_recovery_controller_with_unavailable(
     return mock_controller
 
 
-def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """AC-08: the run loop emits structured WAITING and RESUMED logs with
-    ``binding(recovery=True)`` and the documented field set, when the
-    controller enters and exits the all-agents-unavailable wait state.
+def _build_loop_context_and_state(
+    *, mock_controller: MagicMock,
+) -> tuple[_LoopContext, PipelineState, list[float], list[str]]:
+    """Build the run-loop context, the initial wait-state pipeline state,
+    and the empty emit/sleep capture lists.
 
-    This test asserts on the loguru record metadata (``record['extra']``)
-    directly, not just the rendered message text, so a regression that
-    silently drops the structured payload (e.g. a plain ``logger.info``
-    with no ``bind`` and no kwargs) is caught immediately.
+    Extracted helper to keep the top-level test under the PLR0915
+    statement-count budget. Returns ``(ctx, state, slept, emitted)``
+    where ``slept`` and ``emitted`` are list-typed sinks populated by
+    the monkeypatched ``ctx.sleep`` and ``emit_activity_line`` callables.
     """
     policy_bundle = MagicMock()
     policy_bundle.pipeline.terminal_phase = "complete"
     connectivity_monitor = MagicMock()
     connectivity_monitor.current_state = "online"
-
-    mock_controller = _build_recovery_controller_with_unavailable(
-        phase="development",
-        agents=["claude"],
-        unavailable_until_ms=200,
-        reason_value="out_of_credits",
-        attempts={"claude": 1},
-    )
 
     ctx = _LoopContext(
         policy_bundle=policy_bundle,
@@ -134,16 +127,6 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
         last_waiting_state_phase=None,
     )
 
-    emitted: list[str] = []
-
-    def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
-        emitted.append(text)
-
-    monkeypatch.setattr("ralph.pipeline.run_loop.emit_activity_line", mock_emit_activity_line)
-
-    slept: list[float] = []
-    ctx.sleep = slept.append
-
     chain_state = AgentChainState(agents=["claude"], current_index=0, retries=0)
     state = PipelineState(
         phase="development",
@@ -162,6 +145,31 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
         last_unavailability_reason="out_of_credits",
         is_waiting_state=True,
     )
+    slept: list[float] = []
+    emitted: list[str] = []
+    return ctx, state, slept, emitted
+
+
+def _drive_run_loop_until_complete(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ctx: _LoopContext,
+    state: PipelineState,
+    slept: list[float],
+    emitted: list[str],
+) -> list[dict[str, Any]]:
+    """Wire the test's monkeypatches, drive ``_run_inner_loop`` to
+    completion, and return the captured loguru records.
+
+    Extracted helper to keep the top-level test under the PLR0915
+    statement-count budget. The mock setup is identical for every
+    assertion block.
+    """
+    def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
+        emitted.append(text)
+
+    monkeypatch.setattr("ralph.pipeline.run_loop.emit_activity_line", mock_emit_activity_line)
+    ctx.sleep = slept.append
 
     calls = 0
 
@@ -179,14 +187,19 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
         _run_inner_loop(state, ctx, prev_phase="development")
     finally:
         logger.remove(sink_id)
+    return records
 
-    # 1. Display-level: exactly one WAITING emit and one RESUMED emit.
-    waiting_emits = [s for s in emitted if "WAITING" in s]
-    assert len(waiting_emits) == 1
-    resumed_emits = [s for s in emitted if "RESUMED" in s]
-    assert len(resumed_emits) == 1
 
-    # 2. Structured WAITING log: binding(recovery=True) + documented fields.
+def _assert_one_each(emitted: list[str], label: str) -> None:
+    """Assert exactly one emit containing ``label`` in ``emitted``."""
+    matching = [s for s in emitted if label in s]
+    assert len(matching) == 1, (
+        f"expected exactly one {label} emit, got {len(matching)}: {emitted!r}"
+    )
+
+
+def _assert_waiting_record_shape(records: list[dict[str, Any]]) -> None:
+    """Assert the structured WAITING log has the AC-08 contract fields."""
     waiting_records = [
         r
         for r in records
@@ -196,19 +209,12 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
         f"expected exactly one structured WAITING log, got {len(waiting_records)}"
     )
     waiting_extra = waiting_records[0]["extra"]
-    # AC-08: binding(recovery=True)
     assert waiting_extra.get("recovery") is True
     assert waiting_records[0]["level"].name == "INFO"
-    # AC-08: phase + last_unavailability_reason + cooldown tuples + wait_ms
     assert waiting_extra.get("phase") == "development"
     assert waiting_extra.get("reason") == "out_of_credits"
     cooldowns = waiting_extra.get("cooldowns")
     assert cooldowns is not None
-    # Each cooldown tuple is (agent, attempt, cooldown_ms_remaining). The
-    # remaining value depends on how much wall-clock has elapsed since the
-    # seed (the run loop reads monotonic ms from the controller's clock);
-    # the contract is that the tuple is present and the remaining is a
-    # non-negative int <= the seeded unavailable_until_ms.
     claude_tuples = [t for t in cooldowns if t[0] == "claude"]
     assert len(claude_tuples) == 1
     claude_tuple = claude_tuples[0]
@@ -217,7 +223,9 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
     assert 0 <= claude_tuple[2] <= 200
     assert waiting_extra.get("wait_ms") == 200
 
-    # 3. Structured RESUMED log: binding(recovery=True) + documented fields.
+
+def _assert_resumed_record_shape(records: list[dict[str, Any]]) -> None:
+    """Assert the structured RESUMED log has the AC-08 contract fields."""
     resumed_records = [
         r for r in records if "RESUMED" in r["message"] and "cooldown expired" in r["message"]
     ]
@@ -225,15 +233,68 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
         f"expected exactly one structured RESUMED log, got {len(resumed_records)}"
     )
     resumed_extra = resumed_records[0]["extra"]
-    # AC-08: binding(recovery=True)
     assert resumed_extra.get("recovery") is True
     assert resumed_records[0]["level"].name == "INFO"
-    # AC-08: phase + agents_now_available + expired reason + total_seconds_waited
     assert resumed_extra.get("phase") == "development"
     assert resumed_extra.get("agents") == ["claude"]
     assert resumed_extra.get("reason") == "out_of_credits"
     assert resumed_extra.get("waited_seconds") == 0.2
 
-    # 4. The run loop slept exactly once with the documented delay.
+
+def _assert_pre_sleep_debug_record(records: list[dict[str, Any]]) -> None:
+    """Assert the pre-sleep DEBUG log carries the structured recovery binding."""
+    pre_sleep_records = [
+        r for r in records
+        if r["level"].name == "DEBUG"
+        and "Starting cooldown sleep" in r["message"]
+    ]
+    assert len(pre_sleep_records) == 1, (
+        f"expected exactly one structured pre-sleep DEBUG log, "
+        f"got {len(pre_sleep_records)}: {[r['message'] for r in pre_sleep_records]!r}"
+    )
+    pre_sleep_extra = pre_sleep_records[0]["extra"]
+    assert pre_sleep_extra.get("recovery") is True, (
+        f"pre-sleep DEBUG log must carry recovery=True binding, "
+        f"got extra={pre_sleep_extra!r}"
+    )
+    assert pre_sleep_extra.get("phase") == "development"
+    assert pre_sleep_extra.get("delay_seconds") == 0.2
+
+
+def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-08: the run loop emits structured WAITING and RESUMED logs with
+    ``binding(recovery=True)`` and the documented field set, when the
+    controller enters and exits the all-agents-unavailable wait state.
+
+    This test asserts on the loguru record metadata (``record['extra']``)
+    directly, not just the rendered message text, so a regression that
+    silently drops the structured payload (e.g. a plain ``logger.info``
+    with no ``bind`` and no kwargs) is caught immediately.
+
+    It also asserts on the pre-sleep DEBUG confirmation so a regression
+    that drops the ``recovery=True`` binding on the pre-sleep log is
+    caught immediately.
+    """
+    mock_controller = _build_recovery_controller_with_unavailable(
+        phase="development",
+        agents=["claude"],
+        unavailable_until_ms=200,
+        reason_value="out_of_credits",
+        attempts={"claude": 1},
+    )
+    ctx, state, slept, emitted = _build_loop_context_and_state(
+        mock_controller=mock_controller,
+    )
+    records = _drive_run_loop_until_complete(
+        monkeypatch, ctx=ctx, state=state, slept=slept, emitted=emitted,
+    )
+    # Display-level: exactly one WAITING emit and one RESUMED emit.
+    _assert_one_each(emitted, "WAITING")
+    _assert_one_each(emitted, "RESUMED")
+    # Structured logs.
+    _assert_waiting_record_shape(records)
+    _assert_resumed_record_shape(records)
+    _assert_pre_sleep_debug_record(records)
+    # The run loop slept exactly once with the documented delay.
     assert len(slept) == 1
     assert slept[0] == 0.2

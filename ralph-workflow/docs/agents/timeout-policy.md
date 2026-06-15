@@ -260,7 +260,7 @@ When an agent fails, it is classified with one of the following `UnavailabilityR
 
 If all agents in the recovery chain for a given phase are temporarily unavailable, the pipeline enters a **forever-wait state**. Rather than crashing or exiting, the run loop:
 1. Emits a structured loguru `WAITING` line (at `INFO` level with `binding(recovery=True)`) containing the current phase, the last unavailability reason, details for all agents (cooldown, attempt counts), and the total wait duration.
-2. Emits a structured loguru `DEBUG` line confirming the sleep duration.
+2. Emits a structured loguru `DEBUG` line (also `binding(recovery=True)`) immediately before `ctx.sleep(...)` confirming the exact sleep duration and the phase. The DEBUG line carries the same `recovery=True` binding as the WAITING/RESUMED INFO lines so an operator can correlate the three records with a single `grep recovery=True` filter.
 3. Sleeps for the minimum duration required for the earliest agent to become available again.
 4. Emits a structured loguru `RESUMED` line (at `INFO` with `binding(recovery=True)`) when the sleep finishes and retries the phase with the newly available agent.
 

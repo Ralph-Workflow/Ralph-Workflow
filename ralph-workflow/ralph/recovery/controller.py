@@ -328,11 +328,14 @@ class RecoveryController:
         """Mark an agent as unavailable until the computed backoff expires.
 
         Uses exponential backoff based on the per-reason policy, capped at
-        the reason's max_backoff_ms. Returns the computed backoff in ms.
+        the reason's max_backoff_ms. Returns the computed backoff in ms
+        (also capped at max_backoff_ms so callers that consume the return
+        value get the same value the store recorded).
         """
         entry = self._unavailability_tracker.mark_unavailable(phase, agent, reason)
         multiplier: int = pow(2, entry.attempt)
-        return entry.base_backoff_ms * multiplier
+        computed = entry.base_backoff_ms * multiplier
+        return min(computed, entry.max_backoff_ms)
 
     def _is_agent_available(self, phase: str, agent: str) -> bool:
         """Return True when the agent is not currently marked unavailable."""

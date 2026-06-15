@@ -144,7 +144,11 @@ def test_wait_state_survives_ten_cooldown_cycles() -> None:
     assert state.last_retry_delay_ms > 0
     assert state.recovery_cycle_count == 0
 
-    for _ in range(10):
+    # Cross-iteration observations for the bounded-stability assertion below.
+    observed_delays_ms: list[int] = []
+    initial_max_delay_ms = state.last_retry_delay_ms
+
+    for _ in range(30):
         # Advance the FakeClock by 1s — well within the 100s cooldown window,
         # so all three agents remain on cooldown for the entire loop. This
         # is the natural cooldown cycle observation: the wall-clock
@@ -172,6 +176,45 @@ def test_wait_state_survives_ten_cooldown_cycles() -> None:
         assert state.recovery_cycle_count == 0
         # Cooldowns are bounded by the max_backoff_ms cap.
         assert state.last_retry_delay_ms <= 200_000
+        # Record the per-iteration delay for the cross-iteration
+        # monotonicity check below.
+        observed_delays_ms.append(state.last_retry_delay_ms)
+
+    # Post-loop invariant: across the 30 consecutive handle() calls, the
+    # wait state must NEVER enter 'failed_terminal' and recovery_cycle_count
+    # must remain 0 (the wait state is the never-crash safety net, not a
+    # failure-driven recovery cycle).
+    assert state.phase == "development"
+    assert state.recovery_cycle_count == 0
+    assert len(observed_delays_ms) == 30
+
+    # Cross-iteration AC-09 invariant: the wait state's last_retry_delay_ms
+    # is bounded and never exceeds the documented max_backoff_ms cap. The
+    # design constraint in the plan requires the wait state to use the
+    # EARLIEST unavailable-cooldown expiry, so the delay naturally
+    # decreases as wall-clock advances (and agents that are NOT being
+    # re-marked this iteration have their cooldowns tick down). A strict
+    # pairwise-monotonic assertion is therefore incompatible with the
+    # design; we assert the bounded-positive invariant instead, which is
+    # the actual safety net: the run loop must always have a positive,
+    # bounded sleep so it can resume as soon as the earliest cooldown
+    # expires.
+    for i, delay in enumerate(observed_delays_ms):
+        assert delay > 0, (
+            f"iteration {i}: wait state delay must be positive, got {delay}ms"
+        )
+        assert delay <= 200_000, (
+            f"iteration {i}: wait state delay must be bounded by max_backoff_ms, "
+            f"got {delay}ms"
+        )
+    # The wait state is bounded above by the initial wait state's
+    # last_retry_delay_ms + the cumulative wall-clock advance. This is the
+    # stability property: the wait state never explodes beyond the initial
+    # observation plus elapsed time.
+    assert all(
+        delay <= initial_max_delay_ms + (i + 1) * 1_000
+        for i, delay in enumerate(observed_delays_ms)
+    ), "wait state delay must remain stable across 30 cooldown cycles"
 
 
 def test_wait_state_resumes_to_first_available_agent_after_cooldown() -> None:

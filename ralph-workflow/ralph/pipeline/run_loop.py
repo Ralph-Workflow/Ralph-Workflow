@@ -400,7 +400,7 @@ def _run_inner_loop(
 
                 state = state.copy_with(last_retry_delay_ms=0)
                 if is_all_unavailable:
-                    logger.debug(
+                    logger.bind(recovery=True).debug(
                         "Starting cooldown sleep for {delay_seconds:.3f} "
                         "seconds in phase '{phase}'.",
                         delay_seconds=delay_ms / 1000.0,

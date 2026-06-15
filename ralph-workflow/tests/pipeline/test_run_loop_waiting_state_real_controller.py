@@ -306,6 +306,28 @@ def test_real_controller_wait_state_emits_waiting_logs(
     assert len(slept) == 1
     assert slept[0] == state.last_retry_delay_ms / 1000.0
 
+    # AC-08 / plan compliance: the pre-sleep DEBUG confirmation MUST
+    # carry the structured ``recovery=True`` binding so an operator
+    # can correlate it with the WAITING / RESUMED INFO lines. A plain
+    # ``logger.debug(...)`` (no bind) would silently drop the binding
+    # and a future operator grep for ``recovery=True`` would miss it.
+    pre_sleep_records = [
+        r for r in records
+        if r["level"].name == "DEBUG"
+        and "Starting cooldown sleep" in r["message"]
+    ]
+    assert len(pre_sleep_records) == 1, (
+        f"expected exactly one structured pre-sleep DEBUG log, "
+        f"got {len(pre_sleep_records)}: {[r['message'] for r in pre_sleep_records]!r}"
+    )
+    pre_sleep_extra = pre_sleep_records[0]["extra"]
+    assert pre_sleep_extra.get("recovery") is True, (
+        f"pre-sleep DEBUG log must carry recovery=True binding, "
+        f"got extra={pre_sleep_extra!r}"
+    )
+    assert pre_sleep_extra.get("phase") == phase
+    assert pre_sleep_extra.get("delay_seconds") == state.last_retry_delay_ms / 1000.0
+
 
 def test_controller_accepts_protocol_typed_unavailability_store() -> None:
     """AC-06: the ``RecoveryController`` constructor accepts a

@@ -243,7 +243,6 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
             "daily limit exceeded",
             "weekly limit exceeded",
             "monthly limit exceeded",
-            "rate_limited",
             "insufficient_quota",
         ]
         for sub in new_substrings:
@@ -256,13 +255,40 @@ class TestFailureClassifierUnavailabilityReasonIntegration:
             assert failure.category.value == "agent"
             assert failure.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS
 
+    def test_generic_throttling_does_not_classify_as_out_of_credits(self) -> None:
+        """Generic throttling markers are NOT credit exhaustion.
+
+        A bare ``rate_limited`` token is a transient rate-limit response
+        that recovers in seconds-to-minutes, not a credit-exhausted state
+        that needs a 60s->30min cooldown. The ``OUT_OF_CREDITS`` reason
+        applies the long unavailable-agent cooldown, which is wrong for
+        a generic throttle. The classifier must NOT match the bare
+        ``rate_limited`` substring against the subscription-limit table.
+        """
+        classifier = FailureClassifier()
+        generic_throttle_substrings = [
+            "rate_limited",
+            "Error: rate_limited in api call",
+            "rate_limited: retry after 1s",
+        ]
+        for msg in generic_throttle_substrings:
+            failure = classifier.classify(
+                msg,
+                phase="development",
+                agent="claude",
+                connectivity_state="online",
+            )
+            assert failure.unavailability_reason != UnavailabilityReason.OUT_OF_CREDITS, (
+                f"generic throttle substring {msg!r} must NOT classify as OUT_OF_CREDITS; "
+                f"got {failure.unavailability_reason!r}"
+            )
+
     def test_offline_connectivity_does_not_match_credit_substrings(self) -> None:
         classifier = FailureClassifier()
         new_substrings = [
             "daily limit exceeded",
             "weekly limit exceeded",
             "monthly limit exceeded",
-            "rate_limited",
             "insufficient_quota",
         ]
         for sub in new_substrings:
