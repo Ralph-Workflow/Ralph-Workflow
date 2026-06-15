@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.agents.completion_signals import CompletionSignals
-    from ralph.agents.execution_state import GenericExecutionStrategy, OpenCodeExecutionStrategy
+    from ralph.agents.execution_state import BaseExecutionStrategy
     from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
     from ralph.agents.invoke._workspace import WorkspaceMonitor
     from ralph.agents.timeout_clock import Clock
@@ -36,7 +36,7 @@ class _AgentRunCtx:
     extra_env: dict[str, str] | None
     workspace_path: Path | None
     policy: TimeoutPolicy
-    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
+    execution_strategy: BaseExecutionStrategy | None = None
     liveness_probe: LivenessProbe | None = None
     waiting_listener: WaitingStatusListener | None = None
     pre_output_listener: Callable[[], None] | None = None

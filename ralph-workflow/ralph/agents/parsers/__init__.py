@@ -21,8 +21,12 @@ value in ``ralph.config.enums``). The invocation engine calls ``get_parser()`` a
 start of each agent run and feeds every stdout line through ``parser.parse_line()``.
 
 To add a parser for a new agent transport, create a module in this package, implement
-``AgentParser``, and register the class in both ``get_parser()`` and ``__all__``.
+``AgentParser``, and register the class in both ``_PARSER_REGISTRY`` and ``__all__``.
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from .agent_output_line import AgentOutputLine
 from .base import AgentParser
@@ -33,7 +37,11 @@ from .gemini import GeminiParser
 from .generic import GenericParser
 from .opencode import OpenCodeParser
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 __all__ = [
+    "_PARSER_REGISTRY",
     "AgentOutputLine",
     "AgentParser",
     "ClaudeInteractiveParser",
@@ -43,6 +51,15 @@ __all__ = [
     "GenericParser",
     "OpenCodeParser",
 ]
+
+_PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
+    "claude": ClaudeParser,
+    "claude_interactive": ClaudeInteractiveParser,
+    "codex": CodexParser,
+    "gemini": GeminiParser,
+    "opencode": OpenCodeParser,
+    "generic": GenericParser,
+}
 
 
 def get_parser(parser_type: str) -> AgentParser:
@@ -57,16 +74,7 @@ def get_parser(parser_type: str) -> AgentParser:
     Raises:
         ValueError: If parser type is unknown.
     """
-    parsers: dict[str, type[AgentParser]] = {
-        "claude": ClaudeParser,
-        "claude_interactive": ClaudeInteractiveParser,
-        "codex": CodexParser,
-        "gemini": GeminiParser,
-        "opencode": OpenCodeParser,
-        "generic": GenericParser,
-    }
-
-    parser_cls = parsers.get(parser_type.lower())
+    parser_cls = _PARSER_REGISTRY.get(parser_type.lower())
     if parser_cls is None:
         msg = f"Unknown parser type: {parser_type}"
         raise ValueError(msg)

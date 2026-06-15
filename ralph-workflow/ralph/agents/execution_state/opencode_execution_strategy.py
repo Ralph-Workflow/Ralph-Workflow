@@ -14,6 +14,7 @@ from ralph.mcp.server._activity_sink import (
 )
 from ralph.process.child_liveness import classify_child_snapshot
 
+from ._base import BaseExecutionStrategy
 from ._helpers import (
     _AGENT_LABEL_PREFIX,
     _classify_opencode_child_signal,
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
     from ._live_descendant_handle import _LiveDescendantHandle
 
 
-class OpenCodeExecutionStrategy:
+class OpenCodeExecutionStrategy(BaseExecutionStrategy):
     """OpenCode-aware strategy.
 
     Idle classification checks the injectable LivenessProbe before falling
