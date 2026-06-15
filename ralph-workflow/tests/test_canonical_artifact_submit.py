@@ -200,6 +200,35 @@ def test_submit_artifact_canonical_rolls_back_on_failure(
     assert not failing_backend.exists(tmp_path / ".agent" / "completion_seen_run-1.json")
 
 
+def test_submit_artifact_canonical_rolls_back_named_artifact_on_failure(
+    tmp_path: Path,
+) -> None:
+    class _FailingBackend(MemoryBackend):
+        def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
+            if ".agent/receipts/" in str(path):
+                raise RuntimeError("receipt write failed")
+            super().write_text(path, content, encoding=encoding)
+
+    failing_backend = _FailingBackend()
+    deps = ArtifactHandlerDeps(backend=failing_backend)
+
+    with pytest.raises(RuntimeError):
+        submit_artifact_canonical(
+            workspace_root=tmp_path,
+            artifact_type="commit_message",
+            parsed_content={"type": "commit", "subject": "feat: test"},
+            deps=deps,
+            run_id="run-named",
+            name="custom-name",
+        )
+
+    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "custom-name.json")
+    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "commit_message.json")
+    assert not artifact_receipt_present(
+        tmp_path, "run-named", "commit_message", backend=failing_backend
+    )
+
+
 def test_fallback_promotion_stamps_receipt_from_tmp_file(
     tmp_path: Path,
     backend: MemoryBackend,

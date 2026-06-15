@@ -127,6 +127,41 @@ class TestMCPBridge:
         error = cast("str", result["error"])
         assert "already exists" in error
 
+    def test_submit_get_list_artifacts_use_configured_artifact_dir(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        custom_dir = tmp_path / "custom-artifacts"
+        bridge = MCPBridge(
+            BridgeConfig(
+                workspace_root=tmp_path,
+                artifact_dir=custom_dir,
+                run_id="bridge-run",
+            )
+        )
+
+        submit_result = bridge.submit_artifact_mcp(
+            name="test_artifact",
+            artifact_type="code",
+            content={"code": "print('hello')"},
+        )
+        assert submit_result["success"] is True
+
+        get_result = bridge.get_artifact_mcp("test_artifact")
+        assert get_result["success"] is True
+        artifact = _object_dict(get_result["artifact"])
+        assert artifact["name"] == "test_artifact"
+
+        list_result = bridge.list_artifacts_mcp()
+        assert list_result["success"] is True
+        artifacts = _object_list(list_result["artifacts"])
+        assert len(artifacts) == 1
+        first_artifact = _object_dict(artifacts[0])
+        assert first_artifact["name"] == "test_artifact"
+
+        assert not (tmp_path / ".agent" / "artifacts" / "test_artifact.json").exists()
+        assert (custom_dir / "test_artifact.json").exists()
+
     @patch("ralph.mcp.artifacts.bridge.get_artifact")
     def test_get_artifact_success(self, mock_get: MagicMock) -> None:
         bridge = self._make_bridge()

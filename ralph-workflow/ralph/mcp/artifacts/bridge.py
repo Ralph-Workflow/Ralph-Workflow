@@ -145,6 +145,7 @@ class MCPBridge:
                 parsed_content=content,
                 deps=deps,
                 run_id=self._config.run_id,
+                artifact_dir=self._config.artifact_dir,
                 name=name,
                 overwrite=False,
                 metadata=metadata,

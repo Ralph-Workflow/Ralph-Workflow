@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 class _ToolsArtifactModule(Protocol):
     DEFAULT_ARTIFACT_HANDLER_DEPS: ArtifactHandlerDeps
 
-    def submit_ops_for_artifact(
+    def _submit_ops_for_artifact_with_options(
         self,
         artifact_type: str,
         workspace_root: Path,
@@ -109,6 +109,7 @@ def submit_artifact_canonical(
     *,
     deps: ArtifactHandlerDeps | None = None,
     run_id: str | None = None,
+    artifact_dir: Path | None = None,
     name: str | None = None,
     overwrite: bool = True,
     metadata: dict[str, object] | None = None,
@@ -126,6 +127,8 @@ def submit_artifact_canonical(
         parsed_content: Normalized artifact payload dictionary.
         deps: Injectable dependencies; defaults to ``DEFAULT_ARTIFACT_HANDLER_DEPS``.
         run_id: Run identifier used as the receipt/sentinel key.
+        artifact_dir: Directory for the artifact JSON file; defaults to
+            ``workspace_root / '.agent' / 'artifacts'``.
         name: Optional artifact filename stem; defaults to ``artifact_type``.
         overwrite: Whether to overwrite an existing artifact file.
         metadata: Optional metadata dictionary for the artifact envelope.
@@ -135,12 +138,14 @@ def submit_artifact_canonical(
     """
     tools_artifact = _tools_artifact()
     resolved_deps = deps or tools_artifact.DEFAULT_ARTIFACT_HANDLER_DEPS
-    artifact_dir = _artifact_dir(workspace_root)
+    resolved_artifact_dir = (
+        artifact_dir if artifact_dir is not None else _artifact_dir(workspace_root)
+    )
 
-    ops = tools_artifact.submit_ops_for_artifact(
+    ops = tools_artifact._submit_ops_for_artifact_with_options(
         artifact_type,
         workspace_root,
-        artifact_dir,
+        resolved_artifact_dir,
         parsed_content,
         deps=resolved_deps,
         run_id=run_id,
@@ -151,7 +156,7 @@ def submit_artifact_canonical(
     tools_artifact.execute_ops_with_rollback(ops)
 
     backend = resolved_deps.backend
-    candidate_artifact = artifact_dir / f"{name or artifact_type}.json"
+    candidate_artifact = resolved_artifact_dir / f"{name or artifact_type}.json"
     artifact_path: Path | None = (
         candidate_artifact if backend.exists(candidate_artifact) else None
     )
