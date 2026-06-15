@@ -44,6 +44,7 @@ from ralph.agents.invoke._types import _AgentRunCtx, _ProcessReaderCtx
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.server._activity_sink import (
+    ActivitySink,
     reset_active_sink,
     reset_subagent_sink,
     set_active_sink,
@@ -69,6 +70,7 @@ from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from contextvars import Token
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.config.models import AgentConfig
@@ -149,6 +151,28 @@ class _ProcessLineReader:
         )
         prefix = active_prefix_fn() if active_prefix_fn is not None else ""
         return ChildLivenessSubagentPidSource(registry, prefix or "")
+
+    def _bind_watchdog_monitors_and_sinks(
+        self, watchdog: IdleWatchdog
+    ) -> tuple[Token[ActivitySink | None], Token[ActivitySink | None]]:
+        """Bind workspace monitor and MCP/subagent sinks to the watchdog."""
+        if self._monitor is not None:
+            def _forward_event(
+                kind: WorkspaceChangeKind, weight: float
+            ) -> None:
+                watchdog.record_workspace_event(kind=kind, weight=weight)
+
+            self._monitor.set_on_event(_forward_event)
+
+        def _mcp_sink(_tool_name: str) -> None:
+            watchdog.record_mcp_tool_call()
+
+        def _subagent_sink(_line: str) -> None:
+            watchdog.record_subagent_work()
+
+        sink_token = set_active_sink(_mcp_sink)
+        subagent_token = set_subagent_sink(_subagent_sink)
+        return sink_token, subagent_token
 
     def _on_waiting_event(self, evt: WaitingStatusEvent) -> None:
         if evt.kind == WaitingStatusKind.HARD_STOP:
@@ -347,47 +371,9 @@ class _ProcessLineReader:
             corroborator=self._corroborate,
             process_monitor=process_monitor,
         )
+        watchdog.record_invocation_start()
 
-        # Register the watchdog's workspace channel recorder as the
-        # on-event callback on the WorkspaceMonitor so every file
-        # change in the monitored workspace is visible to the
-        # activity-aware verdict as a fresh workspace channel signal.
-        # The monitor is constructed in invoke_agent BEFORE the
-        # watchdog is created (the watchdog lives inside this
-        # generator), so we cannot bind the recorder at monitor
-        # construction time; the late ``set_on_event`` binding
-        # happens here, immediately after the watchdog exists. The
-        # binding is cleared in the finally block below so a stale
-        # callback can never fire after the run ends.
-        if self._monitor is not None:
-            # Forward (kind, weight) so the watchdog's per-kind
-            # counter receives the real classification; the
-            # 0-arg bound method form would always yield
-            # (OTHER, 1.0) and miss the AC #7 contract.
-            def _forward_event(
-                kind: WorkspaceChangeKind, weight: float
-            ) -> None:
-                watchdog.record_workspace_event(kind=kind, weight=weight)
-
-            self._monitor.set_on_event(_forward_event)
-
-        # Register the watchdog's MCP activity recorder as the active sink
-        # for the in-process Ralph MCP server so each tools/call invocation
-        # defers a NO_OUTPUT_DEADLINE fire while the agent is actively
-        # using the MCP. The contextvar isolates concurrent agent runs
-        # in the same process so a sibling run's MCP calls never feed
-        # this watchdog's evidence surface. The recorder accepts a
-        # `now: float | None` argument; the sink protocol passes a
-        # `tool_name: str`, so we wrap the recorder in a thin closure
-        # that ignores the string and forwards to the recorder.
-        def _mcp_sink(_tool_name: str) -> None:
-            watchdog.record_mcp_tool_call()
-
-        def _subagent_sink(_line: str) -> None:
-            watchdog.record_subagent_work()
-
-        sink_token = set_active_sink(_mcp_sink)
-        subagent_token = set_subagent_sink(_subagent_sink)
+        sink_token, subagent_token = self._bind_watchdog_monitors_and_sinks(watchdog)
         try:
             while True:
                 self._lines_event.clear()

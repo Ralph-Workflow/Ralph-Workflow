@@ -169,6 +169,7 @@ class RecoveryController:
             chain_capacity_remaining=chain_capacity,
             recovery_cycle=state.recovery_cycle_count,
             retry_delay_ms=retry_delay_ms,
+            watchdog_reason=failure.watchdog_reason,
         )
         self._bus.publish(failure_evt)
 
@@ -506,6 +507,7 @@ class RecoveryController:
                 from_agent=from_agent,
                 to_agent=next_agent,
                 reason=failure.reason,
+                watchdog_reason=failure.watchdog_reason,
             )
             self._bus.publish(fallover_evt)
 

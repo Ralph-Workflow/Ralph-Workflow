@@ -584,6 +584,7 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
         idle_poll_interval_seconds=0.05,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
+        no_progress_quiet_seconds=None,
     )
     clock = FakeClock(start=0.0)
 
@@ -825,6 +826,7 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
         idle_poll_interval_seconds=0.05,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
+        no_progress_quiet_seconds=None,
     )
     clock = FakeClock(start=0.0)
     _reader_release = threading.Event()

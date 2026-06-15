@@ -16,6 +16,7 @@ from ralph.timeout_defaults import (
     IDLE_POLL_INTERVAL_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    NO_PROGRESS_QUIET_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
@@ -129,6 +130,7 @@ class TimeoutPolicy:
     max_waiting_on_child_no_progress_seconds: float | None = (
         MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
     )
+    no_progress_quiet_seconds: float | None = NO_PROGRESS_QUIET_SECONDS
     # When set, the watchdog fires STALLED_AFTER_TOOL_RESULT if no
     # follow-up STREAM_DELTA/OUTPUT_LINE activity arrives within this
     # many seconds of a TOOL_RESULT activity. When None, the legacy
@@ -190,6 +192,7 @@ class TimeoutPolicy:
         self._validate_idle_fields()
         self._validate_session_and_poll_fields()
         self._validate_waiting_status_fields()
+        self._validate_no_progress_quiet_seconds()
         self._validate_post_tool_result_progression()
         self._validate_repeated_error_fields()
         self._validate_activity_evidence_ttl()
@@ -261,6 +264,16 @@ class TimeoutPolicy:
                     " max_waiting_on_child_seconds"
                 )
                 raise ValueError(msg)
+
+    def _validate_no_progress_quiet_seconds(self) -> None:
+        if self.no_progress_quiet_seconds is None:
+            return
+        if self.no_progress_quiet_seconds <= 0:
+            msg = "no_progress_quiet_seconds must be positive when set"
+            raise ValueError(msg)
+        limit = self.max_waiting_on_child_no_progress_seconds
+        if limit is not None and self.no_progress_quiet_seconds > limit:
+            object.__setattr__(self, "no_progress_quiet_seconds", limit)
 
     def _validate_post_tool_result_progression(self) -> None:
         if self.post_tool_result_progression_seconds is None:

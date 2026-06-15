@@ -5,8 +5,10 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._errors import AgentInvocationError
+from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
 from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.run_loop import _apply_connectivity_check
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -332,6 +334,84 @@ def test_unavailable_agent_fallover_a_to_b_to_a_with_exponential_backoff() -> No
     snap2 = controller.snapshot()
     # Backoff duration grew from 5s to 10s (unavailable_timeouts stores absolute
     # expiration timestamps, so compute the remaining cooldown).
+    current_time_ms = int(clock.monotonic() * 1000)
+    assert snap2["unavailable_timeouts"]["development:claude"] - current_time_ms == 10_000
+    assert snap2["backoff_attempts"]["development:claude"] == 2
+
+
+def test_no_progress_quiet_reason_falls_over_a_to_b_to_a_with_growing_backoff() -> None:
+    """Agent A fails due to NO_PROGRESS_QUIET, fall over to B with growing backoff."""
+    clock = FakeClock(start=0.0)
+    registry = _make_registry_with_budget("development", "claude", max_retries=2)
+    registry = _make_registry_with_budget("development", "opencode", max_retries=2)
+    fallovers: list[FalloverEvent] = []
+    bus = FailureEventBus()
+    bus.subscribe(
+        lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None
+    )
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            budget_registry=registry,
+            clock=clock,
+            event_bus=bus,
+            policy_bundle=_minimal_policy_bundle(),
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(
+        last_connectivity_state="online"
+    )
+
+    opts = InactivityTimeoutOpts(
+        reason=WatchdogFireReason.NO_PROGRESS_QUIET,
+        diagnostic={"cumulative": 0.0},
+    )
+    exc_a = AgentInactivityTimeoutError("claude", 1, opts=opts)
+    exc_b = AgentInactivityTimeoutError("opencode", 1, opts=opts)
+
+    # Cycle 1: A fails -> fall over to B.
+    state_b, _, _ = controller.handle(
+        state,
+        exc_a,
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert state_b.chain_for_phase("development").current_index == 1
+    assert fallovers[-1].from_agent == "claude"
+    assert fallovers[-1].to_agent == "opencode"
+    assert fallovers[-1].watchdog_reason == "no_progress_quiet"
+    snap1 = controller.snapshot()
+    assert snap1["unavailable_timeouts"]["development:claude"] == 5_000
+    assert snap1["backoff_attempts"]["development:claude"] == 1
+
+    # Advance past A's cooldown so A can be reconsidered.
+    clock.advance(5)
+
+    # Cycle 2: B fails -> fall back to A.
+    state_a, _, _ = controller.handle(
+        state_b,
+        exc_b,
+        FailureContext(phase="development", agent="opencode"),
+    )
+    assert state_a.chain_for_phase("development").current_index == 0
+    assert fallovers[-1].from_agent == "opencode"
+    assert fallovers[-1].to_agent == "claude"
+    assert fallovers[-1].watchdog_reason == "no_progress_quiet"
+
+    # Advance past B's cooldown so B can be reconsidered when A fails again.
+    clock.advance(5)
+
+    # Cycle 3: A fails again -> fall over to B, and A's backoff grows to 10s.
+    state_b2, _, _ = controller.handle(
+        state_a,
+        exc_a,
+        FailureContext(phase="development", agent="claude"),
+    )
+    assert state_b2.chain_for_phase("development").current_index == 1
+    assert fallovers[-1].from_agent == "claude"
+    assert fallovers[-1].to_agent == "opencode"
+    assert fallovers[-1].watchdog_reason == "no_progress_quiet"
+
+    snap2 = controller.snapshot()
     current_time_ms = int(clock.monotonic() * 1000)
     assert snap2["unavailable_timeouts"]["development:claude"] - current_time_ms == 10_000
     assert snap2["backoff_attempts"]["development:claude"] == 2

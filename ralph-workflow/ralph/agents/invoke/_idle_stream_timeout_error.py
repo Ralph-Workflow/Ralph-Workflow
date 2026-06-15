@@ -54,6 +54,12 @@ class _IdleStreamTimeoutError(RuntimeError):
                 "Agent repeated the same error without making forward progress"
                 f"{detail}; aborting the retry loop"
             )
+        elif reason == WatchdogFireReason.NO_PROGRESS_QUIET:
+            duration = f"{timeout_seconds:.0f}s"
+            msg = (
+                "Agent produced no output and only stale-progress children "
+                f"for {duration} (no_progress_quiet trip)"
+            )
         else:
             msg = f"Agent produced no output for {timeout_seconds:.0f}s"
         super().__init__(msg)

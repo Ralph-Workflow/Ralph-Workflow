@@ -16,6 +16,7 @@ class WatchdogFireReason(StrEnum):
     STALLED_AFTER_TOOL_RESULT = "stalled_after_tool_result"
     REPEATED_ERROR_LOOP = "repeated_error_loop"
     CHILDREN_PERSIST_TOO_LONG = "children_persist_too_long"
+    NO_PROGRESS_QUIET = "no_progress_quiet"
     SESSION_CEILING_EXCEEDED = "session_ceiling_exceeded"
     PROCESS_EXIT_HANG = "process_exit_hang"
     DESCENDANT_HANG = "descendant_hang"

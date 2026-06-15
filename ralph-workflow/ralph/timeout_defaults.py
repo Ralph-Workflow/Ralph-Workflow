@@ -172,6 +172,11 @@ SUSPECT_WAITING_ON_CHILD_SECONDS: float | None = 600.0
 #: None disables the no-progress ceiling.
 MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS: float | None = 600.0
 
+#: Default fast no-progress ceiling: shorter WAITING ceiling when child is alive but
+#: not making forward progress (heartbeat-only, stale-label, or OS-descendant-only)
+#: and stdout has been idle. None disables it.
+NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
+
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults
 # ---------------------------------------------------------------------------

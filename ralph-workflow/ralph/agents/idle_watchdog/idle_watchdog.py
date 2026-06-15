@@ -101,6 +101,7 @@ class IdleWatchdog:
     _clock: Clock
     _last_activity: float = field(init=False)
     _session_started_at: float = field(init=False)
+    _invocation_started_at: float | None = field(default=None, init=False)
     _waiting_on_child_started_at: float | None = field(default=None, init=False)
     _cumulative_waiting_on_child_seconds: float = field(default=0.0, init=False)
     _in_drain_window: bool = field(default=False, init=False)
@@ -165,6 +166,7 @@ class IdleWatchdog:
         now = clock.monotonic()
         self._last_activity = now
         self._session_started_at = now
+        self._invocation_started_at = None
         self._waiting_on_child_started_at = None
         self._cumulative_waiting_on_child_seconds = 0.0
         self._in_drain_window = False
@@ -204,6 +206,74 @@ class IdleWatchdog:
     def cumulative_waiting_on_child_seconds(self) -> float:
         """Cumulative seconds spent in WAITING_ON_CHILD state across all runs."""
         return self._cumulative_waiting_on_child_seconds
+
+    def record_invocation_start(self) -> None:
+        """Record the start of the invocation."""
+        self._invocation_started_at = self._clock.monotonic()
+
+    @property
+    def invocation_elapsed_seconds(self) -> float:
+        """Return the seconds elapsed since the start of the invocation."""
+        if self._invocation_started_at is None:
+            return 0.0
+        return self._clock.monotonic() - self._invocation_started_at
+
+    def _is_no_progress_quiet(self, now: float, corroboration: CorroborationSnapshot) -> bool:
+        """Return True when all no-progress quiet conditions are met."""
+        if self._config.no_progress_quiet_seconds is None:
+            return False
+        if self.invocation_elapsed_seconds < self._config.no_progress_quiet_seconds:
+            return False
+        if corroboration.alive_by not in self._NON_PROGRESS_ALIVE_BY_VALUES:
+            return False
+        return not self._channel_evidence_active(now)
+
+    def _evaluate_no_progress_quiet(
+        self, now: float, idle_elapsed: float
+    ) -> WatchdogVerdict | None:
+        """Evaluate if the watchdog should fire due to lack of progress."""
+        if self._config.no_progress_quiet_seconds is None:
+            return None
+        if self.invocation_elapsed_seconds < self._config.no_progress_quiet_seconds:
+            return None
+        if idle_elapsed < self._config.no_progress_quiet_seconds:
+            return None
+
+        corroboration = self._safe_corroborate()
+        if not self._is_no_progress_quiet(now, corroboration):
+            return None
+
+        self._last_fire_reason = WatchdogFireReason.NO_PROGRESS_QUIET
+        diag: dict[str, object] = {
+            "cumulative": round(self._cumulative_waiting_on_child_seconds, 1),
+            "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),
+            "idle_elapsed": round(idle_elapsed, 1),
+            "ceiling": self._config.no_progress_quiet_seconds,
+            "effective_ceiling": "no_progress_quiet",
+        }
+        corr_diag = self._build_corroboration_diag(corroboration)
+        for key, val in corr_diag.items():
+            if key not in diag:
+                diag[key] = val
+        evidence_block, _ = self._build_evidence_summary_diag(now)
+        for ev_key, ev_val in evidence_block.items():
+            if ev_key not in diag:
+                diag[ev_key] = ev_val
+
+        self._emit(
+            WaitingStatusKind.HARD_STOP,
+            current_run_seconds=round(self.invocation_elapsed_seconds, 1),
+            idle_elapsed=idle_elapsed,
+            ceiling_seconds=self._config.no_progress_quiet_seconds,
+            diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        )
+        self._log.warning(
+            "idle watchdog: FIRE reason={} idle_elapsed={}s invocation_elapsed={}s",
+            WatchdogFireReason.NO_PROGRESS_QUIET,
+            round(idle_elapsed, 1),
+            round(self.invocation_elapsed_seconds, 1),
+        )
+        return WatchdogVerdict.FIRE
 
     def idle_elapsed_seconds(self, now: float) -> float:
         """Seconds since the last recorded activity (the idle duration).
@@ -911,6 +981,11 @@ class IdleWatchdog:
             return WatchdogVerdict.CONTINUE
 
         idle_elapsed = now - self._last_activity
+
+        # Check fast no-progress quiet ceiling
+        no_progress_verdict = self._evaluate_no_progress_quiet(now, idle_elapsed)
+        if no_progress_verdict is not None:
+            return no_progress_verdict
 
         if idle_elapsed < self._config.idle_timeout_seconds:
             self._accumulate_waiting_run(now)

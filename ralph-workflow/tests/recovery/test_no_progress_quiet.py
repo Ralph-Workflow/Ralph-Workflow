@@ -1,0 +1,283 @@
+"""Tests for fast no-progress quiet agent detection and recovery flow."""
+
+from __future__ import annotations
+
+import tempfile
+from pathlib import Path
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
+
+from loguru import logger
+
+from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
+from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
+from ralph.agents.timeout_clock import FakeClock
+from ralph.pipeline.run_loop import (
+    _LoopContext,
+    _run_inner_loop,
+    _subscribe_recovery_logger,
+)
+from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.policy.loader import load_policy
+from ralph.recovery.controller import FailureContext, RecoveryController, RecoveryControllerOptions
+from ralph.recovery.events import FailureEventBus, FalloverEvent
+from ralph.recovery.failure_classifier import FailureClassifier
+
+if TYPE_CHECKING:
+    from pytest import MonkeyPatch
+
+
+def _minimal_policy_bundle() -> object:
+    with tempfile.TemporaryDirectory() as d:
+        return load_policy(Path(d) / ".agent")
+
+
+def _make_state(agents: list[str]) -> PipelineState:
+    chain_state = AgentChainState(agents=agents, current_index=0, retries=0)
+    return PipelineState(
+        phase="development",
+        phase_chains={"development": chain_state},
+    )
+
+
+def test_classifier_flags_structured_unavailable_without_text_match() -> None:
+    """FailureClassifier flags is_unavailable based on the structured error reason alone."""
+    classifier = FailureClassifier()
+    opts = InactivityTimeoutOpts(
+        reason=WatchdogFireReason.NO_PROGRESS_QUIET,
+        diagnostic={"cumulative": 0.0},
+    )
+    exc = AgentInactivityTimeoutError("claude", 15.0, opts=opts)
+
+    failure = classifier.classify(
+        exc,
+        phase="development",
+        agent="claude",
+        connectivity_state="online",
+    )
+
+    assert failure.is_unavailable is True
+    assert failure.watchdog_reason == "no_progress_quiet"
+
+
+def test_recovery_controller_falls_over_on_no_progress_quiet() -> None:
+    """RecoveryController transitions agent on NO_PROGRESS_QUIET and publishes correct events."""
+    clock = FakeClock(start=0.0)
+    bus = FailureEventBus()
+    events: list[object] = []
+    bus.subscribe(events.append)
+
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=clock,
+            policy_bundle=_minimal_policy_bundle(),
+            event_bus=bus,
+        )
+    )
+    state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
+
+    opts = InactivityTimeoutOpts(
+        reason=WatchdogFireReason.NO_PROGRESS_QUIET,
+        diagnostic={"cumulative": 0.0},
+    )
+    exc = AgentInactivityTimeoutError("claude", 15.0, opts=opts)
+
+    new_state, _effects, _failure_evt = controller.handle(
+        state,
+        exc,
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    # Agent transitions to opencode
+    chain = new_state.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1
+
+    # FalloverEvent is published carrying watchdog_reason
+    fallovers = [e for e in events if isinstance(e, FalloverEvent)]
+    assert len(fallovers) == 1
+    assert fallovers[0].watchdog_reason == "no_progress_quiet"
+
+    # Cooldown timeout is set
+    snap = controller.snapshot()
+    assert snap["unavailable_timeouts"]["development:claude"] == 5000
+
+
+def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
+    """Run loop emits WAITING status before cooldown sleep and RESUMED after, using the guard."""
+    policy_bundle = MagicMock()
+    policy_bundle.pipeline.terminal_phase = "complete"
+    connectivity_monitor = MagicMock()
+    connectivity_monitor.current_state = "online"
+
+    ctx = _LoopContext(
+        policy_bundle=policy_bundle,
+        workspace_scope=MagicMock(),
+        config=MagicMock(),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=0,
+        registry=MagicMock(),
+        effective_pipeline_subscriber=None,
+        controller=MagicMock(),
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=connectivity_monitor,
+        sleep=MagicMock(),
+        is_quiet=False,
+        snapshot_registry=None,
+        last_waiting_state_phase=None,
+    )
+
+    emitted: list[str] = []
+    def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
+        emitted.append(text)
+    monkeypatch.setattr("ralph.pipeline.run_loop.emit_activity_line", mock_emit_activity_line)
+
+    slept: list[float] = []
+    ctx.sleep = slept.append
+    ctx.active_display = MagicMock()
+    ctx.display_context = MagicMock()
+    ctx.effective_verbosity = 0
+    ctx.registry = MagicMock()
+    ctx.effective_pipeline_subscriber = None
+    ctx.controller = MagicMock()
+    ctx.config_path = None
+    ctx.cli_overrides = {}
+    ctx.monitor_stop = None
+    ctx.pipeline_deps = None
+
+    chain_state = AgentChainState(agents=["claude"], current_index=0, retries=0)
+    state = PipelineState(
+        phase="development",
+        phase_chains={"development": chain_state},
+    )
+    state = state.copy_with(
+        last_error="all agents unavailable; waiting for cooldown expiry",
+        last_retry_delay_ms=200,
+    )
+
+    def mock_run_pipeline_step(**_kwargs: object) -> PipelineState:
+        return state.copy_with(phase="complete")
+    monkeypatch.setattr("ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step)
+
+    _run_inner_loop(state, ctx, prev_phase="development")
+
+    assert len(slept) == 1
+    assert slept[0] == 0.2
+
+    # Check WAITING and RESUMED emissions
+    assert any("WAITING" in str(s) for s in emitted)
+    assert any("RESUMED" in str(s) for s in emitted)
+
+
+def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> None:
+    """Run loop catches sleep exception, logs it, and continues rather than crashing."""
+    policy_bundle = MagicMock()
+    policy_bundle.pipeline.terminal_phase = "complete"
+    connectivity_monitor = MagicMock()
+    connectivity_monitor.current_state = "online"
+
+    ctx = _LoopContext(
+        policy_bundle=policy_bundle,
+        workspace_scope=MagicMock(),
+        config=MagicMock(),
+        active_display=MagicMock(),
+        display_context=MagicMock(),
+        effective_verbosity=0,
+        registry=MagicMock(),
+        effective_pipeline_subscriber=None,
+        controller=MagicMock(),
+        config_path=None,
+        cli_overrides={},
+        monitor_stop=None,
+        connectivity_monitor=connectivity_monitor,
+        sleep=MagicMock(),
+        is_quiet=False,
+        snapshot_registry=None,
+        last_waiting_state_phase=None,
+    )
+
+    emitted: list[str] = []
+    def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
+        emitted.append(text)
+    monkeypatch.setattr("ralph.pipeline.run_loop.emit_activity_line", mock_emit_activity_line)
+
+    def raising_sleep(seconds: float) -> None:
+        raise RuntimeError("simulated sleep crash")
+    ctx.sleep = raising_sleep
+
+    ctx.active_display = MagicMock()
+    ctx.display_context = MagicMock()
+    ctx.effective_verbosity = 0
+    ctx.registry = MagicMock()
+    ctx.effective_pipeline_subscriber = None
+    ctx.controller = MagicMock()
+    ctx.config_path = None
+    ctx.cli_overrides = {}
+    ctx.monitor_stop = None
+    ctx.pipeline_deps = None
+
+    chain_state = AgentChainState(agents=["claude"], current_index=0, retries=0)
+    state = PipelineState(
+        phase="development",
+        phase_chains={"development": chain_state},
+    )
+    state = state.copy_with(
+        last_error="all agents unavailable; waiting for cooldown expiry",
+        last_retry_delay_ms=200,
+    )
+
+    def mock_run_pipeline_step(**_kwargs: object) -> PipelineState:
+        return state.copy_with(phase="complete")
+    monkeypatch.setattr("ralph.pipeline.runner.run_pipeline_step", mock_run_pipeline_step)
+
+    new_state, _prev_phase, _exit_code = _run_inner_loop(state, ctx, prev_phase="development")
+
+    assert new_state.last_retry_delay_ms == 1000
+    assert any("WAITING" in str(s) for s in emitted)
+
+
+def test_fallover_log_line_includes_watchdog_reason(monkeypatch: MonkeyPatch) -> None:
+    """FALLOVER log message includes the watchdog reason."""
+    logs: list[str] = []
+    sink_id = logger.add(lambda msg: logs.append(msg.record["message"]), level="INFO")
+
+    try:
+        clock = FakeClock(start=0.0)
+        bus = FailureEventBus()
+
+        controller = RecoveryController(
+            options=RecoveryControllerOptions(
+                cycle_cap=10,
+                clock=clock,
+                policy_bundle=_minimal_policy_bundle(),
+                event_bus=bus,
+            )
+        )
+
+        _subscribe_recovery_logger(controller)
+
+        state = _make_state(["claude", "opencode"]).copy_with(last_connectivity_state="online")
+
+        opts = InactivityTimeoutOpts(
+            reason=WatchdogFireReason.NO_PROGRESS_QUIET,
+            diagnostic={"cumulative": 0.0},
+        )
+        exc = AgentInactivityTimeoutError("claude", 15.0, opts=opts)
+
+        controller.handle(
+            state,
+            exc,
+            FailureContext(phase="development", agent="claude"),
+        )
+
+        fallover_logs = [log for log in logs if "FALLOVER" in log]
+        assert len(fallover_logs) >= 1
+        assert "watchdog_reason=no_progress_quiet" in fallover_logs[0]
+
+    finally:
+        logger.remove(sink_id)

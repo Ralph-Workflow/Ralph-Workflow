@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import socket
 import urllib.error
+from typing import cast
 
 from loguru import logger
 
@@ -411,6 +412,12 @@ class FailureClassifier:
             connectivity_state=connectivity_state,
         )
 
+        watchdog_reason = None
+        if exc_obj is not None and type(exc_obj).__name__ == "AgentInactivityTimeoutError":
+            watchdog_reason_val = cast("object", getattr(exc_obj, "reason", None))
+            if watchdog_reason_val is not None:
+                watchdog_reason = str(watchdog_reason_val)
+
         # Detect tool-availability failures independently of the category
         # table above. Both the live `No such tool available: mcp__<server>__<tool>`
         # string and the runtime `ToolDispatchError("Tool 'X' is not registered")`
@@ -445,16 +452,21 @@ class FailureClassifier:
             and (connectivity_state or "").casefold() == "online"
             and not reset_tool_registry
             and (
-                exc_obj is None
-                or type(exc_obj).__name__
-                in {"AgentInvocationError", "AgentInactivityTimeoutError"}
-            )
-            and (
-                _is_unavailable_agent_message(raw_message)
-                or contains_casefolded_marker(
-                    detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+                watchdog_reason in {"no_progress_quiet", "children_persist_too_long"}
+                or (
+                    (
+                        exc_obj is None
+                        or type(exc_obj).__name__
+                        in {"AgentInvocationError", "AgentInactivityTimeoutError"}
+                    )
+                    and (
+                        _is_unavailable_agent_message(raw_message)
+                        or contains_casefolded_marker(
+                            detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+                        )
+                        or _is_subscription_limit_message(detail_parts)
+                    )
                 )
-                or _is_subscription_limit_message(detail_parts)
             )
         )
 
@@ -478,6 +490,7 @@ class FailureClassifier:
             reset_session=reset_session,
             reset_tool_registry=reset_tool_registry,
             is_unavailable=is_unavailable,
+            watchdog_reason=watchdog_reason,
         )
 
     def _is_tool_availability_failure(

@@ -121,6 +121,7 @@ class _LoopContext:
     pro_watcher: ProMarkerWatcher | None = None
     snapshot_registry: SnapshotRegistry | None = None
     pipeline_deps: PipelineDeps | None = None
+    last_waiting_state_phase: str | None = None
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -314,8 +315,52 @@ def _run_inner_loop(
             )
         delay_ms = state.last_retry_delay_ms
         if isinstance(delay_ms, int) and delay_ms > 0:
-            state = state.copy_with(last_retry_delay_ms=0)
-            ctx.sleep(delay_ms / 1000.0)
+            is_all_unavailable = (
+                state.last_error is not None
+                and "all agents unavailable; waiting for cooldown expiry" in state.last_error
+            )
+            try:
+                current_phase_str = str(state.phase)
+                if is_all_unavailable and ctx.last_waiting_state_phase != current_phase_str:
+                    ctx.last_waiting_state_phase = current_phase_str
+                    emit_activity_line(
+                        ctx.active_display,
+                        None,
+                        status_text(
+                            "WAITING",
+                            "all agents unavailable; resuming in "
+                            f"{int(delay_ms / 1000.0)} seconds "
+                            f"(next agent attempt: {current_phase_str})",
+                            "yellow",
+                        ),
+                    )
+
+                state = state.copy_with(last_retry_delay_ms=0)
+                ctx.sleep(delay_ms / 1000.0)
+
+                if is_all_unavailable:
+                    emit_activity_line(
+                        ctx.active_display,
+                        None,
+                        status_text(
+                            "RESUMED",
+                            "cooldown expired; retrying",
+                            "green",
+                        ),
+                    )
+            except BaseException as e:
+                if isinstance(e, KeyboardInterrupt):
+                    raise
+                chain = state.chain_for_phase(state.phase)
+                current_idx = chain.current_index if chain is not None else None
+                logger.error(
+                    "Error during cooldown sleep: {} (type={}) last_error={} chain_index={}",
+                    e,
+                    type(e).__name__,
+                    state.last_error,
+                    current_idx,
+                )
+                state = state.copy_with(last_retry_delay_ms=1000)
         prev_phase = _runner_module.emit_phase_transition_if_changed(
             ctx.active_display,
             prev_phase,
@@ -424,11 +469,12 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
             )
         elif isinstance(evt, _FalloverEvent):
             logger.bind(recovery=True).info(
-                "FALLOVER phase={} from={} to={} reason={}",
+                "FALLOVER phase={} from={} to={} reason={} watchdog_reason={}",
                 evt.phase,
                 evt.from_agent,
                 evt.to_agent,
                 evt.reason,
+                evt.watchdog_reason,
             )
 
     return controller.event_bus.subscribe(_log_recovery_event)

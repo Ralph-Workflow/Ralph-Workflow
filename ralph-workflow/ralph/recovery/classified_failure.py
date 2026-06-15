@@ -33,3 +33,4 @@ class ClassifiedFailure:
     # of credits) and the recovery controller should skip it with exponential
     # backoff instead of retrying immediately.
     is_unavailable: bool = field(default=False)
+    watchdog_reason: str | None = field(default=None)
