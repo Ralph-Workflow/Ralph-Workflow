@@ -152,6 +152,17 @@ Remove Ralph Workflow-generated working files from the current project, such as 
 ralph cleanup
 ```
 
+### `ralph smoke-interactive-agy`
+
+Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the canonical verification command for the AGY transport: it drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports a parity table with file creation, session capture, parser events, tool activity, and artifact submission. The default model is `agy/Claude Sonnet 4.6 (Thinking)`; override it with `--agent agy/<model>`.
+
+```bash
+python -m ralph smoke-interactive-agy
+python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'
+```
+
+Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream `agy` binary returned no stdout; the message is derived from `~/.gemini/antigravity-cli/cli.log` and usually points to an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough

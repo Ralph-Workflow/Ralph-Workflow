@@ -58,6 +58,32 @@ The PATH column in the Agents table should show `on PATH` in green.
 - Use WSL2 or a POSIX-compatible environment on Windows.
 - Or route the phase to another headless transport such as Codex, OpenCode, or Nanocoder.
 
+## AGY transport end-to-end smoke
+
+**Symptom:** You want to verify that the AGY transport is wired correctly from Ralph Workflow through the live `agy` binary.
+
+**Fix:**
+
+- Run the canonical AGY smoke test on Linux or macOS:
+
+```bash
+python -m ralph smoke-interactive-agy
+```
+
+The parity table reports five acceptance signals:
+
+| Column | Green means |
+|--------|-------------|
+| File | `tmp/interactive-agy-smoke/todo-list.js` was created |
+| Session | A session ID was observed in the transcript |
+| Parser events | The transcript produced parseable events (Claude parity only) |
+| Tool activity | Tool-use/tool-result signals or the artifact's `headless_guide_checks` were observed |
+| Artifact | The `smoke_test_result` artifact was submitted |
+
+A red column in File, Tool activity, or Artifact indicates a Ralph Workflow regression. The Session and Parser events columns may show `missing`/`0` on AGY headless `--print` runs: AGY does not emit a session ID or parser-friendly stdout stream in `--print` mode (verified in `tmp/agy-live-transcript.txt`). Because AGY's headless `--print` mode does not reliably call Ralph Workflow's streamable-HTTP MCP tools, the smoke prompt instructs AGY to write the `smoke_test_result` artifact directly to `.agent/artifacts/smoke_test_result.json`; tool activity is then inferred from that artifact. The rationale for removing the non-functional `session_flag` from the builtin AGY config is recorded in `ralph-workflow/CHANGELOG.md` under the 'Google Anti Gravity (AGY) is now a first-class supported agent path' entry.
+
+If AGY exits 0 but the parity table reports no file, no artifact, and the `Breaks` column contains `AGY --print returned empty stdout: ...`, the upstream `agy` binary itself produced no stdout. The smoke detector reads `~/.gemini/antigravity-cli/cli.log` and reports the measured root cause in the `Breaks` column. The most common upstream conditions are an individual API quota exhausted error (`429 RESOURCE_EXHAUSTED`), whose diagnostic names the reset window, or an unrecognized model ID. Lowercased or slashed slugs such as `agy/gemini-3.5-flash-low` are not accepted by AGY v1.0.8; use the exact display names from `agy models` (e.g. `agy/Claude Sonnet 4.6 (Thinking)`). See `tmp/agy-source-of-truth.txt` for the current measured wire format. These are upstream AGY conditions, not Ralph Workflow regressions; wait for the quota reset or use a recognized model alias. Use `--agent agy/<model>` to pin a different model alias.
+
 ## MCP servers fail to start
 
 **Symptom:** `ralph --check-mcp` or `ralph --diagnose` reports MCP server errors.

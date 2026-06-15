@@ -11,6 +11,7 @@ Public exports:
 - ``diagnose_command`` - drives ``ralph diagnose``
 - ``init_command`` - drives ``ralph init``
 - ``run_pipeline`` - drives ``ralph run`` (the primary workflow entry point)
+- ``smoke_interactive_agy_command`` - drives the manual AGY end-to-end smoke test
 - ``smoke_interactive_claude_command`` - drives the manual PTY parity smoke test
 """
 
@@ -21,6 +22,7 @@ __all__ = [
     "diagnose_command",
     "init_command",
     "run_pipeline",
+    "smoke_interactive_agy_command",
     "smoke_interactive_claude_command",
 ]
 
@@ -42,6 +44,12 @@ def __getattr__(name: str) -> object:
         from ralph.cli.commands.run import run_pipeline as _run_pipeline
 
         return _run_pipeline
+    if name == "smoke_interactive_agy_command":
+        from ralph.cli.commands.smoke import (
+            smoke_interactive_agy_command as _smoke_interactive_agy_command,
+        )
+
+        return _smoke_interactive_agy_command
     if name == "smoke_interactive_claude_command":
         from ralph.cli.commands.smoke import (
             smoke_interactive_claude_command as _smoke_interactive_claude_command,

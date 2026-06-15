@@ -32,6 +32,18 @@ from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_
 _AGY_HOME_SUBDIR = "antigravity-cli"
 
 
+def _agy_global_config_path() -> Path:
+    """Return AGY's global MCP config path.
+
+    Measured behaviour: AGY's --print mode in a PTY only initialises its MCP
+    client when this global config file exists; the workspace-level
+    ``.agents/mcp_config.json`` file is not sufficient. The helper therefore
+    writes the run-scoped Ralph entry here and restores the original contents
+    on exit.
+    """
+    return Path.home() / ".gemini" / _AGY_HOME_SUBDIR / "mcp_config.json"
+
+
 def agy_mcp_config(endpoint: str) -> str:
     """Return the AGY MCP JSON config string pointing to the given endpoint.
 
@@ -55,8 +67,8 @@ def agy_mcp_config(endpoint: str) -> str:
 def agy_workspace_mcp_endpoint(
     workspace_path: Path, endpoint: str, *, unsafe_mode: bool = False
 ) -> Iterator[None]:
-    """Write a run-scoped Ralph-only MCP config for AGY and restore it after exit."""
-    config_path = workspace_path / ".agents" / "mcp_config.json"
+    """Write a run-scoped Ralph MCP config to AGY's global path and restore it after exit."""
+    config_path = _agy_global_config_path()
     original_bytes = config_path.read_bytes() if config_path.is_file() else None
     if unsafe_mode:
         existing = _load_mcpservers_from_paths(_agy_mcp_config_paths(workspace_path))
@@ -93,6 +105,8 @@ def _normalize_agy_server_entry(name: str, entry: object) -> tuple[str, object] 
     Returns:
         Tuple of (name, normalized_entry) if valid, None if skipped.
     """
+    if name == RALPH_MCP_SERVER_NAME:
+        return None
     if not isinstance(entry, Mapping):
         return None
     casted = cast("dict[str, object]", entry)
@@ -124,14 +138,14 @@ def _agy_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
     """Return the AGY MCP config file paths to check.
 
     Order: workspace-level .agents/mcp_config.json first (if workspace_path provided),
-    then global ~/.gemini/antigravity-cli/mcp_config.json.
+    then AGY's global config path (see ``_agy_global_config_path``).
     """
     workspace_paths: tuple[Path, ...] = ()
     if workspace_path is not None:
         workspace_paths = (workspace_path / ".agents" / "mcp_config.json",)
     return (
         *workspace_paths,
-        Path.home() / ".gemini" / _AGY_HOME_SUBDIR / "mcp_config.json",
+        _agy_global_config_path(),
     )
 
 

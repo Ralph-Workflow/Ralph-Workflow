@@ -6,8 +6,9 @@ no real network, no time.sleep, no real file I/O.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -15,11 +16,15 @@ from ralph.agents.invoke import InvokeOptions
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.factory import PipelineDeps
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
 from ralph.pipeline.plumbing.smoke_run_params import SmokeRunParams
 
 if TYPE_CHECKING:
+    from collections import deque
+    from collections.abc import Callable
+
     from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
     from ralph.pipeline.session_bridge import (
         BuildSessionMcpPlanFn,
@@ -37,6 +42,89 @@ pytestmark = pytest.mark.timeout_seconds(5)
 class _FakeBridge:
     def reset_tool_registry(self) -> None:
         return None
+
+
+def test_resolve_smoke_harness_spec_claude_uses_legacy_layout() -> None:
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("claude/haiku")
+    assert spec.relative_dir == Path("tmp/interactive-claude-smoke")
+    assert spec.output_file == Path("tmp/interactive-claude-smoke/todo-list.js")
+    assert spec.run_id == "interactive-claude-smoke"
+
+
+def test_resolve_smoke_harness_spec_agy_uses_agy_layout() -> None:
+    spec = smoke_plumbing_module.resolve_smoke_harness_spec("agy/Claude Sonnet 4.6 (Thinking)")
+    assert spec.relative_dir == Path("tmp/interactive-agy-smoke")
+    assert spec.output_file == Path("tmp/interactive-agy-smoke/todo-list.js")
+    assert spec.run_id == "interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"
+
+
+def test_run_smoke_plumbing_forwards_agent_name_to_harness_spec(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured_run_ids: list[str] = []
+
+    def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
+        run_id = kwargs.get("run_id")
+        if isinstance(run_id, str):
+            captured_run_ids.append(run_id)
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="agy/Claude Sonnet 4.6 (Thinking)"),
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "execute_agent_effect",
+        fake_execute_agent_effect,
+    )
+
+    output_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("export const todos = [];\n", encoding="utf-8")
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "smoke_test_result.json").write_text(
+        '{"name":"smoke_test_result","artifact_type":"smoke_test_result",'
+        '"content":{"status":"passed","summary":"ok"},'
+        '"created_at":"now","updated_at":"now","metadata":{}}',
+        encoding="utf-8",
+    )
+
+    result = smoke_plumbing_module.run_smoke_plumbing(
+        config=_fake_config(),
+        workspace_root=tmp_path,
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        prompt_file=tmp_path / "PROMPT.md",
+        output_file=output_path,
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+    )
+
+    assert result.agent_name == "agy/Claude Sonnet 4.6 (Thinking)"
+    assert captured_run_ids == ["interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"]
+
+
+def _fake_bridge_factory(**_kwargs: object) -> object:
+    class FakeBridge:
+        def start(self) -> None:
+            return None
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+        def endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+        def shutdown(self) -> None:
+            return None
+
+    return FakeBridge()
 
 
 def test_detect_break_indicators_ignores_bypass_status_line() -> None:
@@ -251,3 +339,474 @@ def _fake_invoke_agent(
 
 def _fake_config() -> UnifiedConfig:
     return UnifiedConfig()
+
+
+def _fake_execute_agent_effect_for_config(
+    agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
+) -> Callable[..., PipelineEvent]:
+    def fake_execute_agent_effect(*_args: object, **kwargs: object) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        rendered_sink = kwargs.get("rendered_output_sink")
+        output_relpath = (
+            "tmp/interactive-agy-smoke/todo-list.js"
+            if agent_name.startswith("agy/")
+            else "tmp/interactive-claude-smoke/todo-list.js"
+        )
+        workspace_root = kwargs.get("workspace_root")
+        if workspace_root is None:
+            # Fallback: the SmokeRunParams are passed positionally after the effect.
+            params = _args[2] if len(_args) >= 3 else None
+            if isinstance(params, SmokeRunParams):
+                workspace_root = params.workspace_root
+        if isinstance(workspace_root, Path):
+            output_path = workspace_root / output_relpath
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("export const todos = [];\n", encoding="utf-8")
+            artifact_dir = workspace_root / ".agent" / "artifacts"
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            (artifact_dir / "smoke_test_result.json").write_text(
+                json.dumps(
+                    {
+                        "name": "smoke_test_result",
+                        "artifact_type": "smoke_test_result",
+                        "content": {
+                            "status": "passed",
+                            "summary": "ok",
+                            "output_file": output_relpath,
+                            "observed_working": ["tmp artifact created"],
+                            "observed_breaks": [],
+                            "headless_guide_checks": ["tool activity"],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+        if raw_sink is not None:
+            cast("deque[str]", raw_sink).append(
+                "Task declared complete: session_id=dummy, summary=done\n"
+                if not agent_name.startswith("agy/")
+                else "agy planning line\n"
+            )
+        if rendered_sink is not None:
+            cast("deque[str]", rendered_sink).append(
+                "Task declared complete\n"
+                if not agent_name.startswith("agy/")
+                else "agy planning line\n"
+            )
+        return PipelineEvent.AGENT_SUCCESS
+
+    return fake_execute_agent_effect
+
+
+def test_detect_break_indicators_uses_anchored_crash_patterns() -> None:
+    """Incidental words like 'crash' in prose must not flag the detector."""
+    assert smoke_plumbing_module._detect_break_indicators(["this should not crash"]) == []
+    assert (
+        "crash-like transcript output observed"
+        in smoke_plumbing_module._detect_break_indicators(
+            ["Traceback (most recent call last):"]
+        )
+    )
+    assert (
+        "crash-like transcript output observed"
+        in smoke_plumbing_module._detect_break_indicators(["fatal: not a git repository"])
+    )
+    assert (
+        "crash-like transcript output observed"
+        in smoke_plumbing_module._detect_break_indicators(
+            ["thread main panicked at src/main.rs:42"]
+        )
+    )
+    assert (
+        "crash-like transcript output observed"
+        in smoke_plumbing_module._detect_break_indicators(
+            ["segmentation fault (core dumped)"]
+        )
+    )
+
+
+def test_agent_session_ceilings_agy_gets_360s_claude_gets_120s(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """AGY uses a 360s session ceiling; Claude keeps the legacy 120s ceiling."""
+    captured_params: list[SmokeRunParams] = []
+
+    def fake_run_smoke_agent(
+        params: SmokeRunParams,
+        run_id: str = "ignored",
+    ) -> smoke_plumbing_module.SmokeRunResult:
+        del run_id
+        captured_params.append(params)
+        return smoke_plumbing_module.SmokeRunResult(
+            agent_name=params.agent_name,
+            transport=params.config.transport.value,
+            output_file=params.output_file,
+            file_created=True,
+            session_id=None,
+            explicit_completion_seen=False,
+            raw_line_count=0,
+            parsed_event_count=0,
+            tool_activity_seen=False,
+            artifact_submitted=False,
+            meaningful_output_lines=[],
+            errors=[],
+        )
+
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "_run_smoke_agent",
+        fake_run_smoke_agent,
+    )
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="agy/Claude Sonnet 4.6 (Thinking)"),
+    )
+
+    smoke_plumbing_module.run_smoke_plumbing(
+        config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        prompt_file=tmp_path / "PROMPT.md",
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+    )
+
+    assert len(captured_params) == 1
+    assert captured_params[0].unified_config.general.agent_max_session_seconds == 360.0
+
+    captured_params.clear()
+    monkeypatch.setattr(
+        smoke_plumbing_module,
+        "AgentRegistry",
+        _make_fake_registry(agent_name="claude/haiku"),
+    )
+
+    smoke_plumbing_module.run_smoke_plumbing(
+        config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        agent_name="claude/haiku",
+        prompt_file=tmp_path / "PROMPT.md",
+        display_context=make_display_context(),
+        pipeline_deps=PipelineDeps(
+            display_context=make_display_context(),
+            bridge_factory=_fake_bridge_factory,
+        ),
+    )
+
+    assert len(captured_params) == 1
+    assert captured_params[0].unified_config.general.agent_max_session_seconds == 120.0
+
+
+def _make_artifact(tmp_path: Path, *, observed_breaks: list[str]) -> None:
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "name": "smoke_test_result",
+                "artifact_type": "smoke_test_result",
+                "content": {
+                    "status": "passed",
+                    "summary": "ok",
+                    "output_file": "tmp/interactive-agy-smoke/todo-list.js",
+                    "observed_working": ["tmp artifact created"],
+                    "observed_breaks": observed_breaks,
+                    "headless_guide_checks": ["tool activity"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_detect_smoke_errors_agy_artifact_completion_skips_missing_signals(
+    tmp_path: Path,
+) -> None:
+    """AGY with a complete artifact is not flagged for declare_complete,
+    session ID, or tool activity when the artifact records all checks."""
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(tmp_path, observed_breaks=[])
+
+    config = AgentConfig(
+        cmd="agy",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.AGY,
+    )
+    params = SmokeRunParams(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
+    assert "declare_complete marker was not observed" not in errors
+    assert "session ID was not observed" not in errors
+    assert "no tool activity was observed" not in errors
+
+
+def test_detect_smoke_errors_agy_artifact_without_tool_activity_check_reports_missing(
+    tmp_path: Path,
+) -> None:
+    """AGY artifact that omits the tool-activity check still reports missing tool activity."""
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_text(
+        json.dumps(
+            {
+                "name": "smoke_test_result",
+                "artifact_type": "smoke_test_result",
+                "content": {
+                    "status": "passed",
+                    "summary": "ok",
+                    "output_file": "tmp/interactive-agy-smoke/todo-list.js",
+                    "observed_working": ["tmp artifact created"],
+                    "observed_breaks": [],
+                    "headless_guide_checks": ["session capture"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = AgentConfig(
+        cmd="agy",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.AGY,
+    )
+    params = SmokeRunParams(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
+    assert "no tool activity was observed" in errors
+
+
+def test_detect_smoke_errors_agy_artifact_with_breaks_still_reports_completion(
+    tmp_path: Path,
+) -> None:
+    """AGY artifact with non-empty observed_breaks does not count as completion."""
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(tmp_path, observed_breaks=["something went wrong"])
+
+    config = AgentConfig(
+        cmd="agy",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.AGY,
+    )
+    params = SmokeRunParams(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
+    assert "declare_complete marker was not observed" in errors
+    assert "session ID was not observed" not in errors
+
+
+def test_detect_smoke_errors_non_agy_transport_keeps_missing_signal_checks(
+    tmp_path: Path,
+) -> None:
+    """The declare_complete and session ID gates are per-agent, not global."""
+    output_file = tmp_path / "tmp" / "interactive-claude-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    _make_artifact(tmp_path, observed_breaks=[])
+
+    config = AgentConfig(
+        cmd="claude",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+    )
+    params = SmokeRunParams(
+        agent_name="claude/haiku",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+
+    assert "declare_complete marker was not observed" in errors
+    assert "session ID was not observed" in errors
+
+
+def _make_agy_params(tmp_path: Path) -> SmokeRunParams:
+    output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    config = AgentConfig(
+        cmd="agy",
+        json_parser=JsonParserType.GENERIC,
+        transport=AgentTransport.AGY,
+    )
+    return SmokeRunParams(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        config=config,
+        unified_config=UnifiedConfig(),
+        workspace_root=tmp_path,
+        prompt_file=Path("PROMPT.md"),
+        output_file=output_file,
+        options=InvokeOptions(show_progress=False),
+        display_context=make_display_context(),
+        bridge=None,
+    )
+
+
+def test_detect_smoke_errors_agy_empty_output_reports_quota_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When AGY emits no stdout and the CLI log shows quota exhaustion, the
+    smoke report includes an actionable upstream diagnostic."""
+    log_path = tmp_path / "cli.log"
+    log_path.write_text(
+        "...\n"
+        "agent executor error: RESOURCE_EXHAUSTED (code 429): "
+        "Individual quota reached. Contact your administrator...\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", log_path)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert any("quota exhausted" in err.lower() for err in errors), errors
+
+
+def test_detect_smoke_errors_agy_empty_output_includes_quota_reset_window(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When the CLI log contains a 'Resets in ...' window, the diagnostic
+    includes it so the operator knows how long to wait."""
+    log_path = tmp_path / "cli.log"
+    log_path.write_text(
+        "...\n"
+        "agent executor error: RESOURCE_EXHAUSTED (code 429): "
+        "Individual quota reached. Resets in 2h54m12s.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", log_path)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert any("resets in 2h54m12s" in err.lower() for err in errors), errors
+
+
+def test_detect_smoke_errors_agy_empty_output_reports_model_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When AGY emits no stdout and the CLI log shows an unknown model ID, the
+    smoke report names the rejected model."""
+    log_path = tmp_path / "cli.log"
+    log_path.write_text(
+        "...\n"
+        "model_resolver.go:62] Resolving model gemini-3.5-flash-low\n"
+        "model_config_manager.go:54] Failed to resolve model flag "
+        "gemini-3.5-flash-low: model gemini-3.5-flash-low is not recognized "
+        "as a known model or custom model in settings\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", log_path)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert any(
+        "gemini-3.5-flash-low" in err and "not recognized" in err for err in errors
+    ), errors
+
+
+def test_detect_smoke_errors_agy_empty_output_reports_generic_diagnostic_when_log_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When AGY emits no stdout and no CLI log is present, a generic pointer
+    to the CLI log is still reported."""
+    missing_log = tmp_path / "no_such_cli.log"
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", missing_log)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert any(
+        "AGY --print returned empty stdout" in err and "cli.log" in err for err in errors
+    ), errors
+
+
+def test_detect_smoke_errors_agy_no_diagnostic_when_stdout_present(
+    tmp_path: Path,
+) -> None:
+    """The upstream diagnostic is only added when AGY produced zero stdout."""
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path),
+        ["some stdout line\n"],
+        [],
+        None,
+        None,
+    )
+
+    assert not any("AGY --print returned empty stdout" in err for err in errors)
+
+
+def test_detect_smoke_errors_agy_no_diagnostic_when_artifact_present(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The upstream diagnostic is not added when AGY wrote the artifact file."""
+    _make_artifact(tmp_path, observed_breaks=[])
+    log_path = tmp_path / "cli.log"
+    log_path.write_text("RESOURCE_EXHAUSTED (code 429)\n", encoding="utf-8")
+    monkeypatch.setattr(smoke_plumbing_module, "_AGY_CLI_LOG_PATH", log_path)
+
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        _make_agy_params(tmp_path), [], [], None, None
+    )
+
+    assert not any("AGY --print returned empty stdout" in err for err in errors)

@@ -31,7 +31,10 @@ from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
 from ralph.cli.commands.prompt_helper import run_prompt_helper
 from ralph.cli.commands.run import RunPipelineRequest, run_pipeline
-from ralph.cli.commands.smoke import smoke_interactive_claude_command
+from ralph.cli.commands.smoke import (
+    smoke_interactive_agy_command,
+    smoke_interactive_claude_command,
+)
 from ralph.cli.commands.star import star
 from ralph.config.bootstrap import (
     ensure_global_config,
@@ -794,6 +797,24 @@ def smoke_interactive_claude() -> None:
 
 
 app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
+
+
+def smoke_interactive_agy(
+    agent: str = typer.Option(
+        "agy/Claude Sonnet 4.6 (Thinking)",
+        help="AGY model alias to smoke (e.g. agy/Claude Sonnet 4.6 (Thinking)).",
+    ),
+) -> None:
+    """Run the manual PTY smoke test for Google Anti Gravity."""
+    raise typer.Exit(
+        code=smoke_interactive_agy_command(
+            agent_name=agent,
+            display_context=_get_cli_context(),
+        )
+    )
+
+
+app.command(name="smoke-interactive-agy")(smoke_interactive_agy)
 app.command()(star)
 
 

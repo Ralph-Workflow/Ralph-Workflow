@@ -12,6 +12,8 @@ Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocod
 
 > See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent's user-global skill-discovery root.
 
+Every supported agent has a manual smoke entry-point for live end-to-end verification against the real binary. Claude is verified with `python -m ralph smoke-interactive-claude` and AGY is verified with `python -m ralph smoke-interactive-agy`. Run the corresponding command on Linux or macOS to confirm the transport, MCP wiring, and tool invocation pipeline produce real output.
+
 ## Project-local skills
 
 In addition to the user-global skill bundle, every `ralph` run auto-seeds a project-local skill fan-out so the same baseline is available to every supported agent at the project scope (not just in your user home).

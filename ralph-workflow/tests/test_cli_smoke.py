@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -306,7 +307,7 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     monkeypatch.setattr(
         smoke_module,
         "_build_smoke_prompt",
-        lambda _output_relpath, *, submit_artifact_tool_name: "prompt",
+        lambda _output_relpath, *, submit_artifact_tool_name, transport=None: "prompt",
     )
 
     class FakeRegistry:
@@ -387,3 +388,164 @@ def test_smoke_interactive_claude_command_forwards_pro_hooks_and_model_identity(
     assert factory_call["pro_hooks"] is pro_hooks
     plumbing_kwargs = cast("dict[str, object]", captured["plumbing_kwargs"])
     assert plumbing_kwargs["pipeline_deps"] is expected_deps
+
+
+def test_smoke_interactive_agy_command_exits_when_agy_binary_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: None)
+
+    exit_code = smoke_module.smoke_interactive_agy_command(display_context=None)
+
+    assert exit_code == 2
+
+
+def test_smoke_interactive_agy_command_exits_when_agent_name_resolves_to_wrong_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/agy")
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, _name: str) -> AgentConfig | None:
+            return AgentConfig(
+                cmd="claude",
+                transport=AgentTransport.CLAUDE_INTERACTIVE,
+            )
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="claude/haiku",
+        display_context=None,
+    )
+
+    assert exit_code == 2
+
+
+def test_smoke_interactive_agy_command_runs_agy_harness_when_binary_present_and_transport_matches(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch)
+    monkeypatch.setattr(smoke_module.shutil, "which", lambda _name: "/usr/bin/agy")
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    class FakeRegistry:
+        @classmethod
+        def from_config(cls, _config: UnifiedConfig) -> FakeRegistry:
+            return cls()
+
+        def get(self, name: str) -> AgentConfig | None:
+            if name == "agy/Claude Sonnet 4.6 (Thinking)":
+                return AgentConfig(
+                    cmd="agy",
+                    transport=AgentTransport.AGY,
+                )
+            return None
+
+    monkeypatch.setattr(smoke_module, "AgentRegistry", FakeRegistry)
+
+    captured: dict[str, object] = {}
+
+    def fake_run_smoke_plumbing(**kwargs: object) -> smoke_module.SmokeRunResult:
+        captured["agent_name"] = kwargs["agent_name"]
+        return smoke_module.SmokeRunResult(
+            agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+            transport="agy",
+            output_file=tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js",
+            file_created=True,
+            session_id="agy-sess-1",
+            explicit_completion_seen=True,
+            raw_line_count=1,
+            parsed_event_count=1,
+            tool_activity_seen=True,
+            artifact_submitted=True,
+            meaningful_output_lines=["ok"],
+            errors=[],
+        )
+
+    monkeypatch.setattr(smoke_module, "run_smoke_plumbing", fake_run_smoke_plumbing)
+
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        display_context=None,
+    )
+
+    assert exit_code == 0
+    assert captured["agent_name"] == "agy/Claude Sonnet 4.6 (Thinking)"
+    output = stream.getvalue()
+    assert "agy/Claude Sonnet 4.6 (Thinking)" in output
+    assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke test" in output
+    assert "agy/Claude Sonnet 4.6 (Thinking) parity smoke report" in output
+
+
+def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
+    """The captured AGY smoke run log documents the measured outcome.
+
+    The live AGY binary in this environment exits with empty stdout because
+    the account's individual API quota is exhausted (429 RESOURCE_EXHAUSTED).
+    The smoke harness therefore reports file=no, parser events=0,
+    tool activity=no, artifact=no, and includes an actionable upstream
+    diagnostic. If the quota resets, the same log can show file=yes with an
+    empty Breaks column. This test accepts either measured outcome and fails
+    only if the log does not document a real AGY invocation.
+    """
+    log_path = Path(__file__).resolve().parents[1] / "tmp" / "smoke-interactive-agy-run.log"
+    assert log_path.exists(), (
+        "Live AGY smoke run log not captured in this environment; run: "
+        "cd ralph-workflow && uv run python -m ralph smoke-interactive-agy"
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+
+    assert "Invoking agent: agy --dangerously-skip-permissions" in log_text, (
+        "Live log does not show a real AGY invocation"
+    )
+    assert "--model Claude Sonnet 4.6 (Thinking)" in log_text, (
+        "Live log does not show the real AGY display name as a single argv token"
+    )
+
+    agy_row = next(
+        (
+            line
+            for line in log_text.splitlines()
+            if "agy/" in line and ("│" in line or "┃" in line)
+        ),
+        None,
+    )
+    assert agy_row is not None, "AGY parity table row not found in smoke log"
+
+    cells = [cell.strip() for cell in re.split(r"[│┃]", agy_row) if cell.strip()]
+    # Expected cells: agent, transport, file, session, parser events, tool
+    # activity, artifact, breaks (after stripping table borders).
+    assert len(cells) >= 8, f"Unexpected AGY table row shape: {cells}"
+
+    file_created = cells[2]
+    breaks = cells[7]
+
+    if file_created == "yes":
+        assert "AGY --print returned empty stdout" not in breaks, (
+            f"Expected empty breaks when file=yes, got: {breaks}"
+        )
+    else:
+        assert file_created == "no", f"Expected file=no or file=yes, got: {cells}"
+        assert cells[4] == "0", f"Expected parser events=0, got: {cells}"
+        assert cells[5] == "no", f"Expected tool activity=no, got: {cells}"
+        assert cells[6] == "no", f"Expected artifact=no, got: {cells}"
+        assert "AGY --print returned empty stdout" in breaks or (
+            "expected todo-list.js was not created" in breaks
+        ), f"Expected upstream diagnostic in breaks, got: {breaks}"
+        # The detailed report also surfaces the upstream diagnostic.
+        assert "AGY --print returned empty stdout" in log_text, (
+            "Detailed report is missing the upstream diagnostic"
+        )

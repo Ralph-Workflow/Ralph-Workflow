@@ -29,6 +29,14 @@ _SHORT_CONTENT_THRESHOLD = 200
 _PLAIN_TOOL_PREFIX = "[plain] tool:"
 
 
+def _classify_plaintext_tool_line(stripped: str) -> tuple[str, str] | None:
+    """Return (type, content) for plain-text tool announcements, or None."""
+    if stripped.startswith(_PLAIN_TOOL_PREFIX):
+        tool_name = stripped[len(_PLAIN_TOOL_PREFIX) :].strip()
+        return ("tool_use", tool_name)
+    return None
+
+
 class GenericParser:
     """Generic NDJSON parser for unknown or simple agent formats.
 
@@ -86,9 +94,10 @@ class GenericParser:
             except json.JSONDecodeError:
                 # Not JSON, treat as raw text - flush any pending accumulator first
                 yield from self._flush_accumulator()
-                if stripped.startswith(_PLAIN_TOOL_PREFIX):
-                    tool_name = stripped[len(_PLAIN_TOOL_PREFIX) :].strip()
-                    yield AgentOutputLine(type="tool_use", content=tool_name, raw=stripped)
+                classification = _classify_plaintext_tool_line(stripped)
+                if classification is not None:
+                    line_type, content = classification
+                    yield AgentOutputLine(type=line_type, content=content, raw=stripped)
                     continue
                 yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
                 continue

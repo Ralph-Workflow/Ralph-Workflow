@@ -18,6 +18,7 @@ from ralph.config.models import AgentConfig
 
 _MIN_OPENCODE_SEGMENTS = 2
 _MIN_NANOCODER_PROVIDER_SEGMENTS = 2
+_MIN_AGY_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
 
 if TYPE_CHECKING:
@@ -269,6 +270,19 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
             model_flag += f" --model {shlex.quote(model)}"
         nanocoder_overrides: dict[str, object] = {"model_flag": model_flag, "can_commit": True}
         resolved = base_config.model_copy(update=nanocoder_overrides)
+    elif name.startswith("agy/"):
+        if len(segments) < _MIN_AGY_SEGMENTS or not segments[1]:
+            return None
+
+        base_config = deepcopy(builtin_agents()["agy"])
+        # AGY model IDs from `agy models` are display names and may contain
+        # spaces/parentheses (e.g. "Claude Sonnet 4.6 (Thinking)"). Quote the
+        # value so shlex.split in the command builder keeps it as one argument.
+        agy_overrides: dict[str, object] = {
+            "model_flag": f"--model {shlex.quote(segments[1])}",
+            "can_commit": True,
+        }
+        resolved = base_config.model_copy(update=agy_overrides)
     elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
         if name.startswith("ccs/"):
             resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)
