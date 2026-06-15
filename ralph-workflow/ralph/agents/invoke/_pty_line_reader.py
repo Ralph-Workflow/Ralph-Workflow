@@ -367,6 +367,8 @@ class PtyLineReader:
         timeout_val = (
             self._policy.max_session_seconds
             if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+            else self._policy.no_progress_quiet_seconds
+            if fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
             else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
@@ -637,6 +639,7 @@ class PtyLineReader:
             corroborator=self._corroborate,
             process_monitor=process_monitor,
         )
+        watchdog.record_invocation_start()
 
         # Register the watchdog's workspace channel recorder as the
         # on-event callback on the WorkspaceMonitor so every file

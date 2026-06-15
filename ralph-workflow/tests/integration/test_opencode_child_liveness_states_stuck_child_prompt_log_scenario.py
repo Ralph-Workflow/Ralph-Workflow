@@ -61,6 +61,7 @@ class TestStuckChildPromptLogScenario:
             suspect_waiting_on_child_seconds=None,
             waiting_status_interval_seconds=100.0,
             max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+            no_progress_quiet_seconds=no_progress_ceiling,
         )
         clock = FakeClock(start=0.0)
         watchdog = IdleWatchdog(config, clock, corroborator=_os_descendant_corroborator)

@@ -319,6 +319,8 @@ def _run_inner_loop(
                 state.last_error is not None
                 and "all agents unavailable; waiting for cooldown expiry" in state.last_error
             )
+            if not is_all_unavailable:
+                ctx.last_waiting_state_phase = None
             try:
                 current_phase_str = str(state.phase)
                 if is_all_unavailable and ctx.last_waiting_state_phase != current_phase_str:

@@ -273,7 +273,11 @@ class TimeoutPolicy:
             raise ValueError(msg)
         limit = self.max_waiting_on_child_no_progress_seconds
         if limit is not None and self.no_progress_quiet_seconds > limit:
-            object.__setattr__(self, "no_progress_quiet_seconds", limit)
+            msg = (
+                "no_progress_quiet_seconds must be <= "
+                "max_waiting_on_child_no_progress_seconds"
+            )
+            raise ValueError(msg)
 
     def _validate_post_tool_result_progression(self) -> None:
         if self.post_tool_result_progression_seconds is None:

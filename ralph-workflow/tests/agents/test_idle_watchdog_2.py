@@ -67,7 +67,11 @@ def _make_watchdog(
         # Explicitly disable no-progress ceiling by default to avoid validation errors
         # when max_waiting is small (e.g. 20.0). Tests that specifically test the
         # no-progress ceiling should pass no_progress_ceiling explicitly.
+        # When no_progress_ceiling is set, also set no_progress_quiet_seconds to the
+        # same value so the validation constraint (no_progress_quiet_seconds <=
+        # max_waiting_on_child_no_progress_seconds) is satisfied.
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        no_progress_quiet_seconds=no_progress_ceiling,
     )
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock, listener, corroborator=corroborator), clock
@@ -429,6 +433,7 @@ def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies
         suspect_waiting_on_child_seconds=None,
         waiting_status_interval_seconds=1.0,
         max_waiting_on_child_no_progress_seconds=_NO_PROGRESS_CEILING,
+        no_progress_quiet_seconds=_NO_PROGRESS_CEILING,
     )
     clock = FakeClock(start=0.0)
     events: list[WaitingStatusEvent] = []
@@ -496,6 +501,7 @@ def test_no_progress_ceiling_adapts_when_corroboration_degrades() -> None:
         suspect_waiting_on_child_seconds=None,
         waiting_status_interval_seconds=100.0,
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        no_progress_quiet_seconds=no_progress_ceiling,
     )
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(config, clock, corroborator=_corroborator)
@@ -573,6 +579,7 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
         suspect_waiting_on_child_seconds=3.0,
         # status_interval=0.001 ensures PROGRESS also fires on T2.
         waiting_status_interval_seconds=0.001,
+        no_progress_quiet_seconds=_NO_PROGRESS_CEILING,
     )
     clock = FakeClock(start=0.0)
     events: list[WaitingStatusEvent] = []
@@ -646,6 +653,7 @@ def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
         idle_timeout_seconds=10.0,
         max_waiting_on_child_seconds=equal_ceiling,
         max_waiting_on_child_no_progress_seconds=equal_ceiling,
+        no_progress_quiet_seconds=equal_ceiling,
         suspect_waiting_on_child_seconds=None,
     )
     assert policy.max_waiting_on_child_no_progress_seconds == equal_ceiling

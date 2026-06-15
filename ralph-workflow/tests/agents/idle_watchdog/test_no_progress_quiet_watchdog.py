@@ -75,9 +75,9 @@ def test_watchdog_does_not_fire_no_progress_quiet_when_post_tool_result_fresh() 
 
     clock.advance(12.0)
 
-    # Record some MCP tool call activity at current time (12s)
-    watchdog.record_mcp_tool_call(now=12.0)
+    # Record post-tool-result activity at current time (12s)
+    watchdog.record_tool_result_activity()
 
-    # Evaluate: should not fire because MCP tool call is fresh (within TTL of 30s)
+    # Evaluate: should not fire because tool result activity resets idle baseline
     verdict = watchdog.evaluate(classify_quiet=_waiting)
     assert verdict == WatchdogVerdict.CONTINUE

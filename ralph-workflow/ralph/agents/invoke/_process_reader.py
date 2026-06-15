@@ -270,6 +270,8 @@ class _ProcessLineReader:
         timeout_val = (
             self._policy.max_session_seconds
             if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+            else self._policy.no_progress_quiet_seconds
+            if fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
             else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
