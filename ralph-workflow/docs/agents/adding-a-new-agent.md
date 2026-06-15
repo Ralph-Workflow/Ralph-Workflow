@@ -12,55 +12,58 @@ To add support for a new agent, register it using the `register_agent_support` f
 
 ### Headless Agent Example
 
-A headless agent runs non-interactively. You can register it by specifying the parser factory and strategy factory:
+A headless agent runs non-interactively. You can register it by specifying the transport, parser factory, strategy factory, and an agent registry:
 
 ```python
 from ralph.agents.registration import register_agent_support
-from ralph.agents.spec import AgentSpec
-from ralph.config.agent_config import AgentConfig
+from ralph.agents.parsers._template import ParserTemplateBase
+from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.config.enums import AgentTransport
+
+def my_parser_factory():
+    return MyParser()
+
+def my_strategy_factory():
+    return MyStrategy()
+
+my_registry = AgentRegistry()
 
 register_agent_support(
     name="my-headless-agent",
-    spec=AgentSpec(
-        name="my-headless-agent",
-        interactive=False,
-        requires_pty=False,
-        transport=AgentTransport.GENERIC,
-    ),
-    parser_factory=MyParser,
-    strategy_factory=MyStrategy,
-    config=AgentConfig(
-        cmd="my-agent-binary",
-        transport=AgentTransport.GENERIC,
-    ),
+    transport=AgentTransport.GENERIC,
+    parser_factory=my_parser_factory,
+    strategy_factory=my_strategy_factory,
+    agent_registry=my_registry,
+    cmd="my-agent-binary",
 )
 ```
 
 ### Interactive Agent Example
 
-An interactive agent requires a pseudo-terminal (PTY) to handle user interaction:
+An interactive agent requires a pseudo-terminal (PTY) to handle user interaction. Set `interactive=True` and use a PTY-capable transport:
 
 ```python
 from ralph.agents.registration import register_agent_support
-from ralph.agents.spec import AgentSpec
-from ralph.config.agent_config import AgentConfig
+from ralph.agents.parsers._template import ParserTemplateBase
+from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.config.enums import AgentTransport
+
+def my_parser_factory():
+    return MyParser()
+
+def my_strategy_factory():
+    return MyStrategy()
+
+my_registry = AgentRegistry()
 
 register_agent_support(
     name="my-interactive-agent",
-    spec=AgentSpec(
-        name="my-interactive-agent",
-        interactive=True,
-        requires_pty=True,
-        transport=AgentTransport.CLAUDE_INTERACTIVE,
-    ),
-    parser_factory=MyParser,
-    strategy_factory=MyStrategy,
-    config=AgentConfig(
-        cmd="my-agent-binary",
-        transport=AgentTransport.CLAUDE_INTERACTIVE,
-    ),
+    transport=AgentTransport.CLAUDE_INTERACTIVE,
+    parser_factory=my_parser_factory,
+    strategy_factory=my_strategy_factory,
+    agent_registry=my_registry,
+    interactive=True,
+    cmd="my-agent-binary",
 )
 ```
 
@@ -87,10 +90,10 @@ default_catalog().remove("my-agent")
 # 2. Re-register the agent with new parameters
 register_agent_support(
     name="my-agent",
-    spec=new_spec,
+    transport=AgentTransport.GENERIC,
     parser_factory=new_parser,
     strategy_factory=new_strategy,
-    config=new_config,
+    agent_registry=my_registry,
 )
 ```
 
@@ -133,7 +136,7 @@ del registry.agents["my-agent"]
 
 ## Common mistakes
 
-* **Forgetting `interactive=True`**: Setting `requires_pty=True` in `AgentSpec` without setting `interactive=True` will raise a `ValueError`.
+* **Forgetting `interactive=True`**: Interactive agents require `interactive=True` to enable session continuation.
 * **Not removing before re-registering**: Calling `default_catalog().add()` or `register_agent_support()` with a name that is already registered in the catalog will raise a `ValueError`.
 * **Calling non-existent unregister methods**: `AgentRegistry` does not expose an `.unregister()` method; use `del registry.agents[name]` instead.
 * **Adding a built-in agent name**: Attempting to register a custom agent under a built-in name can cause namespace clashes.

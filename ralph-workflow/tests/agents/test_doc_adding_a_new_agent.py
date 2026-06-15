@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import ast
+import inspect
 import re
 from pathlib import Path
 
 import pytest
+
+from ralph.agents.registration import register_agent_support
 
 
 def test_doc_exists_and_non_empty() -> None:
@@ -20,21 +23,17 @@ def test_workflow_sections_present_in_order() -> None:
 
     sections = re.findall(r"^##\s+(.*)$", doc_content, re.MULTILINE)
 
-    # Ensure our target workflow sections are present
     assert any("Add" in s for s in sections), "Add section must be present"
     assert any("Update" in s for s in sections), "Update section must be present"
     assert any("Remove" in s for s in sections), "Remove section must be present"
 
-    # Check order: Add before Update before Remove
     add_idx = next(i for i, s in enumerate(sections) if "Add" in s)
     update_idx = next(i for i, s in enumerate(sections) if "Update" in s)
     remove_idx = next(i for i, s in enumerate(sections) if "Remove" in s)
 
     assert add_idx < update_idx < remove_idx, "Sections must be in order: Add -> Update -> Remove"
 
-    # Split by headings to check each has a non-empty paragraph
     parts = re.split(r"^##\s+.*$", doc_content, flags=re.MULTILINE)
-    # The first part is top matter; parts 1, 2, 3 correspond to the headings
     for part in parts[1:4]:
         paragraphs = [p.strip() for p in part.split("\n\n") if p.strip()]
         assert len(paragraphs) > 0, "Each section must contain at least one non-empty paragraph"
@@ -43,7 +42,6 @@ def test_workflow_sections_present_in_order() -> None:
 def test_examples_present_and_compilable() -> None:
     doc_content = Path("docs/agents/adding-a-new-agent.md").read_text(encoding="utf-8")
 
-    # Find all python blocks
     blocks = re.findall(r"```python\n(.*?)\n```", doc_content, re.DOTALL)
     assert len(blocks) >= 2, "Must contain at least 2 python code examples"
 
@@ -51,8 +49,6 @@ def test_examples_present_and_compilable() -> None:
     interactive_ok = False
 
     for block in blocks:
-        # Check compilability using ast.parse (replacing '...' placeholder
-        # to make it valid python if used)
         code = (
             block.replace("...", "pass")
             .replace("new_spec", "None")
@@ -65,7 +61,6 @@ def test_examples_present_and_compilable() -> None:
         except SyntaxError as e:
             pytest.fail(f"Code example failed to compile:\n{block}\nError: {e}")
 
-        # Check headless vs interactive signatures
         if "requires_pty=False" in block or "AgentTransport.GENERIC" in block:
             headless_ok = True
         if "requires_pty=True" in block or "AgentTransport.CLAUDE_INTERACTIVE" in block:
@@ -75,15 +70,34 @@ def test_examples_present_and_compilable() -> None:
     assert interactive_ok, "Must contain an interactive agent example"
 
 
+def test_register_agent_support_examples_use_valid_kwargs() -> None:
+    """Assert register_agent_support examples use real kwargs, not unsupported spec= or config=."""
+    sig = inspect.signature(register_agent_support)
+    valid_kwargs = set(sig.parameters.keys())
+
+    doc_content = Path("docs/agents/adding-a-new-agent.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"```python\n(.*?)\n```", doc_content, re.DOTALL)
+
+    for block in blocks:
+        if "register_agent_support" not in block:
+            continue
+
+        unsupported = ["spec=", "config="]
+        for bad in unsupported:
+            if bad in block:
+                pytest.fail(
+                    f"register_agent_support example contains unsupported kwarg '{bad}'. "
+                    f"Valid kwargs are: {sorted(valid_kwargs)}"
+                )
+
+
 def test_backlink_from_architecture_doc() -> None:
     arch_path = Path("docs/agents/architecture.md")
     assert arch_path.exists()
     arch_content = arch_path.read_text(encoding="utf-8")
 
-    # Must contain ## Adding a new agent heading
     assert "## Adding a new agent" in arch_content
 
-    # Must contain a link to adding-a-new-agent.md in that section
     parts = arch_content.split("## Adding a new agent")
     assert len(parts) > 1
     section_content = parts[1]
@@ -97,10 +111,8 @@ def test_discoverability_link_from_contributing_doc() -> None:
     assert contrib_path.exists()
     contrib_content = contrib_path.read_text(encoding="utf-8")
 
-    # Must contain ## How to add a new agent heading
     assert "## How to add a new agent" in contrib_content
 
-    # Must contain a link to adding-a-new-agent.md in that section
     parts = contrib_content.split("## How to add a new agent")
     assert len(parts) > 1
     section_content = parts[1]
