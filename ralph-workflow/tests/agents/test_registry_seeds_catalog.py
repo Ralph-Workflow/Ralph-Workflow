@@ -67,8 +67,8 @@ def test_registry_seeds_catalog() -> None:
     assert agy_support is not None
     assert agy_support.spec.requires_pty is True
 
-    # (d) the six built-in names are present in default_catalog().list_agents() and registry.agents
-    builtins = {"claude", "claude-headless", "codex", "opencode", "nanocoder", "agy"}
+    # (d) the seven built-in names are present in the catalog and registry
+    builtins = {"claude", "claude-headless", "codex", "opencode", "nanocoder", "agy", "pi"}
     catalog_agents = set(catalog.list_agents())
     for name in builtins:
         assert name in catalog_agents

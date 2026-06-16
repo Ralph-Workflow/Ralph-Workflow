@@ -13,7 +13,7 @@ Ralph Workflow is a free, open-source composable loop framework that runs the co
 
 *10,700+ lifetime PyPI downloads · 4,000+ in the last 30 days (pepy.tech, 2026-06-12).*
 
-Run the coding agents you already use — Claude Code, Codex, OpenCode, Nanocoder, and Google Anti Gravity — on your own machine. Hand it a spec, walk away, come back to runnable, tested software.
+Run the coding agents you already use — Claude Code, Codex, OpenCode, Nanocoder, Google Anti Gravity, and Pi — on your own machine. Hand it a spec, walk away, come back to runnable, tested software.
 
 ## MCP server trust boundary
 
@@ -82,7 +82,7 @@ The name comes from the original Ralph loop: repeat a strong prompt until the mo
 | One agent, one chat session | Multiple agents routed by phase (planning → dev → review → fix) |
 | Copy-paste between tools | Agents hand off work through the repo, not context stuffing |
 | Hit context limits halfway | Phase-based summaries + checkpoint files keep context tight |
-| Locked to one vendor | Claude + Codex + OpenCode + Nanocoder + AGY in the same pipeline — your choice |
+| Locked to one vendor | Claude + Codex + OpenCode + Nanocoder + AGY + Pi in the same pipeline — your choice |
 | "Look at the diff" | Runnable, tested software with integration checks |
 
 [See how Ralph Workflow compares to 19 other autonomous coding tools →](https://ralphworkflow.com/compare)

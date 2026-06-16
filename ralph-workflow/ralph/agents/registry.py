@@ -23,6 +23,7 @@ from ralph.config.models import AgentConfig
 _MIN_OPENCODE_SEGMENTS = 2
 _MIN_NANOCODER_PROVIDER_SEGMENTS = 2
 _MIN_AGY_SEGMENTS = 2
+_MIN_PI_SEGMENTS = 2
 _CLAUDE_MODEL_SEGMENTS = 2
 
 if TYPE_CHECKING:
@@ -274,6 +275,25 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
             "can_commit": True,
         }
         resolved = base_config.model_copy(update=agy_overrides)
+    elif name.startswith("pi/"):
+        if len(segments) < _MIN_PI_SEGMENTS or not name.removeprefix("pi/"):
+            return None
+
+        base_config = deepcopy(builtin_agents()["pi"])
+        # Pi's documented --model pattern is `provider/id` (e.g.
+        # `anthropic/claude-sonnet-4-20250514`) with an optional
+        # `:<thinking>` suffix (e.g. `:high`).  The full suffix after
+        # `pi/` MUST be preserved verbatim, so we use
+        # ``name.removeprefix('pi/')`` (NOT ``segments[1]``) which would
+        # drop everything after the first `/` inside the model id.
+        # https://pi.dev/docs/latest/usage: --model "Model pattern or ID;
+        # supports provider/id and optional :<thinking>".
+        model_id = name.removeprefix("pi/")
+        pi_overrides: dict[str, object] = {
+            "model_flag": f"--model {shlex.quote(model_id)}",
+            "can_commit": True,
+        }
+        resolved = base_config.model_copy(update=pi_overrides)
     elif len(segments) == _CLAUDE_MODEL_SEGMENTS and segments[1]:
         if name.startswith("ccs/"):
             resolved = _resolve_dynamic_ccs_agent(name, ccs_defaults)

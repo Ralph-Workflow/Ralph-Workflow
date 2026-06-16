@@ -336,6 +336,43 @@ class DefaultRuntimeResolver:
         )
 
 
+class PiRuntimeResolver:
+    """RuntimeResolver for AgentTransport.PI.
+
+    Pi has no documented CLI MCP wiring path
+    (https://pi.dev/docs/latest/usage: "It intentionally does not include
+    built-in MCP, sub-agents, permission popups, plan mode, to-dos, or
+    background bash").  The resolver therefore fails closed on any
+    MCP endpoint, mirroring the DefaultRuntimeResolver pattern for
+    AgentTransport.GENERIC.  When no MCP endpoint is provided, returns a
+    minimal runtime with no server_env and no mcp_endpoint.
+    """
+
+    def resolve(
+        self,
+        config: AgentConfig,
+        extra_env: dict[str, str] | None,
+        workspace_path: Path | None,
+        *,
+        base_env: Mapping[str, str] | None = None,
+        system_prompt_file: str | None = None,
+        unsafe_mode: bool = False,
+    ) -> ResolvedInvocationRuntime:
+        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
+        runtime_env = dict(extra_env or {})
+        endpoint = _get_endpoint(runtime_env, _env)
+
+        if endpoint is not None:
+            msg = "Agent transport 'pi' does not declare how to receive Ralph MCP wiring"
+            raise UnsupportedMcpTransportError(msg)
+
+        return ResolvedInvocationRuntime(
+            agent_env=runtime_env or None,
+            server_env=None,
+            mcp_endpoint=None,
+        )
+
+
 RUNTIME_RESOLVERS: dict[AgentTransport, type[RuntimeResolver]] = {
     AgentTransport.OPENCODE: OpencodeRuntimeResolver,
     AgentTransport.NANOCODER: NanocoderRuntimeResolver,
@@ -343,6 +380,7 @@ RUNTIME_RESOLVERS: dict[AgentTransport, type[RuntimeResolver]] = {
     AgentTransport.CLAUDE: ClaudeRuntimeResolver,
     AgentTransport.CLAUDE_INTERACTIVE: ClaudeRuntimeResolver,
     AgentTransport.AGY: AgyRuntimeResolver,
+    AgentTransport.PI: PiRuntimeResolver,
     AgentTransport.GENERIC: DefaultRuntimeResolver,
 }
 
@@ -354,5 +392,6 @@ __all__ = [
     "DefaultRuntimeResolver",
     "NanocoderRuntimeResolver",
     "OpencodeRuntimeResolver",
+    "PiRuntimeResolver",
     "RuntimeResolver",
 ]

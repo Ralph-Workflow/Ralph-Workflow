@@ -12,6 +12,8 @@ class JsonParserType(StrEnum):
         GEMINI: Parser for Gemini's NDJSON streaming format
         OPENCODE: Parser for OpenCode's NDJSON streaming format
         GENERIC: Generic NDJSON parser for other agents
+        PI: Parser for Pi AgentSessionEvent NDJSON streaming format
+            (https://pi.dev/docs/latest/json).
     """
 
     CLAUDE = "claude"
@@ -19,3 +21,4 @@ class JsonParserType(StrEnum):
     GEMINI = "gemini"
     OPENCODE = "opencode"
     GENERIC = "generic"
+    PI = "pi"

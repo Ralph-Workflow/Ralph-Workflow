@@ -109,3 +109,23 @@ def test_unregister_not_in_catalog() -> None:
     registry.unregister(name)
     assert name not in registry.agents
     assert default_catalog().get(name) is None
+
+
+def test_pi_dynamic_alias_preserves_provider_id_suffix() -> None:
+    """`pi/<model>` dynamic alias must preserve the full provider/id suffix.
+
+    Pi's documented model pattern is `provider/id` (e.g. `anthropic/claude-sonnet-4-20250514`)
+    plus an optional `:<thinking>` suffix (e.g. `sonnet:high`).  The dynamic
+    alias in ``AgentRegistry._resolve_dynamic_agent`` must use
+    ``name.removeprefix('pi/')`` (NOT ``segments[1]``) so the multi-segment
+    suffix round-trips intact into the ``--model <pattern>`` flag value.
+    """
+    registry = AgentRegistry()
+
+    config = registry.get("pi/anthropic/claude-sonnet-4-20250514")
+    assert config is not None, "pi/anthropic/claude-sonnet-4-20250514 must resolve"
+    assert config.model_flag == "--model anthropic/claude-sonnet-4-20250514"
+
+    config_with_thinking = registry.get("pi/anthropic/claude-sonnet-4-20250514:high")
+    assert config_with_thinking is not None
+    assert config_with_thinking.model_flag == "--model anthropic/claude-sonnet-4-20250514:high"

@@ -441,6 +441,30 @@ class AgyCommandBuilder(ConfigurableCommandBuilder):
         super().__init__(self.SPEC)
 
 
+class PiCommandBuilder(ConfigurableCommandBuilder):
+    """CommandBuilder for AgentTransport.PI.
+
+    The headless invocation is ``pi --mode json <prompt>`` per
+    https://pi.dev/docs/latest/usage.  ``--approve`` is the documented
+    non-interactive project-trust override (``-a`` short form).  The
+    prompt is a positional argument.
+    """
+
+    SPEC = CommandBuilderSpec(
+        base_argv=("pi",),
+        format_flag=None,
+        output_flag="--mode json",
+        yolo_flag="--approve",
+        model_flag_template="--model {}",
+        positional_prompt=True,
+        print_flag=None,
+        extra_flags_before_prompt=(),
+    )
+
+    def __init__(self) -> None:
+        super().__init__(self.SPEC)
+
+
 class DefaultCommandBuilder:
     """Default CommandBuilder for AgentTransport.CLAUDE and AgentTransport.GENERIC.
 
@@ -494,6 +518,7 @@ COMMAND_BUILDERS: dict[AgentTransport, type[CommandBuilder]] = {
     AgentTransport.CODEX: CodexCommandBuilder,
     AgentTransport.CLAUDE_INTERACTIVE: ClaudeInteractiveCommandBuilder,
     AgentTransport.AGY: AgyCommandBuilder,
+    AgentTransport.PI: PiCommandBuilder,
     AgentTransport.CLAUDE: DefaultCommandBuilder,
     AgentTransport.GENERIC: DefaultCommandBuilder,
 }
@@ -507,4 +532,5 @@ __all__ = [
     "DefaultCommandBuilder",
     "NanocoderCommandBuilder",
     "OpencodeCommandBuilder",
+    "PiCommandBuilder",
 ]

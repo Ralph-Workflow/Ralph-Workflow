@@ -7,8 +7,8 @@ Main entry points:
 
 - ``get_parser(parser_type)`` — factory function; maps a parser type name string
   (``'claude'``, ``'claude_interactive'``, ``'codex'``, ``'gemini'``, ``'opencode'``,
-  ``'generic'``) to the corresponding parser instance. Raises ``ValueError`` for
-  unknown names.
+  ``'pi'``, ``'generic'``) to the corresponding parser instance. Raises
+  ``ValueError`` for unknown names.
 - ``AgentParser`` — the protocol that all parsers implement; defines ``parse``.
 - ``AgentOutputLine`` — structured parse result (``type``, ``content``, ``raw``,
   ``metadata``).
@@ -17,6 +17,7 @@ Main entry points:
 - ``CodexParser`` — parses Codex per-event JSON output.
 - ``GeminiParser`` — parses Gemini output.
 - ``OpenCodeParser`` — parses OpenCode NDJSON stream output.
+- ``PiParser`` — parses pi.dev AgentSessionEvent NDJSON stream output.
 - ``GenericParser`` — fallback parser for unknown or plain-text agent output.
 
 Parser selection is driven by ``AgentConfig.json_parser`` (a ``JsonParserType`` enum
@@ -47,6 +48,7 @@ from .codex import CodexParser
 from .gemini import GeminiParser
 from .generic import GenericParser
 from .opencode import OpenCodeParser
+from .pi import PiParser
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -65,6 +67,7 @@ __all__ = [
     "GenericParser",
     "NdjsonParserBase",
     "OpenCodeParser",
+    "PiParser",
     "resolve_parser_key",
 ]
 

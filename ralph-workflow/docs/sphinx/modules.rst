@@ -1404,6 +1404,13 @@ ralph.agents.parsers.opencode
    :members:
    :show-inheritance:
 
+ralph.agents.parsers.pi
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.parsers.pi
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers.claude_interactive
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

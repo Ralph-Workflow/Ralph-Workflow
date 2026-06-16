@@ -14,6 +14,11 @@ class AgentTransport(StrEnum):
         NANOCODER: Nanocoder CLI compatible invocation/MCP transport.
         GENERIC: No special transport support.
         AGY: Google Anti Gravity compatible invocation/MCP transport.
+        PI: Pi coding agent (pi.dev) compatible invocation/MCP transport. The
+            headless BuiltinAgentSpec uses `pi --mode json <prompt>` per
+            https://pi.dev/docs/latest/usage; pi has no documented CLI MCP
+            wiring path so the runtime resolver fails closed on any MCP
+            endpoint.
     """
 
     CLAUDE = "claude"
@@ -23,3 +28,4 @@ class AgentTransport(StrEnum):
     NANOCODER = "nanocoder"
     GENERIC = "generic"
     AGY = "agy"
+    PI = "pi"

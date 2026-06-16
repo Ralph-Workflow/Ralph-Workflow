@@ -37,6 +37,7 @@ from ralph.agents.parsers.codex import CodexParser
 from ralph.agents.parsers.gemini import GeminiParser
 from ralph.agents.parsers.generic import GenericParser
 from ralph.agents.parsers.opencode import OpenCodeParser
+from ralph.agents.parsers.pi import PiParser
 from ralph.config.enums import AgentTransport
 
 if TYPE_CHECKING:
@@ -140,6 +141,7 @@ _DEFAULT_BUILTIN_PARSER_TYPES: dict[
     "codex": (CodexParser, AgentTransport.CODEX, GenericExecutionStrategy),
     "gemini": (GeminiParser, AgentTransport.GENERIC, GenericExecutionStrategy),
     "opencode": (OpenCodeParser, AgentTransport.OPENCODE, GenericExecutionStrategy),
+    "pi": (PiParser, AgentTransport.PI, GenericExecutionStrategy),
     "generic": (GenericParser, AgentTransport.GENERIC, GenericExecutionStrategy),
 }
 
@@ -176,6 +178,7 @@ def _default_strategy_factories() -> dict[AgentTransport, StrategyFactory]:
         AgentTransport.AGY: _make_agy_strategy,
         AgentTransport.CODEX: GenericExecutionStrategy,
         AgentTransport.NANOCODER: GenericExecutionStrategy,
+        AgentTransport.PI: GenericExecutionStrategy,
         AgentTransport.GENERIC: GenericExecutionStrategy,
     }
 
@@ -367,17 +370,17 @@ class AgentCatalog:
 
 
 def _seed_default_catalog(catalog: AgentCatalog) -> None:
-    """Populate the default catalog with the 6 built-in supports and 7 default strategies.
+    """Populate the default catalog with the 7 built-in supports and 8 default strategies.
 
     Idempotent: calling on a catalog that is already seeded is a no-op.
 
     Seeding populates BOTH the parser-type-keyed ``_state.parsers`` dict
     (for runtime ``get_parser(parser_type)`` lookups by parser type key,
     e.g. ``claude`` / ``claude_interactive`` / ``codex`` / ``gemini`` /
-    ``opencode`` / ``generic``) AND the agent-name-keyed ``_entries`` /
-    ``_by_command`` dicts (for catalog API lookups by agent name, e.g.
-    ``claude`` / ``claude-headless`` / ``codex`` / ``opencode`` /
-    ``nanocoder`` / ``agy``).  This makes
+    ``opencode`` / ``pi`` / ``generic``) AND the agent-name-keyed
+    ``_entries`` / ``_by_command`` dicts (for catalog API lookups by
+    agent name, e.g. ``claude`` / ``claude-headless`` / ``codex`` /
+    ``opencode`` / ``nanocoder`` / ``agy`` / ``pi``).  This makes
     :meth:`AgentCatalog.get` / :meth:`AgentCatalog.get_parser` /
     :meth:`AgentCatalog.get_strategy` resolve built-in names through
     the same public API that custom registrations use.

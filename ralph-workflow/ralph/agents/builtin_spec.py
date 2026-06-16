@@ -1,10 +1,10 @@
-"""Single declarative source for the 6 built-in agent declarations.
+"""Single declarative source for the 7 built-in agent declarations.
 
 The :class:`BuiltinAgentSpec` dataclass mirrors the kwargs accepted by
 :func:`ralph.agents.registration.register_agent_support` and the legacy
-:class:`AgentSupport.from_registration_kwargs` so the 6 built-in entries
+:class:`AgentSupport.from_registration_kwargs` so the 7 built-in entries
 in :mod:`ralph.agents.builtin` can be expressed as a single declarative
-row per agent, instead of repeating the kwargs across six function calls.
+row per agent, instead of repeating the kwargs across seven function calls.
 
 Use :meth:`BuiltinAgentSpec.to_support` to materialize the dataclass into
 an :class:`AgentSupport` instance.  The resulting ``is_builtin`` flag is

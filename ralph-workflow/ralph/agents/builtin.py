@@ -1,4 +1,4 @@
-"""Single declarative source of truth for the six built-in agents."""
+"""Single declarative source of truth for the seven built-in agents."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
 from ralph.agents.parsers.generic import GenericParser
 from ralph.agents.parsers.opencode import OpenCodeParser
+from ralph.agents.parsers.pi import PiParser
 from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
@@ -90,6 +91,18 @@ _BUILTIN_AGENT_SUPPORTS: tuple[AgentSupport, ...] = (
         interactive=True,
         no_default_session_flag=True,
     ).to_support("agy"),
+    BuiltinAgentSpec(
+        transport=AgentTransport.PI,
+        parser_factory=PiParser,
+        strategy_factory=GenericExecutionStrategy,
+        json_parser=JsonParserType.PI,
+        cmd="pi",
+        output_flag="--mode json",
+        yolo_flag="--approve",
+        session_flag="--session {}",
+        can_commit=True,
+        display_name="Pi",
+    ).to_support("pi"),
 )
 
 

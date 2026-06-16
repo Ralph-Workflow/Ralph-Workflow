@@ -13,8 +13,8 @@ execution strategy from the transport and applies the default
 
 - `ralph-workflow` is installed (`make dev` from `ralph-workflow/`).
 - The agent name is unique in your `AgentCatalog` (custom agents cannot
-  reuse the six built-in parser keys: `claude`, `claude-headless`,
-  `codex`, `opencode`, `nanocoder`, `agy`).
+  reuse the seven built-in parser keys: `claude`, `claude-headless`,
+  `codex`, `opencode`, `nanocoder`, `agy`, `pi`).
 
 ## Steps
 
