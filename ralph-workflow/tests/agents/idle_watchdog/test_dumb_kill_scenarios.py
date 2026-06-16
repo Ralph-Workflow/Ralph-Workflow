@@ -597,23 +597,31 @@ def test_no_progress_quiet_still_fires_after_dumb_kill_floor_when_genuinely_stuc
     live process monitor). The floor is additive, not a
     replacement.
 
-    Setup: corroborator reports
-    ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (so the no-progress path
-    is active), NO process monitor, ALL channels stale,
-    invocation_elapsed well past the floor, classify_quiet
+    Setup: corroborator returns ``alive_by=None`` (the
+    corroborator cannot confirm liveness — i.e. the child is
+    TRULY dead or missing). NO process monitor, ALL channels
+    stale, invocation_elapsed well past the floor, classify_quiet
     returns WAITING_ON_CHILD (so the no_progress_quiet
     evaluator runs). The classifier returns STUCK and the gate
     allows FIRE.
+
+    NOTE: per the wt-012 gate refinement, when the corroborator
+    reports ANY alive_by signal (e.g. ``OS_DESCENDANT_ONLY_STALE_PROGRESS``)
+    the watchdog DEFERS the fire and relies on the cumulative
+    ``CHILDREN_PERSIST_TOO_LONG`` ceiling (default 600s) as the
+    upper bound. This test exercises the OTHER branch — the
+    "child is truly dead" path where the corroborator cannot
+    confirm liveness (alive_by is None).
 
     Assertions:
       - verdict is FIRE (not CONTINUE) past the floor.
       - last_fire_reason is NO_PROGRESS_QUIET.
     """
-    def _os_desc_only_corroborator() -> CorroborationSnapshot:
+    def _dead_child_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
-            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
-            scoped_child_active=True,
-            scoped_child_count=1,
+            alive_by=None,
+            scoped_child_active=False,
+            scoped_child_count=0,
         )
 
     wd, clock = _make_watchdog(
@@ -625,7 +633,7 @@ def test_no_progress_quiet_still_fires_after_dumb_kill_floor_when_genuinely_stuc
             no_progress_quiet_seconds=120.0,
             no_progress_quiet_minimum_invocation_seconds=120.0,
         ),
-        corroborator=_os_desc_only_corroborator,
+        corroborator=_dead_child_corroborator,
     )
     wd.record_invocation_start()
     wd.record_activity()
@@ -683,3 +691,187 @@ def _make_policy_with_floor(
         "waiting_status_interval_seconds": 30.0,
     }
     return TimeoutPolicy(**kwargs)
+
+
+# ---------------------------------------------------------------------------
+# wt-012 gate-refinement tests
+# ---------------------------------------------------------------------------
+# The wt-012 gate refinement in ``IdleWatchdog._is_no_progress_quiet``
+# defers the ``NO_PROGRESS_QUIET`` fire when the corroborator reports
+# ANY alive_by signal (the child is alive per
+# ``AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS``,
+# ``CPU_IDLE_WHILE_ALIVE``, ``LOG_STALE_WHILE_ALIVE``,
+# ``FRESH_HEARTBEAT_ONLY``, or ``STALE_LABEL_ONLY``). NO_PROGRESS_QUIET
+# fires ONLY when the corroborator returns ``alive_by=None`` (no live
+# signal at all -- the child is truly dead or missing) AND no fresh
+# channel evidence is present. When ``alive_by`` is None, the
+# conservative policy preserves the old fire path so legacy
+# construction sites that do not set the signal continue to behave
+# identically.
+
+
+def test_no_progress_quiet_does_not_fire_when_corroborator_reports_live_child() -> None:
+    """``_is_no_progress_quiet`` defers the fire when the corroborator
+    reports any ``alive_by`` signal.
+
+    Per the wt-012 gate refinement, when ``corroboration.alive_by``
+    is not ``None`` (e.g. ``OS_DESCENDANT_ONLY_STALE_PROGRESS``),
+    ``_is_no_progress_quiet`` returns ``False`` -- the watchdog
+    defers the fire and the cumulative ``CHILDREN_PERSIST_TOO_LONG``
+    ceiling (default 600s) is the correct upper bound for the live-
+    child stall, not the 120s ``NO_PROGRESS_QUIET`` fire.
+
+    The conservative policy: the new test exercises the NEW
+    deferral behavior at idle_elapsed=151s (the user's exact log
+    scenario); the watchdog must NOT fire ``NO_PROGRESS_QUIET`` even
+    though the no_progress_quiet ceiling (120s) is past.
+
+    Setup: ``no_progress_quiet_seconds=120.0``,
+    ``no_progress_quiet_minimum_invocation_seconds=120.0`` (dumb-kill
+    floor enabled), corroborator returns
+    ``OS_DESCENDANT_ONLY_STALE_PROGRESS``, clock advances to 151s
+    (past the floor AND past the ceiling), classify_quiet returns
+    ``WAITING_ON_CHILD`` (so the no_progress_quiet evaluator runs).
+
+    Assertions:
+      - verdict is ``WAITING_ON_CHILD`` (NOT ``FIRE``) -- the
+        gate refinement defers the fire at
+        ``_is_no_progress_quiet`` via the early-return path
+        ``_evaluate_no_progress_quiet`` returns ``None``.
+      - ``last_fire_reason`` is ``None`` (NO fire happened).
+    """
+    def _os_desc_only_corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
+    wd, clock = _make_watchdog(
+        _make_policy_with_floor(
+            idle_timeout=300.0,
+            max_waiting=600.0,
+            os_descendant_only_ceiling=300.0,
+            activity_ttl=30.0,
+            no_progress_quiet_seconds=120.0,
+            no_progress_quiet_minimum_invocation_seconds=120.0,
+        ),
+        corroborator=_os_desc_only_corroborator,
+    )
+    wd.record_invocation_start()
+    wd.record_activity()
+
+    # Advance past BOTH the dumb-kill floor (120s) AND the
+    # no_progress_quiet ceiling (120s). The floor has elapsed, the
+    # ceiling is reached, but the corroborator reports a LIVE child
+    # (``OS_DESCENDANT_ONLY_STALE_PROGRESS``). The new gate refinement
+    # MUST defer the fire.
+    clock.advance(151.0)
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    # The watchdog is in the active branch (idle_timeout=300s, idle_elapsed=151s).
+    # The no_progress_quiet check DEFERRED the fire (alive_by is not None),
+    # so the watchdog returns CONTINUE (NOT FIRE). The cumulative ceiling
+    # (CHILDREN_PERSIST_TOO_LONG at 600s) is the upper bound for the
+    # live-child stall, not NO_PROGRESS_QUIET at 120s.
+    assert verdict != WatchdogVerdict.FIRE, (
+        f"watchdog must NOT fire NO_PROGRESS_QUIET when the corroborator"
+        f" reports a live child past the no_progress_quiet ceiling, got {verdict}"
+    )
+    assert wd.last_fire_reason is None, (
+        f"last_fire_reason must be None (NO fire happened -- the gate"
+        f" refinement deferred), got {wd.last_fire_reason}"
+    )
+
+
+def test_cumulative_ceiling_remains_upper_bound_for_live_child_stalls() -> None:
+    """The cumulative ``CHILDREN_PERSIST_TOO_LONG`` ceiling (default 600s)
+    is the upper bound for live-child stalls, not the 120s
+    ``NO_PROGRESS_QUIET`` fire.
+
+    The wt-012 gate refinement defers ``NO_PROGRESS_QUIET`` when
+    the corroborator reports a live child. The cumulative ceiling
+    is still the upper bound: the watchdog will fire
+    ``CHILDREN_PERSIST_TOO_LONG`` (NOT ``NO_PROGRESS_QUIET``) when
+    the cumulative total reaches the ceiling.
+
+    Setup: ``no_progress_quiet_seconds=120.0`` (would have fired
+    NO_PROGRESS_QUIET at 120s under the OLD behavior),
+    ``max_waiting_on_child_seconds=600.0`` (the cumulative
+    ceiling), corroborator reports
+    ``OS_DESCENDANT_ONLY_STALE_PROGRESS``, the watchdog enters
+    WAITING_ON_CHILD via classify_quiet, then we advance the clock
+    past the cumulative ceiling (600s of WAITING_ON_CHILD time).
+
+    Assertions:
+      - While cumulative is under the ceiling (590s of waiting):
+        verdict is ``WAITING_ON_CHILD`` (NOT FIRE).
+      - Once cumulative reaches the ceiling (>= 600s of waiting):
+        verdict is ``FIRE`` with
+        ``last_fire_reason=CHILDREN_PERSIST_TOO_LONG`` (NOT
+        ``NO_PROGRESS_QUIET`` -- the gate refinement defers
+        NO_PROGRESS_QUIET when alive_by is not None).
+    """
+    def _os_desc_only_corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
+    wd, clock = _make_watchdog(
+        _make_policy_with_floor(
+            idle_timeout=10.0,
+            max_waiting=600.0,
+            os_descendant_only_ceiling=300.0,
+            activity_ttl=30.0,
+            no_progress_quiet_seconds=120.0,
+            no_progress_quiet_minimum_invocation_seconds=120.0,
+        ),
+        corroborator=_os_desc_only_corroborator,
+    )
+    wd.record_invocation_start()
+    wd.record_activity()
+
+    # Enter the WAITING_ON_CHILD branch via the active-branch exit
+    # (idle_timeout=10s). The first evaluate advances to 11s and
+    # transitions the watchdog into WAITING_ON_CHILD.
+    clock.advance(11.0)
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    assert verdict == WatchdogVerdict.WAITING_ON_CHILD, (
+        f"watchdog must enter WAITING_ON_CHILD at idle_elapsed=11s, got {verdict}"
+    )
+    assert wd.last_fire_reason is None, (
+        f"last_fire_reason must be None on entry to WAITING_ON_CHILD, got {wd.last_fire_reason}"
+    )
+
+    # Under the os_descendant_only effective ceiling: 290s of waiting
+    # time (well under the 300s effective ceiling for an
+    # OS_DESCENDANT_ONLY child). Multiple short evaluate ticks are
+    # used because the cumulative math only counts WAITING_ON_CHILD
+    # time across evaluate() calls.
+    for _ in range(29):
+        clock.advance(10.0)
+        verdict = wd.evaluate(classify_quiet=_waiting)
+    # 29 * 10s = 290s of waiting, under the 300s effective ceiling.
+    # Should NOT fire (cumulative is below the effective ceiling).
+    assert verdict != WatchdogVerdict.FIRE, (
+        f"watchdog must NOT fire at cumulative=290s of waiting (under"
+        f" the 300s os_descendant_only ceiling), got {verdict}"
+    )
+    assert wd.last_fire_reason is None, (
+        f"last_fire_reason must be None at cumulative=290s, got {wd.last_fire_reason}"
+    )
+
+    # Past the effective ceiling: 1 more 10s tick brings cumulative
+    # to >= 300s of waiting. The watchdog must fire
+    # CHILDREN_PERSIST_TOO_LONG (NOT NO_PROGRESS_QUIET).
+    clock.advance(10.0)
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"watchdog must FIRE once cumulative waiting reaches the 300s"
+        f" os_descendant_only ceiling, got {verdict}"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG, (
+        f"last_fire_reason must be CHILDREN_PERSIST_TOO_LONG (cumulative"
+        f" ceiling is the upper bound for live-child stalls), got {wd.last_fire_reason}"
+    )

@@ -158,6 +158,216 @@ def _assert_two_state_invariant() -> None:
 
 _assert_two_state_invariant()
 
+
+# ---------------------------------------------------------------------------
+# Never-exit invariant (locked at import time)
+# ---------------------------------------------------------------------------
+#
+# The pipeline NEVER exits because of agent unavailability. This is
+# enforced by the all-agents-unavailable wait branch in
+# ``_handle_retry_progression``: the branch sets
+# ``state.is_waiting_state=True`` and ``state.last_retry_delay_ms``
+# and returns BEFORE the ``_enter_phase_failed`` call is reachable.
+# The run loop sleeps on ``last_retry_delay_ms`` and re-enters the
+# same phase. The pipeline never reaches ``failed_terminal`` via
+# this path.
+#
+# This invariant is enforced at module import time by walking the
+# ``RecoveryController._handle_retry_progression`` function source
+# via ``ast`` and asserting that:
+#   1. The all-agents-unavailable ``if`` statement (the
+#      ``if all(not self._is_agent_available(phase, agent) for
+#      agent in chain.agents):`` block) appears at a LOWER body
+#      index (i.e. earlier in the function body) than the
+#      ``_enter_phase_failed`` call. The all-agents-unavailable
+#      branch MUST be reached first so the return statement
+#      inside it short-circuits before the failure call.
+#   2. The all-agents-unavailable branch itself contains at least
+#      one ``ast.Return`` node (the existing source has
+#      ``return state.copy_with(...), [], updated_evt`` inside
+#      the branch).
+#
+# The check uses ``if/raise RuntimeError`` (NOT ``assert``) so the
+# invariant survives ``python -O`` per AGENTS.md 'Non-negotiables'.
+# A future PR that introduces a third state that exits the
+# pipeline when all agents are on cooldown will fail at import
+# time with a ``RuntimeError`` naming both invariants and pointing
+# to ``tests/recovery/test_two_state_invariant.py`` for the
+# test-level pin.
+
+
+def _find_all_agents_unavailable_if(func_body: list[ast.stmt]) -> ast.If | None:
+    """Find the all-agents-unavailable ``if`` statement in a function body.
+
+    The branch is identified by unparsing its test and checking for
+    the substrings ``self._is_agent_available`` and ``all(`` -- the
+    canonical source form of the wait branch's test is
+    ``all((not self._is_agent_available(phase, agent) for agent in
+    chain.agents))`` (the outer parens wrap the generator
+    expression). The function returns the FIRST such ``ast.If`` in
+    the body (lowest body index, i.e. the one closest to the top of
+    the function).
+    """
+    for stmt in func_body:
+        if not isinstance(stmt, ast.If):
+            continue
+        try:
+            test_src = ast.unparse(stmt.test)
+        except Exception:
+            continue
+        if "self._is_agent_available" in test_src and "all(" in test_src:
+            return stmt
+    return None
+
+
+def _find_enter_phase_failed_call(func_body: list[ast.stmt]) -> ast.stmt | None:
+    """Find the STATEMENT containing the ``_enter_phase_failed`` call.
+
+    Returns the top-level statement in ``func_body`` that contains
+    an ``_enter_phase_failed`` call (typically an ``ast.Assign``
+    like ``failed_state = self._enter_phase_failed(...)``). The
+    check asserts the all-agents-unavailable branch is at a LOWER
+    body index than this statement so the branch's return
+    short-circuits before the failure call.
+
+    Returns the LAST such statement in source order (the deepest
+    call site in the function body).
+    """
+    found_stmt: ast.stmt | None = None
+    for stmt in func_body:
+        for node in ast.walk(stmt):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if isinstance(func, ast.Attribute) and func.attr == "_enter_phase_failed":
+                found_stmt = stmt
+    return found_stmt
+
+
+def _assert_never_exit_invariant() -> None:
+    """Verify the never-exit invariant is wired into ``_handle_retry_progression``.
+
+    Asserts the all-agents-unavailable ``if`` statement in
+    ``_handle_retry_progression`` appears at a LOWER body index
+    than the ``_enter_phase_failed`` call AND the branch itself
+    contains a ``Return`` statement. A future PR that introduces
+    a third state that exits the pipeline when all agents are on
+    cooldown will fail this check at module import time.
+    """
+    source_path = Path(__file__).resolve()
+    source = source_path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        msg = (
+            "recovery/controller.py failed to parse during the never-exit"
+            " invariant check. The controller source is broken; the"
+            f" never-exit invariant cannot be verified. Source: {source_path}."
+            f" Parser error: {exc}"
+        )
+        raise RuntimeError(msg) from exc
+    class_node: ast.ClassDef | None = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "RecoveryController":
+            class_node = node
+            break
+    if class_node is None:
+        msg = (
+            "Never-exit invariant violated: RecoveryController class not found"
+            " in ralph.recovery.controller. The never-exit invariant requires"
+            " a single RecoveryController class to own the never-exit"
+            " recovery branch. Restore the class definition or update the"
+            " import-time invariant in ralph.recovery.controller."
+        )
+        raise RuntimeError(msg)
+    handle_retry_node: ast.FunctionDef | None = None
+    for m in class_node.body:
+        if isinstance(m, ast.FunctionDef) and m.name == "_handle_retry_progression":
+            handle_retry_node = m
+            break
+    if handle_retry_node is None:
+        msg = (
+            "Never-exit invariant violated: RecoveryController is missing"
+            " the _handle_retry_progression method. The never-exit"
+            " invariant requires the all-agents-unavailable branch in"
+            " _handle_retry_progression to return before"
+            " _enter_phase_failed is reachable. Restore the method or"
+            " update the import-time invariant in ralph.recovery.controller."
+        )
+        raise RuntimeError(msg)
+
+    func_body: list[ast.stmt] = list(handle_retry_node.body)
+    all_agents_unavailable_if = _find_all_agents_unavailable_if(func_body)
+    if all_agents_unavailable_if is None:
+        msg = (
+            "Never-exit invariant violated: RecoveryController."
+            "_handle_retry_progression is missing the all-agents-unavailable"
+            " ``if all(not self._is_agent_available(phase, agent) for"
+            " agent in chain.agents):`` branch. The never-exit invariant"
+            " requires this branch to return BEFORE _enter_phase_failed"
+            " is reachable. Restore the branch in _handle_retry_progression"
+            " or update the import-time invariant in"
+            " ralph.recovery.controller."
+        )
+        raise RuntimeError(msg)
+
+    enter_phase_failed_call = _find_enter_phase_failed_call(func_body)
+    if enter_phase_failed_call is None:
+        msg = (
+            "Never-exit invariant violated: RecoveryController."
+            "_handle_retry_progression is missing the"
+            " _enter_phase_failed call. The never-exit invariant requires"
+            " the all-agents-unavailable branch to return BEFORE"
+            " _enter_phase_failed is reachable. Restore the call in"
+            " _handle_retry_progression or update the import-time"
+            " invariant in ralph.recovery.controller."
+        )
+        raise RuntimeError(msg)
+
+    all_agents_unavailable_index = func_body.index(all_agents_unavailable_if)
+    enter_phase_failed_index = func_body.index(enter_phase_failed_call)
+    if all_agents_unavailable_index >= enter_phase_failed_index:
+        msg = (
+            "Never-exit invariant violated: the all-agents-unavailable"
+            " ``if`` statement in RecoveryController._handle_retry_progression"
+            " appears at body index"
+            f" {all_agents_unavailable_index} which is NOT before the"
+            f" _enter_phase_failed call at body index"
+            f" {enter_phase_failed_index}. The never-exit invariant"
+            " requires the all-agents-unavailable branch to be at a LOWER"
+            " body index (i.e. earlier in the function body) than"
+            " _enter_phase_failed so the branch's return statement"
+            " short-circuits before the failure call. Reorder the"
+            " branches in _handle_retry_progression or update the"
+            " import-time invariant in ralph.recovery.controller and the"
+            " test in tests/recovery/test_two_state_invariant.py in the"
+            " same commit."
+        )
+        raise RuntimeError(msg)
+
+    has_return = any(
+        isinstance(node, ast.Return) for node in ast.walk(all_agents_unavailable_if)
+    )
+    if not has_return:
+        msg = (
+            "Never-exit invariant violated: the all-agents-unavailable"
+            " ``if`` statement in RecoveryController._handle_retry_progression"
+            " does not contain a ``return`` statement. The never-exit"
+            " invariant requires the branch to return"
+            " ``state.copy_with(is_waiting_state=True,"
+            " last_retry_delay_ms=...)`` and an empty effects list so the"
+            " run loop sleeps on ``last_retry_delay_ms`` and re-enters"
+            " the same phase. Add a return statement to the branch or"
+            " update the import-time invariant in"
+            " ralph.recovery.controller and the test in"
+            " tests/recovery/test_two_state_invariant.py in the same"
+            " commit."
+        )
+        raise RuntimeError(msg)
+
+
+_assert_never_exit_invariant()
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 

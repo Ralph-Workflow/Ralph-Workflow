@@ -16,12 +16,18 @@ from ralph.agents.timeout_clock import FakeClock
 
 
 def test_watchdog_fires_no_progress_quiet_on_prompt_signature() -> None:
-    """Watchdog fires NO_PROGRESS_QUIET on stale-progress descendants & idle stdout.
+    """Watchdog fires NO_PROGRESS_QUIET on a TRULY-DEAD child & idle stdout.
 
-    The no_progress_quiet ceiling fires when the agent has been
-    waiting too long with a stale-but-running child (no first-party
-    progress, no live subagent from a process monitor). The
-    classifier's branch 4 distinguishes "live child from process
+    Per the wt-012 gate refinement, ``_is_no_progress_quiet`` defers
+    the fire whenever the corroborator reports any alive_by signal
+    (the child is alive but stale-progress); the cumulative
+    ``CHILDREN_PERSIST_TOO_LONG`` ceiling (default 600s) is the
+    correct upper bound for live-child stalls. NO_PROGRESS_QUIET
+    fires ONLY when the corroborator returns ``alive_by=None`` (the
+    corroborator cannot confirm liveness — i.e. the child is TRULY
+    dead or missing) AND no fresh channel evidence is present.
+
+    The classifier's branch 4 distinguishes "live child from process
     monitor" (defers, can_defer=True) from "stale child from
     corroborator" (does NOT defer, can_defer=False) so the
     no_progress_quiet ceiling is NOT blocked by the gate.
@@ -38,8 +44,8 @@ def test_watchdog_fires_no_progress_quiet_on_prompt_signature() -> None:
 
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
-            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
-            scoped_child_active=True,
+            alive_by=None,
+            scoped_child_active=False,
             oldest_child_seconds=12.0,
         )
 
@@ -123,8 +129,8 @@ def test_no_progress_quiet_diagnostic_payload_contains_required_fields() -> None
 
     def _corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
-            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
-            scoped_child_active=True,
+            alive_by=None,
+            scoped_child_active=False,
             oldest_child_seconds=12.0,
         )
 
@@ -146,8 +152,11 @@ def test_no_progress_quiet_diagnostic_payload_contains_required_fields() -> None
     diag = evt.diagnostic
     assert "invocation_elapsed" in diag, "diagnostic must contain invocation_elapsed"
     assert "idle_elapsed" in diag, "diagnostic must contain idle_elapsed"
-    assert "alive_by" in diag, "diagnostic must contain alive_by"
-    assert diag["alive_by"] == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS.value
+    # NOTE: when the corroborator returns alive_by=None, the
+    # _build_corroboration_diag helper omits the "alive_by" key
+    # (the field is only added when alive_by is not None). The
+    # absence of the "alive_by" key is itself the signal that
+    # the child is truly dead (the conservative path).
     assert "ceiling" in diag, "diagnostic must contain ceiling"
     assert diag["ceiling"] == 10.0
     assert "effective_ceiling" in diag, "diagnostic must contain effective_ceiling"

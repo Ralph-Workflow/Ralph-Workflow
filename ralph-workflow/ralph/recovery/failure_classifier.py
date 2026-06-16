@@ -216,6 +216,65 @@ _ARTIFACT_VALIDATION_TYPE_NAMES: frozenset[str] = frozenset(
     }
 )
 
+# Watchdog fire-reasons that always mark the agent as unavailable
+# (Rule 2: exponential backoff to the next agent) — with the
+# exception of ``no_progress_quiet``, which is a CONDITIONAL
+# branch (depends on the typed ``child_alive`` signal). The
+# constant is the 2-element hard-coded set; the conditional
+# ``no_progress_quiet`` branch is added by the ``is_unavailable``
+# predicate when ``child_alive is False`` (truly dead child) OR
+# ``child_alive is None`` (legacy default — conservative policy
+# preserves the original 3-element set behavior).
+#
+# Conservative policy:
+#   - ``child_alive is None`` (legacy default — no signal at
+#     all) preserves the original STALE_CHILD_QUIET (Rule 2)
+#     behavior for backward-compat with the 14 existing tests
+#     in test_unavailability_reason.py that do not set
+#     child_alive.
+#   - ``child_alive is False`` (truly dead child — the
+#     corroborator returned alive_by=None) routes to
+#     STALE_CHILD_QUIET (Rule 2). This is the only path where
+#     NO_PROGRESS_QUIET can fire under the wt-012 gate
+#     refinement.
+#   - ``child_alive is True`` (live child — defense-in-depth;
+#     normally dead code because the gate refinement defers
+#     the fire) routes to is_unavailable=False (Rule 1: same-
+#     agent retry).
+_WATCHDOG_UNAVAILABILITY_REASONS: frozenset[str] = frozenset(
+    {"no_output_at_start", "children_persist_too_long"}
+)
+
+# Import-time invariant: pin the canonical 2-element set so a
+# future PR cannot silently widen the set without updating the
+# failure classifier. The ``if/raise RuntimeError`` (NOT
+# ``assert``) idiom makes the invariant survive ``python -O``
+# per AGENTS.md 'Non-negotiables'. The two checks are:
+#   1. the constant is non-empty (an empty set would silently
+#      disable all watchdog-based unavailability detection);
+#   2. the constant contains the string ``no_output_at_start``
+#      (the operator-visible hard failure mode that the
+#      recovery controller must always treat as unavailable).
+if not _WATCHDOG_UNAVAILABILITY_REASONS:
+    msg = (
+        "_WATCHDOG_UNAVAILABILITY_REASONS must not be empty. An empty"
+        " frozenset would silently disable all watchdog-based"
+        " unavailability detection; the recovery controller would never"
+        " mark an agent as unavailable via the watchdog path. Restore"
+        " the canonical 2-element set {no_output_at_start,"
+        " children_persist_too_long} in ralph.recovery.failure_classifier."
+    )
+    raise RuntimeError(msg)
+if "no_output_at_start" not in _WATCHDOG_UNAVAILABILITY_REASONS:
+    msg = (
+        "_WATCHDOG_UNAVAILABILITY_REASONS must contain the string"
+        " 'no_output_at_start'. The recovery controller depends on this"
+        " watchdog reason always mapping to is_unavailable=True (the"
+        " agent is unavailable at session start). Add it to the"
+        " constant in ralph.recovery.failure_classifier."
+    )
+    raise RuntimeError(msg)
+
 
 def _is_environmental_exc(exc: BaseException) -> bool:
     """Return True if this exception is clearly an environmental/network fault."""
@@ -393,6 +452,8 @@ def _classify_unavailability_reason(
     detail_parts: tuple[str, ...] | list[str],
     raw_message: str,
     connectivity_state: str | None,
+    *,
+    child_alive: bool | None = None,
 ) -> UnavailabilityReason | None:
     """Classify the unavailability reason from failure signals.
 
@@ -409,6 +470,26 @@ def _classify_unavailability_reason(
     7. post-tool empty response -> NO_OUTPUT_AFTER_ACTIVITY
     8. else None
 
+    The ``child_alive`` parameter is consumed ONLY by the
+    ``no_progress_quiet`` branch. The conservative policy:
+
+      - ``child_alive is True`` (live child — defense-in-depth;
+        normally dead code because the wt-012 gate refinement
+        in ``IdleWatchdog._is_no_progress_quiet`` defers the
+        fire when alive_by is not None): returns ``None`` here
+        so the ``is_unavailable`` predicate below takes the
+        Rule 1 path (defense-in-depth; same-agent retry).
+      - ``child_alive is False`` (truly dead child — the
+        corroborator returned alive_by=None): routes to
+        ``STALE_CHILD_QUIET`` (Rule 2: exponential backoff).
+        This is the only path where NO_PROGRESS_QUIET can
+        fire under the wt-012 gate refinement.
+      - ``child_alive is None`` (legacy default — no signal at
+        all): routes to ``STALE_CHILD_QUIET`` (Rule 2). This
+        preserves the original behavior for the 14 existing
+        tests in test_unavailability_reason.py that do not set
+        child_alive.
+
     NOTE: watchdog_reason takes precedence over text-based detection because
     the watchdog provides structural evidence (alive_by, channel freshness)
     whereas text can be ambiguous.
@@ -417,7 +498,19 @@ def _classify_unavailability_reason(
     if watchdog_reason == "no_output_at_start":
         reason = UnavailabilityReason.NO_OUTPUT_AT_START
     elif watchdog_reason == "no_progress_quiet":
-        reason = UnavailabilityReason.STALE_CHILD_QUIET
+        # Per the PROMPT: NOT ALL stuck retries should advance the
+        # chain. The conservative policy: child_alive=None (default
+        # — no signal at all) preserves the original STALE_CHILD_QUIET
+        # (Rule 2) behavior for backward-compat. child_alive=False
+        # (truly dead child — no corroborator signal) also routes to
+        # STALE_CHILD_QUIET (Rule 2). child_alive=True (live child)
+        # routes to None here so the is_unavailable predicate below
+        # can take the Rule 1 branch (defense-in-depth; normally dead
+        # code because the wt-012 gate refinement defers the fire
+        # when alive_by is not None).
+        reason = (
+            None if child_alive is True else UnavailabilityReason.STALE_CHILD_QUIET
+        )
     elif watchdog_reason == "children_persist_too_long":
         reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
     elif (connectivity_state or "").casefold() == "online":
@@ -509,6 +602,25 @@ class FailureClassifier:
             category = FailureCategory.AGENT
             counts = True
 
+        # Walk the ``__cause__`` chain to find the typed
+        # ``IdleWatchdogKilledError`` and read the ``child_alive`` field.
+        # The watchdog attaches the typed exception to
+        # ``_IdleStreamTimeoutError.__cause__`` (see
+        # ``_process_reader.py`` and ``_pty_line_reader.py``) so the
+        # classifier can read the live-child signal end-to-end. The
+        # walk is shallow (``__cause__`` only — the watchdog attaches
+        # the typed exception directly to the wrapper) because the
+        # chain is already validated by ``_find_typed_watchdog_cause``
+        # in the categorization pass above; here we only need the
+        # direct cause for the ``child_alive`` field.
+        child_alive: bool | None = None
+        if exc_obj is not None:
+            direct_cause = cast(
+                "BaseException | None", getattr(exc_obj, "__cause__", None)
+            )
+            if isinstance(direct_cause, IdleWatchdogKilledError):
+                child_alive = direct_cause.child_alive
+
         # Unavailable-agent detection only applies when the failure is agent-side
         # AND connectivity is known healthy AND the failure is not a tool-registry
         # wedge (those have their own bounded retry path). The "no output despite
@@ -517,13 +629,28 @@ class FailureClassifier:
         # failure. AgentInactivityTimeoutError subclasses AgentInvocationError,
         # so both class names are accepted here. We match by name rather than
         # isinstance to avoid a circular import through ralph.agents.invoke.
+        #
+        # The 2-element ``_WATCHDOG_UNAVAILABILITY_REASONS`` frozenset is
+        # the canonical 2-element set; the conditional
+        # ``child_alive in (False, None)`` for ``no_progress_quiet``
+        # preserves backward-compat for ``child_alive=None`` and the
+        # new ``child_alive=False`` paths (both Rule 2: exponential
+        # backoff). The ``child_alive=True`` case falls through the
+        # conditional and ``is_unavailable=False`` (Rule 1: same-agent
+        # retry, defense-in-depth).
         is_unavailable = (
             category == FailureCategory.AGENT
             and (connectivity_state or "").casefold() == "online"
             and not reset_tool_registry
             and (
-                watchdog_reason
-                in {"no_progress_quiet", "children_persist_too_long", "no_output_at_start"}
+                (
+                    watchdog_reason in _WATCHDOG_UNAVAILABILITY_REASONS
+                    and watchdog_reason != "no_progress_quiet"
+                )
+                or (
+                    watchdog_reason == "no_progress_quiet"
+                    and child_alive in (False, None)
+                )
                 or (
                     (
                         exc_obj is None
@@ -548,6 +675,7 @@ class FailureClassifier:
                 detail_parts,
                 raw_message,
                 connectivity_state,
+                child_alive=child_alive,
             )
 
         if category == FailureCategory.AMBIGUOUS:

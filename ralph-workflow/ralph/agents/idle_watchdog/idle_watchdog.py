@@ -222,6 +222,16 @@ class IdleWatchdog:
     _in_drain_window: bool = field(default=False, init=False)
     _drain_started_at: float | None = field(default=None, init=False)
     _last_fire_reason: WatchdogFireReason | None = field(default=None, init=False)
+    # Corroborator's alive_by signal at the moment of the most recent
+    # NO_PROGRESS_QUIET fire. ``None`` when the watchdog has not fired
+    # yet OR when the most recent fire was not NO_PROGRESS_QUIET
+    # (other fire helpers do not capture alive_by because the
+    # live-child vs dead-child differentiation only matters for the
+    # NO_PROGRESS_QUIET path). Surfaced via ``last_alive_by`` and
+    # consumed by ``IdleWatchdogKilledError.child_alive`` so the
+    # failure classifier can read the live-child signal end-to-end
+    # via the typed exception's ``__cause__`` chain.
+    _last_alive_by: AliveBy | None = field(default=None, init=False)
     _last_waiting_status_at: float | None = field(default=None, init=False)
     _suspicion_announced_for_run: bool = field(default=False, init=False)
     # Post-tool-result progression state. The watchdog tracks when a
@@ -356,6 +366,22 @@ class IdleWatchdog:
     def last_fire_reason(self) -> WatchdogFireReason | None:
         """The reason the watchdog fired, or None if it hasn't fired yet."""
         return self._last_fire_reason
+
+    @property
+    def last_alive_by(self) -> AliveBy | None:
+        """The corroborator's ``alive_by`` signal at the most recent fire.
+
+        ``None`` when the watchdog has not fired yet OR when the most
+        recent fire was not ``NO_PROGRESS_QUIET`` (the
+        live-child vs dead-child differentiation only matters for the
+        NO_PROGRESS_QUIET path; other fire helpers do not capture
+        ``alive_by``).
+
+        Consumed by ``IdleWatchdogKilledError.child_alive`` so the
+        failure classifier can read the live-child signal end-to-end
+        via the typed exception's ``__cause__`` chain.
+        """
+        return self._last_alive_by
 
     @property
     def cumulative_waiting_on_child_seconds(self) -> float:
@@ -542,7 +568,20 @@ class IdleWatchdog:
             < self._config.no_progress_quiet_minimum_invocation_seconds
         ):
             return False
-        if corroboration.alive_by not in self._NON_PROGRESS_ALIVE_BY_VALUES:
+        # Defer the fire when the corroborator confirms ANY alive_by signal —
+        # the child is alive (per AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+        # CPU_IDLE_WHILE_ALIVE, LOG_STALE_WHILE_ALIVE, FRESH_HEARTBEAT_ONLY, or
+        # STALE_LABEL_ONLY) so the cumulative CHILDREN_PERSIST_TOO_LONG ceiling
+        # (default 600s) is the correct upper bound for live-child stalls, not
+        # the 120s NO_PROGRESS_QUIET fire. NO_PROGRESS_QUIET now fires ONLY
+        # when the corroborator returns no alive_by signal at all
+        # (corroboration.alive_by is None — no live signal from the
+        # corroborator) AND no fresh channel evidence is present (the agent is
+        # silent and the channels are stale). When the corroborator returns
+        # alive_by is None, the conservative policy preserves the old fire
+        # path so legacy construction sites that do not set the signal
+        # continue to behave identically.
+        if corroboration.alive_by is not None:
             return False
         return not self._channel_evidence_active(now)
 
@@ -568,6 +607,17 @@ class IdleWatchdog:
             return WatchdogVerdict.CONTINUE
 
         self._last_fire_reason = WatchdogFireReason.NO_PROGRESS_QUIET
+        # Capture the corroborator's alive_by signal at the moment of
+        # the fire. NO_PROGRESS_QUIET is the only fire path where
+        # live-child vs dead-child differentiation matters; other
+        # fire helpers (SESSION_CEILING_EXCEEDED, CHILDREN_PERSIST_TOO_LONG,
+        # NO_OUTPUT_AT_START, etc.) do not need to capture alive_by.
+        # The signal is consumed by IdleWatchdogKilledError.child_alive
+        # so the failure classifier can read the live-child signal
+        # end-to-end via the typed exception's __cause__ chain. When
+        # corroboration.alive_by is None, child_alive will be False
+        # (truly dead child -> Rule 2: exponential backoff).
+        self._last_alive_by = corroboration.alive_by
         diag: dict[str, object] = {
             "cumulative": round(self._cumulative_waiting_on_child_seconds, 1),
             "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),

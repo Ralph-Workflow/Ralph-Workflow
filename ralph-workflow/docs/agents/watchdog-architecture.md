@@ -42,6 +42,26 @@ returns `_apply_chain_retry(state, phase, chain, ...)`. The pipeline
 does not advance to the next agent and does not mark the current
 agent on cooldown.
 
+**Rule 2 (exponential backoff to next agent) — child-alive vs
+child-dead differentiation**: the recovery classifier's
+`is_unavailable` predicate now treats `NO_PROGRESS_QUIET` as
+Rule 1 (same-agent retry) ONLY when the watchdog's
+`IdleWatchdogKilledError.child_alive=True` (defense-in-depth —
+normally dead code because the gate refinement in
+`IdleWatchdog._is_no_progress_quiet` prevents NO_PROGRESS_QUIET
+from firing at all when alive_by is set). The conservative
+policy: `child_alive=None` (legacy default — no signal at all)
+and `child_alive=False` (truly dead child) both route to
+`is_unavailable=True` with `unavailability_reason=STALE_CHILD_QUIET`
+(Rule 2: exponential backoff). The 2-element
+`_WATCHDOG_UNAVAILABILITY_REASONS` frozenset constant in
+`ralph/recovery/failure_classifier.py` is the canonical set
+`{"no_output_at_start", "children_persist_too_long"}`; the
+`no_progress_quiet` reason is added by the conditional
+`child_alive in (False, None)` branch (both map to Rule 2). The
+constant is pinned at import time via `if/raise RuntimeError`
+(immune to `python -O`).
+
 **Rule 2 (exponential backoff to next agent)** — when an
 AGENT-category failure IS marked unavailable (e.g.
 `IdleWatchdogKilledError(reason='no_progress_quiet', signal=15)`),
@@ -78,6 +98,19 @@ THEN RETRY with the agent that comes off cooldown."
 The pipeline may exit ONLY via the BUDGET-EXHAUSTED path — when an
 agent's budget is exhausted AND no other agent is available. This
 is the only path to `_enter_phase_failed` (`controller.py:641-643`).
+
+The never-exit invariant is now also enforced at import time by
+`_assert_never_exit_invariant` in `ralph/recovery/controller.py`
+(uses `if/raise RuntimeError`, immune to `python -O`). The check
+walks the AST of `RecoveryController._handle_retry_progression`
+and asserts the all-agents-unavailable branch contains a
+`Return` statement at a LOWER body index than the
+`_enter_phase_failed` call. A future PR that introduces a third
+state that exits the pipeline when all agents are on cooldown
+will fail at import time with a `RuntimeError` naming both
+invariants and pointing to
+`tests/recovery/test_two_state_invariant.py` for the test-level
+pin.
 
 ## Smart-verdict gate
 
@@ -121,6 +154,20 @@ subagent, not for the corroborator's stale-child signals
 (`OS_DESCENDANT_ONLY_STALE_PROGRESS`,
 `CPU_IDLE_WHILE_ALIVE`, `LOG_STALE_WHILE_ALIVE`) which set
 `can_defer=False`.
+
+The gate's noop-classify_quiet rationale remains valid for the
+WAITING_ON_CHILD chicken-and-egg case, but the watchdog's
+`_is_no_progress_quiet` pre-gate check now ALSO defers the fire
+when the corroborator reports any `alive_by` signal — so a live
+child with stale-progress evidence does not trigger a dumb-kill.
+The cumulative `CHILDREN_PERSIST_TOO_LONG` ceiling (default 600s)
+remains the upper bound for long stalls with a live child. This
+is the "know WHY something is stuck" complement to the
+typed-evidence path through the failure classifier. When the
+corroborator returns no `alive_by` signal at all
+(`corroboration.alive_by is None`), the fire path is unchanged —
+the watchdog cannot confirm liveness and fires at the 120s
+ceiling.
 
 ## Two watchdog owners
 

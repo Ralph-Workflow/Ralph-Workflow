@@ -49,7 +49,7 @@ from ralph.recovery.agent_unavailability_tracker import UnavailabilityEntry
 from ralph.recovery.budget_state import BudgetState
 from ralph.recovery.classifier import FailureContext
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
-from ralph.recovery.events import FailureEventBus
+from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.failure_classifier import FailureClassifier
 from ralph.recovery.unavailability_reason import UnavailabilityReason
@@ -551,4 +551,129 @@ def test_recovery_does_not_call_enter_phase_failed_in_unavailability_branch() ->
         "all-agents-unavailable branch in _handle_retry_progression must contain"
         " a Return statement so the wait branch never falls through to"
         " _enter_phase_failed"
+    )
+
+
+# ---------------------------------------------------------------------------
+# wt-012 typed-evidence differentiation: live-child vs dead-child
+# NO_PROGRESS_QUIET (Rule 1 vs Rule 2)
+# ---------------------------------------------------------------------------
+# The wt-012 typed-evidence path differentiates live-child
+# (``child_alive=True``) from dead-child (``child_alive=False`` or
+# ``child_alive=None``) NO_PROGRESS_QUIET at the typed-exception
+# level. Live-child NO_PROGRESS_QUIET routes to ``is_unavailable=False``
+# (Rule 1: same-agent retry, defense-in-depth -- normally dead code
+# because the gate refinement in ``IdleWatchdog._is_no_progress_quiet``
+# defers the fire when alive_by is not None). Dead-child NO_PROGRESS_QUIET
+# routes to ``is_unavailable=True`` with
+# ``unavailability_reason=STALE_CHILD_QUIET`` (Rule 2: exponential
+# backoff to the next agent). The conservative policy: ``child_alive=None``
+# (legacy default -- no signal at all) preserves the original
+# ``STALE_CHILD_QUIET`` (Rule 2) behavior for backward-compat with
+# the 14 existing tests in ``test_unavailability_reason.py`` that do
+# not set ``child_alive``.
+
+
+def test_no_progress_quiet_with_dead_child_routes_to_exponential_backoff() -> None:
+    """``NO_PROGRESS_QUIET`` with a TRULY-DEAD child routes to Rule 2
+    (exponential backoff to the next agent) end-to-end.
+
+    Per the wt-012 typed-evidence path: when
+    ``IdleWatchdogKilledError.child_alive=False`` (truly dead child --
+    the corroborator returned ``alive_by=None``), the failure
+    classifier must set ``is_unavailable=True`` with
+    ``unavailability_reason=STALE_CHILD_QUIET`` and the recovery
+    controller must mark claude on cooldown, advance to the next
+    available agent (opencode), and reset ``retries=0``.
+
+    The conservative policy: ``child_alive=False`` (truly dead
+    child) maps to ``is_unavailable=True`` (Rule 2) -- the same
+    as the legacy ``child_alive=None`` default behavior. The
+    ``child_alive=True`` (live child) defense-in-depth case
+    routes to ``is_unavailable=False`` (Rule 1) but is
+    normally dead code because the wt-012 gate refinement
+    defers NO_PROGRESS_QUIET when alive_by is not None.
+
+    Setup:
+      - 3-agent chain: claude (index 0), opencode (index 1), agy (index 2).
+      - Build ``AgentInactivityTimeoutError(opts=InactivityTimeoutOpts(
+        reason=WatchdogFireReason.NO_PROGRESS_QUIET, ...))`` with
+        ``IdleWatchdogKilledError(reason='no_progress_quiet',
+        signal=15, child_alive=False)`` set as ``__cause__``.
+      - Drive the ``RecoveryController.handle`` path.
+
+    Assertions:
+      - chain.current_index advanced from 0 to 1 (opencode).
+      - chain.retries == 0 (reset on chain advance).
+      - claude is on cooldown in the unavailability store.
+      - The published ``FalloverEvent.unavailability_reason`` is
+        ``STALE_CHILD_QUIET`` (the Rule 2 typed-evidence reason).
+    """
+    captured_fallover_events: list[FalloverEvent] = []
+    bus = FailureEventBus()
+
+    def _capture(evt: FailureEvent | FalloverEvent) -> None:
+        if isinstance(evt, FalloverEvent):
+            captured_fallover_events.append(evt)
+
+    bus.subscribe(_capture)
+    controller = RecoveryController(
+        options=RecoveryControllerOptions(
+            cycle_cap=10,
+            clock=FakeClock(start=0.0),
+            policy_bundle=_minimal_policy_bundle(),
+            event_bus=bus,
+            budget_registry=AgentBudgetRegistry()
+            .set_budget("development", "claude", 3)
+            .set_budget("development", "opencode", 3)
+            .set_budget("development", "agy", 3),
+        ),
+    )
+    state = _three_agent_state(current_index=0, retries=0)
+
+    watchdog_exc = IdleWatchdogKilledError(
+        reason="no_progress_quiet",
+        signal=15,
+        child_alive=False,
+    )
+    inactivity_exc = AgentInactivityTimeoutError(
+        "claude",
+        30.0,
+        opts=InactivityTimeoutOpts(
+            reason=WatchdogFireReason.NO_PROGRESS_QUIET,
+            diagnostic={"invocation_elapsed": 30.0},
+        ),
+    )
+    inactivity_exc.__cause__ = watchdog_exc
+
+    new_state, _effects, _evt = controller.handle(
+        state,
+        inactivity_exc,
+        FailureContext(phase="development", agent="claude"),
+    )
+
+    chain = new_state.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1, (
+        f"chain must advance to opencode (index 1) when NO_PROGRESS_QUIET"
+        f" fires with child_alive=False (Rule 2: exponential backoff),"
+        f" got current_index={chain.current_index}"
+    )
+    assert chain.retries == 0, (
+        f"chain.retries must reset to 0 on chain advance, got {chain.retries}"
+    )
+    assert not controller.unavailability_store.is_available("development", "claude"), (
+        "claude must be on cooldown in the unavailability store after"
+        " NO_PROGRESS_QUIET with child_alive=False (Rule 2)"
+    )
+    # Verify the FalloverEvent carries the typed-evidence
+    # STALE_CHILD_QUIET reason (the conservative policy: child_alive=False
+    # routes to Rule 2, same as the legacy child_alive=None default).
+    assert len(captured_fallover_events) == 1, (
+        f"expected exactly one FalloverEvent, got {len(captured_fallover_events)}"
+    )
+    fallover = captured_fallover_events[0]
+    assert fallover.unavailability_reason == UnavailabilityReason.STALE_CHILD_QUIET, (
+        f"FalloverEvent.unavailability_reason must be STALE_CHILD_QUIET for"
+        f" NO_PROGRESS_QUIET with child_alive=False (Rule 2), got {fallover.unavailability_reason}"
     )

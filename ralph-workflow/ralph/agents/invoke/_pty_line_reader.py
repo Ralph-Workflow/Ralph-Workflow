@@ -518,10 +518,31 @@ class PtyLineReader:
         # (``post_exit_watchdog.py``) still raises
         # ``_IdleStreamTimeoutError`` directly because it is owned
         # by ``PostExitWatchdog``, not ``IdleWatchdog``.
+        # Surface the watchdog's corroborator ``alive_by`` signal at
+        # the moment of the fire. ``child_alive=True`` means the
+        # child was alive per the corroborator (defense-in-depth;
+        # normally dead code because the gate refinement in
+        # ``IdleWatchdog._is_no_progress_quiet`` defers the
+        # ``NO_PROGRESS_QUIET`` fire when alive_by is not None).
+        # ``child_alive=False`` means the corroborator returned
+        # ``alive_by=None`` (truly dead child -- Rule 2:
+        # exponential backoff). The signal is consumed by
+        # ``FailureClassifier._classify_unavailability_reason`` to
+        # differentiate live-child from dead-child
+        # ``NO_PROGRESS_QUIET`` at the typed-evidence level. The
+        # ``is not None`` test maps both ``None`` (no signal yet)
+        # and the other 5 alive-by values to True so the failure
+        # classifier's ``child_alive is False`` branch only fires
+        # for the truly-dead-child case. ``getattr(..., None)``
+        # is used for backward-compat with test mocks that do
+        # not set the ``last_alive_by`` attribute.
+        _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
+        _child_alive = _alive_by_signal is not None
         typed_exc = IdleWatchdogKilledError(
             reason=fire_reason.value,
             signal=15,  # SIGTERM
             evidence_summary=str(merged_diag),
+            child_alive=_child_alive,
         )
         wrapper = _IdleStreamTimeoutError(
             timeout_val,

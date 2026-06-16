@@ -291,3 +291,100 @@ def test_two_state_invariant_locked_at_import_under_optimization() -> None:
                 f"{source_path} must contain a `raise RuntimeError(...)` (the"
                 f" invariant must be enforced via if/raise, not assert)"
             )
+
+
+# ---------------------------------------------------------------------------
+# wt-012 never-exit invariant: import-time enshrinement
+# ---------------------------------------------------------------------------
+# The wt-012 plan enshrines the never-exit invariant via
+# ``_assert_never_exit_invariant`` in ``ralph.recovery.controller``. The
+# check uses the same ``if/raise RuntimeError`` idiom as the existing
+# two-state invariant so it survives ``python -O`` per AGENTS.md. The
+# test below mirrors the existing
+# ``test_two_state_invariant_locked_at_import_under_optimization``
+# pattern: a deterministic, pure-Python source-inspection check that
+# does NOT spawn a subprocess (per AGENTS.md and
+# ``ralph.testing.audit_test_policy.py``, real ``subprocess.run`` is
+# FORBIDDEN in non-``subprocess_e2e`` tests).
+
+
+def test_never_exit_invariant_locked_at_import_under_python_o() -> None:
+    """The never-exit invariant is locked at import time under ``python -O``.
+
+    The new ``_assert_never_exit_invariant`` function in
+    ``ralph.recovery.controller`` MUST use the ``if/raise RuntimeError``
+    idiom (NOT bare ``assert``) so the invariant survives ``python -O``
+    which strips ``assert`` statements per AGENTS.md 'Non-negotiables'.
+
+    This test verifies the invariant by reading the source of
+    ``controller.py`` and confirming:
+
+      1. The function ``_assert_never_exit_invariant`` is defined.
+      2. The function body contains an ``if `` check (the only safe
+         pattern under ``python -O``).
+      3. The function body contains a ``raise RuntimeError(`` (the
+         only safe pattern under ``python -O``).
+      4. The function is called at module level
+         (``_assert_never_exit_invariant()``).
+
+    The check is a deterministic, pure-Python source-inspection check
+    that does NOT spawn a subprocess. This mirrors the existing
+    ``test_two_state_invariant_locked_at_import_under_optimization``
+    pattern.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    controller_path = repo_root / "ralph" / "recovery" / "controller.py"
+    source = controller_path.read_text(encoding="utf-8")
+
+    # 1. The function MUST be defined.
+    if "def _assert_never_exit_invariant" not in source:
+        raise AssertionError(
+            "ralph/recovery/controller.py must define"
+            " _assert_never_exit_invariant. The never-exit invariant is"
+            " enforced at import time via the if/raise RuntimeError"
+            " idiom; missing the function silently disables the"
+            " enshrinement. Add the function in the same commit as the"
+            " wt-012 plan."
+        )
+
+    # 2. The function MUST be called at module level.
+    if "_assert_never_exit_invariant()" not in source:
+        raise AssertionError(
+            "ralph/recovery/controller.py must call"
+            " _assert_never_exit_invariant() at module level. The"
+            " import-time check must run on every module import. Add the"
+            " call after the function definition in the same commit as"
+            " the wt-012 plan."
+        )
+
+    # 3. The function body MUST contain an `if ` check (the only safe
+    # pattern under ``python -O``). We check the function body roughly:
+    # extract the substring from the function definition to the next
+    # top-level def or the end of the file.
+    func_start = source.index("def _assert_never_exit_invariant")
+    # Find the next top-level def or class (rough heuristic).
+    next_def_markers = (
+        "\ndef ",
+        "\nclass ",
+    )
+    func_end = len(source)
+    for marker in next_def_markers:
+        idx = source.find(marker, func_start + 1)
+        if idx != -1 and idx < func_end:
+            func_end = idx
+    func_body = source[func_start:func_end]
+
+    if "if " not in func_body:
+        raise AssertionError(
+            "ralph/recovery/controller.py:_assert_never_exit_invariant"
+            " body must contain an `if` check. The invariant must be"
+            " enforced via `if condition: raise RuntimeError(...)`, not"
+            " via bare `assert` (which python -O would strip)."
+        )
+    if "raise RuntimeError(" not in func_body:
+        raise AssertionError(
+            "ralph/recovery/controller.py:_assert_never_exit_invariant"
+            " body must contain a `raise RuntimeError(...)`. The"
+            " invariant must be enforced via `if/raise RuntimeError(...)`,"
+            " not via bare `assert` (which python -O would strip)."
+        )
