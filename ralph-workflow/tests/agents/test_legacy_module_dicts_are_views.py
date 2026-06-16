@@ -1,10 +1,10 @@
 """Tests proving legacy module dicts are read-only views.
 
 The _PARSER_REGISTRY, _CUSTOM_COMMAND_REGISTRY, and _STRATEGY_DISPATCH
-module-level dicts are now MappingProxyType (read-only) views over the
-internal mutable dicts populated by AgentCatalog.add().
+module-level dicts are MappingProxyType (read-only) views over the
+default AgentCatalog's state dicts.
 
-These tests verify that the legacy module-level dicts are now read-only views
+These tests verify that the legacy module-level dicts are read-only views
 (MappingProxyType) over the AgentCatalog, not mutable write-through buffers.
 """
 
@@ -15,11 +15,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.agents.catalog import default_catalog
 from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
 from ralph.agents.parsers import (
     _CUSTOM_COMMAND_REGISTRY,
-    _CUSTOM_COMMAND_REGISTRY_DATA,
     _PARSER_REGISTRY,
 )
 from ralph.agents.parsers._template import ParserTemplateBase
@@ -81,9 +81,9 @@ class TestLegacyDictsAreViews:
         parser = _PARSER_REGISTRY["claude"]()
         assert parser is not None
 
-    def test_custom_command_registry_matches_internal_dict(self) -> None:
-        """_CUSTOM_COMMAND_REGISTRY has same length as internal mutable dict."""
-        assert len(_CUSTOM_COMMAND_REGISTRY) == len(_CUSTOM_COMMAND_REGISTRY_DATA)
+    def test_custom_command_registry_matches_catalog_state(self) -> None:
+        """_CUSTOM_COMMAND_REGISTRY has same length as the default catalog's state."""
+        assert len(_CUSTOM_COMMAND_REGISTRY) == len(default_catalog()._state.commands)
 
     def test_strategy_dispatch_keys_unchanged(self) -> None:
         """_STRATEGY_DISPATCH must contain all AgentTransport values."""

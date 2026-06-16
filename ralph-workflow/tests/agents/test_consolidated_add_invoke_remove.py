@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents import (
     AgentCatalog,
     AgentRegistry,
@@ -22,8 +24,6 @@ from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
-
-    import pytest
 
 
 class FakeParser(ParserTemplateBase):
@@ -104,6 +104,88 @@ def test_consolidated_headless_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     default_registry.unregister(name)
     assert name not in default_registry.agents
     assert default_catalog().get(name) is None
+
+
+@pytest.mark.parametrize(
+    ("transport", "interactive"),
+    [
+        (AgentTransport.GENERIC, False),
+        (AgentTransport.CLAUDE_INTERACTIVE, True),
+    ],
+    ids=["headless", "interactive"],
+)
+def test_consolidated_call_count_invariant_for_public_helpers(
+    transport: AgentTransport, interactive: bool
+) -> None:
+    """The single-catalog.add-call-per-registration contract, proven by observable state.
+
+    Builds a fresh ``AgentCatalog`` and an ``AgentRegistry`` bound to it,
+    registers an agent via the public ``register_agent_support`` surface,
+    and verifies that the registration is reflected in BOTH
+    ``catalog.get(name)`` and ``registry.get(name)`` after a single call.
+
+    The single-call invariant is proven via the public observable state
+    (catalog.get / registry.get) — NOT via ``monkeypatch`` on
+    ``AgentCatalog.add`` (which is forbidden by
+    ``design.testability.forbidden_in_tests``).
+
+    After registration:
+    - ``catalog.get(name)`` returns the support.
+    - ``registry.get(name)`` returns a non-None ``AgentConfig``.
+
+    After ``registry.unregister(name)``:
+    - ``catalog.get(name)`` returns None.
+    - ``name not in registry.agents``.
+
+    After re-registration and ``catalog.remove(name)``:
+    - ``registry.get(name)`` returns None.
+    """
+    catalog = AgentCatalog()
+    registry = AgentRegistry(catalog=catalog)
+    name = f"call-count-{transport.name.lower()}-agent"
+
+    # (1) Register via the public surface.
+    register_agent_support(
+        name=name,
+        transport=transport,
+        parser_factory=FakeParser,
+        strategy_factory=FakeStrategy,
+        agent_registry=registry,
+        interactive=interactive,
+    )
+
+    # (2) Single-registration observable state: catalog AND registry both see it.
+    catalog_entry = catalog.get(name)
+    assert catalog_entry is not None, (
+        f"After one register_agent_support call, catalog.get({name!r}) must be non-None"
+    )
+    registry_entry = registry.get(name)
+    assert registry_entry is not None, (
+        f"After one register_agent_support call, registry.get({name!r}) must be non-None"
+    )
+    assert name in registry.agents
+
+    # (3) Unregister via the public surface; both catalog AND registry drop the entry.
+    registry.unregister(name)
+    assert catalog.get(name) is None
+    assert registry.get(name) is None
+    assert name not in registry.agents
+
+    # (4) Re-register, then remove via the public surface; both catalog AND registry drop the entry.
+    register_agent_support(
+        name=name,
+        transport=transport,
+        parser_factory=FakeParser,
+        strategy_factory=FakeStrategy,
+        agent_registry=registry,
+        interactive=interactive,
+    )
+    assert catalog.get(name) is not None
+    assert registry.get(name) is not None
+    registry.unregister(name)
+    assert catalog.get(name) is None
+    assert registry.get(name) is None
+    assert name not in registry.agents
 
 
 def test_consolidated_interactive_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

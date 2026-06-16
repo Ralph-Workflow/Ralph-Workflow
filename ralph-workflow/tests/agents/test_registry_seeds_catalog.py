@@ -8,12 +8,10 @@ import pytest
 
 from ralph.agents.builtin import builtin_supports
 from ralph.agents.catalog import default_catalog
-from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH, _STRATEGY_DISPATCH_DATA
+from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
 from ralph.agents.parsers import (
     _CUSTOM_COMMAND_REGISTRY,
-    _CUSTOM_COMMAND_REGISTRY_DATA,
     _PARSER_REGISTRY,
-    _PARSER_REGISTRY_DATA,
 )
 from ralph.agents.registry import AgentRegistry, builtin_agents
 from ralph.config.models import UnifiedConfig
@@ -32,21 +30,21 @@ def _reset_catalog() -> object:
     cat = default_catalog()
     cat._entries.clear()
     cat._by_command.clear()
-    _PARSER_REGISTRY_DATA.clear()
-    _PARSER_REGISTRY_DATA.update(_GOLDEN_PARSERS)
-    _CUSTOM_COMMAND_REGISTRY_DATA.clear()
-    _CUSTOM_COMMAND_REGISTRY_DATA.update(_GOLDEN_CUSTOM)
-    _STRATEGY_DISPATCH_DATA.clear()
-    _STRATEGY_DISPATCH_DATA.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.parsers.clear()
+    cat._state.parsers.update(_GOLDEN_PARSERS)
+    cat._state.commands.clear()
+    cat._state.commands.update(_GOLDEN_CUSTOM)
+    cat._state.strategies.clear()
+    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
     yield
     cat._entries.clear()
     cat._by_command.clear()
-    _PARSER_REGISTRY_DATA.clear()
-    _PARSER_REGISTRY_DATA.update(_GOLDEN_PARSERS)
-    _CUSTOM_COMMAND_REGISTRY_DATA.clear()
-    _CUSTOM_COMMAND_REGISTRY_DATA.update(_GOLDEN_CUSTOM)
-    _STRATEGY_DISPATCH_DATA.clear()
-    _STRATEGY_DISPATCH_DATA.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.parsers.clear()
+    cat._state.parsers.update(_GOLDEN_PARSERS)
+    cat._state.commands.clear()
+    cat._state.commands.update(_GOLDEN_CUSTOM)
+    cat._state.strategies.clear()
+    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
 
 
 def test_registry_seeds_catalog() -> None:

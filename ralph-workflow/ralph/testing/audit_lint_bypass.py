@@ -103,6 +103,21 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # the 90% recipe before the 14-kwarg advanced helper) rather than
     # alphabetical sort, so the registration helpers read top-down.
     ("__init__", "RUF022"),
+    # catalog.py: late import of builtin_supports avoids parser<->catalog cycle.
+    ("catalog", "PLC0415"),
+    # registration.py: late import of AgentConfig is a forward reference.
+    ("registration", "UP037"),
+    # N802: historical public API name preserved for backward compat.
+    ("catalog", "N802"),
+    # execution_state/_factory.py: late imports of catalog and parsers
+    # break catalog<->_factory<->parsers cycles (the __getattr__ lazy
+    # view pattern in those modules defers the cross-module imports).
+    ("_factory", "PLC0415"),
+    # parsers/__init__.py already covered by the `("__init__", "PLC0415")`
+    # entry above.
+    # audit_agent_module_state.py: SIM103 inlined the boolean, no leftover.
+    # test_audit_agent_module_state.py: lazy import keeps the test self-contained.
+    ("test_audit_agent_module_state", "PLC0415"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

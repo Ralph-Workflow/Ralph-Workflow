@@ -32,7 +32,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents._contracts import StrategyFactory
-from ralph.agents.catalog import default_catalog
+from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.support import AgentSupport
 from ralph.config.enums import AgentTransport, JsonParserType
 
@@ -41,7 +41,6 @@ if TYPE_CHECKING:
     from ralph.agents.parsers.base import AgentParser
     from ralph.config.agent_config import AgentConfig
 
-    from .catalog import AgentCatalog
     from .registry import AgentRegistry
 
 
@@ -60,139 +59,16 @@ class _AnyKwargsStrategyFactory(Protocol):
 _UserStrategyFactory = StrategyFactory | object
 
 
-def register_agent_support(
-    name: str,
-    *,
-    transport: AgentTransport,
-    parser_factory: _ParserFactory,
-    strategy_factory: _UserStrategyFactory,
-    agent_registry: AgentRegistry,
-    json_parser: JsonParserType = JsonParserType.GENERIC,
-    interactive: bool = False,
-    cmd: str | None = None,
-    output_flag: str | None = None,
-    yolo_flag: str | None = None,
-    verbose_flag: str | None = None,
-    can_commit: bool = False,
-    model_flag: str | None = None,
-    print_flag: str | None = None,
-    streaming_flag: str | None = None,
-    session_flag: str | None = None,
-    display_name: str | None = None,
-    subagent_capability: bool | None = None,
-    no_default_session_flag: bool = False,
-) -> AgentConfig:
-    """Register support for a new agent in one call.
-
-    Delegates to ``AgentSupport.from_registration_kwargs`` +
-    ``agent_registry.catalog.add(support)`` so the registration is written
-    through the caller-owned catalog bound to ``agent_registry``, not the
-    global default catalog. When ``agent_registry`` was constructed without
-    an explicit ``catalog=``, that bound catalog is
-    :func:`ralph.agents.catalog.default_catalog`, so the historical
-    behavior is preserved. When ``agent_registry=AgentRegistry(catalog=AgentCatalog())``
-    is used, the registration stays inside the caller-owned catalog and does
-    not leak into the default catalog. The legacy module-level dicts
-    (``_PARSER_REGISTRY``, ``_CUSTOM_COMMAND_REGISTRY``,
-    ``_STRATEGY_DISPATCH``) are write-through state populated atomically by
-    ``AgentCatalog.add()`` and are deprecated; new code should use
-    ``AgentCatalog`` directly.
-
-    Args:
-        name: Agent name used by ``AgentRegistry`` and as the parser-type key.
-        transport: Transport enum value that selects the execution strategy.
-        parser_factory: Callable returning a parser instance for this agent.
-        strategy_factory: Callable returning an execution strategy instance.
-        agent_registry: Registry that owns the agent-name-keyed configuration.
-        json_parser: Parser type token stored in ``AgentConfig.json_parser``.
-        interactive: When True and ``session_flag`` is not provided, sets a
-            default resume template so session continuation is available.
-        cmd: Executable command for the agent; defaults to ``name``.
-        output_flag: Optional output format flag for streaming JSON.
-        yolo_flag: Optional autonomous/non-interactive flag string.
-        verbose_flag: Optional verbose flag string.
-        can_commit: Whether the agent can run git commit.
-        model_flag: Optional model/provider flag.
-        print_flag: Optional print flag for non-interactive output mode.
-        streaming_flag: Optional streaming flag for partial JSON messages.
-        session_flag: Optional session continuation flag template.
-        display_name: Human-readable display name for UI/UX.
-        subagent_capability: Whether the agent runtime exposes usable sub-agent
-            tooling.
-
-    Returns:
-        The registered ``AgentConfig``.
-
-    Raises:
-        ValueError: If ``name`` matches a reserved built-in parser key, or if
-            ``cmd`` is already registered for a different agent.
-    """
-    support = AgentSupport.from_registration_kwargs(
-        name,
-        transport=transport,
-        parser_factory=parser_factory,
-        strategy_factory=cast("StrategyFactory", strategy_factory),
-        agent_registry=agent_registry,
-        json_parser=json_parser,
-        interactive=interactive,
-        cmd=cmd,
-        output_flag=output_flag,
-        yolo_flag=yolo_flag,
-        verbose_flag=verbose_flag,
-        can_commit=can_commit,
-        model_flag=model_flag,
-        print_flag=print_flag,
-        streaming_flag=streaming_flag,
-        session_flag=session_flag,
-        display_name=display_name,
-        subagent_capability=subagent_capability,
-        no_default_session_flag=no_default_session_flag,
-    )
-
-    agent_registry.catalog.add(support)
-    agent_registry.register(name, support.config)
-    return support.config
-
-
-def register_agent_support_to_catalog(
-    name: str,
-    support: AgentSupport,
-    catalog: AgentCatalog,
-) -> AgentConfig:
-    """Register an AgentSupport into a specific catalog (test-friendly entry point).
-
-    Args:
-        name: Agent name.
-        support: Pre-built AgentSupport instance.
-        catalog: Target AgentCatalog.
-
-    Returns:
-        The registered ``AgentConfig``.
-    """
-    catalog.add(support)
-    return support.config
-
-
-# Transport-derived default strategy classes for the public
-# ``register_my_agent`` helper.
+# ---------------------------------------------------------------------------
+# Default-strategy import-path table
 #
-# The table is split into two layers:
-#   1. ``_DEFAULT_STRATEGY_IMPORT_PATH`` is a static, greppable mapping
-#      from :class:`AgentTransport` to a ``"module.attr"`` import path.
-#      The string is the source of truth and lives in module source
-#      (not behind a dynamic ``__import__`` call), so ``git grep`` and
-#      static analysis see the wiring.
-#   2. ``_import_default_strategy`` performs the actual
-#      ``importlib.import_module`` + ``getattr`` once per path and caches
-#      the result, so each strategy class is materialised at most once
-#      per process.  Wrapping the import in a helper keeps
-#      ``ralph.agents.registration`` importable without pulling in the
-#      full execution-state module graph at module load.
-#   3. ``_DEFAULT_STRATEGY_BY_TRANSPORT`` is the public-facing mapping
-#      that :func:`_default_strategy_for_transport` reads.  It is a
-#      ``dict[AgentTransport, StrategyFactory]`` (the same public shape
-#      as before); the strategy factories are materialised lazily on
-#      first access.
+# This static, greppable mapping from :class:`AgentTransport` to a
+# ``"module.attr"`` import path is the source of truth for the default
+# strategy factories.  :func:`_import_default_strategy` resolves each
+# path once and caches the result.  The resolved factories populate
+# :data:`AgentCatalog._DEFAULT_STRATEGIES` and are exposed via
+# :func:`_default_strategy_for_transport` for ``register_my_agent``.
+# ---------------------------------------------------------------------------
 _DEFAULT_STRATEGY_IMPORT_PATH: dict[AgentTransport, str] = {
     AgentTransport.CLAUDE_INTERACTIVE: (
         "ralph.agents.execution_state.claude_interactive_execution_strategy"
@@ -239,11 +115,10 @@ def _import_default_strategy(import_path: str) -> StrategyFactory:
 
 
 def _resolve_default_strategy_table() -> dict[AgentTransport, StrategyFactory]:
-    """Build the public dispatch table by importing every path once.
+    """Build the resolved dispatch table by importing every path once.
 
     Returns a fresh dict so callers can iterate without mutating the
-    static import-path table.  The result feeds
-    :data:`_DEFAULT_STRATEGY_BY_TRANSPORT` on first access.
+    static import-path table.
     """
     return {
         transport: _import_default_strategy(path)
@@ -251,18 +126,217 @@ def _resolve_default_strategy_table() -> dict[AgentTransport, StrategyFactory]:
     }
 
 
+# Resolved (factory, not import-path) view over the import-path table.
+# Mirrors :data:`AgentCatalog._DEFAULT_STRATEGIES` for callers that
+# prefer importing from :mod:`ralph.agents.registration` directly.
+# Both tables are derived from :data:`_DEFAULT_STRATEGY_IMPORT_PATH`,
+# the greppable source of truth.
 _DEFAULT_STRATEGY_BY_TRANSPORT: dict[AgentTransport, StrategyFactory] = (
     _resolve_default_strategy_table()
 )
 
 
 def _default_strategy_for_transport(transport: AgentTransport) -> StrategyFactory:
-    """Return the transport-derived default strategy for ``transport``."""
-    factory = _DEFAULT_STRATEGY_BY_TRANSPORT.get(transport)
+    """Return the transport-derived default strategy for ``transport``.
+
+    Looks up :data:`AgentCatalog._DEFAULT_STRATEGIES` (the canonical
+    source of truth).  Raises ``ValueError`` if no default is registered.
+    """
+    catalog = default_catalog()
+    factory = catalog._DEFAULT_STRATEGIES.get(transport)
     if factory is None:
         msg = f"No default strategy registered for transport {transport!r}"
         raise ValueError(msg)
     return factory
+
+
+# ---------------------------------------------------------------------------
+# Unified registration helpers
+#
+# All three public registration helpers route through
+# :func:`_validate_and_materialize_support` (which builds the
+# ``AgentSupport``) and :func:`_register_to_catalog` (the sole
+# ``AgentCatalog.add()`` call site in the registration code path).
+# This guarantees the single-call-per-registration contract pinned by
+# ``test_registration_shim.py::TestRegistrationDelegationToAgentCatalog``.
+# ---------------------------------------------------------------------------
+
+
+def _validate_and_materialize_support(
+    name: str,
+    transport: AgentTransport,
+    parser_factory: _ParserFactory,
+    strategy_factory: _UserStrategyFactory,
+    agent_registry: AgentRegistry | object,
+    json_parser: JsonParserType,
+    interactive: bool,
+    cmd: str | None,
+    output_flag: str | None,
+    yolo_flag: str | None,
+    verbose_flag: str | None,
+    can_commit: bool,
+    model_flag: str | None,
+    print_flag: str | None,
+    streaming_flag: str | None,
+    session_flag: str | None,
+    display_name: str | None,
+    subagent_capability: bool | None,
+    no_default_session_flag: bool,
+    is_builtin: bool = False,
+) -> AgentSupport:
+    """Build an :class:`AgentSupport` from the registration kwargs.
+
+    Single source of truth for the kwargs-to-support translation.  All
+    three public registration helpers delegate to this function so the
+    14-kwarg surface is defined in exactly one place.
+    """
+    return AgentSupport.from_registration_kwargs(
+        name,
+        transport=transport,
+        parser_factory=parser_factory,
+        strategy_factory=cast("StrategyFactory", strategy_factory),
+        agent_registry=agent_registry,
+        json_parser=json_parser,
+        interactive=interactive,
+        cmd=cmd,
+        output_flag=output_flag,
+        yolo_flag=yolo_flag,
+        verbose_flag=verbose_flag,
+        can_commit=can_commit,
+        model_flag=model_flag,
+        print_flag=print_flag,
+        streaming_flag=streaming_flag,
+        session_flag=session_flag,
+        display_name=display_name,
+        subagent_capability=subagent_capability,
+        is_builtin=is_builtin,
+        no_default_session_flag=no_default_session_flag,
+    )
+
+
+def _register_to_catalog(
+    name: str, support: AgentSupport, catalog: AgentCatalog
+) -> AgentConfig:
+    """Add ``support`` to ``catalog`` and return the resulting config.
+
+    Sole ``AgentCatalog.add()`` call site in the registration code
+    path.  ``register_agent_support``, ``register_agent_support_to_catalog``,
+    and ``register_my_agent`` all delegate here.
+    """
+    catalog.add(support)
+    return support.config
+
+
+def register_agent_support(
+    name: str,
+    *,
+    transport: AgentTransport,
+    parser_factory: _ParserFactory,
+    strategy_factory: _UserStrategyFactory,
+    agent_registry: AgentRegistry,
+    json_parser: JsonParserType = JsonParserType.GENERIC,
+    interactive: bool = False,
+    cmd: str | None = None,
+    output_flag: str | None = None,
+    yolo_flag: str | None = None,
+    verbose_flag: str | None = None,
+    can_commit: bool = False,
+    model_flag: str | None = None,
+    print_flag: str | None = None,
+    streaming_flag: str | None = None,
+    session_flag: str | None = None,
+    display_name: str | None = None,
+    subagent_capability: bool | None = None,
+    no_default_session_flag: bool = False,
+) -> AgentConfig:
+    """Register support for a new agent in one call.
+
+    Delegates to :func:`_validate_and_materialize_support` +
+    :func:`_register_to_catalog` so the registration is written
+    through the caller-owned catalog bound to ``agent_registry``, not the
+    global default catalog.  When ``agent_registry`` was constructed without
+    an explicit ``catalog=``, that bound catalog is
+    :func:`ralph.agents.catalog.default_catalog`, so the historical
+    behavior is preserved.  When ``agent_registry=AgentRegistry(catalog=AgentCatalog())``
+    is used, the registration stays inside the caller-owned catalog and does
+    not leak into the default catalog.  The legacy module-level dicts
+    (``_PARSER_REGISTRY``, ``_CUSTOM_COMMAND_REGISTRY``,
+    ``_STRATEGY_DISPATCH``) are write-through state populated atomically by
+    ``AgentCatalog.add()`` and are deprecated; new code should use
+    ``AgentCatalog`` directly.
+
+    Args:
+        name: Agent name used by ``AgentRegistry`` and as the parser-type key.
+        transport: Transport enum value that selects the execution strategy.
+        parser_factory: Callable returning a parser instance for this agent.
+        strategy_factory: Callable returning an execution strategy instance.
+        agent_registry: Registry that owns the agent-name-keyed configuration.
+        json_parser: Parser type token stored in ``AgentConfig.json_parser``.
+        interactive: When True and ``session_flag`` is not provided, sets a
+            default resume template so session continuation is available.
+        cmd: Executable command for the agent; defaults to ``name``.
+        output_flag: Optional output format flag for streaming JSON.
+        yolo_flag: Optional autonomous/non-interactive flag string.
+        verbose_flag: Optional verbose flag string.
+        can_commit: Whether the agent can run git commit.
+        model_flag: Optional model/provider flag.
+        print_flag: Optional print flag for non-interactive output mode.
+        streaming_flag: Optional streaming flag for partial JSON messages.
+        session_flag: Optional session continuation flag template.
+        display_name: Human-readable display name for UI/UX.
+        subagent_capability: Whether the agent runtime exposes usable sub-agent
+            tooling.
+
+    Returns:
+        The registered ``AgentConfig``.
+
+    Raises:
+        ValueError: If ``name`` matches a reserved built-in parser key, or if
+            ``cmd`` is already registered for a different agent.
+    """
+    support = _validate_and_materialize_support(
+        name,
+        transport,
+        parser_factory,
+        strategy_factory,
+        agent_registry,
+        json_parser,
+        interactive,
+        cmd,
+        output_flag,
+        yolo_flag,
+        verbose_flag,
+        can_commit,
+        model_flag,
+        print_flag,
+        streaming_flag,
+        session_flag,
+        display_name,
+        subagent_capability,
+        no_default_session_flag,
+    )
+
+    _register_to_catalog(name, support, agent_registry.catalog)
+    agent_registry.register(name, support.config)
+    return support.config
+
+
+def register_agent_support_to_catalog(
+    name: str,
+    support: AgentSupport,
+    catalog: AgentCatalog,
+) -> AgentConfig:
+    """Register an AgentSupport into a specific catalog (test-friendly entry point).
+
+    Args:
+        name: Agent name.
+        support: Pre-built AgentSupport instance.
+        catalog: Target AgentCatalog.
+
+    Returns:
+        The registered ``AgentConfig``.
+    """
+    return _register_to_catalog(name, support, catalog)
 
 
 def register_my_agent(
@@ -280,12 +354,12 @@ def register_my_agent(
 ) -> AgentConfig:
     """Opinionated 5-line recipe for adding a new agent.
 
-    The helper picks the strategy from :data:`_DEFAULT_STRATEGY_BY_TRANSPORT`
-    when ``strategy`` is not provided, so an interactive caller can never
-    accidentally register an interactive agent with
-    :class:`BaseExecutionStrategy`.  For interactive agents, the helper
-    also auto-applies the ``--resume {}`` session template unless
-    ``no_default_session_flag=True`` is passed.
+    The helper picks the strategy from
+    :data:`AgentCatalog._DEFAULT_STRATEGIES` when ``strategy`` is not
+    provided, so an interactive caller can never accidentally register an
+    interactive agent with :class:`BaseExecutionStrategy`.  For interactive
+    agents, the helper also auto-applies the ``--resume {}`` session
+    template unless ``no_default_session_flag=True`` is passed.
 
     Args:
         name: Agent name.

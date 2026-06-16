@@ -1,51 +1,220 @@
 """Instance-owned injectable registry for agent support registrations.
 
-The AgentCatalog is instance-owned. Tests should construct a fresh AgentCatalog
-per test rather than mutating module-level state.
-The legacy 3 module-level dicts (_PARSER_REGISTRY, _CUSTOM_COMMAND_REGISTRY,
-_STRATEGY_DISPATCH) are write-through state populated atomically by
-AgentCatalog.add() and are deprecated; they will be removed in a future release.
+The :class:`AgentCatalog` is instance-owned. Tests should construct a fresh
+``AgentCatalog`` per test rather than mutating module-level state.
+
+AgentCatalog is the single source of truth for all agent registration
+state (parsers, custom-command registry, strategy dispatch). The
+public legacy module-level dicts (``_PARSER_REGISTRY``,
+``_CUSTOM_COMMAND_REGISTRY``, ``_STRATEGY_DISPATCH``) are
+``MappingProxyType`` snapshots of the default catalog's state for
+backward compatibility; new code should use the catalog directly.
 """
 
-from __future__ import annotations
+# ``from __future__ import annotations`` is intentionally NOT used here:
+# the dataclass field annotations reference ``_ParserRegistryEntry`` (a
+# class defined later in this module) and mypy's forward-reference
+# resolver is sensitive to the ``from __future__ import annotations``
+# scope.  Keeping the annotations as runtime expressions lets mypy
+# evaluate them at class-definition time and gives a precise dict type
+# to ``default_catalog()._state.parsers`` / ``.commands``.
 
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
-from ralph.agents.builtin import builtin_supports
-from ralph.agents.execution_state._factory import (
-    _STRATEGY_DISPATCH,
-    _STRATEGY_DISPATCH_DATA,
+from ralph.agents._contracts import StrategyFactory
+from ralph.agents.execution_state._factory import _make_agy_strategy
+from ralph.agents.execution_state.claude_execution_strategy import ClaudeExecutionStrategy
+from ralph.agents.execution_state.claude_interactive_execution_strategy import (
+    ClaudeInteractiveExecutionStrategy,
 )
-from ralph.agents.parsers import (
-    _CUSTOM_COMMAND_REGISTRY_DATA,
-    _PARSER_REGISTRY,
-    _PARSER_REGISTRY_DATA,
-    _ParserRegistryEntry,
-)
+from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
+from ralph.agents.execution_state.opencode_execution_strategy import OpenCodeExecutionStrategy
+from ralph.agents.parsers.claude import ClaudeParser
+from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
+from ralph.agents.parsers.codex import CodexParser
+from ralph.agents.parsers.gemini import GeminiParser
+from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.parsers.opencode import OpenCodeParser
+from ralph.config.enums import AgentTransport
 
 if TYPE_CHECKING:
     from ralph.agents.execution_state._base import BaseExecutionStrategy
     from ralph.agents.parsers.base import AgentParser
     from ralph.agents.support import AgentSupport
-    from ralph.config.enums import AgentTransport
 
-__all__ = ["AgentCatalog", "_reset_default_catalog", "default_catalog"]
+__all__ = [
+    "AgentCatalog",
+    "_CatalogBackedMapping",
+    "_ParserRegistryEntry",
+    "_reset_default_catalog",
+    "default_catalog",
+]
+
+
+K = TypeVar("K")
+V = TypeVar("V")
+
+
+@dataclass
+class _ParserRegistryEntry:
+    """Parser factory bundled with the strategy factory registered alongside it.
+
+    Instances are callable so they can be stored directly in the parser
+    registry without changing that dict's public shape.  The bundled
+    ``strategy_factory`` lets runtime resolution select the correct
+    strategy for a specific agent command, not just its transport.
+    """
+
+    parser_factory: Callable[[], "AgentParser"]
+    strategy_factory: "StrategyFactory"
+    transport: "AgentTransport"
+
+    def __call__(self) -> "AgentParser":
+        return self.parser_factory()
+
+
+class _CatalogBackedMapping(Mapping[K, V]):
+    """Read-only mapping that delegates to a live catalog field on each access.
+
+    Allows module-level views to stay in lockstep with the catalog state
+    without making the view a snapshot of a fixed dict.  Mutations to the
+    backing field are visible immediately through the view, and writes
+    (setitem / delitem) are rejected with ``TypeError``.
+    """
+
+    __slots__ = ("_getter",)
+
+    def __init__(self, getter: Callable[[], Mapping[K, V]]) -> None:
+        self._getter = getter
+
+    def __getitem__(self, key: K) -> V:
+        return self._getter()[key]
+
+    def __len__(self) -> int:
+        return len(self._getter())
+
+    def __iter__(self) -> Iterator[K]:
+        return iter(self._getter())
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._getter()
+
+    def __repr__(self) -> str:
+        return f"_CatalogBackedMapping({self._getter()!r})"
+
+    def get(self, key: K, default: V | None = None) -> V | None:  # type: ignore[override]  # reason: autogenerated code has no type support, see docs/agents/type-ignore-policy.md#autogenerated-code
+        result: V | None = self._getter().get(key, default)
+        return result
+
+    def __setitem__(self, key: K, value: V) -> None:
+        msg = f"catalog-backed mapping does not support item assignment ({key!r})"
+        raise TypeError(msg)
+
+    def __delitem__(self, key: K) -> None:
+        msg = f"catalog-backed mapping does not support item deletion ({key!r})"
+        raise TypeError(msg)
+
+
+# ---------------------------------------------------------------------------
+# Default seed tables
+#
+# The default AgentCatalog is seeded with these built-in parser types and
+# strategy factories.  New ``AgentCatalog()`` instances are NOT seeded;
+# only ``default_catalog()`` (the singleton used by ``AgentRegistry()``)
+# is seeded on first access.  This keeps the construction cost of fresh
+# test catalogs at zero and avoids surprising callers with global state
+# in a constructor that is documented as a clean instance.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_BUILTIN_PARSER_TYPES: dict[
+    str, tuple[type["AgentParser"], "AgentTransport", "StrategyFactory"]
+] = {
+    "claude": (ClaudeParser, AgentTransport.CLAUDE, ClaudeExecutionStrategy),
+    "claude_interactive": (
+        ClaudeInteractiveParser,
+        AgentTransport.CLAUDE_INTERACTIVE,
+        ClaudeInteractiveExecutionStrategy,
+    ),
+    "codex": (CodexParser, AgentTransport.CODEX, GenericExecutionStrategy),
+    "gemini": (GeminiParser, AgentTransport.GENERIC, GenericExecutionStrategy),
+    "opencode": (OpenCodeParser, AgentTransport.OPENCODE, GenericExecutionStrategy),
+    "generic": (GenericParser, AgentTransport.GENERIC, GenericExecutionStrategy),
+}
+
+
+@dataclass
+class _AgentCatalogState:
+    """Internal mutable state owned by :class:`AgentCatalog`.
+
+    AgentCatalog is the single source of truth for this state.  The
+    legacy module-level views read from ``default_catalog()._state``
+    so they are always in lockstep with the catalog.
+    """
+
+    parsers: dict[str, "type[AgentParser] | _ParserRegistryEntry"] = field(default_factory=dict)
+    commands: dict[str, "_ParserRegistryEntry"] = field(default_factory=dict)
+    strategies: dict[AgentTransport, StrategyFactory] = field(default_factory=dict)
+
+
+def _default_strategy_factories() -> dict[AgentTransport, StrategyFactory]:
+    """Return the transport-derived default strategy factories.
+
+    Mirrors the historical ``_DEFAULT_STRATEGY_BY_TRANSPORT`` table
+    (in :mod:`ralph.agents.registration`) which is the canonical
+    greppable source of truth.  Used by
+    :meth:`AgentCatalog._default_strategy_for_transport` and by the
+    default-catalog seeding logic.
+    """
+    return {
+        AgentTransport.OPENCODE: OpenCodeExecutionStrategy,
+        AgentTransport.CLAUDE: ClaudeExecutionStrategy,
+        AgentTransport.CLAUDE_INTERACTIVE: ClaudeInteractiveExecutionStrategy,
+        AgentTransport.AGY: _make_agy_strategy,
+        AgentTransport.CODEX: GenericExecutionStrategy,
+        AgentTransport.NANOCODER: GenericExecutionStrategy,
+        AgentTransport.GENERIC: GenericExecutionStrategy,
+    }
 
 
 @dataclass
 class AgentCatalog:
     """Single injectable agent registry.
 
-    Manages registrations through AgentSupport objects. The legacy module-level
-    dicts are write-through state populated atomically by ``add()`` for backward
-    compatibility.
+    Manages registrations through :class:`AgentSupport` objects.  The
+    legacy module-level ``_PARSER_REGISTRY``, ``_CUSTOM_COMMAND_REGISTRY``,
+    and ``_STRATEGY_DISPATCH`` views are :class:`types.MappingProxyType`
+    snapshots of ``default_catalog()._state`` for backward compatibility.
     """
 
-    _entries: dict[str, AgentSupport] = field(default_factory=dict)
-    _by_command: dict[str, AgentSupport] = field(default_factory=dict)
+    _entries: dict[str, "AgentSupport"] = field(default_factory=dict)
+    _by_command: dict[str, "AgentSupport"] = field(default_factory=dict)
+    _state: _AgentCatalogState = field(default_factory=_AgentCatalogState)
 
-    def add(self, support: AgentSupport) -> None:
+    def _default_strategy_for_transport(
+        self, transport: AgentTransport
+    ) -> "StrategyFactory":
+        """Return the transport-derived default strategy factory for ``transport``.
+
+        Looks up the agent's canonical default strategy table.  Raises
+        ``ValueError`` if no default is registered.
+        """
+        factory = self._DEFAULT_STRATEGIES.get(transport)
+        if factory is None:
+            msg = f"No default strategy registered for transport {transport!r}"
+            raise ValueError(msg)
+        return factory
+
+    @property
+    def _DEFAULT_STRATEGIES(self) -> dict[AgentTransport, "StrategyFactory"]:  # noqa: N802  # reason: historical public API name preserved for backward compat
+        """Return the transport-derived default strategy factories.
+
+        Mirrors the historical ``_DEFAULT_STRATEGY_BY_TRANSPORT`` table.
+        """
+        return _default_strategy_factories()
+
+    def add(self, support: "AgentSupport") -> None:
         """Register an agent support entry.
 
         Raises ValueError if the name or command is already registered,
@@ -74,27 +243,33 @@ class AgentCatalog:
     def _is_built_in_parser_key(key: str) -> bool:
         """Return True when ``key`` maps to a built-in parser class.
 
-        Custom registrations store a :class:`_ParserRegistryEntry`, so any existing
-        class value is a built-in that must not be overwritten.
+        Checks both the built-in agent name set (from
+        :func:`ralph.agents.builtin.builtin_supports`) and the legacy
+        class-keyed parser registry entries that the runtime resolves by
+        parser key (e.g. ``stream_parsed_agent_activity``).
         """
+        from ralph.agents.builtin import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->builtin cycle
+            builtin_supports,
+        )
+
         builtin_names = {s.name.lower() for s in builtin_supports()}
         if key in builtin_names:
             return True
 
-        existing = _PARSER_REGISTRY.get(key)
+        existing = default_catalog()._state.parsers.get(key)
         return existing is not None and not isinstance(existing, _ParserRegistryEntry)
 
-    def _write_through(self, support: AgentSupport, name_lower: str, cmd_lower: str) -> None:
-        """Populate the 3 legacy module-level dicts for backward compat.
+    def _write_through(self, support: "AgentSupport", name_lower: str, cmd_lower: str) -> None:
+        """Populate the catalog state for backward compat.
 
-        Only overwrites ``_PARSER_REGISTRY_DATA`` and ``_CUSTOM_COMMAND_REGISTRY_DATA``
+        Only overwrites ``self._state.parsers`` and ``self._state.commands``
         when the existing slot is not a built-in parser class, so that seeding the
         default catalog with the six built-in agents does not silently replace the
         ``ClaudeParser`` / ``ClaudeInteractiveParser`` / ``CodexParser`` / etc.
         classes that downstream callers (e.g. ``stream_parsed_agent_activity``)
         resolve by parser key. Custom agents still write through normally.
 
-        Only overwrites ``_STRATEGY_DISPATCH`` when the transport does not yet
+        Only overwrites ``self._state.strategies`` when the transport does not yet
         have an entry, preserving built-in dispatch entries so custom-agent
         registrations do not corrupt global transport-level strategy lookups.
         """
@@ -103,22 +278,22 @@ class AgentCatalog:
             support.strategy_factory,
             support.spec.transport,
         )
-        existing_parser = _PARSER_REGISTRY.get(name_lower)
+        existing_parser = self._state.parsers.get(name_lower)
         if existing_parser is None or isinstance(existing_parser, _ParserRegistryEntry):
-            _PARSER_REGISTRY_DATA[name_lower] = entry
-        existing_custom = _CUSTOM_COMMAND_REGISTRY_DATA.get(cmd_lower)
+            self._state.parsers[name_lower] = entry
+        existing_custom = self._state.commands.get(cmd_lower)
         if existing_custom is None or isinstance(existing_custom, _ParserRegistryEntry):
-            _CUSTOM_COMMAND_REGISTRY_DATA[cmd_lower] = entry
-        if support.spec.transport not in _STRATEGY_DISPATCH:
-            _STRATEGY_DISPATCH_DATA[support.spec.transport] = support.strategy_factory
+            self._state.commands[cmd_lower] = entry
+        if support.spec.transport not in self._state.strategies:
+            self._state.strategies[support.spec.transport] = support.strategy_factory
 
     def remove(self, name: str) -> None:
         """Remove an agent registration by name.
 
         Reverses the compatibility writes made by ``add()``: removes the parser
-        entry from ``_PARSER_REGISTRY``, removes the command entry from
-        ``_CUSTOM_COMMAND_REGISTRY``, and removes the transport strategy entry
-        from ``_STRATEGY_DISPATCH`` only when the stored factory matches this
+        entry from ``self._state.parsers``, removes the command entry from
+        ``self._state.commands``, and removes the transport strategy entry
+        from ``self._state.strategies`` only when the stored factory matches this
         registration's strategy factory (preserving built-in transport fallbacks
         for entries that existed before the removed registration).
         """
@@ -127,12 +302,12 @@ class AgentCatalog:
         if support is not None:
             cmd_lower = support.cmd.lower()
             self._by_command.pop(cmd_lower, None)
-            _PARSER_REGISTRY_DATA.pop(name_lower, None)
-            _CUSTOM_COMMAND_REGISTRY_DATA.pop(cmd_lower, None)
-            if _STRATEGY_DISPATCH.get(support.spec.transport) is support.strategy_factory:
-                del _STRATEGY_DISPATCH_DATA[support.spec.transport]
+            self._state.parsers.pop(name_lower, None)
+            self._state.commands.pop(cmd_lower, None)
+            if self._state.strategies.get(support.spec.transport) is support.strategy_factory:
+                self._state.strategies.pop(support.spec.transport, None)
 
-    def get(self, name_or_command: str) -> AgentSupport | None:
+    def get(self, name_or_command: str) -> "AgentSupport | None":
         """Look up by agent name first, then by command."""
         key = name_or_command.lower()
         support = self._entries.get(key)
@@ -140,7 +315,7 @@ class AgentCatalog:
             return support
         return self._by_command.get(key)
 
-    def get_parser(self, name_or_command: str) -> AgentParser:
+    def get_parser(self, name_or_command: str) -> "AgentParser":
         """Return a fresh parser instance for the given name or command."""
         support = self.get(name_or_command)
         if support is None:
@@ -152,7 +327,7 @@ class AgentCatalog:
         self,
         transport: AgentTransport,
         command: str | None = None,
-    ) -> BaseExecutionStrategy:
+    ) -> "BaseExecutionStrategy":
         """Return a strategy instance by transport, optionally preferring a command match.
 
         Args:
@@ -184,17 +359,40 @@ class AgentCatalog:
         """Return sorted tuple of registered agent names."""
         return tuple(sorted(self._entries.keys()))
 
-    def by_transport(self, transport: AgentTransport) -> tuple[AgentSupport, ...]:
+    def by_transport(self, transport: AgentTransport) -> tuple["AgentSupport", ...]:
         """Return all supports matching the given transport."""
         return tuple(s for s in self._entries.values() if s.spec.transport == transport)
+
+
+def _seed_default_catalog(catalog: AgentCatalog) -> None:
+    """Populate the default catalog with the 6 built-in parser types and 7 default strategies.
+
+    Idempotent: calling on a catalog that is already seeded is a no-op.
+
+    Built-in parser types are stored as bare parser classes (NOT
+    ``_ParserRegistryEntry`` instances) so :meth:`AgentCatalog._is_built_in_parser_key`
+    can distinguish them from custom registrations and so :meth:`AgentCatalog._write_through`
+    can preserve them when a custom agent tries to register a name that collides
+    with a built-in parser key.  The bare classes are also callable so
+    ``_PARSER_REGISTRY[name]()`` (the runtime parser lookup) works directly
+    on the seeded value.
+    """
+    if catalog._state.parsers:
+        return
+    for name, (factory, _transport, _strategy) in _DEFAULT_BUILTIN_PARSER_TYPES.items():
+        catalog._state.parsers[name] = factory
+    catalog._state.strategies.update(catalog._DEFAULT_STRATEGIES)
 
 
 _catalog_holder: list[AgentCatalog] = []
 
 
 def default_catalog() -> AgentCatalog:
+    """Return the singleton default catalog, seeding it on first access."""
     if not _catalog_holder:
-        _catalog_holder.append(AgentCatalog())
+        catalog = AgentCatalog()
+        _seed_default_catalog(catalog)
+        _catalog_holder.append(catalog)
     return _catalog_holder[0]
 
 

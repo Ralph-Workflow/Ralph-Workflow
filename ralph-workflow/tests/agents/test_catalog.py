@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.agents.catalog import AgentCatalog
+from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.agents.execution_state._factory import strategy_for_command
 from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
@@ -135,7 +135,7 @@ class TestAgentCatalog:
         assert len(claude_agents) == 1
 
     def test_remove_clears_legacy_registries(self) -> None:
-        catalog = AgentCatalog()
+        catalog = default_catalog()
         support = _make_support("legacy-remove", transport=AgentTransport.GENERIC, cmd="legacy-cmd")
         catalog.add(support)
         assert "legacy-remove" in _PARSER_REGISTRY
@@ -147,14 +147,14 @@ class TestAgentCatalog:
         assert "legacy-cmd" not in _CUSTOM_COMMAND_REGISTRY
 
     def test_remove_preserves_builtin_transport_fallback(self) -> None:
-        catalog = AgentCatalog()
+        catalog = default_catalog()
         support = _make_support("custom-strat", transport=AgentTransport.CODEX, cmd="custom-strat")
         catalog.add(support)
         catalog.remove("custom-strat")
         assert "custom-strat" not in _PARSER_REGISTRY
 
     def test_remove_clears_legacy_get_parser_and_strategy_for_command(self) -> None:
-        catalog = AgentCatalog()
+        catalog = default_catalog()
         support = _make_support("remove-me", transport=AgentTransport.CODEX, cmd="remove-me-cmd")
         catalog.add(support)
 
