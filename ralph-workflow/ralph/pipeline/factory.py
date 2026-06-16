@@ -228,6 +228,15 @@ class PipelineDeps:
     marker_watcher_factory: MarkerWatcherFactory | None = None
     snapshot_registry: SnapshotRegistry | None = None
     recovery_sleep: Callable[[float], None] | None = None
+    # Live runtime signals from the pipeline that the watchdog consults
+    # on every evaluate() call so the StuckClassifier gate can return
+    # DUPLICATE_KILL (when the pipeline is already in a wait state) or
+    # WAITING_ON_CONNECTIVITY (when the network is offline) and defer
+    # the fire. Both providers are optional; the watchdog falls back
+    # to "no live signal" when they are None. The run loop populates
+    # these from its live PipelineState and ConnectivityMonitor.
+    connectivity_state_provider: Callable[[], str | None] | None = None
+    is_waiting_state_provider: Callable[[], bool] | None = None
 
     def __init__(
         self,
@@ -250,6 +259,8 @@ class PipelineDeps:
         marker_watcher_factory: MarkerWatcherFactory | None = None,
         snapshot_registry: SnapshotRegistry | None = None,
         recovery_sleep: Callable[[float], None] | None = None,
+        connectivity_state_provider: Callable[[], str | None] | None = None,
+        is_waiting_state_provider: Callable[[], bool] | None = None,
     ) -> None:
         core_overrides: dict[str, object] = {}
         if display_context is not _UNSET:
@@ -346,6 +357,12 @@ class PipelineDeps:
         object.__setattr__(self, "marker_watcher_factory", marker_watcher_factory)
         object.__setattr__(self, "snapshot_registry", snapshot_registry)
         object.__setattr__(self, "recovery_sleep", recovery_sleep)
+        object.__setattr__(
+            self, "connectivity_state_provider", connectivity_state_provider
+        )
+        object.__setattr__(
+            self, "is_waiting_state_provider", is_waiting_state_provider
+        )
 
     @property
     def display_context(self) -> DisplayContext:

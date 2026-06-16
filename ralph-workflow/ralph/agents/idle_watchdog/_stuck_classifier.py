@@ -12,9 +12,14 @@ Six kinds are exposed:
   is fresher than ``activity_evidence_ttl_seconds``. The agent is actively
   producing output; the watchdog must NOT fire.
 * LOADING — no first-party channels fresh, but the subagent liveness
-  channel is fresh OR classify_quiet returned WAITING_ON_CHILD with
-  alive_by in a non-progress state. The agent is loading (starting up or
-  waiting on a child); the watchdog must NOT fire.
+  channel is fresh (a real live-subagent signal from a process
+  monitor, can_defer=True) OR classify_quiet returned
+  WAITING_ON_CHILD. The agent is loading (starting up or waiting
+  on a child); the watchdog must NOT fire. Stale-child signals
+  from the corroborator (alive_by in {OS_DESCENDANT_ONLY_STALE_PROGRESS,
+  CPU_IDLE_WHILE_ALIVE, LOG_STALE_WHILE_ALIVE} with can_defer=False)
+  are NOT counted as fresh — the no-progress / os_descendant_only
+  ceilings are the authoritative signal for those.
 * WAITING_ON_CONNECTIVITY — the connectivity monitor reports OFFLINE. The
   pipeline already has auto-resume semantics; the watchdog must NOT fire.
 * TRANSITIONING — classify_quiet returned RESUMABLE_CONTINUE. The session
@@ -127,12 +132,33 @@ def _subagent_liveness_fresh(
     summary: EvidenceSummary,
     ttl: float | None,
 ) -> bool:
-    """Return True when the subagent liveness side-channel is fresh.
+    """Return True when the subagent liveness side-channel is fresh AND defers.
 
-    Side-channel liveness is quality-filtered: the channel is fresh only
-    when alive_by is set to a non-progress state (the watchdog records
-    alive_by in the summary so the classifier does not need to re-derive
-    it). A bare PID existence with no progress signals is NOT fresh.
+    Side-channel liveness is quality-filtered: the channel is fresh
+    only when ``can_defer`` is True. The watchdog's
+    ``_subagent_liveness_summary`` sets ``can_defer=True`` when a
+    process monitor has confirmed at least one live subagent (a real
+    liveness signal) and ``can_defer=False`` otherwise (corroborator
+    signals for stale children). This is the alignment that lets
+    the classifier's branch 4 distinguish:
+
+      * "live child from process monitor" -- defers the gate so the
+        dumb-kill protection applies (the classifier returns
+        LOADING via this branch).
+      * "stale child from corroborator" -- does NOT defer, so the
+        no_progress / os_descendant_only ceilings can fire (the
+        classifier returns STUCK via the fall-through).
+
+    A bare PID existence with no alive_by label and ``can_defer=False``
+    is NOT fresh.
+
+    The no-progress / os_descendant_only ceilings live in the
+    watchdog's own evaluator (``_evaluate_no_progress_quiet`` and
+    the OS-descendant-only branch of ``_handle_waiting_branch``).
+    Those evaluators run BEFORE the classifier consults the
+    subagent_liveness channel, and the classifier now agrees with
+    the watchdog's own ``_channel_evidence_active`` policy: only a
+    real live-subagent signal (can_defer=True) defers the gate.
     """
     if ttl is None or ttl <= 0.0:
         return False
@@ -141,11 +167,15 @@ def _subagent_liveness_fresh(
             continue
         if channel.age_seconds is None or channel.age_seconds >= ttl:
             continue
-        # Subagent liveness is only fresh when the channel carries an
-        # alive_by label (i.e. the watchdog recorded a non-progress
-        # state). Without alive_by, the channel is just bare PID
-        # existence and is not evidence of work.
-        if channel.alive_by is None:
+        # Subagent liveness is fresh only when the watchdog has
+        # explicitly marked the channel as deferrable
+        # (can_defer=True). The watchdog's own
+        # ``_subagent_liveness_summary`` sets can_defer=True ONLY
+        # for the process-monitor live-subagent path; the
+        # classifier now matches that policy so the gate defers
+        # for real liveness signals but not for the
+        # no_progress / os_descendant_only ceiling cases.
+        if not channel.can_defer:
             continue
         return True
     return False

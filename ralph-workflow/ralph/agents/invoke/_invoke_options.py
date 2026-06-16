@@ -65,3 +65,11 @@ class InvokeOptions:
     initial_session_id: str | None = None
     settings_json: str | None = None
     stop_sentinel_path: Path | None = None
+    # Live runtime signals from the pipeline that the watchdog consults
+    # on every evaluate() call so the StuckClassifier gate can return
+    # DUPLICATE_KILL (when the pipeline is already in a wait state)
+    # or WAITING_ON_CONNECTIVITY (when the network is offline) and
+    # defer the fire. Both providers are optional; the watchdog
+    # falls back to "no live signal" when they are None.
+    connectivity_state_provider: Callable[[], str | None] | None = None
+    is_waiting_state_provider: Callable[[], bool] | None = None

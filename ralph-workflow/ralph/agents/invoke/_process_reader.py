@@ -26,6 +26,7 @@ from ralph.agents.idle_watchdog import (
     WatchdogFireReason,
     WatchdogVerdict,
 )
+from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._completion import (
     _check_process_result,
     _CompletionCheckOptions,
@@ -394,7 +395,29 @@ class _ProcessLineReader:
             for key, value in hard_stop_diag.items():
                 if key not in merged_diag:
                     merged_diag[key] = value
-        return pending, _IdleStreamTimeoutError(
+        # The watchdog's typed exception ``IdleWatchdogKilledError``
+        # (AC-05: the failure_classifier's typed-attribute branch in
+        # ``failure_classifier.py`` consults ``exc.reason`` and
+        # ``exc.signal`` directly instead of substring-matching the
+        # message) is raised by this method, but the existing
+        # ``except _IdleStreamTimeoutError as exc:`` block in
+        # ``_run_subprocess_and_read_lines`` is the conversion seam
+        # to ``AgentInactivityTimeoutError`` for the recovery
+        # layer. The typed exception is attached to the wrapped
+        # payload via ``__cause__`` so a downstream
+        # ``failure_classifier.classify`` call that walks the
+        # ``__cause__`` chain (and the future ``isinstance`` check
+        # on the typed exception) sees the typed cause first. The
+        # post-exit ``PROCESS_EXIT_HANG`` path
+        # (post_exit_watchdog.py) still raises
+        # ``_IdleStreamTimeoutError`` directly because it is owned
+        # by ``PostExitWatchdog``, not ``IdleWatchdog``.
+        typed_exc = IdleWatchdogKilledError(
+            reason=fire_reason.value,
+            signal=15,  # SIGTERM
+            evidence_summary=str(merged_diag),
+        )
+        wrapper = _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
             diagnostic=cast(
@@ -402,6 +425,8 @@ class _ProcessLineReader:
                 merged_diag,
             ),
         )
+        wrapper.__cause__ = typed_exc
+        return pending, wrapper
 
     def _record_line_activity(self, watchdog: IdleWatchdog, queued_line: str) -> None:
         """Classify a line and route it to the matching watchdog activity sink.
@@ -569,6 +594,8 @@ def _run_subprocess_and_read_lines(
             monitor=ctx.monitor,
             expected_session_id=ctx.expected_session_id,
             workspace_path=ctx.workspace_path,
+            connectivity_state_provider=ctx.connectivity_state_provider,
+            is_waiting_state_provider=ctx.is_waiting_state_provider,
         )
         lines_iter = _ProcessLineReader(handle, reader_ctx, clock).read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)

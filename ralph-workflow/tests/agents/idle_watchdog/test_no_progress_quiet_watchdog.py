@@ -16,7 +16,16 @@ from ralph.agents.timeout_clock import FakeClock
 
 
 def test_watchdog_fires_no_progress_quiet_on_prompt_signature() -> None:
-    """Watchdog fires NO_PROGRESS_QUIET on stale-progress descendants & idle stdout."""
+    """Watchdog fires NO_PROGRESS_QUIET on stale-progress descendants & idle stdout.
+
+    The no_progress_quiet ceiling fires when the agent has been
+    waiting too long with a stale-but-running child (no first-party
+    progress, no live subagent from a process monitor). The
+    classifier's branch 4 distinguishes "live child from process
+    monitor" (defers, can_defer=True) from "stale child from
+    corroborator" (does NOT defer, can_defer=False) so the
+    no_progress_quiet ceiling is NOT blocked by the gate.
+    """
     clock = FakeClock()
     policy = TimeoutPolicy(
         idle_timeout_seconds=300.0,
@@ -43,7 +52,10 @@ def test_watchdog_fires_no_progress_quiet_on_prompt_signature() -> None:
     verdict = watchdog.evaluate(classify_quiet=_waiting)
     assert verdict == WatchdogVerdict.CONTINUE
 
-    # Advance clock past 10s
+    # Advance clock past 10s. The classifier returns STUCK (the
+    # corroborator-only path sets can_defer=False on the
+    # subagent_liveness channel, so branch 4 does not defer) and
+    # the gate allows FIRE.
     clock.advance(12.0)
     verdict = watchdog.evaluate(classify_quiet=_waiting)
     assert verdict == WatchdogVerdict.FIRE

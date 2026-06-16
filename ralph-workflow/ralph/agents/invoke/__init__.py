@@ -334,6 +334,8 @@ def invoke_agent(
         required_artifact=opts.required_artifact,
         clock=_clock,
         evaluate_completion_fn=evaluate_completion,
+        connectivity_state_provider=opts.connectivity_state_provider,
+        is_waiting_state_provider=opts.is_waiting_state_provider,
     )
     ctx = replace(ctx, expected_session_id=opts.session_id)
     try:

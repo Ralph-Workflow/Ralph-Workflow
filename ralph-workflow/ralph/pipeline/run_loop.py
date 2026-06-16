@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import sys
 import threading
 import time
@@ -338,8 +339,34 @@ def _run_inner_loop(
     prev_phase: str,
 ) -> tuple[PipelineState, str, int | None]:
     """Run main pipeline while loop; return (state, prev_phase, exit_code_if_interrupted)."""
+    # State holder so the providers captured by run_pipeline_step can
+    # read the LIVE PipelineState / ConnectivityMonitor on every agent
+    # invocation. The list is rebound every loop iteration so the
+    # is_waiting_state_provider returns the current state's value, not
+    # a snapshot from when the loop was entered.
+    state_holder: list[PipelineState] = [state]
+
+    def _live_connectivity() -> str | None:
+        return str(ctx.connectivity_monitor.current_state.value)
+
+    def _live_is_waiting() -> bool:
+        return bool(state_holder[0].is_waiting_state)
+
     while state.phase != ctx.policy_bundle.pipeline.terminal_phase:
         state = _apply_connectivity_check(state, ctx.connectivity_monitor)
+        state_holder[0] = state
+        # Per-iteration pipeline_deps with the live providers so the
+        # watchdog inside the agent invocation can consult the
+        # classifier on every evaluate() call.
+        iter_pipeline_deps: PipelineDeps | None
+        if ctx.pipeline_deps is not None:
+            iter_pipeline_deps = dataclasses.replace(
+                ctx.pipeline_deps,
+                connectivity_state_provider=_live_connectivity,
+                is_waiting_state_provider=_live_is_waiting,
+            )
+        else:
+            iter_pipeline_deps = ctx.pipeline_deps
         runner_step = cast("_RunPipelineStepFn", _runner_module.run_pipeline_step)
         step_result = runner_step(
             state=state,
@@ -355,7 +382,7 @@ def _run_inner_loop(
             config_path=ctx.config_path,
             cli_overrides=ctx.cli_overrides,
             _monitor_stop_cb=ctx.monitor_stop,
-            pipeline_deps=ctx.pipeline_deps,
+            pipeline_deps=iter_pipeline_deps,
         )
         if isinstance(step_result, int):
             return state, prev_phase, step_result

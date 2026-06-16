@@ -107,6 +107,12 @@ def _multi_summary(
     )
     # SUBAGENT_LIVENESS
     sub_liv_age = None if subagent_liveness_at is None else max(0.0, _NOW - subagent_liveness_at)
+    # The classifier requires can_defer=True for the subagent_liveness
+    # channel to count as fresh. The watchdog's _subagent_liveness_summary
+    # sets can_defer=True only for process-monitor live-subagent signals;
+    # the test helper exercises the classifier contract directly and
+    # therefore sets can_defer=True when the liveness timestamp is set.
+    sub_liv_can_defer = subagent_liveness_at is not None
     channels.append(
         ChannelEvidenceSummary(
             channel_name=ChannelName.SUBAGENT_LIVENESS,
@@ -115,7 +121,7 @@ def _multi_summary(
             age_seconds=sub_liv_age,
             counter=1 if subagent_liveness_at is not None else None,
             alive_by=alive_by,
-            can_defer=False,
+            can_defer=sub_liv_can_defer,
         )
     )
     # WORKSPACE

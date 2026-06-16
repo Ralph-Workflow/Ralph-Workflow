@@ -136,18 +136,18 @@ def test_dumb_kill_one_agent_reading_current_prompt() -> None:
     (alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS), subagent_output absent.
 
     OLD behavior: the OS_DESCENDANT_ONLY_CEILING_SECONDS default of
-    120s fired at cumulative=159s during legitimate file reads.
+    120s fired at cumulative=159s during legitimate file reads, killing
+    the agent mid-read.
 
     NEW behavior: the OS_DESCENDANT_ONLY_CEILING_SECONDS default is
-    raised to 300s, and CHILDREN_PERSIST_TOO_LONG is treated as an
-    absolute reason (operator-set hard cap, not a stuck-detection
-    signal). The cumulative waiting ceiling fires at 300s, well past
-    the 120s dumb-kill threshold, giving the agent a fair chance to
-    finish a long read.
-
-    The smart-verdict gate does NOT defer CHILDREN_PERSIST_TOO_LONG
-    because the cumulative ceiling is a wall-clock budget, not a
-    productivity signal.
+    raised to 300s AND the smart-verdict gate applies the StuckClassifier
+    to ``CHILDREN_PERSIST_TOO_LONG``. With a live subagent
+    (alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS) the classifier returns
+    LOADING and the gate defers the fire -- returning CONTINUE rather
+    than FIRE. The agent is allowed to keep reading
+    ``.agent/CURRENT_PROMPT.md`` for as long as the subagent is making
+    forward progress (the side-channel freshness gate covers up to
+    ``max_waiting_on_child_no_progress_seconds`` default 600s).
     """
     monitor = _LiveOnlyProcessMonitor(live_count=1)
 
@@ -178,18 +178,22 @@ def test_dumb_kill_one_agent_reading_current_prompt() -> None:
     assert first == WatchdogVerdict.WAITING_ON_CHILD
 
     # Advance to just past the 300s effective ceiling. The OLD
-    # behavior would have fired at 120s (the old default); the NEW
-    # behavior fires at 300s. The test asserts the new behavior.
+    # behavior would have fired at 120s (the old default) and killed
+    # the agent. The NEW behavior defers the fire because the
+    # subagent is still alive (subagent_liveness is fresh,
+    # alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS), so the classifier
+    # returns LOADING and the gate returns CONTINUE.
     clock.advance(300.0)
 
     verdict = wd.evaluate(classify_quiet=_waiting)
-    assert verdict == WatchdogVerdict.FIRE
-    assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+    assert verdict == WatchdogVerdict.CONTINUE, (
+        f"expected CONTINUE (CHILDREN_PERSIST_TOO_LONG now gated by StuckClassifier,"
+        f" classifier returns LOADING while subagent is alive), got {verdict}"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
 
-    # Verify the StuckClassifier named the right kind. Even though
-    # subagent_liveness is fresh, CHILDREN_PERSIST_TOO_LONG is
-    # absolute and bypasses the gate. The classifier itself returns
-    # LOADING but the gate lets the absolute reason through.
+    # Verify the classifier named LOADING (the live subagent is the
+    # deferral signal). The watchdog deferred correctly.
     summary = wd.last_evidence_summary(clock.monotonic())
     kind = classify_stuck(
         is_waiting_state=False,
@@ -199,6 +203,60 @@ def test_dumb_kill_one_agent_reading_current_prompt() -> None:
         activity_evidence_ttl_seconds=wd._config.activity_evidence_ttl_seconds,
     )
     assert kind == StuckKind.LOADING
+
+
+def test_children_persist_deferred_while_classifier_returns_loading() -> None:
+    """CHILDREN_PERSIST_TOO_LONG is deferred when the classifier returns non-STUCK.
+
+    With ``CHILDREN_PERSIST_TOO_LONG`` now gated by the StuckClassifier
+    (per the analysis feedback), the watchdog defers the fire while
+    any of the six non-STUCK kinds apply. The classifier's
+    ``WAITING_ON_CHILD`` branch returns LOADING whenever
+    ``classify_quiet()`` reports a live child, so the gate defers
+    the CHILDREN_PERSIST_TOO_LONG fire and returns CONTINUE rather
+    than FIRE.
+
+    This is the symmetric counterpart of the dumb-kill test: a
+    productive-but-quiet session (live subagent, classifier=LOADING)
+    is NOT killed even when the cumulative ceiling is reached.
+    """
+    monitor = _LiveOnlyProcessMonitor(live_count=1)
+
+    def _os_desc_only_corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
+    wd, clock = _make_watchdog(
+        _make_policy(
+            idle_timeout=1.0,
+            max_waiting=600.0,
+            os_descendant_only_ceiling=300.0,
+            activity_ttl=30.0,
+        ),
+        process_monitor=monitor,
+        corroborator=_os_desc_only_corroborator,
+    )
+    wd.record_activity()
+    clock.advance(2.0)
+
+    # First call: enter the WAITING_ON_CHILD branch.
+    first = wd.evaluate(classify_quiet=_waiting)
+    assert first == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance past the 300s os_descendant_only_ceiling. With a live
+    # subagent (alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS), the
+    # classifier returns LOADING and the gate defers the fire.
+    clock.advance(300.0)
+
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    assert verdict == WatchdogVerdict.CONTINUE, (
+        f"expected CONTINUE (CHILDREN_PERSIST_TOO_LONG gated by StuckClassifier,"
+        f" classifier returns LOADING while subagent is alive), got {verdict}"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
 
 
 def test_dumb_kill_two_pre_output_fragment() -> None:
@@ -376,3 +434,60 @@ def test_waiting_state_makes_fire_into_duplicate_kill() -> None:
         verdict = wd.evaluate(classify_quiet=_active)
         assert verdict == WatchdogVerdict.CONTINUE
         assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+
+
+def test_classifier_consulted_live_callable_returns_loading() -> None:
+    """The classifier's WAITING_ON_CHILD branch returns LOADING when called with the live callable.
+
+    This is a regression test for the classifier contract: when
+    the classifier is consulted with a callable that returns
+    ``WAITING_ON_CHILD``, it MUST return ``LOADING`` (not STUCK).
+    The watchdog's gate consults the classifier with a noop stub
+    to avoid the chicken-and-egg problem (the watchdog entered
+    WAITING_ON_CHILD BECAUSE classify_quiet returned
+    WAITING_ON_CHILD; consulting the same callable from the gate
+    would always defer the ceiling fire). The pure classifier
+    contract is unchanged -- the gate is the boundary that decides
+    which branch is consulted in production.
+    """
+    wd, clock = _make_watchdog(_make_policy(activity_ttl=30.0))
+    wd.record_activity()
+    clock.advance(2.0)
+    wd.evaluate(classify_quiet=_waiting)
+    summary = wd.last_evidence_summary(clock.monotonic())
+    kind = classify_stuck(
+        is_waiting_state=False,
+        connectivity_state=None,
+        evidence_summary=summary,
+        classify_quiet=_waiting,
+        activity_evidence_ttl_seconds=wd._config.activity_evidence_ttl_seconds,
+    )
+    assert kind == StuckKind.LOADING
+
+
+def test_classifier_consulted_live_callable_returns_transitioning() -> None:
+    """The classifier's RESUMABLE_CONTINUE branch returns TRANSITIONING.
+
+    Mirror of the WAITING_ON_CHILD test: when the classifier is
+    consulted with a callable that returns ``RESUMABLE_CONTINUE``,
+    it MUST return ``TRANSITIONING`` (not STUCK). The watchdog's
+    gate consults the classifier with a noop stub for the same
+    chicken-and-egg reason as the WAITING_ON_CHILD case.
+    """
+
+    def _resumable() -> AgentExecutionState:
+        return AgentExecutionState.RESUMABLE_CONTINUE
+
+    wd, clock = _make_watchdog(_make_policy(activity_ttl=30.0))
+    wd.record_activity()
+    clock.advance(2.0)
+    wd.evaluate(classify_quiet=_resumable)
+    summary = wd.last_evidence_summary(clock.monotonic())
+    kind = classify_stuck(
+        is_waiting_state=False,
+        connectivity_state=None,
+        evidence_summary=summary,
+        classify_quiet=_resumable,
+        activity_evidence_ttl_seconds=wd._config.activity_evidence_ttl_seconds,
+    )
+    assert kind == StuckKind.TRANSITIONING

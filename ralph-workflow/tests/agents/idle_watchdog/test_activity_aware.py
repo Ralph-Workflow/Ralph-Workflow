@@ -236,15 +236,22 @@ def test_session_ceiling_unaffected_by_first_party_activity() -> None:
 
 
 def test_cumulative_waiting_ceiling_unaffected_by_activity() -> None:
-    """AC-13: cumulative waiting ceiling fires despite first-party activity.
+    """AC-13 (revised): cumulative waiting ceiling is now GATED by the classifier.
 
-    CHILDREN_PERSIST_TOO_LONG is treated as an absolute reason (like
-    SESSION_CEILING_EXCEEDED) -- both are operator-set hard caps, not
-    stuck-detection signals, and both bypass the smart-verdict gate.
-    A live subagent whose cumulative wait time has exceeded the
-    configured ceiling must be killed regardless of first-party
-    activity, because the cumulative wait is a wall-clock budget,
-    not a productivity signal.
+    CHILDREN_PERSIST_TOO_LONG is no longer an absolute reason. Per
+    the plan and the analysis feedback, the ONLY absolute reason is
+    SESSION_CEILING_EXCEEDED. The cumulative waiting ceiling is a
+    stuck-detection signal and is gated by classify_stuck. When
+    first-party channels are fresh, the classifier returns THINKING
+    and the gate defers; the watchdog continues. When first-party
+    channels are stale, the classifier returns STUCK and the gate
+    allows FIRE -- and only then does CHILDREN_PERSIST_TOO_LONG
+    actually fire.
+
+    This is the correct behavior: a productive-but-quiet session
+    with a live subagent must not be killed, even after the
+    cumulative wait has been exceeded. The cumulative wait is a
+    wall-clock budget for STALLED sessions, not for productive ones.
     """
     wd, clock = _make_watchdog(
         _make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0)
@@ -252,14 +259,26 @@ def test_cumulative_waiting_ceiling_unaffected_by_activity() -> None:
     wd.record_activity()
     clock.advance(0.1)
 
-    verdict = WatchdogVerdict.CONTINUE
+    # First, with first-party channels fresh, the gate defers FIRE.
     for _ in range(30):
         verdict = wd.evaluate(classify_quiet=_waiting)
-        if verdict == WatchdogVerdict.FIRE:
-            break
         wd.record_mcp_tool_call()
         clock.advance(0.1)
+        # While the mcp_tool channel is fresh, the gate returns
+        # CONTINUE -- the cumulative ceiling does not fire.
+        if verdict == WatchdogVerdict.FIRE:
+            break
 
+    # Verify the gate deferred (the watchdog did NOT fire despite
+    # the cumulative ceiling being exceeded, because first-party
+    # activity was fresh).
+    assert verdict == WatchdogVerdict.CONTINUE
+    assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+
+    # Now let the first-party channels go stale. The classifier
+    # returns STUCK and the gate allows FIRE.
+    clock.advance(2000.0)
+    verdict = wd.evaluate(classify_quiet=_waiting)
     assert verdict == WatchdogVerdict.FIRE
     assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 

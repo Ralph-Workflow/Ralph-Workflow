@@ -35,6 +35,14 @@ class InvokeRuntimeOptions:
     pre_output_listener: Callable[[], None] | None = None
     permission_prompt_listener: Callable[[str], None] | None = None
     required_artifact: RequiredArtifact | None = None
+    # Live pipeline signals that the watchdog consults on every
+    # evaluate() call so the StuckClassifier gate can return
+    # DUPLICATE_KILL (when the pipeline is already in a wait state)
+    # or WAITING_ON_CONNECTIVITY (when the network is offline) and
+    # defer the fire. Both providers are optional; the watchdog
+    # falls back to "no live signal" when they are None.
+    connectivity_state_provider: Callable[[], str | None] | None = None
+    is_waiting_state_provider: Callable[[], bool] | None = None
 
 
 def build_invoke_options_from_config(
@@ -86,6 +94,8 @@ def build_invoke_options_from_config(
         os_descendant_only_suspect_seconds=general_config.agent_os_descendant_only_suspect_seconds,
         cpu_idle_seconds=general_config.agent_cpu_idle_seconds,
         log_growth_seconds=general_config.agent_log_growth_seconds,
+        connectivity_state_provider=rt.connectivity_state_provider,
+        is_waiting_state_provider=rt.is_waiting_state_provider,
     )
 
 

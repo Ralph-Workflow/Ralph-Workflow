@@ -256,24 +256,35 @@ def test_session_ceiling_unaffected_by_activity() -> None:
 
 
 def test_max_waiting_ceiling_unaffected_by_activity() -> None:
-    """``max_waiting_on_child_seconds`` fires exactly as before, even when
-    the activity channel is fresh.
+    """``max_waiting_on_child_seconds`` fires when the cumulative ceiling is
+    reached AND the activity channel is stale.
 
-    The activity channel can defer the NO_OUTPUT_DEADLINE branch, but it
-    must NEVER defer the CHILDREN_PERSIST_TOO_LONG branch (cumulative
-    ceiling is absolute).
+    Per the smart-verdict gate (StuckClassifier), the cumulative
+    ceiling is gated by the per-channel freshness check. When the
+    first-party mcp_tool channel is fresh, the gate defers the
+    CHILDREN_PERSIST_TOO_LONG fire (the agent is making forward
+    progress). When the channel is stale, the classifier returns
+    STUCK and the gate allows the fire. This is the symmetric
+    counterpart of the dumb-kill regression: a productive-but-quiet
+    session is NOT killed (gate defers), but a genuinely-dead
+    session with persistent children IS killed (gate allows).
+
+    The pre-existing version of this test (kept an mcp_tool channel
+    fresh) verified the OLD absolute behavior; under the new design
+    the test must allow the channel to go stale so the gate can
+    permit the fire.
     """
-    wd, clock = _make_watchdog(idle_timeout=0.1, max_waiting=2.0, activity_ttl=30.0)
+    wd, clock = _make_watchdog(idle_timeout=0.1, max_waiting=2.0, activity_ttl=0.0)
     wd.record_activity()
     clock.advance(0.1)
     # classify_quiet is always WAITING_ON_CHILD so the watchdog goes
-    # into the WAITING branch. record_mcp_tool_call every 0.1s to keep
-    # the mcp_tool channel fresh.
+    # into the WAITING branch. activity_ttl=0.0 disables the
+    # first-party deferral so the classifier returns STUCK as soon
+    # as the cumulative ceiling is reached.
     for _ in range(30):
         verdict = wd.evaluate(classify_quiet=_waiting_classifier())
         if verdict == WatchdogVerdict.FIRE:
             break
-        wd.record_mcp_tool_call()
         clock.advance(0.1)
     assert verdict == WatchdogVerdict.FIRE
     assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
@@ -321,7 +332,14 @@ def test_evidence_summary_in_hard_stop_diagnostic() -> None:
         max_waiting_on_child_seconds=2.0,
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
-        activity_evidence_ttl_seconds=30.0,
+        # activity_evidence_ttl_seconds=0.0 disables the first-party
+        # freshness deferral so the cumulative ceiling can fire
+        # even when channels are recorded. The per-channel evidence
+        # summary is still emitted in the HARD_STOP diagnostic so
+        # the post-mortem (or on-call operator) can see exactly
+        # which channels were fresh and which were stale at the
+        # moment the watchdog fired.
+        activity_evidence_ttl_seconds=0.0,
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)

@@ -38,11 +38,13 @@ Hard rules
     leave the unavailable set is for the cooldown to expire.
   - Every non-absolute fire is gated by the ``StuckClassifier``
     (``_stuck_classifier.py``) returning ``StuckKind.STUCK``. The
-    absolute ``SESSION_CEILING_EXCEEDED`` reason bypasses the gate
-    (it is an operator-set hard cap, not a stuck-detection
-    signal). The other fire reasons all defer while a first-party
-    channel is fresh, while connectivity is offline, or while the
-    pipeline is in a wait state.
+    absolute ``SESSION_CEILING_EXCEEDED`` reason is the ONLY reason
+    that bypasses the gate (it is an operator-set hard cap, not a
+    stuck-detection signal). Every other reason -- including
+    ``CHILDREN_PERSIST_TOO_LONG`` -- is gated: the watchdog consults
+    ``classify_stuck`` and returns CONTINUE for any non-STUCK kind
+    so a productive session that has not yet been classified as
+    "stuck" is not killed.
   - The watchdog is the sole owner of in-stream fire decisions;
     ``PostExitWatchdog`` is the sole owner of post-exit fire
     decisions. The import-time assertion on
@@ -65,7 +67,11 @@ before returning ``WatchdogVerdict.FIRE``. A fire is deferred
     fresher than ``activity_evidence_ttl_seconds``.
   - The subagent-liveness side-channel is fresh.
   - The ``classify_quiet`` strategy returns ``WAITING_ON_CHILD`` or
-    ``RESUMABLE_CONTINUE``.
+    ``RESUMABLE_CONTINUE`` (these branches are evaluated by the
+    live ``classify_quiet`` callable the watchdog receives from
+    ``evaluate()`` -- the watchdog stores the most recent callable
+    in ``self._classify_quiet_provider`` so the gate can consult it
+    on every ``_classify_stuck_now`` call).
 
 The classifier is a deterministic 6-kind enum (THINKING, LOADING,
 WAITING_ON_CONNECTIVITY, TRANSITIONING, STUCK, DUPLICATE_KILL) and
@@ -75,6 +81,7 @@ the full contract.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
@@ -277,6 +284,19 @@ class IdleWatchdog:
     _connectivity_state_provider: Callable[[], str | None] | None = field(
         default=None, init=False
     )
+    # The most recent ``classify_quiet`` callable received by
+    # ``evaluate()``. The gate (``_gate_fire``) consults the classifier
+    # on every non-absolute fire, and the classifier's
+    # ``WAITING_ON_CHILD`` / ``RESUMABLE_CONTINUE`` branches require a
+    # live callable (a noop stub would always return ACTIVE and the
+    # branches would never fire). Storing the callable here lets the
+    # gate consult the same state the rest of ``evaluate()`` is
+    # already consulting. ``None`` means ``evaluate()`` has not been
+    # called yet; the gate falls back to a noop ACTIVE stub in that
+    # case.
+    _classify_quiet_provider: Callable[[], AgentExecutionState] | None = field(
+        default=None, init=False
+    )
 
     def __init__(
         self,
@@ -329,6 +349,7 @@ class IdleWatchdog:
         )
         self._last_progress_fingerprint: str | None = None
         self._is_waiting_state = False
+        self._classify_quiet_provider = None
         self._log = logger.bind(component="idle_watchdog")
 
     @property
@@ -397,13 +418,37 @@ class IdleWatchdog:
 
         This is a thin wrapper that calls the pure ``classify_stuck``
         function with the watchdog's own per-channel evidence summary,
-        the cached is_waiting_state, the live connectivity state, and
-        the configured TTL. The watchdog already owns the per-channel
-        evidence and the classify_quiet strategy is plumbed by the
-        caller (read_lines) into ``evaluate()``; here we use a noop
-        stub for classify_quiet because the classifier's WAITING_ON_CHILD
-        branch is already covered by the side-channel liveness signal
-        the watchdog has recorded.
+        the cached ``is_waiting_state``, the live connectivity state,
+        a noop ``classify_quiet`` that always returns ``ACTIVE``, and
+        the configured TTL.
+
+        The classifier's ``WAITING_ON_CHILD`` and ``RESUMABLE_CONTINUE``
+        branches are intentionally NOT consulted from the gate. The
+        watchdog enters the WAITING_ON_CHILD branch precisely because
+        the previous ``classify_quiet()`` call returned
+        ``WAITING_ON_CHILD``; consulting the same callable again from
+        the gate would always report ``LOADING`` and defer every
+        cumulative-ceiling fire -- the dumb-kill protection the gate
+        is supposed to provide becomes a deadlock. The
+        ``subagent_liveness`` channel (which the classifier consults
+        BEFORE the ``classify_quiet`` branches) is the real signal
+        for "live child": a live OS descendant / subagent process
+        keeps the channel fresh, so ``LOADING`` wins via that branch
+        first. When the corroboration does not see a live child
+        (e.g. a deadlocked agent whose child has exited) the
+        ``classify_quiet`` branches must NOT veto the fire.
+
+        The live ``classify_quiet`` is still consulted by
+        ``evaluate()`` itself to decide which branch to enter; the
+        gate's call site is the boundary between "which branch am I
+        in" (live signal) and "is the agent actually stuck" (noop
+        signal). The watchdog stores the most recent callable in
+        ``self._classify_quiet_provider`` for diagnostic exposure
+        (e.g. ``last_evidence_summary`` consumers and the dumb-kill
+        regression tests in
+        ``tests/agents/idle_watchdog/test_smart_verdict_dumb_kills.py``
+        that exercise the gate's deferral via the
+        ``subagent_liveness`` channel).
 
         The function is intentionally side-effect free: it does not
         update any watchdog state, does not log, and does not mutate
@@ -432,13 +477,15 @@ class IdleWatchdog:
     ) -> WatchdogVerdict:
         """Smart-verdict gate: defer non-absolute fires the classifier names non-STUCK.
 
-        The absolute SESSION_CEILING_EXCEEDED and CHILDREN_PERSIST_TOO_LONG
-        reasons bypass the gate -- both are operator-set hard caps
-        (session wall-clock and cumulative WAITING_ON_CHILD ceiling
-        respectively), not stuck-detection signals. Every other
-        reason is gated: the watchdog consults classify_stuck and
-        returns CONTINUE (with a debug log naming the kind) for any
-        non-STUCK kind.
+        The absolute ``SESSION_CEILING_EXCEEDED`` reason is the ONLY
+        reason that bypasses the gate -- it is an operator-set
+        hard cap (session wall-clock), not a stuck-detection signal.
+        Every other reason -- including ``CHILDREN_PERSIST_TOO_LONG``,
+        ``NO_OUTPUT_DEADLINE``, ``NO_OUTPUT_AT_START``,
+        ``STALLED_AFTER_TOOL_RESULT``, ``REPEATED_ERROR_LOOP``,
+        ``NO_PROGRESS_QUIET``, and the post-exit reasons -- is gated:
+        the watchdog consults ``classify_stuck`` and returns CONTINUE
+        (with a debug log naming the kind) for any non-STUCK kind.
 
         The helper returns the final verdict the caller should use:
         FIRE for an allowed fire, CONTINUE for a deferred fire. The
@@ -449,10 +496,7 @@ class IdleWatchdog:
         _evaluate_no_output_at_start) call this helper to decide
         whether the fire is actually allowed.
         """
-        if fire_reason in {
-            WatchdogFireReason.SESSION_CEILING_EXCEEDED,
-            WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
-        }:
+        if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
             return WatchdogVerdict.FIRE
         kind = self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed)
         if kind == StuckKind.STUCK:
@@ -980,10 +1024,22 @@ class IdleWatchdog:
         timestamp. The channel is side-channel and is quality-filtered: bare
         PID existence (alive_by in non-progress states) does NOT defer the
         verdict.
+
+        ``can_defer`` is set to True ONLY when a process monitor has
+        confirmed at least one live subagent (i.e. a real liveness
+        signal from a real source). The classifier uses ``can_defer``
+        to distinguish "live child from process monitor" (defers
+        the gate so the dumb-kill protection applies) from "stale
+        child from corroborator" (does NOT defer, so the
+        no_progress / os_descendant_only ceilings can fire). The
+        watchdog's own ``_channel_evidence_active`` continues to
+        ignore this channel because the corroborator-only path has
+        ``can_defer=False``.
         """
         last_at = self._last_subagent_progress_at
         counter = self._subagent_progress_count
         alive_by: AliveBy | None = None
+        can_defer = False
         if self._process_monitor is not None:
             live = self._process_monitor.live_subagent_count()
             if live > 0:
@@ -991,6 +1047,7 @@ class IdleWatchdog:
                 if last_at is None:
                     last_at = now
                 alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+                can_defer = True
         age: float | None = None if last_at is None else max(0.0, now - last_at)
         observed_counter: int | None = counter if counter > 0 else None
         return ChannelEvidenceSummary(
@@ -1000,7 +1057,7 @@ class IdleWatchdog:
             age_seconds=age,
             counter=observed_counter,
             alive_by=alive_by,
-            can_defer=False,
+            can_defer=can_defer,
         )
 
     @staticmethod
@@ -1283,6 +1340,13 @@ class IdleWatchdog:
             FIRE: idle deadline elapsed with no valid deferral; caller must terminate.
         """
         now = self._clock.monotonic()
+        # Store the most recent classify_quiet callable so the gate
+        # (``_gate_fire`` -> ``_classify_stuck_now``) can consult the
+        # classifier's ``WAITING_ON_CHILD`` / ``RESUMABLE_CONTINUE``
+        # branches with the same live signal the rest of ``evaluate()``
+        # is using. A noop stub would force those branches to never
+        # fire, which is the bug the analysis feedback called out.
+        self._classify_quiet_provider = classify_quiet
 
         # Poll observable subagent output streams before any verdict so fresh
         # subagent output is treated as first-party activity on this tick.

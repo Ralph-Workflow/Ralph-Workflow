@@ -115,6 +115,21 @@ class PtyLineReader:
             "Callable[[], None] | None",
             getattr(ctx, "pre_output_listener", None),
         )
+        # Live pipeline signals the watchdog consults on every
+        # evaluate() call so the StuckClassifier gate can return
+        # DUPLICATE_KILL (when the pipeline is already in a wait
+        # state) or WAITING_ON_CONNECTIVITY (when the network is
+        # offline) and defer the fire. Both providers are optional;
+        # the watchdog falls back to "no live signal" when they
+        # are None.
+        self._connectivity_state_provider = cast(
+            "Callable[[], str | None] | None",
+            getattr(ctx, "connectivity_state_provider", None),
+        )
+        self._is_waiting_state_provider = cast(
+            "Callable[[], bool] | None",
+            getattr(ctx, "is_waiting_state_provider", None),
+        )
         self._expected_session_id = _extras.expected_session_id
         self._stop_sentinel_path = _extras.stop_sentinel_path
         self._permission_prompt_listener = _extras.permission_prompt_listener
@@ -734,7 +749,10 @@ class PtyLineReader:
             listener=self._on_waiting_event,
             corroborator=self._corroborate,
             process_monitor=process_monitor,
+            connectivity_state_provider=self._connectivity_state_provider,
         )
+        if self._is_waiting_state_provider is not None:
+            watchdog.set_is_waiting_state(self._is_waiting_state_provider())
         watchdog.record_invocation_start()
 
         # Register the watchdog's workspace channel recorder as the

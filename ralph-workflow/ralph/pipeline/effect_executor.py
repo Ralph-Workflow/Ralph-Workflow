@@ -552,6 +552,8 @@ def _build_attempt_invoke_options(
             permission_prompt_listener=_make_permission_prompt_listener(ctx),
             required_artifact=required_artifact,
             pure=ctx.agent_config.transport == AgentTransport.OPENCODE,
+            connectivity_state_provider=pipeline_deps.connectivity_state_provider,
+            is_waiting_state_provider=pipeline_deps.is_waiting_state_provider,
         ),
     )
 

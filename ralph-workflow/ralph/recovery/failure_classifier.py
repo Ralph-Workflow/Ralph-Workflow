@@ -609,6 +609,17 @@ class FailureClassifier:
         # branch wins before any text scanning.
         if isinstance(exc, IdleWatchdogKilledError):
             return FailureCategory.AGENT, True, False
+        # Typed-cause branch: the watchdog fire path wraps the typed
+        # ``IdleWatchdogKilledError`` in a ``_IdleStreamTimeoutError``
+        # (which is then converted to ``AgentInactivityTimeoutError``
+        # by the recovery layer) and attaches the typed exception as
+        # ``__cause__``. Walk the chain to see the typed cause. This
+        # preserves AC-05's typed-attribute contract for the
+        # failure_classifier without changing the recovery layer's
+        # exception surface.
+        cause: BaseException | None = getattr(exc, "__cause__", None)
+        if isinstance(cause, IdleWatchdogKilledError):
+            return FailureCategory.AGENT, True, False
         for predicate, result in (
             (_is_user_config_exc(exc), (FailureCategory.USER_CONFIG, False, False)),
             (

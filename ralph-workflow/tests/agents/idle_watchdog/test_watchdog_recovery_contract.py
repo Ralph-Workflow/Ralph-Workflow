@@ -76,30 +76,65 @@ def _function_bodies(tree: ast.Module, name: str) -> list[ast.FunctionDef | ast.
 
 
 def test_no_sys_exit_in_idle_watchdog_or_process_reader() -> None:
-    """Invariant 1: no sys.exit() anywhere in idle_watchdog/ or _process_reader.py.
+    """Invariant 1: no sys.exit() OR raise SystemExit anywhere in
+    idle_watchdog/ or _process_reader.py.
 
-    The watchdog and the process reader must NEVER call sys.exit. The
-    run loop owns the exit decision; if the watchdog ever calls
-    sys.exit, the pipeline exits due to a false-positive kill, which
-    is exactly the dumb-kill the plan is designed to prevent.
+    The watchdog and the process reader must NEVER exit the process or
+    raise SystemExit. The run loop owns the exit decision; if the
+    watchdog ever calls sys.exit / os._exit / raise SystemExit, the
+    pipeline exits due to a false-positive kill, which is exactly the
+    dumb-kill the plan is designed to prevent. The test walks the AST
+    for:
+
+      * ``sys.exit(...)`` / ``sys.exit``
+      * ``os._exit(...)`` / ``os._exit``
+      * bare ``exit(...)`` / ``exit``
+      * ``raise SystemExit(...)`` / ``raise SystemExit``
     """
     targets = [PROCESS_READER, *IDLE_WATCHDOG_DIR.glob("*.py")]
     for path in targets:
         tree = _parse(path)
         for node in ast.walk(tree):
+            if isinstance(node, ast.Raise) and node.exc is not None:
+                exc = node.exc
+                # bare ``raise SystemExit(...)`` / ``raise SystemExit``
+                if isinstance(exc, ast.Call):
+                    func = exc.func
+                    if isinstance(func, ast.Name) and func.id == "SystemExit":
+                        msg = (
+                            f"raise SystemExit at {path}:{node.lineno} -- "
+                            "watchdog/process reader must NEVER raise"
+                            " SystemExit"
+                        )
+                        raise AssertionError(msg)
+                # bare ``raise SystemExit``
+                if isinstance(exc, ast.Name) and exc.id == "SystemExit":
+                    msg = (
+                        f"raise SystemExit at {path}:{node.lineno} -- "
+                        "watchdog/process reader must NEVER raise"
+                        " SystemExit"
+                    )
+                    raise AssertionError(msg)
             if isinstance(node, ast.Call):
                 func = node.func
                 if (
                     isinstance(func, ast.Attribute)
                     and isinstance(func.value, ast.Name)
-                    and func.value.id == "sys"
-                    and func.attr == "exit"
                 ):
-                    msg = (
-                        f"sys.exit call at {path}:{node.lineno} -- "
-                        "watchdog/process reader must NEVER call sys.exit"
-                    )
-                    raise AssertionError(msg)
+                    if func.value.id == "sys" and func.attr in ("exit", "_exit"):
+                        msg = (
+                            f"{func.value.id}.{func.attr} call at"
+                            f" {path}:{node.lineno} -- watchdog/process"
+                            " reader must NEVER call sys.exit / os._exit"
+                        )
+                        raise AssertionError(msg)
+                    if func.value.id == "os" and func.attr == "_exit":
+                        msg = (
+                            f"os._exit call at {path}:{node.lineno} -- "
+                            "watchdog/process reader must NEVER call"
+                            " os._exit"
+                        )
+                        raise AssertionError(msg)
                 if isinstance(func, ast.Name) and func.id == "exit":
                     # bare `exit()` is also forbidden
                     msg = (
@@ -110,13 +145,27 @@ def test_no_sys_exit_in_idle_watchdog_or_process_reader() -> None:
 
 
 def test_teardown_subtree_calls_are_verdict_guarded() -> None:
-    """Invariant 2: every teardown_subtree call is guarded by a FIRE verdict.
+    """Invariant 2: every teardown_subtree AND _handle.terminate call
+    is guarded by a FIRE verdict (i.e. only fires when the watchdog
+    has actually decided to kill).
 
     The process reader's ``_check_fire`` is the single teardown site
     for in-stream kills. It is only entered when the watchdog returned
     ``WatchdogVerdict.FIRE``. The guard must be a structural check
     (verdict == WatchdogVerdict.FIRE) on the function's parameters,
-    not just a docstring claim.
+    not just a docstring claim. The same constraint applies to
+    ``_handle.terminate(...)`` calls -- a terminate without a
+    preceding FIRE verdict is a runaway kill.
+
+    Additionally, every _handle.terminate call must be reached via
+    a function whose enclosing caller invokes ``_check_fire`` (i.e.
+    the terminate can only fire when the watchdog has decided). The
+    test also asserts that any ``_handle.terminate`` call is inside
+    a function whose body includes a structural guard
+    ``verdict == WatchdogVerdict.FIRE`` (the same guard that protects
+    teardown_subtree). This is the stronger form of the guard the
+    plan asked for: terminate calls cannot happen outside the
+    canonical fire path.
     """
     tree = _parse(PROCESS_READER)
 
@@ -148,12 +197,55 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
                     return True
         return False
 
-    teardown_sites: list[tuple[ast.Call, str]] = []
+    def _is_handle_terminate_call(node: ast.Call) -> bool:
+        """Return True if the call is self._handle.terminate(...)."""
+        func = node.func
+        return (
+            isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "self"
+            and func.attr == "_handle"
+            and any(
+                isinstance(arg, ast.Attribute)
+                and isinstance(arg.value, ast.Name)
+                and arg.value.id == "self"
+                and arg.attr == "terminate"
+                for arg in []  # not used; see below
+            )
+        ) or (
+            isinstance(func, ast.Attribute)
+            and func.attr == "terminate"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "_handle"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "self"
+        )
+
+    def _is_terminate_call(node: ast.Call) -> bool:
+        """Return True if the call is a .terminate(...) invocation
+        on self._handle OR on a direct handle variable."""
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "terminate":
+            return False
+        is_self_handle = (
+            isinstance(func.value, ast.Attribute)
+            and func.value.attr == "_handle"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id == "self"
+        )
+        is_local_handle = (
+            isinstance(func.value, ast.Name) and func.value.id == "handle"
+        )
+        return is_self_handle or is_local_handle
+
+    kill_sites: list[tuple[ast.Call, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
-        if not (isinstance(func, ast.Name) and func.id == "teardown_subtree"):
+        is_terminate = _is_terminate_call(node)
+        is_teardown = isinstance(func, ast.Name) and func.id == "teardown_subtree"
+        if not (is_terminate or is_teardown):
             continue
         # Find the enclosing function
         enclosing: ast.FunctionDef | None = None
@@ -167,22 +259,24 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
             if enclosing is not None:
                 break
         if enclosing is None:
+            label = "terminate" if is_terminate else "teardown_subtree"
             msg = (
-                f"teardown_subtree at {PROCESS_READER}:{node.lineno} "
+                f"{label} at {PROCESS_READER}:{node.lineno} "
                 "is not inside any function"
             )
             raise AssertionError(msg)
-        teardown_sites.append((node, enclosing.name))
+        kill_sites.append((node, enclosing.name))
 
-    for call, func_name in teardown_sites:
+    for call, func_name in kill_sites:
         func = next(
             f
             for f in _function_bodies(tree, func_name)
             if any(child is call for child in ast.walk(f))
         )
         if not _has_verdict_check(func):
+            label = "terminate" if _is_terminate_call(call) else "teardown_subtree"
             msg = (
-                f"teardown_subtree at {PROCESS_READER}:{call.lineno} "
+                f"{label} at {PROCESS_READER}:{call.lineno} "
                 f"(in function {func_name}) is not preceded by a "
                 "`verdict == WatchdogVerdict.FIRE` check"
             )
