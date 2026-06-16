@@ -126,7 +126,7 @@ _CUSTOM_COMMAND_REGISTRY: Mapping[str, _ParserRegistryEntry] = types.MappingProx
 def resolve_parser_key(
     command: str,
     json_parser: JsonParserType,
-    transport: AgentTransport | None = None,
+    transport: AgentTransport,
 ) -> str:
     """Resolve the parser-type key for an agent configuration.
 

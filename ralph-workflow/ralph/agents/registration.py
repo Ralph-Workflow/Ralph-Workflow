@@ -26,16 +26,15 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents._contracts import StrategyFactory
 from ralph.agents.catalog import default_catalog
-from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.agents.support import AgentSupport
 from ralph.config.enums import AgentTransport, JsonParserType
 
 if TYPE_CHECKING:
-    from ralph.agents.catalog import AgentCatalog
+    from ralph.agents.execution_state._base import BaseExecutionStrategy
     from ralph.agents.parsers.base import AgentParser
     from ralph.config.agent_config import AgentConfig
-    from ralph.process.child_liveness import ChildLivenessRegistry
 
+    from .catalog import AgentCatalog
     from .registry import AgentRegistry
 
 
@@ -48,36 +47,10 @@ class _ParserFactory(Protocol):
 class _AnyKwargsStrategyFactory(Protocol):
     """Internal cast target used to forward a dynamic kwargs dict."""
 
-    def __call__(self, **kwargs: object) -> BaseExecutionStrategy: ...
+    def __call__(self, **kwargs: object) -> object: ...
 
 
-_UserStrategyFactory = type[BaseExecutionStrategy] | StrategyFactory
-
-
-def _wrap_strategy_factory(
-    factory: _UserStrategyFactory,
-) -> StrategyFactory:
-    """Wrap a user strategy factory so runtime kwargs are forwarded correctly.
-
-    ``strategy_for_transport`` forwards ``label_scope`` and ``registry`` to
-    every factory. This wrapper only forwards those two kwargs if the factory
-    accepts them, preserving backward compatibility with strategies that have
-    different signatures.
-    """
-
-    def wrapped(
-        *,
-        label_scope: str | None = None,
-        registry: ChildLivenessRegistry | None = None,
-    ) -> BaseExecutionStrategy:
-        kwargs: dict[str, object] = {}
-        if label_scope is not None:
-            kwargs["label_scope"] = label_scope
-        if registry is not None:
-            kwargs["registry"] = registry
-        return cast("_AnyKwargsStrategyFactory", factory)(**kwargs)
-
-    return wrapped
+_UserStrategyFactory = StrategyFactory | object
 
 
 def register_agent_support(
@@ -139,13 +112,11 @@ def register_agent_support(
         ValueError: If ``name`` matches a reserved built-in parser key, or if
             ``cmd`` is already registered for a different agent.
     """
-    wrapped_strategy = _wrap_strategy_factory(strategy_factory)
-
     support = AgentSupport.from_registration_kwargs(
         name,
         transport=transport,
         parser_factory=parser_factory,
-        strategy_factory=wrapped_strategy,
+        strategy_factory=cast("StrategyFactory", strategy_factory),
         agent_registry=agent_registry,
         json_parser=json_parser,
         interactive=interactive,

@@ -1,8 +1,8 @@
 # Adding, Updating, and Removing Agent Support
 
-This guide covers the workflows for managing agent support in Ralph. It describes how to register new agents, update existing ones, and remove agent definitions using the public catalog and registry APIs.
+This guide covers the workflows for managing agent support in Ralph. It describes how to register new agents, update existing ones, and remove agent definitions.
 
-The main public entry point for agent registration is `register_agent_support` (defined in `ralph/agents/registration.py`). For advanced or test-specific scenarios, you can use the test-friendly seam `register_agent_support_to_catalog` or directly call `AgentCatalog.add`.
+The single canonical entry point for agent registration is `register_agent_support` (defined in `ralph/agents/registration.py`). Advanced scenarios may use `register_agent_support_to_catalog` (test-friendly) or `AgentCatalog.add` directly, but these are not the standard recipe.
 
 ---
 

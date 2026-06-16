@@ -34,9 +34,7 @@ class BaseExecutionStrategy:
     Claude/Codex paths are unaffected.
 
     For legacy callers that pass arbitrary kwargs (e.g. direct class refs in
-    _STRATEGY_DISPATCH), the new __init__ only accepts label_scope and registry.
-    The wrapper _wrap_strategy_factory in registration.py now drops unknown kwargs
-    before calling the factory, so the strict-superset-safe refactor is preserved.
+    _STRATEGY_DISPATCH), the __init__ only accepts label_scope and registry.
     """
 
     def __init__(

@@ -246,7 +246,11 @@ def _build_smoke_prompt(
 
 
 def _parser_key_for_config(config: AgentConfig) -> str:
-    return resolve_parser_key(config.cmd, config.json_parser, config.transport)
+    return resolve_parser_key(
+        config.cmd,
+        config.json_parser,
+        cast("AgentTransport", config.transport),
+    )
 
 
 def _count_parsed_events(config: AgentConfig, lines: list[str]) -> int:

@@ -259,7 +259,9 @@ def stream_parsed_agent_activity(
 
     if agent_config is not None:
         parser_key = resolve_parser_key(
-            agent_config.cmd, agent_config.json_parser, agent_config.transport
+            agent_config.cmd,
+            agent_config.json_parser,
+            cast("AgentTransport", agent_config.transport),
         )
     else:
         parser_key = (

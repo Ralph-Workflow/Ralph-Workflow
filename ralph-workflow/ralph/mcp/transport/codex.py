@@ -16,6 +16,7 @@ from ralph.mcp.tools.names import (
     CODEX_NATIVE_FEATURE_OVERRIDES,
     RALPH_MCP_SERVER_NAME,
 )
+from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 
@@ -36,6 +37,19 @@ def prepare_codex_home(
         unsafe_mode=unsafe_mode,
     )
     return codex_home
+
+
+def _flat_dict_to_toml_servers(flat_dict: dict[str, object]) -> str:
+    """Convert a flat dict with mcp_servers.X keys to TOML server sections."""
+    lines: list[str] = []
+    for key, value in sorted(flat_dict.items()):
+        if not isinstance(key, str) or not key.startswith("mcp_servers."):
+            continue
+        lines.append(f"[{key}]")
+        if isinstance(value, dict):
+            for k, v in sorted(value.items()):
+                lines.append(f"{k} = {json.dumps(v)}")
+    return "\n".join(lines)
 
 
 def prepare_codex_home_with_upstreams(
@@ -64,8 +78,35 @@ def prepare_codex_home_with_upstreams(
             "editing primitives cannot be disabled. See "
             "ralph-workflow/docs/mcp-tool-restriction.md."
         )
+        existing_from_base: dict[str, object] = {}
+        if base_config.strip():
+            try:
+                parsed: object = tomllib.loads(base_config)
+                if isinstance(parsed, dict):
+                    existing_from_base = {
+                        key: value
+                        for key, value in parsed.items()
+                        if isinstance(key, str) and key.startswith("mcp_servers.")
+                    }
+            except Exception:
+                pass
         if not unsafe_mode:
             base_config = _remove_all_toml_mcp_server_tables(base_config)
+        merged = merge_existing_upstreams(
+            "codex",
+            existing_from_base,
+            unsafe_mode=unsafe_mode,
+        )
+        merged_toml = _flat_dict_to_toml_servers(merged)
+        if merged_toml:
+            appended_sections.append(merged_toml + "\n")
+        ralph_section = (
+            f"[mcp_servers.{RALPH_MCP_SERVER_NAME}]\n"
+            f'url = "{endpoint}"\n'
+            f"enabled = true\n"
+        )
+        if ralph_section.strip() not in merged_toml:
+            appended_sections.append(ralph_section)
         features_in_base = "[features]" in base_config
         feature_lines = [
             f"{key.split('.', 1)[1]} = {value}" for key, value in CODEX_NATIVE_FEATURE_OVERRIDES
@@ -73,9 +114,6 @@ def prepare_codex_home_with_upstreams(
         feature_block = "\n".join(feature_lines) + "\n"
         if features_in_base:
             base_config = base_config.replace("[features]\n", "[features]\n" + feature_block, 1)
-        appended_sections.append(
-            f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
-        )
         if not features_in_base:
             appended_sections.append("[features]\n" + feature_block)
     if system_prompt_file:

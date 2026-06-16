@@ -7,12 +7,11 @@ Replaces the legacy ``interactive=True`` flag and the magic
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-
-from ralph.config.enums import AgentTransport
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ralph.config.agent_config import AgentConfig
+    from ralph.config.enums import AgentTransport
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +58,7 @@ class AgentSpec:
         """Build an AgentSpec from an AgentConfig plus keyword overrides."""
         return cls(
             name=config.cmd,
-            transport=config.transport or AgentTransport.GENERIC,
+            transport=cast("AgentTransport", config.transport),
             interactive=interactive,
             requires_pty=interactive,
             session_resume_template=config.session_flag,
