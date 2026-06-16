@@ -26,9 +26,9 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
-from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.idle_watchdog._post_exit_verdict import PostExitVerdict
 from ralph.agents.idle_watchdog._watch_loop_base import WatchLoopBase
-from ralph.agents.post_exit_verdict import PostExitVerdict
+from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -179,7 +179,7 @@ watchdog controllers, both using Clock-injected time for deterministic FakeClock
   - `SESSION_CEILING_EXCEEDED` — absolute wall-clock ceiling; activity cannot reset it.
   - `NO_OUTPUT_DEADLINE` — idle deadline since last output (+ drain window).
   - `CHILDREN_PERSIST_TOO_LONG` — cumulative WAITING_ON_CHILD ceiling.
-- **PostExitWatchdog** (`ralph/agents/post_exit_watchdog.py`) — owns post-exit timeouts:
+- **PostExitWatchdog** (`ralph/agents/idle_watchdog/_post_exit_watchdog.py`) — owns post-exit timeouts:
   - `PROCESS_EXIT_HANG` — subprocess closed stdout but did not exit within budget.
   - `DESCENDANT_HANG` — descendant_wait deadline elapsed with WAITING_ON_CHILD persistent (post-exit only).
   - Parent-exit grace window (`wait_parent_exit_grace`).
@@ -254,7 +254,7 @@ tool call. Set `agent_idle_activity_evidence_ttl_seconds = 0.0` only when you
 want to opt out of the activity-aware verdict entirely and restore the legacy
 stdout-only behavior.
 
-See `ralph/agents/post_exit_watchdog.py` for the full post-exit transition matrix and
+See `ralph/agents/idle_watchdog/_post_exit_watchdog.py` for the full post-exit transition matrix and
 verdict semantics.
 
 ## OpenCode session continuation and completion contract

@@ -202,7 +202,7 @@ class TestRecoveryControllerOwnsBackoff:
 
 
 class TestPostExitWatchdogConsumesCallback:
-    """Pin that `ralph/agents/post_exit_watchdog.py` does NOT define
+    """Pin that `ralph/agents/idle_watchdog/_post_exit_watchdog.py` does NOT define
     `def classify_quiet` or `def classify_exit` — it consumes them via
     injected `classify_exit_state` callback. The classification logic
     lives in per-strategy modules under
@@ -210,9 +210,14 @@ class TestPostExitWatchdogConsumesCallback:
     """
 
     def test_post_exit_watchdog_consumes_callback(self) -> None:
-        watchdog = RALPH_ROOT / "agents" / "post_exit_watchdog.py"
+        watchdog = (
+            RALPH_ROOT
+            / "agents"
+            / "idle_watchdog"
+            / "_post_exit_watchdog.py"
+        )
         if not watchdog.exists():
-            pytest.skip("post_exit_watchdog.py not present")
+            pytest.skip("post_exit_watchdog module not present")
         source = _read(watchdog)
         tree = ast.parse(source)
         offenders: list[str] = []
@@ -222,7 +227,7 @@ class TestPostExitWatchdogConsumesCallback:
             if node.name in ("classify_quiet", "classify_exit"):
                 offenders.append(f"{node.lineno} {node.name}")
         assert offenders == [], (
-            "ralph/agents/post_exit_watchdog.py must NOT define "
+            "ralph/agents/idle_watchdog/_post_exit_watchdog.py must NOT define "
             f"classify_quiet/classify_exit: {offenders}. Use the injected "
             "classify_exit_state callback; classification lives in "
             "ralph/agents/execution_state/*_execution_strategy.py."

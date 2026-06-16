@@ -8,8 +8,7 @@ import pytest
 from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
-from ralph.agents.idle_watchdog import TimeoutPolicy
-from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
+from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, TimeoutPolicy
 from ralph.agents.timeout_clock import FakeClock
 
 # Number of poll iterations before predicate becomes True in tests

@@ -129,6 +129,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="activity-aware watchdog audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_watchdog_drift")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_watchdog_drift"),
+                returncode=0,
+                stdout="watchdog drift audit ok\n",
+            ),
             ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")): _result(
                 command="uv",
                 args=("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),
@@ -158,6 +164,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_mcp_timeout")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_di_seam")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_activity_aware_watchdog")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_watchdog_drift")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")),
         ("uv", _ARTIFACT_SUBMISSION_AUDIT_ARGS),
     ]
@@ -325,6 +332,12 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="activity-aware watchdog audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_watchdog_drift")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_watchdog_drift"),
+                returncode=0,
+                stdout="watchdog drift audit ok\n",
+            ),
             ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")): _result(
                 command="uv",
                 args=("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),
@@ -340,10 +353,10 @@ def test_run_verify_single_step_within_budget(
         }
     )
 
-    # Eleven steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
+    # Twelve steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
     # 5=test_policy audit, 6=mcp_timeout audit, 7=di_seam audit,
-    # 8=activity_aware_watchdog audit, 9=parallelization_dormant audit,
-    # 10=artifact_submission_canonical_path audit).
+    # 8=activity_aware_watchdog audit, 9=watchdog_drift audit,
+    # 10=parallelization_dormant audit, 11=artifact_submission_canonical_path audit).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
     # all other steps take 0s.
     times = [
@@ -352,6 +365,8 @@ def test_run_verify_single_step_within_budget(
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -573,6 +588,12 @@ def test_run_verify_non_test_steps_not_counted(
                 returncode=0,
                 stdout="activity-aware watchdog audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_watchdog_drift")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_watchdog_drift"),
+                returncode=0,
+                stdout="watchdog drift audit ok\n",
+            ),
             ("uv", ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant")): _result(
                 command="uv",
                 args=("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),
@@ -589,8 +610,8 @@ def test_run_verify_non_test_steps_not_counted(
     )
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Eleven steps (ruff, mypy, make test, seven audits) x 2 monotonic calls
-    # per step = 22 entries.
+    # Twelve steps (ruff, mypy, make test, eight audits) x 2 monotonic
+    # calls per step = 24 entries.
     times = [
         0.0,
         100.0,
@@ -614,6 +635,8 @@ def test_run_verify_non_test_steps_not_counted(
         1000.0,
         1000.0,
         1100.0,
+        1100.0,
+        1200.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 

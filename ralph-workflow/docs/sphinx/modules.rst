@@ -1341,13 +1341,6 @@ ralph.agents.idle_watchdog.watchdog_verdict
    :members:
    :show-inheritance:
 
-ralph.agents.post_exit_watchdog
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.agents.post_exit_watchdog
-   :members:
-   :show-inheritance:
-
 ralph.agents.invoke
 ~~~~~~~~~~~~~~~~~~~
 
@@ -3102,6 +3095,13 @@ ralph.testing.audit_parallelization_dormant
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.testing.audit_parallelization_dormant
+   :members:
+   :show-inheritance:
+
+ralph.testing.audit_watchdog_drift
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_watchdog_drift
    :members:
    :show-inheritance:
 

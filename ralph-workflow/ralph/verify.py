@@ -159,6 +159,19 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        # Drift audit that locks the watchdog consolidation: forbids
+        # ralph-workflow/old_watchdog.py at the package root, duplicate
+        # ``IdleWatchdog`` / ``PostExitWatchdog`` class definitions outside
+        # their canonical owner files, and ``WatchdogFireReason``
+        # construction outside those same owners. See
+        # docs/agents/watchdog-architecture.md for the full invariant
+        # list. The audit is fast (<1s) and is NOT a test-budget step.
+        "watchdog drift audit (audit_watchdog_drift)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_watchdog_drift"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "parallelization dormant audit (audit_parallelization_dormant)",
         "uv",
         ("run", "python", "-m", "ralph.testing.audit_parallelization_dormant"),

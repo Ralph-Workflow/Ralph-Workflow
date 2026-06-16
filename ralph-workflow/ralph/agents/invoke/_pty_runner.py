@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 from tqdm import tqdm
 
 from ralph.agents.execution_state import GenericExecutionStrategy
-from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, WatchdogFireReason
 from ralph.agents.invoke._completion import (
     _check_process_result,
     _CompletionCheckOptions,
@@ -34,7 +34,6 @@ from ralph.agents.invoke._session import (
     _bounded_output_lines,
     extract_transport_session_id_from_line,
 )
-from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import PtySpawnOptions, get_process_manager

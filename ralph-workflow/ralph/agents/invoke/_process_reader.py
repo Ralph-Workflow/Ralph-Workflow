@@ -21,6 +21,8 @@ from ralph.agents.execution_state import AgentExecutionState, GenericExecutionSt
 from ralph.agents.idle_watchdog import (
     CorroborationSnapshot,
     IdleWatchdog,
+    PostExitVerdict,
+    PostExitWatchdog,
     WaitingStatusEvent,
     WaitingStatusKind,
     WatchdogFireReason,
@@ -44,7 +46,6 @@ from ralph.agents.invoke._session import (
     extract_transport_session_id_from_line,
 )
 from ralph.agents.invoke._types import _AgentRunCtx, _ProcessReaderCtx
-from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.display.raw_overflow import RawOverflowLog
 from ralph.mcp.server._activity_sink import (

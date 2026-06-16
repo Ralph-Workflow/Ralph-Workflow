@@ -38,7 +38,7 @@ from ralph.agents.idle_watchdog import IdleWatchdog, StuckKind, WatchdogFireReas
 REPO_ROOT = Path(__file__).resolve().parents[3]
 IDLE_WATCHDOG_DIR = REPO_ROOT / "ralph" / "agents" / "idle_watchdog"
 PROCESS_READER = REPO_ROOT / "ralph" / "agents" / "invoke" / "_process_reader.py"
-POST_EXIT_WATCHDOG = REPO_ROOT / "ralph" / "agents" / "post_exit_watchdog.py"
+POST_EXIT_WATCHDOG = REPO_ROOT / "ralph" / "agents" / "idle_watchdog" / "_post_exit_watchdog.py"
 UNAVAILABILITY_TRACKER = (
     REPO_ROOT / "ralph" / "recovery" / "agent_unavailability_tracker.py"
 )

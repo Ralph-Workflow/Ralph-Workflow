@@ -9,12 +9,11 @@ from loguru import logger
 
 from ralph.agents.completion_signals import _check_completion_sentinel, evaluate_completion
 from ralph.agents.execution_state import AgentExecutionState, BaseExecutionStrategy
-from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, TimeoutPolicy
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
 from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableExitError
 from ralph.agents.invoke._session import _bounded_output_lines, extract_transport_session_id
-from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
