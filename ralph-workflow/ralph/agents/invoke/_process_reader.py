@@ -425,12 +425,12 @@ class _ProcessLineReader:
         # ``FailureClassifier._classify_unavailability_reason`` to
         # differentiate live-child from dead-child
         # ``NO_PROGRESS_QUIET`` at the typed-evidence level. The
-        # ``is not None`` test maps both ``None`` (no signal yet)
-        # and the other 5 alive-by values to True so the failure
-        # classifier's ``child_alive is False`` branch only fires
-        # for the truly-dead-child case. ``getattr(..., None)``
-        # is used for backward-compat with test mocks that do
-        # not set the ``last_alive_by`` attribute.
+        # ``is not None`` test maps ``None`` (no signal at all) to
+        # ``False`` (dead-child / Rule 2 path) and any of the 5
+        # non-``None`` ``AliveBy`` values to ``True`` (live-child /
+        # Rule 1 defense-in-depth path). ``getattr(..., None)`` is
+        # used for backward-compat with test mocks that do not set
+        # the ``last_alive_by`` attribute.
         _alive_by_signal: object = getattr(watchdog, "last_alive_by", None)
         _child_alive = _alive_by_signal is not None
         typed_exc = IdleWatchdogKilledError(

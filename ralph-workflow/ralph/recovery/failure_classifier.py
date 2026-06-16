@@ -246,15 +246,27 @@ _WATCHDOG_UNAVAILABILITY_REASONS: frozenset[str] = frozenset(
 )
 
 # Import-time invariant: pin the canonical 2-element set so a
-# future PR cannot silently widen the set without updating the
-# failure classifier. The ``if/raise RuntimeError`` (NOT
-# ``assert``) idiom makes the invariant survive ``python -O``
-# per AGENTS.md 'Non-negotiables'. The two checks are:
+# future PR cannot silently widen the set, drop an element, or
+# move ``no_progress_quiet`` back into the constant without
+# updating the failure classifier. The ``if/raise RuntimeError``
+# (NOT ``assert``) idiom makes the invariant survive ``python -O``
+# per AGENTS.md 'Non-negotiables'. The checks are:
 #   1. the constant is non-empty (an empty set would silently
 #      disable all watchdog-based unavailability detection);
 #   2. the constant contains the string ``no_output_at_start``
 #      (the operator-visible hard failure mode that the
-#      recovery controller must always treat as unavailable).
+#      recovery controller must always treat as unavailable);
+#   3. the constant contains the string ``children_persist_too_long``
+#      (the cumulative ceiling that bounds live-child stalls);
+#   4. the constant is exactly the canonical 2-element set
+#      {``no_output_at_start``, ``children_persist_too_long``} --
+#      nothing more, nothing less. Any widening or narrowing
+#      is a behavior change and must update the constant
+#      explicitly so this guard trips;
+#   5. the constant does NOT contain ``no_progress_quiet``
+#      (that reason is handled by the separate ``child_alive``
+#      conditional branch in the ``is_unavailable`` predicate,
+#      NOT by membership in this set).
 if not _WATCHDOG_UNAVAILABILITY_REASONS:
     msg = (
         "_WATCHDOG_UNAVAILABILITY_REASONS must not be empty. An empty"
@@ -272,6 +284,44 @@ if "no_output_at_start" not in _WATCHDOG_UNAVAILABILITY_REASONS:
         " watchdog reason always mapping to is_unavailable=True (the"
         " agent is unavailable at session start). Add it to the"
         " constant in ralph.recovery.failure_classifier."
+    )
+    raise RuntimeError(msg)
+if "children_persist_too_long" not in _WATCHDOG_UNAVAILABILITY_REASONS:
+    msg = (
+        "_WATCHDOG_UNAVAILABILITY_REASONS must contain the string"
+        " 'children_persist_too_long'. This watchdog reason is the"
+        " cumulative ceiling that bounds live-child stalls and is the"
+        " canonical Rule 2 exponential-backoff path when the cumulative"
+        " CHILDREN_PERSIST_TOO_LONG ceiling is hit. Add it to the"
+        " constant in ralph.recovery.failure_classifier."
+    )
+    raise RuntimeError(msg)
+if "no_progress_quiet" in _WATCHDOG_UNAVAILABILITY_REASONS:
+    msg = (
+        "_WATCHDOG_UNAVAILABILITY_REASONS must NOT contain the string"
+        " 'no_progress_quiet'. The 'no_progress_quiet' reason is handled"
+        " ONLY by the conditional 'child_alive in (False, None)' branch"
+        " in the is_unavailable predicate, NOT by membership in this"
+        " 2-element set. Adding it here would silently route live-child"
+        " NO_PROGRESS_QUIET (defense-in-depth Rule 1 path) to Rule 2"
+        " exponential backoff and reintroduce the dumb-kill behavior."
+        " Remove 'no_progress_quiet' from the constant in"
+        " ralph.recovery.failure_classifier."
+    )
+    raise RuntimeError(msg)
+_EXPECTED_WATCHDOG_UNAVAILABILITY_REASONS: frozenset[str] = frozenset(
+    {"no_output_at_start", "children_persist_too_long"}
+)
+if _EXPECTED_WATCHDOG_UNAVAILABILITY_REASONS != _WATCHDOG_UNAVAILABILITY_REASONS:
+    msg = (
+        "_WATCHDOG_UNAVAILABILITY_REASONS must be exactly the canonical"
+        " 2-element set {no_output_at_start, children_persist_too_long}."
+        " The current value is "
+        f"{set(_WATCHDOG_UNAVAILABILITY_REASONS)!r}. Any widening or"
+        " narrowing is a behavior change; update the constant in"
+        " ralph.recovery.failure_classifier and the conditional"
+        " 'child_alive' branch in the is_unavailable predicate in"
+        " lockstep, then update this guard to match."
     )
     raise RuntimeError(msg)
 
