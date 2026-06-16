@@ -44,6 +44,7 @@ AC mapping:
 
 from __future__ import annotations
 
+import importlib
 import tempfile
 from pathlib import Path
 from typing import cast
@@ -73,9 +74,6 @@ from ralph.recovery.unavailability_reason import (
     DEFAULT_UNAVAILABILITY_BACKOFF_POLICY,
     ReasonBackoffPolicy,
     UnavailabilityReason,
-)
-from tests.pipeline.test_run_loop_waiting_state_real_controller import (
-    test_run_loop_does_not_reach_through_private_tracker_attributes,
 )
 
 # ---------------------------------------------------------------------------
@@ -255,10 +253,16 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
       2. ``AgentUnavailabilityTracker.mark_unavailable`` records the
          exact ``base_backoff_ms`` and ``max_backoff_ms`` from
          ``DEFAULT_UNAVAILABILITY_BACKOFF_POLICY`` for each reason.
+      3. The typed ``AgentInvocationError`` carrying the documented
+         Claude Code limit message classifies as ``OUT_OF_CREDITS``;
+         the production failure surface (``AgentInvocationError`` with
+         a non-zero returncode and a limit-bearing stderr) is a
+         distinct input shape from the raw-string surface, and the
+         classifier must handle both equivalently.
 
-    The test drives the classifier with three failure shapes, all
-    classified as agent/unavailable with the same
-    ``connectivity_state='online'``. The three shapes are:
+    The test drives the classifier with three raw-string failure shapes
+    and one typed-exception shape, all classified as agent/unavailable
+    with the same ``connectivity_state='online'``. The shapes are:
     subscription-limit raw text, NO_OUTPUT_AT_START watchdog fire, and
     NO_PROGRESS_QUIET watchdog fire. The test then drives the tracker
     with each reason and asserts the exact cooldown table.
@@ -288,6 +292,15 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
         connectivity_state="online",
     )
     assert classified_c.unavailability_reason == UnavailabilityReason.STALE_CHILD_QUIET
+
+    classified_typed = classifier.classify(
+        AgentInvocationError("claude", 1, "You've hit your weekly limit"),
+        phase="development",
+        agent="claude",
+        connectivity_state="online",
+    )
+    assert classified_typed.is_unavailable is True
+    assert classified_typed.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS
 
     clock = FakeClock(start=0.0)
     tracker = AgentUnavailabilityTracker(clock=clock)
@@ -479,19 +492,39 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
          right ``(phase, agent, reason)`` tuple.
       4. The existing private-reach-through guard test
          (``test_run_loop_does_not_reach_through_private_tracker_attributes``)
-         is still present and importable; the run loop's
+         is still present in the production code surface and is
+         accessible from its dedicated module. The run loop's
          ``_unavailability_tracker`` and ``_clock`` symbols are not
          reached through from production code.
+
+    The guard test is referenced via ``importlib.import_module`` +
+    ``getattr`` (rather than a top-level ``from <module> import``) so
+    pytest does not re-collect it in this module's test inventory.
     """
-    assert callable(test_run_loop_does_not_reach_through_private_tracker_attributes)
+    guard_module = importlib.import_module(
+        "tests.pipeline.test_run_loop_waiting_state_real_controller"
+    )
+    guard_test = getattr(
+        guard_module,
+        "test_run_loop_does_not_reach_through_private_tracker_attributes",
+        None,
+    )
+    assert callable(guard_test), (
+        "the dedicated private-reach-through guard test must remain "
+        "present in tests/pipeline/test_run_loop_waiting_state_real_controller.py"
+    )
 
     marker: dict[str, object] = {}
+    entries: dict[str, UnavailabilityEntry] = {}
 
     class _CustomStore:
         """Minimal UnavailabilityStore Protocol-typed implementation.
 
         Records every ``mark_unavailable`` call into the shared
-        ``marker`` dict so the test can assert delegation.
+        ``marker`` dict and tracks entries in a dict keyed by
+        ``phase:agent`` so the public ``is_available`` /
+        ``waiting_state_payload`` surface can be exercised end-to-end
+        through the controller.
         """
 
         @property
@@ -505,27 +538,35 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
             reason: UnavailabilityReason | None = None,
         ) -> UnavailabilityEntry:
             marker["last_call"] = (phase, agent, reason)
-            return UnavailabilityEntry(
+            key = f"{phase}:{agent}"
+            entry = UnavailabilityEntry(
                 unavailable_until_ms=10_000,
                 reason=reason,
                 attempt=0,
                 base_backoff_ms=5_000,
                 max_backoff_ms=30_000,
             )
+            entries[key] = entry
+            return entry
 
         def is_available(self, phase: str, agent: str) -> bool:
-            return True
+            key = f"{phase}:{agent}"
+            return key not in entries
 
         def earliest_unavailable_wait_ms(self, phase: str, agents: list[str]) -> int:
             return 0
 
         def reset_backoff(self, phase: str, agent: str) -> None:
-            return None
+            entries.pop(f"{phase}:{agent}", None)
 
         def snapshot(self) -> dict[str, dict[str, object]]:
+            unavailable_timeouts: dict[str, int] = {
+                key: entry.unavailable_until_ms for key, entry in entries.items()
+            }
+            backoff_attempts: dict[str, int] = dict.fromkeys(entries, 1)
             return {
-                "unavailable_timeouts": {"development:claude": 10_000},
-                "backoff_attempts": {"development:claude": 1},
+                "unavailable_timeouts": unavailable_timeouts,
+                "backoff_attempts": backoff_attempts,
             }
 
     custom_store = _CustomStore()
@@ -561,45 +602,39 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
         f"(phase, agent, reason), got {marker.get('last_call')!r}"
     )
 
+    payload = controller.waiting_state_payload(
+        "development", ["claude", "opencode", "agy"],
+    )
+    assert isinstance(payload, list)
+    assert len(payload) == 3
+    agents_in_payload = [tup[0] for tup in payload]
+    assert agents_in_payload == ["claude", "opencode", "agy"], (
+        f"waiting_state_payload must preserve chain order, got {agents_in_payload!r}"
+    )
+    for tup in payload:
+        assert isinstance(tup, tuple)
+        assert len(tup) == 3
+        agent_name, attempt, cooldown_ms = tup
+        assert isinstance(agent_name, str)
+        assert isinstance(attempt, int)
+        assert attempt >= 0
+        assert isinstance(cooldown_ms, int)
+        assert cooldown_ms >= 0, (
+            f"cooldown_ms_remaining must be non-negative, got {cooldown_ms}ms "
+            f"for agent {agent_name!r}"
+        )
+
+    available = controller.agents_now_available(
+        "development", ["claude", "opencode", "agy"],
+    )
+    assert "opencode" in available
+    assert "agy" in available
+    assert "claude" not in available, (
+        f"claude was marked unavailable, must NOT appear in "
+        f"agents_now_available, got {available!r}"
+    )
+
     snapshot = controller.snapshot()
     assert "unavailable_timeouts" in snapshot
     assert "backoff_attempts" in snapshot
     assert snapshot["unavailable_timeouts"] == {"development:claude": 10_000}
-
-    run_loop_path = (
-        Path(__file__).resolve().parent.parent.parent
-        / "ralph"
-        / "pipeline"
-        / "run_loop.py"
-    )
-    run_loop_src = run_loop_path.read_text(encoding="utf-8")
-    assert "ctx.controller._unavailability_tracker" not in run_loop_src
-    assert "tracker._clock" not in run_loop_src
-
-
-# ---------------------------------------------------------------------------
-# AC-02: Typed-exception path for OUT_OF_CREDITS
-# ---------------------------------------------------------------------------
-
-
-def test_prompt_scenario_agent_invocation_error_classifies_out_of_credits() -> None:
-    """AC-02 (typed-exception path): the documented Claude Code limit
-    message in a typed ``AgentInvocationError`` classifies as
-    OUT_OF_CREDITS when ``connectivity_state='online'``.
-
-    This is the production-shaped failure surface: the agent's process
-    exits with a non-zero code and the run loop catches it as a typed
-    ``AgentInvocationError`` whose stderr carries the documented limit
-    text. The classifier must route it to OUT_OF_CREDITS so the
-    controller applies the 60_000ms base / 1_800_000ms cap cooldown.
-    """
-    classifier = FailureClassifier()
-    failure = classifier.classify(
-        AgentInvocationError("claude", 1, "You've hit your weekly limit"),
-        phase="development",
-        agent="claude",
-        connectivity_state="online",
-    )
-
-    assert failure.is_unavailable is True
-    assert failure.unavailability_reason == UnavailabilityReason.OUT_OF_CREDITS
