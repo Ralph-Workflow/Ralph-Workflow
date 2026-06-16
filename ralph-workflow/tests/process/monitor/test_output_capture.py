@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ralph.process.monitor import (
-    ClaudeCodeSubagentOutputDiscovery,
     FileSubagentOutputCapture,
-    OpencodeSubagentOutputDiscovery,
+    NullDiscoveryStrategy,
 )
 
 if TYPE_CHECKING:
@@ -48,11 +47,11 @@ def test_file_capture_handles_partial_lines(tmp_path: Path) -> None:
 def test_opencode_discovery_returns_empty_for_undocumented_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """OpencodeSubagentOutputDiscovery does not invent an undocumented path.
+    """NullDiscoveryStrategy does not invent an undocumented path.
 
     Even when the legacy-looking directory layout is present on disk, the
-    strategy returns an empty mapping because ``.agent/workers/*/output.log``
-    is not documented in the official OpenCode surface.
+    strategy returns an empty mapping because there is no documented path
+    for any transport.
     """
     monkeypatch.chdir(tmp_path)
     worker_dir = tmp_path / ".agent" / "workers" / "w-1"
@@ -60,18 +59,18 @@ def test_opencode_discovery_returns_empty_for_undocumented_path(
     log_file = worker_dir / "output.log"
     log_file.write_text("worker output\n")
 
-    discovery = OpencodeSubagentOutputDiscovery()
+    discovery = NullDiscoveryStrategy()
     assert discovery.discover_subagent_outputs(0) == {}
 
 
 def test_claude_discovery_returns_empty_for_undocumented_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ClaudeCodeSubagentOutputDiscovery does not invent an undocumented path.
+    """NullDiscoveryStrategy does not invent an undocumented path.
 
     Even when the legacy-looking directory layout is present on disk, the
-    strategy returns an empty mapping because ``worker-*/log.txt`` is not
-    documented in the official Claude Code surface.
+    strategy returns an empty mapping because there is no documented path
+    for any transport.
     """
     monkeypatch.chdir(tmp_path)
     worker_dir = tmp_path / ".claude" / "session" / "sess-1" / "worker-1"
@@ -79,11 +78,12 @@ def test_claude_discovery_returns_empty_for_undocumented_path(
     log_file = worker_dir / "log.txt"
     log_file.write_text("claude worker log\n")
 
-    discovery = ClaudeCodeSubagentOutputDiscovery()
+    discovery = NullDiscoveryStrategy()
     assert discovery.discover_subagent_outputs(0) == {}
+
 
 
 def test_discovery_returns_empty_when_no_logs(tmp_path: Path) -> None:
     """Discovery strategies return empty mapping when expected layout is absent."""
-    discovery = OpencodeSubagentOutputDiscovery()
+    discovery = NullDiscoveryStrategy()
     assert discovery.discover_subagent_outputs(0) == {}

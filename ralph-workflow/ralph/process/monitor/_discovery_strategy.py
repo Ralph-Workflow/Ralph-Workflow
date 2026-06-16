@@ -40,3 +40,17 @@ class DiscoveryStrategy(Protocol):
             the documented location could not be confirmed).
         """
         ...
+
+
+class NullDiscoveryStrategy:
+    """Discovery strategy that returns an empty mapping.
+
+    Used when no agent-specific discovery implementation exists. This is the
+    default for all transports because no agent transport currently documents a
+    stable per-worker subagent output log path.
+    """
+
+    def discover_subagent_outputs(self, host_pid: int) -> dict[str, SubagentOutputCapture]:
+        """Return an empty mapping because no log path is documented."""
+        _ = host_pid
+        return {}

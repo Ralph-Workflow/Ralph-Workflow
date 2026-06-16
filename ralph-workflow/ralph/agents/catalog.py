@@ -12,10 +12,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
+from ralph.agents.execution_state._factory import (
+    _STRATEGY_DISPATCH,
+    _STRATEGY_DISPATCH_DATA,
+)
 from ralph.agents.parsers import (
-    _CUSTOM_COMMAND_REGISTRY,
+    _CUSTOM_COMMAND_REGISTRY_DATA,
     _PARSER_REGISTRY,
+    _PARSER_REGISTRY_DATA,
     _ParserRegistryEntry,
 )
 
@@ -92,10 +96,10 @@ class AgentCatalog:
             support.strategy_factory,
             support.spec.transport,
         )
-        _PARSER_REGISTRY[name_lower] = entry
+        _PARSER_REGISTRY_DATA[name_lower] = entry
         if support.spec.transport not in _STRATEGY_DISPATCH:
-            _STRATEGY_DISPATCH[support.spec.transport] = support.strategy_factory
-        _CUSTOM_COMMAND_REGISTRY[cmd_lower] = entry
+            _STRATEGY_DISPATCH_DATA[support.spec.transport] = support.strategy_factory
+        _CUSTOM_COMMAND_REGISTRY_DATA[cmd_lower] = entry
 
     def remove(self, name: str) -> None:
         """Remove an agent registration by name.
@@ -112,10 +116,10 @@ class AgentCatalog:
         if support is not None:
             cmd_lower = support.cmd.lower()
             self._by_command.pop(cmd_lower, None)
-            _PARSER_REGISTRY.pop(name_lower, None)
-            _CUSTOM_COMMAND_REGISTRY.pop(cmd_lower, None)
+            _PARSER_REGISTRY_DATA.pop(name_lower, None)
+            _CUSTOM_COMMAND_REGISTRY_DATA.pop(cmd_lower, None)
             if _STRATEGY_DISPATCH.get(support.spec.transport) is support.strategy_factory:
-                del _STRATEGY_DISPATCH[support.spec.transport]
+                del _STRATEGY_DISPATCH_DATA[support.spec.transport]
 
     def get(self, name_or_command: str) -> AgentSupport | None:
         """Look up by agent name first, then by command."""

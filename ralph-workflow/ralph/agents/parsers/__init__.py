@@ -31,6 +31,7 @@ To add a parser for a new agent transport, create a module in this package, impl
 
 from __future__ import annotations
 
+import types
 from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -45,7 +46,7 @@ from .generic import GenericParser
 from .opencode import OpenCodeParser
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from ralph.agents._contracts import StrategyFactory
 
@@ -92,7 +93,8 @@ class _ParserRegistryEntry:
 # DEPRECATED: write-through state populated atomically by AgentCatalog.add().
 # New code should use ralph.agents.catalog.default_catalog() or construct an
 # AgentCatalog explicitly. The dicts will be removed in a future release.
-_PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
+# Internal mutable storage (write target for AgentCatalog._write_through).
+_PARSER_REGISTRY_DATA: dict[str, Callable[[], AgentParser]] = {
     "claude": ClaudeParser,
     "claude_interactive": ClaudeInteractiveParser,
     "codex": CodexParser,
@@ -101,13 +103,24 @@ _PARSER_REGISTRY: dict[str, Callable[[], AgentParser]] = {
     "generic": GenericParser,
 }
 
+# Public read-only view over the internal mutable dict.
+_PARSER_REGISTRY: Mapping[str, Callable[[], AgentParser]] = types.MappingProxyType(
+    _PARSER_REGISTRY_DATA
+)
+
 # Custom agents registered via ``register_agent_support()`` are keyed here by
 # their full executable command string.  This keeps custom command names like
 # ``claude wrapper`` from colliding with built-in parser keys like ``claude``.
 # DEPRECATED: write-through state populated atomically by AgentCatalog.add().
 # New code should use ralph.agents.catalog.default_catalog() or construct an
 # AgentCatalog explicitly. The dicts will be removed in a future release.
-_CUSTOM_COMMAND_REGISTRY: dict[str, _ParserRegistryEntry] = {}
+# Internal mutable storage (write target for AgentCatalog._write_through).
+_CUSTOM_COMMAND_REGISTRY_DATA: dict[str, _ParserRegistryEntry] = {}
+
+# Public read-only view over the internal mutable dict.
+_CUSTOM_COMMAND_REGISTRY: Mapping[str, _ParserRegistryEntry] = types.MappingProxyType(
+    _CUSTOM_COMMAND_REGISTRY_DATA
+)
 
 
 def resolve_parser_key(

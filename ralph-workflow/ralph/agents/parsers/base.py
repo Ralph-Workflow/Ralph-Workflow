@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 __all__ = [
     "LIFECYCLE_EVENT_TYPES",
     "LIFECYCLE_KINDS",
+    "extract_error_message",
     "is_lifecycle_event",
     "is_lifecycle_kind",
     "is_session_metadata_event",
@@ -50,6 +51,45 @@ def _multimodal_block_summary(block: dict[str, object]) -> str | None:
         modality = block.get("modality", "media")
         return f"[{modality}: {uri}]"
     return None
+
+
+def extract_error_message(obj: object) -> str:
+    """Extract an error message string from a parsed JSON object.
+
+    Resolution order (union of all per-parser bodies):
+    1. obj['error'] dict -> message, type, or name field (claude/codex/opencode/gemini)
+    2. obj['error'] non-empty string (codex/generic)
+    3. obj.get('message') (codex/opencode/generic)
+    4. obj.get('error') non-dict truthy value (codex fallback)
+    5. obj.get('msg') (generic)
+    6. 'unknown error'
+
+    Note: claude.py previously returned 'unknown' (not 'unknown error') when
+    error_obj was not a dict. The unified helper returns 'unknown error' in
+    that branch, a one-character behavior change documented in the module
+    docstring.
+    """
+    if not isinstance(obj, dict):
+        return "unknown error"
+    error_val = obj.get("error")
+    if isinstance(error_val, dict):
+        return str(
+            error_val.get(
+                "message", error_val.get("type", error_val.get("name", "unknown error"))
+            )
+        )
+
+    result = "unknown error"
+    if isinstance(error_val, str) and error_val:
+        result = error_val
+    elif obj.get("message"):
+        result = str(obj.get("message"))
+    elif error_val:
+        result = str(error_val)
+    elif obj.get("msg"):
+        result = str(obj.get("msg"))
+
+    return result
 
 
 def stringify_text_blocks(value: object, *, require_text_type: bool = False) -> str:

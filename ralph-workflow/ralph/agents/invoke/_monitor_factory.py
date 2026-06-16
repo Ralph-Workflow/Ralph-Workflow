@@ -9,12 +9,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.config.enums import AgentTransport
 from ralph.process.monitor import (
-    ClaudeCodeSubagentOutputDiscovery,
     DefaultProcessMonitor,
     DiscoveryStrategy,
-    OpencodeSubagentOutputDiscovery,
+    NullDiscoveryStrategy,
     SubagentPidSource,
     role_classifier_for_transport,
 )
@@ -32,12 +30,7 @@ def _discovery_strategy_for_config(config: AgentConfig) -> DiscoveryStrategy | N
     subagent-output location is documented get a strategy. For all other
     agents the watchdog degrades gracefully to stdout/MCP/workspace evidence.
     """
-    transport = config.transport
-    if transport in (AgentTransport.CLAUDE, AgentTransport.CLAUDE_INTERACTIVE):
-        return ClaudeCodeSubagentOutputDiscovery()
-    if transport == AgentTransport.OPENCODE:
-        return OpencodeSubagentOutputDiscovery()
-    return None
+    return NullDiscoveryStrategy()
 
 
 def _make_process_monitor(

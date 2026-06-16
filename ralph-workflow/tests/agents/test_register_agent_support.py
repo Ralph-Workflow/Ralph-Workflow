@@ -16,13 +16,15 @@ from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     strategy_for_command,
 )
-from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
+from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH, _STRATEGY_DISPATCH_DATA
 from ralph.agents.execution_state.generic_execution_strategy import (
     GenericExecutionStrategy,
 )
 from ralph.agents.parsers import (
     _CUSTOM_COMMAND_REGISTRY,
+    _CUSTOM_COMMAND_REGISTRY_DATA,
     _PARSER_REGISTRY,
+    _PARSER_REGISTRY_DATA,
     AgentOutputLine,
     ClaudeParser,
     get_parser,
@@ -58,12 +60,12 @@ def _reset_catalog() -> None:
     cat = default_catalog()
     cat._entries.clear()
     cat._by_command.clear()
-    _PARSER_REGISTRY.clear()
-    _PARSER_REGISTRY.update(_GOLDEN_PARSERS)
-    _CUSTOM_COMMAND_REGISTRY.clear()
-    _CUSTOM_COMMAND_REGISTRY.update(_GOLDEN_CUSTOM)
-    _STRATEGY_DISPATCH.clear()
-    _STRATEGY_DISPATCH.update(cast("dict", _GOLDEN_STRATEGIES))
+    _PARSER_REGISTRY_DATA.clear()
+    _PARSER_REGISTRY_DATA.update(_GOLDEN_PARSERS)
+    _CUSTOM_COMMAND_REGISTRY_DATA.clear()
+    _CUSTOM_COMMAND_REGISTRY_DATA.update(_GOLDEN_CUSTOM)
+    _STRATEGY_DISPATCH_DATA.clear()
+    _STRATEGY_DISPATCH_DATA.update(cast("dict", _GOLDEN_STRATEGIES))
 
 
 class FakeAgentParser:

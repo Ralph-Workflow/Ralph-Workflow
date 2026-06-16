@@ -6,18 +6,21 @@ itself never needs editing.
 
 from __future__ import annotations
 
+import types
 from typing import TYPE_CHECKING, cast
 
 from ralph.config.enums import AgentTransport
 
 from ..parsers import _CUSTOM_COMMAND_REGISTRY, _ParserRegistryEntry
-from .agy_execution_strategy import AgyExecutionStrategy
+from ._completion_mixin import CompletionEnforcingStrategy
 from .claude_execution_strategy import ClaudeExecutionStrategy
 from .claude_interactive_execution_strategy import ClaudeInteractiveExecutionStrategy
 from .generic_execution_strategy import GenericExecutionStrategy
 from .opencode_execution_strategy import OpenCodeExecutionStrategy
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ralph.agents._contracts import StrategyFactory
     from ralph.process.child_liveness import ChildLivenessRegistry
 
@@ -35,18 +38,39 @@ def _make_opencode_strategy(
     return OpenCodeExecutionStrategy(label_scope=label_scope, registry=registry)
 
 
+def _make_agy_strategy(
+    *,
+    label_scope: str | None = None,
+    registry: ChildLivenessRegistry | None = None,
+    **_kwargs: object,
+) -> BaseExecutionStrategy:
+    """Factory for AGY strategy: CompletionEnforcingStrategy wrapping GenericExecutionStrategy."""
+    del _kwargs
+
+    class AgyExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
+        pass
+
+    return AgyExecutionStrategy(label_scope=label_scope, registry=registry)
+
+
 # DEPRECATED: write-through state populated atomically by AgentCatalog.add().
 # New code should use ralph.agents.catalog.default_catalog() or construct an
 # AgentCatalog explicitly. The dicts will be removed in a future release.
-_STRATEGY_DISPATCH: dict[AgentTransport, StrategyFactory] = {
+# Internal mutable storage (write target for AgentCatalog._write_through).
+_STRATEGY_DISPATCH_DATA: dict[AgentTransport, StrategyFactory] = {
     AgentTransport.OPENCODE: _make_opencode_strategy,
     AgentTransport.CLAUDE: ClaudeExecutionStrategy,
     AgentTransport.CLAUDE_INTERACTIVE: ClaudeInteractiveExecutionStrategy,
-    AgentTransport.AGY: AgyExecutionStrategy,
+    AgentTransport.AGY: _make_agy_strategy,
     AgentTransport.CODEX: GenericExecutionStrategy,
     AgentTransport.NANOCODER: GenericExecutionStrategy,
     AgentTransport.GENERIC: GenericExecutionStrategy,
 }
+
+# Public read-only view over the internal mutable dict.
+_STRATEGY_DISPATCH: Mapping[AgentTransport, StrategyFactory] = types.MappingProxyType(
+    _STRATEGY_DISPATCH_DATA
+)
 
 
 def strategy_for_transport(
@@ -56,11 +80,9 @@ def strategy_for_transport(
     registry: ChildLivenessRegistry | None = None,
 ) -> BaseExecutionStrategy:
     """Return the appropriate ExecutionStrategy for an agent transport."""
-    # ``transport`` is typed as ``object`` for backward compatibility, but the
-    # dispatch table is keyed by ``AgentTransport``.  The ``dict.get`` default
-    # handles non-transport values at runtime; the cast keeps the lookup
-    # type-safe for mypy without introducing branching.
-    factory = _STRATEGY_DISPATCH.get(cast("AgentTransport", transport), GenericExecutionStrategy)
+    factory = _STRATEGY_DISPATCH.get(
+        cast("AgentTransport", transport), GenericExecutionStrategy
+    )
     return factory(label_scope=label_scope, registry=registry)
 
 

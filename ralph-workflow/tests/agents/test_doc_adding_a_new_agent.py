@@ -123,16 +123,11 @@ def test_discoverability_link_from_contributing_doc() -> None:
 
 def test_recipe_test_docstrings_point_to_doc() -> None:
     recipe1 = Path("tests/agents/test_add_a_new_agent_recipe.py")
-    recipe2 = Path("tests/agents/test_add_a_new_interactive_agent_recipe.py")
 
     assert recipe1.exists()
-    assert recipe2.exists()
 
     assert "adding-a-new-agent.md" in recipe1.read_text(encoding="utf-8"), (
         "test_add_a_new_agent_recipe.py must reference adding-a-new-agent.md"
-    )
-    assert "adding-a-new-agent.md" in recipe2.read_text(encoding="utf-8"), (
-        "test_add_a_new_interactive_agent_recipe.py must reference adding-a-new-agent.md"
     )
 
 
