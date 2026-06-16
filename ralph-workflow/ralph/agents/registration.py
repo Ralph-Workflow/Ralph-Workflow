@@ -1,9 +1,15 @@
 """Unified one-call registration API for new agent support.
 
-This module is opt-in: import it as
-``from ralph.agents.registration import register_agent_support``.
-It is intentionally NOT re-exported from ``ralph.agents`` so the public surface
-stays small and the registration seam remains explicit.
+This module is the canonical home of :func:`register_agent_support`. It is
+also re-exported from the public ``ralph.agents`` surface (see
+``ralph.agents.__all__`` and ``__getattr__``), so callers may import it as
+either of:
+
+* ``from ralph.agents import register_agent_support`` (preferred — public)
+* ``from ralph.agents.registration import register_agent_support`` (direct)
+
+The re-export keeps the registration seam discoverable from the package
+root while still pointing at this module for the implementation.
 
 Advanced use cases (CCS aliases, dynamic model parsing, custom
 ``AgentRegistry.ccs_defaults``) must still use ``AgentRegistry`` directly.
