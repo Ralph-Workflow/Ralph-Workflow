@@ -62,6 +62,7 @@ def _make_policy(activity_ttl: float | None = 30.0) -> TimeoutPolicy:
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=activity_ttl,
+        os_descendant_only_ceiling_seconds=None,
     )
 
 

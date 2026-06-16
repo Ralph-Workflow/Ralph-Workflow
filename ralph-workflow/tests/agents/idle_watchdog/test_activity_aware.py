@@ -57,6 +57,7 @@ def _make_policy(
         "suspect_waiting_on_child_seconds": None,
         "max_waiting_on_child_no_progress_seconds": None,
         "activity_evidence_ttl_seconds": activity_ttl,
+        "os_descendant_only_ceiling_seconds": None,
     }
     return TimeoutPolicy(**kwargs)
 

@@ -102,3 +102,34 @@ def test_append_hard_stops_at_max_bytes(tmp_path: Path) -> None:
 
     assert log.path.stat().st_size == max_bytes
     assert log.path.read_text(encoding="utf-8") == "1234567\nabcdefg\n"
+
+
+def test_size_bytes_returns_zero_before_first_write(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    assert not log.path.exists()
+    assert log.size_bytes == 0
+
+
+def test_size_bytes_uses_fast_path_after_first_write(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    log.append("line one")
+    expected = log.path.stat().st_size
+    assert expected == len(b"line one\n")
+    assert log.size_bytes == expected
+    assert log.size_bytes == log._bytes_written
+
+
+def test_size_bytes_returns_bytes_written_when_disabled(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    log.append("first line")
+    log.disable()
+    assert log.size_bytes == log._bytes_written
+
+
+def test_size_bytes_returns_zero_when_file_missing_after_write(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    log.append("some content")
+    assert log.path.exists()
+    log.path.unlink()
+    assert not log.path.exists()
+    assert log.size_bytes == 0

@@ -63,14 +63,10 @@ def _make_watchdog(
         drain_window_seconds=drain_window,
         max_waiting_on_child_seconds=max_waiting,
         max_session_seconds=max_session,
-        # Disable suspicion by default so tests that use small max_waiting values
-        # (e.g. 20.0) don't conflict with the 600.0 default suspect threshold.
         suspect_waiting_on_child_seconds=suspect,
         waiting_status_interval_seconds=status_interval if status_interval is not None else 30.0,
-        # Explicitly disable no-progress ceiling by default to avoid validation errors
-        # when max_waiting is small (e.g. 20.0). Tests that specifically test the
-        # no-progress ceiling should pass no_progress_ceiling explicitly.
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock, listener, corroborator=corroborator), clock

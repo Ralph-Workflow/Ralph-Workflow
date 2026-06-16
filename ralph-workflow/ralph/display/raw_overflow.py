@@ -91,8 +91,16 @@ class RawOverflowLog:
         """
         if self._disabled:
             return self._bytes_written
+        if self._first_write:
+            try:
+                return self.path.stat().st_size
+            except (OSError, PermissionError):
+                return 0
+        if self._bytes_written == 0:
+            return 0
         try:
-            return self.path.stat().st_size
+            self.path.stat()
+            return self._bytes_written
         except (OSError, PermissionError):
             return 0
 

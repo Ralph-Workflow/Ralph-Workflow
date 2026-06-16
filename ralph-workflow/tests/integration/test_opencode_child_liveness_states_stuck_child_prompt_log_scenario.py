@@ -61,6 +61,8 @@ class TestStuckChildPromptLogScenario:
             suspect_waiting_on_child_seconds=None,
             waiting_status_interval_seconds=100.0,
             max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+            # Disable OS-descendant-only ceiling (its default is larger than full_ceiling)
+            os_descendant_only_ceiling_seconds=None,
         )
         clock = FakeClock(start=0.0)
         watchdog = IdleWatchdog(config, clock, corroborator=_os_descendant_corroborator)

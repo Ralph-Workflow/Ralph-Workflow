@@ -78,6 +78,9 @@ def _make_watchdog(
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=activity_ttl,
         workspace_change_weights=workspace_change_weights,
+        # Disable the OS-descendant-only ceiling (its default is larger
+        # than the small max_waiting=10s used in these tests).
+        os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock()
     return IdleWatchdog(config, clock), clock

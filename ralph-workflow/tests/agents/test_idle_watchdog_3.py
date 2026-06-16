@@ -75,6 +75,7 @@ def _make_watchdog(
         "max_session_seconds": max_session,
         "suspect_waiting_on_child_seconds": suspect,
         "max_waiting_on_child_no_progress_seconds": no_progress_ceiling,
+        "os_descendant_only_ceiling_seconds": None,
     }
     if activity_ttl is not None:
         kwargs["activity_evidence_ttl_seconds"] = activity_ttl
@@ -321,6 +322,7 @@ def test_evidence_summary_in_hard_stop_diagnostic() -> None:
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=30.0,
+        os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
     wd = IdleWatchdog(config, clock, listener=events.append)
@@ -446,6 +448,7 @@ def test_stalled_after_tool_result_fire_carries_evidence_summary() -> None:
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=30.0,
+        os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
     wd = IdleWatchdog(config, clock)

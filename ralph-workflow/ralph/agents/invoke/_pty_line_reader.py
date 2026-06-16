@@ -207,12 +207,11 @@ class PtyLineReader:
                     continue
                 if pid in self._cpu_baselines:
                     baseline_cpu, baseline_time = self._cpu_baselines[pid]
-                    if (
-                        _now - baseline_time >= self._policy.cpu_idle_seconds
-                        and current_cpu == baseline_cpu
-                    ):
-                        return True
-                    self._cpu_baselines[pid] = (current_cpu, _now)
+                    if current_cpu == baseline_cpu:
+                        if _now - baseline_time >= self._policy.cpu_idle_seconds:
+                            return True
+                    else:
+                        self._cpu_baselines[pid] = (current_cpu, _now)
                 else:
                     self._cpu_baselines[pid] = (current_cpu, _now)
         except Exception:
@@ -237,12 +236,10 @@ class PtyLineReader:
             return False
         if path_str in self._log_growth_state:
             baseline_size, baseline_time = self._log_growth_state[path_str]
-            if (
-                _now - baseline_time >= self._policy.log_growth_seconds
-                and current_size == baseline_size
-            ):
+            if current_size != baseline_size:
+                self._log_growth_state[path_str] = (current_size, _now)
+            elif _now - baseline_time >= self._policy.log_growth_seconds:
                 return True
-            self._log_growth_state[path_str] = (current_size, _now)
         else:
             self._log_growth_state[path_str] = (current_size, _now)
         return False
@@ -686,6 +683,8 @@ class PtyLineReader:
         else:
             self._last_meaningful[0] = False
         self._strategy.observe_line(queued_line)
+        if self._raw_overflow is not None:
+            self._raw_overflow.append(queued_line)
         yield queued_line
         fire_result = self._check_fire(
             watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)

@@ -72,9 +72,11 @@ from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from contextvars import Token
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.config.models import AgentConfig
+    from ralph.mcp.server._activity_sink import ActivitySink
 
 _MAX_PARSED_OUTPUT_LINES = 256
 _NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
@@ -194,12 +196,11 @@ class _ProcessLineReader:
                     continue
                 if pid in self._cpu_baselines:
                     baseline_cpu, baseline_time = self._cpu_baselines[pid]
-                    if (
-                        _now - baseline_time >= self._policy.cpu_idle_seconds
-                        and current_cpu == baseline_cpu
-                    ):
-                        return True
-                    self._cpu_baselines[pid] = (current_cpu, _now)
+                    if current_cpu == baseline_cpu:
+                        if _now - baseline_time >= self._policy.cpu_idle_seconds:
+                            return True
+                    else:
+                        self._cpu_baselines[pid] = (current_cpu, _now)
                 else:
                     self._cpu_baselines[pid] = (current_cpu, _now)
         except Exception:
@@ -221,12 +222,10 @@ class _ProcessLineReader:
             return False
         if path_str in self._log_growth_state:
             baseline_size, baseline_time = self._log_growth_state[path_str]
-            if (
-                _now - baseline_time >= self._policy.log_growth_seconds
-                and current_size == baseline_size
-            ):
+            if current_size != baseline_size:
+                self._log_growth_state[path_str] = (current_size, _now)
+            elif _now - baseline_time >= self._policy.log_growth_seconds:
                 return True
-            self._log_growth_state[path_str] = (current_size, _now)
         else:
             self._log_growth_state[path_str] = (current_size, _now)
         return False
@@ -419,6 +418,25 @@ class _ProcessLineReader:
                 return None
             self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
+    def _register_sinks(
+        self, watchdog: IdleWatchdog
+    ) -> tuple[Token[ActivitySink | None], Token[ActivitySink | None]]:
+        if self._monitor is not None:
+            def _forward_event(
+                kind: WorkspaceChangeKind, weight: float
+            ) -> None:
+                watchdog.record_workspace_event(kind=kind, weight=weight)
+
+            self._monitor.set_on_event(_forward_event)
+
+        def _mcp_sink(_tool_name: str) -> None:
+            watchdog.record_mcp_tool_call()
+
+        def _subagent_sink(_line: str) -> None:
+            watchdog.record_subagent_work()
+
+        return set_active_sink(_mcp_sink), set_subagent_sink(_subagent_sink)
+
     def read_lines(self) -> Iterator[str]:
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
@@ -433,47 +451,7 @@ class _ProcessLineReader:
             corroborator=self._corroborate,
             process_monitor=process_monitor,
         )
-
-        # Register the watchdog's workspace channel recorder as the
-        # on-event callback on the WorkspaceMonitor so every file
-        # change in the monitored workspace is visible to the
-        # activity-aware verdict as a fresh workspace channel signal.
-        # The monitor is constructed in invoke_agent BEFORE the
-        # watchdog is created (the watchdog lives inside this
-        # generator), so we cannot bind the recorder at monitor
-        # construction time; the late ``set_on_event`` binding
-        # happens here, immediately after the watchdog exists. The
-        # binding is cleared in the finally block below so a stale
-        # callback can never fire after the run ends.
-        if self._monitor is not None:
-            # Forward (kind, weight) so the watchdog's per-kind
-            # counter receives the real classification; the
-            # 0-arg bound method form would always yield
-            # (OTHER, 1.0) and miss the AC #7 contract.
-            def _forward_event(
-                kind: WorkspaceChangeKind, weight: float
-            ) -> None:
-                watchdog.record_workspace_event(kind=kind, weight=weight)
-
-            self._monitor.set_on_event(_forward_event)
-
-        # Register the watchdog's MCP activity recorder as the active sink
-        # for the in-process Ralph MCP server so each tools/call invocation
-        # defers a NO_OUTPUT_DEADLINE fire while the agent is actively
-        # using the MCP. The contextvar isolates concurrent agent runs
-        # in the same process so a sibling run's MCP calls never feed
-        # this watchdog's evidence surface. The recorder accepts a
-        # `now: float | None` argument; the sink protocol passes a
-        # `tool_name: str`, so we wrap the recorder in a thin closure
-        # that ignores the string and forwards to the recorder.
-        def _mcp_sink(_tool_name: str) -> None:
-            watchdog.record_mcp_tool_call()
-
-        def _subagent_sink(_line: str) -> None:
-            watchdog.record_subagent_work()
-
-        sink_token = set_active_sink(_mcp_sink)
-        subagent_token = set_subagent_sink(_subagent_sink)
+        sink_token, subagent_token = self._register_sinks(watchdog)
         try:
             while True:
                 self._lines_event.clear()
@@ -488,6 +466,7 @@ class _ProcessLineReader:
                 if queued_line is not None:
                     self._record_line_activity(watchdog, queued_line)
                     self._strategy.observe_line(queued_line)
+                    self._raw_overflow.append(queued_line)
                     yield queued_line
                     result = self._check_fire(
                         watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
