@@ -416,6 +416,150 @@ class TestPiParserMessageUpdateErrorAndDone:
         assert any(r.type == "stop" for r in results)
 
 
+class TestPiParserMessageUpdateToolcall:
+    """``message_update`` toolcall_start/delta/end must emit a single tool_use line.
+
+    pi's assistantMessageEvent carries a streaming tool call:
+      - toolcall_start: opens the tool call (no content yet)
+      - toolcall_delta: appends partial argument text
+      - toolcall_end: closes the tool call, carrying the final
+        ``toolCall = { id, name, arguments }`` payload
+
+    The parser must suppress ``toolcall_start`` and ``toolcall_delta``
+    and emit exactly ONE ``type='tool_use'`` line on ``toolcall_end``,
+    using the final ``toolCall.name``.  This pins the single-emission
+    invariant for the streaming toolcall sequence.
+    """
+
+    def test_toolcall_start_emits_no_output(self) -> None:
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_update",
+                "message": {"role": "assistant"},
+                "assistantMessageEvent": {
+                    "type": "toolcall_start",
+                    "contentIndex": 0,
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        assert results == []
+
+    def test_toolcall_delta_emits_no_output(self) -> None:
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_update",
+                "message": {"role": "assistant"},
+                "assistantMessageEvent": {
+                    "type": "toolcall_delta",
+                    "contentIndex": 0,
+                    "delta": '{"command":',
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        assert results == []
+
+    def test_toolcall_end_emits_single_tool_use_line(self) -> None:
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_update",
+                "message": {"role": "assistant"},
+                "assistantMessageEvent": {
+                    "type": "toolcall_end",
+                    "contentIndex": 0,
+                    "toolCall": {
+                        "id": "call_1",
+                        "name": "bash",
+                        "arguments": {"command": "ls"},
+                    },
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        tool_use_lines = [r for r in results if r.type == "tool_use"]
+        assert len(tool_use_lines) == 1
+        assert tool_use_lines[0].content == "bash"
+
+    def test_toolcall_start_delta_end_emits_exactly_one_tool_use(self) -> None:
+        """A full toolcall_start -> toolcall_delta -> toolcall_end sequence
+        must emit exactly ONE tool_use line, using the final tool name from
+        the ``toolcall_end.toolCall.name`` payload.  Intermediate events
+        must NOT emit placeholder 'unknown' tool_use lines.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "toolcall_start",
+                        "contentIndex": 0,
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "toolcall_delta",
+                        "contentIndex": 0,
+                        "delta": '{"command":',
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "toolcall_end",
+                        "contentIndex": 0,
+                        "toolCall": {
+                            "id": "call_1",
+                            "name": "bash",
+                            "arguments": {"command": "ls"},
+                        },
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        tool_use_lines = [r for r in results if r.type == "tool_use"]
+        assert len(tool_use_lines) == 1
+        assert tool_use_lines[0].content == "bash"
+        # No intermediate 'unknown' placeholder tool_use lines.
+        assert not any(
+            r.type == "tool_use" and r.content == "unknown" for r in results
+        )
+
+    def test_toolcall_end_without_toolcall_uses_unknown_name(self) -> None:
+        """If ``toolcall_end`` arrives without a ``toolCall`` payload
+        (defensive case), the parser still emits a single tool_use line
+        with content='unknown' rather than dropping the event silently.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_update",
+                "message": {"role": "assistant"},
+                "assistantMessageEvent": {
+                    "type": "toolcall_end",
+                    "contentIndex": 0,
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        tool_use_lines = [r for r in results if r.type == "tool_use"]
+        assert len(tool_use_lines) == 1
+        assert tool_use_lines[0].content == "unknown"
+
+
 class TestPiParserFlushAccumulators:
     """flush_accumulators drains pending text/thinking buffers."""
 

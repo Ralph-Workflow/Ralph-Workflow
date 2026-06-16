@@ -130,9 +130,9 @@ class _PiDispatch:
             "text_end": self._handle_text_end,
             "thinking_delta": self._handle_thinking_delta,
             "thinking_end": self._handle_thinking_end,
-            "toolcall_start": self._handle_toolcall_event,
-            "toolcall_delta": self._handle_toolcall_event,
-            "toolcall_end": self._handle_toolcall_event,
+            "toolcall_start": self._handle_toolcall_start,
+            "toolcall_delta": self._handle_toolcall_delta,
+            "toolcall_end": self._handle_toolcall_end,
             "done": self._handle_done,
             "error": self._handle_message_error,
         }
@@ -306,7 +306,23 @@ class _PiDispatch:
                 metadata=sub,
             )
 
-    def _handle_toolcall_event(
+    def _handle_toolcall_start(
+        self,
+        sub: dict[str, object],
+        stripped: str,
+    ) -> Iterator[AgentOutputLine]:
+        return
+        yield  # pragma: no cover - explicit generator for the type checker
+
+    def _handle_toolcall_delta(
+        self,
+        sub: dict[str, object],
+        stripped: str,
+    ) -> Iterator[AgentOutputLine]:
+        return
+        yield  # pragma: no cover - explicit generator for the type checker
+
+    def _handle_toolcall_end(
         self,
         sub: dict[str, object],
         stripped: str,
