@@ -6,8 +6,10 @@ import textwrap
 from pathlib import Path
 from unittest.mock import patch
 
+from ralph.testing import audit_agent_module_state as audit_mod
 from ralph.testing.audit_agent_module_state import (
     _FORBIDDEN_NAME_PREFIXES,
+    AUDIT_MODULE_STATE_ALLOWLIST,
     _name_violates,
     _scan_file,
     run_audit,
@@ -222,3 +224,89 @@ def test_run_audit_fails_closed_on_unicode_decode_error(
     assert any(v.category == "file_read_error" for v in violations), (
         f"Expected a file_read_error violation, got: {violations}"
     )
+
+
+def test_annotated_parser_registry_dict_assignment_is_violation() -> None:
+    """An annotated ``_PARSER_REGISTRY: dict[...] = {...}`` is flagged.
+
+    Regression test for the case where the AST scanner only handled
+    ``ast.Assign`` and silently missed ``ast.AnnAssign`` annotated
+    assignments.  Such an annotated assignment would let a forbidden
+    module-level dict sneak past the audit, defeating its purpose.
+    """
+    content = textwrap.dedent(
+        """
+        _PARSER_REGISTRY: dict[str, object] = {"claude": object}
+        """
+    )
+    violations = _scan_file(content, "ralph/agents/bad.py")
+    assert any(v.category == "module_level_state" for v in violations), (
+        f"Expected a module_level_state violation for annotated dict, got: {violations}"
+    )
+    assert any("PARSER_REGISTRY" in v.detail for v in violations), (
+        f"Expected the violation to mention PARSER_REGISTRY, got: {violations}"
+    )
+
+
+def test_annotated_strategy_dispatch_dict_assignment_is_violation() -> None:
+    """An annotated ``_STRATEGY_DISPATCH: dict[...] = {...}`` is flagged."""
+    content = textwrap.dedent(
+        """
+        _STRATEGY_DISPATCH: dict[str, object] = {"claude": object}
+        """
+    )
+    violations = _scan_file(content, "ralph/agents/bad.py")
+    assert any(v.category == "module_level_state" for v in violations), (
+        f"Expected a module_level_state violation, got: {violations}"
+    )
+
+
+def test_allowlist_suppresses_violation() -> None:
+    """An entry in :data:`AUDIT_MODULE_STATE_ALLOWLIST` suppresses the violation.
+
+    This is the allowlist contract: a documented entry in
+    ``AUDIT_MODULE_STATE_ALLOWLIST`` lets a module-level dict
+    assignment through the audit.  Without this contract, there is
+    no way to opt out of the audit for legitimate exceptions.
+    """
+    content = textwrap.dedent(
+        """
+        _PARSER_REGISTRY = {"claude": object}
+        """
+    )
+    rel_path = "ralph/agents/allowed.py"
+    line_no = 2
+
+    assert (rel_path, line_no) not in AUDIT_MODULE_STATE_ALLOWLIST, (
+        "Pre-condition: the test target must not already be in the allowlist"
+    )
+
+    patched_allowlist = AUDIT_MODULE_STATE_ALLOWLIST | {(rel_path, line_no)}
+    with patch.object(audit_mod, "AUDIT_MODULE_STATE_ALLOWLIST", patched_allowlist):
+        violations = _scan_file(content, rel_path)
+    assert violations == [], (
+        f"Expected the allowlist entry to suppress the violation, got: {violations}"
+    )
+
+
+def test_allowlist_does_not_unrelatedly_suppress() -> None:
+    """A line that is NOT in the allowlist still produces a violation.
+
+    Ensures the allowlist check is keyed on (file, line) and does not
+    become a blanket bypass for all entries in an allowlisted file.
+    """
+    content = textwrap.dedent(
+        """
+        _PARSER_REGISTRY = {"claude": object}
+        _PARSER_REGISTRY = {"codex": object}
+        """
+    )
+    rel_path = "ralph/agents/allowed.py"
+    patched_allowlist = AUDIT_MODULE_STATE_ALLOWLIST | {(rel_path, 2)}
+    with patch.object(audit_mod, "AUDIT_MODULE_STATE_ALLOWLIST", patched_allowlist):
+        violations = _scan_file(content, rel_path)
+    module_state = [v for v in violations if v.category == "module_level_state"]
+    assert len(module_state) == 1, (
+        f"Expected exactly one module_level_state violation (line 3), got: {module_state}"
+    )
+    assert module_state[0].line == 3

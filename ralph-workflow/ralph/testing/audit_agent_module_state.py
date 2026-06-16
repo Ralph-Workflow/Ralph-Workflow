@@ -58,17 +58,29 @@ _FORBIDDEN_NAME_PREFIXES: tuple[str, ...] = (
 )
 
 
-def _is_module_level_dict_assignment(node: ast.Assign) -> tuple[str, ast.expr] | None:
+def _is_module_level_dict_assignment(
+    node: ast.Assign | ast.AnnAssign,
+) -> tuple[str, ast.expr] | None:
     """Return ``(name, value)`` if ``node`` is a module-level dict assignment.
+
+    Handles both plain assignments (``_FOO = {...}``) and annotated
+    assignments (``_FOO: dict[str, object] = {...}``).
 
     Returns ``None`` for class definitions, ``MappingProxyType(...)`` views,
     frozenset / tuple / list assignments, or non-dict assignments.
     """
-    for target in node.targets:
+    if isinstance(node, ast.Assign):
+        targets: list[ast.expr] = list(node.targets)
+        value: ast.expr | None = node.value
+    else:
+        targets = [node.target]
+        value = node.value
+    if value is None:
+        return None
+    for target in targets:
         if not isinstance(target, ast.Name):
             continue
         name = target.id
-        value = node.value
         if not isinstance(value, ast.Dict):
             continue
         return name, value
@@ -95,7 +107,7 @@ def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
         return violations
 
     for node in tree.body:
-        if not isinstance(node, ast.Assign):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
             continue
         result = _is_module_level_dict_assignment(node)
         if result is None:
