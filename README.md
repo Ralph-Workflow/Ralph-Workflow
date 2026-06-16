@@ -48,8 +48,8 @@ test coverage for empty and whitespace-only input.
 - confirm no unrelated flow changed
 ```
 
-Watch a full first run (`--init` → `--diagnose` → `--dry-run`) — a real, unedited capture:
-[![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd)
+Watch a full first run — the getting-started walkthrough:
+[📺 See the first-run guide →](https://ralphworkflow.com/blog/ralph-workflow-in-5-minutes)
 
 > Ralph is free and runs locally — stars are the only signal we get that it's working for you, and they set what we build next. If a run shipped real software for you: ⭐ [star on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
 
@@ -140,7 +140,7 @@ Example terminal output from Ralph Workflow v0.8.8 on a fresh project:
 | `ralph --init` | [init-output.txt](docs/sphinx/_static/demo/init-output.txt) — banner, capabilities, first-run setup |
 | `ralph --diagnose` | [diagnose-output.txt](docs/sphinx/_static/demo/diagnose-output.txt) — agent inventory, config, MCP check |
 | `ralph --dry-run` | [dry-run-output.txt](docs/sphinx/_static/demo/dry-run-output.txt) — pipeline phases and iteration plan |
-| ▶ **Full demo** | [![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) — watch the complete first-run flow |
+| ▶ **Full demo** | [Watch the first-run walkthrough](https://ralphworkflow.com/blog/ralph-workflow-in-5-minutes) |
 | ⭐ **Contribute** | `ralph contribute` — opens Codeberg in your browser so you can star the project |
 
 These are **unedited terminal captures** from a real run — not mock-ups.

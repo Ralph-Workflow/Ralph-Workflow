@@ -6,7 +6,7 @@ This guide helps you pick the right first task, set it up, and judge the outcome
 
 If you want the shortest possible path, read [START_HERE.md](../START_HERE.md). If you want the full blog walkthrough, read [Your First Overnight Task: A Start-Here Guide](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide). This page is the core conversion guide: task selection, spec writing, execution, and morning-after review in one place.
 
-> **See it in action first.** [Here is the full getting-started flow](https://asciinema.org/a/JDnY0Xyh5qcgu9kd) (init → diagnose → dry-run, ~19 seconds). If the loop structure is new to you, watching it run once is faster than reading about it.
+> **See it in action first.** [Here is the full getting-started walkthrough](https://ralphworkflow.com/blog/ralph-workflow-in-5-minutes) (init → diagnose → dry-run).
 
 ## Step 1: Pick the right first task
 
