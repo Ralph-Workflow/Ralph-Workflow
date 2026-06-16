@@ -113,9 +113,34 @@ class NdjsonParserBase(ParserTemplateBase):
 
         event_type = str(obj.get("type", ""))
         if event_type and is_lifecycle_event(event_type):
+            lifecycle_result = self._handle_lifecycle_event(obj, event_type)
+            if lifecycle_result is None:
+                yield from self._dispatch_json_object(obj, stripped)
+                return
+            yield from lifecycle_result
             return
 
         yield from self._dispatch_json_object(obj, stripped)
+
+    def _handle_lifecycle_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine] | None:
+        """Subclass hook for lifecycle events intercepted by the base.
+
+        The base has already identified ``event_type`` as a lifecycle event
+        via :func:`is_lifecycle_event` and stripped + parsed ``obj``.  The
+        default implementation suppresses the event (returns an empty
+        iterator).  Subclasses (e.g. :class:`ClaudeParser`) override this
+        to handle lifecycle events with side effects (e.g. message_start
+        recording, message_stop flush).  Return ``None`` to fall through to
+        :meth:`_dispatch_json_object` for events the subclass wants to
+        dispatch (e.g. claude's ``assistant`` / ``user`` / ``thinking``
+        events, which the base filters as lifecycle but claude routes
+        through its per-event hook).
+        """
+        return iter(())
 
     def _dispatch_json_object(
         self,

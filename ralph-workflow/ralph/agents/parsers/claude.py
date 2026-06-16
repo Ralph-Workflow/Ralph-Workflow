@@ -33,13 +33,24 @@ class ClaudeParser(NdjsonParserBase):
     Thinking deltas (``thinking_delta``) are accumulated separately from text
     deltas and emitted as ``type="thinking"`` lines.
 
-    Inherits from :class:`NdjsonParserBase` but overrides
-    :meth:`classify_line` entirely: claude's lifecycle handling
-    (message_start recording, message_stop flush, content_block_stop flush)
-    has side effects beyond the base's plain suppression, so the subclass
-    owns the full line-dispatch flow.  The base layer is used for the
-    data: prefix strip, [DONE] short-circuit, error extraction, and the
-    per-event-type dispatch hook :meth:`_dispatch_json_object`.
+    Inherits from :class:`NdjsonParserBase` and delegates the NDJSON
+    scaffolding (``data:`` strip, ``[DONE]`` short-circuit, JSON parse,
+    error extraction, lifecycle interception) to the base layer via
+    :meth:`classify_line`.  Claude-specific behavior stays in subclass
+    hooks:
+
+      * :meth:`classify_line` first tries the prefixed-transcript parser
+        (``[claude]:``, ``claude/...:``) and only delegates to the base
+        when that hook returns ``None``.
+      * :meth:`_handle_lifecycle_event` carries the claude-specific
+        lifecycle side effects (``message_start`` recording,
+        ``message_stop`` flush, ``content_block_stop`` flush) and
+        returns ``None`` for lifecycle events the subclass wants to
+        dispatch (e.g. ``assistant`` / ``user`` / ``thinking``).
+      * :meth:`_dispatch_json_object` maps the per-event vocabulary
+        (stream_event, content_block_delta, content_block_start,
+        assistant, result, error) to :class:`AgentOutputLine` types
+        and drives the per-content-block accumulator state.
     """
 
     def __init__(self) -> None:
@@ -60,24 +71,18 @@ class ClaudeParser(NdjsonParserBase):
           2. Try the claude-specific prefixed-transcript parser (e.g.
              ``claude/sonnet: hello``).  If it returns a non-None list,
              yield from it and return.
-          3. Strip an optional ``data:`` SSE prefix (rare for claude but
-             the base layer owns this).
-          4. Short-circuit on ``[DONE]`` -> ``type='stop'``.
-          5. Try JSON parse: if invalid, yield a single ``type='raw'``
-             line and return.  If non-dict, same.
-          6. If the dict has an error field, yield a single
-             ``type='error'`` line and return.
-          7. If the event type is a claude-specific lifecycle event with
-             side effects (message_start, message_stop, content_block_stop,
-             or _CLAUDE_TOP_LEVEL_LIFECYCLE), apply the per-event handler
-             and yield the result.
-          8. Otherwise, delegate to :meth:`_dispatch_json_object`.
-
-        Note: this override intentionally does NOT use the base's
-        :func:`is_lifecycle_event` helper.  Claude's lifecycle set is
-        narrower than the canonical set (which includes ``assistant``,
-        ``user``, ``thinking``); claude dispatches those event types
-        through :meth:`_dispatch_json_object` rather than suppressing them.
+          3. Delegate the remaining NDJSON path to
+             :class:`NdjsonParserBase` which owns the ``data:`` prefix
+             strip, ``[DONE]`` short-circuit, JSON parse dispatch,
+             error extraction, and lifecycle-event interception.  The
+             base calls back into :meth:`_handle_lifecycle_event` for
+             the claude-specific lifecycle side effects (message_start
+             recording, message_stop flush, content_block_stop flush)
+             and into :meth:`_dispatch_json_object` for the per-event
+             dispatch (which routes claude's ``assistant`` / ``user``
+             / ``thinking`` events through the subclass hook rather
+             than suppressing them as the base's default lifecycle
+             policy would).
         """
         stripped = line.strip()
         if not stripped:
@@ -88,44 +93,7 @@ class ClaudeParser(NdjsonParserBase):
             yield from prefixed_lines
             return
 
-        yield from self._classify_json_payload(stripped)
-
-    def _classify_json_payload(self, stripped: str) -> Iterator[AgentOutputLine]:
-        """Handle ``[DONE]``/JSON/error/lifecycle dispatch for a stripped line."""
-        if stripped.startswith("data:"):
-            stripped = stripped[5:].strip()
-            if not stripped:
-                return
-
-        if stripped == "[DONE]":
-            yield AgentOutputLine(type="stop", raw=stripped)
-            return
-
-        try:
-            parsed: object = json.loads(stripped, strict=False)
-        except json.JSONDecodeError:
-            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
-            return
-
-        if not isinstance(parsed, dict):
-            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
-            return
-
-        obj = cast("dict[str, object]", parsed)
-
-        if "error" in obj:
-            error_msg = extract_error_message(obj)
-            yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
-            return
-
-        event_type = str(obj.get("type", "unknown"))
-
-        lifecycle_result = self._handle_lifecycle_event(obj, event_type)
-        if lifecycle_result is not None:
-            yield from lifecycle_result
-            return
-
-        yield from self._dispatch_json_object(obj, stripped)
+        yield from super().classify_line(stripped)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         for key in list(self._text_accumulator.keys()):

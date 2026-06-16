@@ -50,18 +50,24 @@ class TestRegisterMyAgent:
     """Pin the public ``register_my_agent`` contract."""
 
     def test_minimum_recipe_uses_5_kwargs(self) -> None:
-        """The minimum recipe is name + transport + parser + strategy + agent_registry."""
+        """The minimum recipe is name + transport + parser + agent_registry (no strategy).
+
+        The helper picks the transport-derived default strategy so the
+        caller does not have to know which strategy class goes with which
+        transport.  This pins the documented 5-line recipe.
+        """
         registry = AgentRegistry()
         config = register_my_agent(
             name="my-headless",
             transport=AgentTransport.GENERIC,
             parser=GenericParser,
-            strategy=GenericExecutionStrategy,
             agent_registry=registry,
         )
         support = registry.catalog.get("my-headless")
         assert support is not None
         assert config.cmd == "my-headless"
+        # The transport-derived default is GenericExecutionStrategy.
+        assert support.strategy_factory is GenericExecutionStrategy
 
     def test_strategy_default_for_claude_interactive_is_not_base(self) -> None:
         """``register_my_agent(..., transport=CLAUDE_INTERACTIVE, interactive=True)``
@@ -74,13 +80,15 @@ class TestRegisterMyAgent:
             name="ci",
             transport=AgentTransport.CLAUDE_INTERACTIVE,
             parser=ClaudeParser,
-            strategy=ClaudeInteractiveExecutionStrategy,
             agent_registry=registry,
             interactive=True,
         )
         support = registry.catalog.get("ci")
         assert support is not None
-        # Use a dedicated label_scope/registry to keep tests isolated.
+        # The transport-derived default MUST NOT be BaseExecutionStrategy.
+        assert support.strategy_factory is not BaseExecutionStrategy
+        # The transport-derived default IS ClaudeInteractiveExecutionStrategy.
+        assert support.strategy_factory is ClaudeInteractiveExecutionStrategy
         strategy = registry.catalog.get_strategy(
             AgentTransport.CLAUDE_INTERACTIVE, command="ci"
         )
@@ -96,7 +104,6 @@ class TestRegisterMyAgent:
             name="agy-test",
             transport=AgentTransport.AGY,
             parser=GenericParser,
-            strategy=_make_agy_strategy,
             agent_registry=registry,
             interactive=True,
             no_default_session_flag=True,
@@ -112,7 +119,6 @@ class TestRegisterMyAgent:
             name="oc",
             transport=AgentTransport.OPENCODE,
             parser=OpenCodeParser,
-            strategy=OpenCodeExecutionStrategy,
             agent_registry=registry,
         )
         support = registry.catalog.get("oc")
@@ -125,7 +131,6 @@ class TestRegisterMyAgent:
             name="cl",
             transport=AgentTransport.CLAUDE,
             parser=ClaudeParser,
-            strategy=ClaudeExecutionStrategy,
             agent_registry=registry,
         )
         support = registry.catalog.get("cl")
@@ -138,10 +143,21 @@ class TestRegisterMyAgent:
             name="cx",
             transport=AgentTransport.CODEX,
             parser=CodexParser,
-            strategy=GenericExecutionStrategy,
             agent_registry=registry,
         )
         support = registry.catalog.get("cx")
+        assert support is not None
+        assert support.strategy_factory is GenericExecutionStrategy
+
+    def test_nanocoder_transport_defaults_to_generic_strategy(self) -> None:
+        registry = AgentRegistry()
+        register_my_agent(
+            name="nc",
+            transport=AgentTransport.NANOCODER,
+            parser=GenericParser,
+            agent_registry=registry,
+        )
+        support = registry.catalog.get("nc")
         assert support is not None
         assert support.strategy_factory is GenericExecutionStrategy
 
@@ -152,7 +168,6 @@ class TestRegisterMyAgent:
             name="my-cmd",
             transport=AgentTransport.GENERIC,
             parser=GenericParser,
-            strategy=GenericExecutionStrategy,
             agent_registry=registry,
         )
         support = registry.catalog.get("my-cmd")
@@ -185,7 +200,6 @@ class TestRegisterMyAgent:
             name="ic-with-session",
             transport=AgentTransport.CLAUDE_INTERACTIVE,
             parser=ClaudeParser,
-            strategy=ClaudeInteractiveExecutionStrategy,
             agent_registry=registry,
             interactive=True,
         )
@@ -200,7 +214,6 @@ class TestRegisterMyAgent:
             name="no-session",
             transport=AgentTransport.CLAUDE_INTERACTIVE,
             parser=ClaudeParser,
-            strategy=ClaudeInteractiveExecutionStrategy,
             agent_registry=registry,
             interactive=True,
             no_default_session_flag=True,
@@ -221,7 +234,6 @@ class TestRegisterMyAgent:
                 name=f"pty-{transport.name}",
                 transport=transport,
                 parser=GenericParser,
-                strategy=GenericExecutionStrategy,
                 agent_registry=registry,
                 interactive=True,
             )
@@ -238,7 +250,6 @@ class TestRegisterMyAgent:
             name="default-json",
             transport=AgentTransport.GENERIC,
             parser=GenericParser,
-            strategy=GenericExecutionStrategy,
             agent_registry=registry,
         )
         support = registry.catalog.get("default-json")

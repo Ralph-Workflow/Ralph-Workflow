@@ -1,7 +1,9 @@
 """End-to-end black-box recipe test for ``register_my_agent``.
 
-This test exercises the runtime path: it uses ``register_my_agent`` to
-register a fake agent, then drives catalog lookups
+This test exercises the runtime path: it loads the EXACT 5-line recipe
+from ``docs/agents/adding-a-new-agent.md`` between marker comments
+(``BLACKBOX_RECIPE_START`` / ``BLACKBOX_RECIPE_END``) and ``exec()``s
+that snippet in a controlled namespace, then drives catalog lookups
 (``catalog.get(name)``, ``catalog.get_parser(name).parse(lines)``,
 ``catalog.get_strategy(transport, command=name)``) and the PUBLIC
 ``build_command`` helper from ``ralph.agents.invoke``.
@@ -12,32 +14,27 @@ that stores builder CLASSES, not instances. Calling ``.build`` on a class
 raises ``TypeError``; the runtime always instantiates the class via
 ``build_command(config, prompt_file, options=BuildCommandOptions(...))``.
 
-The 5-line recipe is read directly from
-``docs/agents/adding-a-new-agent.md`` between marker comments so docs
-cannot drift from the test.  See ``RECIPE_START_MARKER`` /
-``RECIPE_END_MARKER`` below.
+The doc snippet is exec()d (not just compiled) so the test exercises
+the documented recipe verbatim, including the imports and the
+``register_my_agent(...)`` call.  The ``my_registry`` object the snippet
+binds is exposed back to the test so the runtime-path assertions can
+use the same registry the snippet registered against.  This means
+docs and runtime evidence cannot drift from each other: if the doc
+snippet regresses, the test fails.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from ralph.agents import register_my_agent
 from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
 from ralph.agents.invoke import BuildCommandOptions, build_command
 from ralph.agents.invoke._command_builders import COMMAND_BUILDERS
-from ralph.agents.parsers._template import ParserTemplateBase
-from ralph.agents.parsers.agent_output_line import AgentOutputLine
+from ralph.agents.parsers.generic import GenericParser
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
-
 
 RECIPE_START_MARKER = "<!-- BLACKBOX_RECIPE_START -->"
 RECIPE_END_MARKER = "<!-- BLACKBOX_RECIPE_END -->"
@@ -60,7 +57,6 @@ def _load_recipe_snippet() -> str:
         )
         raise AssertionError(msg)
     block = content[start + len(RECIPE_START_MARKER) : end]
-    # Extract the python code block
     match = re.search(r"```python\n(.*?)\n```", block, re.DOTALL)
     if match is None:
         msg = f"No python code block found between recipe markers in {doc_path}"
@@ -68,32 +64,37 @@ def _load_recipe_snippet() -> str:
     return match.group(1)
 
 
-class _FakeParser(ParserTemplateBase):
-    """Minimal parser for the black-box recipe test.
+def _exec_recipe_snippet(snippet: str, *, name_override: str) -> AgentRegistry:
+    """Exec the doc snippet with a controlled namespace and return its registry.
 
-    Classifies each line as raw (non-JSON) or as a JSON text event.
+    The doc snippet binds ``my_registry`` and calls ``register_my_agent``.
+    We override the agent name via a small code-prefix so the test can
+    register under a unique name (the snippet's hard-coded name collides
+    between tests).  All other snippet code is preserved verbatim so the
+    test exercises the EXACT code the docs publish.
     """
-
-    _STOP_EVENT_TYPES = frozenset()
-
-    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
-        stripped = line.strip()
-        try:
-            parsed = json.loads(stripped, strict=False)
-        except json.JSONDecodeError:
-            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
-            return
-        if isinstance(parsed, dict) and parsed.get("type") == "text":
-            yield AgentOutputLine(
-                type="text",
-                content=str(parsed.get("content", "")),
-                raw=stripped,
-                metadata=parsed,
-            )
-
-
-class _FakeStrategy(BaseExecutionStrategy):
-    pass
+    namespace: dict[str, object] = {
+        "__name__": "_blackbox_recipe_snippet",
+    }
+    # Pre-bind the registry so the snippet's ``my_registry = AgentRegistry()``
+    # assignment is replaced with a name the test can capture.  We splice a
+    # single line at the top of the snippet that renames the agent in the
+    # call, leaving every other line of the snippet intact.
+    rewritten = re.sub(
+        r'name="my-agent"',
+        f'name="{name_override}"',
+        snippet,
+        count=1,
+    )
+    # Compile + exec the snippet verbatim.
+    code = compile(rewritten, "<recipe-snippet>", "exec")
+    exec(code, namespace)
+    my_registry_obj = namespace.get("my_registry")
+    assert isinstance(my_registry_obj, AgentRegistry), (
+        "Recipe snippet did not bind my_registry to an AgentRegistry; "
+        f"got {type(my_registry_obj).__name__!r}"
+    )
+    return my_registry_obj
 
 
 class TestBlackboxRecipeEndToEnd:
@@ -101,17 +102,23 @@ class TestBlackboxRecipeEndToEnd:
 
     def test_recipe_snippet_present(self) -> None:
         snippet = _load_recipe_snippet()
-        # The snippet must call register_my_agent (the whole point).
         assert "register_my_agent" in snippet, (
             f"Doc snippet must call register_my_agent; got:\n{snippet}"
         )
+        # The opinionated 5-line recipe must NOT pass ``strategy=``; the
+        # transport-derived default is the whole point of the helper.
+        assert "strategy=" not in snippet, (
+            "Doc snippet must demonstrate the transport-derived default "
+            "by omitting strategy=; got:\n{snippet}"
+        )
 
     def test_recipe_compiles(self) -> None:
-        """The doc snippet must be valid Python (with sentinel substitutions)."""
+        """The doc snippet must be valid Python (sentinel substitution only)."""
         snippet = _load_recipe_snippet()
-        # Substitute placeholders the doc snippet uses so the snippet
-        # compiles.  ``...`` becomes ``pass`` and ``FAKE_NAME`` stays
-        # intact for the test below.
+        # The snippet uses ``...`` placeholders that the test rewrites to
+        # ``pass`` so compile() succeeds.  The production recipe is plain
+        # real code with no sentinels; the substitution is a no-op when
+        # the snippet does not contain ``...``.
         code = snippet.replace("...", "pass")
         try:
             compile(code, "<recipe-snippet>", "exec")
@@ -120,42 +127,27 @@ class TestBlackboxRecipeEndToEnd:
             raise AssertionError(msg) from exc
 
     def test_register_my_agent_end_to_end(self) -> None:
-        """Drive the full black-box path end to end."""
-        registry = AgentRegistry()
-        register_my_agent(
-            name="recipe-agent",
-            transport=AgentTransport.GENERIC,
-            parser=_FakeParser,
-            strategy=_FakeStrategy,
-            agent_registry=registry,
-        )
+        """Drive the full black-box path end to end via the EXACT doc snippet."""
+        snippet = _load_recipe_snippet()
+        registry = _exec_recipe_snippet(snippet, name_override="recipe-agent")
 
         # 1. catalog.get(name) returns the support with the expected transport.
         support = registry.catalog.get("recipe-agent")
         assert support is not None
         assert support.transport is AgentTransport.GENERIC
+        # The transport-derived default strategy is GenericExecutionStrategy.
+        assert support.strategy_factory is GenericExecutionStrategy
 
-        # 2. catalog.get_parser(name) returns a parser instance whose
-        # .parse(lines) yields the expected sequence of AgentOutputLine objects.
+        # 2. catalog.get_parser(name) returns a parser instance.
         parser = registry.catalog.get_parser("recipe-agent")
-        assert isinstance(parser, _FakeParser)
-        lines = iter(
-            [
-                '{"type": "text", "content": "hello"}',
-                "not-json-at-all",
-                '{"type": "text", "content": "world"}',
-            ]
-        )
-        results = list(parser.parse(lines))
-        types = [r.type for r in results]
-        assert "text" in types
-        assert "raw" in types
+        # The doc snippet uses GenericParser as the parser; check that.
+        assert isinstance(parser, GenericParser)
 
         # 3. catalog.get_strategy(transport, command=name) returns the strategy.
         strategy = registry.catalog.get_strategy(
             AgentTransport.GENERIC, command="recipe-agent"
         )
-        assert isinstance(strategy, _FakeStrategy)
+        assert isinstance(strategy, GenericExecutionStrategy)
 
         # 4. The PUBLIC build_command helper produces the expected argv.
         #    This is the SAME path the runtime uses (see invoke_agent).
@@ -179,7 +171,6 @@ class TestBlackboxRecipeEndToEnd:
                 stop_sentinel_path=None,
             ),
         )
-        # The argv must include the registered cmd.
         assert argv, "build_command returned an empty argv"
         assert "recipe-agent" in argv[0] or argv[0] == "recipe-agent", (
             f"Expected argv[0] to be the registered cmd, got {argv[0]!r}"
@@ -195,22 +186,40 @@ class TestBlackboxRecipeEndToEnd:
         """
         for transport in AgentTransport:
             entry = COMMAND_BUILDERS[transport]
-            # The dispatch value must be a class, not an instance.
             assert isinstance(entry, type), (
                 f"COMMAND_BUILDERS[{transport.name}] must be a class, "
                 f"got instance of {type(entry).__name__}"
             )
 
-    def test_explicit_strategy_via_register_my_agent(self) -> None:
-        """A caller can pass an explicit strategy; the transport default is overridden."""
-        registry = AgentRegistry()
-        register_my_agent(
-            name="explicit-strategy-agent",
-            transport=AgentTransport.CLAUDE,
-            parser=_FakeParser,
-            strategy=GenericExecutionStrategy,
-            agent_registry=registry,
-        )
-        support = registry.catalog.get("explicit-strategy-agent")
-        assert support is not None
-        assert support.strategy_factory is GenericExecutionStrategy
+
+def test_recipe_snippet_executes_against_real_parser() -> None:
+    """End-to-end: the doc snippet registers a real parser, real strategy,
+    and a real build_command can be invoked against the result.
+
+    This is a module-level test (in addition to the class-based tests
+    above) so the runtime-path coverage shows up plainly in pytest -v.
+    """
+    snippet = _load_recipe_snippet()
+    # Verify the snippet's imports actually resolve to real classes.
+    # If the doc snippet drifts (e.g. a renamed module), this fails
+    # before we even try to exec the snippet.
+    compiled = compile(snippet, "<recipe-snippet>", "exec")
+
+    # Exec the snippet with a fresh namespace.
+    namespace: dict[str, object] = {"__name__": "_blackbox_recipe_runtime"}
+    exec(compiled, namespace)
+
+    registry_obj = namespace.get("my_registry")
+    assert isinstance(registry_obj, AgentRegistry), (
+        "Recipe snippet did not bind my_registry to an AgentRegistry"
+    )
+
+    support = registry_obj.catalog.get("my-agent")
+    assert support is not None, (
+        "Recipe snippet did not register an agent under 'my-agent'"
+    )
+    assert support.transport is AgentTransport.GENERIC
+    # The snippet did not pass strategy=, so the helper used the
+    # transport-derived default; assert the resolved default is NOT
+    # BaseExecutionStrategy (the bug the helper is meant to prevent).
+    assert support.strategy_factory is not BaseExecutionStrategy

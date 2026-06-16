@@ -17,7 +17,6 @@ for you based on the transport, so the typical 5-line recipe is just:
 ```python
 from ralph.agents import register_my_agent
 from ralph.agents.parsers.generic import GenericParser
-from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 
@@ -26,7 +25,6 @@ register_my_agent(
     name="my-agent",
     transport=AgentTransport.GENERIC,
     parser=GenericParser,
-    strategy=GenericExecutionStrategy,
     agent_registry=my_registry,
 )
 ```
@@ -63,7 +61,6 @@ all 14 kwargs.  For the 90% case, `register_my_agent` collapses the recipe to
 ```python
 from ralph.agents import register_my_agent
 from ralph.agents.parsers.generic import GenericParser
-from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 
@@ -72,7 +69,6 @@ register_my_agent(
     name="my-headless-agent",
     transport=AgentTransport.GENERIC,
     parser=GenericParser,
-    strategy=GenericExecutionStrategy,
     agent_registry=my_registry,
     cmd="my-agent-binary",
 )
@@ -83,7 +79,6 @@ register_my_agent(
 ```python
 from ralph.agents import register_my_agent
 from ralph.agents.parsers.claude import ClaudeParser
-from ralph.agents.execution_state.claude_interactive_execution_strategy import ClaudeInteractiveExecutionStrategy
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 
@@ -92,7 +87,6 @@ register_my_agent(
     name="my-interactive-agent",
     transport=AgentTransport.CLAUDE_INTERACTIVE,
     parser=ClaudeParser,
-    strategy=ClaudeInteractiveExecutionStrategy,
     agent_registry=my_registry,
     interactive=True,
     cmd="my-agent-binary",
@@ -104,7 +98,6 @@ register_my_agent(
 ```python
 from ralph.agents import register_my_agent
 from ralph.agents.parsers.generic import GenericParser
-from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 
@@ -113,7 +106,6 @@ register_my_agent(
     name="my-no-resume-agent",
     transport=AgentTransport.CLAUDE_INTERACTIVE,
     parser=GenericParser,
-    strategy=GenericExecutionStrategy,
     agent_registry=my_registry,
     interactive=True,
     no_default_session_flag=True,
