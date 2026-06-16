@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import textwrap
 from pathlib import Path
+from unittest.mock import patch
 
 from ralph.testing.audit_agent_module_state import (
     _FORBIDDEN_NAME_PREFIXES,
@@ -177,4 +178,47 @@ def test_run_audit_against_repo_finds_no_violations() -> None:
     violations = run_audit(package_root)
     assert violations == [], (
         f"audit_agent_module_state found unexpected violations: {violations}"
+    )
+
+
+def test_run_audit_fails_closed_on_unreadable_file(
+    tmp_path: Path,
+) -> None:
+    """An unreadable ``.py`` file produces a ``file_read_error`` violation.
+
+    The audit is a prevention gate — silently skipping unreadable files
+    would let a forbidden module-level dict hide behind a permission
+    error.  The audit must report the failure as a violation so CI
+    fails closed.
+    """
+    bad_dir = tmp_path / "ralph" / "agents"
+    bad_dir.mkdir(parents=True)
+    target = bad_dir / "unreadable.py"
+    target.write_text("_PARSER_REGISTRY = {'claude': object}\n", encoding="utf-8")
+
+    with patch.object(Path, "read_text", side_effect=OSError("permission denied")):
+        violations = run_audit(tmp_path)
+
+    assert any(v.category == "file_read_error" for v in violations), (
+        f"Expected a file_read_error violation, got: {violations}"
+    )
+    assert any("unreadable.py" in v.file_path for v in violations), (
+        f"Expected the violation to point at unreadable.py, got: {violations}"
+    )
+
+
+def test_run_audit_fails_closed_on_unicode_decode_error(
+    tmp_path: Path,
+) -> None:
+    """A ``UnicodeDecodeError`` during read also produces a violation."""
+    bad_dir = tmp_path / "ralph" / "agents"
+    bad_dir.mkdir(parents=True)
+    target = bad_dir / "bad_encoding.py"
+    target.write_text("x = 1\n", encoding="utf-8")
+
+    with patch.object(Path, "read_text", side_effect=UnicodeDecodeError("utf-8", b"", 0, 1, "bad")):
+        violations = run_audit(tmp_path)
+
+    assert any(v.category == "file_read_error" for v in violations), (
+        f"Expected a file_read_error violation, got: {violations}"
     )

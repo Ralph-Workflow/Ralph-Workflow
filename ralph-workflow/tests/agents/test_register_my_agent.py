@@ -11,12 +11,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import ralph.agents
+from ralph.agents.catalog import default_catalog
 from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.agents.execution_state._factory import _make_agy_strategy
 from ralph.agents.registration import (
-    _DEFAULT_STRATEGY_BY_TRANSPORT,
-    _DEFAULT_STRATEGY_IMPORT_PATH,
-    _import_default_strategy,
     register_agent_support,
     register_my_agent,
 )
@@ -268,43 +266,26 @@ class TestStaticDispatchTableCoversEveryTransport:
     """Audit-style coverage guard for the static dispatch table.
 
     Fails if a new :class:`AgentTransport` is added without a matching
-    entry in ``_DEFAULT_STRATEGY_IMPORT_PATH`` (the source of truth
-    for ``register_my_agent``'s transport-derived defaults).
+    entry in ``AgentCatalog._DEFAULT_STRATEGIES`` (the single source
+    of truth for ``register_my_agent``'s transport-derived defaults
+    after the wt-016 consolidation refactor).
     """
 
     def test_default_strategy_table_covers_every_transport(self) -> None:
-        """The resolved strategy table must include every AgentTransport value."""
-        assert set(_DEFAULT_STRATEGY_BY_TRANSPORT) == set(AgentTransport), (
+        """``AgentCatalog._DEFAULT_STRATEGIES`` must include every AgentTransport value."""
+        default_strategies = default_catalog()._DEFAULT_STRATEGIES
+        assert set(default_strategies) == set(AgentTransport), (
             f"Default strategy table missing transport(s). "
-            f"Expected {sorted(AgentTransport)}, got {sorted(_DEFAULT_STRATEGY_BY_TRANSPORT)}"
+            f"Expected {sorted(AgentTransport)}, got {sorted(default_strategies)}"
         )
 
-    def test_default_strategy_import_path_table_covers_every_transport(self) -> None:
-        """The static import-path table must include every AgentTransport value."""
-        assert set(_DEFAULT_STRATEGY_IMPORT_PATH) == set(AgentTransport), (
-            f"Import-path table missing transport(s). "
-            f"Expected {sorted(AgentTransport)}, got {sorted(_DEFAULT_STRATEGY_IMPORT_PATH)}"
-        )
-
-    def test_default_strategy_import_path_is_greppable(self) -> None:
-        """Every import path must look like ``module.attr`` (no leading
-        ``__import__`` strings) so the table is greppable from source.
-        """
-        for transport, import_path in _DEFAULT_STRATEGY_IMPORT_PATH.items():
-            assert "." in import_path, (
-                f"Transport {transport.name!r} has non-greppable import path "
-                f"{import_path!r}: must look like 'module.attr'"
+    def test_default_strategies_factories_are_callable(self) -> None:
+        """Every value in ``AgentCatalog._DEFAULT_STRATEGIES`` must be callable."""
+        default_strategies = default_catalog()._DEFAULT_STRATEGIES
+        for transport, factory in default_strategies.items():
+            assert callable(factory), (
+                f"AgentCatalog._DEFAULT_STRATEGIES[{transport.name!r}] must be callable"
             )
-
-    def test_import_default_strategy_resolves_paths(self) -> None:
-        """Every entry in the import-path table must be resolvable."""
-        for transport, import_path in _DEFAULT_STRATEGY_IMPORT_PATH.items():
-            factory = _import_default_strategy(import_path)
-            assert factory is not None, (
-                f"_import_default_strategy failed for transport {transport.name!r}"
-            )
-            # The resolved factory must be callable (StrategyFactory is a callable).
-            assert callable(factory)
 
 
 class TestPublicSurfaceDiscoverability:

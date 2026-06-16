@@ -154,7 +154,9 @@ class _AgentCatalogState:
     """
 
     parsers: dict[str, "type[AgentParser] | _ParserRegistryEntry"] = field(default_factory=dict)
-    commands: dict[str, "_ParserRegistryEntry"] = field(default_factory=dict)
+    commands: dict[str, "Callable[[], AgentParser] | _ParserRegistryEntry"] = field(
+        default_factory=dict
+    )
     strategies: dict[AgentTransport, StrategyFactory] = field(default_factory=dict)
 
 
@@ -365,22 +367,44 @@ class AgentCatalog:
 
 
 def _seed_default_catalog(catalog: AgentCatalog) -> None:
-    """Populate the default catalog with the 6 built-in parser types and 7 default strategies.
+    """Populate the default catalog with the 6 built-in supports and 7 default strategies.
 
     Idempotent: calling on a catalog that is already seeded is a no-op.
 
-    Built-in parser types are stored as bare parser classes (NOT
-    ``_ParserRegistryEntry`` instances) so :meth:`AgentCatalog._is_built_in_parser_key`
-    can distinguish them from custom registrations and so :meth:`AgentCatalog._write_through`
-    can preserve them when a custom agent tries to register a name that collides
-    with a built-in parser key.  The bare classes are also callable so
-    ``_PARSER_REGISTRY[name]()`` (the runtime parser lookup) works directly
-    on the seeded value.
+    Seeding populates BOTH the parser-type-keyed ``_state.parsers`` dict
+    (for runtime ``get_parser(parser_type)`` lookups by parser type key,
+    e.g. ``claude`` / ``claude_interactive`` / ``codex`` / ``gemini`` /
+    ``opencode`` / ``generic``) AND the agent-name-keyed ``_entries`` /
+    ``_by_command`` dicts (for catalog API lookups by agent name, e.g.
+    ``claude`` / ``claude-headless`` / ``codex`` / ``opencode`` /
+    ``nanocoder`` / ``agy``).  This makes
+    :meth:`AgentCatalog.get` / :meth:`AgentCatalog.get_parser` /
+    :meth:`AgentCatalog.get_strategy` resolve built-in names through
+    the same public API that custom registrations use.
+
+    Parser factories are stored as bare callables (NOT
+    ``_ParserRegistryEntry`` instances) so
+    :meth:`AgentCatalog._is_built_in_parser_key` can distinguish
+    built-ins from custom registrations and so
+    :meth:`AgentCatalog._write_through` preserves them when a custom
+    agent tries to register a name that collides with a built-in parser
+    key.  The bare factories are also callable so
+    ``_PARSER_REGISTRY[name]()`` (the runtime parser lookup) works
+    directly on the seeded value.
     """
     if catalog._state.parsers:
         return
+    from ralph.agents.builtin import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->builtin cycle
+        builtin_supports,
+    )
     for name, (factory, _transport, _strategy) in _DEFAULT_BUILTIN_PARSER_TYPES.items():
         catalog._state.parsers[name] = factory
+    for support in builtin_supports():
+        name_lower = support.name.lower()
+        cmd_lower = support.cmd.lower()
+        catalog._entries[name_lower] = support
+        catalog._by_command[cmd_lower] = support
+        catalog._state.commands[cmd_lower] = support.parser_factory
     catalog._state.strategies.update(catalog._DEFAULT_STRATEGIES)
 
 

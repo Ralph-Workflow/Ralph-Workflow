@@ -138,14 +138,31 @@ def _collect_py_files(root: Path) -> list[Path]:
 
 
 def run_audit(package_root: Path) -> list[RegistrySyncViolation]:
-    """Run the audit and return the list of violations found."""
+    """Run the audit and return the list of violations found.
+
+    File-read failures are reported as ``file_read_error`` violations
+    (NOT silently skipped) so the audit cannot be defeated by an
+    unreadable file hiding a forbidden module-level dict reintroduction.
+    The audit's role is prevention — a fail-closed stance on file reads
+    preserves that contract.
+    """
     violations: list[RegistrySyncViolation] = []
     for py_file in _collect_py_files(package_root):
+        rel_path = str(py_file.relative_to(package_root))
         try:
             content = py_file.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as e:
+            violations.append(
+                RegistrySyncViolation(
+                    rel_path,
+                    0,
+                    "file_read_error",
+                    f"Cannot read {py_file} for audit scan: {e}. "
+                    f"An unreadable file could hide a forbidden module-level "
+                    f"dict reintroduction, so the audit fails closed.",
+                )
+            )
             continue
-        rel_path = str(py_file.relative_to(package_root))
         violations.extend(_scan_file(content, rel_path))
     return violations
 

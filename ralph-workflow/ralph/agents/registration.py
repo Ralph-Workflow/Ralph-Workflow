@@ -28,7 +28,6 @@ The agent-name-keyed configuration is stored in the caller's own
 
 from __future__ import annotations
 
-from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents._contracts import StrategyFactory
@@ -60,80 +59,14 @@ _UserStrategyFactory = StrategyFactory | object
 
 
 # ---------------------------------------------------------------------------
-# Default-strategy import-path table
+# Default-strategy dispatch
 #
-# This static, greppable mapping from :class:`AgentTransport` to a
-# ``"module.attr"`` import path is the source of truth for the default
-# strategy factories.  :func:`_import_default_strategy` resolves each
-# path once and caches the result.  The resolved factories populate
-# :data:`AgentCatalog._DEFAULT_STRATEGIES` and are exposed via
-# :func:`_default_strategy_for_transport` for ``register_my_agent``.
+# The canonical source of truth for the transport-to-strategy dispatch
+# table is :data:`AgentCatalog._DEFAULT_STRATEGIES` (in
+# :mod:`ralph.agents.catalog`).  This module exposes a thin helper,
+# :func:`_default_strategy_for_transport`, that reads from that single
+# source of truth.  No duplicate table is maintained here.
 # ---------------------------------------------------------------------------
-_DEFAULT_STRATEGY_IMPORT_PATH: dict[AgentTransport, str] = {
-    AgentTransport.CLAUDE_INTERACTIVE: (
-        "ralph.agents.execution_state.claude_interactive_execution_strategy"
-        ".ClaudeInteractiveExecutionStrategy"
-    ),
-    AgentTransport.AGY: "ralph.agents.execution_state._factory._make_agy_strategy",
-    AgentTransport.OPENCODE: (
-        "ralph.agents.execution_state.opencode_execution_strategy.OpenCodeExecutionStrategy"
-    ),
-    AgentTransport.CLAUDE: (
-        "ralph.agents.execution_state.claude_execution_strategy.ClaudeExecutionStrategy"
-    ),
-    AgentTransport.CODEX: (
-        "ralph.agents.execution_state.generic_execution_strategy.GenericExecutionStrategy"
-    ),
-    AgentTransport.NANOCODER: (
-        "ralph.agents.execution_state.generic_execution_strategy.GenericExecutionStrategy"
-    ),
-    AgentTransport.GENERIC: (
-        "ralph.agents.execution_state.generic_execution_strategy.GenericExecutionStrategy"
-    ),
-}
-
-_default_strategy_cache: dict[str, StrategyFactory] = {}
-
-
-def _import_default_strategy(import_path: str) -> StrategyFactory:
-    """Resolve a ``"module.attr"`` import path to a strategy factory.
-
-    The first call materialises the strategy by importing its module and
-    calling ``getattr(module, attr)``; subsequent calls return the cached
-    factory so each import path is touched at most once per process.
-    Tests can monkeypatch this helper to inject a fake strategy without
-    touching the static table.
-    """
-    cached = _default_strategy_cache.get(import_path)
-    if cached is not None:
-        return cached
-    module_name, _, attr_name = import_path.rpartition(".")
-    module = import_module(module_name)
-    factory = cast("StrategyFactory", getattr(module, attr_name))
-    _default_strategy_cache[import_path] = factory
-    return factory
-
-
-def _resolve_default_strategy_table() -> dict[AgentTransport, StrategyFactory]:
-    """Build the resolved dispatch table by importing every path once.
-
-    Returns a fresh dict so callers can iterate without mutating the
-    static import-path table.
-    """
-    return {
-        transport: _import_default_strategy(path)
-        for transport, path in _DEFAULT_STRATEGY_IMPORT_PATH.items()
-    }
-
-
-# Resolved (factory, not import-path) view over the import-path table.
-# Mirrors :data:`AgentCatalog._DEFAULT_STRATEGIES` for callers that
-# prefer importing from :mod:`ralph.agents.registration` directly.
-# Both tables are derived from :data:`_DEFAULT_STRATEGY_IMPORT_PATH`,
-# the greppable source of truth.
-_DEFAULT_STRATEGY_BY_TRANSPORT: dict[AgentTransport, StrategyFactory] = (
-    _resolve_default_strategy_table()
-)
 
 
 def _default_strategy_for_transport(transport: AgentTransport) -> StrategyFactory:

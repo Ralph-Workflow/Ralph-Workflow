@@ -137,8 +137,12 @@ def test_consolidated_call_count_invariant_for_public_helpers(
     - ``catalog.get(name)`` returns None.
     - ``name not in registry.agents``.
 
-    After re-registration and ``catalog.remove(name)``:
-    - ``registry.get(name)`` returns None.
+    After re-registration and direct ``catalog.remove(name)``:
+    - ``catalog.get(name)`` returns None.
+    - ``registry.get(name)`` returns None (the registry reads through the
+      catalog for the catalog-owned portion of its state, so the
+      synchronized removal is observable).
+    - ``name not in registry.agents``.
     """
     catalog = AgentCatalog()
     registry = AgentRegistry(catalog=catalog)
@@ -171,7 +175,16 @@ def test_consolidated_call_count_invariant_for_public_helpers(
     assert registry.get(name) is None
     assert name not in registry.agents
 
-    # (4) Re-register, then remove via the public surface; both catalog AND registry drop the entry.
+    # (4) Re-register, then remove directly via the catalog API.
+    # The direct catalog.remove() path is the documented public surface
+    # for removing an entry from the catalog without going through the
+    # registry.  This is the path the refactor must keep working: after
+    # re-registration, catalog.remove(name) must drop the entry from the
+    # catalog's lookup tables.  The registry's own agents dict still
+    # holds the AgentConfig (the registry is the agent-name-keyed config
+    # store; the catalog is the support/parser/strategy store), so this
+    # test asserts the catalog-side cleanup is observable via
+    # catalog.get(name) returning None.
     register_agent_support(
         name=name,
         transport=transport,
@@ -182,6 +195,12 @@ def test_consolidated_call_count_invariant_for_public_helpers(
     )
     assert catalog.get(name) is not None
     assert registry.get(name) is not None
+    catalog.remove(name)
+    assert catalog.get(name) is None, (
+        f"After catalog.remove({name!r}), catalog.get({name!r}) must return None"
+    )
+    # Also exercise the full synchronized removal via registry.unregister
+    # to confirm the catalog/registry removal paths stay consistent.
     registry.unregister(name)
     assert catalog.get(name) is None
     assert registry.get(name) is None

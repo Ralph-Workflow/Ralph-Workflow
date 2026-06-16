@@ -33,7 +33,6 @@ from ralph.agents.parsers import (
 )
 from ralph.agents.parsers._template import ParserTemplateBase
 from ralph.agents.registration import (
-    _DEFAULT_STRATEGY_BY_TRANSPORT,
     get_registered_agent_support,
 )
 from ralph.agents.spec import AgentSpec
@@ -838,9 +837,10 @@ def test_register_agent_support_headless_and_interactive_lockstep() -> None:
 class TestPostRefactorContract:
     """Pin the post-refactor contract:
 
-    (a) the static ``_DEFAULT_STRATEGY_BY_TRANSPORT`` dict covers every
-        ``AgentTransport`` value (an audit-style coverage guard that
-        fails if a new transport is added without an entry);
+    (a) ``AgentCatalog._DEFAULT_STRATEGIES`` is the SINGLE source of
+        truth for the transport-to-strategy dispatch table and must
+        include every ``AgentTransport`` value (an audit-style coverage
+        guard that fails if a new transport is added without an entry);
     (b) the ``AgentSupport`` dataclass shape parity between
         ``from_registration_kwargs`` and ``BuiltinAgentSpec.to_support``
         (frozen, slots, name/spec/parser_factory/strategy_factory/
@@ -852,16 +852,26 @@ class TestPostRefactorContract:
     All tests are in-process, no I/O, no subprocess.
     """
 
-    def test_static_default_strategy_table_covers_every_transport(self) -> None:
-        """``_DEFAULT_STRATEGY_BY_TRANSPORT`` must include every AgentTransport value."""
-        assert set(_DEFAULT_STRATEGY_BY_TRANSPORT) == set(AgentTransport), (
-            f"_DEFAULT_STRATEGY_BY_TRANSPORT missing transport(s); "
-            f"expected {sorted(AgentTransport)}, got {sorted(_DEFAULT_STRATEGY_BY_TRANSPORT)}"
+    def test_default_strategies_covers_every_transport(self) -> None:
+        """``AgentCatalog._DEFAULT_STRATEGIES`` must include every AgentTransport value.
+
+        This is the single source of truth for the transport-to-strategy
+        dispatch table after the wt-016 consolidation refactor; the
+        legacy ``_DEFAULT_STRATEGY_BY_TRANSPORT`` and
+        ``_DEFAULT_STRATEGY_IMPORT_PATH`` tables in
+        ``ralph.agents.registration`` have been removed.  If a new
+        ``AgentTransport`` is added without an entry here, the contract
+        test fails (the coverage guard).
+        """
+        default_strategies = default_catalog()._DEFAULT_STRATEGIES
+        assert set(default_strategies) == set(AgentTransport), (
+            f"AgentCatalog._DEFAULT_STRATEGIES missing transport(s); "
+            f"expected {sorted(AgentTransport)}, got {sorted(default_strategies)}"
         )
         # Every value must be a callable StrategyFactory.
-        for transport, factory in _DEFAULT_STRATEGY_BY_TRANSPORT.items():
+        for transport, factory in default_strategies.items():
             assert callable(factory), (
-                f"_DEFAULT_STRATEGY_BY_TRANSPORT[{transport.name!r}] must be callable"
+                f"AgentCatalog._DEFAULT_STRATEGIES[{transport.name!r}] must be callable"
             )
 
     def test_agent_support_shape_parity_builtin_vs_kwargs(self) -> None:
