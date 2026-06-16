@@ -44,7 +44,13 @@ def _make_agy_strategy(
     registry: ChildLivenessRegistry | None = None,
     **_kwargs: object,
 ) -> BaseExecutionStrategy:
-    """Factory for AGY strategy: CompletionEnforcingStrategy wrapping GenericExecutionStrategy."""
+    """Factory for AGY strategy: CompletionEnforcingStrategy wrapping GenericExecutionStrategy.
+
+    Uses inheritance (not composition) because CompletionEnforcingStrategy is a mixin
+    that requires being inherited to properly initialize via MRO. Pure composition
+    via CompletionEnforcingStrategy(GenericExecutionStrategy(...)) fails because
+    the mixin has no __init__ that accepts an argument.
+    """
 
     class AgyExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
         pass

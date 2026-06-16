@@ -170,6 +170,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_artifact_submission_canonical_path"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        "agent registry sync audit (audit_agent_registry_sync)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_agent_registry_sync"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

@@ -49,7 +49,7 @@ def build_nanocoder_mcp_config(
             "workspace_path": workspace_path,
         }
         merged_config = merge_existing_upstreams(
-            "nanocoder", current_config, unsafe_mode=True
+            "nanocoder", current_config, unsafe_mode=True, workspace_path=workspace_path
         )
         merged_servers = dict(
             cast("dict[str, object]", merged_config.get("mcpServers", {}))

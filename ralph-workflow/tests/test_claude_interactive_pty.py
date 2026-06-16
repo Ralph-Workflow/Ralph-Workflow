@@ -2,17 +2,31 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.agents import invoke as invoke_module
+from ralph.agents.catalog import default_catalog
 from ralph.agents.invoke import InvokeOptions
-from ralph.agents.registry import builtin_agents
+from ralph.agents.registry import _seed_catalog_with_builtins, builtin_agents
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-    import pytest
-
 from tests.test_claude_interactive_pty_helper__fakeptymanager import _FakePtyManager
+
+
+@pytest.fixture(autouse=True)
+def _seed_default_catalog() -> None:
+    """Seed the default catalog with built-in agents for tests that depend on it.
+
+    Tests in this file rely on ``default_catalog().get('claude')`` returning the
+    built-in interactive Claude support, so that ``invoke_agent`` routes through
+    the PTY runtime (the new spec.requires_pty dispatch in ralph/agents/invoke).
+    The seeding runs in every worker process so parallel test execution does
+    not depend on test ordering.
+    """
+    _seed_catalog_with_builtins(default_catalog())
 
 
 def test_pending_vt_snapshot_line_surfaces_semantic_activity_without_newline() -> None:

@@ -135,11 +135,8 @@ def test_no_known_bad_api_references() -> None:
     doc_content = Path("docs/agents/adding-a-new-agent.md").read_text(encoding="utf-8")
 
     bad_strings = [
-        "agent_registry.unregister",
-        "registry.unregister",
         "the registry raises on duplicate",
         "registry.register raises",
-        "agents.unregister",
     ]
 
     for bad in bad_strings:

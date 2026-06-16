@@ -131,12 +131,17 @@ def _load_codex_mcp_servers_from_current_config(
     return servers
 
 
-def _upstream_as_dict(s: UpstreamMcpServer) -> dict[str, object]:
-    """Convert an UpstreamMcpServer to a plain dict."""
+def _upstream_as_dict(s: UpstreamMcpServer, *, server_url_key: bool = False) -> dict[str, object]:
+    """Convert an UpstreamMcpServer to a plain dict.
+
+    Args:
+        s: UpstreamMcpServer to convert.
+        server_url_key: If True, use 'serverUrl' instead of 'url' (for AGY compatibility).
+    """
     result: dict[str, object] = {
         "name": s.name,
         "transport": s.transport if s.transport else "http",
-        "url": s.url,
+        "serverUrl" if server_url_key else "url": s.url,
     }
     if s.command:
         result["command"] = s.command
@@ -178,7 +183,10 @@ def _merge_codex(current_config: dict[str, object], unsafe_mode: bool) -> dict[s
 
 
 def _merge_default(
-    agent_name: str, current_config: dict[str, object], unsafe_mode: bool
+    agent_name: str,
+    current_config: dict[str, object],
+    unsafe_mode: bool,
+    workspace_path: object = None,
 ) -> dict[str, object]:
     ralph_mcp_servers = cast(
         "dict[str, object]", current_config.get("mcpServers", dict[str, object]())
@@ -188,9 +196,12 @@ def _merge_default(
         if ralph_entry is not None:
             return {"mcpServers": {RALPH_MCP_SERVER_NAME: ralph_entry}}
         return {}
-    upstreams = _load_upstreams_for_agent(agent_name, current_config)
+    upstreams = _load_upstreams_for_agent(agent_name, current_config, workspace_path)
     filtered_upstreams = tuple(s for s in upstreams if s.name != RALPH_MCP_SERVER_NAME)
-    existing_map: dict[str, object] = {s.name: _upstream_as_dict(s) for s in filtered_upstreams}
+    existing_map: dict[str, object] = {
+        s.name: _upstream_as_dict(s, server_url_key=(agent_name == "agy"))
+        for s in filtered_upstreams
+    }
     merged = dict(existing_map)
     if ralph_entry is not None:
         merged[RALPH_MCP_SERVER_NAME] = ralph_entry
@@ -202,6 +213,7 @@ def merge_existing_upstreams(
     current_config: dict[str, object],
     *,
     unsafe_mode: bool,
+    workspace_path: object = None,
 ) -> dict[str, object]:
     """Merge existing upstream servers into current_config based on agent and unsafe_mode.
 
@@ -221,6 +233,7 @@ def merge_existing_upstreams(
             - opencode: {"mcp": {"<name>": {"type", "url", "enabled", "timeout", ...}}}
             - codex: {"mcp_servers.X": {...}, ...}  (TOML-style keys)
         unsafe_mode: Whether to preserve existing upstream servers.
+        workspace_path: Optional workspace path for workspace-level config files.
 
     Returns:
         Merged config dict with ralph entry and optionally existing upstreams.
@@ -229,11 +242,13 @@ def merge_existing_upstreams(
         return _merge_opencode(current_config, unsafe_mode)
     if agent_name == "codex":
         return _merge_codex(current_config, unsafe_mode)
-    return _merge_default(agent_name, current_config, unsafe_mode)
+    return _merge_default(agent_name, current_config, unsafe_mode, workspace_path)
 
 
 def _load_upstreams_for_agent(
-    agent_name: str, current_config: dict[str, object]
+    agent_name: str,
+    current_config: dict[str, object],
+    workspace_path: object = None,
 ) -> tuple[UpstreamMcpServer, ...]:
     """Load existing UpstreamMcpServer tuple for agent_name (unsafe_mode=True path).
 
@@ -245,31 +260,42 @@ def _load_upstreams_for_agent(
     workspace_path is extracted from current_config if present, to allow callers
     to specify which workspace config files to load.
 
+    For claude/agy/nanocoder: if current_config already contains a populated
+    "mcpServers" dict with non-ralph servers (from a prior merge by e.g.
+    build_nanocoder_mcp_config or agy_workspace_mcp_endpoint), use those
+    directly instead of re-loading from disk. This preserves pre-merged env
+    servers that would otherwise be lost when the caller passes a
+    workspace_path but the file-based loader would only see file servers.
     """
-    workspace_path = current_config.get("workspace_path")
-    if agent_name == "claude":
-        mod = importlib.import_module("ralph.mcp.transport.claude")
-        paths = cast("tuple[Path, ...]", mod._claude_mcp_config_paths(workspace_path))
-        servers = cast("dict[str, UpstreamMcpServer]", mod._load_mcpservers_from_paths(paths))
-        servers.pop(RALPH_MCP_SERVER_NAME, None)
-        return normalize_upstream_mcp_servers(servers)
-    if agent_name == "agy":
-        mod = importlib.import_module("ralph.mcp.transport.agy")
-        paths = cast("tuple[Path, ...]", mod._agy_mcp_config_paths(workspace_path))
-        normalizer = cast(
-            "Callable[[str, object], tuple[str, object] | None]",
-            mod._normalize_agy_server_entry,
-        )
-        servers = cast(
-            "dict[str, UpstreamMcpServer]",
-            mod._load_mcpservers_from_paths(paths, normalizer),
-        )
-        servers.pop(RALPH_MCP_SERVER_NAME, None)
-        return normalize_upstream_mcp_servers(servers)
-    if agent_name == "nanocoder":
-        mod = importlib.import_module("ralph.mcp.transport.nanocoder")
-        paths = cast("tuple[Path, ...]", mod._nanocoder_mcp_config_paths(workspace_path))
-        servers = cast("dict[str, UpstreamMcpServer]", mod._load_mcpservers_from_paths(paths))
+    _workspace_path = (
+        workspace_path
+        if workspace_path is not None
+        else current_config.get("workspace_path")
+    )
+    existing_mcp_servers = current_config.get("mcpServers")
+    if agent_name in ("claude", "agy", "nanocoder"):
+        servers: dict[str, object] = {}
+        if isinstance(existing_mcp_servers, dict) and len(existing_mcp_servers) > 1:
+            servers = cast("dict[str, object]", existing_mcp_servers)
+        elif agent_name == "claude":
+            mod = importlib.import_module("ralph.mcp.transport.claude")
+            paths = cast("tuple[Path, ...]", mod._claude_mcp_config_paths(_workspace_path))
+            servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
+        elif agent_name == "agy":
+            mod = importlib.import_module("ralph.mcp.transport.agy")
+            paths = cast("tuple[Path, ...]", mod._agy_mcp_config_paths(_workspace_path))
+            normalizer = cast(
+                "Callable[[str, object], tuple[str, object] | None]",
+                mod._normalize_agy_server_entry,
+            )
+            servers = cast(
+                "dict[str, object]",
+                mod._load_mcpservers_from_paths(paths, normalizer),
+            )
+        else:  # nanocoder
+            mod = importlib.import_module("ralph.mcp.transport.nanocoder")
+            paths = cast("tuple[Path, ...]", mod._nanocoder_mcp_config_paths(_workspace_path))
+            servers = cast("dict[str, object]", mod._load_mcpservers_from_paths(paths))
         servers.pop(RALPH_MCP_SERVER_NAME, None)
         return normalize_upstream_mcp_servers(servers)
     if agent_name == "opencode":

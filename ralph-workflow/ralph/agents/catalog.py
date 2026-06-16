@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from ralph.agents.builtin import builtin_supports
 from ralph.agents.execution_state._factory import (
     _STRATEGY_DISPATCH,
     _STRATEGY_DISPATCH_DATA,
@@ -55,7 +56,7 @@ class AgentCatalog:
             msg = f"Agent {support.name!r} is already registered"
             raise ValueError(msg)
 
-        if self._is_built_in_parser_key(name_lower):
+        if self._is_built_in_parser_key(name_lower) and not support.is_builtin:
             msg = f"Cannot register agent with reserved built-in parser name: {support.name}"
             raise ValueError(msg)
 
@@ -76,11 +77,22 @@ class AgentCatalog:
         Custom registrations store a :class:`_ParserRegistryEntry`, so any existing
         class value is a built-in that must not be overwritten.
         """
+        builtin_names = {s.name.lower() for s in builtin_supports()}
+        if key in builtin_names:
+            return True
+
         existing = _PARSER_REGISTRY.get(key)
         return existing is not None and not isinstance(existing, _ParserRegistryEntry)
 
     def _write_through(self, support: AgentSupport, name_lower: str, cmd_lower: str) -> None:
         """Populate the 3 legacy module-level dicts for backward compat.
+
+        Only overwrites ``_PARSER_REGISTRY_DATA`` and ``_CUSTOM_COMMAND_REGISTRY_DATA``
+        when the existing slot is not a built-in parser class, so that seeding the
+        default catalog with the six built-in agents does not silently replace the
+        ``ClaudeParser`` / ``ClaudeInteractiveParser`` / ``CodexParser`` / etc.
+        classes that downstream callers (e.g. ``stream_parsed_agent_activity``)
+        resolve by parser key. Custom agents still write through normally.
 
         Only overwrites ``_STRATEGY_DISPATCH`` when the transport does not yet
         have an entry, preserving built-in dispatch entries so custom-agent
@@ -91,10 +103,14 @@ class AgentCatalog:
             support.strategy_factory,
             support.spec.transport,
         )
-        _PARSER_REGISTRY_DATA[name_lower] = entry
+        existing_parser = _PARSER_REGISTRY.get(name_lower)
+        if existing_parser is None or isinstance(existing_parser, _ParserRegistryEntry):
+            _PARSER_REGISTRY_DATA[name_lower] = entry
+        existing_custom = _CUSTOM_COMMAND_REGISTRY_DATA.get(cmd_lower)
+        if existing_custom is None or isinstance(existing_custom, _ParserRegistryEntry):
+            _CUSTOM_COMMAND_REGISTRY_DATA[cmd_lower] = entry
         if support.spec.transport not in _STRATEGY_DISPATCH:
             _STRATEGY_DISPATCH_DATA[support.spec.transport] = support.strategy_factory
-        _CUSTOM_COMMAND_REGISTRY_DATA[cmd_lower] = entry
 
     def remove(self, name: str) -> None:
         """Remove an agent registration by name.

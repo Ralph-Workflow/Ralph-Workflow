@@ -24,7 +24,11 @@ class TestAgyStrategyConsolidation:
     """Test that AGY strategy is implemented via factory composition."""
 
     def test_agy_strategy_is_factory_composition(self) -> None:
-        """AGY strategy must be CompletionEnforcingStrategy wrapping GenericExecutionStrategy."""
+        """AGY strategy must be CompletionEnforcingStrategy wrapping GenericExecutionStrategy.
+
+        The strategy is created via a local AgyExecutionStrategy class that inherits
+        from both CompletionEnforcingStrategy and GenericExecutionStrategy.
+        """
         strategy = strategy_for_transport(AgentTransport.AGY)
 
         assert isinstance(strategy, CompletionEnforcingStrategy)

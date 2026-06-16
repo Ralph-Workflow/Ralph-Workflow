@@ -1,5 +1,7 @@
 # Agent Invoke Architecture
 
+See [Agent Subsystem README](README.md) for the unified entry point.
+
 ## Stack overview
 
 Ralph's agent invoke stack has six layers that cooperate to route a user prompt
@@ -38,6 +40,14 @@ registration  →  parser  →  strategy  →  CommandBuilder
 The single canonical entry point for adding, updating, or removing an agent is
 `register_agent_support()` (defined in `ralph/agents/registration.py`).  See the
 step-by-step recipe in [adding-a-new-agent.md](adding-a-new-agent.md).
+
+## Single source of truth: builtin_supports()
+
+Built-in agents are declared in a single module `ralph/agents/builtin.py` which exposes the private `_BUILTIN_AGENT_SUPPORTS` tuple. Callers query the built-in catalog supports through the public `builtin_supports()` function.
+
+To keep the catalog and agent registries in lockstep, `AgentRegistry.from_config` and `AgentRegistry(catalog=...)` both invoke `_seed_catalog_with_builtins()`. The seed is idempotent, ensuring that duplicate invocations do not cause double-registration errors.
+
+For details on how to register and manage custom agents, or to modify built-in ones, see the [Agent Subsystem README](README.md) and [adding-a-new-agent.md](adding-a-new-agent.md).
 
 ## Parser and execution strategy
 

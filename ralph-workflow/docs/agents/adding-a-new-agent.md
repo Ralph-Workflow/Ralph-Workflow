@@ -1,5 +1,7 @@
 # Adding, Updating, and Removing Agent Support
 
+See also: [Agent Subsystem README](README.md) for the discoverable entry point.
+
 This guide covers the workflows for managing agent support in Ralph. It describes how to register new agents, update existing ones, and remove agent definitions.
 
 The single canonical entry point for agent registration is `register_agent_support` (defined in `ralph/agents/registration.py`). Advanced scenarios may use `register_agent_support_to_catalog` (test-friendly) or `AgentCatalog.add` directly, but these are not the standard recipe.
@@ -15,9 +17,9 @@ To add support for a new agent, register it using the `register_agent_support` f
 A headless agent runs non-interactively. You can register it by specifying the transport, parser factory, strategy factory, and an agent registry:
 
 ```python
+from ralph.agents import register_agent_support
 from ralph.agents.parsers._template import ParserTemplateBase
 from ralph.agents.execution_state._base import BaseExecutionStrategy
-from ralph.agents.registration import register_agent_support
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 
@@ -56,9 +58,9 @@ register_agent_support(
 An interactive agent requires a pseudo-terminal (PTY) to handle user interaction. Set `interactive=True` and use a PTY-capable transport:
 
 ```python
+from ralph.agents import register_agent_support
 from ralph.agents.parsers._template import ParserTemplateBase
 from ralph.agents.execution_state._base import BaseExecutionStrategy
-from ralph.agents.registration import register_agent_support
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 
@@ -94,24 +96,24 @@ register_agent_support(
 ```
 
 > [!NOTE]
-> The six built-in agents (`claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`) are populated at module import time and live in the caller's `AgentRegistry` config, not the global `default_catalog()`. Custom agents registered via `register_agent_support` are added to the global `default_catalog()`.
+> The six built-in agents (`claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`) are populated at module import time and live in both the `AgentRegistry` config and the `default_catalog()`.
 
 ---
 
 ## Update an existing agent
 
-Updating an agent depends on whether you are modifying the global catalog or the caller's configuration registry.
+Updating an agent is done by first unregistering the old definition and then re-registering it with the new parameters.
 
-### Updating the Catalog
+### Updating the Catalog and AgentRegistry
 
-Because `AgentCatalog.add` raises a `ValueError` on duplicate names, you must first remove the old definition before adding the updated one:
+To update an agent atomically, call the `unregister` method on the registry (which removes it from both the registry and the catalog) and then re-call `register_agent_support`:
 
 ```python
-from ralph.agents.catalog import default_catalog
-from ralph.agents.registration import register_agent_support
+from ralph.agents import register_agent_support
+from ralph.config.enums import AgentTransport
 
-# 1. Remove the old registration from the catalog
-default_catalog().remove("my-agent")
+# 1. Remove the old registration from the registry and catalog
+my_registry.unregister("my-agent")
 
 # 2. Re-register the agent with new parameters
 register_agent_support(
@@ -123,35 +125,25 @@ register_agent_support(
 )
 ```
 
-### Updating the Caller's AgentRegistry
-
-If you are updating the config-level registry (`AgentRegistry`), re-calling the `register` method will silently overwrite the existing configuration without raising an error:
-
-```python
-# The registry silently overwrites existing registrations
-registry.register("my-agent", new_agent_config)
-```
-
 ---
 
 ## Remove an agent
 
-### Removing from the Catalog
+### Recommended Approach: unregister()
 
-To remove an agent from the global catalog, call the `remove` method on the default catalog:
+To remove an agent from both the configuration registry and the global catalog, call the `unregister` method on your `AgentRegistry` instance:
 
 ```python
-from ralph.agents.catalog import default_catalog
-
-default_catalog().remove("my-agent")
+# Unregisters the agent from both the registry and the catalog
+registry.unregister("my-agent")
 ```
 
-### Removing from the AgentRegistry
+### Legacy Fallback
 
-`AgentRegistry` does not have an `unregister` method. To remove an agent from the registry, delete it directly from the mapping:
+Alternatively, you can manually delete it from the registry's config mapping, but this does not clean up the catalog:
 
 ```python
-# Remove a custom agent from the registry
+# Legacy fallback (removes from registry configuration only):
 del registry.agents["my-agent"]
 ```
 
@@ -163,8 +155,8 @@ del registry.agents["my-agent"]
 ## Common mistakes
 
 * **Forgetting `interactive=True`**: Interactive agents require `interactive=True` to enable session continuation.
-* **Not removing before re-registering**: Calling `default_catalog().add()` or `register_agent_support()` with a name that is already registered in the catalog will raise a `ValueError`.
-* **Calling non-existent unregister methods**: `AgentRegistry` does not expose an `.unregister()` method; use `del registry.agents[name]` instead.
+* **Not unregistering before re-registering**: Calling `register_agent_support()` with a name that is already registered in the catalog will raise a `ValueError`. Always call `registry.unregister(name)` first.
+* **Using legacy deletion**: Deleting via `del registry.agents[name]` is deprecated; use `registry.unregister(name)` to clean up both the registry and the catalog atomically.
 * **Adding a built-in agent name**: Attempting to register a custom agent under a built-in name can cause namespace clashes.
 
 ---

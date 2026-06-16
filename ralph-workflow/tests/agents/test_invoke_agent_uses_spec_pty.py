@@ -126,10 +126,13 @@ def test_spec_requires_pty_false_uses_subprocess(
         default_catalog().remove("fake-sub-binary")
 
 
-def test_unregistered_claude_interactive_uses_pty_fallback(
+def test_unregistered_claude_interactive_uses_subprocess_default(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Registering through register_agent_support is the only path
+    to PTY routing for CLAUDE_INTERACTIVE.
+    """
     monkeypatch.delenv(str(MCP_ENDPOINT_ENV), raising=False)
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -151,9 +154,9 @@ def test_unregistered_claude_interactive_uses_pty_fallback(
 
     res = list(invoke_agent(config, str(prompt_file), options=options))
 
-    assert "pty line" in res
-    assert len(pty_called) == 1
-    assert len(sub_called) == 0
+    assert "sub line" in res
+    assert len(pty_called) == 0
+    assert len(sub_called) == 1
 
 
 def test_unregistered_codex_uses_subprocess_fallback(

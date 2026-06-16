@@ -39,6 +39,7 @@ class AgentSupport:
     parser_factory: Callable[[], AgentParser]
     strategy_factory: StrategyFactory
     config: AgentConfig
+    is_builtin: bool = False
 
     _name_lower: str = ""
 
@@ -75,6 +76,7 @@ class AgentSupport:
         session_flag: str | None = None,
         display_name: str | None = None,
         subagent_capability: bool | None = None,
+        is_builtin: bool = False,
     ) -> AgentSupport:
         """Build an AgentSupport from the legacy register_agent_support kwargs.
 
@@ -106,7 +108,7 @@ class AgentSupport:
             An AgentSupport instance ready for AgentCatalog.add().
         """
         effective_session_flag = session_flag
-        if effective_session_flag is None and interactive:
+        if effective_session_flag is None and interactive and name != "agy":
             effective_session_flag = "--resume {}"
 
         config = AgentConfig(
@@ -131,10 +133,13 @@ class AgentSupport:
             completion_required=bool(effective_session_flag),
         )
 
-        return cls(
+        support = cls(
             name=name,
             spec=spec,
             parser_factory=parser_factory,
             strategy_factory=strategy_factory,
             config=config,
+            is_builtin=is_builtin,
         )
+        object.__setattr__(config, "_support", support)
+        return support

@@ -118,8 +118,11 @@ class TestRegisterAgentSupportShim:
             call_order.append("from_registration_kwargs")
             return original_method(name, **kwargs)
 
-        def mock_add(self: object, support: object) -> None:
+        original_add = AgentCatalog.add
+
+        def mock_add(self: AgentCatalog, support: AgentSupport) -> None:
             call_order.append("add")
+            original_add(self, support)
 
         monkeypatch.setattr(
             AgentSupport,
