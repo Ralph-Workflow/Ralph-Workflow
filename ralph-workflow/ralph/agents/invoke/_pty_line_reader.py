@@ -7,8 +7,10 @@ import contextlib
 import os
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+import psutil
 from loguru import logger
 
 from ralph.agents.activity import AgentActivityKind
@@ -59,6 +61,7 @@ from ralph.agents.invoke._session import (
 from ralph.agents.parsers.claude_interactive_transcript_parser import (
     ClaudeInteractiveTranscriptParser,
 )
+from ralph.display.raw_overflow import RawOverflowLog
 from ralph.mcp.server._activity_sink import (
     reset_active_sink,
     reset_subagent_sink,
@@ -79,7 +82,6 @@ from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from pathlib import Path
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
@@ -131,6 +133,9 @@ class PtyLineReader:
         self._last_tool_result_at: float | None = None
         self._last_tool_result_excerpt: str | None = None
         self._reader_done: list[bool] = [False]
+        self._cpu_baselines: dict[int, tuple[float, float]] = {}
+        self._log_growth_state: dict[str, tuple[int, float]] = {}
+        self._raw_overflow: RawOverflowLog | None = None
         self._input_writer_fd = os.dup(handle.master_fd)
         self._input_writer_lock = threading.Lock()
         self._auto_mode_prompt_seen = False
@@ -164,6 +169,82 @@ class PtyLineReader:
             self._last_hard_stop[0] = event
         if self._waiting_listener is not None:
             self._waiting_listener(event)
+
+    def _probe_cpu_idle(
+        self,
+        scoped_active: bool | None,
+        alive_by: AliveBy | None,
+    ) -> bool:
+        if self._policy.cpu_idle_seconds is None or not scoped_active:
+            return False
+        match alive_by:
+            case None:
+                pass
+            case AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS:
+                pass
+            case (
+                AliveBy.CPU_IDLE_WHILE_ALIVE
+                | AliveBy.LOG_STALE_WHILE_ALIVE
+                | AliveBy.FRESH_PROGRESS
+                | AliveBy.FRESH_HEARTBEAT_ONLY
+                | AliveBy.STALE_LABEL_ONLY
+            ):
+                return False
+        _now = self._clock.monotonic()
+        try:
+            root_pid = self._handle.pid
+            try:
+                root_proc = psutil.Process(root_pid)
+                child_pids = [p.pid for p in root_proc.children(recursive=True)]
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                return False
+            for pid in child_pids:
+                try:
+                    cpu_times = psutil.Process(pid).cpu_times()
+                    current_cpu = cpu_times.user + cpu_times.system
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    self._cpu_baselines.pop(pid, None)
+                    continue
+                if pid in self._cpu_baselines:
+                    baseline_cpu, baseline_time = self._cpu_baselines[pid]
+                    if current_cpu == baseline_cpu:
+                        if _now - baseline_time >= self._policy.cpu_idle_seconds:
+                            return True
+                    else:
+                        self._cpu_baselines[pid] = (current_cpu, _now)
+                else:
+                    self._cpu_baselines[pid] = (current_cpu, _now)
+        except Exception:
+            pass
+        return False
+
+    def _probe_log_growth(self, alive_by: AliveBy | None) -> bool:
+        if (
+            self._policy.log_growth_seconds is None
+            or not hasattr(self, "_raw_overflow")
+            or self._raw_overflow is None
+            or not (
+                alive_by is None
+                or alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+            )
+        ):
+            return False
+        if self._raw_overflow is not None and self._raw_overflow.is_disabled:
+            return False
+        _now = self._clock.monotonic()
+        path_str = str(self._raw_overflow.path)
+        current_size = self._raw_overflow.size_bytes
+        if current_size == 0:
+            return False
+        if path_str in self._log_growth_state:
+            baseline_size, baseline_time = self._log_growth_state[path_str]
+            if current_size != baseline_size:
+                self._log_growth_state[path_str] = (current_size, _now)
+            elif _now - baseline_time >= self._policy.log_growth_seconds:
+                return True
+        else:
+            self._log_growth_state[path_str] = (current_size, _now)
+        return False
 
     def _corroborate(self) -> CorroborationSnapshot:
         workspace_event_count: int | None = (
@@ -200,6 +281,17 @@ class PtyLineReader:
                 logger.debug("corroborator: PTY registry snapshot failed (suppressed)")
         elif scoped_child_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+
+        _cpu_idle = self._probe_cpu_idle(scoped_child_active, alive_by)
+        _log_stale = self._probe_log_growth(alive_by)
+
+        if _cpu_idle or _log_stale:
+            _override: AliveBy = (
+                AliveBy.LOG_STALE_WHILE_ALIVE if _log_stale else AliveBy.CPU_IDLE_WHILE_ALIVE
+            )
+            if alive_by in (None, AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS):
+                alive_by = _override
+
         return CorroborationSnapshot(
             workspace_event_count=workspace_event_count,
             last_workspace_event_at=last_workspace_event_at,
@@ -593,6 +685,8 @@ class PtyLineReader:
         else:
             self._last_meaningful[0] = False
         self._strategy.observe_line(queued_line)
+        if self._raw_overflow is not None:
+            self._raw_overflow.append(queued_line)
         yield queued_line
         fire_result = self._check_fire(
             watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
@@ -630,6 +724,10 @@ class PtyLineReader:
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
         process_monitor = _make_process_monitor(self._handle, self._config, self._policy)
+        self._raw_overflow = RawOverflowLog(
+            self._workspace_path or Path.cwd(),
+            self._agent_name,
+        )
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,

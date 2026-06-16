@@ -828,6 +828,7 @@ class IdleWatchdog:
         idle_elapsed: float,
         *,
         ceiling_seconds: float | None = None,
+        suspect_threshold_seconds: float | None = None,
         diagnostic: dict[str, str | int | float | bool | list[object]] | None = None,
     ) -> None:
         """Build and dispatch a WaitingStatusEvent to the listener.
@@ -837,6 +838,11 @@ class IdleWatchdog:
         if self._listener is None:
             return
         candidate_total = self._cumulative_waiting_on_child_seconds + current_run_seconds
+        _suspect = (
+            suspect_threshold_seconds
+            if suspect_threshold_seconds is not None
+            else self._config.suspect_waiting_on_child_seconds
+        )
         event = WaitingStatusEvent(
             kind=kind,
             cumulative_seconds=candidate_total,
@@ -847,7 +853,7 @@ class IdleWatchdog:
                 if ceiling_seconds is None
                 else ceiling_seconds
             ),
-            suspect_threshold_seconds=self._config.suspect_waiting_on_child_seconds,
+            suspect_threshold_seconds=_suspect,
             diagnostic=dict(diagnostic) if diagnostic else {},
         )
         try:
@@ -1038,6 +1044,8 @@ class IdleWatchdog:
             AliveBy.FRESH_HEARTBEAT_ONLY,
             AliveBy.STALE_LABEL_ONLY,
             AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            AliveBy.CPU_IDLE_WHILE_ALIVE,
+            AliveBy.LOG_STALE_WHILE_ALIVE,
         ]
     )
 
@@ -1052,20 +1060,63 @@ class IdleWatchdog:
         Returns the standard full ceiling when the child is making progress or when
         the no-progress ceiling is disabled (None).
         """
-        if self._config.max_waiting_on_child_no_progress_seconds is None:
-            return self._config.max_waiting_on_child_seconds
+        alive_by = corroboration.alive_by
+        _effective = self._config.max_waiting_on_child_seconds
+        if alive_by is None:
+            return _effective
+        if alive_by == AliveBy.FRESH_PROGRESS:
+            return _effective
+        _os_desc_only = alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        if _os_desc_only and self._config.os_descendant_only_ceiling_seconds is not None:
+            if self._config.max_waiting_on_child_no_progress_seconds is not None:
+                _effective = min(
+                    self._config.os_descendant_only_ceiling_seconds,
+                    self._config.max_waiting_on_child_no_progress_seconds,
+                )
+            else:
+                _effective = self._config.os_descendant_only_ceiling_seconds
+        elif (
+            self._config.max_waiting_on_child_no_progress_seconds is not None
+            and alive_by in self._NON_PROGRESS_ALIVE_BY_VALUES
+        ):
+            _effective = self._config.max_waiting_on_child_no_progress_seconds
+        return _effective
 
+    def _effective_ceiling_label(
+        self,
+        corroboration: CorroborationSnapshot,
+        effective_ceiling: float,
+    ) -> str:
         alive_by = corroboration.alive_by
         if alive_by is None:
-            return self._config.max_waiting_on_child_seconds
-
+            return "standard"
         if alive_by == AliveBy.FRESH_PROGRESS:
-            return self._config.max_waiting_on_child_seconds
+            return "standard"
+        if (
+            alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+            and self._config.os_descendant_only_ceiling_seconds is not None
+            and effective_ceiling == self._config.os_descendant_only_ceiling_seconds
+        ):
+            return "os_descendant_only"
+        if effective_ceiling < self._config.max_waiting_on_child_seconds:
+            return "no_progress"
+        return "standard"
 
-        if alive_by in self._NON_PROGRESS_ALIVE_BY_VALUES:
-            return self._config.max_waiting_on_child_no_progress_seconds
-
-        return self._config.max_waiting_on_child_seconds
+    def _compute_effective_suspect(
+        self,
+        alive_by: AliveBy | None,
+        candidate_total: float,
+    ) -> tuple[float | None, str]:
+        if self._config.suspect_waiting_on_child_seconds is None:
+            return None, "standard"
+        _os_desc_only = alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        if _os_desc_only and self._config.os_descendant_only_suspect_seconds is not None:
+            eff = min(
+                self._config.suspect_waiting_on_child_seconds,
+                self._config.os_descendant_only_suspect_seconds,
+            )
+            return eff, "os_descendant_only"
+        return self._config.suspect_waiting_on_child_seconds, "standard"
 
     def _handle_waiting_branch(
         self,
@@ -1131,23 +1182,31 @@ class IdleWatchdog:
         current_corr = self._safe_corroborate()
         effective_ceiling = self._effective_waiting_ceiling(current_corr)
 
+        alive_by = current_corr.alive_by
+        _os_desc_only = alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        _os_desc_only_suspect = (
+            self._config.os_descendant_only_suspect_seconds is not None
+            if _os_desc_only
+            else False
+        )
+        effective_suspect, suspect_reason = self._compute_effective_suspect(
+            alive_by, candidate_total
+        )
+
         if candidate_total >= effective_ceiling:
             self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
             corr_diag_hs = self._build_corroboration_diag(current_corr)
             corr_diag_hs["evidence"] = self._build_evidence_string(corr_diag_hs)
+            _ceiling_lbl = self._effective_ceiling_label(current_corr, effective_ceiling)
             diag: dict[str, object] = {
                 "cumulative": round(candidate_total, 1),
                 "run_elapsed": round(current_run_elapsed, 1),
                 "idle_elapsed": round(idle_elapsed, 1),
-                "ceiling": effective_ceiling,
-                "effective_ceiling": (
-                    "no_progress"
-                    if effective_ceiling < self._config.max_waiting_on_child_seconds
-                    else "standard"
-                ),
+                "effective_ceiling": effective_ceiling,
+                "effective_ceiling_label": _ceiling_lbl,
             }
-            if self._config.suspect_waiting_on_child_seconds is not None:
-                diag["suspect_threshold"] = self._config.suspect_waiting_on_child_seconds
+            if effective_suspect is not None:
+                diag["suspect_threshold"] = effective_suspect
             for key, value in corr_diag_hs.items():
                 if key not in diag:
                     diag[key] = value
@@ -1160,6 +1219,7 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
+                suspect_threshold_seconds=effective_suspect,
                 diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
             )
             self._log.warning(
@@ -1171,17 +1231,21 @@ class IdleWatchdog:
             return WatchdogVerdict.FIRE
 
         if (
-            self._config.suspect_waiting_on_child_seconds is not None
+            effective_suspect is not None
             and not self._suspicion_announced_for_run
-            and candidate_total >= self._config.suspect_waiting_on_child_seconds
+            and candidate_total >= effective_suspect
         ):
             self._suspicion_announced_for_run = True
             corr_diag_sf = self._build_corroboration_diag(current_corr)
             corr_diag_sf["evidence"] = self._build_evidence_string(corr_diag_sf)
+            corr_diag_sf["suspect_reason"] = suspect_reason
+            corr_diag_sf["suspect_threshold"] = effective_suspect
+            _ceiling_lbl = self._effective_ceiling_label(current_corr, effective_ceiling)
+            corr_diag_sf["effective_ceiling_label"] = _ceiling_lbl
             self._log.warning(
                 "idle watchdog: SUSPECTED_FROZEN candidate_total={}s suspect={}s ceiling={}s",
                 round(candidate_total, 1),
-                self._config.suspect_waiting_on_child_seconds,
+                effective_suspect,
                 effective_ceiling,
             )
             self._emit(
@@ -1189,6 +1253,7 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
+                suspect_threshold_seconds=effective_suspect,
                 diagnostic=cast("dict[str, str | int | float | bool | list[object]]", corr_diag_sf),
             )
 
@@ -1196,8 +1261,9 @@ class IdleWatchdog:
         if now - self._last_waiting_status_at >= self._config.waiting_status_interval_seconds:
             self._last_waiting_status_at = now
             corr_diag_pr = self._build_corroboration_diag(current_corr)
-            if effective_ceiling < self._config.max_waiting_on_child_seconds:
-                corr_diag_pr["effective_ceiling"] = "no_progress"
+            _ceiling_lbl = self._effective_ceiling_label(current_corr, effective_ceiling)
+            corr_diag_pr["effective_ceiling"] = effective_ceiling
+            corr_diag_pr["effective_ceiling_label"] = _ceiling_lbl
             self._log.info(
                 "idle watchdog: WAITING_ON_CHILD progress cumulative={}s ceiling={}s",
                 round(candidate_total, 1),

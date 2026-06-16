@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
+from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
 from ralph.agents.invoke._types import InvokeOptions
 
 if TYPE_CHECKING:
@@ -80,7 +81,19 @@ def build_invoke_options_from_config(
         child_heartbeat_ttl_seconds=general_config.agent_child_heartbeat_ttl_seconds,
         child_stale_label_ttl_seconds=general_config.agent_child_stale_label_ttl_seconds,
         child_exit_reconcile_seconds=general_config.agent_child_exit_reconcile_seconds,
+        os_descendant_only_ceiling_seconds=general_config.agent_os_descendant_only_ceiling_seconds,
+        os_descendant_only_suspect_seconds=general_config.agent_os_descendant_only_suspect_seconds,
+        cpu_idle_seconds=general_config.agent_cpu_idle_seconds,
+        log_growth_seconds=general_config.agent_log_growth_seconds,
     )
+
+
+def _get_os_descendant_field(
+    value: float | None | object, fallback: float | None
+) -> float | None:
+    if value is _INVOKE_OPTS_UNSET:
+        return fallback
+    return cast("float | None", value)
 
 
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
@@ -100,6 +113,30 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
     )
     if _suspect is not None and _effective_max is not None and _suspect >= _effective_max:
         _suspect = None
+    _os_descendant_ceiling = _get_os_descendant_field(
+        opts.os_descendant_only_ceiling_seconds, _base.os_descendant_only_ceiling_seconds
+    )
+    if (
+        _os_descendant_ceiling is not None
+        and _effective_max is not None
+        and _os_descendant_ceiling > _effective_max
+    ):
+        _os_descendant_ceiling = None
+    _os_descendant_suspect = _get_os_descendant_field(
+        opts.os_descendant_only_suspect_seconds, _base.os_descendant_only_suspect_seconds
+    )
+    if (
+        _os_descendant_suspect is not None
+        and _effective_max is not None
+        and (
+            _os_descendant_suspect >= _effective_max
+            or (
+                _os_descendant_ceiling is not None
+                and _os_descendant_suspect >= _os_descendant_ceiling
+            )
+        )
+    ):
+        _os_descendant_suspect = None
     return TimeoutPolicy(
         idle_timeout_seconds=opts.idle_timeout_seconds,
         drain_window_seconds=(
@@ -199,6 +236,14 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.subagent_output_poll_interval_seconds
             if opts.subagent_output_poll_interval_seconds is not None
             else _base.subagent_output_poll_interval_seconds
+        ),
+        os_descendant_only_ceiling_seconds=_os_descendant_ceiling,
+        os_descendant_only_suspect_seconds=_os_descendant_suspect,
+        cpu_idle_seconds=_get_os_descendant_field(
+            opts.cpu_idle_seconds, _base.cpu_idle_seconds
+        ),
+        log_growth_seconds=_get_os_descendant_field(
+            opts.log_growth_seconds, _base.log_growth_seconds
         ),
     )
 

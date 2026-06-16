@@ -31,6 +31,10 @@ class _GeneralConfigStub:
     agent_child_stale_label_ttl_seconds: float = 120.0
     agent_child_exit_reconcile_seconds: float = 5.0
     agent_process_exit_wait_seconds: float = 5.0
+    agent_os_descendant_only_ceiling_seconds: float | None = None
+    agent_os_descendant_only_suspect_seconds: float | None = None
+    agent_cpu_idle_seconds: float | None = None
+    agent_log_growth_seconds: float | None = None
     agent_process_monitor_enabled: bool = True
     agent_subagent_output_capture_enabled: bool = True
     agent_subagent_output_poll_interval_seconds: float = 1.0

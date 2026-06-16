@@ -13,15 +13,19 @@ from ralph.timeout_defaults import (
     CHILD_HEARTBEAT_TTL_SECONDS,
     CHILD_PROGRESS_TTL_SECONDS,
     CHILD_STALE_LABEL_TTL_SECONDS,
+    CPU_IDLE_SECONDS,
     DEFAULT_AGENT_WORKSPACE_CHANGE_WEIGHTS,
     DESCENDANT_WAIT_POLL_SECONDS,
     DESCENDANT_WAIT_TIMEOUT_SECONDS,
     DRAIN_WINDOW_SECONDS,
     IDLE_POLL_INTERVAL_SECONDS,
     IDLE_TIMEOUT_SECONDS,
+    LOG_GROWTH_SECONDS,
     MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    OS_DESCENDANT_ONLY_CEILING_SECONDS,
+    OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
@@ -191,6 +195,51 @@ class GeneralConfig(RalphBaseModel):
             " the child is alive but not making progress (heartbeat-only, stale-label,"
             " or OS-descendant-only evidence). Must be <= agent_idle_max_waiting_on_child_seconds."
             " When None, the no-progress ceiling is disabled."
+        ),
+    )
+    agent_os_descendant_only_ceiling_seconds: float | None = Field(
+        default=OS_DESCENDANT_ONLY_CEILING_SECONDS,
+        gt=0.0,
+        description=(
+            "Short ceiling on cumulative WAITING_ON_CHILD time when alive_by is"
+            " OS_DESCENDANT_ONLY_STALE_PROGRESS and no probe override has fired."
+            " Fires CHILDREN_PERSIST_TOO_LONG in ~120s instead of waiting for the"
+            " 600s no-progress ceiling. A wedged-but-alive opencode subprocess"
+            " produces 540s+ of PROGRESS events with zero observable signals."
+            " Set to None to disable and fall back to the no-progress ceiling."
+        ),
+    )
+    agent_os_descendant_only_suspect_seconds: float | None = Field(
+        default=OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
+        gt=0.0,
+        description=(
+            "Earlier SUSPECTED_FROZEN threshold when alive_by is"
+            " OS_DESCENDANT_ONLY_STALE_PROGRESS. Fires at"
+            " min(suspect_waiting_on_child_seconds, this value) so the operator"
+            " sees escalation at ~60s instead of the standard 600s threshold."
+            " Set to None to disable and use the standard suspect threshold."
+        ),
+    )
+    agent_cpu_idle_seconds: float | None = Field(
+        default=CPU_IDLE_SECONDS,
+        gt=0.0,
+        description=(
+            "A known descendant PID with 0 user+system CPU time over this window"
+            " is reported by the read-loop corroborator as alive_by=CPU_IDLE_WHILE_ALIVE."
+            " The 60s default tolerates sub-step quiescence (I/O wait, GC pause)"
+            " within the typical 95th-percentile latency. Set to None to disable"
+            " the CPU probe and rely on the OS-descendant-only ceiling."
+        ),
+    )
+    agent_log_growth_seconds: float | None = Field(
+        default=LOG_GROWTH_SECONDS,
+        gt=0.0,
+        description=(
+            "The per-run .agent/raw/{safe_id}.log file is reported as"
+            " alive_by=LOG_STALE_WHILE_ALIVE when its size has not grown for"
+            " this many seconds. The override short-circuits the OS-descendant-only"
+            " ceiling and falls back to the no-progress ceiling. Set to None to"
+            " disable the log-growth probe; the probe no-ops when the file is absent."
         ),
     )
     agent_child_progress_ttl_seconds: float = Field(
@@ -365,6 +414,48 @@ class GeneralConfig(RalphBaseModel):
                 " agent_idle_max_waiting_on_child_seconds"
                 f" (got {self.agent_idle_no_progress_waiting_on_child_seconds}"
                 f" > {self.agent_idle_max_waiting_on_child_seconds})"
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_os_descendant_only_ceiling_seconds is not None
+            and self.agent_os_descendant_only_ceiling_seconds
+            > self.agent_idle_max_waiting_on_child_seconds
+        ):
+            msg = (
+                "agent_os_descendant_only_ceiling_seconds must be <="
+                " agent_idle_max_waiting_on_child_seconds"
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_os_descendant_only_suspect_seconds is not None
+            and self.agent_os_descendant_only_ceiling_seconds is not None
+            and self.agent_os_descendant_only_suspect_seconds
+            >= self.agent_os_descendant_only_ceiling_seconds
+        ):
+            msg = (
+                "agent_os_descendant_only_suspect_seconds must be <"
+                " agent_os_descendant_only_ceiling_seconds"
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_os_descendant_only_suspect_seconds is not None
+            and self.agent_os_descendant_only_suspect_seconds
+            >= self.agent_idle_max_waiting_on_child_seconds
+        ):
+            msg = (
+                "agent_os_descendant_only_suspect_seconds must be <"
+                " agent_idle_max_waiting_on_child_seconds"
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_os_descendant_only_ceiling_seconds is not None
+            and self.agent_idle_no_progress_waiting_on_child_seconds is not None
+            and self.agent_os_descendant_only_ceiling_seconds
+            > self.agent_idle_no_progress_waiting_on_child_seconds
+        ):
+            msg = (
+                "agent_os_descendant_only_ceiling_seconds must be <="
+                " agent_idle_no_progress_waiting_on_child_seconds"
             )
             raise ValueError(msg)
         self._validate_workspace_change_weights()

@@ -9,8 +9,10 @@ import subprocess
 import sys
 import threading
 from collections import deque
+from pathlib import Path
 from typing import IO, TYPE_CHECKING, cast
 
+import psutil
 from loguru import logger
 from tqdm import tqdm
 
@@ -43,6 +45,7 @@ from ralph.agents.invoke._session import (
 from ralph.agents.invoke._types import _AgentRunCtx, _ProcessReaderCtx
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
+from ralph.display.raw_overflow import RawOverflowLog
 from ralph.mcp.server._activity_sink import (
     reset_active_sink,
     reset_subagent_sink,
@@ -69,9 +72,11 @@ from ._monitor_factory import _make_process_monitor
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from contextvars import Token
 
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.config.models import AgentConfig
+    from ralph.mcp.server._activity_sink import ActivitySink
 
 _MAX_PARSED_OUTPUT_LINES = 256
 _NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
@@ -110,6 +115,7 @@ class _ProcessLineReader:
         self._pre_output_listener = ctx.pre_output_listener
         self._monitor = ctx.monitor
         self._clock = clock
+        self._workspace_path = ctx.workspace_path
         self._lines_queue: list[str] = []
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
@@ -117,6 +123,12 @@ class _ProcessLineReader:
         self._last_activity_meaningful: list[bool] = [False]
         self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
         self._reader_done: list[bool] = [False]
+        self._cpu_baselines: dict[int, tuple[float, float]] = {}
+        self._log_growth_state: dict[str, tuple[int, float]] = {}
+        self._raw_overflow = RawOverflowLog(
+            self._workspace_path or Path.cwd(),
+            _agent_command_name(self._config),
+        )
         self._last_activity_kind = "none"
         self._unsubscribe = get_process_manager().register_listener(self._on_process_event)
 
@@ -156,6 +168,70 @@ class _ProcessLineReader:
         if self._waiting_listener is not None:
             self._waiting_listener(evt)
 
+    def _probe_cpu_idle(
+        self,
+        scoped_active: bool | None,
+        alive_by: AliveBy | None,
+    ) -> bool:
+        if (
+            self._policy.cpu_idle_seconds is None
+            or not scoped_active
+            or alive_by not in (None, AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS)
+        ):
+            return False
+        _now = self._clock.monotonic()
+        try:
+            root_pid = self._handle.pid
+            try:
+                root_proc = psutil.Process(root_pid)
+                child_pids = [p.pid for p in root_proc.children(recursive=True)]
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                return False
+            for pid in child_pids:
+                try:
+                    cpu_times = psutil.Process(pid).cpu_times()
+                    current_cpu = cpu_times.user + cpu_times.system
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    self._cpu_baselines.pop(pid, None)
+                    continue
+                if pid in self._cpu_baselines:
+                    baseline_cpu, baseline_time = self._cpu_baselines[pid]
+                    if current_cpu == baseline_cpu:
+                        if _now - baseline_time >= self._policy.cpu_idle_seconds:
+                            return True
+                    else:
+                        self._cpu_baselines[pid] = (current_cpu, _now)
+                else:
+                    self._cpu_baselines[pid] = (current_cpu, _now)
+        except Exception:
+            pass
+        return False
+
+    def _probe_log_growth(self, alive_by: AliveBy | None) -> bool:
+        if self._policy.log_growth_seconds is None:
+            return False
+        _is_initial_state = bool(
+            alive_by is None or alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        )
+        if not _is_initial_state:
+            return False
+        if self._raw_overflow.is_disabled:
+            return False
+        _now = self._clock.monotonic()
+        path_str = str(self._raw_overflow.path)
+        current_size = self._raw_overflow.size_bytes
+        if current_size == 0:
+            return False
+        if path_str in self._log_growth_state:
+            baseline_size, baseline_time = self._log_growth_state[path_str]
+            if current_size != baseline_size:
+                self._log_growth_state[path_str] = (current_size, _now)
+            elif _now - baseline_time >= self._policy.log_growth_seconds:
+                return True
+        else:
+            self._log_growth_state[path_str] = (current_size, _now)
+        return False
+
     def _corroborate(self) -> CorroborationSnapshot:
         ws_count: int | None = self._monitor.event_count if self._monitor is not None else None
         last_workspace_event_at: float | None = (
@@ -186,6 +262,17 @@ class _ProcessLineReader:
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
         elif scoped_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+
+        _cpu_idle = self._probe_cpu_idle(scoped_active, alive_by)
+        _log_stale = self._probe_log_growth(alive_by)
+
+        if _cpu_idle or _log_stale:
+            _override: AliveBy = (
+                AliveBy.LOG_STALE_WHILE_ALIVE if _log_stale else AliveBy.CPU_IDLE_WHILE_ALIVE
+            )
+            if alive_by in (None, AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS):
+                alive_by = _override
+
         return CorroborationSnapshot(
             workspace_event_count=ws_count,
             last_workspace_event_at=last_workspace_event_at,
@@ -333,6 +420,25 @@ class _ProcessLineReader:
                 return None
             self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
+    def _register_sinks(
+        self, watchdog: IdleWatchdog
+    ) -> tuple[Token[ActivitySink | None], Token[ActivitySink | None]]:
+        if self._monitor is not None:
+            def _forward_event(
+                kind: WorkspaceChangeKind, weight: float
+            ) -> None:
+                watchdog.record_workspace_event(kind=kind, weight=weight)
+
+            self._monitor.set_on_event(_forward_event)
+
+        def _mcp_sink(_tool_name: str) -> None:
+            watchdog.record_mcp_tool_call()
+
+        def _subagent_sink(_line: str) -> None:
+            watchdog.record_subagent_work()
+
+        return set_active_sink(_mcp_sink), set_subagent_sink(_subagent_sink)
+
     def read_lines(self) -> Iterator[str]:
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
@@ -347,47 +453,7 @@ class _ProcessLineReader:
             corroborator=self._corroborate,
             process_monitor=process_monitor,
         )
-
-        # Register the watchdog's workspace channel recorder as the
-        # on-event callback on the WorkspaceMonitor so every file
-        # change in the monitored workspace is visible to the
-        # activity-aware verdict as a fresh workspace channel signal.
-        # The monitor is constructed in invoke_agent BEFORE the
-        # watchdog is created (the watchdog lives inside this
-        # generator), so we cannot bind the recorder at monitor
-        # construction time; the late ``set_on_event`` binding
-        # happens here, immediately after the watchdog exists. The
-        # binding is cleared in the finally block below so a stale
-        # callback can never fire after the run ends.
-        if self._monitor is not None:
-            # Forward (kind, weight) so the watchdog's per-kind
-            # counter receives the real classification; the
-            # 0-arg bound method form would always yield
-            # (OTHER, 1.0) and miss the AC #7 contract.
-            def _forward_event(
-                kind: WorkspaceChangeKind, weight: float
-            ) -> None:
-                watchdog.record_workspace_event(kind=kind, weight=weight)
-
-            self._monitor.set_on_event(_forward_event)
-
-        # Register the watchdog's MCP activity recorder as the active sink
-        # for the in-process Ralph MCP server so each tools/call invocation
-        # defers a NO_OUTPUT_DEADLINE fire while the agent is actively
-        # using the MCP. The contextvar isolates concurrent agent runs
-        # in the same process so a sibling run's MCP calls never feed
-        # this watchdog's evidence surface. The recorder accepts a
-        # `now: float | None` argument; the sink protocol passes a
-        # `tool_name: str`, so we wrap the recorder in a thin closure
-        # that ignores the string and forwards to the recorder.
-        def _mcp_sink(_tool_name: str) -> None:
-            watchdog.record_mcp_tool_call()
-
-        def _subagent_sink(_line: str) -> None:
-            watchdog.record_subagent_work()
-
-        sink_token = set_active_sink(_mcp_sink)
-        subagent_token = set_subagent_sink(_subagent_sink)
+        sink_token, subagent_token = self._register_sinks(watchdog)
         try:
             while True:
                 self._lines_event.clear()
@@ -402,6 +468,7 @@ class _ProcessLineReader:
                 if queued_line is not None:
                     self._record_line_activity(watchdog, queued_line)
                     self._strategy.observe_line(queued_line)
+                    self._raw_overflow.append(queued_line)
                     yield queued_line
                     result = self._check_fire(
                         watchdog, watchdog.evaluate(classify_quiet=self._classify_quiet)
@@ -491,6 +558,7 @@ def _run_subprocess_and_read_lines(
             pre_output_listener=ctx.pre_output_listener,
             monitor=ctx.monitor,
             expected_session_id=ctx.expected_session_id,
+            workspace_path=ctx.workspace_path,
         )
         lines_iter = _ProcessLineReader(handle, reader_ctx, clock).read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)

@@ -172,6 +172,39 @@ SUSPECT_WAITING_ON_CHILD_SECONDS: float | None = 600.0
 #: None disables the no-progress ceiling.
 MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS: float | None = 600.0
 
+#: Short ceiling on cumulative WAITING_ON_CHILD time when the only evidence of a
+#: running child is its OS-process-tree existence (alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS
+#: with no scoped child evidence and no first-party evidence channels active). Fires
+#: CHILDREN_PERSIST_TOO_LONG in ~120s instead of waiting for the 600s no-progress
+#: ceiling. A wedged-but-alive opencode subprocess produces 540s+ of PROGRESS events
+#: with zero observable progress signals; this ceiling detects that pattern in ~120s.
+#: Set to ``None`` to disable the override and fall back to the no-progress ceiling.
+OS_DESCENDANT_ONLY_CEILING_SECONDS: float | None = 120.0
+
+#: Earlier SUSPECTED_FROZEN threshold when alive_by is OS_DESCENDANT_ONLY_STALE_PROGRESS.
+#: The watchdog fires the suspect event at min(suspect_waiting_on_child_seconds,
+#: OS_DESCENDANT_ONLY_SUSPECT_SECONDS) so the operator sees escalation at ~60s
+#: instead of waiting for the standard 600s suspicion threshold. Set to ``None``
+#: to disable and use the standard suspect threshold.
+OS_DESCENDANT_ONLY_SUSPECT_SECONDS: float | None = 60.0
+
+#: A known descendant PID with 0 user+system CPU time over this rolling window is
+#: reported by the read-loop corroborator as alive_by=CPU_IDLE_WHILE_ALIVE. The
+#: override short-circuits the OS-descendant-only ceiling and falls back to the
+#: no-progress ceiling (180.0 default). The 60s default tolerates up to 60s of
+#: sub-step quiescence (I/O wait, GC pause, network call) which is within the
+#: typical 95th-percentile sub-step latency. Set to ``None`` to disable the CPU
+#: probe and rely solely on the OS-descendant-only ceiling.
+CPU_IDLE_SECONDS: float | None = 60.0
+
+#: The per-run .agent/raw/{safe_id}.log file is reported as alive_by=LOG_STALE_WHILE_ALIVE
+#: when its size has not grown for this many seconds. The override short-circuits
+#: the OS-descendant-only ceiling and falls back to the no-progress ceiling. The 30s
+#: default is aggressive but appropriate for detecting a wedged subprocess that is
+#: not writing any output. Set to ``None`` to disable the log-growth probe;
+#: the probe gracefully no-ops when the raw log file is absent.
+LOG_GROWTH_SECONDS: float | None = 30.0
+
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults
 # ---------------------------------------------------------------------------

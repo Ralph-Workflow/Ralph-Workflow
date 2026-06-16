@@ -24,13 +24,17 @@ from ralph.timeout_defaults import (
     CHILD_HEARTBEAT_TTL_SECONDS,
     CHILD_PROGRESS_TTL_SECONDS,
     CHILD_STALE_LABEL_TTL_SECONDS,
+    CPU_IDLE_SECONDS,
     DESCENDANT_WAIT_POLL_SECONDS,
     DESCENDANT_WAIT_TIMEOUT_SECONDS,
     DRAIN_WINDOW_SECONDS,
     IDLE_POLL_INTERVAL_SECONDS,
     IDLE_TIMEOUT_SECONDS,
+    LOG_GROWTH_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    OS_DESCENDANT_ONLY_CEILING_SECONDS,
+    OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
@@ -403,6 +407,108 @@ def test_load_config_child_progress_ttl_roundtrips(
 
 
 # ---------------------------------------------------------------------------
+# OS-descendant-only and probe config knobs
+# ---------------------------------------------------------------------------
+
+_OS_DESCENDANT_ONLY_CEILING = 120.0
+_OS_DESCENDANT_ONLY_SUSPECT = 60.0
+_CPU_IDLE = 60.0
+_LOG_GROWTH = 30.0
+
+
+def test_general_config_os_descendant_only_ceiling_default() -> None:
+    cfg = GeneralConfig()
+    assert cfg.agent_os_descendant_only_ceiling_seconds == _OS_DESCENDANT_ONLY_CEILING
+
+
+def test_general_config_os_descendant_only_suspect_default() -> None:
+    cfg = GeneralConfig()
+    assert cfg.agent_os_descendant_only_suspect_seconds == _OS_DESCENDANT_ONLY_SUSPECT
+
+
+def test_general_config_cpu_idle_default() -> None:
+    cfg = GeneralConfig()
+    assert cfg.agent_cpu_idle_seconds == _CPU_IDLE
+
+
+def test_general_config_log_growth_default() -> None:
+    cfg = GeneralConfig()
+    assert cfg.agent_log_growth_seconds == _LOG_GROWTH
+
+
+def test_general_config_os_descendant_only_ceiling_can_be_none() -> None:
+    """os_descendant_only_ceiling may be explicitly disabled by setting to null."""
+    cfg = GeneralConfig(agent_os_descendant_only_ceiling_seconds=None)
+    assert cfg.agent_os_descendant_only_ceiling_seconds is None
+
+
+def test_general_config_cpu_idle_can_be_none() -> None:
+    """cpu_idle may be explicitly disabled by setting to null."""
+    cfg = GeneralConfig(agent_cpu_idle_seconds=None)
+    assert cfg.agent_cpu_idle_seconds is None
+
+
+def test_general_config_log_growth_can_be_none() -> None:
+    """log_growth may be explicitly disabled by setting to null."""
+    cfg = GeneralConfig(agent_log_growth_seconds=None)
+    assert cfg.agent_log_growth_seconds is None
+
+
+def test_load_config_os_descendant_only_ceiling_roundtrips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        "[general]\nagent_os_descendant_only_ceiling_seconds = 90.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    config = load_config(workspace_scope=_scope_for(tmp_path))
+    assert config.general.agent_os_descendant_only_ceiling_seconds == 90.0
+
+
+def test_load_config_cpu_idle_roundtrips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        "[general]\nagent_cpu_idle_seconds = 45.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    config = load_config(workspace_scope=_scope_for(tmp_path))
+    assert config.general.agent_cpu_idle_seconds == 45.0
+
+
+def test_load_config_log_growth_roundtrips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        "[general]\nagent_log_growth_seconds = 15.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    config = load_config(workspace_scope=_scope_for(tmp_path))
+    assert config.general.agent_log_growth_seconds == 15.0
+
+
+# ---------------------------------------------------------------------------
 # Shared-constant round-trip assertions (timeout_defaults.py source of truth)
 # ---------------------------------------------------------------------------
 
@@ -434,6 +540,10 @@ def test_config_defaults_match_timeout_defaults_constants() -> None:
     assert cfg.agent_child_heartbeat_ttl_seconds == CHILD_HEARTBEAT_TTL_SECONDS
     assert cfg.agent_child_stale_label_ttl_seconds == CHILD_STALE_LABEL_TTL_SECONDS
     assert cfg.agent_child_exit_reconcile_seconds == CHILD_EXIT_RECONCILE_SECONDS
+    assert cfg.agent_os_descendant_only_ceiling_seconds == OS_DESCENDANT_ONLY_CEILING_SECONDS
+    assert cfg.agent_os_descendant_only_suspect_seconds == OS_DESCENDANT_ONLY_SUSPECT_SECONDS
+    assert cfg.agent_cpu_idle_seconds == CPU_IDLE_SECONDS
+    assert cfg.agent_log_growth_seconds == LOG_GROWTH_SECONDS
 
 
 def test_timeout_policy_defaults_match_timeout_defaults_constants() -> None:
@@ -455,3 +565,7 @@ def test_timeout_policy_defaults_match_timeout_defaults_constants() -> None:
     assert (
         policy.max_waiting_on_child_no_progress_seconds == MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
     )
+    assert policy.os_descendant_only_ceiling_seconds == OS_DESCENDANT_ONLY_CEILING_SECONDS
+    assert policy.os_descendant_only_suspect_seconds == OS_DESCENDANT_ONLY_SUSPECT_SECONDS
+    assert policy.cpu_idle_seconds == CPU_IDLE_SECONDS
+    assert policy.log_growth_seconds == LOG_GROWTH_SECONDS

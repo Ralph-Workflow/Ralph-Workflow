@@ -60,14 +60,10 @@ def _make_watchdog(
         drain_window_seconds=drain_window,
         max_waiting_on_child_seconds=max_waiting,
         max_session_seconds=max_session,
-        # Disable suspicion by default so tests that use small max_waiting values
-        # (e.g. 20.0) don't conflict with the 600.0 default suspect threshold.
         suspect_waiting_on_child_seconds=suspect,
         waiting_status_interval_seconds=status_interval if status_interval is not None else 30.0,
-        # Explicitly disable no-progress ceiling by default to avoid validation errors
-        # when max_waiting is small (e.g. 20.0). Tests that specifically test the
-        # no-progress ceiling should pass no_progress_ceiling explicitly.
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock, listener, corroborator=corroborator), clock
@@ -412,7 +408,7 @@ def test_hard_stop_diagnostic_includes_effective_ceiling_classification() -> Non
     hard_stops = [e for e in events if e.kind == WaitingStatusKind.HARD_STOP]
     assert len(hard_stops) == 1
     diag = hard_stops[0].diagnostic
-    assert diag.get("effective_ceiling") == "no_progress"
+    assert diag.get("effective_ceiling_label") == "no_progress"
 
 
 def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies() -> None:
@@ -429,6 +425,7 @@ def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies
         suspect_waiting_on_child_seconds=None,
         waiting_status_interval_seconds=1.0,
         max_waiting_on_child_no_progress_seconds=_NO_PROGRESS_CEILING,
+        os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
     events: list[WaitingStatusEvent] = []
@@ -496,6 +493,7 @@ def test_no_progress_ceiling_adapts_when_corroboration_degrades() -> None:
         suspect_waiting_on_child_seconds=None,
         waiting_status_interval_seconds=100.0,
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(config, clock, corroborator=_corroborator)
@@ -568,11 +566,9 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
         drain_window_seconds=0.0,
         max_waiting_on_child_seconds=1800.0,
         max_waiting_on_child_no_progress_seconds=_NO_PROGRESS_CEILING,
-        # suspect_waiting_on_child_seconds=3.0 < no_progress_ceiling=10.0 so
-        # SUSPECTED_FROZEN fires on T2 before HARD_STOP fires on T3.
         suspect_waiting_on_child_seconds=3.0,
-        # status_interval=0.001 ensures PROGRESS also fires on T2.
         waiting_status_interval_seconds=0.001,
+        os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
     events: list[WaitingStatusEvent] = []
@@ -608,8 +604,8 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
     fire_diag_by_kind = {e.kind: e.diagnostic for e in events}
     assert WaitingStatusKind.HARD_STOP in fire_diag_by_kind
     hs_diag = fire_diag_by_kind[WaitingStatusKind.HARD_STOP]
-    assert hs_diag.get("effective_ceiling") == "no_progress", (
-        f"Expected effective_ceiling='no_progress', got {hs_diag.get('effective_ceiling')}."
+    assert hs_diag.get("effective_ceiling_label") == "no_progress", (
+        f"Expected 'no_progress', got {hs_diag.get('effective_ceiling_label')}."
     )
 
     # T2 diagnostics: SUSPECTED_FROZEN and PROGRESS must agree on alive_by
@@ -647,5 +643,6 @@ def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
         max_waiting_on_child_seconds=equal_ceiling,
         max_waiting_on_child_no_progress_seconds=equal_ceiling,
         suspect_waiting_on_child_seconds=None,
+        os_descendant_only_ceiling_seconds=None,
     )
     assert policy.max_waiting_on_child_no_progress_seconds == equal_ceiling
