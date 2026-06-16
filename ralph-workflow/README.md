@@ -63,8 +63,7 @@ test coverage for empty and whitespace-only input.
 - confirm no unrelated flow changed
 ```
 
-Want to watch a full first run (`--init` → `--diagnose` → `--dry-run`)? It is a real, unedited capture:
-[![asciicast](https://asciinema.org/a/JDnY0Xyh5qcgu9kd.svg)](https://asciinema.org/a/JDnY0Xyh5qcgu9kd)
+Want to follow a full first run? Read the [real-task walkthrough](https://ralphworkflow.com/blog/real-task-walkthrough-overnight-refactoring) or browse the [first-run guide](https://ralphworkflow.com/start)
 
 > Ralph is free and runs locally — stars are the only signal we get that it's working for you, and they set what we build next. If a run shipped real software for you: ⭐ [star on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
 
