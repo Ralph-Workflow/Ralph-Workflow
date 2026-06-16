@@ -8,13 +8,12 @@ accumulation for streaming text responses.
 
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ralph.display.vt_normalizer import normalize_vt_text
 
 from ._event_classification import is_lifecycle_event
-from ._template import ParserTemplateBase
+from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message
 from .text_accumulator import TextAccumulator
@@ -35,7 +34,7 @@ def _classify_plaintext_tool_line(stripped: str) -> tuple[str, str] | None:
     return None
 
 
-class GenericParser(ParserTemplateBase):
+class GenericParser(NdjsonParserBase):
     """Generic NDJSON parser for unknown or simple agent formats.
 
     This parser handles NDJSON by:
@@ -57,44 +56,48 @@ class GenericParser(ParserTemplateBase):
     Field priority for content extraction:
     1. content, text, message, output, response, result (type='text')
     2. thought, reasoning (type='thinking') — only when no higher-priority field matches
+
+    Inherits from :class:`NdjsonParserBase` which owns the
+    ``data:`` strip, ``[DONE]`` short-circuit, JSON parse dispatch,
+    lifecycle suppression, and error extraction.  The subclass
+    overrides :meth:`_classify_non_json_line` to keep the plain
+    ``[plain] tool: NAME`` convention and :meth:`_dispatch_json_object`
+    to drive the per-content extractor + accumulator path.
     """
 
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
 
     def __init__(self) -> None:
+        super().__init__()
         self._text_accumulator: TextAccumulator | None = None
 
-    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
-        line = normalize_vt_text(line)
-        stripped = line.strip()
-        if not stripped:
-            return
+    def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
+        """Reclassify non-JSON lines, detecting the ``[plain] tool:`` convention.
 
-        try:
-            parsed: object = json.loads(stripped, strict=False)
-        except json.JSONDecodeError:
-            yield from self._flush_accumulator()
-            classification = _classify_plaintext_tool_line(stripped)
-            if classification is not None:
-                line_type, content = classification
-                yield AgentOutputLine(type=line_type, content=content, raw=stripped)
-                return
-            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
+        VT normalization is applied first so ANSI-decorated tool lines
+        (nanocoder TUI output piped without a PTY) still match.
+        """
+        normalized = normalize_vt_text(stripped).strip()
+        yield from self._flush_accumulator()
+        classification = _classify_plaintext_tool_line(normalized)
+        if classification is not None:
+            line_type, content = classification
+            yield AgentOutputLine(type=line_type, content=content, raw=stripped)
             return
+        yield AgentOutputLine(type="raw", content=normalized, raw=stripped)
 
-        if not isinstance(parsed, dict):
-            yield from self._flush_accumulator()
-            yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
-            return
-
-        obj = cast("dict[str, object]", parsed)
-        yield from self._classify_parsed_json(obj, stripped)
+    def _dispatch_json_object(
+        self,
+        obj: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        yield from self._classify_parsed_json(obj, raw)
 
     def _classify_parsed_json(
         self, obj: dict[str, object], stripped: str
     ) -> Iterator[AgentOutputLine]:
         type_val = str(obj.get("type", "")).lower()
-        if is_lifecycle_event(type_val):
+        if type_val and self._is_lifecycle_type(type_val):
             return
 
         if self._is_stop(obj):
@@ -129,6 +132,9 @@ class GenericParser(ParserTemplateBase):
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         yield from self._flush_accumulator()
+
+    def _is_lifecycle_type(self, type_val: str) -> bool:
+        return is_lifecycle_event(type_val)
 
     def _is_short_content(self, content: str) -> bool:
         if len(content) >= _SHORT_CONTENT_THRESHOLD:

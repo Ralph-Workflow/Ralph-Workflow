@@ -7,11 +7,9 @@ instances with robust delta accumulation.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, ClassVar, cast
 
-from ._event_classification import is_lifecycle_event
-from ._template import ParserTemplateBase
+from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message
 from .text_accumulator import TextAccumulator
@@ -23,56 +21,23 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-class GeminiParser(ParserTemplateBase):
-    """Parser for Gemini's SSE+JSON streaming output with robust delta accumulation.
+class _GeminiDispatch:
+    """Per-event-type dispatch for GeminiParser.
 
-    Gemini uses SSE with data: lines containing JSON payloads.
-    Each payload has a "type" field indicating what kind of content it carries.
-    Text deltas are accumulated into coherent blocks before emission, flushing on:
-    - ``done`` / ``stop`` / ``message_end`` (end of message)
-    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
-    - Iterator exhaustion (final flush via ``flush_accumulators()``)
+    Encapsulates the historical event-routing logic that used to live in
+    ``_parse_object``.  The subclass ``_dispatch_json_object`` delegates
+    here for all non-lifecycle, non-error events.  The dispatcher holds
+    a reference to the owning parser so accumulator state stays in one place.
     """
 
-    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"done", "stop", "message_end"})
+    def __init__(self, owner: GeminiParser) -> None:
+        self._owner = owner
 
-    def __init__(self) -> None:
-        self._text_accumulator: TextAccumulator | None = None
-
-    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
-        stripped = line.strip()
-        if not stripped:
-            return
-
-        if stripped.startswith("data:"):
-            stripped = stripped[5:].strip()
-
-        if not stripped or stripped == "[DONE]":
-            return
-
-        result = self.parse_json_line(stripped)
-        if result is not None:
-            yield result
-            return
-
-        obj = cast("JsonDict", json.loads(stripped, strict=False))
-        yield from self._parse_object(obj, stripped)
-
-    def flush_accumulators(self) -> Iterator[AgentOutputLine]:
-        if self._text_accumulator is None:
-            return
-        acc = self._text_accumulator
-        self._text_accumulator = None
-        yield from acc.flush(kind="text")
-
-    def _parse_object(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
+    def dispatch(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         event_type = str(obj.get("type", obj.get("event", "unknown")))
 
-        if is_lifecycle_event(event_type):
-            return
-
-        if event_type in self._STOP_EVENT_TYPES:
-            yield from self.flush_accumulators()
+        if event_type in GeminiParser._STOP_EVENT_TYPES:
+            yield from self._flush()
             yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
             return
 
@@ -95,6 +60,13 @@ class GeminiParser(ParserTemplateBase):
         else:
             yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
+    def _flush(self) -> Iterator[AgentOutputLine]:
+        if self._owner._text_accumulator is None:
+            return
+        acc = self._owner._text_accumulator
+        self._owner._text_accumulator = None
+        yield from acc.flush(kind="text")
+
     def _parse_text_content(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         content = self._extract_first_part_text(obj)
         if not content:
@@ -103,9 +75,9 @@ class GeminiParser(ParserTemplateBase):
         if not content:
             return
 
-        if self._text_accumulator is None:
-            self._text_accumulator = TextAccumulator()
-        yield from self._text_accumulator.accumulate(
+        if self._owner._text_accumulator is None:
+            self._owner._text_accumulator = TextAccumulator()
+        yield from self._owner._text_accumulator.accumulate(
             content, stripped, kind="text", keep_current_when_empty=True
         )
 
@@ -117,9 +89,9 @@ class GeminiParser(ParserTemplateBase):
         if not content:
             return
 
-        if self._text_accumulator is None:
-            self._text_accumulator = TextAccumulator()
-        yield from self._text_accumulator.accumulate(
+        if self._owner._text_accumulator is None:
+            self._owner._text_accumulator = TextAccumulator()
+        yield from self._owner._text_accumulator.accumulate(
             content, stripped, kind="text", keep_current_when_empty=True
         )
 
@@ -140,7 +112,7 @@ class GeminiParser(ParserTemplateBase):
         elif func_call is not None:
             func_args = func_call.get("args")
             if isinstance(func_args, dict):
-                args_str = json.dumps(cast("JsonDict", func_args))
+                args_str = str(cast("JsonDict", func_args))
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
@@ -220,3 +192,42 @@ class GeminiParser(ParserTemplateBase):
                 part_dict = cast("JsonDict", first_part)
                 return str(part_dict.get("text", ""))
         return ""
+
+
+class GeminiParser(NdjsonParserBase):
+    """Parser for Gemini's SSE+JSON streaming output with robust delta accumulation.
+
+    Gemini uses SSE with data: lines containing JSON payloads.
+    Each payload has a "type" field indicating what kind of content it carries.
+    Text deltas are accumulated into coherent blocks before emission, flushing on:
+    - ``done`` / ``stop`` / ``message_end`` (end of message)
+    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
+    - Iterator exhaustion (final flush via ``flush_accumulators()``)
+
+    Inherits from :class:`NdjsonParserBase` which owns the
+    ``data:`` strip, ``[DONE]`` short-circuit, JSON parse dispatch,
+    lifecycle suppression, and error extraction.  The subclass
+    ``_dispatch_json_object`` delegates to ``_GeminiDispatch`` for the
+    per-event-type routing.
+    """
+
+    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"done", "stop", "message_end"})
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._text_accumulator: TextAccumulator | None = None
+        self._dispatcher = _GeminiDispatch(self)
+
+    def _dispatch_json_object(
+        self,
+        obj: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        yield from self._dispatcher.dispatch(obj, raw)
+
+    def flush_accumulators(self) -> Iterator[AgentOutputLine]:
+        if self._text_accumulator is None:
+            return
+        acc = self._text_accumulator
+        self._text_accumulator = None
+        yield from acc.flush(kind="text")

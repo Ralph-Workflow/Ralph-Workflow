@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport, JsonParserType
 
+from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import AgentParser
 from .claude import ClaudeParser
@@ -60,6 +61,7 @@ __all__ = [
     "CodexParser",
     "GeminiParser",
     "GenericParser",
+    "NdjsonParserBase",
     "OpenCodeParser",
     "resolve_parser_key",
 ]

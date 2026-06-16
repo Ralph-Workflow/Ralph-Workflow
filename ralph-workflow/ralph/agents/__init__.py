@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from ralph.agents.catalog import AgentCatalog, default_catalog
     from ralph.agents.chain import AgentChain
     from ralph.agents.invoke import invoke_agent
-    from ralph.agents.registration import register_agent_support
+    from ralph.agents.registration import register_agent_support, register_my_agent
     from ralph.agents.registry import AgentRegistry
     from ralph.agents.support import AgentSupport
 
@@ -31,6 +31,7 @@ __all__ = [
     "default_catalog",
     "invoke_agent",
     "register_agent_support",
+    "register_my_agent",
 ]
 
 
@@ -43,6 +44,7 @@ def __getattr__(name: str) -> object:
         "default_catalog": ("ralph.agents.catalog", "default_catalog"),
         "invoke_agent": ("ralph.agents.invoke", "invoke_agent"),
         "register_agent_support": ("ralph.agents.registration", "register_agent_support"),
+        "register_my_agent": ("ralph.agents.registration", "register_my_agent"),
     }
     try:
         module_name, attr_name = exports[name]

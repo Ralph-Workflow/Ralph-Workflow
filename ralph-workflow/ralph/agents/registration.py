@@ -79,6 +79,7 @@ def register_agent_support(
     session_flag: str | None = None,
     display_name: str | None = None,
     subagent_capability: bool | None = None,
+    no_default_session_flag: bool = False,
 ) -> AgentConfig:
     """Register support for a new agent in one call.
 
@@ -144,6 +145,7 @@ def register_agent_support(
         session_flag=session_flag,
         display_name=display_name,
         subagent_capability=subagent_capability,
+        no_default_session_flag=no_default_session_flag,
     )
 
     agent_registry.catalog.add(support)
@@ -168,6 +170,125 @@ def register_agent_support_to_catalog(
     """
     catalog.add(support)
     return support.config
+
+
+# Transport-derived default strategy classes for the public
+# ``register_my_agent`` helper.  Importing the classes here (rather than
+# at module load) keeps ``ralph.agents.registration`` importable without
+# pulling in the full execution-state module graph.
+_DEFAULT_STRATEGY_BY_TRANSPORT: dict[AgentTransport, StrategyFactory] = {
+    AgentTransport.CLAUDE_INTERACTIVE: cast(
+        "StrategyFactory", __import__(
+            "ralph.agents.execution_state.claude_interactive_execution_strategy",
+            fromlist=["ClaudeInteractiveExecutionStrategy"],
+        ).ClaudeInteractiveExecutionStrategy
+    ),
+    AgentTransport.AGY: cast(
+        "StrategyFactory",
+        __import__(
+            "ralph.agents.execution_state._factory",
+            fromlist=["_make_agy_strategy"],
+        )._make_agy_strategy,
+    ),
+    AgentTransport.OPENCODE: cast(
+        "StrategyFactory", __import__(
+            "ralph.agents.execution_state.opencode_execution_strategy",
+            fromlist=["OpenCodeExecutionStrategy"],
+        ).OpenCodeExecutionStrategy
+    ),
+    AgentTransport.CLAUDE: cast(
+        "StrategyFactory", __import__(
+            "ralph.agents.execution_state.claude_execution_strategy",
+            fromlist=["ClaudeExecutionStrategy"],
+        ).ClaudeExecutionStrategy
+    ),
+    AgentTransport.CODEX: cast(
+        "StrategyFactory", __import__(
+            "ralph.agents.execution_state.generic_execution_strategy",
+            fromlist=["GenericExecutionStrategy"],
+        ).GenericExecutionStrategy
+    ),
+    AgentTransport.NANOCODER: cast(
+        "StrategyFactory", __import__(
+            "ralph.agents.execution_state.generic_execution_strategy",
+            fromlist=["GenericExecutionStrategy"],
+        ).GenericExecutionStrategy
+    ),
+    AgentTransport.GENERIC: cast(
+        "StrategyFactory", __import__(
+            "ralph.agents.execution_state.generic_execution_strategy",
+            fromlist=["GenericExecutionStrategy"],
+        ).GenericExecutionStrategy
+    ),
+}
+
+
+def _default_strategy_for_transport(transport: AgentTransport) -> StrategyFactory:
+    """Return the transport-derived default strategy for ``transport``."""
+    factory = _DEFAULT_STRATEGY_BY_TRANSPORT.get(transport)
+    if factory is None:
+        msg = f"No default strategy registered for transport {transport!r}"
+        raise ValueError(msg)
+    return factory
+
+
+def register_my_agent(
+    name: str,
+    transport: AgentTransport,
+    *,
+    parser: type[AgentParser],
+    strategy: StrategyFactory | None = None,
+    agent_registry: AgentRegistry,
+    interactive: bool = False,
+    cmd: str | None = None,
+    session_flag: str | None = None,
+    no_default_session_flag: bool = False,
+    json_parser: JsonParserType = JsonParserType.GENERIC,
+) -> AgentConfig:
+    """Opinionated 5-line recipe for adding a new agent.
+
+    The helper picks the strategy from :data:`_DEFAULT_STRATEGY_BY_TRANSPORT`
+    when ``strategy`` is not provided, so an interactive caller can never
+    accidentally register an interactive agent with
+    :class:`BaseExecutionStrategy`.  For interactive agents, the helper
+    also auto-applies the ``--resume {}`` session template unless
+    ``no_default_session_flag=True`` is passed.
+
+    Args:
+        name: Agent name.
+        transport: Transport enum value.
+        parser: Parser class to register.
+        strategy: Optional strategy factory.  When ``None``, the helper
+            picks the transport-derived default.
+        agent_registry: Registry that owns the agent-name-keyed configuration.
+        interactive: Whether the agent is interactive (PTY).
+        cmd: Executable command; defaults to ``name``.
+        session_flag: Optional session continuation flag template.  When
+            ``None`` and the agent is interactive, ``--resume {}`` is
+            auto-applied unless ``no_default_session_flag=True``.
+        no_default_session_flag: Suppress the default ``--resume {}``
+            template.  Used by agy.
+        json_parser: Parser type token.
+
+    Returns:
+        The registered :class:`AgentConfig`.
+    """
+    resolved_strategy = (
+        strategy if strategy is not None else _default_strategy_for_transport(transport)
+    )
+
+    return register_agent_support(
+        name,
+        transport=transport,
+        parser_factory=cast("_ParserFactory", parser),
+        strategy_factory=resolved_strategy,
+        agent_registry=agent_registry,
+        json_parser=json_parser,
+        interactive=interactive,
+        cmd=cmd,
+        session_flag=session_flag,
+        no_default_session_flag=no_default_session_flag,
+    )
 
 
 def get_registered_agent_support(

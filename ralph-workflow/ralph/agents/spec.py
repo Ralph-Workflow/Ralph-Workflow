@@ -29,6 +29,11 @@ class AgentSpec:
         completion_required: Whether the agent requires explicit completion
             signals before a clean exit is terminal.
         subagent_capable: Whether the agent exposes usable sub-agent tooling.
+        no_default_session_flag: When True, the registration layer must
+            not auto-apply the default ``--resume {}`` template to
+            interactive agents.  Replaces the historical hidden
+            ``name != "agy"`` special case in
+            :meth:`AgentSupport.from_registration_kwargs`.
     """
 
     name: str
@@ -38,12 +43,18 @@ class AgentSpec:
     session_resume_template: str | None = None
     completion_required: bool = False
     subagent_capable: bool = False
+    no_default_session_flag: bool = False
 
     def __post_init__(self) -> None:
         if self.requires_pty and not self.interactive:
             raise ValueError("requires_pty=True requires interactive=True")
         if self.session_resume_template is not None and not self.completion_required:
             raise ValueError("session_resume_template requires completion_required=True")
+        if self.no_default_session_flag and self.session_resume_template is not None:
+            raise ValueError(
+                "no_default_session_flag=True is inconsistent with an explicit "
+                "session_resume_template; pick one or the other"
+            )
 
     @classmethod
     def from_agent_config(
@@ -52,6 +63,7 @@ class AgentSpec:
         *,
         interactive: bool = False,
         completion_required: bool = False,
+        no_default_session_flag: bool = False,
     ) -> AgentSpec:
         """Build an AgentSpec from an AgentConfig plus keyword overrides."""
         return cls(
@@ -62,4 +74,5 @@ class AgentSpec:
             session_resume_template=config.session_flag,
             completion_required=completion_required,
             subagent_capable=config.subagent_capability or False,
+            no_default_session_flag=no_default_session_flag,
         )

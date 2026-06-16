@@ -4,7 +4,124 @@ See also: [Agent Subsystem README](README.md) for the discoverable entry point.
 
 This guide covers the workflows for managing agent support in Ralph. It describes how to register new agents, update existing ones, and remove agent definitions.
 
-The single canonical entry point for agent registration is `register_agent_support` (defined in `ralph/agents/registration.py`). Advanced scenarios may use `register_agent_support_to_catalog` (test-friendly) or `AgentCatalog.add` directly, but these are not the standard recipe.
+The single canonical entry point for agent registration is `register_agent_support` (defined in `ralph/agents/registration.py`). For the 90% case, prefer the **opinionated 5-line recipe** `register_my_agent` (also in `ralph/agents/registration.py`); it picks a transport-derived default strategy so an interactive caller can never accidentally register an interactive agent with `BaseExecutionStrategy`. Advanced scenarios may use `register_agent_support_to_catalog` (test-friendly) or `AgentCatalog.add` directly.
+
+---
+
+## Strategy selection by transport
+
+The opinionated `register_my_agent` helper picks the right execution strategy
+for you based on the transport, so the typical 5-line recipe is just:
+
+<!-- BLACKBOX_RECIPE_START -->
+```python
+from ralph.agents import register_my_agent
+from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
+from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
+
+my_registry = AgentRegistry()
+register_my_agent(
+    name="my-agent",
+    transport=AgentTransport.GENERIC,
+    parser=GenericParser,
+    strategy=GenericExecutionStrategy,
+    agent_registry=my_registry,
+)
+```
+<!-- BLACKBOX_RECIPE_END -->
+
+When `strategy` is omitted, the helper picks from this table so an interactive
+caller can never accidentally register an interactive agent with
+`BaseExecutionStrategy`:
+
+| `AgentTransport`         | Default strategy class                          |
+| ------------------------ | ----------------------------------------------- |
+| `CLAUDE_INTERACTIVE`     | `ClaudeInteractiveExecutionStrategy`            |
+| `AGY`                    | `_make_agy_strategy` (agy PTY strategy)         |
+| `OPENCODE`               | `OpenCodeExecutionStrategy`                     |
+| `CLAUDE`                 | `ClaudeExecutionStrategy`                       |
+| `CODEX`                  | `GenericExecutionStrategy`                      |
+| `NANOCODER`              | `GenericExecutionStrategy`                      |
+| `GENERIC`                | `GenericExecutionStrategy`                      |
+
+For interactive agents (`interactive=True`) the helper also auto-applies
+the `--resume {}` session template unless `no_default_session_flag=True` is
+passed (agy does this). Pass an explicit `strategy=` to override the
+transport-derived default; pass an explicit `session_flag=` to override the
+auto-applied `--resume {}` template.
+
+## Migrating from `register_agent_support` to `register_my_agent`
+
+The long-form `register_agent_support` is unchanged and still supported for
+all 14 kwargs.  For the 90% case, `register_my_agent` collapses the recipe to
+3 common shapes:
+
+### Headless agent (was 14 kwargs)
+
+```python
+from ralph.agents import register_my_agent
+from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
+from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
+
+my_registry = AgentRegistry()
+register_my_agent(
+    name="my-headless-agent",
+    transport=AgentTransport.GENERIC,
+    parser=GenericParser,
+    strategy=GenericExecutionStrategy,
+    agent_registry=my_registry,
+    cmd="my-agent-binary",
+)
+```
+
+### Interactive agent (was 14 kwargs + risk of BaseExecutionStrategy)
+
+```python
+from ralph.agents import register_my_agent
+from ralph.agents.parsers.claude import ClaudeParser
+from ralph.agents.execution_state.claude_interactive_execution_strategy import ClaudeInteractiveExecutionStrategy
+from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
+
+my_registry = AgentRegistry()
+register_my_agent(
+    name="my-interactive-agent",
+    transport=AgentTransport.CLAUDE_INTERACTIVE,
+    parser=ClaudeParser,
+    strategy=ClaudeInteractiveExecutionStrategy,
+    agent_registry=my_registry,
+    interactive=True,
+    cmd="my-agent-binary",
+)
+```
+
+### Interactive agent that opts out of the default `--resume {}` template (was the hidden `name != "agy"` special case)
+
+```python
+from ralph.agents import register_my_agent
+from ralph.agents.parsers.generic import GenericParser
+from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
+from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import AgentTransport
+
+my_registry = AgentRegistry()
+register_my_agent(
+    name="my-no-resume-agent",
+    transport=AgentTransport.CLAUDE_INTERACTIVE,
+    parser=GenericParser,
+    strategy=GenericExecutionStrategy,
+    agent_registry=my_registry,
+    interactive=True,
+    no_default_session_flag=True,
+)
+```
+
+The `cmd` kwarg defaults to `name`; only pass it when the executable
+binary name differs from the agent name.
 
 ---
 

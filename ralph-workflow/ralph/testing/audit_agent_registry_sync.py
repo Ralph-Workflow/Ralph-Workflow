@@ -39,9 +39,19 @@ def _parse_support_entry(elt: ast.expr) -> tuple[str | None, str | None, bool]:
     is_correct_call = (
         isinstance(elt, ast.Call)
         and isinstance(elt.func, ast.Attribute)
-        and elt.func.attr == "from_registration_kwargs"
-        and isinstance(elt.func.value, ast.Name)
-        and elt.func.value.id == "AgentSupport"
+        and (
+            (
+                elt.func.attr == "from_registration_kwargs"
+                and isinstance(elt.func.value, ast.Name)
+                and elt.func.value.id == "AgentSupport"
+            )
+            or (
+                elt.func.attr == "to_support"
+                and isinstance(elt.func.value, ast.Call)
+                and isinstance(elt.func.value.func, ast.Name)
+                and elt.func.value.func.id == "BuiltinAgentSpec"
+            )
+        )
     )
     if not is_correct_call:
         return None, None, False
@@ -111,7 +121,8 @@ def audit_builtin_file(content: str, rel_path: str) -> list[RegistrySyncViolatio
                     rel_path,
                     elt.lineno,
                     "invalid_support_entry",
-                    "Entry must be constructed using AgentSupport.from_registration_kwargs",
+                    "Entry must be constructed using AgentSupport.from_registration_kwargs "
+                    "or BuiltinAgentSpec(...).to_support(name)",
                 )
             )
             continue

@@ -68,6 +68,7 @@ class TestRegisterAgentSupportShim:
             "session_flag",
             "display_name",
             "subagent_capability",
+            "no_default_session_flag",
         }
         assert param_names == expected, (
             f"register_agent_support signature changed. "

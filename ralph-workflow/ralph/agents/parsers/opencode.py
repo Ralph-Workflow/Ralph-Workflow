@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, ClassVar, cast
 
-from ._event_classification import is_lifecycle_event
-from ._template import ParserTemplateBase
+from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message, stringify_text_blocks
 from .text_accumulator import TextAccumulator
@@ -15,58 +13,36 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-class OpenCodeParser(ParserTemplateBase):
-    """Parser for OpenCode's NDJSON streaming output with robust delta accumulation.
+class _OpenCodeDispatch:
+    """Per-event-type dispatch for OpenCodeParser.
 
-    Text deltas are accumulated into coherent blocks before emission, flushing on:
-    - ``step_finish`` / ``done`` (end of step/message)
-    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
-    - Iterator exhaustion (final flush via ``flush_accumulators()``)
+    Encapsulates the historical event-routing logic that used to live in
+    ``_parse_object``.  The subclass ``_dispatch_json_object`` delegates
+    here for all non-lifecycle, non-error events.  Holds a reference to
+    the owning parser so accumulator state stays in one place.
     """
 
-    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
+    def __init__(self, owner: OpenCodeParser) -> None:
+        self._owner = owner
 
-    def __init__(self) -> None:
-        self._accumulators: dict[str, TextAccumulator] = {}
-        self._current_part_id: str | None = None
-        self._stream_counter = 0
-
-    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
-        stripped = line.strip()
-        if not stripped:
-            return
-
-        result = self.parse_json_line(stripped)
-        if result is not None:
-            yield result
-            return
-
-        obj = cast("dict[str, object]", json.loads(stripped, strict=False))
-        yield from self._parse_object(obj, stripped)
-
-    def flush_accumulators(self) -> Iterator[AgentOutputLine]:
-        for key in list(self._accumulators.keys()):
-            yield from self._flush_accumulator(key)
-
-    def _parse_object(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
+    def dispatch(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         event_type = str(obj.get("type", "unknown"))
-
-        if is_lifecycle_event(event_type):
-            return
 
         if event_type == "step_start":
             step_id = str(obj.get("id", ""))
             if step_id:
-                self._current_part_id = step_id
+                self._owner._current_part_id = step_id
             return
         if event_type == "step_finish":
-            if self._current_part_id and self._current_part_id in self._accumulators:
-                yield from self._flush_accumulator(self._current_part_id)
-            self._current_part_id = None
+            current = self._owner._current_part_id
+            accumulators = self._owner._accumulators
+            if current and current in accumulators:
+                yield from self._flush_accumulator(current)
+            self._owner._current_part_id = None
             return
         if event_type == "done":
-            yield from self.flush_accumulators()
-            self._current_part_id = None
+            yield from self._owner.flush_accumulators()
+            self._owner._current_part_id = None
             yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
             return
 
@@ -90,6 +66,13 @@ class OpenCodeParser(ParserTemplateBase):
 
         yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
+    def _flush_accumulator(self, key: str) -> Iterator[AgentOutputLine]:
+        accumulators = self._owner._accumulators
+        if key not in accumulators:
+            return
+        acc = accumulators.pop(key)
+        yield from acc.flush(kind="text")
+
     def _parse_stream(
         self,
         obj: dict[str, object],
@@ -100,15 +83,16 @@ class OpenCodeParser(ParserTemplateBase):
         if not isinstance(content, str) or not content:
             return
 
-        part_id = self._current_part_id
+        part_id = self._owner._current_part_id
         if part_id is None:
             yield AgentOutputLine(type="text", content=content, raw=raw)
             return
 
         key = part_id
-        if key not in self._accumulators:
-            self._accumulators[key] = TextAccumulator()
-        yield from self._accumulators[key].accumulate(
+        accumulators = self._owner._accumulators
+        if key not in accumulators:
+            accumulators[key] = TextAccumulator()
+        yield from accumulators[key].accumulate(
             content, raw, kind="text", keep_current_when_empty=True
         )
 
@@ -212,8 +196,41 @@ class OpenCodeParser(ParserTemplateBase):
 
         return metadata
 
-    def _flush_accumulator(self, key: str) -> Iterator[AgentOutputLine]:
-        if key not in self._accumulators:
-            return
-        acc = self._accumulators.pop(key)
-        yield from acc.flush(kind="text")
+
+class OpenCodeParser(NdjsonParserBase):
+    """Parser for OpenCode's NDJSON streaming output with robust delta accumulation.
+
+    Text deltas are accumulated into coherent blocks before emission, flushing on:
+    - ``step_finish`` / ``done`` (end of step/message)
+    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
+    - Iterator exhaustion (final flush via ``flush_accumulators()``)
+
+    Inherits from :class:`NdjsonParserBase` which owns the
+    ``data:`` strip, ``[DONE]`` short-circuit, JSON parse dispatch,
+    lifecycle suppression, and error extraction.  The subclass
+    ``_dispatch_json_object`` delegates to ``_OpenCodeDispatch`` for the
+    per-event-type routing.
+    """
+
+    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._accumulators: dict[str, TextAccumulator] = {}
+        self._current_part_id: str | None = None
+        self._stream_counter = 0
+        self._dispatcher = _OpenCodeDispatch(self)
+
+    def _dispatch_json_object(
+        self,
+        obj: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        yield from self._dispatcher.dispatch(obj, raw)
+
+    def flush_accumulators(self) -> Iterator[AgentOutputLine]:
+        for key in list(self._accumulators.keys()):
+            if key not in self._accumulators:
+                continue
+            acc = self._accumulators.pop(key)
+            yield from acc.flush(kind="text")
