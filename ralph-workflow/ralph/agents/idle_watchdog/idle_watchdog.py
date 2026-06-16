@@ -1353,11 +1353,24 @@ class IdleWatchdog:
         self.poll_subagent_output(now=now)
 
         fire_reason: WatchdogFireReason | None = None
+        # The session ceiling is the highest-priority fire reason
+        # (operator-set hard cap, absolute). It MUST be checked
+        # first so a session-ceiling fire always wins over a
+        # concurrent repeated-error-loop fire. Both checks below
+        # are independent: REPEATED_ERROR_LOOP is a wedged
+        # retry-loop signal that is gated by the smart-verdict
+        # gate, while SESSION_CEILING_EXCEEDED bypasses the gate
+        # (see ``_gate_fire``). Prior versions used an ``elif``
+        # here, which made the repeated-error breaker unreachable
+        # whenever ``max_session_seconds`` was configured (the
+        # default production configuration sets the session
+        # ceiling via ``GeneralConfig.agent_max_session_seconds``,
+        # so the breaker was silently disabled in normal runs).
         if self._config.max_session_seconds is not None:
             session_elapsed = now - self._session_started_at
             if session_elapsed >= self._config.max_session_seconds:
                 fire_reason = WatchdogFireReason.SESSION_CEILING_EXCEEDED
-        elif self._repetition_tracker.tripped():
+        if fire_reason is None and self._repetition_tracker.tripped():
             fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
         if fire_reason is not None:
             idle_elapsed = now - self._last_activity

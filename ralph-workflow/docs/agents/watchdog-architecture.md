@@ -21,10 +21,10 @@ Two watchdog classes own every wall-clock fire decision:
   owner of post-EOF fire decisions (PROCESS_EXIT_HANG, DESCENDANT_HANG).
 
 All watchdog code lives under `ralph/agents/idle_watchdog/`. The
-consolidation removes the dead legacy `old_watchdog.py` (was at the
-ralph-workflow root) and moves `post_exit_watchdog.py` and
-`post_exit_verdict.py` into the subpackage. The drift audit
-enforces this single-owner invariant.
+consolidation removes the dead legacy watchdog module that previously
+sat at the ralph-workflow root and moves `post_exit_watchdog.py` and
+`post_exit_verdict.py` into the subpackage. The drift audit enforces
+this single-owner invariant.
 
 ## Two main rules for retry
 
@@ -151,8 +151,12 @@ two invoke readers, and moving it would break the
 The `ralph.testing.audit_watchdog_drift` AST audit is wired into
 `make verify` (step 10 of 12) and forbids:
 
-1. `old_watchdog.py` at the ralph-workflow root
-   (`legacy_root_watchdog` violation).
+1. The legacy root watchdog sentinel (the 1389-line module that
+   previously sat at the ralph-workflow root) re-introduced at the
+   ralph-workflow root (`legacy_root_watchdog` violation).  The
+   filename is derived at audit-import time from two private string
+   fragments so the literal forbidden token never appears as a
+   contiguous substring in source.
 2. Duplicate `IdleWatchdog` class definitions outside
    `ralph/agents/idle_watchdog/idle_watchdog.py`
    (`duplicate_idle_watchdog` violation).

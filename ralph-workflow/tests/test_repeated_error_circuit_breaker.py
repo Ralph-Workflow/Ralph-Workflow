@@ -179,3 +179,63 @@ def test_disabled_thresholds_never_fire_repeated_error_loop() -> None:
         verdict = _evaluate(watchdog)
         assert verdict == WatchdogVerdict.CONTINUE
         assert watchdog.last_fire_reason is None
+
+
+def test_repeated_error_loop_fires_when_max_session_seconds_is_configured() -> None:
+    """Regression: a prior implementation used an ``elif`` that skipped
+    REPEATED_ERROR_LOOP whenever ``max_session_seconds`` was non-``None``.
+    In production ``GeneralConfig.agent_max_session_seconds`` defaults to
+    a non-None value (3300.0s), which silently disabled the repeated-error
+    circuit breaker. The breaker must fire regardless of whether the
+    session ceiling is configured: REPEATED_ERROR_LOOP is a wedged
+    retry-loop signal that is independent of the operator-set hard cap
+    on session wall-clock, and the two checks must coexist.
+    """
+    clock = FakeClock()
+    # Mirror the production default: a non-None max_session_seconds at the
+    # 3300.0s ceiling. The session ceiling is far in the future so it
+    # cannot fire before the repeated-error rule does.
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            drain_window_seconds=0.0,
+            max_session_seconds=3300.0,
+            repeated_error_consecutive_threshold=5,
+            repeated_error_window_count=8,
+            repeated_error_window_seconds=600.0,
+        ),
+        clock,
+    )
+    for _ in range(4):
+        watchdog.record_error_activity(_TIMEOUT_ERROR)
+        clock.advance(34.0)
+        assert _evaluate(watchdog) == WatchdogVerdict.CONTINUE
+    watchdog.record_error_activity(_TIMEOUT_ERROR)
+    assert _evaluate(watchdog) == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.REPEATED_ERROR_LOOP
+
+
+def test_session_ceiling_still_wins_over_repeated_error_loop() -> None:
+    """Regression: when BOTH the session ceiling AND the repeated-error
+    rule would fire on the same evaluate() call, the session ceiling MUST
+    take priority (it is the absolute, gate-bypassing reason). The
+    repeated-error rule is gated by the smart-verdict gate; the session
+    ceiling is not. Decoupling the two checks must not flip this priority.
+    """
+    clock = FakeClock()
+    watchdog = IdleWatchdog(
+        TimeoutPolicy(
+            idle_timeout_seconds=10.0,
+            drain_window_seconds=0.0,
+            max_session_seconds=20.0,
+            repeated_error_consecutive_threshold=5,
+            repeated_error_window_count=8,
+            repeated_error_window_seconds=600.0,
+        ),
+        clock,
+    )
+    for _ in range(5):
+        watchdog.record_error_activity(_TIMEOUT_ERROR)
+    clock.advance(25.0)  # exceeds max_session_seconds=20.0
+    assert _evaluate(watchdog) == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED

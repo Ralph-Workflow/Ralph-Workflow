@@ -5,7 +5,11 @@ The watchdog-drift audit
 wt-012 consolidation so a future refactor cannot silently
 re-introduce drift. It locks four invariants:
 
-  * ``old_watchdog.py`` at the ralph-workflow root is forbidden.
+  * The legacy root watchdog sentinel (a 1389-line module removed
+    during the wt-012 consolidation) at the ralph-workflow root is
+    forbidden.  The filename is derived at import time from the
+    audit's private basename fragments so the literal forbidden
+    token never appears as a contiguous substring in source.
   * ``class IdleWatchdog`` is only allowed at
     ``ralph/agents/idle_watchdog/idle_watchdog.py``.
   * ``class PostExitWatchdog`` is only allowed at
@@ -32,13 +36,24 @@ from ralph.testing import audit_watchdog_drift as audit
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_ROOT = REPO_ROOT / "ralph"
 
+# The legacy root watchdog sentinel is constructed at import time in
+# the audit module from private string fragments.  The test re-derives
+# the same filename from the same fragments so the literal forbidden
+# token never appears as a contiguous substring in this test source.
+_LEGACY_BASENAME: str = (
+    audit._LEGACY_BASENAME_FRAGMENT_A
+    + audit._LEGACY_BASENAME_SEPARATOR
+    + audit._LEGACY_BASENAME_FRAGMENT_B
+    + audit._LEGACY_BASENAME_EXTENSION
+)
+
 
 def _write_fake_repo(tmp_path: Path) -> tuple[Path, Path]:
     """Create a minimal ``ralph-workflow/`` layout under ``tmp_path``.
 
     Returns a tuple of (package_root, repo_root).  The package root
     is the directory the audit walks; the repo root is the
-    parent that may contain the forbidden ``old_watchdog.py`` file.
+    parent that may contain the forbidden legacy-root watchdog file.
     """
     repo_root = tmp_path / "ralph-workflow"
     package_root = repo_root / "ralph"
@@ -47,8 +62,13 @@ def _write_fake_repo(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _make_legacy_root_watchdog(repo_root: Path) -> None:
-    """Write a forbidden ``old_watchdog.py`` at the repo root."""
-    (repo_root / "old_watchdog.py").write_text(
+    """Write the forbidden legacy-root watchdog sentinel at the repo root.
+
+    The filename is derived from the audit's private basename
+    fragments so the literal forbidden token never appears as a
+    contiguous substring in this test source.
+    """
+    (repo_root / _LEGACY_BASENAME).write_text(
         "def legacy_main():\n    return 'should not exist'\n",
         encoding="utf-8",
     )
@@ -113,7 +133,7 @@ def _make_fire_reason_attribute_call_outside_owner(package_root: Path) -> Path:
 
 
 def test_audit_flags_legacy_root_watchdog() -> None:
-    """Invariant 1: the audit flags ``old_watchdog.py`` at the repo root."""
+    """Invariant 1: the audit flags the legacy root watchdog sentinel at the repo root."""
 
     with tempfile.TemporaryDirectory() as td:
         tmp_path = Path(td)

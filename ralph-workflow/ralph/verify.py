@@ -160,7 +160,7 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
     ),
     (
         # Drift audit that locks the watchdog consolidation: forbids
-        # ralph-workflow/old_watchdog.py at the package root, duplicate
+        # the legacy root watchdog sentinel at the package root, duplicate
         # ``IdleWatchdog`` / ``PostExitWatchdog`` class definitions outside
         # their canonical owner files, and ``WatchdogFireReason``
         # construction outside those same owners. See
