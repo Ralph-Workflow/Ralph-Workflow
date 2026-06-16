@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
+import ralph.agents
+from ralph.agents import AgentCatalog, AgentRegistry, default_catalog, register_agent_support
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     strategy_for_command,
@@ -30,8 +31,7 @@ from ralph.agents.parsers import (
     get_parser,
     resolve_parser_key,
 )
-from ralph.agents.registration import get_registered_agent_support, register_agent_support
-from ralph.agents.registry import AgentRegistry
+from ralph.agents.registration import get_registered_agent_support
 from ralph.agents.support import AgentSupport
 from ralph.cli.commands.commit import collect_commit_agent_output
 from ralph.config.agent_config import AgentConfig
@@ -742,23 +742,37 @@ def test_register_agent_support_headless_and_interactive_lockstep() -> None:
 
     This test exercises the public registration surface only:
     ``ralph.agents`` (``AgentCatalog``, ``AgentRegistry``,
-    ``register_agent_support``), ``ralph.agents.execution_state``
-    (``BaseExecutionStrategy``), and ``ralph.config.enums``
-    (``AgentTransport``, ``JsonParserType``). The locally-defined
-    ``FakeAgentParser`` stub implements the public ``AgentParser`` protocol.
+    ``register_agent_support``, ``default_catalog``) bound at module top,
+    ``ralph.agents.execution_state`` (``BaseExecutionStrategy``) re-exported
+    by the public ``__init__``, ``ralph.config.enums`` (``AgentTransport``,
+    ``JsonParserType``), and the locally-defined ``FakeAgentParser`` stub
+    that implements the public ``AgentParser`` protocol.
 
-    The autouse ``_reset_catalog`` fixture in this module owns the legacy
-    module-level dicts for cleanup; that fixture is the established pattern in
-    this file and its private imports are for cleanup only, not test logic.
-    The test's TEST LOGIC does not import from ``ralph.agents.builtin``,
-    ``ralph.agents.parsers._PARSER_REGISTRY``,
+    The three runtime identity assertions at the top of the test body prove
+    that the bound names are the public-surface re-exports, not private
+    sub-module re-imports. If any re-export breaks (e.g., removed from
+    ``ralph.agents.__all__``), the module-level import fails before the test
+    ever runs.
+
+    The autouse ``_reset_catalog`` fixture in this module imports the legacy
+    module-level dicts (``_PARSER_REGISTRY_DATA``,
+    ``_CUSTOM_COMMAND_REGISTRY_DATA``, ``_STRATEGY_DISPATCH_DATA``) for
+    cleanup only — that fixture is the established pattern in this file and
+    is shared with the other tests that need golden-state restoration. The
+    lockstep test's own TEST LOGIC does not import from
+    ``ralph.agents.builtin``, ``ralph.agents.parsers._PARSER_REGISTRY``,
     ``ralph.agents.execution_state._factory``,
     ``ralph.agents.parsers._template``, or
-    ``ralph.agents.execution_state._base`` — those are private modules whose
-    leading-underscore names mark them as out of the public API.
+    ``ralph.agents.execution_state._base`` — those are private modules
+    whose leading-underscore names mark them as out of the public API.
 
     See AGENTS.md: "All code must be testable in a black box way."
     """
+    assert AgentCatalog is ralph.agents.AgentCatalog
+    assert AgentRegistry is ralph.agents.AgentRegistry
+    assert register_agent_support is ralph.agents.register_agent_support
+    assert default_catalog is ralph.agents.default_catalog
+
     headless_name = "lockstep-headless"
     interactive_name = "lockstep-interactive"
 
