@@ -17,7 +17,7 @@ The table below maps the primary public agent subsystem symbols to their declari
 | `register_agent_support` | `ralph.agents.registration` | Register custom agent configurations and factories. |
 | `AgentSupport` | `ralph.agents.support` | Define structural settings and factories for a specific agent. |
 | `AgentCatalog` | `ralph.agents.catalog` | Injectable catalog containing supported agent registrations. |
-| `default_catalog` | `ralph.agents.catalog` | Global catalog instance seeded with default built-in supports. |
+| `default_catalog` | `ralph.agents.catalog` | Global catalog instance used by `register_agent_support`. Built-in supports are seeded into it by `AgentRegistry.from_config()` and into an injected catalog by `AgentRegistry(catalog=...)` via `_seed_catalog_with_builtins`; it is not auto-seeded at module import. |
 | `AgentRegistry` | `ralph.agents.registry` | Registry mapping agent names to configurations. |
 | `AgentChain` | `ralph.agents.chain` | Chain multiple agents together for sequential workflows. |
 | `invoke_agent` | `ralph.agents.invoke` | Invoke a registered agent and parse its streaming NDJSON output. |

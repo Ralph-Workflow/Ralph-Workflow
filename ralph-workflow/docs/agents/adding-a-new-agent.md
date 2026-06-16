@@ -96,7 +96,7 @@ register_agent_support(
 ```
 
 > [!NOTE]
-> The six built-in agents (`claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`) are populated at module import time and live in both the `AgentRegistry` config and the `default_catalog()`.
+> The six built-in agents (`claude`, `claude-headless`, `codex`, `opencode`, `nanocoder`, `agy`) come from `ralph/agents/builtin.py` via `builtin_supports()`. `AgentRegistry.from_config()` and `AgentRegistry(catalog=...)` both call `_seed_catalog_with_builtins` so the registry and the catalog stay in lockstep. The `default_catalog()` global is seeded only when `AgentRegistry.from_config()` runs; it is not auto-seeded at module import.
 
 ---
 
