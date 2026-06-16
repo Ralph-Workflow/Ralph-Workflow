@@ -4,7 +4,9 @@ This package exposes the set of agent abstractions most callers need:
 registry lookup, chain composition, process invocation, and support registration.
 
 The unified registration flow enables adding, updating, or removing agents.
-For the 90% case, prefer the opinionated 5-line recipe ``register_my_agent``:
+For the 90% case, prefer the opinionated 5-line recipe ``register_my_agent``.
+
+Example::
 
     from ralph.agents import register_my_agent, AgentRegistry
     from ralph.agents.parsers.generic import GenericParser

@@ -211,7 +211,15 @@ class TestPiParserMessageUpdateTextDelta:
         assert text_lines[0].content == "Hello world"
 
     def test_text_end_flushes_accumulator(self) -> None:
-        """``text_end`` carries the full content; flush as a single text line."""
+        """``text_end`` carries the full content; emit exactly one text line.
+
+        Regression test for the analysis feedback: the parser used to
+        flush the buffered text deltas AND re-emit the ``text_end``
+        content, producing two ``type='text'`` lines for the same
+        logical content.  The terminal snapshot (``text_end.content``)
+        is the authoritative final text; the parser must emit it
+        exactly once.
+        """
         parser = PiParser()
         lines = [
             _line(
@@ -239,7 +247,109 @@ class TestPiParserMessageUpdateTextDelta:
         ]
         results = list(parser.parse(_lines(*lines)))
         text_lines = [r for r in results if r.type == "text"]
-        assert any(r.content == "Hello" for r in text_lines)
+        assert len(text_lines) == 1
+        assert text_lines[0].content == "Hello"
+
+    def test_text_delta_then_message_end_emits_exactly_one_text_line(self) -> None:
+        """``text_delta`` + ``message_end(text=X)`` must emit exactly one text line.
+
+        Regression test for the analysis feedback: the parser used to
+        buffer the delta and then re-emit the message.content text
+        block, producing two ``type='text'`` lines.  The
+        ``message_end`` snapshot is the authoritative final text; the
+        parser must emit it exactly once.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 0,
+                        "delta": "A",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "A"}],
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 1
+        assert text_lines[0].content == "A"
+
+    def test_text_delta_text_end_message_end_emits_exactly_one_text_line(self) -> None:
+        """``text_delta + text_end(X) + message_end(text=X)`` -> one text line.
+
+        Regression test: when both ``text_end`` and ``message_end`` carry
+        the same content, the parser must not double-emit.  The
+        ``text_end`` snapshot is authoritative; the ``message_end``
+        snapshot is a redundant terminal snapshot and is suppressed.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 0,
+                        "delta": "Hello",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_end",
+                        "contentIndex": 0,
+                        "content": "Hello",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Hello"}],
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 1
+        assert text_lines[0].content == "Hello"
+
+    def test_message_end_with_only_message_end_text_emits_one_text_line(self) -> None:
+        """``message_end(text=X)`` alone (no streaming deltas) -> one text line."""
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello"}],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 1
+        assert text_lines[0].content == "Hello"
 
 
 class TestPiParserThinkingDelta:
@@ -261,6 +371,134 @@ class TestPiParserThinkingDelta:
         results = list(parser.parse(_lines(line)))
         thinking_lines = [r for r in results if r.type == "thinking"]
         assert any(r.content == "Let me think..." for r in thinking_lines)
+
+    def test_thinking_delta_then_thinking_end_emits_exactly_one_thinking_line(
+        self,
+    ) -> None:
+        """``thinking_delta + thinking_end(X)`` -> exactly one thinking line.
+
+        Regression test for the analysis feedback: the parser used to
+        flush the buffered deltas AND re-emit the ``thinking_end``
+        content, producing two ``type='thinking'`` lines.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "thinking_delta",
+                        "contentIndex": 1,
+                        "delta": "think...",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "thinking_end",
+                        "contentIndex": 1,
+                        "content": "think...",
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        thinking_lines = [r for r in results if r.type == "thinking"]
+        assert len(thinking_lines) == 1
+        assert thinking_lines[0].content == "think..."
+
+    def test_thinking_delta_then_message_end_emits_exactly_one_thinking_line(
+        self,
+    ) -> None:
+        """``thinking_delta + message_end(thinking=X)`` -> exactly one thinking line."""
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "thinking_delta",
+                        "contentIndex": 1,
+                        "delta": "reasoning",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "thinking", "thinking": "reasoning"}
+                        ],
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        thinking_lines = [r for r in results if r.type == "thinking"]
+        assert len(thinking_lines) == 1
+        assert thinking_lines[0].content == "reasoning"
+
+    def test_message_end_suppresses_duplicate_toolcall_block(self) -> None:
+        """``message_end(toolCall)`` must NOT emit a third ``tool_use`` line.
+
+        Regression test for the analysis feedback: the parser used to
+        emit three ``type='tool_use'`` lines for the
+        ``toolcall_end + tool_execution_start + message_end(toolCall)``
+        sequence because ``message_end`` replayed the
+        ``message.content`` toolCall block.  The two events emitted by
+        the wire format (``toolcall_end`` from message_update and
+        ``tool_execution_start``) are sufficient; the redundant
+        ``message_end`` toolCall block is suppressed.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "toolcall_end",
+                        "contentIndex": 0,
+                        "toolCall": {
+                            "id": "c1",
+                            "name": "bash",
+                            "arguments": {},
+                        },
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "tool_execution_start",
+                    "toolCallId": "c1",
+                    "toolName": "bash",
+                }
+            ),
+            _line(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "toolCall", "id": "c1", "name": "bash"}
+                        ],
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        tool_use_lines = [r for r in results if r.type == "tool_use"]
+        assert len(tool_use_lines) == 2
+        assert all(r.content == "bash" for r in tool_use_lines)
+        # No 'unknown' placeholder from the suppressed toolCall block.
+        assert not any(r.content == "unknown" for r in tool_use_lines)
 
     def test_interleaved_text_and_thinking_deltas(self) -> None:
         """text_delta and thinking_delta route to separate accumulators."""

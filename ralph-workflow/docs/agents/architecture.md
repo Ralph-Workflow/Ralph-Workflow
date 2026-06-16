@@ -112,7 +112,7 @@ Every `AgentTransport` enum value has a `CommandBuilder` class in
   maps `AgentTransport` to a `RuntimeResolver` class
 
 Both dicts are populated at module import time and key every `AgentTransport`
-value (CLAUDE, CLAUDE_INTERACTIVE, CODEX, OPENCODE, NANOCODER, GENERIC, AGY).
+value (CLAUDE, CLAUDE_INTERACTIVE, CODEX, OPENCODE, NANOCODER, GENERIC, AGY, PI).
 No transport silently falls through to a default; `DefaultRuntimeResolver` handles
 only the explicit GENERIC entry and raises `UnsupportedMcpTransportError` for
 other transports with an MCP endpoint.

@@ -55,9 +55,6 @@ _TEXT_ACCUMULATOR_KEY = "text"
 _THINKING_ACCUMULATOR_KEY = "thinking"
 
 
-# Top-level event types that pass through with their type as the
-# ``AgentOutputLine.type`` and the full object as ``metadata``.  Used
-# for queue_update / compaction_* / auto_retry_*.
 _PI_PASSTHROUGH_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
     {
         "queue_update",
@@ -69,27 +66,22 @@ _PI_PASSTHROUGH_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
 )
 
 
-# Stop events: flush accumulators and emit a single ``type='stop'`` line.
 _PI_STOP_EVENTS: frozenset[str] = frozenset({"agent_end", "turn_end"})
 
 
-# Silent top-level events: lifecycle-like boundaries that pi treats as
-# metadata-only and that produce no AgentOutputLine.
 _PI_SILENT_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
     {"agent_start", "turn_start"}
 )
 
 
-# ``assistantMessageEvent`` sub-types that produce no output (start
-# boundaries that the parser waits to see a corresponding end for).
-_PI_SILENT_SUB_EVENTS: frozenset[str] = frozenset({"text_start", "thinking_start"})
+_PI_SILENT_SUB_EVENTS: frozenset[str] = frozenset(
+    {"text_start", "thinking_start"}
+)
 
 
 def _make_passthrough(
     event_type: str,
 ) -> Callable[[dict[str, object], str], Iterator[AgentOutputLine]]:
-    """Build a passthrough handler that pins a specific event_type name."""
-
     def _handler(
         obj: dict[str, object], stripped: str
     ) -> Iterator[AgentOutputLine]:
@@ -108,8 +100,6 @@ class _PiDispatch:
 
     def __init__(self, owner: PiParser) -> None:
         self._owner = owner
-        # Bind the per-event handlers to ``self`` so the dispatch tables
-        # below can be invoked as plain callables (obj, stripped) -> Iterator.
         self._top_level_handlers: dict[
             str, Callable[[dict[str, object], str], Iterator[AgentOutputLine]]
         ] = {
@@ -149,6 +139,7 @@ class _PiDispatch:
 
         if event_type in _PI_STOP_EVENTS:
             yield from self._owner.flush_accumulators()
+            self._owner.reset_emission_flags()
             yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
             return
 
@@ -173,6 +164,7 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         yield from self._emit_message_content(obj, stripped)
+        self._owner.reset_emission_flags()
 
     def _handle_message_update(
         self,
@@ -248,7 +240,9 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         error_msg = str(obj.get("error", "extension error"))
-        yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
+        yield AgentOutputLine(
+            type="error", content=error_msg, raw=stripped, metadata=obj
+        )
 
     def _handle_text_delta(
         self,
@@ -257,6 +251,8 @@ class _PiDispatch:
     ) -> Iterator[AgentOutputLine]:
         delta = str(sub.get("delta", ""))
         if not delta:
+            return
+        if self._owner.saw_text_end:
             return
         acc = self._get_text_accumulator()
         yield from acc.accumulate(
@@ -269,11 +265,12 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         content = str(sub.get("content", ""))
-        if not content:
-            yield from self._flush_text_accumulator()
-            return
-        yield from self._flush_text_accumulator()
-        yield AgentOutputLine(type="text", content=content, raw=stripped, metadata=sub)
+        self._owner.saw_text_end = True
+        self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
+        if content:
+            yield AgentOutputLine(
+                type="text", content=content, raw=stripped, metadata=sub
+            )
 
     def _handle_thinking_delta(
         self,
@@ -282,6 +279,8 @@ class _PiDispatch:
     ) -> Iterator[AgentOutputLine]:
         delta = str(sub.get("delta", ""))
         if not delta:
+            return
+        if self._owner.saw_thinking_end:
             return
         acc = self._get_thinking_accumulator()
         yield from acc.accumulate(
@@ -297,7 +296,8 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         content = str(sub.get("content", ""))
-        yield from self._flush_thinking_accumulator()
+        self._owner.saw_thinking_end = True
+        self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
         if content.strip():
             yield AgentOutputLine(
                 type="thinking",
@@ -330,7 +330,9 @@ class _PiDispatch:
         tool_call = sub.get("toolCall")
         tool_name = "unknown"
         if isinstance(tool_call, dict):
-            tool_name = str(cast("dict[str, object]", tool_call).get("name", "unknown"))
+            tool_name = str(
+                cast("dict[str, object]", tool_call).get("name", "unknown")
+            )
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
@@ -344,6 +346,7 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         yield from self._owner.flush_accumulators()
+        self._owner.reset_emission_flags()
         yield AgentOutputLine(type="stop", raw=stripped, metadata=sub)
 
     def _handle_message_error(
@@ -352,7 +355,9 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         reason = str(sub.get("reason", "error"))
-        yield AgentOutputLine(type="error", content=reason, raw=stripped, metadata=sub)
+        yield AgentOutputLine(
+            type="error", content=reason, raw=stripped, metadata=sub
+        )
 
     def _emit_message_content(
         self,
@@ -371,12 +376,18 @@ class _PiDispatch:
                 continue
             block_dict = cast("dict[str, object]", block)
             block_type = str(block_dict.get("type", ""))
-            if block_type == "text":
+            if block_type == "text" and not self._owner.saw_text_end:
+                self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
+                self._owner.saw_text_end = True
                 yield from self._handle_text_block(block_dict, stripped)
-            elif block_type == "thinking":
+            elif block_type == "thinking" and not self._owner.saw_thinking_end:
+                self._owner._accumulators.pop(
+                    _THINKING_ACCUMULATOR_KEY, None
+                )
+                self._owner.saw_thinking_end = True
                 yield from self._handle_thinking_block(block_dict, stripped)
             elif block_type == "toolCall":
-                yield from self._handle_toolcall_block(block_dict, stripped)
+                continue
 
     def _handle_text_block(
         self,
@@ -428,40 +439,43 @@ class _PiDispatch:
             accumulators[_THINKING_ACCUMULATOR_KEY] = TextAccumulator()
         return accumulators[_THINKING_ACCUMULATOR_KEY]
 
-    def _flush_text_accumulator(self) -> Iterator[AgentOutputLine]:
-        acc = self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
-        if acc is None:
-            return
-        yield from acc.flush(kind="text")
-
-    def _flush_thinking_accumulator(self) -> Iterator[AgentOutputLine]:
-        acc = self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
-        if acc is None:
-            return
-        yield from acc.flush(kind="thinking", require_strip=True)
-
 
 class PiParser(NdjsonParserBase):
     """Parser for pi.dev's AgentSessionEvent NDJSON streaming format.
 
-    Text deltas are accumulated into coherent blocks before emission,
-    flushing on:
-      - ``message_update`` with ``assistantMessageEvent.type == 'text_end'``
-        (or ``'done'``)
-      - ``message_end`` (fall back to the buffered blocks)
-      - ``agent_end`` / ``turn_end`` (final flush)
-      - Iterator exhaustion (final flush via ``flush_accumulators()``)
+    Text deltas are accumulated into coherent blocks before emission.
+    The terminal snapshot (``text_end`` content or the ``message_end``
+    message.content text block) is the authoritative final text; the
+    parser tracks whether the terminal snapshot has already been
+    emitted for a given content block to avoid duplicate emissions
+    when streaming deltas, ``text_end``, and the ``message_end``
+    snapshot all reference the same content.
 
-    Thinking deltas are accumulated in a SEPARATE accumulator so the
-    text and reasoning streams do not interleave.
+    Flushing happens on:
 
-    The single consistent isError rule: ``tool_execution_end.isError=true``
-    maps to ``type='error'``; ``isError=false`` (or absent) maps to
-    ``type='tool_result'``.
+    - ``message_update`` with ``assistantMessageEvent.type == 'text_end'``
+    - ``message_end`` (when no ``text_end`` was seen, the snapshot wins)
+    - ``agent_end`` / ``turn_end`` (final flush via stop events)
+    - Iterator exhaustion (final flush via ``flush_accumulators()``)
 
-    Inherits from :class:`NdjsonParserBase` which owns the 6 shared NDJSON
-    behaviors.  The subclass ``_dispatch_json_object`` delegates to
-    :class:`_PiDispatch` for the per-event-type routing.
+    Thinking deltas are accumulated in a SEPARATE accumulator with the
+    same terminal-snapshot rules (``thinking_end`` content or
+    ``message_end`` message.content thinking block).
+
+    The single consistent isError rule:
+    ``tool_execution_end.isError=true`` maps to ``type='error'``;
+    ``isError=false`` (or absent) maps to ``type='tool_result'``.
+
+    The ``message_end`` toolCall blocks are SUPPRESSED because the
+    same logical tool call is already emitted by either
+    ``message_update.assistantMessageEvent.type == 'toolcall_end'``
+    (the assistant's call) or by ``tool_execution_start`` (the start
+    of execution).  Emitting the ``message_end`` toolCall block would
+    duplicate an event the user has already seen.
+
+    Inherits from :class:`NdjsonParserBase` which owns the 6 shared
+    NDJSON behaviors.  The subclass ``_dispatch_json_object`` delegates
+    to :class:`_PiDispatch` for the per-event-type routing.
     """
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
@@ -469,7 +483,19 @@ class PiParser(NdjsonParserBase):
     def __init__(self) -> None:
         super().__init__()
         self._accumulators: dict[str, TextAccumulator] = {}
+        self.saw_text_end: bool = False
+        self.saw_thinking_end: bool = False
         self._dispatcher = _PiDispatch(self)
+
+    def reset_emission_flags(self) -> None:
+        """Clear per-message ``saw_*_end`` flags.
+
+        Called after a stop event (``agent_end`` / ``turn_end`` /
+        ``done``) or after ``message_end`` so the next message can
+        emit its own terminal snapshots.
+        """
+        self.saw_text_end = False
+        self.saw_thinking_end = False
 
     def _dispatch_json_object(
         self,

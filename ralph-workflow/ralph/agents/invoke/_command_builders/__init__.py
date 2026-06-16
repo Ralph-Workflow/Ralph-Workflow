@@ -445,15 +445,18 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
     """CommandBuilder for AgentTransport.PI.
 
     The headless invocation is ``pi --mode json <prompt>`` per
-    https://pi.dev/docs/latest/usage.  ``--approve`` is the documented
+    https://pi.dev/docs/latest/usage.  ``--mode json`` is a two-token
+    flag and is therefore modeled via :attr:`format_flag` (the existing
+    multi-token escape hatch used by :class:`OpencodeCommandBuilder`
+    for ``--format json``).  ``--approve`` is the documented
     non-interactive project-trust override (``-a`` short form).  The
     prompt is a positional argument.
     """
 
     SPEC = CommandBuilderSpec(
         base_argv=("pi",),
-        format_flag=None,
-        output_flag="--mode json",
+        format_flag=("--mode", "json"),
+        output_flag=None,
         yolo_flag="--approve",
         model_flag_template="--model {}",
         positional_prompt=True,
