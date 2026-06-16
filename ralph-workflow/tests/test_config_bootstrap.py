@@ -581,8 +581,7 @@ def test_ensure_local_configs_gitignore_preserves_user_owned_existing_entries(
     agent_dir = tmp_path / ".agent"
     gitignore = tmp_path / ".gitignore"
     gitignore.write_text(
-        "# my custom rule\n"
-        "__pycache__/\n",
+        "# my custom rule\n__pycache__/\n",
         encoding="utf-8",
     )
 
@@ -672,9 +671,7 @@ def test_ensure_local_configs_does_not_overignore_tracked_conventions(
     agent_dir = tmp_git_repo / ".agent"
     ensure_local_configs(agent_dir)
 
-    ignored = _paths_ignored_by_check_ignore(
-        tmp_git_repo, _EXPECTED_TRACKED_NON_IGNORED_PATHS
-    )
+    ignored = _paths_ignored_by_check_ignore(tmp_git_repo, _EXPECTED_TRACKED_NON_IGNORED_PATHS)
     over_ignored = [p for p in _EXPECTED_TRACKED_NON_IGNORED_PATHS if p in ignored]
     assert not over_ignored, (
         f"Tracked files or .gitkeep markers that the new gitignore must NOT ignore: {over_ignored}"

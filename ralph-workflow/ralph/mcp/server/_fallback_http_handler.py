@@ -50,6 +50,7 @@ def _coerce_fallback_server(server: object) -> _FallbackHttpServer:
         )
     return server
 
+
 #: Process-singleton transport-level repetition tracker. The same instance
 #: observes every request dispatched on this server so a doomed retry loop
 #: at the transport layer is broken regardless of which request the storm
@@ -284,9 +285,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
         # too: a doomed retry loop produces 3 identical -32603 errors, and
         # the breaker must trip on the 3rd.
         if response is not None and response.error is not None:
-            sig = signature_for(
-                f"{response.error.get('code')}:{response.error.get('message')}"
-            )
+            sig = signature_for(f"{response.error.get('code')}:{response.error.get('message')}")
             if _transport_repetition_tracker.observe(sig):
                 self._write_json(
                     {
@@ -336,9 +335,7 @@ class _FallbackHttpHandler(BaseHTTPRequestHandler):
             # a corrupt/missing file must degrade to a response without the
             # session header, never destroy the already-encoded response.
             with suppress(Exception):
-                session_id = (
-                    _coerce_fallback_server(self.server).mcp_server._session.session_id
-                )
+                session_id = _coerce_fallback_server(self.server).mcp_server._session.session_id
         self._write_sse(encoded, 200, session_id=session_id)
 
     def _handle_exec_streaming_post(

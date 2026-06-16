@@ -48,5 +48,7 @@
     "session_id": null,
     "reset_tool_registry": false,
     "failure_reason": ""
-  }
+  },
+  "last_unavailability_reason": null,
+  "is_waiting_state": false
 }

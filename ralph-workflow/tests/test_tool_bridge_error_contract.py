@@ -60,9 +60,7 @@ def _bridge_with_handler(raised: Exception) -> ToolBridge:
 
 
 def test_operational_execution_error_becomes_is_error_result() -> None:
-    bridge = _bridge_with_handler(
-        ExecutionError("Failed to execute 'x': output limit exceeded")
-    )
+    bridge = _bridge_with_handler(ExecutionError("Failed to execute 'x': output limit exceeded"))
     result = bridge.dispatch("boom", {})
     assert isinstance(result, ToolResult)
     assert result.is_error is True

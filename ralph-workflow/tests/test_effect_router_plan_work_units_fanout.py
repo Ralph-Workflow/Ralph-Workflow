@@ -47,9 +47,7 @@ def _legacy_fan_out_policy_bundle() -> PolicyBundle:
     legacy_parallelization = dev_phase.parallelization.model_copy(
         update={"dispatch_mode": "ralph_fan_out"}
     )
-    legacy_dev_phase = dev_phase.model_copy(
-        update={"parallelization": legacy_parallelization}
-    )
+    legacy_dev_phase = dev_phase.model_copy(update={"parallelization": legacy_parallelization})
     legacy_phases = dict(bundle.pipeline.phases)
     legacy_phases["development"] = legacy_dev_phase
     return bundle.model_copy(
@@ -123,9 +121,7 @@ def test_development_phase_fans_out_from_plan_artifact_work_units(tmp_path: Path
 def test_single_plan_work_unit_falls_back_to_serial_agent(tmp_path: Path) -> None:
     _write_plan_artifact(
         tmp_path,
-        _plan_content(
-            [{"unit_id": "solo", "description": "S", "allowed_directories": ["src"]}]
-        ),
+        _plan_content([{"unit_id": "solo", "description": "S", "allowed_directories": ["src"]}]),
     )
     state = PipelineState(phase="development")
 
@@ -199,9 +195,7 @@ def test_preseeded_single_unit_state_ignores_plan_artifact(tmp_path: Path) -> No
     )
     state = PipelineState(
         phase="development",
-        work_units=(
-            WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
-        ),
+        work_units=(WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),),
     )
 
     effect = determine_effect_from_policy(

@@ -12,16 +12,19 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import UnifiedConfig
 
 
-@pytest.mark.parametrize("name", [
-    "agy/Gemini 3.5 Flash (Medium)",
-    "agy/Gemini 3.5 Flash (High)",
-    "agy/Gemini 3.5 Flash (Low)",
-    "agy/Gemini 3.1 Pro (Low)",
-    "agy/Gemini 3.1 Pro (High)",
-    "agy/Claude Sonnet 4.6 (Thinking)",
-    "agy/Claude Opus 4.6 (Thinking)",
-    "agy/GPT-OSS 120B (Medium)",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "agy/Gemini 3.5 Flash (Medium)",
+        "agy/Gemini 3.5 Flash (High)",
+        "agy/Gemini 3.5 Flash (Low)",
+        "agy/Gemini 3.1 Pro (Low)",
+        "agy/Gemini 3.1 Pro (High)",
+        "agy/Claude Sonnet 4.6 (Thinking)",
+        "agy/Claude Opus 4.6 (Thinking)",
+        "agy/GPT-OSS 120B (Medium)",
+    ],
+)
 def test_agy_model_alias_sets_model_flag_and_can_commit(name: str) -> None:
     registry = AgentRegistry.from_config(UnifiedConfig())
     config = registry.get(name)

@@ -162,9 +162,7 @@ def render_phase_artifact_handoff(
 
     artifact_type = required_artifact.artifact_type
     if artifact_type.endswith("_analysis_decision"):
-        _emit_via_display(
-            display_ctx, "emit_analysis_decision", workspace_root, effective_drain
-        )
+        _emit_via_display(display_ctx, "emit_analysis_decision", workspace_root, effective_drain)
         return
 
     if event == PipelineEvent.AGENT_SUCCESS:

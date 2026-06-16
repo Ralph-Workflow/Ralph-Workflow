@@ -559,9 +559,9 @@ def test_generate_commit_skips_locally_unsupported_opencode_commit_agents(
     monkeypatch.setattr(
         commit_module,
         "validate_local_model_support",
-        lambda model_id, **kwargs: "provider unsupported"
-        if model_id == "minimax/MiniMax-M2.7-highspeed"
-        else None,
+        lambda model_id, **kwargs: (
+            "provider unsupported" if model_id == "minimax/MiniMax-M2.7-highspeed" else None
+        ),
     )
 
     invoked_model_flags: list[str | None] = []

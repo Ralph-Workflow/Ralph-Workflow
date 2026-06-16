@@ -60,6 +60,7 @@ def _nested_mapping(root: dict[str, object], *keys: str) -> dict[str, object]:
         return {}
     return cast("dict[str, object]", current)
 
+
 # ---------------------------------------------------------------------------
 # Allowlist: known-legitimate type:ignore annotations
 #
@@ -85,17 +86,19 @@ _VALID_REASON_MARKERS: tuple[str, ...] = (
 )
 
 # Files / directories to skip.
-_SKIP_DIRS: frozenset[str] = frozenset({
-    "__pycache__",
-    ".venv",
-    ".mypy_cache",
-    "tmp",
-    ".ruff_cache",
-    ".pytest_cache",
-    "htmlcov",
-    "build",
-    "dist",
-})
+_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        "__pycache__",
+        ".venv",
+        ".mypy_cache",
+        "tmp",
+        ".ruff_cache",
+        ".pytest_cache",
+        "htmlcov",
+        "build",
+        "dist",
+    }
+)
 
 # Regex: blanket type-ignore (no error code in brackets).
 _BLANKET_TYPE_IGNORE_RE = re.compile(r"#\s*type\s*:\s*ignore\s*(?:$|[^\[#])")
@@ -153,10 +156,12 @@ def _is_inside_triple_quoted(lines: list[str], line_index: int) -> bool:
 
 # Files that are explicitly testing type-ignore behavior and must contain
 # type-ignore directives as test fixtures. Exempt from all type-ignore checks.
-_TYPE_IGNORE_EXEMPT_STEMS: frozenset[str] = frozenset({
-    "audit_typecheck_bypass",
-    "test_audit_typecheck_bypass",
-})
+_TYPE_IGNORE_EXEMPT_STEMS: frozenset[str] = frozenset(
+    {
+        "audit_typecheck_bypass",
+        "test_audit_typecheck_bypass",
+    }
+)
 
 
 def _is_test_file(rel_path: str) -> bool:
@@ -203,8 +208,7 @@ def _check_line_for_type_ignore(
                     file_path=rel_path,
                     line=lineno,
                     category="test-type-ignore",
-                    detail=f"'# type: ignore[{code}]' in test file — "
-                    f"tests must be fully typed",
+                    detail=f"'# type: ignore[{code}]' in test file — tests must be fully typed",
                 )
             )
     else:
@@ -259,8 +263,7 @@ def _check_line_for_type_ignore(
                         file_path=rel_path,
                         line=lineno,
                         category="unknown-type-ignore",
-                        detail=f"'# type: ignore[{code}]' — "
-                        f"code {code} is not in the allowlist",
+                        detail=f"'# type: ignore[{code}]' — code {code} is not in the allowlist",
                     )
                 )
 
@@ -277,9 +280,7 @@ def _find_type_ignore_violations(
         lineno = idx + 1
         if "# type:" not in raw_line and "# type :" not in raw_line:
             continue
-        violations.extend(
-            _check_line_for_type_ignore(raw_line, rel_path, lines, lineno)
-        )
+        violations.extend(_check_line_for_type_ignore(raw_line, rel_path, lines, lineno))
     return violations
 
 
@@ -319,8 +320,7 @@ def _check_mypy_ini(config_path: Path) -> list[TypecheckBypassViolation]:  # noq
                             file_path=rel_path,
                             line=0,
                             category="mypy-config",
-                            detail=f"[{section_name}] {pattern} — "
-                            f"weakens type checking",
+                            detail=f"[{section_name}] {pattern} — weakens type checking",
                         )
                     )
 
@@ -423,8 +423,7 @@ def _check_pyproject_mypy(pyproject_path: Path) -> list[TypecheckBypassViolation
                         file_path=rel_path,
                         line=0,
                         category="mypy-config",
-                        detail=f"[tool.mypy] {pattern} — "
-                        f"weakens type checking",
+                        detail=f"[tool.mypy] {pattern} — weakens type checking",
                     )
                 )
 

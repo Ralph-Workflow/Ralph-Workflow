@@ -159,11 +159,7 @@ def resolve_parser_key(
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
         return "claude_interactive"
     command_name = command.split(maxsplit=1)[0].lower() if command else ""
-    if (
-        command_name
-        and command_name in _PARSER_REGISTRY
-        and json_parser == JsonParserType.GENERIC
-    ):
+    if command_name and command_name in _PARSER_REGISTRY and json_parser == JsonParserType.GENERIC:
         return command_name
     return str(json_parser)
 

@@ -49,6 +49,4 @@ def test_emit_welcome_banner_quiet_mode_emits_nothing() -> None:
     pd._is_quiet = True
     pd.emit_welcome_banner(version="1.2.3")
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"

@@ -929,7 +929,7 @@ def test_section_7_heartbeat_adopts_late_marker(
         return _SynchronousLateWatcher()
 
     hooks = ProPipelineHooks(marker_watcher_factory=_watcher_factory)
-    exit_code = cast(
-        "Callable[..., int]", run_loop_module.run
-    )(config, initial_state=state_in, pro_hooks=hooks)
+    exit_code = cast("Callable[..., int]", run_loop_module.run)(
+        config, initial_state=state_in, pro_hooks=hooks
+    )
     assert exit_code == 0

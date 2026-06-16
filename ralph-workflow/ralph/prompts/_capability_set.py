@@ -52,8 +52,7 @@ class CapabilitySet:
 
 def _default_capabilities_for_drain(drain: SessionDrain) -> tuple[RalphCapability, ...]:
     return tuple(
-        RalphCapability(identifier)
-        for identifier in default_prompt_capability_identifiers(drain)
+        RalphCapability(identifier) for identifier in default_prompt_capability_identifiers(drain)
     )
 
 

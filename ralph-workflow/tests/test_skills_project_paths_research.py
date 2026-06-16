@@ -33,9 +33,7 @@ def _live_project_siblings(workspace_root: Path) -> list[ProjectAgentSkillRoot]:
 def test_project_sibling_roots_have_non_empty_source_urls(tmp_path: Path) -> None:
     """Every shipped ProjectAgentSkillRoot must cite a documented HTTPS upstream URL."""
     for entry in _live_project_siblings(tmp_path):
-        assert entry.source_url, (
-            f"{entry.agent}: source_url must be non-empty"
-        )
+        assert entry.source_url, f"{entry.agent}: source_url must be non-empty"
         scheme = urlparse(entry.source_url).scheme
         assert scheme in {"http", "https"}, (
             f"{entry.agent}: source_url {entry.source_url!r} has scheme {scheme!r}, "

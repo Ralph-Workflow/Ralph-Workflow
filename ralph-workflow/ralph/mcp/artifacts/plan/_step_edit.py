@@ -322,8 +322,7 @@ def insert_plan_step_with_echo(
     )
     reindexed_steps = cast("list[dict[str, object]]", updated_sections.get("steps", []))
     number_map = {
-        cast("int", step["number"]): index_
-        for index_, step in enumerate(reindexed_steps, start=1)
+        cast("int", step["number"]): index_ for index_, step in enumerate(reindexed_steps, start=1)
     }
     echo = _build_step_mutation_echo(
         action="insert",
@@ -394,8 +393,7 @@ def replace_plan_step_with_echo(
     )
     reindexed_steps = cast("list[dict[str, object]]", updated_sections.get("steps", []))
     number_map = {
-        cast("int", step["number"]): index_
-        for index_, step in enumerate(reindexed_steps, start=1)
+        cast("int", step["number"]): index_ for index_, step in enumerate(reindexed_steps, start=1)
     }
     echo = _build_step_mutation_echo(
         action="replace",
@@ -517,9 +515,7 @@ def move_plan_step(
     reindexed_steps, number_map, _rewritten_depends_on = _reindex_plan_steps(new_steps)
     updated_sections: PlanArtifactDict = dict(sections)
     updated_sections["steps"] = reindexed_steps
-    updated_sections, _rewritten_ac, _dropped_ac = _remap_ac_step_refs(
-        updated_sections, number_map
-    )
+    updated_sections, _rewritten_ac, _dropped_ac = _remap_ac_step_refs(updated_sections, number_map)
     return updated_sections
 
 
@@ -551,9 +547,7 @@ def move_plan_step_with_echo(
     reindexed_steps, number_map, rewritten_depends_on = _reindex_plan_steps(new_steps)
     updated_sections = dict(sections)
     updated_sections["steps"] = reindexed_steps
-    updated_sections, rewritten_ac, dropped_ac = _remap_ac_step_refs(
-        updated_sections, number_map
-    )
+    updated_sections, rewritten_ac, dropped_ac = _remap_ac_step_refs(updated_sections, number_map)
     echo = _build_step_mutation_echo(
         action="move",
         new_step_number=None,

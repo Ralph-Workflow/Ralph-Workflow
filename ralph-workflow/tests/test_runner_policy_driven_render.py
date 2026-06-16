@@ -222,9 +222,7 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
                 PipelineEvent.AGENT_SUCCESS,
                 tmp_workspace,
                 None,
-                ArtifactHandoffContext(
-                    display_context=ctx, drain="planning", policy_bundle=None
-                ),
+                ArtifactHandoffContext(display_context=ctx, drain="planning", policy_bundle=None),
             )
         mock_plan.assert_not_called()
         mock_analysis.assert_not_called()

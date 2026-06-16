@@ -288,8 +288,7 @@ def test_subprocess_reader_captured_session_id_wins_over_expected(
 
     assert exc_info.value.session_resume_safe is True
     assert exc_info.value.resumable_session_id == "sess-from-stream", (
-        f"Expected captured 'sess-from-stream' to win, got "
-        f"{exc_info.value.resumable_session_id!r}"
+        f"Expected captured 'sess-from-stream' to win, got {exc_info.value.resumable_session_id!r}"
     )
 
 

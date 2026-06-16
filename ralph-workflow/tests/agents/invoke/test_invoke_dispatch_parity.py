@@ -51,6 +51,7 @@ def _make_fake_apply_upstream_env() -> Callable[..., None]:
         for upstream in upstreams:
             if hasattr(upstream, "env"):
                 server_env.update(upstream.env)
+
     return fake_apply_upstream_env
 
 

@@ -94,9 +94,7 @@ def resolve_resume_session_id(
             "expected one of 'fresh', 'resume', 'new_session_with_id'"
         )
     if has_prior_session and not (isinstance(prior_session_id, str) and prior_session_id):
-        raise ValueError(
-            "has_prior_session=True requires a non-empty prior_session_id"
-        )
+        raise ValueError("has_prior_session=True requires a non-empty prior_session_id")
 
     if recovery_action == "fresh" or not has_prior_session:
         return None

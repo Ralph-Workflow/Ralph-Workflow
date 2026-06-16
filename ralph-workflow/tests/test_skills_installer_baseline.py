@@ -138,7 +138,8 @@ def test_install_baseline_skills_preserves_manually_edited_managed_skill(
                 "installed_content_sha256": original_sha,
             },
             indent=2,
-        ) + "\n",
+        )
+        + "\n",
         encoding="utf-8",
     )
     # Simulate manual user edit after ralph installed the skill

@@ -18,9 +18,7 @@ from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.theme import RALPH_THEME
 
 
-def _display(
-    *, is_quiet: bool = False
-) -> tuple[ParallelDisplay, StringIO, list[object]]:
+def _display(*, is_quiet: bool = False) -> tuple[ParallelDisplay, StringIO, list[object]]:
     buf = StringIO()
     captured: list[object] = []
     console = Console(
@@ -60,9 +58,7 @@ def test_emit_info_panel_with_title_and_content() -> None:
     pd.emit_info_panel(title="Next steps", content="  \u2022 Run ralph --init")
     pd.stop()
     panels = _panels_only(captured)
-    assert len(panels) == 1, (
-        f"expected exactly 1 panel, got {len(panels)}: {panels!r}"
-    )
+    assert len(panels) == 1, f"expected exactly 1 panel, got {len(panels)}: {panels!r}"
     panel = panels[0]
     assert panel.title == "Next steps", f"unexpected title: {panel.title!r}"
 
@@ -73,9 +69,7 @@ def test_emit_info_panel_with_empty_content_still_emits() -> None:
     pd.emit_info_panel(title="Next steps", content="")
     pd.stop()
     panels = _panels_only(captured)
-    assert len(panels) == 1, (
-        f"empty content must still emit a panel, got {len(panels)}: {panels!r}"
-    )
+    assert len(panels) == 1, f"empty content must still emit a panel, got {len(panels)}: {panels!r}"
 
 
 def test_emit_info_panel_emits_section_rule_in_non_compact_mode() -> None:
@@ -104,9 +98,5 @@ def test_emit_info_panel_quiet_mode_emits_nothing() -> None:
     pd, buf, captured = _display(is_quiet=True)
     pd.emit_info_panel(title="Next steps", content="  \u2022 Run ralph --init")
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
-    assert captured == [], (
-        f"quiet mode must not call console.print, got: {captured!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"
+    assert captured == [], f"quiet mode must not call console.print, got: {captured!r}"

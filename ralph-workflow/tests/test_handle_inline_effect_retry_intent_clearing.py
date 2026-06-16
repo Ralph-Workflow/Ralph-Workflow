@@ -65,9 +65,7 @@ def test_phase_change_clears_stale_resume_intent(tmp_path: Path) -> None:
 def test_same_phase_reprompt_preserves_resume_intent(tmp_path: Path) -> None:
     """A same-phase re-prompt keeps the resume intent so the resume can fire."""
     pipeline, artifacts = _load_default_policy_bundle()
-    intent = resume_agent_retry_intent(
-        "sid-keep", failure_reason="AgentInactivityTimeoutError"
-    )
+    intent = resume_agent_retry_intent("sid-keep", failure_reason="AgentInactivityTimeoutError")
     state = PipelineState(
         phase="development",
         last_agent_session_id="sid-keep",

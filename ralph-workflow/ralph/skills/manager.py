@@ -188,9 +188,7 @@ class SkillManager:
             "skills": state_to_report.skills.status == healthy,
         }
 
-    def reinstall_baseline_skills(
-        self, workspace_root: Path
-    ) -> tuple[CapabilityState, list[str]]:
+    def reinstall_baseline_skills(self, workspace_root: Path) -> tuple[CapabilityState, list[str]]:
         """Re-run user-global + project-scope baseline skill installation.
 
         Used by ``ralph --force-init-skills`` to force a full re-resolve even
@@ -205,9 +203,7 @@ class SkillManager:
         """
         try:
             user_entry, user_failures = install_baseline_skills()
-            project_entry, project_failures = install_project_baseline_skills(
-                workspace_root
-            )
+            project_entry, project_failures = install_project_baseline_skills(workspace_root)
         except Exception:
             return self._load_state(), ["reinstall-exception"]
 

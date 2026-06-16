@@ -212,12 +212,8 @@ def make_test_pipeline_deps(
         display_context=display_context,
         model_identity=model_identity,
         registry_factory=registry_factory,
-        system_prompt_materializer=(
-            system_prompt_materializer or _system_prompt_materializer
-        ),
-        phase_prompt_materializer=(
-            phase_prompt_materializer or _phase_prompt_materializer
-        ),
+        system_prompt_materializer=(system_prompt_materializer or _system_prompt_materializer),
+        phase_prompt_materializer=(phase_prompt_materializer or _phase_prompt_materializer),
         artifact_requirements_resolver=(
             artifact_requirements_resolver or _artifact_requirements_resolver
         ),
@@ -226,10 +222,8 @@ def make_test_pipeline_deps(
             bridge_factory or _RecordingBridgeFactory(bridge),
         ),
         mcp_supervisor_factory=mcp_supervisor_factory or _mcp_supervisor_factory,
-        heartbeat_policy_from_env_fn=heartbeat_policy_from_env_fn
-        or _heartbeat_policy_from_env,
-        check_mcp_bridge_health_fn=check_mcp_bridge_health_fn
-        or _check_mcp_bridge_health,
+        heartbeat_policy_from_env_fn=heartbeat_policy_from_env_fn or _heartbeat_policy_from_env,
+        check_mcp_bridge_health_fn=check_mcp_bridge_health_fn or _check_mcp_bridge_health,
     )
     if policy_bundle is not None:
         deps = dataclasses.replace(deps, policy_bundle=policy_bundle)

@@ -72,9 +72,7 @@ _HTTP_CLIENTS: frozenset[str] = frozenset({"Client", "AsyncClient", "Session"})
 _HTTP_ROOTS: frozenset[str] = frozenset({"httpx", "requests"})
 
 # subprocess functions that accept a ``timeout=`` and must carry one.
-_SUBPROCESS_TIMEOUT_FUNCS: frozenset[str] = frozenset(
-    {"run", "call", "check_call", "check_output"}
-)
+_SUBPROCESS_TIMEOUT_FUNCS: frozenset[str] = frozenset({"run", "call", "check_call", "check_output"})
 # Blocking process calls that take NO timeout argument at all — always unbounded,
 # so they require an explicit ``# mcp-timeout-ok`` marker to pass.
 _ALWAYS_UNBOUNDED: frozenset[str] = frozenset(
@@ -82,9 +80,7 @@ _ALWAYS_UNBOUNDED: frozenset[str] = frozenset(
 )
 # Methods whose first positional is NOT a timeout, so a bare ``timeout=`` keyword
 # is required (mirrors ``.communicate``).
-_TIMEOUT_KEYWORD_METHODS: frozenset[str] = frozenset(
-    {"communicate", "communicate_and_cleanup"}
-)
+_TIMEOUT_KEYWORD_METHODS: frozenset[str] = frozenset({"communicate", "communicate_and_cleanup"})
 
 
 class McpTimeoutViolation:

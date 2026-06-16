@@ -40,9 +40,7 @@ __all__ = ["RepetitionTracker"]
 _ISO_TIMESTAMP = re.compile(
     r"\d{4}-\d{2}-\d{2}[t ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{2}:?\d{2}|z)?"
 )
-_UUID = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-)
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _LONG_HEX = re.compile(r"\b[0-9a-f]{8,}\b")
 # Epoch-scale / id integers (7+ digits). Short codes like 32001 are preserved.
 _LONG_INT = re.compile(r"\d{7,}")

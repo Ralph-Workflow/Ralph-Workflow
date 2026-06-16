@@ -190,9 +190,7 @@ def test_claude_mcp_config_unsafe_mode_merges_existing_servers(
     )
 
     config = json.loads(
-        claude_mcp_config(
-            "http://127.0.0.1:9999/mcp", workspace_path=workspace, unsafe_mode=True
-        )
+        claude_mcp_config("http://127.0.0.1:9999/mcp", workspace_path=workspace, unsafe_mode=True)
     )
 
     servers = config["mcpServers"]
@@ -225,9 +223,7 @@ def test_claude_mcp_config_unsafe_mode_false_keeps_ralph_only(
     )
 
     config = json.loads(
-        claude_mcp_config(
-            "http://127.0.0.1:9999/mcp", workspace_path=tmp_path, unsafe_mode=False
-        )
+        claude_mcp_config("http://127.0.0.1:9999/mcp", workspace_path=tmp_path, unsafe_mode=False)
     )
 
     assert list(config["mcpServers"].keys()) == ["ralph"]
@@ -258,9 +254,7 @@ def test_claude_mcp_config_unsafe_mode_overwrites_stale_ralph(
     )
 
     config = json.loads(
-        claude_mcp_config(
-            "http://127.0.0.1:9999/mcp", workspace_path=tmp_path, unsafe_mode=True
-        )
+        claude_mcp_config("http://127.0.0.1:9999/mcp", workspace_path=tmp_path, unsafe_mode=True)
     )
 
     servers = config["mcpServers"]

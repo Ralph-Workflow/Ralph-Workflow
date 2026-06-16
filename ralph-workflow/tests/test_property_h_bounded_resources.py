@@ -120,6 +120,7 @@ def test_saturated_dispatch_propagates_callable_exceptions() -> None:
     The transport-repetition breaker observes the exception in the
     handler's outer try/except; the helper must NOT swallow it.
     """
+
     def raise_value_error() -> None:
         raise ValueError("boom")
 

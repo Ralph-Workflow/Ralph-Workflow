@@ -130,11 +130,11 @@ def install_signal_handlers(
         loop.add_signal_handler(signal.SIGINT, _second_sigint)
         future = loop.run_in_executor(None, _shutdown_block)
         future.add_done_callback(
-            lambda f: logger.warning(
-                "interrupt shutdown block failed: {}", f.exception()
+            lambda f: (
+                logger.warning("interrupt shutdown block failed: {}", f.exception())
+                if not f.cancelled() and f.exception() is not None
+                else None
             )
-            if not f.cancelled() and f.exception() is not None
-            else None
         )
 
     def _second_sigint() -> None:

@@ -18,6 +18,8 @@ from ralph.timeout_defaults import (
     LOG_GROWTH_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    NO_OUTPUT_AT_START_SECONDS,
+    NO_PROGRESS_QUIET_SECONDS,
     OS_DESCENDANT_ONLY_CEILING_SECONDS,
     OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
@@ -133,6 +135,14 @@ class TimeoutPolicy:
     max_waiting_on_child_no_progress_seconds: float | None = (
         MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
     )
+    no_progress_quiet_seconds: float | None = NO_PROGRESS_QUIET_SECONDS
+    # When set, the watchdog fires NO_OUTPUT_AT_START if the agent has been alive
+    # for this many seconds with zero recorded activity (no stdout, no tool call,
+    # no file change, no subagent output). Fires BEFORE the 600s cumulative
+    # no-progress ceiling. Set to None to opt out and restore the legacy
+    # CHILDREN_PERSIST_TOO_LONG-only behavior. Must be > 0 when set and strictly
+    # less than max_waiting_on_child_no_progress_seconds when both are set.
+    no_output_at_start_seconds: float | None = NO_OUTPUT_AT_START_SECONDS
     # When set, the watchdog fires STALLED_AFTER_TOOL_RESULT if no
     # follow-up STREAM_DELTA/OUTPUT_LINE activity arrives within this
     # many seconds of a TOOL_RESULT activity. When None, the legacy
@@ -214,6 +224,8 @@ class TimeoutPolicy:
         self._validate_idle_fields()
         self._validate_session_and_poll_fields()
         self._validate_waiting_status_fields()
+        self._validate_no_progress_quiet_seconds()
+        self._validate_no_output_at_start_seconds()
         self._validate_post_tool_result_progression()
         self._validate_repeated_error_fields()
         self._validate_activity_evidence_ttl()
@@ -286,6 +298,34 @@ class TimeoutPolicy:
                     " max_waiting_on_child_seconds"
                 )
                 raise ValueError(msg)
+
+    def _validate_no_progress_quiet_seconds(self) -> None:
+        if self.no_progress_quiet_seconds is None:
+            return
+        if self.no_progress_quiet_seconds <= 0:
+            msg = "no_progress_quiet_seconds must be positive when set"
+            raise ValueError(msg)
+        limit = self.max_waiting_on_child_no_progress_seconds
+        if limit is not None and self.no_progress_quiet_seconds > limit:
+            msg = "no_progress_quiet_seconds must be <= max_waiting_on_child_no_progress_seconds"
+            raise ValueError(msg)
+
+    def _validate_no_output_at_start_seconds(self) -> None:
+        if self.no_output_at_start_seconds is None:
+            return
+        if self.no_output_at_start_seconds <= 0:
+            msg = "no_output_at_start_seconds must be positive when set"
+            raise ValueError(msg)
+        limit = self.max_waiting_on_child_no_progress_seconds
+        if limit is not None and self.no_output_at_start_seconds >= limit:
+            if self.no_output_at_start_seconds == NO_OUTPUT_AT_START_SECONDS:
+                object.__setattr__(self, "no_output_at_start_seconds", None)
+                return
+            msg = (
+                "no_output_at_start_seconds must be strictly less than "
+                "max_waiting_on_child_no_progress_seconds"
+            )
+            raise ValueError(msg)
 
     def _validate_post_tool_result_progression(self) -> None:
         if self.post_tool_result_progression_seconds is None:

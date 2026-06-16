@@ -52,8 +52,7 @@ def test_continuation_template_never_references_phantom_coordinate_command() -> 
     """
     source = _read_continuation_template()
     assert "ralph coordinate" not in source, (
-        "continuation template must not reference the nonexistent "
-        "ralph coordinate command"
+        "continuation template must not reference the nonexistent ralph coordinate command"
     )
     assert "no coordination command" in source
 

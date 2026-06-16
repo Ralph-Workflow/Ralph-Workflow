@@ -47,7 +47,7 @@ def require_trust_boundary(
     prefix = "Bearer "
     if not auth_header.startswith(prefix):
         raise PermissionError("Authorization scheme must be Bearer")
-    presented = auth_header[len(prefix):]
+    presented = auth_header[len(prefix) :]
     # Constant-time compare on bytes; hmac.compare_digest requires equal-length
     # str or bytes; we coerce both to bytes (utf-8) for the comparison.
     expected_bytes = expected.encode("utf-8")

@@ -93,9 +93,7 @@ def test_section_rule_uses_banner_border_style() -> None:
         f"section rule line must carry the theme.banner.border sky-blue ANSI "
         f"({_SKY_BLUE_24BIT_ANSI!r}); got:\n{rule_line!r}"
     )
-    assert "─" in rule_line, (
-        f"section rule line must contain the rule glyph; got:\n{rule_line!r}"
-    )
+    assert "─" in rule_line, f"section rule line must contain the rule glyph; got:\n{rule_line!r}"
 
 
 def test_banner_title_uses_theme_banner_title_style() -> None:
@@ -109,9 +107,7 @@ def test_banner_title_uses_theme_banner_title_style() -> None:
     run_end_line = next(
         (line for line in text.splitlines() if "Ralph Workflow run end" in line), None
     )
-    assert run_start_line is not None, (
-        f"run-start banner title line not found in:\n{text!r}"
-    )
+    assert run_start_line is not None, f"run-start banner title line not found in:\n{text!r}"
     assert run_end_line is not None, f"run-end banner title line not found in:\n{text!r}"
     assert _BOLD_ATTR_ANSI in run_start_line, (
         f"run-start banner title must carry the bold theme.banner.title style "
@@ -144,7 +140,7 @@ def test_blank_line_before_and_after_section_rule() -> None:
             assert plain[rule_idx - 1] == "\n" and plain[rule_idx - 2] == "\n", (
                 f"section rule for {tag!r} must be preceded by a blank line; "
                 f"got chars at idx {rule_idx - 2}:{rule_idx}: "
-                f"{plain[rule_idx - 2:rule_idx]!r}\n"
+                f"{plain[rule_idx - 2 : rule_idx]!r}\n"
                 f"full plain text:\n{plain!r}"
             )
     # The blank line after the run-end block is followed by the

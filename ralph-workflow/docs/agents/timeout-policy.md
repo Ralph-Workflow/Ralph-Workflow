@@ -306,6 +306,175 @@ ceiling. The per-kind weight policy is layered on top of the
 existing activity-aware verdict and does not extend any
 ceiling.
 
+## Per-reason backoff and the forever-wait state
+
+When an agent fails, it is classified with one of the following `UnavailabilityReason` values. Each reason has a specific exponential backoff policy (doubling on consecutive failures up to the cap):
+
+| Unavailability Reason | Base Backoff | Max Backoff | Rationale |
+|-----------------------|-------------:|------------:|-----------|
+| `out_of_credits` | 60s | 30m | High backoff to allow credit reset or operator replenishment |
+| `no_output_at_start` | 5s | 30s | Fast retry for agents that fail immediately with no output at start |
+| `no_output_after_activity` | 10s | 120s | Moderate backoff for agents that freeze midway |
+| `suspicious_timeout_no_output` | 10s | 60s | Backoff for hit waiting ceiling without progress |
+| `stale_child_quiet` | 15s | 300s | Backoff for stuck child process with stale progress |
+
+### The Forever-Wait Contract
+
+If all agents in the recovery chain for a given phase are temporarily unavailable, the pipeline enters a **forever-wait state**. Rather than crashing or exiting, the run loop:
+1. Emits a structured loguru `WAITING` line (at `INFO` level with `binding(recovery=True)`) containing the current phase, the last unavailability reason, details for all agents (cooldown, attempt counts), and the total wait duration.
+2. Emits a structured loguru `DEBUG` line (also `binding(recovery=True)`) immediately before `ctx.sleep(...)` confirming the exact sleep duration and the phase. The DEBUG line carries the same `recovery=True` binding as the WAITING/RESUMED INFO lines so an operator can correlate the three records with a single `grep recovery=True` filter.
+3. Sleeps for the minimum duration required for the earliest agent to become available again.
+4. Emits a structured loguru `RESUMED` line (at `INFO` with `binding(recovery=True)`) when the sleep finishes and retries the phase with the newly available agent.
+
+This ensures the pipeline remains alive indefinitely under transient outages.
+
+The wait state is detected by the run loop via the structured
+`PipelineState.is_waiting_state: bool` flag (set by `RecoveryController`
+when it enters the wait branch), NOT via parsing the `last_error` text.
+The `last_error` text remains as operator-readable context; the
+structured flag is the single source of truth and the only signal the
+run loop keys off. This separation matters because the controller and
+the run loop are decoupled and have historically disagreed about the
+exact text of the `last_error` string (the controller inserts the
+`(last reason: ...)` segment which the run loop's previous text parser
+did not match). The structured flag eliminates the entire class of
+mismatch bugs.
+
+### Default `no_output_at_start_seconds` tuning
+
+The default threshold for `no_output_at_start_seconds` is tuned to **30s** (down from 60s). This threshold is:
+- Long enough to accommodate typical 95th-percentile first-token latency of slower models (e.g. Claude Code or Opencode).
+- Short enough to fall over to the next agent before hitting cumulative session or waiting ceilings.
+
+### LIFECYCLE frames do NOT reset the NO_OUTPUT_AT_START baseline
+
+The watchdog distinguishes between **meaningful output** and **cosmetic
+lifecycle frames** (e.g. the opencode ``process started; waiting for first
+output`` frame). Only meaningful output advances the NO_OUTPUT_AT_START
+baseline; a LIFECYCLE frame resets the idle baseline (``_last_activity``) so
+the agent is not declared idle, but it is deliberately excluded from the
+``_last_meaningful_output_at`` timestamp that gates the NO_OUTPUT_AT_START
+trip.
+
+This fix closes a real-world bug in which an opencode subprocess that
+produced a single LIFECYCLE frame at process startup and then emitted no
+output for 15 minutes would silently defeat the fast-fallover path. With
+the fix, the watchdog fast-fires NO_OUTPUT_AT_START at the 30s default and
+the operator sees the agent in the structured WAITING log within tens of
+seconds instead of waiting for the cumulative 600s no-progress ceiling.
+
+The three semantic baselines are now independent:
+
+| Field | Reset by | Purpose |
+|-------|----------|---------|
+| ``_last_activity`` | ``record_activity()``, ``record_lifecycle_activity()``, ``record_progress_report()`` (fingerprint change) | The idle baseline used by NO_PROGRESS_QUIET and the cumulative ceiling |
+| ``_last_meaningful_output_at`` | ``record_invocation_start()``, ``record_activity()``, ``record_progress_report()`` (fingerprint change) | The NO_OUTPUT_AT_START baseline. LIFECYCLE frames are excluded by design |
+| Per-channel ``_last_at`` (mcp_tool, subagent_output, workspace) | The corresponding ``record_*`` side-channel recorder | The positive-waiting suppression baseline (see below) |
+
+LIFECYCLE frames are a real production signal — they are the only
+evidence we have that the agent subprocess is alive at startup — but they
+are NOT a substitute for real output. The watchdog therefore records them
+in the idle baseline (so the agent is not declared idle) while leaving the
+NO_OUTPUT_AT_START baseline untouched (so a hung agent is still caught).
+
+### Positive-waiting suppression channels
+
+The NO_OUTPUT_AT_START trip is suppressed (returns ``CONTINUE`` instead
+of ``FIRE``) when ANY of three side-channel evidence recorders has been
+called recently — i.e. while the channel timestamp is fresher than
+``activity_evidence_ttl_seconds``. This is the prompt's
+**"we are running some subagents and are just waiting"** branch: a
+productive session that is busy on a non-stdout channel must not be
+misclassified as unavailable.
+
+The three channels are:
+
+| Channel | Recorder | Tier | Evidence source |
+|---------|----------|------|-----------------|
+| `mcp_tool` | ``record_mcp_tool_call()`` | first-party | Ralph MCP server tools/call invocations / completions |
+| `subagent_output` | ``record_subagent_work()`` / ``record_subagent_output()`` | first-party | Subagent heartbeat / phase-change / observable log-stream lines |
+| `workspace` | ``record_workspace_event(kind=...)`` | side-channel | ``WorkspaceMonitor`` file-change events, quality-filtered by ``WorkspaceChangeKind`` weight |
+
+The deferral logic in ``_channel_evidence_active`` consults the full
+tier-aware evidence summary (see the [Tier-labelled per-channel evidence
+summary](#tier-labelled-per-channel-evidence-summary) section above) and
+defers the NO_OUTPUT_AT_START trip while any first-party or
+quality-filtered side-channel is fresh. A bare subagent PID with no
+observable output is reported in the summary under
+``subagent_liveness`` with ``can_defer=False``; it is informational and
+does NOT reset the idle clock.
+
+These three channels are locked behind black-box tests in
+``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``:
+``test_subagent_work_progress_defers_no_output_at_start``,
+``test_workspace_event_progress_defers_no_output_at_start``, and
+``test_mcp_tool_call_progress_defers_no_output_at_start``. The first
+``TestNoOutputAtStartLifecycleBypass`` class in the same file proves
+that a LIFECYCLE frame does NOT defer the trip (the bug-expose test).
+
+### Session-scoped `UnavailabilityStore` Protocol seam
+
+The recovery controller delegates unavailable storage to an
+``AgentUnavailabilityTracker`` instance, which implements a runtime-
+checkable ``UnavailabilityStore`` ``Protocol`` defined in
+``ralph/recovery/agent_unavailability_tracker.py``. The Protocol is the
+single seam for swapping the current in-memory implementation for a
+persistent one (sqlite, redis, file) without changing the controller or
+any of the 25+ existing call sites.
+
+Key contract points:
+
+- **Scope is session by default.** The tracker exposes a ``.scope``
+  property that returns ``"session"`` (the current in-memory default).
+  A future persistent implementor overrides the constructor's ``scope``
+  keyword to ``"persistent"`` and provides the I/O. Callers MUST NOT
+  depend on the dict-shaped ``snapshot()`` output for any cross-session
+  use; the snapshot format is legacy and may change when a persistent
+  store is introduced.
+- **Per-reason backoff is doubled on each consecutive unavailable mark**
+  and capped at the reason's ``max_backoff_ms`` (see the table above).
+  The cap is enforced by the tracker; the controller never bypasses it.
+- **Public surface is additive.** The existing ``mark_unavailable``,
+  ``is_available``, ``earliest_unavailable_wait_ms``, ``reset_backoff``,
+  and ``snapshot`` methods keep their signatures. Test-only seams
+  (``initial_entries`` and ``initial_timeouts`` on
+  ``RecoveryControllerOptions``) are also public.
+
+The Protocol is enforced at typecheck time by ``typing.Protocol`` and at
+runtime by ``@runtime_checkable``; the
+``test_unavailability_store_protocol_is_runtime_checkable`` test in
+``tests/recovery/test_unavailability_tracker.py`` asserts
+``isinstance(tracker, UnavailabilityStore) is True`` (and the test
+passes under ``python -O``).
+
+#### Controller injection and public surface
+
+The `RecoveryController` constructor accepts a Protocol-typed dependency
+via `RecoveryControllerOptions.unavailability_store: UnavailabilityStore |
+None = None`. When the option is not provided, the controller constructs
+a default `AgentUnavailabilityTracker`; when it IS provided, the
+controller uses the caller's implementation as-is (the caller is
+responsible for the store's initial state, so the legacy
+`unavailable_timeouts` and `unavailability_entries` options are
+ignored). The controller exposes the store via a public
+`controller.unavailability_store` property — callers MUST consume it
+through this property, NOT through the private
+`_unavailability_tracker` attribute.
+
+Two public methods wrap the store access so the run loop never reaches
+through to the private store / clock fields:
+
+| Method | Returns | Purpose |
+|--------|---------|---------|
+| `controller.waiting_state_payload(phase, agents)` | `list[tuple[str, int, int]]` of `(agent, attempt, cooldown_ms_remaining)` | The WAITING structured log payload (replaces the previous `ctx.controller._unavailability_tracker` / `tracker._clock` reach-through) |
+| `controller.agents_now_available(phase, agents)` | `list[str]` of agent names | The RESUMED structured log payload (replaces the previous `tracker.is_available(phase, agent)` reach-through) |
+
+A source-level guard test
+(`tests/pipeline/test_run_loop_waiting_state_real_controller.py::test_run_loop_does_not_reach_through_private_tracker_attributes`)
+fails CI if a future contributor reintroduces the
+`ctx.controller._unavailability_tracker` or `tracker._clock` patterns in
+`ralph/pipeline/run_loop.py`.
+
 ## See also
 
 - ``ralph-workflow/ralph/agents/idle_watchdog/idle_watchdog.py`` —

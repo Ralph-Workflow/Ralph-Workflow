@@ -199,8 +199,10 @@ def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
     hits: list[str] = []
     for py_file in ralph_root.rglob("*.py"):
         text = py_file.read_text(encoding="utf-8", errors="ignore")
-        if "cast" in text and "McpSession" in text and re.search(
-            r"cast\s*\(\s*['\"]McpSession['\"]", text
+        if (
+            "cast" in text
+            and "McpSession" in text
+            and re.search(r"cast\s*\(\s*['\"]McpSession['\"]", text)
         ):
             rel = py_file.relative_to(Path(__file__).parent.parent)
             hits.append(f"{rel}")
@@ -210,11 +212,7 @@ def test_no_cast_of_mcp_session_anywhere(tmp_path: Path) -> None:
 def test_runtime_session_returns_typed_mcp_session(tmp_path: Path) -> None:
     """session_from_env's return type must be McpSession | None (not cast)."""
     text = (
-        Path(__file__).parent.parent
-        / "ralph"
-        / "mcp"
-        / "server"
-        / "runtime_session.py"
+        Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "runtime_session.py"
     ).read_text()
     assert "McpSession" in text, "runtime_session.py missing typed return"
     # The McpSession import must be present
@@ -222,9 +220,7 @@ def test_runtime_session_returns_typed_mcp_session(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("name", _all_mcp_session_members())
-def test_each_mcp_session_member_is_reachable_on_file_backed(
-    name: str, tmp_path: Path
-) -> None:
+def test_each_mcp_session_member_is_reachable_on_file_backed(name: str, tmp_path: Path) -> None:
     """Parametrized: each Protocol member is reachable on FileBackedSession."""
     session = _make_file_backed_session(tmp_path)
     assert hasattr(session, name), f"FileBackedSession missing {name!r}"

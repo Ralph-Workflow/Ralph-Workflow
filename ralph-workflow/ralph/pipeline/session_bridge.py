@@ -39,8 +39,7 @@ class BuildSessionMcpPlanFn(Protocol):
         agents_policy: AgentsPolicy | None,
         model_opts: SessionModelOpts | None,
         model_flag: str | None,
-    ) -> SessionMcpPlan:
-        ...
+    ) -> SessionMcpPlan: ...
 
 
 class StartMcpServerFn(Protocol):
@@ -51,15 +50,13 @@ class StartMcpServerFn(Protocol):
         session: AgentSession,
         workspace: Workspace,
         extras: McpServerExtras | None = None,
-    ) -> SessionBridgeLike:
-        ...
+    ) -> SessionBridgeLike: ...
 
 
 class WorkspaceFactoryFn(Protocol):
     """Injectable workspace factory."""
 
-    def __call__(self, root: Path) -> Workspace:
-        ...
+    def __call__(self, root: Path) -> Workspace: ...
 
 
 class BridgeFactory(Protocol):
@@ -83,8 +80,7 @@ class BridgeFactory(Protocol):
         build_session_mcp_plan_fn: BuildSessionMcpPlanFn | None = None,
         start_mcp_server_fn: StartMcpServerFn | None = None,
         workspace_factory: WorkspaceFactoryFn | None = None,
-    ) -> SessionBridgeLike:
-        ...
+    ) -> SessionBridgeLike: ...
 
 
 def _build_session_mcp_plan(
@@ -146,9 +142,7 @@ def build_session_bridge(
     workspace_fn = workspace_factory or _workspace_factory
 
     model_opts = (
-        SessionModelOpts(model_identity=model_identity)
-        if model_identity is not None
-        else None
+        SessionModelOpts(model_identity=model_identity) if model_identity is not None else None
     )
     session_mcp_plan = plan_fn(
         transport,

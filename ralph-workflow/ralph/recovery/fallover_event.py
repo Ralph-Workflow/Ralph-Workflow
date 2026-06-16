@@ -15,13 +15,26 @@ class FalloverEvent:
     from_agent: str
     to_agent: str
     reason: str
+    watchdog_reason: str | None = None
+    unavailability_reason: str | None = None
 
     @classmethod
-    def now(cls, *, phase: str, from_agent: str, to_agent: str, reason: str) -> FalloverEvent:
+    def now(
+        cls,
+        *,
+        phase: str,
+        from_agent: str,
+        to_agent: str,
+        reason: str,
+        watchdog_reason: str | None = None,
+        unavailability_reason: str | None = None,
+    ) -> FalloverEvent:
         return cls(
             timestamp=datetime.now(UTC),
             phase=phase,
             from_agent=from_agent,
             to_agent=to_agent,
             reason=reason,
+            watchdog_reason=watchdog_reason,
+            unavailability_reason=unavailability_reason,
         )

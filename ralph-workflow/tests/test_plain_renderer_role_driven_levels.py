@@ -120,9 +120,7 @@ def test_warn_level_when_interrupted_by_user() -> None:
 def test_phase_close_milestone_glyph_for_review_role_renamed() -> None:
     """emit_phase_close with phase_role='review' produces a milestone glyph prefix."""
     pd, buf = _make_display()
-    pd.emit_phase_close(
-        "audit", "audit: done", options=PhaseCloseOptions(phase_role="review")
-    )
+    pd.emit_phase_close("audit", "audit: done", options=PhaseCloseOptions(phase_role="review"))
     out = buf.getvalue()
     milestone_glyph = UNICODE_GLYPHS["milestone"]
     assert milestone_glyph in out
@@ -132,9 +130,7 @@ def test_phase_close_milestone_glyph_for_review_role_renamed() -> None:
 def test_phase_close_no_milestone_glyph_for_analysis_role() -> None:
     """emit_phase_close with phase_role='analysis' produces no milestone glyph."""
     pd, buf = _make_display()
-    pd.emit_phase_close(
-        "audit", "audit: done", options=PhaseCloseOptions(phase_role="analysis")
-    )
+    pd.emit_phase_close("audit", "audit: done", options=PhaseCloseOptions(phase_role="analysis"))
     out = buf.getvalue()
     milestone_glyph = UNICODE_GLYPHS["milestone"]
     assert milestone_glyph not in out

@@ -281,9 +281,7 @@ def test_smoke_plumbing_runs_on_pipeline_core(
         lambda *args: True,
     )
 
-    output_file = _FakeOutputPath(
-        "/workspace/tmp/interactive-claude-smoke/todo-list.js"
-    )
+    output_file = _FakeOutputPath("/workspace/tmp/interactive-claude-smoke/todo-list.js")
 
     result = smoke_plumbing_module.run_smoke_plumbing(
         config=UnifiedConfig(),
@@ -413,9 +411,7 @@ def test_plumbing_routes_through_execute_agent_effect(
     assert isinstance(commit_calls[0][2], PipelineDeps)
 
     smoke_core = build_minimal_pipeline_core(UnifiedConfig(), display_context)
-    output_file = _FakeOutputPath(
-        "/workspace/tmp/interactive-claude-smoke/todo-list.js"
-    )
+    output_file = _FakeOutputPath("/workspace/tmp/interactive-claude-smoke/todo-list.js")
     smoke_plumbing_module.run_smoke_plumbing(
         config=UnifiedConfig(),
         workspace_root=workspace_root,

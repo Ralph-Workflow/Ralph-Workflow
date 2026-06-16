@@ -30,9 +30,7 @@ def test_default_host_is_loopback_127_0_0_1() -> None:
 
 def test_no_0_0_0_0_literal_in_mcp_server() -> None:
     """A literal '0.0.0.0' must not appear in ralph/mcp/server/ (audit)."""
-    mcp_server_dir = (
-        Path(__file__).parent.parent / "ralph" / "mcp" / "server"
-    )
+    mcp_server_dir = Path(__file__).parent.parent / "ralph" / "mcp" / "server"
     for path in mcp_server_dir.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         # Allow the literal in comments/strings that explain the policy
@@ -94,11 +92,7 @@ def test_require_trust_boundary_wrong_scheme_raises() -> None:
 def test_require_trust_boundary_uses_hmac_compare_digest() -> None:
     """The token comparison uses hmac.compare_digest, not str equality."""
     text = (
-        Path(__file__).parent.parent
-        / "ralph"
-        / "mcp"
-        / "server"
-        / "_trust_boundary.py"
+        Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "_trust_boundary.py"
     ).read_text()
     assert "hmac.compare_digest" in text
     # The == operator is NOT used in the comparison path
@@ -130,9 +124,7 @@ def test_do_post_returns_401_when_token_mismatches(
     workspace = FsWorkspace(tmp_path)
     registry = build_ralph_tool_registry(session, workspace)
     mcp_server = McpServer(session, workspace, registry)
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-    ).encode()
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode()
     status, _headers, _body = drive_request(
         mcp_server,
         payload,
@@ -155,9 +147,7 @@ def test_do_post_returns_200_when_token_matches(
     workspace = FsWorkspace(tmp_path)
     registry = build_ralph_tool_registry(session, workspace)
     mcp_server = McpServer(session, workspace, registry)
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-    ).encode()
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode()
     status, _headers, _body = drive_request(
         mcp_server,
         payload,
@@ -180,9 +170,7 @@ def test_do_post_returns_401_when_token_missing(
     workspace = FsWorkspace(tmp_path)
     registry = build_ralph_tool_registry(session, workspace)
     mcp_server = McpServer(session, workspace, registry)
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-    ).encode()
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode()
     status, _headers, _body = drive_request(mcp_server, payload)
     assert status == 401
 
@@ -201,8 +189,6 @@ def test_do_post_no_token_env_no_auth_check(
     workspace = FsWorkspace(tmp_path)
     registry = build_ralph_tool_registry(session, workspace)
     mcp_server = McpServer(session, workspace, registry)
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
-    ).encode()
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}).encode()
     status, _headers, _body = drive_request(mcp_server, payload)
     assert status == 200

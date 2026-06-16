@@ -496,9 +496,7 @@ def test_summary_disabled_env_suppresses_summary_line() -> None:
     )
     assert condensed is True
     assert summary_line is None
-    pd.emit_activity_line(
-        "u", "text", visible, condensed_flag=condensed, summary_line=summary_line
-    )
+    pd.emit_activity_line("u", "text", visible, condensed_flag=condensed, summary_line=summary_line)
     out = buf.getvalue()
     assert "↳ summary:" not in out
 
@@ -512,9 +510,7 @@ def test_sub_threshold_condensed_content_yields_no_summary() -> None:
     )
     assert condensed is True
     assert summary_line is None
-    pd.emit_activity_line(
-        "u", "text", visible, condensed_flag=condensed, summary_line=summary_line
-    )
+    pd.emit_activity_line("u", "text", visible, condensed_flag=condensed, summary_line=summary_line)
     out = buf.getvalue()
     assert "↳ summary:" not in out
 
@@ -528,9 +524,7 @@ def test_above_threshold_empty_headline_yields_placeholder() -> None:
     )
     assert condensed is True
     assert summary_line == "(no headline available)"
-    pd.emit_activity_line(
-        "u", "text", visible, condensed_flag=condensed, summary_line=summary_line
-    )
+    pd.emit_activity_line("u", "text", visible, condensed_flag=condensed, summary_line=summary_line)
     out = buf.getvalue()
     assert "↳ summary: (no headline available)" in out
 

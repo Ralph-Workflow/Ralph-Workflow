@@ -89,9 +89,7 @@ def test_every_single_shot_template_includes_shared_macro() -> None:
         # uses Jinja ``from 'shared/_artifact_submission.j2' import ...``
         # (the .j2 extension matches how the partial loader registers
         # files; see ralph.prompts.template_registry).
-        assert (
-            "shared/_artifact_submission" in content
-        ), (
+        assert "shared/_artifact_submission" in content, (
             f"{template_name} is a single-shot artifact template but does not "
             f"include the shared submission macro. Use "
             f"{{% from 'shared/_artifact_submission.j2' import render_artifact_submission %}} "
@@ -154,9 +152,7 @@ def test_shared_macro_renders_canonical_tool_name() -> None:
     tool alias the runtime exposes (e.g. ``ralph_submit_artifact``), not
     a free-form string the template can lie about.
     """
-    macro = (TEMPLATES_DIR / "shared" / "_artifact_submission.j2").read_text(
-        encoding="utf-8"
-    )
+    macro = (TEMPLATES_DIR / "shared" / "_artifact_submission.j2").read_text(encoding="utf-8")
     # The macro must reference ``submit_tool_reference`` (the parameter name)
     # and render it inside a backtick block so the agent sees the alias.
     assert "{{ submit_tool_reference }}" in macro, (

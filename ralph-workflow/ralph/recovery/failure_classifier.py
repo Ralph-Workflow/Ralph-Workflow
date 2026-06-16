@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import socket
 import urllib.error
+from typing import cast
 
 from loguru import logger
 
@@ -13,6 +14,7 @@ from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from .classified_failure import ClassifiedFailure
 from .failure_category import FailureCategory
 from .failure_details import contains_casefolded_marker, failure_detail_parts
+from .unavailability_reason import UnavailabilityReason
 
 # drift-audit: FailureClassifier( is the single-source classifier. The
 # 8-file allowlist (enforced by
@@ -80,9 +82,7 @@ SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
 # substring here — `...` would be matched as three literal characters
 # (the helper does NOT do regex). The runtime `ToolDispatchError` check is
 # handled by a separate class-name + substring helper below.
-_TOOL_AVAILABILITY_SUBSTRINGS: tuple[str, ...] = (
-    "no such tool available",
-)
+_TOOL_AVAILABILITY_SUBSTRINGS: tuple[str, ...] = ("no such tool available",)
 
 POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS: tuple[str, ...] = (
     "empty response with no tool calls",
@@ -108,8 +108,8 @@ POST_TOOL_ACTIVITY_MARKERS: tuple[str, ...] = (
     '"type": "mcp_tool_result"',
     '"type":"tool_use"',
     '"type": "tool_use"',
-    '[plain] tool:',
-    ' tool: ',
+    "[plain] tool:",
+    " tool: ",
 )
 
 _MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
@@ -188,6 +188,9 @@ _SUBSCRIPTION_LIMIT_SUBSTRINGS: tuple[str, ...] = (
     "daily limit reached",
     "hourly limit reached",
     "per-minute limit exceeded",
+    "daily limit exceeded",
+    "weekly limit exceeded",
+    "monthly limit exceeded",
 )
 
 # Typed *ValidationError class names that should route to ARTIFACT_VALIDATION.
@@ -376,6 +379,65 @@ def _is_suspicious_timeout_without_output(
     )
 
 
+def _classify_unavailability_reason(
+    watchdog_reason: str | None,
+    detail_parts: tuple[str, ...] | list[str],
+    raw_message: str,
+    connectivity_state: str | None,
+) -> UnavailabilityReason | None:
+    """Classify the unavailability reason from failure signals.
+
+    Priority order (first match wins):
+    1. watchdog_reason == "no_output_at_start" -> NO_OUTPUT_AT_START
+    2. watchdog_reason == "no_progress_quiet" -> STALE_CHILD_QUIET
+       (child alive with stale-progress evidence: heartbeat-only,
+        stale-label, or OS-descendant-only — a NEGATIVE signal)
+    3. watchdog_reason == "children_persist_too_long" -> SUSPICIOUS_TIMEOUT_NO_OUTPUT
+       (cumulative waiting ceiling hit; also a NEGATIVE/stuck signal)
+    4. connectivity=online and subscription limit -> OUT_OF_CREDITS
+    5. connectivity=online and suspicious timeout -> SUSPICIOUS_TIMEOUT_NO_OUTPUT
+    6. unavailable_agent_message text -> NO_OUTPUT_AT_START
+    7. post-tool empty response -> NO_OUTPUT_AFTER_ACTIVITY
+    8. else None
+
+    NOTE: watchdog_reason takes precedence over text-based detection because
+    the watchdog provides structural evidence (alive_by, channel freshness)
+    whereas text can be ambiguous.
+    """
+    reason: UnavailabilityReason | None = None
+    if watchdog_reason == "no_output_at_start":
+        reason = UnavailabilityReason.NO_OUTPUT_AT_START
+    elif watchdog_reason == "no_progress_quiet":
+        reason = UnavailabilityReason.STALE_CHILD_QUIET
+    elif watchdog_reason == "children_persist_too_long":
+        reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
+    elif (connectivity_state or "").casefold() == "online":
+        reason = _connectivity_unavailability_reason(detail_parts, connectivity_state)
+    if reason is None and contains_casefolded_marker(
+        detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+    ):
+        reason = UnavailabilityReason.NO_OUTPUT_AFTER_ACTIVITY
+    if reason is None and _is_unavailable_agent_message(raw_message):
+        reason = UnavailabilityReason.NO_OUTPUT_AT_START
+    return reason
+
+
+def _connectivity_unavailability_reason(
+    detail_parts: tuple[str, ...] | list[str],
+    connectivity_state: str | None,
+) -> UnavailabilityReason | None:
+    """Check connectivity-based unavailability reasons.
+
+    Called when connectivity_state == "online" to check subscription limit
+    and suspicious timeout conditions.
+    """
+    if _is_subscription_limit_message(detail_parts):
+        return UnavailabilityReason.OUT_OF_CREDITS
+    if _is_suspicious_timeout_without_output(detail_parts, connectivity_state):
+        return UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
+    return None
+
+
 class FailureClassifier:
     """Classify failures into categories for intelligent recovery routing.
 
@@ -411,6 +473,12 @@ class FailureClassifier:
             connectivity_state=connectivity_state,
         )
 
+        watchdog_reason = None
+        if exc_obj is not None and type(exc_obj).__name__ == "AgentInactivityTimeoutError":
+            watchdog_reason_val = cast("object", getattr(exc_obj, "reason", None))
+            if watchdog_reason_val is not None:
+                watchdog_reason = str(watchdog_reason_val)
+
         # Detect tool-availability failures independently of the category
         # table above. Both the live `No such tool available: mcp__<server>__<tool>`
         # string and the runtime `ToolDispatchError("Tool 'X' is not registered")`
@@ -445,18 +513,33 @@ class FailureClassifier:
             and (connectivity_state or "").casefold() == "online"
             and not reset_tool_registry
             and (
-                exc_obj is None
-                or type(exc_obj).__name__
-                in {"AgentInvocationError", "AgentInactivityTimeoutError"}
-            )
-            and (
-                _is_unavailable_agent_message(raw_message)
-                or contains_casefolded_marker(
-                    detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+                watchdog_reason
+                in {"no_progress_quiet", "children_persist_too_long", "no_output_at_start"}
+                or (
+                    (
+                        exc_obj is None
+                        or type(exc_obj).__name__
+                        in {"AgentInvocationError", "AgentInactivityTimeoutError"}
+                    )
+                    and (
+                        _is_unavailable_agent_message(raw_message)
+                        or contains_casefolded_marker(
+                            detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS
+                        )
+                        or _is_subscription_limit_message(detail_parts)
+                    )
                 )
-                or _is_subscription_limit_message(detail_parts)
             )
         )
+
+        unavailability_reason: UnavailabilityReason | None = None
+        if is_unavailable:
+            unavailability_reason = _classify_unavailability_reason(
+                watchdog_reason,
+                detail_parts,
+                raw_message,
+                connectivity_state,
+            )
 
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
@@ -478,6 +561,8 @@ class FailureClassifier:
             reset_session=reset_session,
             reset_tool_registry=reset_tool_registry,
             is_unavailable=is_unavailable,
+            watchdog_reason=watchdog_reason,
+            unavailability_reason=unavailability_reason,
         )
 
     def _is_tool_availability_failure(
@@ -501,9 +586,11 @@ class FailureClassifier:
            This is the transport-agnostic post-tool desync family: the
            tool boundary succeeded, but the model failed to continue the turn.
         """
-        return (exc is not None and _is_tool_dispatch_unregistered_error(exc)) or (
-            contains_casefolded_marker(detail_parts, _TOOL_AVAILABILITY_SUBSTRINGS)
-        ) or _is_post_tool_empty_response_failure(detail_parts)
+        return (
+            (exc is not None and _is_tool_dispatch_unregistered_error(exc))
+            or (contains_casefolded_marker(detail_parts, _TOOL_AVAILABILITY_SUBSTRINGS))
+            or _is_post_tool_empty_response_failure(detail_parts)
+        )
 
     def _categorize_exc(
         self,
@@ -609,6 +696,20 @@ class FailureClassifier:
             (
                 _is_artifact_validation_message(raw_message),
                 (FailureCategory.ARTIFACT_VALIDATION, False, False),
+            ),
+            (
+                not _message_looks_environmental(raw_message)
+                and (
+                    contains_casefolded_marker(detail_parts, POST_TOOL_EMPTY_RESPONSE_SUBSTRINGS)
+                    or (
+                        (connectivity_state or "").casefold() == "online"
+                        and (
+                            contains_casefolded_marker(detail_parts, _NO_OUTPUT_SUBSTRINGS)
+                            or contains_casefolded_marker(detail_parts, _TIMEOUT_SUBSTRINGS)
+                        )
+                    )
+                ),
+                (FailureCategory.AGENT, True, False),
             ),
         )
         for predicate, result in checks:

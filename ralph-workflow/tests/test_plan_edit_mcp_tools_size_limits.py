@@ -94,9 +94,7 @@ def _seed_plan_draft(tmp_path: Path) -> None:
     (artifact_dir / ".plan_draft.json").write_text(json.dumps(draft), encoding="utf-8")
 
 
-def _draft_steps_after(
-    bridge: ToolBridge, workspace: FsWorkspace
-) -> list[dict[str, object]]:
+def _draft_steps_after(bridge: ToolBridge, workspace: FsWorkspace) -> list[dict[str, object]]:
     result = cast(
         "ToolResult",
         bridge.dispatch("ralph_get_plan_draft", {}, workspace=workspace),

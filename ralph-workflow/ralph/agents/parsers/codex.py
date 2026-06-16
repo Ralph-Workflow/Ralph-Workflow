@@ -14,6 +14,7 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+
 class CodexParser(ParserTemplateBase):
     """Parser for Codex's NDJSON streaming output with robust delta accumulation.
 

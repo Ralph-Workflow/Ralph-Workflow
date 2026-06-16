@@ -24,9 +24,7 @@ def test_apply_pro_hooks_to_core_propagates_display_context() -> None:
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_display_context = _fake_display_context()
 
-    result = apply_pro_hooks_to_core(
-        core, ProPipelineHooks(display_context=new_display_context)
-    )
+    result = apply_pro_hooks_to_core(core, ProPipelineHooks(display_context=new_display_context))
 
     assert result is not core
     assert result.display_context is new_display_context
@@ -37,9 +35,7 @@ def test_apply_pro_hooks_to_core_propagates_model_identity() -> None:
     core = build_minimal_pipeline_core(UnifiedConfig(), _fake_display_context())
     new_model_identity = MagicMock()
 
-    result = apply_pro_hooks_to_core(
-        core, ProPipelineHooks(model_identity=new_model_identity)
-    )
+    result = apply_pro_hooks_to_core(core, ProPipelineHooks(model_identity=new_model_identity))
 
     assert result.model_identity is new_model_identity
 

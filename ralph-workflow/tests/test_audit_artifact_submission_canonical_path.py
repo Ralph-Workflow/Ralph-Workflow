@@ -90,8 +90,7 @@ def test_os_rename_into_sentinel_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,
         "mod.py",
-        "import os\n"
-        "os.rename('src.txt', '.agent/completion_seen_run-1.json')\n",
+        "import os\nos.rename('src.txt', '.agent/completion_seen_run-1.json')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1
@@ -102,8 +101,7 @@ def test_shutil_copy_with_keyword_dst_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,
         "mod.py",
-        "import shutil\n"
-        "shutil.copy('src.txt', dst='.agent/receipts/commit_message.json')\n",
+        "import shutil\nshutil.copy('src.txt', dst='.agent/receipts/commit_message.json')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1
@@ -114,8 +112,7 @@ def test_aliased_shutil_copy_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,
         "mod.py",
-        "import shutil as s\n"
-        "s.copy('src.txt', '.agent/receipts/x.json')\n",
+        "import shutil as s\ns.copy('src.txt', '.agent/receipts/x.json')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1
@@ -126,8 +123,7 @@ def test_shutil_copy_outside_protected_path_is_not_flagged(tmp_path: Path) -> No
     f = _write(
         tmp_path,
         "mod.py",
-        "import shutil\n"
-        "shutil.copy('src.txt', '/tmp/somewhere/safe')\n",
+        "import shutil\nshutil.copy('src.txt', '/tmp/somewhere/safe')\n",
     )
     findings = audit_file(f, "mod.py")
     assert not findings
@@ -420,9 +416,9 @@ def test_audit_invariants_fire_when_file_allowlist_is_empty() -> None:
         (
             "_FILE_ALLOWLIST: frozenset[str] = frozenset(\n"
             "    {\n"
-            "        \"ralph/mcp/artifacts/canonical_submit.py\",\n"
-            "        \"ralph/mcp/artifacts/commit_message.py\",\n"
-            "        \"ralph/mcp/artifacts/smoke_test_result.py\",\n"
+            '        "ralph/mcp/artifacts/canonical_submit.py",\n'
+            '        "ralph/mcp/artifacts/commit_message.py",\n'
+            '        "ralph/mcp/artifacts/smoke_test_result.py",\n'
             "    }\n"
             ")\n"
             "\n"
@@ -492,8 +488,7 @@ def test_shutil_move_into_artifacts_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,
         "mod.py",
-        "import shutil\n"
-        "shutil.move('src.txt', '.agent/artifacts/plan.json')\n",
+        "import shutil\nshutil.move('src.txt', '.agent/artifacts/plan.json')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1
@@ -504,8 +499,7 @@ def test_shutil_copyfile_into_receipts_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,
         "mod.py",
-        "import shutil\n"
-        "shutil.copyfile('src.txt', '.agent/receipts/x.json')\n",
+        "import shutil\nshutil.copyfile('src.txt', '.agent/receipts/x.json')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1
@@ -516,8 +510,7 @@ def test_shutil_copytree_into_receipts_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,
         "mod.py",
-        "import shutil\n"
-        "shutil.copytree('src', '.agent/receipts/x')\n",
+        "import shutil\nshutil.copytree('src', '.agent/receipts/x')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1
@@ -550,8 +543,7 @@ def test_path_replace_into_artifacts_is_flagged(tmp_path: Path) -> None:
     f = _write(
         tmp_path,
         "mod.py",
-        "from pathlib import Path\n"
-        "Path('src.txt').replace('.agent/artifacts/plan.json')\n",
+        "from pathlib import Path\nPath('src.txt').replace('.agent/artifacts/plan.json')\n",
     )
     findings = audit_file(f, "mod.py")
     assert len(findings) == 1

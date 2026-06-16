@@ -36,6 +36,7 @@ class ProcessRunner(Protocol):
         _pm: ProcessManager | None = None,
     ) -> ProcessResult: ...
 
+
 CATALOG_URL = "https://models.dev/api.json"
 TIMEOUT_SECS = 10
 _LOCAL_COMMAND_TIMEOUT_SECS = 30.0

@@ -43,9 +43,7 @@ class AgentSpec:
         if self.requires_pty and not self.interactive:
             raise ValueError("requires_pty=True requires interactive=True")
         if self.session_resume_template is not None and not self.completion_required:
-            raise ValueError(
-                "session_resume_template requires completion_required=True"
-            )
+            raise ValueError("session_resume_template requires completion_required=True")
 
     @classmethod
     def from_agent_config(

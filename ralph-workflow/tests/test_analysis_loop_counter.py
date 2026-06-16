@@ -65,9 +65,7 @@ class TestDerivedFlags:
         ("completed", "cap", "expected"),
         [(0, 3, 1), (2, 3, 3), (3, 3, 3), (5, 3, 3)],
     )
-    def test_next_completed_clamps_at_cap(
-        self, completed: int, cap: int, expected: int
-    ) -> None:
+    def test_next_completed_clamps_at_cap(self, completed: int, cap: int, expected: int) -> None:
         assert AnalysisLoopCounter(completed=completed, cap=cap).next_completed == expected
 
 

@@ -547,7 +547,8 @@ def test_process_group_termination_vs_single_process() -> None:
 def test_process_termination_error_includes_stage_and_reason() -> None:
     """ProcessTerminationError has structured fields."""
     e = ProcessTerminationError(
-        12345, 12345,
+        12345,
+        12345,
         stage="force_kill",
         reason="process still alive after SIGKILL",
         descendant_pids=[12346, 12347],
@@ -573,7 +574,8 @@ def test_cleanup_success_not_reported_as_failure() -> None:
     pm.shutdown_all(grace_period_s=0.1)
 
     failed_events = [
-        e for e in terminal_events
+        e
+        for e in terminal_events
         if e.new_status == ProcessStatus.FAILED and e.record.pid == handle.pid
     ]
     assert len(failed_events) == 0
@@ -1220,9 +1222,7 @@ def test_reconcile_zombie_async_record_runs_async_reap_helper() -> None:
     async def _spawn() -> _AsyncProcessLike:
         async_handle = await pm.spawn_async(
             [sys.executable, "-c", "pass"],
-            SpawnOptions(
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            ),
+            SpawnOptions(stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE),
         )
         return async_handle._proc
 
@@ -1272,9 +1272,7 @@ def test_reconcile_zombie_async_record_runs_async_reap_helper() -> None:
         reconciled = pm._reconcile_stale_entries()
 
     assert reconciled == 1
-    assert waitpid_calls, (
-        "Reaper must invoke os.waitpid on the async record before _mark_killed"
-    )
+    assert waitpid_calls, "Reaper must invoke os.waitpid on the async record before _mark_killed"
     assert all(call[0] == handle_proc.pid for call in waitpid_calls), (
         f"os.waitpid must be called for the async record's pid; got {waitpid_calls}"
     )
@@ -1357,9 +1355,7 @@ def test_reconcile_zombie_record_without_process_object_uses_mark_only_fallback(
     with (
         patch.object(pm_mod, "verify_process_liveness", _fake_verify),
         patch.object(pm, "_reap_sync_and_mark", side_effect=_spy_reap_sync),
-        patch.object(
-            pm, "_reap_async_in_sync_and_mark", side_effect=_spy_reap_async
-        ),
+        patch.object(pm, "_reap_async_in_sync_and_mark", side_effect=_spy_reap_async),
         patch.object(pm, "_mark_killed", side_effect=_spy_mark_killed),
     ):
         reconciled = pm._reconcile_stale_entries()
@@ -1376,4 +1372,3 @@ def test_reconcile_zombie_record_without_process_object_uses_mark_only_fallback(
     assert called_cause == "zombie_reconciled"
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "zombie_reconciled"
-

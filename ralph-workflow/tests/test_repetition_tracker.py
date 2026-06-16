@@ -38,12 +38,8 @@ def _tracker(
 
 
 def test_fingerprint_preserves_error_code_but_strips_per_occurrence_noise() -> None:
-    fp_a = RepetitionTracker.fingerprint(
-        "2026-06-08T12:21:32 MCP error -32001: Request timed out"
-    )
-    fp_b = RepetitionTracker.fingerprint(
-        "2026-06-08T13:50:34 MCP error -32001: Request timed out"
-    )
+    fp_a = RepetitionTracker.fingerprint("2026-06-08T12:21:32 MCP error -32001: Request timed out")
+    fp_b = RepetitionTracker.fingerprint("2026-06-08T13:50:34 MCP error -32001: Request timed out")
     # Same underlying error, different timestamps -> identical fingerprint.
     assert fp_a == fp_b
     # The error code is signal and must survive normalization.
@@ -91,9 +87,7 @@ def test_real_progress_resets_consecutive_streak() -> None:
 def test_window_rule_trips_even_when_consecutive_streak_keeps_resetting() -> None:
     clock = FakeClock()
     # Disable the consecutive rule so only the window rule can trip.
-    tracker = _tracker(
-        clock, consecutive_threshold=None, window_count=8, window_seconds=600.0
-    )
+    tracker = _tracker(clock, consecutive_threshold=None, window_count=8, window_seconds=600.0)
     timeout = "MCP error -32001: Request timed out"
     noise = "MCP error -32099: transient blip"
     for _ in range(8):
@@ -115,9 +109,7 @@ def test_distinct_messages_never_trip() -> None:
 
 def test_window_rule_does_not_trip_when_occurrences_age_out() -> None:
     clock = FakeClock()
-    tracker = _tracker(
-        clock, consecutive_threshold=None, window_count=8, window_seconds=600.0
-    )
+    tracker = _tracker(clock, consecutive_threshold=None, window_count=8, window_seconds=600.0)
     msg = "MCP error -32001: Request timed out"
     for _ in range(20):
         tracker.note_error(msg)
@@ -127,9 +119,7 @@ def test_window_rule_does_not_trip_when_occurrences_age_out() -> None:
 
 def test_disabled_tracker_never_trips() -> None:
     clock = FakeClock()
-    tracker = _tracker(
-        clock, consecutive_threshold=None, window_count=None, window_seconds=None
-    )
+    tracker = _tracker(clock, consecutive_threshold=None, window_count=None, window_seconds=None)
     msg = "MCP error -32001: Request timed out"
     for _ in range(100):
         tracker.note_error(msg)

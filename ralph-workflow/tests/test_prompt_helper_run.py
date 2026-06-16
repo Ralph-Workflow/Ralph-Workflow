@@ -218,9 +218,7 @@ class TestRunPromptHelper:
 
         run_prompt_helper(config_with_helper_agent, workspace_root)
 
-        assert not handle_called["called"], (
-            "_run_review_loop was called but should not have been"
-        )
+        assert not handle_called["called"], "_run_review_loop was called but should not have been"
 
     def test_agent_invoked_once_and_not_prompted_to_chat_without_artifact(
         self,

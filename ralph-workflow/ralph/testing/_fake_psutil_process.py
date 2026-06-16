@@ -22,11 +22,7 @@ class FakePsutilProcess:
         return {"pid": self.pid, "ppid": self.ppid}
 
     def is_running(self) -> bool:
-        return (
-            self._running
-            and not self._terminated
-            and not self._killed
-        )
+        return self._running and not self._terminated and not self._killed
 
     def status(self) -> str:
         if self._killed:

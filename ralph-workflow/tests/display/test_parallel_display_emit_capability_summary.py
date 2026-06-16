@@ -53,9 +53,7 @@ def test_emit_capability_summary_renders_baseline_capabilities_header() -> None:
     pd.emit_capability_summary(_healthy_state())
     pd.stop()
     output = buf.getvalue()
-    assert "[capabilities]" in output, (
-        f"expected [capabilities] section rule in output: {output!r}"
-    )
+    assert "[capabilities]" in output, f"expected [capabilities] section rule in output: {output!r}"
     assert "Baseline Capabilities" in output, (
         f"expected 'Baseline Capabilities' title in output: {output!r}"
     )
@@ -67,6 +65,4 @@ def test_emit_capability_summary_quiet_mode_emits_nothing() -> None:
     pd._is_quiet = True
     pd.emit_capability_summary(_healthy_state())
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"

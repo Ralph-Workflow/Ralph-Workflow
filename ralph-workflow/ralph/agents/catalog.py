@@ -62,10 +62,7 @@ class AgentCatalog:
         cmd_lower = support.cmd.lower()
         if cmd_lower in self._by_command:
             existing = self._by_command[cmd_lower]
-            msg = (
-                f"Command {support.cmd!r} is already registered for agent "
-                f"{existing.name!r}"
-            )
+            msg = f"Command {support.cmd!r} is already registered for agent {existing.name!r}"
             raise ValueError(msg)
 
         self._entries[name_lower] = support
@@ -82,9 +79,7 @@ class AgentCatalog:
         existing = _PARSER_REGISTRY.get(key)
         return existing is not None and not isinstance(existing, _ParserRegistryEntry)
 
-    def _write_through(
-        self, support: AgentSupport, name_lower: str, cmd_lower: str
-    ) -> None:
+    def _write_through(self, support: AgentSupport, name_lower: str, cmd_lower: str) -> None:
         """Populate the 3 legacy module-level dicts for backward compat.
 
         Only overwrites ``_STRATEGY_DISPATCH`` when the transport does not yet
@@ -175,9 +170,7 @@ class AgentCatalog:
 
     def by_transport(self, transport: AgentTransport) -> tuple[AgentSupport, ...]:
         """Return all supports matching the given transport."""
-        return tuple(
-            s for s in self._entries.values() if s.spec.transport == transport
-        )
+        return tuple(s for s in self._entries.values() if s.spec.transport == transport)
 
 
 _catalog_holder: list[AgentCatalog] = []

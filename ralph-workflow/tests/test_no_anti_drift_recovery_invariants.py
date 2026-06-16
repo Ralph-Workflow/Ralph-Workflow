@@ -59,8 +59,7 @@ class TestFailureClassifierSingleOwner:
             if "FailureClassifier(" in _read(path):
                 offenders.append(str(rel))
         assert offenders == [], (
-            "FailureClassifier( is constructed outside the allowed sites: "
-            f"{offenders}."
+            f"FailureClassifier( is constructed outside the allowed sites: {offenders}."
         )
 
 
@@ -79,9 +78,7 @@ class TestWatchdogInvariant:
         pty_count = _read(pty).count("watchdog.evaluate")
         process_count = _read(process).count("watchdog.evaluate")
         total = pty_count + process_count
-        assert total == 6, (
-            f"Expected exactly 6 watchdog.evaluate(...) call sites; got {total}."
-        )
+        assert total == 6, f"Expected exactly 6 watchdog.evaluate(...) call sites; got {total}."
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +104,7 @@ class TestCanonicalChildEvidenceModel:
         # Only classify_child_snapshot is allowed (per the strategy
         # delegation pattern documented in the plan).
         assert classify_funcs == ["classify_child_snapshot"], (
-            "Expected only classify_child_snapshot in child_liveness.py; "
-            f"got {classify_funcs}."
+            f"Expected only classify_child_snapshot in child_liveness.py; got {classify_funcs}."
         )
 
     def test_helpers_delegate_to_canonical_model(self) -> None:
@@ -187,13 +183,11 @@ class TestRecoveryControllerOwnsBackoff:
                     # Only the recovery/controller.py copy is allowed.
                     if path != RALPH_ROOT / "recovery" / "controller.py":
                         offenders.append(
-                            f"{path.relative_to(RALPH_ROOT.parent)}:"
-                            f"{node.lineno} {node.name}"
+                            f"{path.relative_to(RALPH_ROOT.parent)}:{node.lineno} {node.name}"
                         )
                 elif "backoff" in node.name.lower() and "compute" in node.name.lower():
                     offenders.append(
-                        f"{path.relative_to(RALPH_ROOT.parent)}:"
-                        f"{node.lineno} {node.name}"
+                        f"{path.relative_to(RALPH_ROOT.parent)}:{node.lineno} {node.name}"
                     )
         assert offenders == [], (
             "Backoff computation reimplementations found outside "
@@ -332,8 +326,7 @@ class TestCommitPlumbingFailureClassificationPreserved:
         assert effect_executor.exists()
         effect_source = _read(effect_executor)
         assert "run_with_direct_mcp_recovery" in effect_source, (
-            "effect_executor.py must contain the canonical retry loop "
-            "run_with_direct_mcp_recovery."
+            "effect_executor.py must contain the canonical retry loop run_with_direct_mcp_recovery."
         )
 
         # The AgentInactivityTimeoutError is the error class the pre-fix
@@ -380,8 +373,7 @@ class TestInterruptPathHandlesAlreadyDegradedState:
         with pytest.raises(SystemExit) as excinfo:
             controller.force_exit()
         assert excinfo.value.code == INTERRUPT_EXIT_CODE, (
-            f"force_exit must call hard_exit(130); got "
-            f"SystemExit code={excinfo.value.code!r}."
+            f"force_exit must call hard_exit(130); got SystemExit code={excinfo.value.code!r}."
         )
         assert hard_exit_calls == [INTERRUPT_EXIT_CODE], (
             f"force_exit must call hard_exit(130); got {hard_exit_calls}."
@@ -435,14 +427,12 @@ class TestWedgedRunExitsCleanly:
 
         elapsed = time.perf_counter() - start
         assert excinfo.value.code == INTERRUPT_EXIT_CODE, (
-            f"Wedged run must exit with code {INTERRUPT_EXIT_CODE}; "
-            f"got {excinfo.value.code!r}."
+            f"Wedged run must exit with code {INTERRUPT_EXIT_CODE}; got {excinfo.value.code!r}."
         )
         assert elapsed < 5.0, (
             f"Wedged-run second-SIGINT escalation took {elapsed:.2f}s; "
             "must complete within 5s wall-clock."
         )
         assert hard_exit_calls == [INTERRUPT_EXIT_CODE], (
-            f"hard_exit was called with {hard_exit_calls}; expected "
-            f"[{INTERRUPT_EXIT_CODE}]."
+            f"hard_exit was called with {hard_exit_calls}; expected [{INTERRUPT_EXIT_CODE}]."
         )

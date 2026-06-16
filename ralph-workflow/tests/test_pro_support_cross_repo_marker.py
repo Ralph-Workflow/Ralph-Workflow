@@ -20,6 +20,4 @@ def test_pro_contract_md_lists_forward_looking_engine_capabilities() -> None:
     section = text[section_start:]
 
     missing = [name for name in REQUIRED_SYMBOLS if name not in section]
-    assert not missing, (
-        f"pro-contract.md forward-looking section is missing symbols: {missing}"
-    )
+    assert not missing, f"pro-contract.md forward-looking section is missing symbols: {missing}"

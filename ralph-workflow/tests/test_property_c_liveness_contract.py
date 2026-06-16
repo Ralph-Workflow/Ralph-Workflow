@@ -94,8 +94,8 @@ def test_health_route_returns_200_healthy_when_probe_succeeds(tmp_path: Path) ->
         return _ProbeResult(healthy=True, latency_ms=12.5, reason="")
 
     original = _in_memory_transport._make_fake_server
-    _in_memory_transport._make_fake_server = (
-        lambda m, s: _make_with_probe(m, s, probe=healthy_probe, _original=original)
+    _in_memory_transport._make_fake_server = lambda m, s: _make_with_probe(
+        m, s, probe=healthy_probe, _original=original
     )
     try:
         status, headers, body = drive_request(mcp_server, b"", path="/health", method="GET")
@@ -116,8 +116,8 @@ def test_health_route_returns_503_unhealthy_when_probe_raises(tmp_path: Path) ->
         raise RuntimeError("probe went sideways")
 
     original = _in_memory_transport._make_fake_server
-    _in_memory_transport._make_fake_server = (
-        lambda m, s: _make_with_probe(m, s, probe=broken_probe, _original=original)
+    _in_memory_transport._make_fake_server = lambda m, s: _make_with_probe(
+        m, s, probe=broken_probe, _original=original
     )
     try:
         status, headers, body = drive_request(mcp_server, b"", path="/health", method="GET")
@@ -138,8 +138,8 @@ def test_health_route_returns_503_when_probe_reports_unhealthy(tmp_path: Path) -
         return _ProbeResult(healthy=False, latency_ms=0.0, reason="server_wedged")
 
     original = _in_memory_transport._make_fake_server
-    _in_memory_transport._make_fake_server = (
-        lambda m, s: _make_with_probe(m, s, probe=unhealthy_probe, _original=original)
+    _in_memory_transport._make_fake_server = lambda m, s: _make_with_probe(
+        m, s, probe=unhealthy_probe, _original=original
     )
     try:
         status, _headers, body = drive_request(mcp_server, b"", path="/health", method="GET")
@@ -160,8 +160,8 @@ def test_health_route_increments_health_probe_outcomes_counter(tmp_path: Path) -
     def _probe() -> _ProbeResult:
         return _ProbeResult(healthy=True, latency_ms=1.0, reason="")
 
-    _in_memory_transport._make_fake_server = (
-        lambda m, s: _make_with_probe(m, s, probe=_probe, metrics=metrics, _original=original)
+    _in_memory_transport._make_fake_server = lambda m, s: _make_with_probe(
+        m, s, probe=_probe, metrics=metrics, _original=original
     )
     try:
         drive_request(mcp_server, b"", path="/health", method="GET")
@@ -258,11 +258,7 @@ def test_supervisor_probe_failure_with_explicit_timeout() -> None:
 def test_health_route_is_present_in_fallback_handler() -> None:
     """The /health branch was added by Property C; verify the code path is present."""
     handler_text = (
-        Path(__file__).parent.parent
-        / "ralph"
-        / "mcp"
-        / "server"
-        / "_fallback_http_handler.py"
+        Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "_fallback_http_handler.py"
     ).read_text()
     assert 'self.path == "/health"' in handler_text
     assert "_handle_health_get" in handler_text

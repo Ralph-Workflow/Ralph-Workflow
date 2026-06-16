@@ -65,6 +65,7 @@ _RESTART_PATTERNS: frozenset[re.Pattern[str]] = frozenset(
     )
 )
 
+
 #: Import-time invariant guard. ``if``/``raise`` (NOT ``assert``) so
 #: ``python -O`` cannot strip it. The structural detector must remain
 #: usable: a silently-empty set would disable the safety net and let

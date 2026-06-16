@@ -192,9 +192,7 @@ def test_handle_move_plan_step_reindexes_and_remaps_depends_on(tmp_path: Path) -
     ]
     draft["sections"]["design"] = {
         "acceptance_criteria": {
-            "criteria": [
-                {"id": "AC-01", "description": "x", "satisfied_by_steps": [1, 2, 3, 4, 5]}
-            ]
+            "criteria": [{"id": "AC-01", "description": "x", "satisfied_by_steps": [1, 2, 3, 4, 5]}]
         }
     }
     (artifact_dir / ".plan_draft.json").write_text(json.dumps(draft), encoding="utf-8")
@@ -230,10 +228,8 @@ def test_handle_move_plan_step_reindexes_and_remaps_depends_on(tmp_path: Path) -
     # E (now #5) used to depend on 4 (old D) → still depends on new D's number 4
     assert depends_by_title["E"] == [4]
 
-    ac = (
-        json.loads((artifact_dir / ".plan_draft.json").read_text(encoding="utf-8"))[
-            "sections"
-        ]["design"]["acceptance_criteria"]["criteria"][0]["satisfied_by_steps"]
-    )
+    ac = json.loads((artifact_dir / ".plan_draft.json").read_text(encoding="utf-8"))["sections"][
+        "design"
+    ]["acceptance_criteria"]["criteria"][0]["satisfied_by_steps"]
     # Remap [1, 2, 3, 4, 5] (old) → [2, 3, 1, 4, 5] (new)
     assert ac == [2, 3, 1, 4, 5]

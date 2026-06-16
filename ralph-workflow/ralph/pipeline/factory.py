@@ -59,8 +59,7 @@ class MaterializeSystemPromptFn(Protocol):
         name: str,
         default_current_prompt: str | None = None,
         worker_namespace: Path | None = None,
-    ) -> str:
-        ...
+    ) -> str: ...
 
 
 class PhasePromptMaterializerFn(Protocol):
@@ -71,8 +70,7 @@ class PhasePromptMaterializerFn(Protocol):
         context: PromptPhaseContext | None = None,
         options: PromptPhaseOptions | None = None,
         **kwargs: object,
-    ) -> str:
-        ...
+    ) -> str: ...
 
 
 class ArtifactRequirementsResolverFn(Protocol):
@@ -85,8 +83,7 @@ class ArtifactRequirementsResolverFn(Protocol):
         *,
         phase: str,
         drain: str | None = None,
-    ) -> RequiredArtifact | None:
-        ...
+    ) -> RequiredArtifact | None: ...
 
 
 class McpSupervisorFactoryFn(Protocol):
@@ -98,22 +95,19 @@ class McpSupervisorFactoryFn(Protocol):
         *,
         check_interval: timedelta,
         on_restart: Callable[[int], None] | None,
-    ) -> AbstractContextManager[object, bool | None]:
-        ...
+    ) -> AbstractContextManager[object, bool | None]: ...
 
 
 class HeartbeatPolicyFromEnvFn(Protocol):
     """Return the heartbeat policy read from the environment."""
 
-    def __call__(self) -> HeartbeatPolicy:
-        ...
+    def __call__(self) -> HeartbeatPolicy: ...
 
 
 class CheckMcpBridgeHealthFn(Protocol):
     """Check that an MCP bridge is healthy, raising on failure."""
 
-    def __call__(self, bridge: SessionBridgeLike) -> None:
-        ...
+    def __call__(self, bridge: SessionBridgeLike) -> None: ...
 
 
 def _materialize_system_prompt(
@@ -271,9 +265,7 @@ class PipelineDeps:
 
         if core is None:
             if display_context is _UNSET:
-                raise ValueError(
-                    "display_context is required when core is not provided"
-                )
+                raise ValueError("display_context is required when core is not provided")
             effective_core = PipelineCore(
                 display_context=cast("DisplayContext", display_context),
                 model_identity=(
@@ -391,8 +383,7 @@ class PipelineFactory(Protocol):
         display_context: DisplayContext,
         *,
         pro_hooks: ProPipelineHooks | None = None,
-    ) -> PipelineDeps:
-        ...
+    ) -> PipelineDeps: ...
 
 
 def build_minimal_pipeline_core(

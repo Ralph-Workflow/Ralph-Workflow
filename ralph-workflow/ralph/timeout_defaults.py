@@ -205,6 +205,21 @@ CPU_IDLE_SECONDS: float | None = 60.0
 #: the probe gracefully no-ops when the raw log file is absent.
 LOG_GROWTH_SECONDS: float | None = 30.0
 
+#: Default fast no-progress ceiling: shorter WAITING ceiling when child is alive but
+#: not making forward progress (heartbeat-only, stale-label, or OS-descendant-only)
+#: and stdout has been idle. None disables it.
+NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
+
+#: Default fast-fire window for the new NO_OUTPUT_AT_START watchdog reason. When
+#: the agent has been alive for this many seconds with zero recorded activity
+#: (no stdout, no tool call, no file change, no subagent output) the watchdog
+#: fires NO_OUTPUT_AT_START instead of waiting for the 600s cumulative
+#: no-progress ceiling. Set to None to opt out.
+# 30s is well under the 60s 95th-percentile first-token latency for opencode and
+# Claude Code while still short enough to fall over to the next agent before the
+# cumulative ceiling is reached.
+NO_OUTPUT_AT_START_SECONDS: float | None = 30.0
+
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults
 # ---------------------------------------------------------------------------

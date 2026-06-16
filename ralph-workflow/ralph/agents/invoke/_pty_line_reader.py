@@ -108,9 +108,7 @@ class PtyLineReader:
         self._monitor = ctx.monitor
         self._workspace_path = cast("Path | None", getattr(ctx, "workspace_path", None))
         self._clock = clock
-        self._strategy: BaseExecutionStrategy = (
-            ctx.execution_strategy or GenericExecutionStrategy()
-        )
+        self._strategy: BaseExecutionStrategy = ctx.execution_strategy or GenericExecutionStrategy()
         self._probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
         self._waiting_listener = ctx.waiting_listener
         self._pre_output_listener = cast(
@@ -459,6 +457,8 @@ class PtyLineReader:
         timeout_val = (
             self._policy.max_session_seconds
             if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+            else self._policy.no_progress_quiet_seconds
+            if fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
             else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
@@ -735,6 +735,7 @@ class PtyLineReader:
             corroborator=self._corroborate,
             process_monitor=process_monitor,
         )
+        watchdog.record_invocation_start()
 
         # Register the watchdog's workspace channel recorder as the
         # on-event callback on the WorkspaceMonitor so every file
@@ -752,9 +753,7 @@ class PtyLineReader:
             # counter receives the real classification; the
             # 0-arg bound method form would always yield
             # (OTHER, 1.0) and miss the AC #7 contract.
-            def _forward_event(
-                kind: WorkspaceChangeKind, weight: float
-            ) -> None:
+            def _forward_event(kind: WorkspaceChangeKind, weight: float) -> None:
                 watchdog.record_workspace_event(kind=kind, weight=weight)
 
             self._monitor.set_on_event(_forward_event)

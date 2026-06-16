@@ -58,9 +58,7 @@ def test_startup_and_lifecycle_share_identical_owned_tool_surface(tmp_path: Path
     session = _session_for_drain("development", tmp_path)
     workspace = MemoryWorkspace()
 
-    assert startup_visible_tools(session, workspace) == lifecycle_visible_tools(
-        session, workspace
-    )
+    assert startup_visible_tools(session, workspace) == lifecycle_visible_tools(session, workspace)
 
 
 def test_planning_prompt_defaults_match_runtime_session_capabilities(tmp_path: Path) -> None:

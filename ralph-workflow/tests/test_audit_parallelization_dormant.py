@@ -40,15 +40,12 @@ def test_audit_seventh_invariant_present_on_clean_tree() -> None:
     the invariant would silently drop the continuation-template guard.
     """
     invariant_paths = {inv.rel_path for inv in audit_module._INVARIANTS}
-    assert (
-        "prompts/templates/developer_iteration_continuation.jinja" in invariant_paths
-    )
+    assert "prompts/templates/developer_iteration_continuation.jinja" in invariant_paths
 
     continuation_invariant = next(
         inv
         for inv in audit_module._INVARIANTS
-        if inv.rel_path
-        == "prompts/templates/developer_iteration_continuation.jinja"
+        if inv.rel_path == "prompts/templates/developer_iteration_continuation.jinja"
     )
     assert "## PARALLEL EXECUTION (when the plan declares" in continuation_invariant.present
 
@@ -81,9 +78,7 @@ def test_audit_blocks_regression_when_continuation_heading_missing(
     rc = audit_main([])
     captured = capsys.readouterr()
 
-    assert rc == 1, (
-        "audit must exit 1 when the continuation template drops the new heading"
-    )
+    assert rc == 1, "audit must exit 1 when the continuation template drops the new heading"
     assert continuation_path in captured.out, (
         "violation message must reference the continuation template path so "
         "an operator can locate the regression"
@@ -132,9 +127,7 @@ def test_audit_blocks_regression_when_subagent_capability_doc_missing(
     rc = audit_main([])
     captured = capsys.readouterr()
 
-    assert rc == 1, (
-        "audit must exit 1 when configuration.md drops subagent_capability"
-    )
+    assert rc == 1, "audit must exit 1 when configuration.md drops subagent_capability"
     assert "configuration.md" in captured.out, (
         "violation message must reference the configuration.md path so an "
         "operator can locate the regression"
@@ -184,12 +177,9 @@ def test_audit_blocks_regression_when_dispatch_mode_doc_missing(
     rc = audit_main([])
     captured = capsys.readouterr()
 
-    assert rc == 1, (
-        "audit must exit 1 when advanced-pipeline-configuration.md drops dispatch_mode"
-    )
+    assert rc == 1, "audit must exit 1 when advanced-pipeline-configuration.md drops dispatch_mode"
     assert "advanced-pipeline-configuration.md" in captured.out, (
         "violation message must reference the advanced-pipeline-configuration.md "
         "path so an operator can locate the regression"
     )
     assert "missing required literal" in captured.out
-

@@ -596,6 +596,7 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
         suspect_waiting_on_child_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
+        no_progress_quiet_seconds=None,
     )
     clock = FakeClock(start=0.0)
 
@@ -772,9 +773,7 @@ def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> No
             progress_yielded[0] = True
             yield json.dumps({"type": "child_started", "child_id": "child-x"}) + "\n"
             yield (
-                json.dumps(
-                    {"type": "child_progress", "child_id": "child-x", "phase": "running"}
-                )
+                json.dumps({"type": "child_progress", "child_id": "child-x", "phase": "running"})
                 + "\n"
             )
         _reader_release.wait(timeout=5.0)
@@ -843,6 +842,7 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
         suspect_waiting_on_child_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
+        no_progress_quiet_seconds=None,
     )
     clock = FakeClock(start=0.0)
     _reader_release = threading.Event()

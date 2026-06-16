@@ -17,9 +17,7 @@ if TYPE_CHECKING:
     from ._live_descendant_handle import _LiveDescendantHandle
 
 
-class ClaudeInteractiveExecutionStrategy(
-    CompletionEnforcingStrategy, ClaudeExecutionStrategy
-):
+class ClaudeInteractiveExecutionStrategy(CompletionEnforcingStrategy, ClaudeExecutionStrategy):
     """Interactive Claude session strategy.
 
     Uses a VT-aware transcript parser before falling back to the headless Claude
@@ -61,9 +59,7 @@ class ClaudeInteractiveExecutionStrategy(
                 )
             priority_event = output_event or thinking_event
             if priority_event is not None:
-                return AgentActivitySignal(
-                    AgentActivityKind.OUTPUT_LINE, raw=priority_event.text
-                )
+                return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=priority_event.text)
         if self._transcript_parser._current_content_mode == "thinking":
             return None
         return super().classify_activity_line(line)

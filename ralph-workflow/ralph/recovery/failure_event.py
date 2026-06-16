@@ -22,3 +22,5 @@ class FailureEvent:
     chain_capacity_remaining: int
     recovery_cycle: int
     retry_delay_ms: int = 0
+    watchdog_reason: str | None = None
+    unavailability_reason: str | None = None

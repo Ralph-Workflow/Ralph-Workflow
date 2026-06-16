@@ -100,9 +100,7 @@ def _display_context() -> DisplayContext:
 class TestBuildDefaultPipelineDeps:
     """Tests for build_default_pipeline_deps."""
 
-    def test_returns_frozen_deps_with_all_fields_populated(
-        self, tmp_path: Path
-    ) -> None:
+    def test_returns_frozen_deps_with_all_fields_populated(self, tmp_path: Path) -> None:
         display_ctx = _display_context()
         deps = build_default_pipeline_deps(
             _build_config(tmp_path),
@@ -478,9 +476,7 @@ class TestPipelineSharedExecutionCore:
         config = UnifiedConfig(
             agents={"dev": AgentConfig(cmd="opencode", output_flag="--json-stream")}
         )
-        effect = InvokeAgentEffect(
-            agent_name="dev", phase="development", prompt_file="dev.md"
-        )
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
         factory = make_recording_bridge_factory()
         deps = make_test_pipeline_deps(
             display_context=display_context,

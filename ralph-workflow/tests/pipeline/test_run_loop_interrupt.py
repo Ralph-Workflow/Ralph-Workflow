@@ -67,9 +67,7 @@ if TYPE_CHECKING:
         @property
         def current_state(self) -> str: ...
 
-        def add_listener(
-            self, cb: Callable[[object], object]
-        ) -> Callable[[], object]: ...
+        def add_listener(self, cb: Callable[[object], object]) -> Callable[[], object]: ...
 
 
 _EXIT_CODE = 130
@@ -180,9 +178,7 @@ def _patch_runner_dependencies(
     monkeypatch.setattr(
         _runner_module, "handle_keyboard_interrupt", _handle_keyboard_interrupt_stub
     )
-    monkeypatch.setattr(
-        _runner_module, "save_checkpoint_or_log", _save_checkpoint_or_log_stub
-    )
+    monkeypatch.setattr(_runner_module, "save_checkpoint_or_log", _save_checkpoint_or_log_stub)
     monkeypatch.setattr(_runner_module, "_checkpoint_path", _checkpoint_path_stub)
     return (
         handle_keyboard_interrupt_calls,

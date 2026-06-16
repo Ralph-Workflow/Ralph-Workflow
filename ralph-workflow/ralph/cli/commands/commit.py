@@ -181,9 +181,7 @@ def _handle_agent_commit_generation(
     registry = AgentRegistry.from_config(config)
     agents = _resolve_commit_message_agents(config, registry)
     if not agents:
-        display.emit_warning(
-            "No commit-capable agents available in commit/review drains"
-        )
+        display.emit_warning("No commit-capable agents available in commit/review drains")
         return
 
     workspace_scope = resolve_workspace_scope(repo_root)
@@ -208,12 +206,8 @@ def _handle_agent_commit_generation(
         return
 
     if not result.message:
-        display.emit_warning(
-            "Failed to generate commit message from commit drain agents"
-        )
-        _print_commit_failure_details(
-            result.failure_details, display_context=display_context
-        )
+        display.emit_warning("Failed to generate commit message from commit drain agents")
+        _print_commit_failure_details(result.failure_details, display_context=display_context)
         return
 
     persisted_message = read_commit_message_artifact(repo_root)
@@ -225,9 +219,7 @@ def _handle_agent_commit_generation(
     display.emit_commit_message(repo_root)
     if result.failure_details:
         display.emit_warning("Recovered after retryable MCP/agent failures:")
-        _print_commit_failure_details(
-            result.failure_details, display_context=display_context
-        )
+        _print_commit_failure_details(result.failure_details, display_context=display_context)
 
     if apply:
         try:

@@ -100,9 +100,7 @@ class FakeProcessManager:
     kill_process_group_calls: list[tuple[int, int]] = field(default_factory=list)
     _active_records: list[ProcessRecord] = field(default_factory=list)
 
-    def add_active(
-        self, pid: int, pgid: int, label: str = "invoke:fake"
-    ) -> ProcessRecord:
+    def add_active(self, pid: int, pgid: int, label: str = "invoke:fake") -> ProcessRecord:
         record = ProcessRecord(
             pid=pid,
             pgid=pgid,
@@ -307,9 +305,7 @@ class _DrainOnBeginDispatcher(_RecordingDispatcher):
             self._manager.drain()
         super().begin_interrupt(grace_period_s=grace_period_s, block=block)
         for pid, pgid in self._pids_pgids:
-            self._manager.add_active(
-                pid=pid, pgid=pgid, label="invoke:fake"
-            )
+            self._manager.add_active(pid=pid, pgid=pgid, label="invoke:fake")
 
 
 def test_handle_keyboard_interrupt_uses_injected_poll_interval_for_polling() -> None:
@@ -488,8 +484,7 @@ def test_handle_keyboard_interrupt_second_sigint_force_exit_uses_active_pgids() 
     )
     set_calls[0][1](signal.SIGINT, None)
     assert sorted(recorder.force_exit_calls[-1]) == [9101, 9202], (
-        f"expected bridge_pgids from list_active() in any order; "
-        f"got {recorder.force_exit_calls}"
+        f"expected bridge_pgids from list_active() in any order; got {recorder.force_exit_calls}"
     )
     assert exit_calls == [(130,)], exit_calls
 
@@ -568,12 +563,8 @@ def test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher() ->
         "The OLD 'except BaseException' code would have silently "
         "caught it and the excepthook would never fire."
     )
-    assert any(
-        isinstance(args.exc_value, _NotAnException) for args in captured
-    ), captured
-    assert not any(
-        "Interrupt controller raised" in str(record) for record in sink
-    ), sink
+    assert any(isinstance(args.exc_value, _NotAnException) for args in captured), captured
+    assert not any("Interrupt controller raised" in str(record) for record in sink), sink
 
 
 class _SlowBeginDispatcher:
@@ -725,8 +716,7 @@ def test_second_sigint_during_first_sigint_interrupt_thread() -> None:
     try:
         # Wait for the force-kill handler to be installed.
         assert handler_installed.wait(timeout=1.0), (
-            "force-kill handler was not installed within 1.0s; "
-            "set_calls did not grow to len==1"
+            "force-kill handler was not installed within 1.0s; set_calls did not grow to len==1"
         )
         # The dispatcher's begin_interrupt is now blocked on
         # _begin_done. Invoke the installed force-kill handler
@@ -734,8 +724,7 @@ def test_second_sigint_during_first_sigint_interrupt_thread() -> None:
         # the first-SIGINT body is mid-flight.
         set_calls[0][1](signal.SIGINT, None)
         assert exit_calls == [(130,)], (
-            f"second SIGINT should call hard_exit(130) exactly once; "
-            f"got {exit_calls}"
+            f"second SIGINT should call hard_exit(130) exactly once; got {exit_calls}"
         )
         assert getattr(real_dispatcher, "_force_exit_called", None) is True, (
             "real dispatcher's _force_exit_called guard must be set "
@@ -763,8 +752,7 @@ def test_second_sigint_during_first_sigint_interrupt_thread() -> None:
     # _force_exit_called guard fires correctly.
     real_dispatcher.force_exit(bridge_pgids=[9999])
     assert exit_calls == [(130,)], (
-        f"_force_exit_called guard must prevent a second hard_exit "
-        f"call; got {exit_calls}"
+        f"_force_exit_called guard must prevent a second hard_exit call; got {exit_calls}"
     )
 
 

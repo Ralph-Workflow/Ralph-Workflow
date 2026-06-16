@@ -159,8 +159,7 @@ def _fan_out_effect(
         validate_for_same_workspace(WorkUnitsPlan(work_units=list(work_units)))
     except WorkUnitsValidationError as exc:
         offending = (
-            ", ".join(u.unit_id for u in work_units if not u.allowed_directories)
-            or "(see details)"
+            ", ".join(u.unit_id for u in work_units if not u.allowed_directories) or "(see details)"
         )
         return ExitFailureEffect(
             reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"

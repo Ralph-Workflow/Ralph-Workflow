@@ -180,9 +180,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
       and ``session_id is None`` (the canonical SESSION_NOT_FOUND family)
     """
 
-    def test_opencode_resumable_exit_yields_resume_action(
-        self, tmp_path: Path
-    ) -> None:
+    def test_opencode_resumable_exit_yields_resume_action(self, tmp_path: Path) -> None:
         """OpenCodeResumableExitError with session id -> recovery_action='resume'."""
         exc = OpenCodeResumableExitError("opencode", session_id="sess-x")
         effect = _make_effect()
@@ -205,9 +203,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
         assert plan.recovery_action == "resume"
         assert plan.session_id == "sess-x"
 
-    def test_inactivity_with_resume_opts_yields_resume_action(
-        self, tmp_path: Path
-    ) -> None:
+    def test_inactivity_with_resume_opts_yields_resume_action(self, tmp_path: Path) -> None:
         """Inactivity timeout with session_resume_safe=True -> 'resume'.
 
         The plan's session_id is the ``resumable_session_id`` from the
@@ -246,9 +242,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
         assert plan.recovery_action == "resume"
         assert plan.session_id == "sess-y"
 
-    def test_inactivity_without_resume_opts_yields_fresh_action(
-        self, tmp_path: Path
-    ) -> None:
+    def test_inactivity_without_resume_opts_yields_fresh_action(self, tmp_path: Path) -> None:
         """Inactivity timeout WITHOUT opts (session_resume_safe=False default) -> 'fresh'."""
         exc = AgentInactivityTimeoutError("claude", 300.0)
         effect = _make_effect(agent_name="claude")
@@ -278,9 +272,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
         ``tests/test_phases_retry_on_stale_session.py``:
         ``AgentInvocationError('claude', 1, 'No conversation found with session ID: stale-x')``.
         """
-        exc = AgentInvocationError(
-            "claude", 1, "No conversation found with session ID: stale-x"
-        )
+        exc = AgentInvocationError("claude", 1, "No conversation found with session ID: stale-x")
         effect = _make_effect(agent_name="claude")
 
         plan = build_agent_recovery_plan(
@@ -301,13 +293,9 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
         assert plan.recovery_action == "fresh"
         assert plan.session_id is None
 
-    def test_opencode_stale_session_substring_routes_to_fresh(
-        self, tmp_path: Path
-    ) -> None:
+    def test_opencode_stale_session_substring_routes_to_fresh(self, tmp_path: Path) -> None:
         """OpenCode stale-session variant: 'Session not found: <id>' -> 'fresh'."""
-        exc = AgentInvocationError(
-            "opencode", 1, "Session not found: opencode-stale-id"
-        )
+        exc = AgentInvocationError("opencode", 1, "Session not found: opencode-stale-id")
         effect = _make_effect(agent_name="opencode")
 
         plan = build_agent_recovery_plan(

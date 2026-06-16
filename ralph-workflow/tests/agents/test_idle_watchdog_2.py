@@ -64,6 +64,8 @@ def _make_watchdog(
         waiting_status_interval_seconds=status_interval if status_interval is not None else 30.0,
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
         os_descendant_only_ceiling_seconds=None,
+        no_output_at_start_seconds=None,
+        no_progress_quiet_seconds=None,
     )
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock, listener, corroborator=corroborator), clock
@@ -426,6 +428,7 @@ def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies
         waiting_status_interval_seconds=1.0,
         max_waiting_on_child_no_progress_seconds=_NO_PROGRESS_CEILING,
         os_descendant_only_ceiling_seconds=None,
+        no_progress_quiet_seconds=None,
     )
     clock = FakeClock(start=0.0)
     events: list[WaitingStatusEvent] = []
@@ -494,6 +497,7 @@ def test_no_progress_ceiling_adapts_when_corroboration_degrades() -> None:
         waiting_status_interval_seconds=100.0,
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
         os_descendant_only_ceiling_seconds=None,
+        no_progress_quiet_seconds=None,
     )
     clock = FakeClock(start=0.0)
     watchdog = IdleWatchdog(config, clock, corroborator=_corroborator)
@@ -569,6 +573,7 @@ def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnos
         suspect_waiting_on_child_seconds=3.0,
         waiting_status_interval_seconds=0.001,
         os_descendant_only_ceiling_seconds=None,
+        no_progress_quiet_seconds=None,
     )
     clock = FakeClock(start=0.0)
     events: list[WaitingStatusEvent] = []
@@ -642,6 +647,7 @@ def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
         idle_timeout_seconds=10.0,
         max_waiting_on_child_seconds=equal_ceiling,
         max_waiting_on_child_no_progress_seconds=equal_ceiling,
+        no_progress_quiet_seconds=equal_ceiling,
         suspect_waiting_on_child_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )

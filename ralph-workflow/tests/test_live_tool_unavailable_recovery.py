@@ -64,13 +64,10 @@ def test_live_no_such_tool_available_message_routes_to_reset_tool_registry() -> 
     next attempt rebuilds the tool registry.
     """
     live_error_message = (
-        "<tool_use_error>Error: No such tool available: "
-        "mcp__ralph__read_file</tool_use_error>"
+        "<tool_use_error>Error: No such tool available: mcp__ralph__read_file</tool_use_error>"
     )
     exc = RuntimeError(live_error_message)
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert isinstance(classified, ClassifiedFailure)
     assert classified.category == FailureCategory.AGENT
     assert classified.reset_tool_registry is True
@@ -83,9 +80,7 @@ def test_runtime_tool_dispatch_error_routes_to_reset_tool_registry() -> None:
     must also route to ``reset_tool_registry=True``.
     """
     exc = ToolDispatchError("Tool 'read_file' is not registered")
-    classified = FailureClassifier().classify(
-        exc, phase="development", agent="claude/haiku"
-    )
+    classified = FailureClassifier().classify(exc, phase="development", agent="claude/haiku")
     assert isinstance(classified, ClassifiedFailure)
     assert classified.category == FailureCategory.AGENT
     assert classified.reset_tool_registry is True
@@ -116,8 +111,7 @@ def test_bridge_reset_tool_registry_resets_tool_list_path() -> None:
     bridge.reset_tool_registry()
     inner_after = bridge._inner
     assert inner_after is not inner_before, (
-        "reset_tool_registry must swap the inner process so the "
-        "visible tool list is rebuilt"
+        "reset_tool_registry must swap the inner process so the visible tool list is rebuilt"
     )
     assert bridge.tool_registry_resets == 1
 

@@ -297,8 +297,7 @@ def test_create_commit() -> None:
 
     assert sha == "a" * FULL_SHA_LENGTH
     assert captured["message"] == (
-        "Test commit message\n\n"
-        "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
+        "Test commit message\n\nCo-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
     )
 
 
@@ -387,8 +386,7 @@ def test_create_commit_with_author() -> None:
     author = cast("Actor", captured["author"])
     assert sha == "b" * FULL_SHA_LENGTH
     assert captured["message"] == (
-        "Custom author commit\n\n"
-        "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
+        "Custom author commit\n\nCo-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
     )
     assert author.name == "Custom User"
     assert author.email == "custom@example.com"

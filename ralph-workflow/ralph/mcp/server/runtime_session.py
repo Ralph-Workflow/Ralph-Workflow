@@ -293,9 +293,7 @@ def session_from_env(
         )
     run_id_value = payload.get("run_id")
     if not isinstance(run_id_value, str):
-        run_id_value = (
-            run_id_factory() if run_id_factory is not None else str(uuid.uuid4())
-        )
+        run_id_value = run_id_factory() if run_id_factory is not None else str(uuid.uuid4())
     drain_value = payload.get("drain", "standalone")
     if not isinstance(drain_value, str):
         drain_value = "standalone"

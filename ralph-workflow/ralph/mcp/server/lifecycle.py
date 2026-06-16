@@ -58,8 +58,7 @@ if TYPE_CHECKING:
 _TOOL_REGISTRY_MAX_RESETS: int = 3
 if not _TOOL_REGISTRY_MAX_RESETS > 0:
     raise RuntimeError(
-        "_TOOL_REGISTRY_MAX_RESETS must be positive"
-        f" (got {_TOOL_REGISTRY_MAX_RESETS})"
+        f"_TOOL_REGISTRY_MAX_RESETS must be positive (got {_TOOL_REGISTRY_MAX_RESETS})"
     )
 
 # Alias-verify timeout for the post-respawn tools/list probe. The
@@ -88,10 +87,7 @@ if not (
 # `assert`) so it survives `python -O`.
 _RESET_WRAPUP_TIMEOUT_S: float = 2.0
 if not _RESET_WRAPUP_TIMEOUT_S > 0:
-    raise RuntimeError(
-        "_RESET_WRAPUP_TIMEOUT_S must be positive"
-        f" (got {_RESET_WRAPUP_TIMEOUT_S})"
-    )
+    raise RuntimeError(f"_RESET_WRAPUP_TIMEOUT_S must be positive (got {_RESET_WRAPUP_TIMEOUT_S})")
 
 # Canonical tool name whose alias is verified after every
 # ``reset_tool_registry()`` call. ``read_file`` is the most common
@@ -352,9 +348,7 @@ class RestartAwareMcpBridge:
         """
         endpoint = self._inner.endpoint
         if not isinstance(endpoint, str) or not endpoint:
-            logger.debug(
-                "alias-verify skipped: inner process endpoint is not a string"
-            )
+            logger.debug("alias-verify skipped: inner process endpoint is not a string")
             return
         # MagicMock detection: a MagicMock inner process returns a
         # MagicMock for any attribute access. If ``endpoint`` is
@@ -363,27 +357,18 @@ class RestartAwareMcpBridge:
         # silently so unit tests using MagicMock do not break.
         inner_process: object = getattr(self._inner, "process", None)
         if inner_process is None or not hasattr(inner_process, "poll"):
-            logger.debug(
-                "alias-verify skipped: inner process lacks poll() (MagicMock?)"
-            )
+            logger.debug("alias-verify skipped: inner process lacks poll() (MagicMock?)")
             return
         try:
-            tool_names = _http_tools_list_names(
-                endpoint, timeout=_RESPAWN_ALIAS_VERIFY_TIMEOUT_S
-            )
+            tool_names = _http_tools_list_names(endpoint, timeout=_RESPAWN_ALIAS_VERIFY_TIMEOUT_S)
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as exc:
-            msg = (
-                "mcp alias verify probe failed after respawn: "
-                f"endpoint={endpoint!r} error={exc}"
-            )
+            msg = f"mcp alias verify probe failed after respawn: endpoint={endpoint!r} error={exc}"
             logger.error(msg)
             raise McpServerError(
                 msg,
                 restart_count=self._restart_count,
             ) from exc
-        expected_alias = (
-            f"mcp__{_ALIAS_VERIFY_SERVER_NAME}__{_ALIAS_VERIFY_TOOL_NAME}"
-        )
+        expected_alias = f"mcp__{_ALIAS_VERIFY_SERVER_NAME}__{_ALIAS_VERIFY_TOOL_NAME}"
         if expected_alias in tool_names:
             return
         msg = (
@@ -439,9 +424,7 @@ class RestartAwareMcpBridge:
         """
         endpoint = self._inner.endpoint
         if not isinstance(endpoint, str) or not endpoint:
-            logger.debug(
-                "reset_session_budget skipped: inner process endpoint is not a string"
-            )
+            logger.debug("reset_session_budget skipped: inner process endpoint is not a string")
             return
         # MagicMock / fake-bridge detection: a MagicMock inner process
         # (e.g. ``MagicMock(spec=StandaloneMcpProcess)``) does NOT have
@@ -452,9 +435,7 @@ class RestartAwareMcpBridge:
         # hermetic in unit tests.
         inner_process: object = getattr(self._inner, "process", None)
         if inner_process is None or not hasattr(inner_process, "poll"):
-            logger.debug(
-                "reset_session_budget skipped: inner process lacks poll() (MagicMock?)"
-            )
+            logger.debug("reset_session_budget skipped: inner process lacks poll() (MagicMock?)")
             return
         request_payload: dict[str, object] = {
             "jsonrpc": "2.0",
@@ -529,11 +510,7 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
     # ``event: message\\ndata: {json}\\n\\n``. The data payload
     # contains the JSON-RPC response. Strip the SSE envelope and
     # parse the JSON.
-    data_lines = [
-        line[len("data: "):]
-        for line in raw.splitlines()
-        if line.startswith("data: ")
-    ]
+    data_lines = [line[len("data: ") :] for line in raw.splitlines() if line.startswith("data: ")]
     payload: object
     if not data_lines:
         try:

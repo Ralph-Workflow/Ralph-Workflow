@@ -64,6 +64,7 @@ def test_find_latest_claude_transcript_entry_uses_project_scoped_fallback(
     entry = transcript_module.find_latest_claude_transcript_entry(workspace_root, min_mtime=15.0)
 
     assert entry == (newer, "newer-session")
-    assert transcript_module.find_latest_claude_transcript_entry(
-        workspace_root, min_mtime=25.0
-    ) is None
+    assert (
+        transcript_module.find_latest_claude_transcript_entry(workspace_root, min_mtime=25.0)
+        is None
+    )

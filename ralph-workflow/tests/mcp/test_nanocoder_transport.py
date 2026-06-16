@@ -131,9 +131,7 @@ def test_unsafe_mode_true_falls_back_to_ralph_only_when_user_config_malformed(
 
 def test_malformed_env_var_payload_falls_back_to_ralph_only() -> None:
     """Existing env-var-merge default handles malformed payloads by ignoring them."""
-    config_text, _upstreams = build_nanocoder_mcp_config(
-        "{not valid json", "http://r.example/mcp"
-    )
+    config_text, _upstreams = build_nanocoder_mcp_config("{not valid json", "http://r.example/mcp")
 
     parsed = json.loads(config_text)
     servers = parsed["mcpServers"]

@@ -49,9 +49,7 @@ def _read_response_text(result: object) -> str:
 def test_submit_plan_sections_empty_batch_returns_empty_submitted(tmp_path: Path) -> None:
     """An empty batch returns submitted=[] and a successful response."""
     workspace = FsWorkspace(tmp_path)
-    result = handle_submit_plan_sections(
-        planning_session(), workspace, {"entries": []}
-    )
+    result = handle_submit_plan_sections(planning_session(), workspace, {"entries": []})
     assert result.is_error is False
     payload = json.loads(_read_response_text(result))
     assert payload["submitted"] == []
@@ -95,9 +93,7 @@ def test_submit_plan_sections_all_valid_sections_are_staged(tmp_path: Path) -> N
             ),
         },
     ]
-    result = handle_submit_plan_sections(
-        planning_session(), workspace, {"entries": entries}
-    )
+    result = handle_submit_plan_sections(planning_session(), workspace, {"entries": entries})
     payload = json.loads(_read_response_text(result))
     assert payload["submitted"] == ["summary", "skills_mcp", "steps"]
     staged = cast("list[str]", payload["staged_sections"])
@@ -139,9 +135,7 @@ def test_submit_plan_sections_one_invalid_section_rejects_entire_batch(tmp_path:
             "content": json.dumps({"foo": "bar"}),
         },
     ]
-    result = handle_submit_plan_sections(
-        planning_session(), workspace, {"entries": entries}
-    )
+    result = handle_submit_plan_sections(planning_session(), workspace, {"entries": entries})
     assert result.is_error is True
     payload = json.loads(_read_response_text(result))
     assert payload["submitted"] == []

@@ -24,6 +24,7 @@ from ralph.timeout_defaults import (
     MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    NO_PROGRESS_QUIET_SECONDS,
     OS_DESCENDANT_ONLY_CEILING_SECONDS,
     OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
@@ -242,6 +243,17 @@ class GeneralConfig(RalphBaseModel):
             " disable the log-growth probe; the probe no-ops when the file is absent."
         ),
     )
+    agent_no_progress_quiet_seconds: float | None = Field(
+        default=NO_PROGRESS_QUIET_SECONDS,
+        gt=0.0,
+        description=(
+            "Fast no-progress ceiling: fires when the agent has been alive but idle"
+            " for this many seconds with only stale-progress children and no useful"
+            " stdout output, BEFORE the standard no-progress ceiling (600s)."
+            " Must be <= agent_idle_no_progress_waiting_on_child_seconds when set."
+            " When None, the fast no-progress trip is disabled."
+        ),
+    )
     agent_child_progress_ttl_seconds: float = Field(
         default=CHILD_PROGRESS_TTL_SECONDS,
         gt=0.0,
@@ -414,6 +426,17 @@ class GeneralConfig(RalphBaseModel):
                 " agent_idle_max_waiting_on_child_seconds"
                 f" (got {self.agent_idle_no_progress_waiting_on_child_seconds}"
                 f" > {self.agent_idle_max_waiting_on_child_seconds})"
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_no_progress_quiet_seconds is not None
+            and self.agent_idle_no_progress_waiting_on_child_seconds is not None
+            and self.agent_no_progress_quiet_seconds
+            > self.agent_idle_no_progress_waiting_on_child_seconds
+        ):
+            msg = (
+                "agent_no_progress_quiet_seconds must be <="
+                " agent_idle_no_progress_waiting_on_child_seconds"
             )
             raise ValueError(msg)
         if (

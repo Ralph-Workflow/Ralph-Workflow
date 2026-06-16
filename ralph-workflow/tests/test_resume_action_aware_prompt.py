@@ -55,12 +55,9 @@ def test_write_agent_retry_prompt_resume_does_not_inline_original_task(
 
     content = Path(result).read_text(encoding="utf-8")
     assert _ORIGINAL_TASK_BODY_TOKEN not in content, (
-        "resume prompt must NOT inline the original task body; got content: "
-        + content
+        "resume prompt must NOT inline the original task body; got content: " + content
     )
-    assert "Original prompt:" in content, (
-        "resume prompt must reference the original prompt by path"
-    )
+    assert "Original prompt:" in content, "resume prompt must reference the original prompt by path"
     assert "continue from where you left off" in content.lower(), (
         "resume prompt must include the continue-from-where-you-left-off "
         "directive so the agent picks up the prior session"
@@ -88,8 +85,7 @@ def test_write_agent_retry_prompt_fresh_inlines_original_task(
 
     content = Path(result).read_text(encoding="utf-8")
     assert _ORIGINAL_TASK_BODY_TOKEN in content, (
-        "fresh prompt must inline the original task body (no prior session "
-        "to fall back on)"
+        "fresh prompt must inline the original task body (no prior session to fall back on)"
     )
 
 
@@ -246,9 +242,7 @@ def test_resume_prompt_recovery_action_kwarg_is_optional(
     "recovery_action",
     ["resume", "new_session_with_id"],
 )
-def test_non_fresh_actions_omit_inlined_body(
-    tmp_path: Path, recovery_action: str
-) -> None:
+def test_non_fresh_actions_omit_inlined_body(tmp_path: Path, recovery_action: str) -> None:
     """Both non-fresh actions take the resume-style path (no inlined body)."""
     prompt = _write_original_prompt(tmp_path)
 

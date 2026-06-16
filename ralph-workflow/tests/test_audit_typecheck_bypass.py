@@ -27,6 +27,7 @@ _EXTERNAL_REASON = _VALID_REASON_MARKERS[0]
 # _find_type_ignore_violations tests
 # ---------------------------------------------------------------------------
 
+
 def test_clean_code_passes() -> None:
     """No violations for code without type: ignore comments."""
     lines = [
@@ -114,6 +115,7 @@ def test_no_type_ignore_comment_returns_nothing() -> None:
 # Test file detection tests
 # ---------------------------------------------------------------------------
 
+
 def test_blanket_type_ignore_in_test_file_detected() -> None:
     """Blanket type: ignore in test file is flagged."""
     lines = [
@@ -137,6 +139,7 @@ def test_coded_type_ignore_in_test_file_detected() -> None:
 # ---------------------------------------------------------------------------
 # _check_mypy_ini tests
 # ---------------------------------------------------------------------------
+
 
 def test_strict_mypy_ini_passes(tmp_path: Path) -> None:
     """A strict mypy.ini has no violations."""
@@ -299,6 +302,7 @@ disallow_untyped_defs = True
 # _check_pyproject_mypy tests
 # ---------------------------------------------------------------------------
 
+
 def test_clean_pyproject_tool_mypy_passes(tmp_path: Path) -> None:
     """pyproject.toml without weakening mypy settings passes."""
     content = """[tool.mypy]
@@ -338,6 +342,7 @@ name = "test"
 # audit_codebase integration tests
 # ---------------------------------------------------------------------------
 
+
 def test_clean_codebase_passes(tmp_path: Path) -> None:
     """A clean codebase with no violations passes."""
     src_dir = tmp_path / "src"
@@ -376,6 +381,7 @@ def test_mypy_ini_config_violations_found(tmp_path: Path) -> None:
 # main() entry point tests
 # ---------------------------------------------------------------------------
 
+
 def test_main_clean_returns_zero(tmp_path: Path) -> None:
     """main() returns 0 when no violations found."""
     src_dir = tmp_path / "src"
@@ -405,6 +411,7 @@ def test_main_missing_directory_returns_two() -> None:
 # ---------------------------------------------------------------------------
 # Skip dirs test
 # ---------------------------------------------------------------------------
+
 
 def test_skipped_dirs_excluded(tmp_path: Path) -> None:
     """Files in __pycache__ are skipped."""

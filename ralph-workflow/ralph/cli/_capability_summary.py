@@ -73,16 +73,12 @@ def collect_skill_root_rows(
     for entry in agent_skill_roots():
         resolved = entry.resolve()
         label = f"{entry.agent} (canonical)" if entry.is_canonical else entry.agent
-        rows.append(
-            _row_for_root(agent_label=label, skill_root=resolved, scope="user-global")
-        )
+        rows.append(_row_for_root(agent_label=label, skill_root=resolved, scope="user-global"))
     if workspace_root is not None:
         for sibling in project_sibling_skill_roots(workspace_root):
             resolved = sibling.resolve(workspace_root)
             label = f"{sibling.agent} (project)"
-            rows.append(
-                _row_for_root(agent_label=label, skill_root=resolved, scope="project")
-            )
+            rows.append(_row_for_root(agent_label=label, skill_root=resolved, scope="project"))
     return rows
 
 

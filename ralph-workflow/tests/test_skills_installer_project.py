@@ -59,14 +59,11 @@ def test_install_project_baseline_skills_creates_sibling_symlinks(tmp_path: Path
         for name in BASELINE_SKILL_NAMES:
             sibling_dir = sibling_root / name
             canonical_target = (canonical / name).resolve()
-            assert sibling_dir.is_symlink(), (
-                f"{agent}: expected {sibling_dir} to be a symlink"
-            )
+            assert sibling_dir.is_symlink(), f"{agent}: expected {sibling_dir} to be a symlink"
             # macOS /tmp -> /private/tmp indirection: resolve both sides
             # before equality check (PA-007).
             assert sibling_dir.resolve() == canonical_target, (
-                f"{agent}: symlink target {sibling_dir.resolve()} "
-                f"!= canonical {canonical_target}"
+                f"{agent}: symlink target {sibling_dir.resolve()} != canonical {canonical_target}"
             )
 
 

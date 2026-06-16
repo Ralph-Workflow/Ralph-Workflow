@@ -63,6 +63,4 @@ def test_emit_phase_close_from_exit_quiet_mode_emits_nothing() -> None:
     )
     pd.emit_phase_close_from_exit(exit_model)
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"

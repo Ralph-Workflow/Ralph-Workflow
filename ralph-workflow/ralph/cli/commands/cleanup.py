@@ -34,9 +34,7 @@ def cleanup(
 
     workers_dir = repo_root / ".agent" / "workers"
     stale = (
-        sorted(d.name for d in workers_dir.iterdir() if d.is_dir())
-        if workers_dir.exists()
-        else []
+        sorted(d.name for d in workers_dir.iterdir() if d.is_dir()) if workers_dir.exists() else []
     )
 
     if not stale:

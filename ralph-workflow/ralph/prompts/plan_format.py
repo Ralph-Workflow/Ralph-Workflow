@@ -206,9 +206,7 @@ def _format_constraints_section(plan: dict[str, object]) -> str:
     must_not_break = constraints.get("must_not_break")
     if isinstance(must_not_break, list) and must_not_break:
         rendered = [
-            entry.strip()
-            for entry in must_not_break
-            if isinstance(entry, str) and entry.strip()
+            entry.strip() for entry in must_not_break if isinstance(entry, str) and entry.strip()
         ]
         if rendered:
             lines.append("Project Constraints:")
@@ -216,9 +214,7 @@ def _format_constraints_section(plan: dict[str, object]) -> str:
     must_keep_working = constraints.get("must_keep_working")
     if isinstance(must_keep_working, list) and must_keep_working:
         rendered = [
-            entry.strip()
-            for entry in must_keep_working
-            if isinstance(entry, str) and entry.strip()
+            entry.strip() for entry in must_keep_working if isinstance(entry, str) and entry.strip()
         ]
         if rendered:
             if not lines:

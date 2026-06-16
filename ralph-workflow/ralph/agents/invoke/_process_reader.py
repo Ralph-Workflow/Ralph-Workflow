@@ -47,6 +47,7 @@ from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.display.raw_overflow import RawOverflowLog
 from ralph.mcp.server._activity_sink import (
+    ActivitySink,
     reset_active_sink,
     reset_subagent_sink,
     set_active_sink,
@@ -150,9 +151,7 @@ class _ProcessLineReader:
         spawned subagents as ``SPAWNED_SUBAGENT`` instead of guessing from
         the command line.
         """
-        registry = cast(
-            "ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None)
-        )
+        registry = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if registry is None:
             return None
         active_prefix_fn = cast(
@@ -161,6 +160,27 @@ class _ProcessLineReader:
         )
         prefix = active_prefix_fn() if active_prefix_fn is not None else ""
         return ChildLivenessSubagentPidSource(registry, prefix or "")
+
+    def _bind_watchdog_monitors_and_sinks(
+        self, watchdog: IdleWatchdog
+    ) -> tuple[Token[ActivitySink | None], Token[ActivitySink | None]]:
+        """Bind workspace monitor and MCP/subagent sinks to the watchdog."""
+        if self._monitor is not None:
+
+            def _forward_event(kind: WorkspaceChangeKind, weight: float) -> None:
+                watchdog.record_workspace_event(kind=kind, weight=weight)
+
+            self._monitor.set_on_event(_forward_event)
+
+        def _mcp_sink(_tool_name: str) -> None:
+            watchdog.record_mcp_tool_call()
+
+        def _subagent_sink(_line: str) -> None:
+            watchdog.record_subagent_work()
+
+        sink_token = set_active_sink(_mcp_sink)
+        subagent_token = set_subagent_sink(_subagent_sink)
+        return sink_token, subagent_token
 
     def _on_waiting_event(self, evt: WaitingStatusEvent) -> None:
         if evt.kind == WaitingStatusKind.HARD_STOP:
@@ -333,6 +353,8 @@ class _ProcessLineReader:
         timeout_val = (
             self._policy.max_session_seconds
             if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+            else self._policy.no_progress_quiet_seconds
+            if fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
             else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
@@ -420,25 +442,6 @@ class _ProcessLineReader:
                 return None
             self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
-    def _register_sinks(
-        self, watchdog: IdleWatchdog
-    ) -> tuple[Token[ActivitySink | None], Token[ActivitySink | None]]:
-        if self._monitor is not None:
-            def _forward_event(
-                kind: WorkspaceChangeKind, weight: float
-            ) -> None:
-                watchdog.record_workspace_event(kind=kind, weight=weight)
-
-            self._monitor.set_on_event(_forward_event)
-
-        def _mcp_sink(_tool_name: str) -> None:
-            watchdog.record_mcp_tool_call()
-
-        def _subagent_sink(_line: str) -> None:
-            watchdog.record_subagent_work()
-
-        return set_active_sink(_mcp_sink), set_subagent_sink(_subagent_sink)
-
     def read_lines(self) -> Iterator[str]:
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
@@ -453,7 +456,9 @@ class _ProcessLineReader:
             corroborator=self._corroborate,
             process_monitor=process_monitor,
         )
-        sink_token, subagent_token = self._register_sinks(watchdog)
+        watchdog.record_invocation_start()
+
+        sink_token, subagent_token = self._bind_watchdog_monitors_and_sinks(watchdog)
         try:
             while True:
                 self._lines_event.clear()

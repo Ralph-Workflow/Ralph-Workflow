@@ -174,9 +174,7 @@ DEVELOPER_DEPENDENCY_DISCIPLINE_TEXT = (
 DEVELOPER_CONTINUATION_GATE_TEXT = (
     "you MUST use at least one sub-agent as a hard gate before artifact submission"
 )
-DEVELOPER_CONTINUATION_NO_SUBMIT_TEXT = (
-    "you MUST NOT submit the artifact or declare completion"
-)
+DEVELOPER_CONTINUATION_NO_SUBMIT_TEXT = "you MUST NOT submit the artifact or declare completion"
 
 
 def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_path: Path) -> None:

@@ -32,12 +32,33 @@ _MENU_SCORE_PERMISSION_PATTERN = 2
 _MENU_SCORE_THRESHOLD = 4
 _MIN_LINE_LEN_FOR_NUMBERED_CHECK = 3
 _MIN_PREFIX_LEN = 2
-_MENU_APPROVAL_INDICATORS = frozenset({
-    "allow", "approve", "yes", "grant", "authorize", "ok", "okay", "accept", "confirm",
-})
-_MENU_REJECTION_INDICATORS = frozenset({
-    "no", "cancel", "deny", "reject", "block", "skip", "exit", "quit", "refuse", "decline",
-})
+_MENU_APPROVAL_INDICATORS = frozenset(
+    {
+        "allow",
+        "approve",
+        "yes",
+        "grant",
+        "authorize",
+        "ok",
+        "okay",
+        "accept",
+        "confirm",
+    }
+)
+_MENU_REJECTION_INDICATORS = frozenset(
+    {
+        "no",
+        "cancel",
+        "deny",
+        "reject",
+        "block",
+        "skip",
+        "exit",
+        "quit",
+        "refuse",
+        "decline",
+    }
+)
 _MENU_APPROVAL_COUNT_THRESHOLD = 2
 _MIN_PREFIX_CHAR_LEN = 4
 _MENU_QUIESCENCE_SECONDS = 0.75
@@ -86,13 +107,9 @@ def _fuzzy_contains_permission_prompt(text: str) -> bool:
     if any(pattern.search(visible) is not None for pattern in _PERMISSION_PROMPT_PATTERNS):
         return True
 
-    approval_count = sum(
-        1 for line in lines
-        if any(kw in line for kw in _MENU_APPROVAL_INDICATORS)
-    )
+    approval_count = sum(1 for line in lines if any(kw in line for kw in _MENU_APPROVAL_INDICATORS))
     rejection_count = sum(
-        1 for line in lines
-        if any(kw in line for kw in _MENU_REJECTION_INDICATORS)
+        1 for line in lines if any(kw in line for kw in _MENU_REJECTION_INDICATORS)
     )
 
     if approval_count >= 1 and rejection_count >= 1:
@@ -137,9 +154,8 @@ def _simple_auto_approve(text: str) -> str | None:
     for i, line in enumerate(lines):
         lower = line.lower()
         has_digit = (
-            (len(line) > _MIN_PREFIX_LEN and line[0:2].isdigit() and "." in line[:4])
-            or any(line.lstrip().startswith(f"{d}.") for d in range(1, 10))
-        )
+            len(line) > _MIN_PREFIX_LEN and line[0:2].isdigit() and "." in line[:4]
+        ) or any(line.lstrip().startswith(f"{d}.") for d in range(1, 10))
         if has_digit:
             approval = sum(1 for kw in _MENU_APPROVAL_INDICATORS if kw in lower)
             rejection = sum(1 for kw in _MENU_REJECTION_INDICATORS if kw in lower)
@@ -167,9 +183,7 @@ def _extract_choice_menu_state(text: str) -> _ChoiceMenuState | None:
     confirm_footer: str | None = None
     for line in lines:
         lower = line.lower()
-        is_confirm_footer = (
-            ("enter" in lower and "confirm" in lower) or "enter to confirm" in lower
-        )
+        is_confirm_footer = ("enter" in lower and "confirm" in lower) or "enter to confirm" in lower
         if is_confirm_footer:
             confirm_footer = line
             continue

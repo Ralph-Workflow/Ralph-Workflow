@@ -74,9 +74,7 @@ def _legacy_fan_out_policy_bundle() -> PolicyBundle:
     legacy_parallelization = dev_phase.parallelization.model_copy(
         update={"dispatch_mode": "ralph_fan_out"}
     )
-    legacy_dev_phase = dev_phase.model_copy(
-        update={"parallelization": legacy_parallelization}
-    )
+    legacy_dev_phase = dev_phase.model_copy(update={"parallelization": legacy_parallelization})
     legacy_phases = dict(bundle.pipeline.phases)
     legacy_phases["development"] = legacy_dev_phase
     return bundle.model_copy(

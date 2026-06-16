@@ -180,9 +180,11 @@ def evaluate_completion(
     # A run-scoped submission receipt is authoritative proof the artifact was
     # persisted, independent of where it landed; fall back to the on-disk path
     # check only when no receipt is available (e.g. run_id not threaded).
-    present = is_artifact_submitted(workspace, run_id, ra.artifact_type) if (
-        run_id is not None
-    ) else False
+    present = (
+        is_artifact_submitted(workspace, run_id, ra.artifact_type)
+        if (run_id is not None)
+        else False
+    )
     present = present or _artifact_is_schema_valid(artifact_path)
     optional = not ra.artifact_required
     sentinel_present = (

@@ -56,9 +56,7 @@ def _build_server_with_tool(name: str = "read_file") -> McpServer:
 
 
 def _tools_list(server: McpServer) -> list[dict[str, object]]:
-    request = JsonRpcRequest(
-        jsonrpc="2.0", method="tools/list", msg_id="1", params={}
-    )
+    request = JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id="1", params={})
     response, _ = server._handle_tools_list(request)
     assert response.result is not None
     return cast("list[dict[str, object]]", response.result["tools"])

@@ -146,9 +146,7 @@ def _patch_runner_dependencies(
     )
     monkeypatch.setattr(runner_module, "write_start_commit_if_absent", lambda _root: None)
     monkeypatch.setattr(runner_module, "validate_custom_mcp_servers", lambda _root: 0)
-    monkeypatch.setattr(
-        runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle
-    )
+    monkeypatch.setattr(runner_module, "load_policy_bundle_for_run", lambda *_a, **_kw: bundle)
     monkeypatch.setattr(runner_module, "register_role_handlers", lambda _pp: None)
     monkeypatch.setattr(
         runner_module,
@@ -158,9 +156,7 @@ def _patch_runner_dependencies(
     monkeypatch.setattr(runner_module, "create_initial_state", lambda *_a, **_kw: state)
 
 
-def _install_display_context(
-    monkeypatch: pytest.MonkeyPatch, run_loop_module: object
-) -> None:
+def _install_display_context(monkeypatch: pytest.MonkeyPatch, run_loop_module: object) -> None:
     """Force display-context helpers to return deterministic fakes."""
     ctx = make_display_context()
     runner_module = _load_runner()
@@ -316,12 +312,8 @@ def test_pro_invocation_end_to_end_satisfies_all_three_bullets(
 
     assert exit_code == 0
 
-    assert recording.started, (
-        "Bullet 1: late marker should have started the heartbeat"
-    )
-    assert recording.stopped, (
-        "Bullet 1: cleanup should have stopped the heartbeat"
-    )
+    assert recording.started, "Bullet 1: late marker should have started the heartbeat"
+    assert recording.stopped, "Bullet 1: cleanup should have stopped the heartbeat"
 
     latest = registry.get_latest()
     assert latest is not None, "Bullet 2: snapshot registry must have a published snapshot"

@@ -39,9 +39,7 @@ def test_emit_providers_table_empty_list() -> None:
     pd.emit_providers_table([])
     pd.stop()
     output = buf.getvalue()
-    assert "[providers]" in output, (
-        f"expected section rule in output, got: {output!r}"
-    )
+    assert "[providers]" in output, f"expected section rule in output, got: {output!r}"
     assert "Available Providers" in output, (
         f"expected 'Available Providers' title in output, got: {output!r}"
     )
@@ -65,6 +63,4 @@ def test_emit_providers_table_quiet_mode_emits_nothing() -> None:
     pd._is_quiet = True
     pd.emit_providers_table([])
     pd.stop()
-    assert buf.getvalue() == "", (
-        f"quiet mode must produce no output, got: {buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"quiet mode must produce no output, got: {buf.getvalue()!r}"

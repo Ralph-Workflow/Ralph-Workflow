@@ -56,9 +56,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
 
     def test_dev_analysis_at_max_routes_to_development(self) -> None:
         """At max-1 iterations, ANALYSIS_LOOPBACK still routes to development."""
-        policy = _policy_with_loop_counter_max(
-            "development_analysis_iteration", _DEV_MAX_ANALYSIS
-        )
+        policy = _policy_with_loop_counter_max("development_analysis_iteration", _DEV_MAX_ANALYSIS)
         state = PipelineState(
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 2},  # max-1 where max=3

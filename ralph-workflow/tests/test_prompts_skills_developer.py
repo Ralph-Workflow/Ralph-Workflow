@@ -69,22 +69,16 @@ def _assert_shipped_skills_discovery(prompt: str) -> None:
 class TestDeveloperTemplatesShippedSkills:
     """developer_iteration.jinja and developer_iteration_fallback.jinja."""
 
-    def test_developer_iteration_jinja_has_shipped_skills_section(
-        self, tmp_path: Path
-    ) -> None:
+    def test_developer_iteration_jinja_has_shipped_skills_section(self, tmp_path: Path) -> None:
         prompt = _shared_render_developer(False, tmp_path=tmp_path)
         _assert_shipped_skills_discovery(prompt)
 
-    def test_developer_iteration_jinja_docs_mcp_false_branch_visible(
-        self, tmp_path: Path
-    ) -> None:
+    def test_developer_iteration_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
         prompt = _shared_render_developer(False, tmp_path=tmp_path)
         for hint_phrase in DOCS_MCP_FALSE_BRANCH_HINTS_PRIMARY:
             assert hint_phrase in prompt, f"Missing false-branch hint: {hint_phrase}"
 
-    def test_developer_iteration_jinja_docs_mcp_true_branch_active(
-        self, tmp_path: Path
-    ) -> None:
+    def test_developer_iteration_jinja_docs_mcp_true_branch_active(self, tmp_path: Path) -> None:
         prompt = _shared_render_developer(True, tmp_path=tmp_path)
         assert "arabold/docs-mcp-server" in prompt
         assert "localhost:6280" in prompt

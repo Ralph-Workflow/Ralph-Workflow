@@ -38,16 +38,19 @@ def _load_pyproject() -> dict[str, object]:
 
 # Files that document or test type-ignore patterns and must contain type-ignore
 # directives as test fixtures or documentation. These are excluded from policy scans.
-_TYPE_IGNORE_POLICY_EXEMPT_STEMS: frozenset[str] = frozenset({
-    "audit_typecheck_bypass",
-    "test_audit_typecheck_bypass",
-})
+_TYPE_IGNORE_POLICY_EXEMPT_STEMS: frozenset[str] = frozenset(
+    {
+        "audit_typecheck_bypass",
+        "test_audit_typecheck_bypass",
+    }
+)
 
 
 @cache
 def _repo_python_files() -> tuple[Path, ...]:
     return tuple(
-        path for path in REPO_ROOT.rglob("*.py")
+        path
+        for path in REPO_ROOT.rglob("*.py")
         if ".venv" not in path.parts
         and "tmp" not in path.parts
         and path.stem not in _TYPE_IGNORE_POLICY_EXEMPT_STEMS

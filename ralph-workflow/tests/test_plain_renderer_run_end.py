@@ -23,9 +23,7 @@ def test_emit_run_end_emits_milestone_header() -> None:
     pd, buf = _make_display()
     pd.emit_run_end(phase="complete", total_agent_calls=0)
     out = buf.getvalue()
-    milestone_line = next(
-        (ln for ln in out.splitlines() if "MILESTONE META [run-end]" in ln), None
-    )
+    milestone_line = next((ln for ln in out.splitlines() if "MILESTONE META [run-end]" in ln), None)
     assert milestone_line is not None
     assert "Ralph Workflow run end" in milestone_line
 
@@ -134,14 +132,10 @@ def test_emit_run_end_milestone_glyph_ascii_fallback() -> None:
     """RALPH_FORCE_ASCII=1 uses ASCII milestone glyph (* not ◆) in run-end header."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    pd = ParallelDisplay(
-        make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"})
-    )
+    pd = ParallelDisplay(make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"}))
     pd.emit_run_end(phase="complete", total_agent_calls=0)
     out = buf.getvalue()
-    milestone_line = next(
-        (ln for ln in out.splitlines() if "Ralph Workflow run end" in ln), None
-    )
+    milestone_line = next((ln for ln in out.splitlines() if "Ralph Workflow run end" in ln), None)
     assert milestone_line is not None
     assert "[run-end] * Ralph Workflow run end" in milestone_line
     assert "◆" not in milestone_line

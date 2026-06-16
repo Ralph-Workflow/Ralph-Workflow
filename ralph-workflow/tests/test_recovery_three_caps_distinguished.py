@@ -91,9 +91,7 @@ def test_restart_budget_cap_substrings_are_present() -> None:
     bridge = _make_bridge(max_restarts=2)
     bridge._inner.process.poll.return_value = 999  # process exited
     bridge._inner.shutdown = MagicMock()
-    bridge._restart_fn = MagicMock(
-        return_value=bridge._inner
-    )
+    bridge._restart_fn = MagicMock(return_value=bridge._inner)
     # First two checks should restart (counter goes 1, 2).
     bridge.check_health_and_restart_if_needed()
     bridge.check_health_and_restart_if_needed()
@@ -132,9 +130,7 @@ def test_three_caps_have_distinct_substrings(monkeypatch: pytest.MonkeyPatch) ->
     bridge2 = _make_bridge(max_restarts=1)
     bridge2._inner.process.poll.return_value = 999
     bridge2._inner.shutdown = MagicMock()
-    bridge2._restart_fn = MagicMock(
-        return_value=bridge2._inner
-    )
+    bridge2._restart_fn = MagicMock(return_value=bridge2._inner)
     bridge2.check_health_and_restart_if_needed()
     try:
         bridge2.check_health_and_restart_if_needed()

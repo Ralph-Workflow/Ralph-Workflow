@@ -88,6 +88,7 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
         thinking_preview_min_chars=80,
         tool_result_headline_min_chars=80,
     )
+
     def _make_display_context(**_kwargs: object) -> DisplayContext:
         return ctx
 
@@ -149,6 +150,7 @@ def test_smoke_interactive_claude_command_runs_interactive_haiku_and_reports_gui
 ) -> None:
     stream = _attach_console(monkeypatch)
     scope = WorkspaceScope(tmp_path)
+
     def _resolve_workspace_scope() -> WorkspaceScope:
         return scope
 
@@ -555,11 +557,7 @@ def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
     )
 
     agy_row = next(
-        (
-            line
-            for line in log_text.splitlines()
-            if "agy/" in line and ("│" in line or "┃" in line)
-        ),
+        (line for line in log_text.splitlines() if "agy/" in line and ("│" in line or "┃" in line)),
         None,
     )
     assert agy_row is not None, "AGY parity table row not found in smoke log"
@@ -621,9 +619,7 @@ def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
             "agy/Claude Sonnet 4.6 (Thinking)": AgentConfig(
                 cmd="agy", transport=AgentTransport.AGY
             ),
-            "claude/haiku": AgentConfig(
-                cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE
-            ),
+            "claude/haiku": AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", "/etc/hosts")

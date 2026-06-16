@@ -65,9 +65,7 @@ def wrapup_notice(
             f"⚠️ ~{remaining_minutes} min of your time budget remain. Finish up and call"
             " declare_complete soon — remaining work will be force-stopped at the cap."
         )
-    return (
-        "⚠️ You are past your soft time budget. Finish up and call declare_complete soon."
-    )
+    return "⚠️ You are past your soft time budget. Finish up and call declare_complete soon."
 
 
 class SessionWrapupBudget:

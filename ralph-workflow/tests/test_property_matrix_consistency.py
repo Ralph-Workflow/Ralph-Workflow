@@ -342,6 +342,3 @@ def test_matrix_has_exactly_fourteen_rows() -> None:
         f"property matrix rows out of order or misnamed. "
         f"Expected prefixes {expected_prefixes}, got {actual_prefixes}"
     )
-
-
-

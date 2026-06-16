@@ -20,6 +20,7 @@ class _GeneralConfigStub:
     agent_waiting_status_interval_seconds: float = 60.0
     agent_suspect_waiting_on_child_seconds: float | None = 300.0
     agent_idle_no_progress_waiting_on_child_seconds: float = 600.0
+    agent_no_progress_quiet_seconds: float | None = 120.0
     agent_idle_activity_evidence_ttl_seconds: float | None = 30.0
     agent_post_tool_result_progression_seconds: float | None = 120.0
     agent_repeated_error_consecutive_threshold: int | None = 5
@@ -41,6 +42,4 @@ class _GeneralConfigStub:
     agent_system_prompt: str | None = None
     agent_provider: str | None = None
     verbose: bool = False
-    workflow: GeneralWorkflowFlags = field(
-        default_factory=GeneralWorkflowFlags
-    )
+    workflow: GeneralWorkflowFlags = field(default_factory=GeneralWorkflowFlags)

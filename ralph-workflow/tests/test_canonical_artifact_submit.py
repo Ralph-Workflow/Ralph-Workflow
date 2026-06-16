@@ -155,9 +155,7 @@ def test_submit_artifact_canonical_does_not_write_sentinel_for_plan(
                 "mcps": [],
             },
             "steps": [{"number": 1, "title": "Step 1", "content": "Do the work"}],
-            "critical_files": {
-                "primary_files": [{"path": "x.py", "action": "modify"}]
-            },
+            "critical_files": {"primary_files": [{"path": "x.py", "action": "modify"}]},
             "risks_mitigations": [{"risk": "Regression", "mitigation": "Tests"}],
             "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
         },
@@ -360,12 +358,8 @@ def test_fallback_promotion_returns_false_on_schema_invalid_payload(
     )
 
     assert not is_artifact_submitted(tmp_path, "run-x", "smoke_test_result", deps=deps)
-    assert not artifact_receipt_present(
-        tmp_path, "run-x", "smoke_test_result", backend=backend
-    )
-    assert not backend.exists(
-        tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
-    )
+    assert not artifact_receipt_present(tmp_path, "run-x", "smoke_test_result", backend=backend)
+    assert not backend.exists(tmp_path / ".agent" / "artifacts" / "smoke_test_result.json")
 
 
 def test_fallback_promotion_continues_after_malformed_tmp_file(
@@ -392,9 +386,7 @@ def test_fallback_promotion_continues_after_malformed_tmp_file(
     )
 
     assert is_artifact_submitted(tmp_path, "run-5", "smoke_test_result", deps=deps)
-    assert artifact_receipt_present(
-        tmp_path, "run-5", "smoke_test_result", backend=backend
-    )
+    assert artifact_receipt_present(tmp_path, "run-5", "smoke_test_result", backend=backend)
 
 
 def test_explicit_completion_marker_alone_is_not_terminal() -> None:
@@ -443,9 +435,7 @@ def test_atomic_rollback_when_artifact_write_fails(
             run_id="run-1",
         )
 
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "artifacts" / "development_result.json"
-    )
+    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
     assert not failing_backend.exists(
         tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
     )
@@ -477,12 +467,8 @@ def test_atomic_rollback_when_handoff_sync_fails(
             run_id="run-1",
         )
 
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "artifacts" / "development_result.json"
-    )
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
-    )
+    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
+    assert not failing_backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
     assert not failing_backend.exists(
         tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
     )
@@ -514,12 +500,8 @@ def test_atomic_rollback_when_receipt_write_fails(
             run_id="run-1",
         )
 
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "artifacts" / "development_result.json"
-    )
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
-    )
+    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
+    assert not failing_backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
     assert not failing_backend.exists(
         tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
     )
@@ -551,12 +533,8 @@ def test_atomic_rollback_when_sentinel_write_fails(
             run_id="run-1",
         )
 
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "artifacts" / "development_result.json"
-    )
-    assert not failing_backend.exists(
-        tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
-    )
+    assert not failing_backend.exists(tmp_path / ".agent" / "artifacts" / "development_result.json")
+    assert not failing_backend.exists(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
     assert not failing_backend.exists(
         tmp_path / ".agent" / "receipts" / "run-1" / "development_result.json"
     )
@@ -594,6 +572,8 @@ def test_atomic_rollback_preserves_artifact_dir_state(
 
     post_failure_files = set(failing_backend.glob(artifact_dir, "*.json"))
     assert post_failure_files == pre_submit_files
+
+
 def test_stale_fallback_not_promoted_for_fresh_run(
     tmp_path: Path,
     backend: MemoryBackend,
@@ -635,9 +615,5 @@ def test_stale_fallback_not_promoted_for_fresh_run(
     )
 
     # Current run should not see stale artifact as submitted
-    assert not is_artifact_submitted(
-        tmp_path, "run-new", "development_result", deps=deps
-    )
-    assert not artifact_receipt_present(
-        tmp_path, "run-new", "development_result", backend=backend
-    )
+    assert not is_artifact_submitted(tmp_path, "run-new", "development_result", deps=deps)
+    assert not artifact_receipt_present(tmp_path, "run-new", "development_result", backend=backend)

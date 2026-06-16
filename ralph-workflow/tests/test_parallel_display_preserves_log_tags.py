@@ -46,9 +46,5 @@ def test_parallel_display_preserves_log_tags() -> None:
     assert "[phase-close]" in text, (
         f"[phase-close] marker missing from ParallelDisplay output:\n{text!r}"
     )
-    assert "[run-end]" in text, (
-        f"[run-end] marker missing from ParallelDisplay output:\n{text!r}"
-    )
-    assert "unit-1" in text, (
-        f"unit_id 'unit-1' missing from ParallelDisplay output:\n{text!r}"
-    )
+    assert "[run-end]" in text, f"[run-end] marker missing from ParallelDisplay output:\n{text!r}"
+    assert "unit-1" in text, f"unit_id 'unit-1' missing from ParallelDisplay output:\n{text!r}"

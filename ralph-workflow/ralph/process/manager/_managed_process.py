@@ -219,9 +219,7 @@ class ManagedProcess:
         with contextlib.suppress(Exception):
             self.stdin.close()
 
-    def _append_output_tail(
-        self, buffer: bytearray, chunk: bytes, output_limit_bytes: int
-    ) -> None:
+    def _append_output_tail(self, buffer: bytearray, chunk: bytes, output_limit_bytes: int) -> None:
         if output_limit_bytes <= 0:
             return
         buffer.extend(chunk)

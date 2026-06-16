@@ -111,9 +111,7 @@ def _type_checking_line_ranges(path: Path) -> frozenset[int]:
         if not isinstance(node, ast.If):
             continue
         test = node.test
-        is_type_checking = (
-            isinstance(test, ast.Name) and test.id == "TYPE_CHECKING"
-        )
+        is_type_checking = isinstance(test, ast.Name) and test.id == "TYPE_CHECKING"
         if not is_type_checking:
             continue
         for child in ast.walk(node):
@@ -245,8 +243,7 @@ def test_no_console_constructor_in_cli_commands() -> None:
         if "Console(" in line
     ]
     assert not violations, (
-        "Inline Console() found in ralph/cli/commands/ (DI violation):\n"
-        + "\n".join(violations)
+        "Inline Console() found in ralph/cli/commands/ (DI violation):\n" + "\n".join(violations)
     )
 
 
@@ -427,7 +424,7 @@ def test_no_console_print_in_main_py_except_version_path() -> None:
         f"version_callback function; found {non_version_violations!r}.\n"
         f"Direct c.print/console.print/ctx.console.print call sites: {violations!r}\n"
         f"Context around the first violation:\n"
-        f"{chr(10).join(lines[max(0, violations[0] - 3):violations[0] + 2])}"
+        f"{chr(10).join(lines[max(0, violations[0] - 3) : violations[0] + 2])}"
     )
     assert len(violations) >= 1, (
         f"version_callback must keep its single direct c.print at line "
@@ -489,8 +486,7 @@ def test_no_free_function_imports_in_cli_or_pipeline() -> None:
     assert not print_violations, (
         "Direct console.print/c.print/ctx.console.print calls "
         "re-introduced in ralph/cli/commands/, ralph/pipeline/, or "
-        "ralph/config/ (wt-007 anti-drift guard tripped):\n"
-        + "\n".join(print_violations)
+        "ralph/config/ (wt-007 anti-drift guard tripped):\n" + "\n".join(print_violations)
     )
 
 
@@ -521,9 +517,7 @@ def _canonical_36_names() -> frozenset[str]:
     authoritative surface defined in
     ``tests/display/test_parallel_display_drift_prevention.py``.
     """
-    drift_module = importlib.import_module(
-        "tests.display.test_parallel_display_drift_prevention"
-    )
+    drift_module = importlib.import_module("tests.display.test_parallel_display_drift_prevention")
     return frozenset(drift_module._PARALLEL_DISPLAY_36_NAMES)
 
 
@@ -583,8 +577,7 @@ def test_table_panel_methods_emit_section_rule_header() -> None:
         if name in exempt:
             continue
         assert name in canonical_set, (
-            f"test_table_panel_methods_emit_section_rule_header references "
-            f"unknown method {name!r}"
+            f"test_table_panel_methods_emit_section_rule_header references unknown method {name!r}"
         )
         method = getattr(ParallelDisplay, name, None)
         if method is None:

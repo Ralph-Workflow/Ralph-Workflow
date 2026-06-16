@@ -94,6 +94,4 @@ def contribute(
     if not opened:
         typer.echo(f"Could not open browser automatically. Visit: {url}")
 
-    typer.echo(
-        Text.from_markup("\n[green]Thank you for supporting Ralph Workflow![/green] ⭐\n")
-    )
+    typer.echo(Text.from_markup("\n[green]Thank you for supporting Ralph Workflow![/green] ⭐\n"))

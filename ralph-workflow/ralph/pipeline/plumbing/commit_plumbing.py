@@ -236,12 +236,8 @@ def _commit_pipeline_deps(
     Routes through :class:`DefaultPipelineFactory` so a Pro subclassed
     factory is honored on the plumbing-direct-call path.
     """
-    deps = DefaultPipelineFactory().build(
-        config, display_context, pro_hooks=pro_hooks
-    )
-    return _apply_commit_deps_overrides(
-        deps, materializer=materializer, registry=registry
-    )
+    deps = DefaultPipelineFactory().build(config, display_context, pro_hooks=pro_hooks)
+    return _apply_commit_deps_overrides(deps, materializer=materializer, registry=registry)
 
 
 def run_commit_plumbing(
@@ -294,9 +290,7 @@ def run_commit_plumbing(
             display_context = pipeline_core.display_context
         effective_pipeline_deps = PipelineDeps(
             core=pipeline_core,
-            bridge_factory=bridge_factory
-            if bridge_factory is not None
-            else build_session_bridge,
+            bridge_factory=bridge_factory if bridge_factory is not None else build_session_bridge,
         )
         effective_pipeline_deps = _apply_commit_deps_overrides(
             effective_pipeline_deps,

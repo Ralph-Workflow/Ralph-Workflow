@@ -45,10 +45,7 @@ def test_interrupt_exit_code_is_130() -> None:
         f"ralph.interrupt.controller.INTERRUPT_EXIT_CODE must be 130; "
         f"got {ralph.interrupt.controller.INTERRUPT_EXIT_CODE}"
     )
-    assert (
-        ralph.interrupt.INTERRUPT_EXIT_CODE
-        is ralph.interrupt.controller.INTERRUPT_EXIT_CODE
-    ), (
+    assert ralph.interrupt.INTERRUPT_EXIT_CODE is ralph.interrupt.controller.INTERRUPT_EXIT_CODE, (
         "ralph.interrupt.INTERRUPT_EXIT_CODE and "
         "ralph.interrupt.controller.INTERRUPT_EXIT_CODE must be the "
         "same object (no shadowing re-definition)"
@@ -118,9 +115,7 @@ def test_interrupt_exit_code_in_dispatcher_hard_exit_path() -> None:
     top of ``dispatcher.py`` and used by name in the body of
     ``force_exit``.
     """
-    source = inspect.getsource(
-        ralph.interrupt.dispatcher.InterruptDispatcher.force_exit
-    )
+    source = inspect.getsource(ralph.interrupt.dispatcher.InterruptDispatcher.force_exit)
     assert "INTERRUPT_EXIT_CODE" in source, (
         "InterruptDispatcher.force_exit must reference "
         "INTERRUPT_EXIT_CODE (the canonical constant); the literal 130 "

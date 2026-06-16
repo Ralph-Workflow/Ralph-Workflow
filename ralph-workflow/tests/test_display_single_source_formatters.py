@@ -24,9 +24,7 @@ def _function_def_count(name: str) -> int:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         count += sum(
-            1
-            for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef) and node.name == name
+            1 for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == name
         )
     return count
 

@@ -73,9 +73,7 @@ def test_post_header_failure_increments_counter(tmp_path: Path) -> None:
 
     # Monkeypatch _dispatch_request to raise.
     original = mcp_server._dispatch_request
-    mcp_server._dispatch_request = lambda req, state: explode(
-        mcp_server, req, state
-    )
+    mcp_server._dispatch_request = lambda req, state: explode(mcp_server, req, state)
     response, _state = mcp_server.handle_request(_broken_request(), ServerState.RUNNING)
     assert response is not None
     assert response.error is not None
@@ -92,16 +90,12 @@ def test_post_header_failure_100_concurrent_increments_counter(tmp_path: Path) -
     def explode(server: McpServer, request: JsonRpcRequest, state: ServerState) -> Never:
         raise RuntimeError("simulated dispatch failure")
 
-    mcp_server._dispatch_request = lambda req, state: explode(
-        mcp_server, req, state
-    )
+    mcp_server._dispatch_request = lambda req, state: explode(mcp_server, req, state)
 
     results: list[object] = []
 
     def worker() -> None:
-        response, _state = mcp_server.handle_request(
-            _broken_request(), ServerState.RUNNING
-        )
+        response, _state = mcp_server.handle_request(_broken_request(), ServerState.RUNNING)
         results.append(response)
 
     threads = [threading.Thread(target=worker) for _ in range(100)]
@@ -119,9 +113,7 @@ def test_health_probe_outcome_counter_increments(tmp_path: Path) -> None:
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
     original_make = _in_memory_transport._make_fake_server
 
-    def _make_with_probe(
-        mcp_server_arg: McpServer, state: ServerState
-    ) -> _FallbackHttpServer:
+    def _make_with_probe(mcp_server_arg: McpServer, state: ServerState) -> _FallbackHttpServer:
         fake = original_make(mcp_server_arg, state)
 
         def _probe() -> _ProbeResult:
@@ -145,9 +137,7 @@ def test_health_probe_success_increments_success_counter(tmp_path: Path) -> None
     mcp_server = _make_mcp_server(tmp_path, metrics=metrics)
     original_make = _in_memory_transport._make_fake_server
 
-    def _make_with_probe(
-        mcp_server_arg: McpServer, state: ServerState
-    ) -> _FallbackHttpServer:
+    def _make_with_probe(mcp_server_arg: McpServer, state: ServerState) -> _FallbackHttpServer:
         fake = original_make(mcp_server_arg, state)
 
         def _probe() -> _ProbeResult:
@@ -185,11 +175,7 @@ def test_metrics_snapshot_has_all_three_keys() -> None:
 def test_startup_banner_contains_all_six_fields() -> None:
     """The startup banner announces transport/session/dispatch/drain/kill/probe/auth."""
     text = (
-        Path(__file__).parent.parent
-        / "ralph"
-        / "mcp"
-        / "server"
-        / "_fallback_standalone_server.py"
+        Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "_fallback_standalone_server.py"
     ).read_text()
     # The loguru format string must include all six fields.
     for field in (
@@ -230,13 +216,7 @@ def test_metrics_record_does_not_require_real_wall_clock() -> None:
     import time as _time inside unrelated modules) confirms no wall-clock
     dependency.
     """
-    text = (
-        Path(__file__).parent.parent
-        / "ralph"
-        / "mcp"
-        / "server"
-        / "_metrics.py"
-    ).read_text()
+    text = (Path(__file__).parent.parent / "ralph" / "mcp" / "server" / "_metrics.py").read_text()
     # The module must not import time at all — there is no wall-clock need.
     # Allow the docstring / comments to mention time but not actually import.
     assert "import time" not in text or ("import time" in text and "time.monotonic" not in text), (

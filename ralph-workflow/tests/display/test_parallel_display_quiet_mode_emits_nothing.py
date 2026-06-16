@@ -45,6 +45,4 @@ def test_quiet_mode_emits_nothing_for_lifecycle_methods() -> None:
     pd.emit("unit-1", "test log line")
     pd.set_status("unit-1", WorkerStatus.RUNNING)
     pd.record_artifact_outcome("committed")
-    assert buf.getvalue() == "", (
-        f"Quiet mode must emit zero output, got:\n{buf.getvalue()!r}"
-    )
+    assert buf.getvalue() == "", f"Quiet mode must emit zero output, got:\n{buf.getvalue()!r}"

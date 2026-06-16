@@ -173,6 +173,6 @@ def test_emit_snapshot_includes_plan_activity_and_analysis_context() -> None:
         "[activity-line] tag must not appear; use [activity] instead"
     )
     assert any(
-        "[analysis] review revise \u2014"
-        " The current dashboard drops key state" in line for line in lines
+        "[analysis] review revise \u2014 The current dashboard drops key state" in line
+        for line in lines
     )

@@ -203,9 +203,7 @@ def submit_artifact_canonical(
 
     backend = resolved_deps.backend
     candidate_artifact = resolved_artifact_dir / f"{name or artifact_type}.json"
-    artifact_path: Path | None = (
-        candidate_artifact if backend.exists(candidate_artifact) else None
-    )
+    artifact_path: Path | None = candidate_artifact if backend.exists(candidate_artifact) else None
 
     receipt_path: Path | None = None
     if run_id is not None:
@@ -287,10 +285,7 @@ def promote_fallback_artifact(
                         receipt_run_id = parts[0]
                         receipt_artifact_type = receipt_path.stem
                         # Check if this is the same artifact type and a different run
-                        if (
-                            receipt_artifact_type == artifact_type
-                            and receipt_run_id != run_id
-                        ):
+                        if receipt_artifact_type == artifact_type and receipt_run_id != run_id:
                             # A receipt exists for a different run - this is stale
                             has_other_run_receipt = True
                             break

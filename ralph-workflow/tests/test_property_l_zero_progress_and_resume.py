@@ -51,7 +51,7 @@ def test_guard_aborts_after_three_identical_signatures() -> None:
     guard = RetryProgressGuard()
     assert guard.record("sig-A") is False  # streak = 1, no cap
     assert guard.record("sig-A") is False  # streak = 2, no cap
-    assert guard.record("sig-A") is True   # streak = 3, cap fires
+    assert guard.record("sig-A") is True  # streak = 3, cap fires
 
 
 def test_guard_does_not_cap_on_first_two_identical() -> None:
@@ -82,9 +82,7 @@ def test_volatile_uuid_token_stripped_from_signature() -> None:
     sig_b = retry_failure_signature(base_text, ["run-67890 at 23:45"])
     # RepetitionTracker.fingerprint strips UUIDs (8+ hex chunks), and
     # _NUMERIC_TOKEN strips the rest of the numerics.
-    assert sig_a == sig_b, (
-        f"volatile tokens must be stripped: {sig_a!r} vs {sig_b!r}"
-    )
+    assert sig_a == sig_b, f"volatile tokens must be stripped: {sig_a!r} vs {sig_b!r}"
 
 
 def test_volatile_clock_stripped_from_signature() -> None:
@@ -115,10 +113,7 @@ def test_guard_three_different_uuids_caps_correctly() -> None:
     """End-to-end: 4 failures with different UUIDs — the 3rd identical sig caps."""
     guard = RetryProgressGuard()
     base = "InactivityTimeout"
-    sigs = [
-        retry_failure_signature(base, [f"uuid-{i:04d}-aaaa at 12:00:00"])
-        for i in range(4)
-    ]
+    sigs = [retry_failure_signature(base, [f"uuid-{i:04d}-aaaa at 12:00:00"]) for i in range(4)]
     # All four should collapse to the same signature after normalization
     assert len(set(sigs)) == 1, f"UUIDs should be normalized; got {sigs}"
     results = [guard.record(s) for s in sigs]
@@ -142,9 +137,7 @@ def test_wiring_progress_guard_caps_after_three_identical_signatures() -> None:
     bumps the cap constant without adding capacity downstream fails here.
     """
     guard = RetryProgressGuard()
-    sig = retry_failure_signature(
-        "InactivityTimeout", ["uuid-1234-aaaa at 12:00:00"]
-    )
+    sig = retry_failure_signature("InactivityTimeout", ["uuid-1234-aaaa at 12:00:00"])
     assert guard.record(sig) is False
     assert guard.record(sig) is False
     assert guard.record(sig) is True
@@ -237,9 +230,7 @@ def test_property_l_resume_prompt_never_inlines_original_task(
         "resume prompt must NOT include the ORIGINAL TASK PROMPT section"
     )
     assert _ORIGINAL_TASK_BODY_TOKEN not in content
-    assert "Original prompt:" in content, (
-        "resume prompt must reference the original prompt by path"
-    )
+    assert "Original prompt:" in content, "resume prompt must reference the original prompt by path"
     assert "continue from where you left off" in content.lower()
 
 

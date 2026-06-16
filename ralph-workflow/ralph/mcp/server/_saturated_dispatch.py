@@ -115,18 +115,14 @@ class _SaturatedDispatch:
         except RuntimeError as exc:
             # RuntimeError: cannot schedule new futures after shutdown
             if "shutdown" in str(exc).lower() or "shutdown" in type(exc).__name__.lower():
-                return SaturatedResponse(
-                    code=SATURATION_CODE, message=SATURATION_MESSAGE
-                )
+                return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
             raise
         try:
             return future.result()
         except concurrent.futures.CancelledError:
             return SaturatedResponse(code=SATURATION_CODE, message=SATURATION_MESSAGE)
 
-    def install_executor(
-        self, executor: concurrent.futures.ThreadPoolExecutor
-    ) -> None:
+    def install_executor(self, executor: concurrent.futures.ThreadPoolExecutor) -> None:
         """Install a custom executor (test-only seam)."""
         with self._lock:
             self._executor = executor

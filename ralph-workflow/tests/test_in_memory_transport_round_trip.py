@@ -83,9 +83,7 @@ def test_round_trip_uses_no_sockets_and_no_real_time(
 
 def test_notification_initialized_returns_202_no_sse_payload(tmp_path: Path) -> None:
     mcp_server = _make_mcp_server(tmp_path)
-    payload = json.dumps(
-        {"jsonrpc": "2.0", "method": "notifications/initialized"}
-    ).encode()
+    payload = json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}).encode()
     status, _headers, body = drive_request(mcp_server, payload)
     assert status == 202
     assert body == b""
@@ -93,9 +91,7 @@ def test_notification_initialized_returns_202_no_sse_payload(tmp_path: Path) -> 
 
 def test_unknown_path_returns_404(tmp_path: Path) -> None:
     mcp_server = _make_mcp_server(tmp_path)
-    status, _headers, _body = drive_request(
-        mcp_server, _build_tools_list_payload(), path="/nope"
-    )
+    status, _headers, _body = drive_request(mcp_server, _build_tools_list_payload(), path="/nope")
     assert status == 404
 
 

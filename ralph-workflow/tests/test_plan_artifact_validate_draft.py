@@ -33,9 +33,7 @@ if TYPE_CHECKING:
 def _write_draft(tmp_path: Path, draft: dict[str, object]) -> Path:
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    (artifact_dir / ".plan_draft.json").write_text(
-        json.dumps(draft), encoding="utf-8"
-    )
+    (artifact_dir / ".plan_draft.json").write_text(json.dumps(draft), encoding="utf-8")
     return artifact_dir
 
 
@@ -112,9 +110,7 @@ def test_validate_draft_valid_draft_with_design_returns_valid_true(tmp_path: Pat
     design_section["design"] = {
         "testability": {"must_be_black_box": True},
         "acceptance_criteria": {
-            "criteria": [
-                {"id": "AC-01", "description": "All good", "satisfied_by_steps": [1]}
-            ]
+            "criteria": [{"id": "AC-01", "description": "All good", "satisfied_by_steps": [1]}]
         },
     }
     _write_draft(tmp_path, draft)
@@ -152,9 +148,7 @@ def test_validate_draft_ac_orphan_step_returns_invalid(tmp_path: Path) -> None:
     design = {
         "testability": {"must_be_black_box": True},
         "acceptance_criteria": {
-            "criteria": [
-                {"id": "AC-01", "description": "ok", "satisfied_by_steps": [99]}
-            ]
+            "criteria": [{"id": "AC-01", "description": "ok", "satisfied_by_steps": [99]}]
         },
     }
     cast("dict[str, object]", draft["sections"])["design"] = design

@@ -44,17 +44,11 @@ class TestDispatchTableCoversEveryTransport:
 
     def test_all_transports_covered(self) -> None:
         """Assert all AgentTransport values are covered by both dispatch dicts."""
-        missing_command_builders = [
-            t.name for t in AgentTransport if t not in COMMAND_BUILDERS
-        ]
-        missing_runtime_resolvers = [
-            t.name for t in AgentTransport if t not in RUNTIME_RESOLVERS
-        ]
+        missing_command_builders = [t.name for t in AgentTransport if t not in COMMAND_BUILDERS]
+        missing_runtime_resolvers = [t.name for t in AgentTransport if t not in RUNTIME_RESOLVERS]
 
         if missing_command_builders:
-            pytest.fail(
-                f"COMMAND_BUILDERS is missing these transports: {missing_command_builders}"
-            )
+            pytest.fail(f"COMMAND_BUILDERS is missing these transports: {missing_command_builders}")
         if missing_runtime_resolvers:
             pytest.fail(
                 f"RUNTIME_RESOLVERS is missing these transports: {missing_runtime_resolvers}"

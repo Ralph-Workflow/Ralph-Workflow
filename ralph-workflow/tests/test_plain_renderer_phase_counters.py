@@ -213,9 +213,7 @@ def test_plain_renderer_exposes_run_counter_properties() -> None:
     assert pd.thinking_blocks_count == 1, (
         f"Expected thinking_blocks_count=1, got {pd.thinking_blocks_count}"
     )
-    assert pd.tool_calls_count == 2, (
-        f"Expected tool_calls_count=2, got {pd.tool_calls_count}"
-    )
+    assert pd.tool_calls_count == 2, f"Expected tool_calls_count=2, got {pd.tool_calls_count}"
     assert pd.errors_count == 1, f"Expected errors_count=1, got {pd.errors_count}"
 
     elapsed = pd.run_elapsed_seconds

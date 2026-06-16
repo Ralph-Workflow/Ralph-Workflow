@@ -7,9 +7,7 @@ from typing import cast
 
 import sentry_sdk
 
-_DSN: str = (
-    "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
-)
+_DSN: str = "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
 _HOME_PREFIX: str = str(Path.home())
 
 

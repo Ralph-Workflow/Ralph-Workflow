@@ -64,9 +64,7 @@ class TestDeveloperContinuationTemplateShippedSkills:
         for hint in SHIPPED_SKILLS_DISCOVERY_HINTS:
             assert hint in prompt, f"Missing shipped-skills hint: {hint}"
 
-    def test_continuation_jinja_docs_mcp_false_branch_visible(
-        self, tmp_path: Path
-    ) -> None:
+    def test_continuation_jinja_docs_mcp_false_branch_visible(self, tmp_path: Path) -> None:
         prompt = _shared_render_developer(
             False, template="developer_iteration_continuation.jinja", tmp_path=tmp_path
         )

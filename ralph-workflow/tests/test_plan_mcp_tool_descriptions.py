@@ -21,10 +21,7 @@ _MUTATION_TOOLS = (
 
 
 def _descs() -> dict[str, str]:
-    return {
-        s.metadata.definition.name: s.metadata.definition.description
-        for s in artifact_specs()
-    }
+    return {s.metadata.definition.name: s.metadata.definition.description for s in artifact_specs()}
 
 
 def test_step_mutation_descriptions_contain_reindex_depends_on_satisfied_by_steps() -> None:
@@ -47,9 +44,7 @@ def test_submit_plan_section_description_references_size_limits() -> None:
     caps are checked before Pydantic."""
     descs = _descs()
     desc = descs["ralph_submit_plan_section"]
-    assert "4 MB" in desc, (
-        f"SUBMIT_PLAN_SECTION description missing '4 MB': {desc[:200]}"
-    )
+    assert "4 MB" in desc, f"SUBMIT_PLAN_SECTION description missing '4 MB': {desc[:200]}"
     assert "PlanSizeLimits" in desc, (
         f"SUBMIT_PLAN_SECTION description missing 'PlanSizeLimits': {desc[:200]}"
     )
@@ -74,12 +69,8 @@ def test_submit_artifact_description_references_pydantic_and_byte_cap() -> None:
     byte cap so the byte cap and the Pydantic ordering are explicit on the wire."""
     descs = _descs()
     desc = descs["ralph_submit_artifact"]
-    assert "Pydantic" in desc, (
-        f"SUBMIT_ARTIFACT description missing 'Pydantic': {desc[:200]}"
-    )
-    assert "4 MB" in desc, (
-        f"SUBMIT_ARTIFACT description missing '4 MB': {desc[:200]}"
-    )
+    assert "Pydantic" in desc, f"SUBMIT_ARTIFACT description missing 'Pydantic': {desc[:200]}"
+    assert "4 MB" in desc, f"SUBMIT_ARTIFACT description missing '4 MB': {desc[:200]}"
 
 
 def test_read_only_tool_descriptions_mark_themselves_as_noop_or_draft() -> None:

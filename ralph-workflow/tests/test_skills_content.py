@@ -96,7 +96,8 @@ def test_materialize_skills_to_claude_dir_skips_manually_edited_skill(
                 "installed_content_sha256": original_sha,
             },
             indent=2,
-        ) + "\n",
+        )
+        + "\n",
         encoding="utf-8",
     )
     # Simulate user manual edit

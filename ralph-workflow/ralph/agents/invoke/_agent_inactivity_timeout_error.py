@@ -54,13 +54,23 @@ class AgentInactivityTimeoutError(AgentInvocationError):
                 f" (last_tool={tool_name})"
             )
         elif _opts.reason == WatchdogFireReason.REPEATED_ERROR_LOOP:
-            fingerprint = (
-                _opts.diagnostic.get("error_fingerprint") if _opts.diagnostic else None
-            )
+            fingerprint = _opts.diagnostic.get("error_fingerprint") if _opts.diagnostic else None
             detail = f" (last error: {fingerprint})" if fingerprint else ""
             stderr_msg = (
                 "Agent repeated the same error without making forward progress"
                 f"{detail}; aborting the retry loop"
+            )
+        elif _opts.reason == WatchdogFireReason.NO_PROGRESS_QUIET:
+            duration = f"{timeout_seconds:.0f}s"
+            stderr_msg = (
+                "Agent produced no output and only stale-progress children "
+                f"for {duration} (no_progress_quiet trip)"
+            )
+        elif _opts.reason == WatchdogFireReason.NO_OUTPUT_AT_START:
+            duration = f"{timeout_seconds:.0f}s"
+            stderr_msg = (
+                f"Agent produced no output for {duration} (no_output_at_start trip"
+                " — invocation never recorded any activity)"
             )
         else:
             stderr_msg = f"Agent produced no output for {timeout_seconds:.0f}s"

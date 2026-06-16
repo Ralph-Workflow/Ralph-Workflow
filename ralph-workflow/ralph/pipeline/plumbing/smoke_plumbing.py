@@ -94,6 +94,8 @@ def resolve_smoke_harness_spec(agent_name: str) -> SmokeHarnessSpec:
             run_id=run_id,
         )
     raise ValueError(f"No smoke harness spec defined for agent '{agent_name}'")
+
+
 _SMOKE_IDLE_TIMEOUT_SECONDS = 30.0
 _SMOKE_MAX_SESSION_SECONDS = 120.0
 # Per-agent session ceiling overrides. AGY's default --print-timeout is 5m
@@ -140,7 +142,6 @@ _AGY_QUOTA_RESET_PATTERN = re.compile(
 )
 
 
-
 @dataclass(frozen=True)
 class SmokeRunResult:
     """Observed results from the interactive Claude smoke run."""
@@ -183,7 +184,7 @@ def _build_smoke_prompt(
         # satisfies the same single-source-of-truth contract as the MCP path.
         artifact_path = ".agent/artifacts/smoke_test_result.json"
         artifact_wrapper = (
-            '{\n'
+            "{\n"
             '  "name": "smoke_test_result",\n'
             '  "type": "smoke_test_result",\n'
             '  "content": {\n'
@@ -192,19 +193,19 @@ def _build_smoke_prompt(
             '    "observed_working": [\n'
             '      "created todo-list.js",\n'
             '      "wrote smoke_test_result artifact"\n'
-            '    ],\n'
+            "    ],\n"
             '    "observed_breaks": [],\n'
             '    "headless_guide_checks": [\n'
             '      "tool activity",\n'
             '      "parser events",\n'
             '      "tmp artifact creation"\n'
-            '    ],\n'
+            "    ],\n"
             '    "summary": "AGY smoke test completed successfully"\n'
-            '  },\n'
+            "  },\n"
             '  "created_at": "2026-01-01T00:00:00+00:00",\n'
             '  "updated_at": "2026-01-01T00:00:00+00:00",\n'
             '  "metadata": {}\n'
-            '}'
+            "}"
         )
         return (
             "Create a small JavaScript todo list implementation at "
@@ -396,9 +397,7 @@ def _clear_smoke_artifact(workspace_root: Path) -> None:
 
 def _is_smoke_artifact_submitted(workspace_root: Path, run_id: str = _SMOKE_RUN_ID) -> bool:
     """Return whether a smoke test result artifact was submitted via canonical path."""
-    return is_artifact_submitted(
-        workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE
-    )
+    return is_artifact_submitted(workspace_root, run_id, SMOKE_TEST_RESULT_ARTIFACT_TYPE)
 
 
 def _explicit_completion_seen(
@@ -544,9 +543,7 @@ def _detect_smoke_errors(
     if session_id is None and params.config.transport != AgentTransport.AGY:
         errors.append("session ID was not observed")
 
-    if not _explicit_completion_seen(
-        lines, params.workspace_root, params.config.transport
-    ):
+    if not _explicit_completion_seen(lines, params.workspace_root, params.config.transport):
         errors.append("declare_complete marker was not observed")
 
     if parser_error := _parser_event_error(params.config, lines):
@@ -558,9 +555,7 @@ def _detect_smoke_errors(
     if not artifact_submitted:
         errors.append("smoke_test_result artifact was not submitted")
 
-    if output_error := _meaningful_output_error(
-        params.config, live_output_lines, lines
-    ):
+    if output_error := _meaningful_output_error(params.config, live_output_lines, lines):
         errors.append(output_error)
 
     if params.config.transport == AgentTransport.AGY:
@@ -694,9 +689,7 @@ def run_smoke_plumbing(
     registry = AgentRegistry.from_config(config)
     agent_config = registry.get(agent_name)
     if agent_config is None:
-        raise RuntimeError(
-            f"Smoke test agent '{agent_name}' is unavailable in the registry"
-        )
+        raise RuntimeError(f"Smoke test agent '{agent_name}' is unavailable in the registry")
     agy_override = _agy_binary_override_env()
     if agy_override:
         logger.info("mock AGY binary in use: {}", agy_override)
@@ -724,9 +717,7 @@ def run_smoke_plumbing(
         # Honor per-agent session ceilings so AGY's longer --print-timeout is not
         # cut off by the legacy 120s default. See _AGENT_SESSION_CEILINGS.
         agent_prefix = agent_name.split("/", maxsplit=1)[0]
-        session_ceiling = _AGENT_SESSION_CEILINGS.get(
-            agent_prefix, _SMOKE_MAX_SESSION_SECONDS
-        )
+        session_ceiling = _AGENT_SESSION_CEILINGS.get(agent_prefix, _SMOKE_MAX_SESSION_SECONDS)
         smoke_general = config.general.model_copy(
             update={
                 "agent_idle_timeout_seconds": _SMOKE_IDLE_TIMEOUT_SECONDS,
@@ -774,6 +765,4 @@ if _SMOKE_MAX_TURNS < 1:
 if _SMOKE_IDLE_TIMEOUT_SECONDS <= 0:
     raise RuntimeError("_SMOKE_IDLE_TIMEOUT_SECONDS must be > 0")
 if _AGENT_SESSION_CEILINGS["agy"] <= _SMOKE_IDLE_TIMEOUT_SECONDS:
-    raise RuntimeError(
-        "_AGENT_SESSION_CEILINGS['agy'] must exceed _SMOKE_IDLE_TIMEOUT_SECONDS"
-    )
+    raise RuntimeError("_AGENT_SESSION_CEILINGS['agy'] must exceed _SMOKE_IDLE_TIMEOUT_SECONDS")

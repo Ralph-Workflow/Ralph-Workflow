@@ -25,9 +25,7 @@ class TestFsWorkspaceWrite:
 
         ws.write("a/b/c/deep.txt", "content")
 
-        assert (tmp_path / "a" / "b" / "c" / "deep.txt").read_text(
-            encoding="utf-8"
-        ) == "content"
+        assert (tmp_path / "a" / "b" / "c" / "deep.txt").read_text(encoding="utf-8") == "content"
 
     def test_writes_overwrites_existing(self, tmp_path: Path) -> None:
         ws = FsWorkspace(tmp_path)

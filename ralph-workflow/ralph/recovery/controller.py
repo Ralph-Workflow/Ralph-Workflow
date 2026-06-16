@@ -19,6 +19,10 @@ from ralph.pipeline.agent_retry_intent import (
 )
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import FalloverRecord
+from ralph.recovery.agent_unavailability_tracker import (
+    AgentUnavailabilityTracker,
+    UnavailabilityStore,
+)
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import (
     ClassifiedFailure,
@@ -38,6 +42,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
     from ralph.policy.models import AgentChainConfig
+    from ralph.recovery.unavailability_reason import UnavailabilityReason
 
 
 def _build_exit_failure_effect(*, reason: str) -> Effect:
@@ -102,14 +107,35 @@ class RecoveryController:
         self._bus = opts.event_bus or FailureEventBus()
         self._registry = opts.budget_registry or AgentBudgetRegistry()
         self._policy_bundle = opts.policy_bundle
-        self._backoff_attempts: dict[str, int] = opts.backoff_attempts or {}
         self._technical_retry_cap = max(0, opts.technical_retry_cap)
-        self._unavailable_timeouts: dict[str, int] = dict(opts.unavailable_timeouts or {})
         self._clock: Clock = opts.clock or SystemClock()
+        self._backoff_attempts: dict[str, int] = opts.backoff_attempts or {}
+        if opts.unavailability_store is not None:
+            self._unavailability_tracker: UnavailabilityStore = opts.unavailability_store
+        else:
+            self._unavailability_tracker = AgentUnavailabilityTracker(
+                clock=self._clock,
+                backoff_policy=opts.unavailability_backoff_policy,
+                initial_timeouts=opts.unavailable_timeouts,
+                initial_entries=opts.unavailability_entries,
+            )
 
     @property
     def event_bus(self) -> FailureEventBus:
         return self._bus
+
+    @property
+    def unavailability_store(self) -> UnavailabilityStore:
+        """Public access to the unavailability store (Protocol-typed).
+
+        Callers MUST consume the store through this property, not through
+        the private ``_unavailability_tracker`` attribute. The Protocol is
+        the seam for a future persistent (sqlite, redis, file)
+        implementation; the in-memory ``AgentUnavailabilityTracker`` is the
+        default when ``RecoveryControllerOptions.unavailability_store`` is
+        not provided.
+        """
+        return self._unavailability_tracker
 
     @property
     def budget_registry(self) -> AgentBudgetRegistry:
@@ -152,11 +178,7 @@ class RecoveryController:
             # Compute retry delay from chain config only when the failing
             # agent is currently available. An unavailable agent is skipped
             # (not retried), so no retry delay is charged for it.
-            if (
-                agent is not None
-                and failure.counts_against_budget
-                and not is_agent_unavailable
-            ):
+            if agent is not None and failure.counts_against_budget and not is_agent_unavailable:
                 retry_delay_ms = self._compute_retry_delay(phase, agent)
 
         failure_evt = FailureEvent(
@@ -169,13 +191,22 @@ class RecoveryController:
             chain_capacity_remaining=chain_capacity,
             recovery_cycle=state.recovery_cycle_count,
             retry_delay_ms=retry_delay_ms,
+            watchdog_reason=failure.watchdog_reason,
+            unavailability_reason=(
+                str(failure.unavailability_reason) if failure.unavailability_reason else None
+            ),
         )
         self._bus.publish(failure_evt)
 
-        # ALWAYS set last_failure_category and last_retry_delay_ms on state first
+        # ALWAYS set last_failure_category and last_retry_delay_ms on state first.
+        # Also clear the structured wait-state flag: the wait state is a
+        # per-handle-call outcome, so each new failure classification starts
+        # from a clean slate. The wait branch (further down) re-asserts
+        # ``is_waiting_state=True`` when it actually enters the wait state.
         new_state = state.copy_with(
             last_failure_category=str(failure.category),
             last_retry_delay_ms=retry_delay_ms,
+            is_waiting_state=False,
         )
 
         if failure.category == FailureCategory.ENVIRONMENTAL:
@@ -235,7 +266,12 @@ class RecoveryController:
 
         # AGENT category: debit budget and handle chain progression
         if failure.is_unavailable and agent is not None:
-            self._mark_agent_unavailable(phase, agent)
+            self._mark_agent_unavailable(phase, agent, reason=failure.unavailability_reason)
+            new_state = new_state.copy_with(
+                last_unavailability_reason=(
+                    str(failure.unavailability_reason) if failure.unavailability_reason else None
+                )
+            )
 
         if failure.reset_session:
             logger.warning(
@@ -287,28 +323,23 @@ class RecoveryController:
         self,
         phase: str,
         agent: str,
-        base_backoff_ms: int = 5_000,
+        reason: UnavailabilityReason | None = None,
     ) -> int:
         """Mark an agent as unavailable until the computed backoff expires.
 
-        Uses exponential backoff based on the current attempt count for the
-        phase:agent pair, capped at ``max_backoff_ms``. Returns the computed
-        backoff in milliseconds and stores the expiration timestamp (ms).
+        Uses exponential backoff based on the per-reason policy, capped at
+        the reason's max_backoff_ms. Returns the computed backoff in ms
+        (also capped at max_backoff_ms so callers that consume the return
+        value get the same value the store recorded).
         """
-        key = f"{phase}:{agent}"
-        attempt = self._backoff_attempts.get(key, 0)
-        backoff_ms = compute_backoff_ms(base_backoff_ms, attempt, max_ms=300_000)
-        current_time_ms = int(self._clock.monotonic() * 1000)
-        self._unavailable_timeouts[key] = current_time_ms + backoff_ms
-        self._backoff_attempts[key] = attempt + 1
-        return backoff_ms
+        entry = self._unavailability_tracker.mark_unavailable(phase, agent, reason)
+        multiplier: int = pow(2, entry.attempt)
+        computed = entry.base_backoff_ms * multiplier
+        return min(computed, entry.max_backoff_ms)
 
     def _is_agent_available(self, phase: str, agent: str) -> bool:
         """Return True when the agent is not currently marked unavailable."""
-        key = f"{phase}:{agent}"
-        unavailable_until_ms = self._unavailable_timeouts.get(key, 0)
-        current_time_ms = int(self._clock.monotonic() * 1000)
-        return current_time_ms >= unavailable_until_ms
+        return self._unavailability_tracker.is_available(phase, agent)
 
     def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
         """Increment chain.retries for the given phase without debiting the budget."""
@@ -391,6 +422,8 @@ class RecoveryController:
         """Reset backoff counter for a phase/agent after successful invocation."""
         key = f"{phase}:{agent}" if agent else phase
         self._backoff_attempts.pop(key, None)
+        if agent is not None:
+            self._unavailability_tracker.reset_backoff(phase, agent)
 
     def _write_session_reset_hint(
         self,
@@ -506,6 +539,10 @@ class RecoveryController:
                 from_agent=from_agent,
                 to_agent=next_agent,
                 reason=failure.reason,
+                watchdog_reason=failure.watchdog_reason,
+                unavailability_reason=(
+                    str(failure.unavailability_reason) if failure.unavailability_reason else None
+                ),
             )
             self._bus.publish(fallover_evt)
 
@@ -530,18 +567,36 @@ class RecoveryController:
         # terminating the run. The run loop will sleep on last_retry_delay_ms
         # and then retry the same phase. Otherwise the chain is truly exhausted
         # (available agents have no budget/retries left), so fail the phase.
-        if all(
-            not self._is_agent_available(phase, agent) for agent in chain.agents
-        ):
+        if all(not self._is_agent_available(phase, agent) for agent in chain.agents):
             wait_ms = self._earliest_unavailable_wait_ms(phase, chain)
-            reason = "all agents unavailable; waiting for cooldown expiry"
-            logger.info("{} in phase={} (wait_ms={})", reason, phase, wait_ms)
+            unavail_reason = (
+                failure.unavailability_reason.value if failure.unavailability_reason else "unknown"
+            )
+            reason = (
+                f"all agents unavailable (last reason: {unavail_reason});"
+                " waiting for cooldown expiry"
+            )
+            logger.info(
+                "{} in phase={} (wait_ms={} unavailability_reason={})",
+                reason,
+                phase,
+                wait_ms,
+                failure.unavailability_reason,
+            )
             updated_evt = replace(failure_evt, retry_delay_ms=wait_ms)
             self._bus.publish(updated_evt)
             return (
                 state.copy_with(
                     last_error=reason,
                     last_retry_delay_ms=wait_ms,
+                    # Structured wait-state flag: the run loop keys off this
+                    # boolean to detect the wait state. ``last_error`` text
+                    # is operator-readable context only and is NOT a contract
+                    # the run loop parses. The flag is the single source of
+                    # truth; setting it here ensures the WAITING / RESUMED
+                    # structured log path is taken on the next loop
+                    # iteration.
+                    is_waiting_state=True,
                 ),
                 [],
                 updated_evt,
@@ -557,15 +612,7 @@ class RecoveryController:
         chain: AgentChainState,
     ) -> int:
         """Return milliseconds until the first unavailable agent in the chain becomes available."""
-        current_time_ms = int(self._clock.monotonic() * 1000)
-        min_remaining: int | None = None
-        for agent in chain.agents:
-            until_ms = self._unavailable_timeouts.get(f"{phase}:{agent}", 0)
-            if until_ms > current_time_ms:
-                remaining = until_ms - current_time_ms
-                if min_remaining is None or remaining < min_remaining:
-                    min_remaining = remaining
-        return max(0, min_remaining or 0)
+        return self._unavailability_tracker.earliest_unavailable_wait_ms(phase, chain.agents)
 
     def _next_available_agent_index(
         self,
@@ -601,6 +648,9 @@ class RecoveryController:
 
     def snapshot(self) -> dict[str, object]:
         """Return a runtime observability snapshot of recovery state."""
+        tracker_snapshot = self._unavailability_tracker.snapshot()
+        merged_attempts = dict(self._backoff_attempts)
+        merged_attempts.update(cast("dict[str, int]", tracker_snapshot.get("backoff_attempts", {})))
         return {
             "cycle_cap": self._cap.cap,
             "budgets": {
@@ -612,10 +662,69 @@ class RecoveryController:
                 }
                 for (phase, agent), budget in self._registry.items()
             },
-            "backoff_attempts": dict(self._backoff_attempts),
+            "backoff_attempts": merged_attempts,
             "technical_retry_cap": self._technical_retry_cap,
-            "unavailable_timeouts": dict(self._unavailable_timeouts),
+            "unavailable_timeouts": tracker_snapshot["unavailable_timeouts"],
         }
+
+    def waiting_state_payload(self, phase: str, agents: list[str]) -> list[tuple[str, int, int]]:
+        """Return the per-agent cooldown payload for the all-agents-unavailable
+        WAITING / RESUMED structured logs.
+
+        Each tuple is ``(agent, attempt, cooldown_ms_remaining)`` where
+        ``cooldown_ms_remaining`` is the time in milliseconds until the
+        agent becomes available (0 if the agent is already available).
+        This is the single public surface for the run loop's WAITING
+        log; the run loop MUST NOT reach through to the private
+        ``_unavailability_tracker`` or the tracker's ``_clock``.
+
+        Args:
+            phase: The pipeline phase (e.g. "development").
+            agents: The agent chain in policy order.
+
+        Returns:
+            A list of ``(agent, attempt, cooldown_ms_remaining)`` tuples,
+            one per agent in the chain. Order matches ``agents`` input
+            order. Each cooldown is a non-negative int.
+        """
+        snap = self._unavailability_tracker.snapshot()
+        cooldowns_dict = snap.get("unavailable_timeouts", {})
+        attempts_dict = snap.get("backoff_attempts", {})
+        # Derive the wall-clock from the controller's clock seam so the
+        # payload is consistent with the in-memory tracker. The tracker's
+        # ``_clock`` is private; ``snapshot()`` is the public surface, and
+        # the controller's own ``_clock`` is the seam. This keeps the
+        # tracker swappable behind the UnavailabilityStore Protocol
+        # without leaking its internal clock field.
+        now_ms = int(self._clock.monotonic() * 1000)
+        result: list[tuple[str, int, int]] = []
+        for agent in agents:
+            key = f"{phase}:{agent}"
+            timeout_ms = cooldowns_dict.get(key)
+            attempt = attempts_dict.get(key, 0)
+            attempt_int = int(attempt) if isinstance(attempt, int) else 0
+            cooldown_ms = 0
+            if isinstance(timeout_ms, int):
+                cooldown_ms = max(0, timeout_ms - now_ms)
+            result.append((agent, attempt_int, cooldown_ms))
+        return result
+
+    def agents_now_available(self, phase: str, agents: list[str]) -> list[str]:
+        """Return the subset of ``agents`` that are currently available.
+
+        Convenience wrapper around the public store surface for the run
+        loop's RESUMED log. Callers MUST use this method instead of
+        reaching through to the private ``_unavailability_tracker``.
+
+        Args:
+            phase: The pipeline phase.
+            agents: The agent chain in policy order.
+
+        Returns:
+            A list of agent names that are currently available, preserving
+            the input order.
+        """
+        return [a for a in agents if self._unavailability_tracker.is_available(phase, a)]
 
     def _enter_phase_failed(
         self,

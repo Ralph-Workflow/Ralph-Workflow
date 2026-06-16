@@ -54,9 +54,7 @@ class _FakeProcessManager:
         self.shutdown_all_calls: list[float] = []
         self.shutdown_all_for_label_calls: list[tuple[str, float]] = []
 
-    def add_active(
-        self, pid: int, pgid: int, label: str = "invoke:fake"
-    ) -> ProcessRecord:
+    def add_active(self, pid: int, pgid: int, label: str = "invoke:fake") -> ProcessRecord:
         record = ProcessRecord(
             pid=pid,
             pgid=pgid,
@@ -144,9 +142,7 @@ class _HandlerCapturingLoop:
         self._executor_calls: list[tuple[object, tuple[object, ...]]] = []
         self._run_in_executor_impl: object = None
 
-    def add_signal_handler(
-        self, sig: int, callback: object, *args: object
-    ) -> object:
+    def add_signal_handler(self, sig: int, callback: object, *args: object) -> object:
         del args
         self._handlers.append(callback)
         return None
@@ -155,9 +151,7 @@ class _HandlerCapturingLoop:
         self._remove_signal_handler_calls.append(sig)
         return True
 
-    def run_in_executor(
-        self, executor: object, fn: object, *args: object
-    ) -> object:
+    def run_in_executor(self, executor: object, fn: object, *args: object) -> object:
         self._executor_calls.append((fn, args))
         impl = self._run_in_executor_impl
         if impl is not None:
@@ -331,10 +325,7 @@ class TestInstallSignalHandlers:
         second_handler = loop._handlers[1]
         with contextlib.suppress(SystemExit):
             second_handler()
-        assert any(
-            event[0] == "kill" and event[1][0] == pid_b_pgid_local
-            for event in events
-        )
+        assert any(event[0] == "kill" and event[1][0] == pid_b_pgid_local for event in events)
         assert ("exit", 130) in events
 
     def test_no_pids_registered_no_killpg_called(self) -> None:
@@ -395,9 +386,7 @@ class TestInstallSignalHandlers:
             # body (which calls begin_interrupt) actually runs.
             loop = _SynchronousExecutorLoop()
             root_task = _CancellableTask()
-            first_handler = _install_and_get_first_handler(
-                loop, root_task, bridge, dispatcher
-            )
+            first_handler = _install_and_get_first_handler(loop, root_task, bridge, dispatcher)
             first_handler()
         finally:
             InterruptDispatcher.begin_interrupt = cast("Any", original_begin)
@@ -515,8 +504,7 @@ def test_asyncio_first_sigint_cancels_task_before_begin_interrupt_returns() -> N
     assert len(loop._handlers) == 2
     # The executor body was dispatched (recorded in _executor_calls).
     assert len(loop._executor_calls) == 1, (
-        "first-SIGINT must dispatch begin_interrupt+early-escalation "
-        "via loop.run_in_executor"
+        "first-SIGINT must dispatch begin_interrupt+early-escalation via loop.run_in_executor"
     )
 
 
@@ -540,9 +528,7 @@ class _SynchronousExecutorLoop(_HandlerCapturingLoop):
         super().__init__()
         self._executed_callables: list[object] = []
 
-    def run_in_executor(
-        self, executor: object, fn: object, *args: object
-    ) -> object:
+    def run_in_executor(self, executor: object, fn: object, *args: object) -> object:
         self._executor_calls.append((fn, args))
         self._executed_callables.append(fn)
         # Invoke synchronously to exercise the dispatch path.
@@ -652,9 +638,7 @@ def test_asyncio_first_sigint_runs_early_escalation_poll(
             return _FakePsutil
         return real_import(name, *args, **kwargs)
 
-    monkeypatch.setattr(
-        dispatcher_mod.importlib, "import_module", _fake_import
-    )
+    monkeypatch.setattr(dispatcher_mod.importlib, "import_module", _fake_import)
     # Patch os.kill (in the dispatcher module) so _pid_is_alive returns True.
     monkeypatch.setattr(dispatcher_mod.os, "kill", lambda _pid, _sig: None)
 
@@ -725,13 +709,8 @@ def test_install_signal_handlers_returns_idempotent_teardown_callable() -> None:
 
     # The teardown callable must be returned (the unfixed code returns
     # None implicitly).
-    assert teardown_fn is not None, (
-        "install_signal_handlers must return a teardown callable"
-    )
-    assert callable(teardown_fn), (
-        "teardown must be callable; got "
-        f"{type(teardown_fn).__name__}"
-    )
+    assert teardown_fn is not None, "install_signal_handlers must return a teardown callable"
+    assert callable(teardown_fn), f"teardown must be callable; got {type(teardown_fn).__name__}"
 
     # First invocation: removes the second-SIGINT handler.
     teardown_fn()
@@ -763,9 +742,7 @@ class _PausingExecutorLoop(_SynchronousExecutorLoop):
     callable manually after the second-SIGINT handler has fired.
     """
 
-    def run_in_executor(
-        self, executor: object, fn: object, *args: object
-    ) -> object:
+    def run_in_executor(self, executor: object, fn: object, *args: object) -> object:
         self._executor_calls.append((fn, args))
         return _SyncFuture(result=None)
 
@@ -844,8 +821,7 @@ def test_second_sigint_during_first_sigint_executor_body() -> None:
     # hard_exit was called exactly once (by the second handler's
     # force_exit).
     assert exit_calls == [(INTERRUPT_EXIT_CODE,)], (
-        f"second handler should call hard_exit({INTERRUPT_EXIT_CODE}) once; "
-        f"got {exit_calls}"
+        f"second handler should call hard_exit({INTERRUPT_EXIT_CODE}) once; got {exit_calls}"
     )
 
     # Now manually invoke the executor body that was recorded. The
@@ -858,8 +834,7 @@ def test_second_sigint_during_first_sigint_executor_body() -> None:
     # The executor body did NOT trigger a second force_exit; hard_exit
     # was still called exactly once.
     assert exit_calls == [(INTERRUPT_EXIT_CODE,)], (
-        f"executor body must NOT trigger a second hard_exit call; "
-        f"got {exit_calls}"
+        f"executor body must NOT trigger a second hard_exit call; got {exit_calls}"
     )
 
     # Explicit idempotency check: invoking force_exit a second
@@ -868,8 +843,7 @@ def test_second_sigint_during_first_sigint_executor_body() -> None:
     # correctly.
     dispatcher.force_exit(bridge_pgids=[_PGID_FOR_PGID_TEST])
     assert exit_calls == [(INTERRUPT_EXIT_CODE,)], (
-        f"idempotency guard should prevent a second hard_exit call; "
-        f"got {exit_calls}"
+        f"idempotency guard should prevent a second hard_exit call; got {exit_calls}"
     )
 
     # The teardown callable is safe to invoke after the second

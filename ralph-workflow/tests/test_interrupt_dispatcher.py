@@ -74,9 +74,7 @@ class FakeProcessManager:
     kill_process_group_calls: list[tuple[int, int]] = field(default_factory=list)
     _active_records: list[ProcessRecord] = field(default_factory=list)
 
-    def add_active(
-        self, pid: int, pgid: int, label: str = "invoke:fake"
-    ) -> ProcessRecord:
+    def add_active(self, pid: int, pgid: int, label: str = "invoke:fake") -> ProcessRecord:
         record = ProcessRecord(
             pid=pid,
             pgid=pgid,
@@ -309,6 +307,7 @@ def _patch_psutil(monkeypatch: pytest.MonkeyPatch, cpu_factory: Callable[[int], 
     the call number (starting at 1) and must return the cumulative CPU
     time for that poll.
     """
+
     class _FakeCpu:
         def __init__(self, user: float) -> None:
             self.user = user
@@ -347,6 +346,7 @@ def _patch_psutil_shared(
     preserved (matches real psutil behavior where the same ``Process``
     handle persists).
     """
+
     class _FakeCpu:
         def __init__(self, user: float) -> None:
             self.user = user
@@ -385,6 +385,7 @@ def _patch_pid_alive(monkeypatch: pytest.MonkeyPatch, *, alive: bool) -> None:
     """Patch ``os.kill`` in the dispatcher module so ``_pid_is_alive``
     returns ``alive`` (regardless of the real PID).
     """
+
     def _fake_kill(_pid: int, _sig: int) -> None:
         if not alive:
             raise ProcessLookupError(_pid)
@@ -630,9 +631,7 @@ def test_dispatcher_block_wait_sleep_never_exceeds_remaining_deadline() -> None:
     """
     manager = FakeProcessManager()
     # Record that NEVER drains; the dispatcher must rely on the deadline.
-    manager.add_active(
-        pid=_PID, pgid=_PGID, label="invoke:fake"
-    )
+    manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
     clock = _FakeClock()
     sleep_calls: list[float] = []
     exit_calls: list[tuple[int, ...]] = []
@@ -655,16 +654,11 @@ def test_dispatcher_block_wait_sleep_never_exceeds_remaining_deadline() -> None:
     # and does not assume the specific ``min()`` formula.
     assert sleep_calls, "block-wait must call sleep at least once"
     for s in sleep_calls:
-        assert s <= 0.2, (
-            f"sleep {s} exceeds poll_interval_s 0.2"
-        )
-        assert s <= 1.0, (
-            f"sleep {s} exceeds grace_period_s 1.0"
-        )
+        assert s <= 0.2, f"sleep {s} exceeds poll_interval_s 0.2"
+        assert s <= 1.0, f"sleep {s} exceeds grace_period_s 1.0"
     # Sleep count must reflect grace / poll, not grace / 0.01.
     assert 4 <= len(sleep_calls) <= 6, (
-        f"sleep count {len(sleep_calls)} out of expected range [4, 6]; "
-        f"sleep_calls={sleep_calls}"
+        f"sleep count {len(sleep_calls)} out of expected range [4, 6]; sleep_calls={sleep_calls}"
     )
 
 
@@ -796,8 +790,7 @@ def test_dispatcher_early_escalation_poll_sleeps_before_matched_check() -> None:
     list_indices = [i for i, e in enumerate(event_order) if e == "list_active"]
     assert sleep_indices and list_indices
     assert sleep_indices[0] < list_indices[0], (
-        f"sleep(poll) MUST come before the first list_active check; "
-        f"got event_order={event_order}"
+        f"sleep(poll) MUST come before the first list_active check; got event_order={event_order}"
     )
 
 
@@ -1108,9 +1101,7 @@ def test_async_first_sigint_propagates_kill_label_to_controller(
     manager.add_active(pid=_PID, pgid=_PGID, label="invoke:fake")
     _, dispatcher = _build_dispatcher(process_manager=manager)
 
-    monkeypatch.setattr(
-        "ralph.interrupt.asyncio_bridge.get_process_manager", lambda: manager
-    )
+    monkeypatch.setattr("ralph.interrupt.asyncio_bridge.get_process_manager", lambda: manager)
 
     bridge = SignalBridge()
     loop = _SyncExecutorHandlerLoop()
@@ -1129,9 +1120,7 @@ class _SyncExecutorHandlerLoop(_HandlerCapturingLoop):
     handle supports ``add_done_callback`` (invoked synchronously).
     """
 
-    def run_in_executor(
-        self, executor: object, fn: object, *args: object
-    ) -> object:
+    def run_in_executor(self, executor: object, fn: object, *args: object) -> object:
         fn(*args)
         return _SyncDoneHandle()
 
@@ -1275,9 +1264,7 @@ def test_async_install_signal_handlers_3arg_call_path_controller_none_branch(
         raise SystemExit(code)
 
     monkeypatch.setattr(os, "_exit", _fake_os_exit)
-    monkeypatch.setattr(
-        "ralph.interrupt.asyncio_bridge.get_process_manager", lambda: manager
-    )
+    monkeypatch.setattr("ralph.interrupt.asyncio_bridge.get_process_manager", lambda: manager)
 
     bridge = SignalBridge()
     loop = _SyncExecutorHandlerLoop()

@@ -108,9 +108,7 @@ def _install_fake_roots(
             is_canonical=False,
         ),
     )
-    monkeypatch.setattr(
-        "ralph.skills._agent_paths.agent_skill_roots", lambda: roots
-    )
+    monkeypatch.setattr("ralph.skills._agent_paths.agent_skill_roots", lambda: roots)
     return canonical_dir, codex_dir, opencode_dir, agy_dir
 
 
@@ -185,12 +183,8 @@ def test_init_command_runs_ensure_baseline_capabilities_when_configs_already_exi
     init_module.init_command(template="default")
 
     output = stream.getvalue()
-    assert "Built-in" in output, (
-        f"Expected 'Built-in' label in re-run output, got: {output!r}"
-    )
-    assert "Managed" in output, (
-        f"Expected 'Managed' label in re-run output, got: {output!r}"
-    )
+    assert "Built-in" in output, f"Expected 'Built-in' label in re-run output, got: {output!r}"
+    assert "Managed" in output, f"Expected 'Managed' label in re-run output, got: {output!r}"
     assert "Skill root coverage" in output, (
         f"Expected 'Skill root coverage' in re-run output, got: {output!r}"
     )
@@ -264,8 +258,7 @@ def test_init_command_runs_ensure_baseline_capabilities_when_global_config_path_
     init_module.init_command(template="default", config_path=config_path)
 
     assert called == [tmp_path], (
-        f"Expected ensure_baseline_capabilities called with workspace_root=tmp_path; "
-        f"got {called!r}"
+        f"Expected ensure_baseline_capabilities called with workspace_root=tmp_path; got {called!r}"
     )
 
 

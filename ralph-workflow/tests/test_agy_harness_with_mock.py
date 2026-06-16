@@ -141,13 +141,8 @@ def test_agy_harness_quota_branch_emits_informational_not_live_diagnostic(
 ) -> None:
     """With MOCK_AGY_BEHAVIOR=quota_exhausted the harness reports the mock-empty note."""
     result = _run_agy_smoke_plumbing(monkeypatch, tmp_path, behavior="quota_exhausted")
-    assert any(
-        "mock AGY produced empty stdout by design" in error
-        for error in result.errors
-    )
-    assert not any(
-        "individual API quota exhausted" in error for error in result.errors
-    )
+    assert any("mock AGY produced empty stdout by design" in error for error in result.errors)
+    assert not any("individual API quota exhausted" in error for error in result.errors)
     assert not any("RESOURCE_EXHAUSTED" in error for error in result.errors)
 
 

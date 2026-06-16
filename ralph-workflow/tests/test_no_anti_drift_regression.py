@@ -182,7 +182,7 @@ class TestSessionIdLifecycleSingleExtractor:
 
         # Visible TUI extractor must NOT pick up bare `session_id=...` text
         # (tool output cannot masquerade as a transport session id).
-        result = extract_visible_tui_transport_session_id('session_id=abc-123')
+        result = extract_visible_tui_transport_session_id("session_id=abc-123")
         assert result is None, (
             "extract_visible_tui_transport_session_id must reject generic "
             "session_id=... text so tool output cannot masquerade as a "
@@ -220,8 +220,7 @@ class TestSessionIdLifecycleSingleExtractor:
                 offenders.append(str(rel))
         assert offenders == [], (
             "These modules still import from ralph.agents.invoke._session "
-            "(private); they must use the public ralph.agents.invoke surface: "
-            + str(offenders)
+            "(private); they must use the public ralph.agents.invoke surface: " + str(offenders)
         )
 
 
@@ -271,8 +270,7 @@ class TestResumeSessionIdSingleDecisionPoint:
         # A stale/invalid session id family must yield "fresh" so the next
         # attempt starts a new session rather than trying to resume a dead one.
         assert (
-            recovery_action_for_failure_reason("Unknown session", has_prior_session=True)
-            == "fresh"
+            recovery_action_for_failure_reason("Unknown session", has_prior_session=True) == "fresh"
         )
 
     def test_recovery_action_resume_for_inactivity_timeout(self) -> None:
@@ -287,9 +285,7 @@ class TestResumeSessionIdSingleDecisionPoint:
     def test_recovery_action_resume_for_opencode_resumable_exit(self) -> None:
 
         assert (
-            recovery_action_for_failure_reason(
-                "OpenCodeResumableExitError", has_prior_session=True
-            )
+            recovery_action_for_failure_reason("OpenCodeResumableExitError", has_prior_session=True)
             == "resume"
         )
 
@@ -513,8 +509,7 @@ class TestPlumbingCommitUsesSharedPipeline:
         assert effect_executor.exists()
         source = _read(effect_executor)
         assert "run_with_direct_mcp_recovery" in source, (
-            "effect_executor.py must contain the canonical retry loop "
-            "run_with_direct_mcp_recovery."
+            "effect_executor.py must contain the canonical retry loop run_with_direct_mcp_recovery."
         )
 
     def test_plumbing_commit_module_does_not_construct_failure_classifier(self) -> None:
@@ -603,9 +598,7 @@ class TestNoMcpWireFormOutsideMcpModule:
                 offenders.extend([f"{path.relative_to(RALPH_ROOT.parent)}: {literal}"])
         assert offenders == [], (
             "Wire-form `mcp__<server>__<tool>` literals found outside "
-            "`ralph/mcp/`: "
-            + str(offenders)
-            + ". Route via "
+            "`ralph/mcp/`: " + str(offenders) + ". Route via "
             "`canonicalize_tool_names` (ralph/mcp/tool_contract.py) or "
             "`friendly_tool_name` (ralph/display/tool_args.py)."
         )
@@ -911,12 +904,15 @@ class TestNoInlineConsoleConstructor:
             for lineno, line in enumerate(_read(path).splitlines(), start=1):
                 if "noqa" in line and "di-allow" in line:
                     continue
-                if "Console(" in line and "Console(console" not in line \
-                        and "Console(self" not in line and "Console(theme" not in line:
+                if (
+                    "Console(" in line
+                    and "Console(console" not in line
+                    and "Console(self" not in line
+                    and "Console(theme" not in line
+                ):
                     violations.append(f"{rel}:{lineno}:{line.rstrip()}")
         assert not violations, (
-            "Inline Console() found outside ralph/display/theme.py:\n"
-            + "\n".join(violations)
+            "Inline Console() found outside ralph/display/theme.py:\n" + "\n".join(violations)
         )
 
 
@@ -944,9 +940,8 @@ class TestNoModuleLevelDisplayContext:
             for lineno, line in enumerate(_read(path).splitlines(), start=1):
                 if re.search(r"^\s*DisplayContext\s*\(", line):
                     violations.append(f"{rel}:{lineno}:{line.rstrip()}")
-        assert not violations, (
-            "Module-level DisplayContext(...) construction found:\n"
-            + "\n".join(violations)
+        assert not violations, "Module-level DisplayContext(...) construction found:\n" + "\n".join(
+            violations
         )
 
 
@@ -974,9 +969,7 @@ class TestPublicSurfaceImports:
             "strip_markup",
             "subscriber_for_display",
         ):
-            assert hasattr(ralph_display, name), (
-                f"ralph.display does not re-export {name!r}"
-            )
+            assert hasattr(ralph_display, name), f"ralph.display does not re-export {name!r}"
             sym = getattr(ralph_display, name)
             assert callable(sym) or isinstance(sym, type), (
                 f"{name!r} from ralph.display is neither callable nor a class"
@@ -1154,9 +1147,7 @@ class TestTransportAdaptationIsNarrow:
                 lname = node.name.lower()
                 # Only flag actual transport-adaptation functions.
                 if not (
-                    "transport" in lname
-                    or "build_command" in lname
-                    or lname.startswith("extract_")
+                    "transport" in lname or "build_command" in lname or lname.startswith("extract_")
                 ):
                     continue
                 # Known exceptions documented in
@@ -1205,8 +1196,7 @@ class TestCommandFilesRouteThroughPublicInvokeSurface:
             if "FailureClassifier()" in source:
                 offenders.append(f"{rel}: inline FailureClassifier() construction")
         assert offenders == [], (
-            "CLI command files must use the public ralph.agents.invoke surface: "
-            f"{offenders}."
+            f"CLI command files must use the public ralph.agents.invoke surface: {offenders}."
         )
 
 
@@ -1248,20 +1238,13 @@ def _collect_phase_transition_findings() -> None:
                     isinstance(func, ast.Attribute)
                     and func.attr == "copy_with"
                     and any(
-                        kw.arg == "phase"
-                        for kw in child.keywords
-                        if isinstance(kw, ast.keyword)
+                        kw.arg == "phase" for kw in child.keywords if isinstance(kw, ast.keyword)
                     )
                 )
                 # `progress.advance_phase(...)` call
-                is_advance_phase = (
-                    isinstance(func, ast.Attribute)
-                    and "advance_phase" in func.attr
-                )
+                is_advance_phase = isinstance(func, ast.Attribute) and "advance_phase" in func.attr
                 # `state.advance_phase(...)` call
-                is_state_advance = (
-                    isinstance(func, ast.Attribute) and func.attr == "advance_phase"
-                )
+                is_state_advance = isinstance(func, ast.Attribute) and func.attr == "advance_phase"
                 if is_copy_with_phase or is_advance_phase or is_state_advance:
                     has_phase_mutation = True
                     break
@@ -1278,8 +1261,7 @@ def _collect_phase_transition_findings() -> None:
             #     `agent_retry_intent` in the same function body.
             routes_through_advance_phase = "progress.advance_phase" in body_src
             builds_fresh_state = (
-                "create_initial_state" in body_src
-                or "create_fresh_state" in body_src
+                "create_initial_state" in body_src or "create_fresh_state" in body_src
             )
             # Both forms count as a clear:
             # - `last_agent_session_id=None` (kwarg form)
@@ -1397,8 +1379,7 @@ class TestSessionIdNormalizationIsStable:
 
 
 class TestSessionIdStorageIsSingleSource:
-    """Pin that the only storage location is `state.last_agent_session_id`.
-    """
+    """Pin that the only storage location is `state.last_agent_session_id`."""
 
     def test_session_id_storage_is_single_source(self) -> None:
         state_module = RALPH_ROOT / "pipeline" / "state.py"
@@ -1514,9 +1495,7 @@ class TestNoExcludedEmitMethod:
         drift_module = importlib.import_module(
             "tests.display.test_parallel_display_drift_prevention"
         )
-        canonical_36: frozenset[str] = frozenset(
-            drift_module._PARALLEL_DISPLAY_36_NAMES
-        )
+        canonical_36: frozenset[str] = frozenset(drift_module._PARALLEL_DISPLAY_36_NAMES)
         offenders: list[str] = []
         for path in _emission_target_files():
             try:
@@ -1530,18 +1509,19 @@ class TestNoExcludedEmitMethod:
                     continue
                 for alias in node.names:
                     if alias.name in canonical_36:
-                        offenders.extend([
-                            (
-                                f"{path.relative_to(RALPH_ROOT.parent)}:"
-                                f"{node.lineno}: from ralph.display.parallel_display "
-                                f"import {alias.name}"
-                            )
-                        ])
+                        offenders.extend(
+                            [
+                                (
+                                    f"{path.relative_to(RALPH_ROOT.parent)}:"
+                                    f"{node.lineno}: from ralph.display.parallel_display "
+                                    f"import {alias.name}"
+                                )
+                            ]
+                        )
         assert not offenders, (
             "Direct instance-method emit_* imports from "
             "ralph.display.parallel_display found in CLI/pipeline/config "
-            "(wt-007 anti-drift guard tripped):\n"
-            + "\n".join(offenders)
+            "(wt-007 anti-drift guard tripped):\n" + "\n".join(offenders)
         )
 
 

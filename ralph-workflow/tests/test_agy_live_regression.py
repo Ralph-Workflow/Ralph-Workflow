@@ -97,9 +97,7 @@ def test_live_agy_produces_green_parity_table(
     assert "│ agy/Claude Sonnet 4.6 (Thinking) │" in output, (
         f"Expected AGY parity row in output:\n{output[-5000:]}"
     )
-    assert "│ yes │" in output, (
-        f"Expected File=yes column in parity table:\n{output[-5000:]}"
-    )
+    assert "│ yes │" in output, f"Expected File=yes column in parity table:\n{output[-5000:]}"
     assert "│ none │" in output or "│ none" in output, (
         f"Expected Breaks=none in parity table:\n{output[-5000:]}"
     )
@@ -151,6 +149,4 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
     )
     assert "artifact submitted" in output.lower() or (
         "smoke_test_result artifact" in output.lower()
-    ), (
-        f"Expected artifact submission:\n{output[-5000:]}"
-    )
+    ), f"Expected artifact submission:\n{output[-5000:]}"

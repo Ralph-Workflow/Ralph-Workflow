@@ -1,4 +1,5 @@
 """Tests for ExecutionError message rendering."""
+
 from __future__ import annotations
 
 from ralph.mcp.tools._exec_execution_error import ExecutionError
@@ -19,9 +20,7 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
         "cache-full message must describe automatic reset attempt"
     )
     assert (
-        "active" in message.lower()
-        or "live" in message.lower()
-        or "permission" in message.lower()
+        "active" in message.lower() or "live" in message.lower() or "permission" in message.lower()
     ), "cache-full message must explain why bytes remain (active slots / permissions)"
     assert "unacquirable locks" not in message, (
         "cache-full message must not contain lock-era wording"
@@ -29,9 +28,7 @@ def test_cache_full_message_describes_automatic_reset_without_internal_tool() ->
     assert "Cleanup+reset" not in message, (
         "cache-full message must not use old Cleanup+reset wording"
     )
-    assert "cooldown" not in message.lower(), (
-        "cache-full message must not contain cooldown wording"
-    )
+    assert "cooldown" not in message.lower(), "cache-full message must not contain cooldown wording"
     assert "active_leases" not in message, (
         "cache-full message must not contain old lock-era active_leases field"
     )

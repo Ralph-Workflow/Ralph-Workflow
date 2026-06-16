@@ -24,9 +24,7 @@ _LOCK_PATH_PATTERN = re.compile(r"Unable to create '([^']+\.lock)'")
 _RECOVERABLE_GIT_LOCK_FILES = frozenset({"index.lock", "HEAD.lock", "packed-refs.lock"})
 _STALE_GIT_LOCK_AGE_SECONDS = 10.0
 _PORCELAIN_STATUS_PREFIX_LEN = 3
-_RALPH_WORKFLOW_COAUTHOR_TRAILER = (
-    "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
-)
+_RALPH_WORKFLOW_COAUTHOR_TRAILER = "Co-authored-by: Ralph Workflow <noreply@ralphworkflow.com>"
 
 
 class GitOperationError(Exception):
@@ -269,8 +267,7 @@ def has_staged_changes(repo_root: Path | str) -> bool:
         finally:
             _close_repo(repo)
     return any(
-        line.startswith("??") or (line and line[0] not in {" ", "?"})
-        for line in status_lines
+        line.startswith("??") or (line and line[0] not in {" ", "?"}) for line in status_lines
     )
 
 

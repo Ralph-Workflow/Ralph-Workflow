@@ -18,10 +18,19 @@ import sys
 from pathlib import Path
 
 # Directories to skip during file collection.
-_SKIP_DIRS: frozenset[str] = frozenset({
-    "__pycache__", ".venv", ".mypy_cache", ".ruff_cache",
-    ".pytest_cache", "htmlcov", "build", "dist", "tmp",
-})
+_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        "__pycache__",
+        ".venv",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".pytest_cache",
+        "htmlcov",
+        "build",
+        "dist",
+        "tmp",
+    }
+)
 
 # --- Allowlist: test files exempt from specific checks ---
 
@@ -192,9 +201,7 @@ class TestPolicyAuditor(ast.NodeVisitor):
         self.file_path = file_path
         self.source_lines = source.splitlines()
         self.violations: list[TestPolicyViolation] = []
-        self._has_monkeypatch = any(
-            pattern in source for pattern in _MONKEYPATCH_PATTERNS
-        )
+        self._has_monkeypatch = any(pattern in source for pattern in _MONKEYPATCH_PATTERNS)
         self._has_subprocess_e2e_marker = "subprocess_e2e" in source
         self._inside_wait_for: bool = False
 
@@ -369,8 +376,7 @@ class TestPolicyAuditor(ast.NodeVisitor):
             self._add_violation(
                 node,
                 "blocking-wait",
-                f"{func_name}() without timeout - "
-                "blocking wait in test; always specify a timeout",
+                f"{func_name}() without timeout - blocking wait in test; always specify a timeout",
             )
 
     def _get_func_name(self, node: ast.Call) -> str | None:
@@ -595,10 +601,7 @@ def audit_test_file(file_path: Path) -> list[TestPolicyViolation]:  # noqa: PLR0
                     file_path=str(file_path),
                     line=lineno,
                     category="step-type-alias",
-                    detail=(
-                        f"step_type={raw_value!r} is a known alias; "
-                        f"use 'verify' instead."
-                    ),
+                    detail=(f"step_type={raw_value!r} is a known alias; use 'verify' instead."),
                 )
             )
 
@@ -665,9 +668,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = argv if argv is not None else sys.argv[1:]
 
-    tests_root = Path(args[0]) if args else (
-        Path(__file__).parent.parent.parent / "tests"
-    )
+    tests_root = Path(args[0]) if args else (Path(__file__).parent.parent.parent / "tests")
 
     if not tests_root.is_dir():
         print(f"Error: tests directory not found: {tests_root}", file=sys.stderr)

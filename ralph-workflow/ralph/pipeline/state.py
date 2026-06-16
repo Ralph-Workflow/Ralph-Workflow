@@ -158,6 +158,13 @@ class PipelineState(_FrozenPipelineStateModel):
     last_retry_delay_ms: int = 0
     last_agent_session_id: str | None = None
     agent_retry_intent: AgentRetryIntent = Field(default_factory=AgentRetryIntent)
+    last_unavailability_reason: str | None = None
+    # Structured wait-state flag: True when the recovery controller has
+    # entered the all-agents-unavailable wait branch (the run loop will
+    # sleep on last_retry_delay_ms and then retry the same phase). This
+    # is the structured signal the run loop keys off; the ``last_error``
+    # text is operator-readable context only and is NOT a contract.
+    is_waiting_state: bool = False
 
     @model_validator(mode="after")
     def _validate_phase_set(self) -> PipelineState:

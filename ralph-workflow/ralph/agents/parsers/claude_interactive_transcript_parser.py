@@ -54,6 +54,7 @@ def _contains_thinking_keyword(text: str) -> bool:
     lower = text.lower()
     return "ought for" in lower or "inking)" in lower or bool(re.search(r"\bthinking\b", lower))
 
+
 # Box-drawing (U+2500-U+257F) + block elements (U+2580-U+259F) + extras.
 _BOX_DRAWING_CHARS: frozenset[str] = frozenset(
     "\u2500\u2502\u250c\u2510\u2514\u2518\u251c\u2524\u252c\u2534\u253c"
@@ -88,9 +89,12 @@ _MIN_BOX_COUNT_FOR_STRIPPED_CHECK = 2
 
 def _count_box_drawing(text: str) -> int:
     """Count Unicode box-drawing / block-element characters in *text*."""
-    return sum(1 for ch in text if ch in _BOX_DRAWING_CHARS
-               or (unicodedata.category(ch) == "So"
-                   and "\u2500" <= ch <= "\u259f"))
+    return sum(
+        1
+        for ch in text
+        if ch in _BOX_DRAWING_CHARS
+        or (unicodedata.category(ch) == "So" and "\u2500" <= ch <= "\u259f")
+    )
 
 
 def _is_tui_chrome(text: str) -> bool:  # noqa: PLR0911
@@ -126,14 +130,11 @@ def _is_tui_chrome(text: str) -> bool:  # noqa: PLR0911
         return True
 
     stripped = "".join(
-        ch for ch in text
-        if ch not in _BOX_DRAWING_CHARS
-        and unicodedata.category(ch) not in ("So", "Sk", "Cf", "Cc")
+        ch
+        for ch in text
+        if ch not in _BOX_DRAWING_CHARS and unicodedata.category(ch) not in ("So", "Sk", "Cf", "Cc")
     )
-    meaningful_words = [
-        w for w in stripped.split()
-        if any(c.isalnum() for c in w)
-    ]
+    meaningful_words = [w for w in stripped.split() if any(c.isalnum() for c in w)]
     return (
         len(meaningful_words) < _MIN_STRIPPED_WORDS
         and box_count >= _MIN_BOX_COUNT_FOR_STRIPPED_CHECK
@@ -359,9 +360,7 @@ class ClaudeInteractiveTranscriptParser:
     @staticmethod
     def _is_tui_thinking_garbage(text: str) -> bool:
         """Return True if *text* is TUI spinner/status garbage, not real content."""
-        return bool(_THINKING_STATUS_RE.search(text)) or any(
-            c in _TUI_GLYPH_CHARS for c in text
-        )
+        return bool(_THINKING_STATUS_RE.search(text)) or any(c in _TUI_GLYPH_CHARS for c in text)
 
     def _event_for_text(self, text: str) -> InteractiveTranscriptEvent | None:  # noqa: PLR0911,PLR0912
         if _PURE_COUNTER_RE.match(text) or _TUI_STATUSBAR_RE.search(text):

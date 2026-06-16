@@ -101,8 +101,6 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     assert getattr(captured.get("policy"), "idle_timeout_seconds", None) == _expected_idle_timeout
 
 
-
-
 def test_invoke_agent_probe_and_strategy_share_same_registry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -419,9 +417,7 @@ def test_claude_interactive_execution_strategy_supports_session_continuation() -
 
 def test_claude_interactive_execution_strategy_classify_exit_terminal_on_completion() -> None:
     strategy = ClaudeInteractiveExecutionStrategy()
-    signals = CompletionSignals(
-        True, False, (), completion_sentinel_present=True
-    )
+    signals = CompletionSignals(True, False, (), completion_sentinel_present=True)
 
     class _FakeHandle:
         def has_live_descendants(self) -> bool:

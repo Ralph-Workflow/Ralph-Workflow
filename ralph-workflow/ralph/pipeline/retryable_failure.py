@@ -31,9 +31,7 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
     "socket hang up",
 )
 
-_TURN_LIMIT_MARKERS = (
-    "conversation exceeded 50 turns",
-)
+_TURN_LIMIT_MARKERS = ("conversation exceeded 50 turns",)
 
 
 def retryable_agent_failure_reason(

@@ -65,9 +65,7 @@ if not (0 < INTERRUPT_HARD_KILL_BUDGET_SECONDS < _INTERRUPT_HARD_KILL_BUDGET_MAX
     )
 
 SIGINT_PROGRESS_POLL_INTERVAL_SECONDS: float = 0.2
-if not (
-    0 < SIGINT_PROGRESS_POLL_INTERVAL_SECONDS < INTERRUPT_HARD_KILL_BUDGET_SECONDS
-):
+if not (0 < SIGINT_PROGRESS_POLL_INTERVAL_SECONDS < INTERRUPT_HARD_KILL_BUDGET_SECONDS):
     raise RuntimeError(
         "SIGINT_PROGRESS_POLL_INTERVAL_SECONDS must be in (0,"
         f" {INTERRUPT_HARD_KILL_BUDGET_SECONDS}) seconds"
@@ -84,9 +82,7 @@ if not (
 _INTERRUPT_HARD_KILL_BUDGET_REQUIRED: float = 1.5
 _FLOAT_EPSILON: float = 1e-9
 if (
-    not abs(
-        INTERRUPT_HARD_KILL_BUDGET_SECONDS - _INTERRUPT_HARD_KILL_BUDGET_REQUIRED
-    )
+    not abs(INTERRUPT_HARD_KILL_BUDGET_SECONDS - _INTERRUPT_HARD_KILL_BUDGET_REQUIRED)
     < _FLOAT_EPSILON
 ):
     raise RuntimeError(
@@ -96,9 +92,10 @@ if (
     )
 
 _SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED: float = 0.2
-if not abs(
-    SIGINT_PROGRESS_POLL_INTERVAL_SECONDS - _SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED
-) < _FLOAT_EPSILON:
+if (
+    not abs(SIGINT_PROGRESS_POLL_INTERVAL_SECONDS - _SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED)
+    < _FLOAT_EPSILON
+):
     raise RuntimeError(
         f"SIGINT_PROGRESS_POLL_INTERVAL_SECONDS must be "
         f"{_SIGINT_PROGRESS_POLL_INTERVAL_REQUIRED} "
@@ -197,9 +194,7 @@ def _kill_records(records: list[ProcessRecord]) -> None:
                 kill_method(record.pid, signal.SIGKILL)
 
 
-def _dispatch_kill(
-    process_manager: ProcessManager, records: list[ProcessRecord]
-) -> None:
+def _dispatch_kill(process_manager: ProcessManager, records: list[ProcessRecord]) -> None:
     """Send SIGKILL to each record's PGID, preferring the process
     manager's ``kill_process_group`` seam when available so the test
     can record the kill through the fake. Falls back to ``os.killpg``
@@ -242,19 +237,12 @@ class InterruptDispatcher:
     def __post_init__(self) -> None:
         if self.hard_kill_budget_s <= 0:
             raise RuntimeError(
-                "hard_kill_budget_s must be positive "
-                f"(got {self.hard_kill_budget_s})"
+                f"hard_kill_budget_s must be positive (got {self.hard_kill_budget_s})"
             )
         if self.poll_interval_s <= 0:
-            raise RuntimeError(
-                "poll_interval_s must be positive "
-                f"(got {self.poll_interval_s})"
-            )
+            raise RuntimeError(f"poll_interval_s must be positive (got {self.poll_interval_s})")
         if not isinstance(self.clock(), float):
-            raise RuntimeError(
-                "clock() must return a float "
-                f"(got {type(self.clock()).__name__})"
-            )
+            raise RuntimeError(f"clock() must return a float (got {type(self.clock()).__name__})")
 
     def begin_interrupt(
         self,
@@ -322,12 +310,8 @@ class InterruptDispatcher:
         """
         bridge_pids_legacy = cast("Iterable[int]", kwargs.pop("bridge_pids", ()))
         if bridge_pids_legacy:
-            logger.warning(
-                "bridge_pids is deprecated; pass bridge_pgids instead"
-            )
-        pgids: Iterable[int] = (
-            list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
-        )
+            logger.warning("bridge_pids is deprecated; pass bridge_pgids instead")
+        pgids: Iterable[int] = list(bridge_pgids) if bridge_pgids else list(bridge_pids_legacy)
         if self._force_exit_called:
             return
         object.__setattr__(self, "_force_exit_called", True)

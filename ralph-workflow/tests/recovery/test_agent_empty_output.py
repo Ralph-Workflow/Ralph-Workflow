@@ -186,4 +186,3 @@ def test_empty_response_in_parsed_output_classified_as_agent_fault() -> None:
 
     assert failure.category == FailureCategory.AGENT
     assert failure.counts_against_budget is True
-

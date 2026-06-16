@@ -86,9 +86,7 @@ def read_heartbeat_token(workspace_root: Path | str) -> str | None:
         if isinstance(token_obj, str) and token_obj:
             return token_obj
 
-    sidecar_path = (
-        Path(workspace_root).expanduser().resolve() / HEARTBEAT_TOKEN_RELATIVE_PATH
-    )
+    sidecar_path = Path(workspace_root).expanduser().resolve() / HEARTBEAT_TOKEN_RELATIVE_PATH
     try:
         contents = sidecar_path.read_text(encoding="utf-8").strip()
     except (FileNotFoundError, IsADirectoryError, PermissionError, OSError) as exc:

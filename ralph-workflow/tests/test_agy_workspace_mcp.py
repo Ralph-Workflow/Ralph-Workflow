@@ -39,9 +39,7 @@ def agy_config_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     parent-directory creation behaviour is exercised.
     """
     config_path = tmp_path / "gemini" / "mcp_config.json"
-    monkeypatch.setattr(
-        "ralph.mcp.transport.agy._agy_global_config_path", lambda: config_path
-    )
+    monkeypatch.setattr("ralph.mcp.transport.agy._agy_global_config_path", lambda: config_path)
     return config_path
 
 
@@ -113,9 +111,7 @@ def test_agy_workspace_mcp_endpoint_restores_on_exception(
     agy_config_path.write_text(original_text, encoding="utf-8")
     endpoint = "http://127.0.0.1:9999/mcp"
 
-    with pytest.raises(RuntimeError, match="boom"), agy_workspace_mcp_endpoint(
-        tmp_path, endpoint
-    ):
+    with pytest.raises(RuntimeError, match="boom"), agy_workspace_mcp_endpoint(tmp_path, endpoint):
         raise RuntimeError("boom")
 
     assert agy_config_path.read_text(encoding="utf-8") == original_text

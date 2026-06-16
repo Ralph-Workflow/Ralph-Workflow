@@ -59,8 +59,7 @@ def test_pipeline_phase_stamps_canonical_receipt(
             {
                 "artifact_type": "development_result",
                 "content": (
-                    '{"status": "completed", "summary": "done", '
-                    '"files_changed": "src/main.py"}'
+                    '{"status": "completed", "summary": "done", "files_changed": "src/main.py"}'
                 ),
             },
             deps=ArtifactHandlerDeps(backend=backend),
@@ -89,7 +88,9 @@ def test_pipeline_phase_stamps_canonical_receipt(
     )
 
     result = runner_mod._execute_effect(
-        effect, config, workspace_scope,
+        effect,
+        config,
+        workspace_scope,
         pipeline_deps=object(),
         display_context=object(),
     )
@@ -116,10 +117,7 @@ def test_pipeline_fallback_promotion_uses_canonical_helper(
     backend = MemoryBackend()
     run_id = "pipeline-fallback-test"
     tmp_fallback = tmp_path / ".agent" / "tmp" / "development_result.json"
-    payload = (
-        '{"status": "completed", "summary": "fallback done", '
-        '"files_changed": "src/main.py"}'
-    )
+    payload = '{"status": "completed", "summary": "fallback done", "files_changed": "src/main.py"}'
     backend.mkdir(tmp_fallback.parent, parents=True)
     backend.write_text(tmp_fallback, payload, encoding="utf-8")
 

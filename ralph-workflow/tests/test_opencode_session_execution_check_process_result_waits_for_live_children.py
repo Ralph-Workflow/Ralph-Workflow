@@ -315,9 +315,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 # completion marker alone is no longer terminal; corroborate
                 # it with the completion sentinel (written by the real
                 # declare_complete MCP tool).
-                return CompletionSignals(
-                    True, False, (), completion_sentinel_present=True
-                )
+                return CompletionSignals(True, False, (), completion_sentinel_present=True)
             return CompletionSignals(False, False, ())
 
         # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → explicit_complete (call 3) → TERMINAL_COMPLETE

@@ -79,9 +79,7 @@ if TYPE_CHECKING:
         def notify(self, state: PipelineState) -> None: ...
 
     class _InstallSignalHandlersFn(Protocol):
-        def __call__(
-            self, *args: object, **kwargs: object
-        ) -> Callable[[], None] | None: ...
+        def __call__(self, *args: object, **kwargs: object) -> Callable[[], None] | None: ...
 
     class _ExecutorFactory(Protocol):
         def __call__(self, *args: object, **kwargs: object) -> AgentExecutor: ...
@@ -407,9 +405,7 @@ def _cleared_after_successful_wave(state: PipelineState) -> PipelineState:
     next development entry resumes only the unfinished units.
     """
     worker_states = state.worker_states
-    if worker_states and all(
-        ws.status == WorkerStatus.SUCCEEDED for ws in worker_states.values()
-    ):
+    if worker_states and all(ws.status == WorkerStatus.SUCCEEDED for ws in worker_states.values()):
         return state.with_parallel_execution_cleared()
     return state
 

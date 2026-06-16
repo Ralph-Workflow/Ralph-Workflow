@@ -64,15 +64,13 @@ def _minimal_plan(
             "scope_items": scope_items or [{"text": "a"}, {"text": "b"}, {"text": "c"}],
         },
         "skills_mcp": {"skills": ["writing-plans"], "mcps": []},
-        "steps": steps
-        or [{"number": 1, "title": "a", "content": "x", "step_type": "action"}],
+        "steps": steps or [{"number": 1, "title": "a", "content": "x", "step_type": "action"}],
         "critical_files": {
             "primary_files": primary_files or [{"path": "x.py", "action": "modify"}],
             "reference_files": reference_files or [],
         },
         "risks_mitigations": risks or [{"risk": "x", "mitigation": "y"}],
-        "verification_strategy": verification
-        or [{"method": "pytest", "expected_outcome": "ok"}],
+        "verification_strategy": verification or [{"method": "pytest", "expected_outcome": "ok"}],
         "parallel_plan": parallel_plan or [],
         "work_units": work_units or [],
         "constraints": constraints or {},
@@ -195,9 +193,7 @@ def test_check_plan_size_rejects_risks_overflow() -> None:
 
 def test_check_plan_size_rejects_verification_steps_overflow() -> None:
     """101 verification_strategy entries returns the verification violation."""
-    verifications = [
-        {"method": "pytest", "expected_outcome": "ok"} for _ in range(101)
-    ]
+    verifications = [{"method": "pytest", "expected_outcome": "ok"} for _ in range(101)]
     plan = _minimal_plan(verification=verifications)
     err = check_plan_size(plan)
     assert err is not None
@@ -219,9 +215,7 @@ def test_check_plan_size_rejects_primary_files_overflow() -> None:
 
 def test_check_plan_size_rejects_constraint_list_overflow() -> None:
     """501 must_not_break entries returns the constraints.must_not_break violation."""
-    plan = _minimal_plan(
-        constraints={"must_not_break": [f"rule-{i}" for i in range(501)]}
-    )
+    plan = _minimal_plan(constraints={"must_not_break": [f"rule-{i}" for i in range(501)]})
     err = check_plan_size(plan)
     assert err is not None
     assert err.field == "constraints.must_not_break"
@@ -318,9 +312,7 @@ def test_size_limits_invariants_survive_python_dash_o() -> None:
         timeout=30,
         check=False,
     )
-    assert completed.returncode == 0, (
-        f"stderr={completed.stderr!r} stdout={completed.stdout!r}"
-    )
+    assert completed.returncode == 0, f"stderr={completed.stderr!r} stdout={completed.stdout!r}"
     assert "OK" in completed.stdout
 
 
@@ -442,8 +434,7 @@ def test_check_plan_size_never_raises() -> None:
             body_lines.append(line)
     body = "\n".join(body_lines)
     assert "raise " not in body, (
-        "check_plan_size must NEVER raise (pure helper contract); "
-        f"found raise in body: {body}"
+        f"check_plan_size must NEVER raise (pure helper contract); found raise in body: {body}"
     )
     err = check_plan_size([1, 2, 3])
     assert err is None or isinstance(err, PlanArtifactSizeError)

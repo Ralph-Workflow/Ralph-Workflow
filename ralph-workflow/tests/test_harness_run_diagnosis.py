@@ -404,9 +404,7 @@ def test_detect_break_indicators_uses_anchored_crash_patterns() -> None:
     assert smoke_plumbing_module._detect_break_indicators(["this should not crash"]) == []
     assert (
         "crash-like transcript output observed"
-        in smoke_plumbing_module._detect_break_indicators(
-            ["Traceback (most recent call last):"]
-        )
+        in smoke_plumbing_module._detect_break_indicators(["Traceback (most recent call last):"])
     )
     assert (
         "crash-like transcript output observed"
@@ -420,9 +418,7 @@ def test_detect_break_indicators_uses_anchored_crash_patterns() -> None:
     )
     assert (
         "crash-like transcript output observed"
-        in smoke_plumbing_module._detect_break_indicators(
-            ["segmentation fault (core dumped)"]
-        )
+        in smoke_plumbing_module._detect_break_indicators(["segmentation fault (core dumped)"])
     )
 
 
@@ -759,9 +755,7 @@ def test_detect_smoke_errors_agy_empty_output_reports_model_diagnostic(
         _make_agy_params(tmp_path), [], [], None, None
     )
 
-    assert any(
-        "gemini-3.5-flash-low" in err and "not recognized" in err for err in errors
-    ), errors
+    assert any("gemini-3.5-flash-low" in err and "not recognized" in err for err in errors), errors
 
 
 def test_detect_smoke_errors_agy_empty_output_reports_generic_diagnostic_when_log_missing(
@@ -777,9 +771,9 @@ def test_detect_smoke_errors_agy_empty_output_reports_generic_diagnostic_when_lo
         _make_agy_params(tmp_path), [], [], None, None
     )
 
-    assert any(
-        "AGY --print returned empty stdout" in err and "cli.log" in err for err in errors
-    ), errors
+    assert any("AGY --print returned empty stdout" in err and "cli.log" in err for err in errors), (
+        errors
+    )
 
 
 def test_detect_smoke_errors_agy_no_diagnostic_when_stdout_present(
@@ -805,14 +799,16 @@ def test_read_smoke_test_result_artifact_returns_none_for_invalid_content(
     artifact_path = artifact_dir / "smoke_test_result.json"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
-        json.dumps({
-            "name": "smoke_test_result",
-            "type": "smoke_test_result",
-            "content": {
-                "status": "passed",
-                # missing summary, output_file, headless_guide_checks
-            },
-        }),
+        json.dumps(
+            {
+                "name": "smoke_test_result",
+                "type": "smoke_test_result",
+                "content": {
+                    "status": "passed",
+                    # missing summary, output_file, headless_guide_checks
+                },
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -837,18 +833,20 @@ def test_read_smoke_test_result_artifact_returns_validated_content(
     artifact_path = artifact_dir / "smoke_test_result.json"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(
-        json.dumps({
-            "name": "smoke_test_result",
-            "type": "smoke_test_result",
-            "content": {
-                "status": "passed",
-                "summary": "all checks passed",
-                "output_file": "tmp/smoke/output.js",
-                "observed_working": ["created output"],
-                "observed_breaks": [],
-                "headless_guide_checks": ["tool activity"],
-            },
-        }),
+        json.dumps(
+            {
+                "name": "smoke_test_result",
+                "type": "smoke_test_result",
+                "content": {
+                    "status": "passed",
+                    "summary": "all checks passed",
+                    "output_file": "tmp/smoke/output.js",
+                    "observed_working": ["created output"],
+                    "observed_breaks": [],
+                    "headless_guide_checks": ["tool activity"],
+                },
+            }
+        ),
         encoding="utf-8",
     )
 

@@ -269,9 +269,7 @@ def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
     for index, line in enumerate(fresh_workspace_next_steps(), start=1):
         content_lines.append(f"  {index}. {line}")
     content_lines.append("")
-    content_lines.append(
-        f"Docs: {GETTING_STARTED_DOC} — step-by-step walkthrough for new users"
-    )
+    content_lines.append(f"Docs: {GETTING_STARTED_DOC} — step-by-step walkthrough for new users")
     display.emit_info_panel(
         title="Ralph Workflow is not initialized here yet",
         content="\n".join(content_lines),
@@ -340,9 +338,7 @@ def _run_preflight_checks(
     # validate_required_inputs requires workspace_scope
     if request.workspace_scope is not None and request.inline_prompt is None:
         # Fresh-state detection: workspace has neither PROMPT.md nor .agent
-        prompt_path = resolve_effective_prompt_path(
-            request.workspace_scope.root, os.environ
-        )
+        prompt_path = resolve_effective_prompt_path(request.workspace_scope.root, os.environ)
         agent_dir = request.workspace_scope.root / ".agent"
         if not prompt_path.exists() and not agent_dir.exists():
             _print_not_initialized_panel(display_context=display_context)
@@ -450,9 +446,7 @@ def _execute_pipeline(
         return _EXIT_CONFIG_ERROR
 
     try:
-        kwargs = _build_runner_kwargs(
-            request, display_context=display_context, run_func=run_func
-        )
+        kwargs = _build_runner_kwargs(request, display_context=display_context, run_func=run_func)
         return run_func(request.config, request.initial_state, **kwargs)
     except KeyboardInterrupt:
         display.emit_warning("\nInterrupted by user")
@@ -515,9 +509,7 @@ def _maybe_enter_process_view(stack: ExitStack) -> Path | None:
     return stack.enter_context(SkillsProcessView())
 
 
-def _warn_if_capabilities_degraded(
-    display_context: DisplayContext, workspace_root: Path
-) -> None:
+def _warn_if_capabilities_degraded(display_context: DisplayContext, workspace_root: Path) -> None:
     """Print a soft warning if any baseline capability appears degraded (no network I/O)."""
     state_path = default_state_path()
     if not state_path.exists():
@@ -710,9 +702,7 @@ def run_pipeline(
 
     # Phase 2b: sync shipped skills (TTL-cached), then warn if capabilities are degraded
     if load_result.workspace_scope is not None:
-        _sync_shipped_skills_on_pipeline_run(
-            workspace_root=load_result.workspace_scope.root
-        )
+        _sync_shipped_skills_on_pipeline_run(workspace_root=load_result.workspace_scope.root)
         _warn_if_capabilities_degraded(ctx, load_result.workspace_scope.root)
 
     # Phase 3: Handle dry-run
