@@ -173,5 +173,4 @@ del registry.agents["my-agent"]
 
 * [Architecture Documentation](../agents/architecture.md)
 * [Registration Module](../../ralph/agents/registration.py)
-* [Headless Recipe Test](../../tests/agents/test_add_a_new_agent_recipe.py)
-* [Interactive Recipe Test](../../tests/agents/test_add_a_new_interactive_agent_recipe.py)
+* [Recipe Test (covers headless + interactive)](../../tests/agents/test_add_a_new_agent_recipe.py)

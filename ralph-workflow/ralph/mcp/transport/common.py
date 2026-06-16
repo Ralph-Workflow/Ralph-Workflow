@@ -147,6 +147,55 @@ def _upstream_as_dict(s: UpstreamMcpServer) -> dict[str, object]:
     return result
 
 
+def _merge_opencode(current_config: dict[str, object], unsafe_mode: bool) -> dict[str, object]:
+    ralph_opencode_mcp = cast(
+        "dict[str, object]", current_config.get("mcp", dict[str, object]())
+    )
+    ralph_opencode = ralph_opencode_mcp.get(RALPH_MCP_SERVER_NAME)
+    if not unsafe_mode:
+        if ralph_opencode is not None:
+            return {"mcp": {RALPH_MCP_SERVER_NAME: ralph_opencode}}
+        return {"mcp": {}}
+    existing_native = _load_opencode_mcp_servers_from_current_config(current_config)
+    merged: dict[str, object] = dict(existing_native)
+    if ralph_opencode is not None:
+        merged[RALPH_MCP_SERVER_NAME] = ralph_opencode
+    return {"mcp": merged}
+
+
+def _merge_codex(current_config: dict[str, object], unsafe_mode: bool) -> dict[str, object]:
+    existing_toml_servers = _load_codex_mcp_servers_from_current_config(current_config)
+    codex_ralph_key = "mcp_servers." + RALPH_MCP_SERVER_NAME
+    codex_ralph_entry = current_config.get(codex_ralph_key)
+    if not unsafe_mode:
+        if codex_ralph_entry is not None and isinstance(codex_ralph_entry, dict):
+            return {codex_ralph_key: codex_ralph_entry}
+        return {}
+    result = dict(existing_toml_servers)
+    if codex_ralph_entry is not None and isinstance(codex_ralph_entry, dict):
+        result[codex_ralph_key] = codex_ralph_entry
+    return result
+
+
+def _merge_default(
+    agent_name: str, current_config: dict[str, object], unsafe_mode: bool
+) -> dict[str, object]:
+    ralph_mcp_servers = cast(
+        "dict[str, object]", current_config.get("mcpServers", dict[str, object]())
+    )
+    ralph_entry = ralph_mcp_servers.get(RALPH_MCP_SERVER_NAME)
+    if not unsafe_mode:
+        if ralph_entry is not None:
+            return {"mcpServers": {RALPH_MCP_SERVER_NAME: ralph_entry}}
+        return {}
+    upstreams = _load_upstreams_for_agent(agent_name, current_config)
+    existing_map: dict[str, object] = {s.name: _upstream_as_dict(s) for s in upstreams}
+    merged = dict(existing_map)
+    if ralph_entry is not None:
+        merged[RALPH_MCP_SERVER_NAME] = ralph_entry
+    return {"mcpServers": merged}
+
+
 def merge_existing_upstreams(
     agent_name: str,
     current_config: dict[str, object],
@@ -155,56 +204,31 @@ def merge_existing_upstreams(
 ) -> dict[str, object]:
     """Merge existing upstream servers into current_config based on agent and unsafe_mode.
 
-    This helper consolidates the unsafe_mode merge logic across all 5 transport files
-    (claude, agy, nanocoder, opencode, codex) into one dispatcher.
+    This helper consolidates the unsafe_mode merge logic across the 4 JSON-based
+    transport files (claude, agy, nanocoder, opencode) into one dispatcher.
 
-    When unsafe_mode=False: returns current_config with non-ralph entries dropped.
-    When unsafe_mode=True: merges existing agent-native servers with current_config.
+    When unsafe_mode=False: returns only the ralph entry (existing upstreams dropped).
+    When unsafe_mode=True: merges existing agent-native servers with the ralph entry.
+
+    Codex uses TOML-style `mcp_servers.X` keys and is handled separately to preserve
+    the native TOML structure and all per-entry fields.
 
     Args:
         agent_name: One of "claude", "agy", "nanocoder", "opencode", "codex".
-        current_config: Agent-native config dict (e.g. {"mcpServers": {...}} for claude/agy).
+        current_config: Agent-native config dict.
+            - claude/agy/nanocoder: {"mcpServers": {"<name>": {...}}}
+            - opencode: {"mcp": {"<name>": {"type", "url", "enabled", "timeout", ...}}}
+            - codex: {"mcp_servers.X": {...}, ...}  (TOML-style keys)
         unsafe_mode: Whether to preserve existing upstream servers.
 
     Returns:
         Merged config dict with ralph entry and optionally existing upstreams.
     """
-    ralph_mcp_servers = cast(
-        "dict[str, object]", current_config.get("mcpServers", dict[str, object]())
-    )
-    ralph_entry = ralph_mcp_servers.get(RALPH_MCP_SERVER_NAME)
-    ralph_opencode_mcp = cast(
-        "dict[str, object]", current_config.get("mcp", dict[str, object]())
-    )
-    ralph_opencode = ralph_opencode_mcp.get(RALPH_MCP_SERVER_NAME)
-
-    if not unsafe_mode:
-        result: dict[str, object] | None = None
-        if ralph_entry is not None:
-            result = {"mcpServers": {RALPH_MCP_SERVER_NAME: ralph_entry}}
-        elif ralph_opencode is not None:
-            result = {"mcp": {RALPH_MCP_SERVER_NAME: ralph_opencode}}
-        return result if result is not None else current_config
-
-    upstreams = _load_upstreams_for_agent(agent_name, current_config)
-    existing_map: dict[str, object] = {s.name: _upstream_as_dict(s) for s in upstreams}
-
-    if agent_name in ("claude", "agy", "nanocoder"):
-        res: dict[str, object] = dict(existing_map)
-        if ralph_entry is not None:
-            res[RALPH_MCP_SERVER_NAME] = ralph_entry
-        return {"mcpServers": res}
     if agent_name == "opencode":
-        res = dict(existing_map)
-        if ralph_opencode is not None:
-            res[RALPH_MCP_SERVER_NAME] = ralph_opencode
-        return {"mcp": res}
+        return _merge_opencode(current_config, unsafe_mode)
     if agent_name == "codex":
-        res = dict(existing_map)
-        if ralph_entry is not None:
-            res[RALPH_MCP_SERVER_NAME] = ralph_entry
-        return {"mcpServers": res}
-    return current_config
+        return _merge_codex(current_config, unsafe_mode)
+    return _merge_default(agent_name, current_config, unsafe_mode)
 
 
 def _load_upstreams_for_agent(

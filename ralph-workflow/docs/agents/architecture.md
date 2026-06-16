@@ -28,7 +28,7 @@ registration  →  parser  →  strategy  →  CommandBuilder
    (environment variables, MCP upstreams, workspace paths) before the process
    starts.
 6. **Config and chains** — `[agents.<name>]`, `[ccs_aliases.<name>]`,
-   `[agent_chains]`, and `[agent_drains]` in `ralph.yaml` configure every
+   `[agent_chains]`, and `[agent_drains]` in `ralph-workflow.toml` configure every
    aspect of an agent's behaviour. The shorthand forms (`claude/<model>`,
    `opencode/<provider>`, `agy/<model>`) are expanded by the config layer into
    fully-qualified `AgentSpec` objects before registration.
@@ -78,7 +78,7 @@ value without registering both classes fails this test before reaching productio
 
 ## Config and chains
 
-Agents are configured in `ralph.yaml` under three top-level sections:
+Agents are configured in `ralph-workflow.toml` under three top-level sections:
 
 - `[agents.<name>]` — defines an agent's transport, parser, strategy factory,
   flags, and display name.
