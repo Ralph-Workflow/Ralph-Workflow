@@ -1,4 +1,13 @@
-"""Failure classification logic and rules."""
+"""Failure classification logic and rules.
+
+The classifier walks the full ``__cause__`` / ``__context__`` chain
+when looking for the typed ``IdleWatchdogKilledError`` (AC-05). The
+typed-attribute branch wins before any text scanning so a SIGTERM
+relabeled as a connectivity blip because the agent's stderr contained
+the word "timeout" is still classified as AGENT, even when the
+typed cause is buried several layers deep in the wrapped exception
+chain.
+"""
 
 from __future__ import annotations
 
@@ -606,19 +615,16 @@ class FailureClassifier:
         # like the word "timeout" (it is in fact a SIGTERM), and the
         # substring-match vocabulary below would mislabel it as a
         # connectivity blip. The check is FIRST so the typed-cause
-        # branch wins before any text scanning.
-        if isinstance(exc, IdleWatchdogKilledError):
-            return FailureCategory.AGENT, True, False
-        # Typed-cause branch: the watchdog fire path wraps the typed
-        # ``IdleWatchdogKilledError`` in a ``_IdleStreamTimeoutError``
-        # (which is then converted to ``AgentInactivityTimeoutError``
-        # by the recovery layer) and attaches the typed exception as
-        # ``__cause__``. Walk the chain to see the typed cause. This
-        # preserves AC-05's typed-attribute contract for the
-        # failure_classifier without changing the recovery layer's
-        # exception surface.
-        cause: BaseException | None = getattr(exc, "__cause__", None)
-        if isinstance(cause, IdleWatchdogKilledError):
+        # branch wins before any text scanning. The chain is walked
+        # recursively (with a cycle guard) so the typed exception is
+        # reachable when it is buried several layers deep in the
+        # ``__cause__`` / ``__context__`` chain (e.g. when the
+        # recovery layer wraps the watchdog's
+        # ``_IdleStreamTimeoutError`` inside an
+        # ``AgentInactivityTimeoutError`` whose ``__cause__`` is the
+        # stream-timeout wrapper whose ``__cause__`` is the typed
+        # ``IdleWatchdogKilledError``).
+        if self._find_typed_watchdog_cause(exc) is not None:
             return FailureCategory.AGENT, True, False
         for predicate, result in (
             (_is_user_config_exc(exc), (FailureCategory.USER_CONFIG, False, False)),
@@ -639,6 +645,38 @@ class FailureClassifier:
                 detail_parts,
                 connectivity_state=connectivity_state,
             )
+        return None
+
+    @staticmethod
+    def _find_typed_watchdog_cause(
+        exc: BaseException,
+    ) -> IdleWatchdogKilledError | None:
+        """Walk the ``__cause__`` / ``__context__`` chain for the watchdog typed exception.
+
+        Returns the deepest ``IdleWatchdogKilledError`` reachable in the
+        chain, or ``None`` if no typed cause is found. The walk is
+        bounded by the visited-set (cycle guard) so a malformed cycle
+        in the chain cannot hang the classifier.
+        """
+        if isinstance(exc, IdleWatchdogKilledError):
+            return exc
+        visited: set[int] = {id(exc)}
+        current: BaseException | None = cast(
+            "BaseException | None", getattr(exc, "__cause__", None)
+        )
+        if current is None:
+            current = cast("BaseException | None", getattr(exc, "__context__", None))
+        while current is not None and id(current) not in visited:
+            visited.add(id(current))
+            if isinstance(current, IdleWatchdogKilledError):
+                return current
+            next_cause = cast("BaseException | None", getattr(current, "__cause__", None))
+            if next_cause is not None:
+                current = next_cause
+            else:
+                current = cast(
+                    "BaseException | None", getattr(current, "__context__", None)
+                )
         return None
 
     def _classify_agent_invocation_error(

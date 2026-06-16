@@ -8,6 +8,7 @@ import pytest
 from ralph.agents.activity import AgentActivityKind
 from ralph.agents.idle_watchdog import TimeoutPolicy, WatchdogFireReason, WatchdogVerdict
 from ralph.agents.idle_watchdog._evidence_tier import EvidenceSummary
+from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke import AgentInactivityTimeoutError
 from ralph.agents.invoke._errors import _IdleStreamTimeoutError
 from ralph.agents.invoke._pty_line_reader import PtyLineReader
@@ -15,6 +16,8 @@ from ralph.agents.invoke._pty_runner import run_pty_and_read_lines
 from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
+from ralph.recovery.failure_category import FailureCategory
+from ralph.recovery.failure_classifier import FailureClassifier
 
 
 class _FakeHandle:
@@ -296,5 +299,116 @@ def test_handle_queued_line_keeps_post_tool_result_marker_through_lifecycle_nois
         list(reader._handle_queued_line("lifecycle\n", watchdog))
 
         assert reader._awaiting_post_tool_result_progress is True
+    finally:
+        os.close(master_fd)
+
+
+def test_pty_line_reader_check_fire_attaches_typed_idle_watchdog_cause() -> None:
+    """AC-05: PTY watchdog path propagates the typed ``IdleWatchdogKilledError``.
+
+    The non-PTY watchdog path (``_process_reader._check_fire``) builds
+    an ``IdleWatchdogKilledError`` with the watchdog's typed
+    attributes (``reason``, ``signal``) and attaches it as
+    ``__cause__`` of the returned ``_IdleStreamTimeoutError``. The
+    failure_classifier's typed-attribute branch in
+    ``failure_classifier.py`` walks the ``__cause__`` chain to find
+    the typed cause, so the watchdog kill is classified as AGENT
+    (not as a connectivity blip) regardless of how deep the typed
+    cause is buried.
+
+    This test pins the PTY path to the same contract: the PTY
+    ``_check_fire`` must also build an ``IdleWatchdogKilledError``
+    and attach it as ``__cause__`` of the wrapper. Without this
+    contract, a PTY-backed agent's watchdog kill would be
+    substring-classified, relabeling a SIGTERM as a connectivity
+    blip because the wrapper's message happens to contain the word
+    "timeout".
+    """
+    master_fd = os.open("/dev/null", os.O_RDONLY)
+    try:
+        handle = _FakeHandle(master_fd)
+        clock = FakeClock(start=25.0)
+        ctx = SimpleNamespace(
+            config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            policy=TimeoutPolicy(idle_timeout_seconds=300.0),
+            monitor=None,
+            execution_strategy=None,
+            liveness_probe=None,
+            waiting_listener=None,
+        )
+        reader = PtyLineReader(handle, "claude", ctx, clock, extras=None)
+
+        watchdog = SimpleNamespace(
+            last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+            last_evidence_summary=lambda _now: EvidenceSummary(),
+        )
+
+        result = reader._check_fire(watchdog, WatchdogVerdict.FIRE)
+        assert result is not None
+        _pending_lines, exc = result
+
+        # The PTY watchdog path now propagates the typed watchdog
+        # exception as the __cause__ of the stream-timeout wrapper.
+        typed_cause = exc.__cause__
+        assert typed_cause is not None, (
+            "PTY watchdog path must attach IdleWatchdogKilledError as __cause__"
+        )
+        assert isinstance(typed_cause, IdleWatchdogKilledError), (
+            f"PTY watchdog __cause__ must be IdleWatchdogKilledError, "
+            f"got {type(typed_cause).__name__}"
+        )
+        # The typed exception carries the watchdog's authoritative
+        # attributes so the failure_classifier can consult
+        # exc.reason / exc.signal directly.
+        assert typed_cause.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE.value
+        assert typed_cause.signal == 15
+    finally:
+        os.close(master_fd)
+
+
+def test_pty_line_reader_check_fire_classifies_as_agent_via_chain() -> None:
+    """AC-05 end-to-end: a PTY watchdog kill classifies as AGENT, not ENVIRONMENTAL.
+
+    A regression test that proves the full chain
+    ``_IdleStreamTimeoutError`` (PTY wrapper, with the watchdog's
+    ``IdleWatchdogKilledError`` attached as ``__cause__``) is
+    classified as AGENT by the failure_classifier. Without the typed
+    cause attached, the classifier would fall through to the
+    text-based matching, which would relabel the SIGTERM as
+    ENVIRONMENTAL because the wrapper message contains the word
+    "timeout".
+    """
+    master_fd = os.open("/dev/null", os.O_RDONLY)
+    try:
+        handle = _FakeHandle(master_fd)
+        clock = FakeClock(start=25.0)
+        ctx = SimpleNamespace(
+            config=AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
+            policy=TimeoutPolicy(idle_timeout_seconds=300.0),
+            monitor=None,
+            execution_strategy=None,
+            liveness_probe=None,
+            waiting_listener=None,
+        )
+        reader = PtyLineReader(handle, "claude", ctx, clock, extras=None)
+
+        watchdog = SimpleNamespace(
+            last_fire_reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+            last_evidence_summary=lambda _now: EvidenceSummary(),
+        )
+
+        result = reader._check_fire(watchdog, WatchdogVerdict.FIRE)
+        assert result is not None
+        _pending_lines, exc = result
+
+        # The failure_classifier must see the typed watchdog cause
+        # via the __cause__ walk and classify as AGENT, not
+        # ENVIRONMENTAL.
+        classified = FailureClassifier().classify(
+            exc, phase="pty_watchdog", agent="claude", connectivity_state="online"
+        )
+        assert classified.category == FailureCategory.AGENT, (
+            f"PTY watchdog kill must classify as AGENT, got {classified.category}"
+        )
     finally:
         os.close(master_fd)

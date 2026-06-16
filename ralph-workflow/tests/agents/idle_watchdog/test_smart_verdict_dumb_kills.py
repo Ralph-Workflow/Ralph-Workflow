@@ -262,42 +262,80 @@ def test_children_persist_deferred_while_classifier_returns_loading() -> None:
 def test_dumb_kill_two_pre_output_fragment() -> None:
     """Reproduce the second dumb-kill incident.
 
-    Setup: agent emitted a single 'I need to explore...' fragment,
-    then quiet for 200s, mcp_tool_call_count=0, subagent_progress=0,
-    no child.
+    Setup: a child agent emitted a single 'I need to explore...'
+    fragment, then quiet for 200s, mcp_tool_call_count=0,
+    subagent_progress=0, but ``scoped_child_active=True`` and the
+    child is registered with the process monitor (the live child
+    liveness signal is fresh).
 
-    OLD behavior: watchdog fired at 120s (cumulative=194s, idle=151s).
-    NEW behavior: with no live subagent, no first-party channels, and
-    no waiting state, classify_stuck returns STUCK and the gate
-    allows FIRE. This is by design: a single non-tool-result
-    fragment does not make the session productive. The point of the
-    new gate is to prevent dumb-kill in productive-but-quiet
-    sessions, not to keep obviously-dead agents alive.
+    OLD behavior: the OS_DESCENDANT_ONLY_CEILING_SECONDS=120s fired
+    at cumulative=194s during legitimate child exploration,
+    killing the parent while the child was still alive.
 
-    The OS_DESCENDANT_ONLY_CEILING_SECONDS default is now 300s (raised
-    from 120s), so the dumb-kill incident from the user's log cannot
-    fire at 120s for ANY first-time idle; the ceiling is high enough
-    to tolerate the typical 95th-percentile sub-step latency. The
-    second incident's 151s is well under 300s.
+    NEW behavior: the OS_DESCENDANT_ONLY_CEILING_SECONDS default is
+    raised to 300s AND the smart-verdict gate applies the
+    StuckClassifier to ``NO_PROGRESS_QUIET``. With a live child
+    (``scoped_child_active=True``, ``alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS``)
+    the classifier returns LOADING and the gate defers the fire --
+    returning CONTINUE rather than FIRE. The parent is allowed to
+    keep watching its child for as long as the child is making
+    forward progress (the side-channel freshness gate covers up to
+    ``max_waiting_on_child_no_progress_seconds`` default 600s).
+
+    Note: the second incident in the user's log was a
+    ``NO_PROGRESS_QUIET`` fire (not a ``NO_OUTPUT_DEADLINE`` fire);
+    the live-subagent scenario mirrors the log line
+    ``scoped_child_active=True`` and the
+    ``alive_by=os_descendant_only_stale_progress`` signal that the
+    real watchdog emitted at fire time. Without the live-subagent
+    signal (a process-monitor with 1 live child), the classifier
+    would return STUCK and the gate would allow FIRE -- the test
+    uses a live child to reproduce the actual log scenario.
     """
+    monitor = _LiveOnlyProcessMonitor(live_count=1)
+
+    def _os_desc_only_corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
     wd, clock = _make_watchdog(
         _make_policy(
-            idle_timeout=10.0,
+            idle_timeout=1.0,
             max_waiting=600.0,
             os_descendant_only_ceiling=300.0,
             activity_ttl=30.0,
         ),
+        process_monitor=monitor,
+        corroborator=_os_desc_only_corroborator,
     )
     wd.record_activity()
-    clock.advance(200.0)
 
-    verdict = wd.evaluate(classify_quiet=_active)
+    # First call: enter the WAITING_ON_CHILD branch.
+    clock.advance(2.0)
+    first = wd.evaluate(classify_quiet=_waiting)
+    assert first == WatchdogVerdict.WAITING_ON_CHILD
 
-    # No first-party channels, no live subagent, classify_quiet=ACTIVE,
-    # is_waiting_state=False, connectivity=None -> classifier returns
-    # STUCK -> gate allows FIRE. This is the design.
-    assert verdict == WatchdogVerdict.FIRE
-    assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
+    # Advance past the 300s effective ceiling. The OLD behavior
+    # would have fired at 120s (cumulative ceiling) during the
+    # child's legitimate exploration. The NEW behavior defers the
+    # fire because the child is still alive (subagent_liveness
+    # is fresh, alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS), so
+    # the classifier returns LOADING and the gate returns CONTINUE.
+    # The second incident's 151s-194s is well within the new
+    # 300s ceiling plus the gate's deferral -- the watchdog
+    # returns CONTINUE rather than FIRE for the entire 200s of
+    # the user's incident plus the new ceiling.
+    clock.advance(300.0)
+
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    assert verdict == WatchdogVerdict.CONTINUE, (
+        f"expected CONTINUE (NO_PROGRESS_QUIET now gated by StuckClassifier, "
+        f"classifier returns LOADING while child is alive), got {verdict}"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
 
 
 def test_absolute_ceiling_bypasses_gate_with_waiting_state() -> None:

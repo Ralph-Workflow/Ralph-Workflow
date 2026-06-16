@@ -202,10 +202,16 @@ def test_os_descendant_only_ceiling_propagates_explicit_value() -> None:
 
 
 def test_os_descendant_only_ceiling_uses_default_when_not_set() -> None:
-    """When not set, TimeoutPolicy uses OS_DESCENDANT_ONLY_CEILING_SECONDS (120.0, feature enabled).
+    """When not set, TimeoutPolicy uses OS_DESCENDANT_ONLY_CEILING_SECONDS (300.0, feature enabled).
 
-    The bare TimeoutPolicy dataclass uses OS_DESCENDANT_ONLY_CEILING_SECONDS (120.0)
+    The bare TimeoutPolicy dataclass uses OS_DESCENDANT_ONLY_CEILING_SECONDS (300.0)
     as the field default, so omitted fields fall through to the module default.
+
+    Note: the default was raised from 120.0 to 300.0 in the wt-012 work to stop
+    the dumb-kill regression at cumulative=159s, idle_elapsed=120s. The classifier
+    gate now defers any non-absolute fire while a live subagent is registered, so
+    the higher ceiling is safe (it tolerates the typical 95th-percentile sub-step
+    latency but does not let a wedged-but-alive agent run forever).
     """
     opts = InvokeOptions(
         idle_timeout_seconds=_IDLE_TIMEOUT,

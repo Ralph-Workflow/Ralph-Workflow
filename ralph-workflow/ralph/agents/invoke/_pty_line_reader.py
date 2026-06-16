@@ -27,6 +27,7 @@ from ralph.agents.idle_watchdog import (
     WatchdogFireReason,
     WatchdogVerdict,
 )
+from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._errors import (
     _IdleStreamTimeoutError,
 )
@@ -503,11 +504,32 @@ class PtyLineReader:
             for key, value in diagnostic.items():
                 if key not in merged_diag:
                     merged_diag[key] = value
-        return pending_lines, _IdleStreamTimeoutError(
+        # The watchdog's typed exception ``IdleWatchdogKilledError``
+        # (AC-05: the failure_classifier's typed-attribute branch in
+        # ``failure_classifier.py`` consults ``exc.reason`` and
+        # ``exc.signal`` directly instead of substring-matching the
+        # message) is built here so the PTY watchdog path matches
+        # the non-PTY (``_process_reader``) watchdog path. The typed
+        # exception is attached to the wrapped payload via
+        # ``__cause__`` so a downstream ``failure_classifier.classify``
+        # call that walks the ``__cause__`` chain (and the future
+        # ``isinstance`` check on the typed exception) sees the typed
+        # cause first. The post-exit ``PROCESS_EXIT_HANG`` path
+        # (``post_exit_watchdog.py``) still raises
+        # ``_IdleStreamTimeoutError`` directly because it is owned
+        # by ``PostExitWatchdog``, not ``IdleWatchdog``.
+        typed_exc = IdleWatchdogKilledError(
+            reason=fire_reason.value,
+            signal=15,  # SIGTERM
+            evidence_summary=str(merged_diag),
+        )
+        wrapper = _IdleStreamTimeoutError(
             timeout_val,
             fire_reason,
             diagnostic=cast("_MergedDiagType", merged_diag),
         )
+        wrapper.__cause__ = typed_exc
+        return pending_lines, wrapper
 
     def _run_drain_window(
         self,
