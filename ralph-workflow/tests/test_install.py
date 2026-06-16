@@ -62,7 +62,65 @@ retry_delay_ms = 1000
 """
 
 
-def test_install_current_checkout_runs_pip_and_pipx(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_install_dev_checkout_syncs_env_and_writes_rdev_launcher() -> None:
+    commands: list[tuple[Sequence[str], Path]] = []
+    launchers: list[tuple[Path, str]] = []
+
+    def fake_run(command: Sequence[str], *, cwd: Path) -> None:
+        commands.append((tuple(command), cwd))
+
+    def fake_write_launcher(path: Path, content: str) -> None:
+        launchers.append((path, content))
+
+    package_dir = Path("/tmp/ralph-workflow")
+    bin_dir = Path("/home/u/.local/bin")
+
+    install_module.install_dev_checkout(
+        run=fake_run,
+        uv_executable="/usr/local/bin/uv",
+        cwd=package_dir,
+        launcher_dir=bin_dir,
+        write_launcher=fake_write_launcher,
+    )
+
+    # The dev build syncs the project's own uv environment (editable project +
+    # dev extras), then writes an `rdev` launcher so the dev build has a stable
+    # command name that never shadows the stable `ralph`.
+    assert commands == [
+        (("/usr/local/bin/uv", "sync", "--extra", "dev"), package_dir),
+    ]
+    assert len(launchers) == 1
+    launcher_path, content = launchers[0]
+    assert launcher_path == bin_dir / "rdev"
+    assert "uv run --project" in content
+    assert str(package_dir) in content
+    assert content.endswith('ralph "$@"\n')
+
+
+def test_install_dev_checkout_requires_uv() -> None:
+    commands: list[tuple[Sequence[str], Path]] = []
+    launchers: list[tuple[Path, str]] = []
+
+    def fake_run(command: Sequence[str], *, cwd: Path) -> None:
+        commands.append((tuple(command), cwd))
+
+    def fake_write_launcher(path: Path, content: str) -> None:
+        launchers.append((path, content))
+
+    with pytest.raises(RuntimeError, match="uv"):
+        install_module.install_dev_checkout(
+            run=fake_run,
+            uv_executable=None,
+            cwd=Path("/tmp/ralph-workflow"),
+            launcher_dir=Path("/home/u/.local/bin"),
+            write_launcher=fake_write_launcher,
+        )
+
+    assert commands == []
+    assert launchers == []
+
+
+def test_install_stable_release_installs_pinned_global_via_uv_tool() -> None:
     commands: list[tuple[Sequence[str], Path]] = []
 
     def fake_run(command: Sequence[str], *, cwd: Path) -> None:
@@ -70,29 +128,23 @@ def test_install_current_checkout_runs_pip_and_pipx(monkeypatch: pytest.MonkeyPa
 
     package_dir = Path("/tmp/ralph-workflow")
 
-    install_module.install_current_checkout(
-        package_dir=package_dir,
+    install_module.install_stable_release(
         run=fake_run,
-        python_executable="/usr/bin/python3",
-        pipx_executable="/usr/local/bin/pipx",
+        uv_executable="/usr/local/bin/uv",
+        cwd=package_dir,
     )
 
+    # No version pin -> install/upgrade to the latest published release.
+    # --upgrade implies --refresh so an already-installed older `ralph` is bumped.
     assert commands == [
-        (("/usr/bin/python3", "-m", "pip", "install", "-e", ".[dev]"), package_dir),
         (
-            (
-                "/usr/local/bin/pipx",
-                "install",
-                "--force",
-                "--editable",
-                str(package_dir),
-            ),
+            ("/usr/local/bin/uv", "tool", "install", "--force", "--upgrade", "ralph-workflow"),
             package_dir,
         ),
     ]
 
 
-def test_install_current_checkout_skips_pipx_when_not_available() -> None:
+def test_install_stable_release_pins_requested_version() -> None:
     commands: list[tuple[Sequence[str], Path]] = []
 
     def fake_run(command: Sequence[str], *, cwd: Path) -> None:
@@ -100,16 +152,35 @@ def test_install_current_checkout_skips_pipx_when_not_available() -> None:
 
     package_dir = Path("/tmp/ralph-workflow")
 
-    install_module.install_current_checkout(
-        package_dir=package_dir,
+    install_module.install_stable_release(
         run=fake_run,
-        python_executable=sys.executable,
-        pipx_executable=None,
+        uv_executable="/usr/local/bin/uv",
+        cwd=package_dir,
+        version="1.2.3",
     )
 
     assert commands == [
-        ((sys.executable, "-m", "pip", "install", "-e", ".[dev]"), package_dir),
+        (
+            ("/usr/local/bin/uv", "tool", "install", "--force", "ralph-workflow==1.2.3"),
+            package_dir,
+        ),
     ]
+
+
+def test_install_stable_release_requires_uv() -> None:
+    commands: list[tuple[Sequence[str], Path]] = []
+
+    def fake_run(command: Sequence[str], *, cwd: Path) -> None:
+        commands.append((tuple(command), cwd))
+
+    with pytest.raises(RuntimeError, match="uv"):
+        install_module.install_stable_release(
+            run=fake_run,
+            uv_executable=None,
+            cwd=Path("/tmp/ralph-workflow"),
+        )
+
+    assert commands == []
 
 
 def test_install_module_imports_without_process_manager_dependency(
@@ -139,33 +210,95 @@ def test_install_module_imports_without_process_manager_dependency(
     spec.loader.exec_module(module)
     loaded_module = cast("Any", module)
 
-    assert callable(loaded_module.install_current_checkout)
+    assert callable(loaded_module.install_dev_checkout)
+    assert callable(loaded_module.install_stable_release)
     assert callable(loaded_module.main)
 
 
-def test_main_uses_repo_directory_and_path_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_default_installs_dev_checkout(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_install_current_checkout(
+    def fake_install_dev_checkout(
         *,
-        package_dir: Path,
         run: object,
-        python_executable: str,
-        pipx_executable: str | None,
+        uv_executable: str | None,
+        cwd: Path,
+        launcher_dir: Path,
     ) -> None:
-        captured["package_dir"] = package_dir
-        captured["python_executable"] = python_executable
-        captured["pipx_executable"] = pipx_executable
+        captured["uv_executable"] = uv_executable
+        captured["cwd"] = cwd
+        captured["launcher_dir"] = launcher_dir
 
-    monkeypatch.setattr(install_module, "install_current_checkout", fake_install_current_checkout)
+    def fail_stable(**_kwargs: object) -> None:
+        raise AssertionError("default install must not touch the stable release")
+
+    monkeypatch.setattr(install_module, "install_dev_checkout", fake_install_dev_checkout)
+    monkeypatch.setattr(install_module, "install_stable_release", fail_stable)
+    monkeypatch.setattr(install_module.shutil, "which", lambda name: f"/opt/bin/{name}")
+    monkeypatch.setattr(install_module.Path, "home", classmethod(lambda _cls: Path("/home/u")))
+
+    assert install_module.main([]) == 0
+    assert captured == {
+        "uv_executable": "/opt/bin/uv",
+        "cwd": Path(install_module.__file__).resolve().parents[1],
+        "launcher_dir": Path("/home/u/.local/bin"),
+    }
+
+
+def test_render_dev_launcher_runs_checkout_via_uv() -> None:
+    package_dir = Path("/tmp/ralph-workflow")
+    content = install_module.render_dev_launcher(package_dir)
+
+    assert content.startswith("#!/usr/bin/env bash\n")
+    assert f'exec uv run --project "{package_dir}" ralph "$@"\n' in content
+
+
+def test_main_stable_flag_installs_pinned_release(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_install_stable_release(
+        *,
+        run: object,
+        uv_executable: str | None,
+        cwd: Path,
+        version: str | None,
+    ) -> None:
+        captured["uv_executable"] = uv_executable
+        captured["cwd"] = cwd
+        captured["version"] = version
+
+    def fail_dev(**_kwargs: object) -> None:
+        raise AssertionError("stable install must not touch the dev checkout")
+
+    monkeypatch.setattr(install_module, "install_stable_release", fake_install_stable_release)
+    monkeypatch.setattr(install_module, "install_dev_checkout", fail_dev)
     monkeypatch.setattr(install_module.shutil, "which", lambda name: f"/opt/bin/{name}")
 
-    assert install_module.main() == 0
+    assert install_module.main(["--stable"]) == 0
     assert captured == {
-        "package_dir": Path(install_module.__file__).resolve().parents[1],
-        "python_executable": sys.executable,
-        "pipx_executable": "/opt/bin/pipx",
+        "uv_executable": "/opt/bin/uv",
+        "cwd": Path(install_module.__file__).resolve().parents[1],
+        "version": None,
     }
+
+
+def test_main_version_implies_stable(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_install_stable_release(
+        *,
+        run: object,
+        uv_executable: str | None,
+        cwd: Path,
+        version: str | None,
+    ) -> None:
+        captured["version"] = version
+
+    monkeypatch.setattr(install_module, "install_stable_release", fake_install_stable_release)
+    monkeypatch.setattr(install_module.shutil, "which", lambda name: f"/opt/bin/{name}")
+
+    assert install_module.main(["--version", "9.9.9"]) == 0
+    assert captured == {"version": "9.9.9"}
 
 
 def _run_subprocess(
@@ -261,6 +394,18 @@ def test_built_wheel_includes_policy_default_tomls(built_wheel_path: Path) -> No
     }
     missing = expected - names
     assert not missing, f"Built wheel is missing bundled defaults: {sorted(missing)}"
+
+
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(10)
+def test_write_dev_launcher_creates_executable_script(tmp_path: Path) -> None:
+    target = tmp_path / "nested" / "bin" / "rdev"
+    content = "#!/usr/bin/env bash\nexec uv run --project /tmp/ralph ralph \"$@\"\n"
+
+    install_module.write_dev_launcher(target, content)
+
+    assert target.read_text(encoding="utf-8") == content
+    assert os.access(target, os.X_OK), "launcher must be executable"
 
 
 @pytest.mark.subprocess_e2e

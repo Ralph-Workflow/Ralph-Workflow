@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -25,8 +25,9 @@ RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
 help:
 	@echo "Ralph Workflow - Makefile commands"
 	@echo ""
-	@echo "  install         Install package and refresh pipx executable"
-	@echo "  dev             Install package in editable mode with dev dependencies"
+	@echo "  install         Set up the dev build + install the 'rdev' launcher (~/.local/bin/rdev)"
+	@echo "  stable          Install the pinned stable build as the global 'ralph' via uv tool"
+	@echo "  dev             Sync the dev environment only (no 'rdev' launcher)"
 	@echo "  install-dev     Alias for dev"
 	@echo "  test           Run the full pytest suite without coverage (excludes subprocess_e2e)"
 	@echo "  test-unit      Run unit/root tests without tests/integration/"
@@ -62,11 +63,16 @@ help:
 	@echo "  check          Run all checks (lint, typecheck, test)"
 
 # Installation
+# install  -> dev build: sync uv env + write `rdev` launcher (run the dev build with `rdev`)
+# stable   -> pinned release as the isolated global `ralph` command via `uv tool`
 install:
-	python -m ralph.install
+	$(RUN_PYTHON) -m ralph.install
+
+stable:
+	$(RUN_PYTHON) -m ralph.install --stable
 
 dev:
-	python -m pip install -e ".[dev]"
+	uv sync --extra dev
 
 install-dev: dev
 

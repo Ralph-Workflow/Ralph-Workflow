@@ -10,11 +10,51 @@ cd Ralph-Workflow/ralph-workflow
 make dev
 ```
 
-To refresh the runnable `ralph` executable from the current checkout, run:
+### Dev build vs stable build
 
-```bash
-make install
-```
+You can keep a live **dev build** (your working tree) and a pinned **stable build**
+side by side. They never collide because the dev build registers no global command.
+
+| | Command to run it | How to install / refresh | Tracks |
+|---|---|---|---|
+| **Dev build** | `rdev …` (anywhere) or `uv run ralph …` (from the repo) | `make install` | your working tree, live — no reinstall after edits |
+| **Stable build** | `ralph …` (anywhere) | `make stable` | a pinned release, isolated via `uv tool` |
+
+- **Dev build** — `make install` syncs the project's uv environment (editable
+  project + dev extras) and writes an `rdev` launcher to `~/.local/bin/rdev`.
+  `rdev` runs the working tree from anywhere (it's `uv run ralph` against this
+  checkout) and picks up edits with no reinstall. From inside the repo you can
+  also just use `uv run ralph`. There is deliberately **no global `ralph`** for
+  the dev build — the distinct `rdev` name is what keeps it from shadowing the
+  stable one. (`make dev` does only the env sync, without the launcher.)
+- **Stable build** — `make stable` runs `uv tool install --force --upgrade
+  ralph-workflow`, putting an isolated `ralph` on your `PATH`
+  (`~/.local/bin/ralph`), independent of the working tree. Re-running `make
+  stable` **upgrades to the latest published release** if you are behind
+  (`--upgrade` implies `--refresh`, so it re-checks PyPI; `--force` is what lets
+  it reinstall over an existing install instead of no-op'ing). To pin a specific
+  version instead of the latest release:
+
+  ```bash
+  python -m ralph.install --version 0.8.14   # or: uv tool install ralph-workflow==0.8.14
+  ```
+
+- **Switching** — type `rdev` for the dev build and `ralph` for the stable
+  build; nothing to toggle. Verify which is which with:
+
+  ```bash
+  rdev --version   # -> working-tree version  (~/.local/bin/rdev)
+  ralph --version  # -> stable release version (~/.local/bin/ralph)
+  ```
+
+  Bump the stable pin later with `uv tool upgrade ralph-workflow`, or remove it
+  entirely with `uv tool uninstall ralph-workflow`. Remove the dev launcher with
+  `rm ~/.local/bin/rdev`.
+
+> `uv` is required for the dev and stable builds, and `~/.local/bin` must be on
+> your `PATH`. Do not install the dev build as a global `ralph` (via pipx or
+> `uv tool`) — it would shadow the stable one, which is exactly the collision the
+> separate `rdev` name avoids.
 
 When adding or renaming fields on `UnifiedConfig` / `GeneralConfig` in `ralph/config/models.py`, also update the bundled user-global template at `ralph/policy/defaults/ralph-workflow.toml` so new users see the documented default.
 
