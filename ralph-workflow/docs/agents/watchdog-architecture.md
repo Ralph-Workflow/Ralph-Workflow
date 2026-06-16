@@ -149,7 +149,7 @@ two invoke readers, and moving it would break the
 ## Drift prevention
 
 The `ralph.testing.audit_watchdog_drift` AST audit is wired into
-`make verify` (step 9) and forbids:
+`make verify` (step 10 of 12) and forbids:
 
 1. `old_watchdog.py` at the ralph-workflow root
    (`legacy_root_watchdog` violation).

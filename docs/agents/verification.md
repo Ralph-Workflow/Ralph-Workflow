@@ -14,12 +14,18 @@ make verify
 `make verify` runs:
 1. `make lint` (`ruff check`)
 2. `make typecheck` (`mypy --strict`)
-3. `make test` (pytest, parallel, excludes `subprocess_e2e`)
+3. `make test` (pytest, parallel, excludes `subprocess_e2e`) — the ONLY step whose wall-clock time counts against the 60-second combined test budget
 4. Lint bypass audit (`ralph/testing/audit_lint_bypass.py`) — detects forbidden noqa, per-file-ignores
 5. Typecheck bypass audit (`ralph/testing/audit_typecheck_bypass.py`) — detects non-compliant type:ignore, mypy config weakening (including `disable_error_code`)
 6. Policy audit (`ralph/testing/audit_test_policy.py`) — detects slow test patterns, I/O in tests (including `os.system` and `os.popen` subprocess calls)
 7. Bounded-subprocess audit (`ralph/testing/audit_mcp_timeout.py`) — enforces the bounded-subprocess contract (below)
-8. Artifact-submission canonical-path audit (`ralph/testing/audit_artifact_submission_canonical_path.py`) — enforces the single-writer contract for artifact submission (see `docs/agents/artifact-submission-contract.md`)
+8. DI seam audit (`ralph/testing/audit_di_seam.py`) — enforces the Foundations dependency-injection contract: every component below the composition root must receive collaborators through its constructor or call signature, and must not reach into ambient process state (`os.environ`, `open()`) or launder the session contract through `typing.cast()` at the session factory boundary
+9. Activity-aware watchdog audit (`ralph/testing/audit_activity_aware_watchdog.py`) — enforces the subagent/tool-visibility contract on `IdleWatchdog` (constructor must accept `process_monitor=`, `set_active_sink` / `set_subagent_sink` must be wired after construction, `WorkspaceMonitor.set_on_event` must be bound to a 2-arg forwarding callable, `teardown_subtree` must run on every fire and error path, `DefaultProcessMonitor` must be constructed with injected `role_classifier=` / `discovery_strategy=` / `subagent_pid_source=`)
+10. Watchdog drift audit (`ralph/testing/audit_watchdog_drift.py`) — enforces the watchdog consolidation: forbids the legacy `old_watchdog.py` at the ralph-workflow root, forbids duplicate `IdleWatchdog` / `PostExitWatchdog` class definitions outside their canonical owner files, and forbids `WatchdogFireReason` construction outside the same owners. See `docs/agents/watchdog-architecture.md` for the full invariant list
+11. Parallelization dormant audit (`ralph/testing/audit_parallelization_dormant.py`) — enforces that Ralph-managed fan-out is dormant and the agent-driven parallel model is wired (checks 9 invariants across `planning.jinja`, `developer_iteration_continuation.jinja`, `format_docs/plan.md`, `effect_router.py`, `pipeline.toml`, `planning_analysis.jinja`, `docs/sphinx/configuration.md`, and `docs/sphinx/advanced-pipeline-configuration.md`)
+12. Artifact-submission canonical-path audit (`ralph/testing/audit_artifact_submission_canonical_path.py`) — enforces the single-writer contract for artifact submission (see `docs/agents/artifact-submission-contract.md`)
+
+All 12 steps run sequentially under `make verify`. Steps 1, 2, 4-12 each use a per-step timeout (`_VERIFY_STEP_TIMEOUT_SECONDS`); step 3 (`make test`) uses the 60-second combined budget. The full ordered list of step labels is the canonical `_VERIFY_STEPS` tuple in `ralph-workflow/ralph/verify.py:114-186`; this doc lists the user-facing name for each step and is the single source of truth for what `make verify` actually runs.
 
 ### Bounded-subprocess contract — every MCP and git operation is bounded
 
