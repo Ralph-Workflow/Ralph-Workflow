@@ -1061,25 +1061,26 @@ class IdleWatchdog:
         the no-progress ceiling is disabled (None).
         """
         alive_by = corroboration.alive_by
+        _effective = self._config.max_waiting_on_child_seconds
         if alive_by is None:
-            return self._config.max_waiting_on_child_seconds
-
+            return _effective
         if alive_by == AliveBy.FRESH_PROGRESS:
-            return self._config.max_waiting_on_child_seconds
-
-        if (
-            alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
-            and self._config.os_descendant_only_ceiling_seconds is not None
+            return _effective
+        _os_desc_only = alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+        if _os_desc_only and self._config.os_descendant_only_ceiling_seconds is not None:
+            if self._config.max_waiting_on_child_no_progress_seconds is not None:
+                _effective = min(
+                    self._config.os_descendant_only_ceiling_seconds,
+                    self._config.max_waiting_on_child_no_progress_seconds,
+                )
+            else:
+                _effective = self._config.os_descendant_only_ceiling_seconds
+        elif (
+            self._config.max_waiting_on_child_no_progress_seconds is not None
+            and alive_by in self._NON_PROGRESS_ALIVE_BY_VALUES
         ):
-            return self._config.os_descendant_only_ceiling_seconds
-
-        if self._config.max_waiting_on_child_no_progress_seconds is None:
-            return self._config.max_waiting_on_child_seconds
-
-        if alive_by in self._NON_PROGRESS_ALIVE_BY_VALUES:
-            return self._config.max_waiting_on_child_no_progress_seconds
-
-        return self._config.max_waiting_on_child_seconds
+            _effective = self._config.max_waiting_on_child_no_progress_seconds
+        return _effective
 
     def _effective_ceiling_label(
         self,
@@ -1094,6 +1095,7 @@ class IdleWatchdog:
         if (
             alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
             and self._config.os_descendant_only_ceiling_seconds is not None
+            and effective_ceiling == self._config.os_descendant_only_ceiling_seconds
         ):
             return "os_descendant_only"
         if effective_ceiling < self._config.max_waiting_on_child_seconds:

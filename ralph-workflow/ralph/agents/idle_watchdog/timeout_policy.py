@@ -10,12 +10,16 @@ from ralph.agents.idle_watchdog._workspace_change_kind import (
 )
 from ralph.timeout_defaults import (
     AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS,
+    CPU_IDLE_SECONDS,
     DESCENDANT_WAIT_POLL_SECONDS,
     DESCENDANT_WAIT_TIMEOUT_SECONDS,
     DRAIN_WINDOW_SECONDS,
     IDLE_POLL_INTERVAL_SECONDS,
+    LOG_GROWTH_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    OS_DESCENDANT_ONLY_CEILING_SECONDS,
+    OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
     POST_TOOL_RESULT_PROGRESSION_SECONDS,
     PROCESS_EXIT_WAIT_SECONDS,
@@ -189,22 +193,22 @@ class TimeoutPolicy:
     # OS_DESCENDANT_ONLY_STALE_PROGRESS and no probe override has fired.
     # When set, must be <= max_waiting_on_child_seconds. None disables
     # the override and falls back to max_waiting_on_child_no_progress_seconds.
-    os_descendant_only_ceiling_seconds: float | None = None
+    os_descendant_only_ceiling_seconds: float | None = OS_DESCENDANT_ONLY_CEILING_SECONDS
     # Earlier SUSPECTED_FROZEN threshold when alive_by is OS_DESCENDANT_ONLY_STALE_PROGRESS.
     # The watchdog fires suspect at min(suspect_waiting_on_child_seconds, this value).
     # When set, must be < os_descendant_only_ceiling_seconds and
     # < max_waiting_on_child_seconds. None disables the override.
-    os_descendant_only_suspect_seconds: float | None = None
+    os_descendant_only_suspect_seconds: float | None = OS_DESCENDANT_ONLY_SUSPECT_SECONDS
     # A known descendant PID with 0 user+system CPU time over this window is reported
     # as alive_by=CPU_IDLE_WHILE_ALIVE by the read-loop corroborator. The override
     # short-circuits the OS-descendant-only ceiling and falls back to the no-progress
     # ceiling. None disables the CPU probe.
-    cpu_idle_seconds: float | None = None
+    cpu_idle_seconds: float | None = CPU_IDLE_SECONDS
     # The per-run .agent/raw/{safe_id}.log file is reported as alive_by=LOG_STALE_WHILE_ALIVE
     # when its size has not grown for this many seconds. The override short-circuits
     # the OS-descendant-only ceiling and falls back to the no-progress ceiling.
     # None disables the log-growth probe; the probe no-ops when the file is absent.
-    log_growth_seconds: float | None = None
+    log_growth_seconds: float | None = LOG_GROWTH_SECONDS
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()

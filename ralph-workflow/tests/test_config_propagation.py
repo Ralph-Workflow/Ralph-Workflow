@@ -202,7 +202,11 @@ def test_os_descendant_only_ceiling_propagates_explicit_value() -> None:
 
 
 def test_os_descendant_only_ceiling_uses_default_when_not_set() -> None:
-    """When os_descendant_only_ceiling_seconds is not set, TimeoutPolicy uses the default 120.0s."""
+    """When not set, TimeoutPolicy uses OS_DESCENDANT_ONLY_CEILING_SECONDS (120.0, feature enabled).
+
+    The bare TimeoutPolicy dataclass uses OS_DESCENDANT_ONLY_CEILING_SECONDS (120.0)
+    as the field default, so omitted fields fall through to the module default.
+    """
     opts = InvokeOptions(
         idle_timeout_seconds=_IDLE_TIMEOUT,
     )
@@ -210,14 +214,14 @@ def test_os_descendant_only_ceiling_uses_default_when_not_set() -> None:
     assert policy.os_descendant_only_ceiling_seconds == _OS_DESCENDANT_ONLY_CEILING
 
 
-def test_os_descendant_only_ceiling_none_uses_default() -> None:
-    """os_descendant_only_ceiling_seconds=None falls back to module default (120.0s)."""
+def test_os_descendant_only_ceiling_none_is_preserved() -> None:
+    """os_descendant_only_ceiling_seconds=None is preserved as None (operator opt-out)."""
     opts = InvokeOptions(
         idle_timeout_seconds=_IDLE_TIMEOUT,
         os_descendant_only_ceiling_seconds=None,
     )
     policy = policy_from_options(opts)
-    assert policy.os_descendant_only_ceiling_seconds == _OS_DESCENDANT_ONLY_CEILING
+    assert policy.os_descendant_only_ceiling_seconds is None
 
 
 def test_os_descendant_only_suspect_propagates_explicit_value() -> None:
@@ -231,7 +235,7 @@ def test_os_descendant_only_suspect_propagates_explicit_value() -> None:
 
 
 def test_os_descendant_only_suspect_uses_default_when_not_set() -> None:
-    """When os_descendant_only_suspect_seconds is not set, TimeoutPolicy uses the default 60.0s."""
+    """When not set, TimeoutPolicy uses OS_DESCENDANT_ONLY_SUSPECT_SECONDS (60.0)."""
     opts = InvokeOptions(
         idle_timeout_seconds=_IDLE_TIMEOUT,
     )
@@ -250,7 +254,7 @@ def test_cpu_idle_propagates_explicit_value() -> None:
 
 
 def test_cpu_idle_uses_default_when_not_set() -> None:
-    """When cpu_idle_seconds is not set, TimeoutPolicy uses the default 60.0s."""
+    """When cpu_idle_seconds is not set, TimeoutPolicy uses CPU_IDLE_SECONDS (60.0)."""
     opts = InvokeOptions(
         idle_timeout_seconds=_IDLE_TIMEOUT,
     )
@@ -258,14 +262,14 @@ def test_cpu_idle_uses_default_when_not_set() -> None:
     assert policy.cpu_idle_seconds == _CPU_IDLE
 
 
-def test_cpu_idle_none_uses_default() -> None:
-    """cpu_idle_seconds=None falls back to module default (60.0s)."""
+def test_cpu_idle_none_is_preserved() -> None:
+    """cpu_idle_seconds=None is preserved as None (operator opt-out)."""
     opts = InvokeOptions(
         idle_timeout_seconds=_IDLE_TIMEOUT,
         cpu_idle_seconds=None,
     )
     policy = policy_from_options(opts)
-    assert policy.cpu_idle_seconds == _CPU_IDLE
+    assert policy.cpu_idle_seconds is None
 
 
 def test_log_growth_propagates_explicit_value() -> None:
@@ -279,7 +283,7 @@ def test_log_growth_propagates_explicit_value() -> None:
 
 
 def test_log_growth_uses_default_when_not_set() -> None:
-    """When log_growth_seconds is not set, TimeoutPolicy uses the default 30.0s."""
+    """When log_growth_seconds is not set, TimeoutPolicy uses LOG_GROWTH_SECONDS (30.0)."""
     opts = InvokeOptions(
         idle_timeout_seconds=_IDLE_TIMEOUT,
     )
@@ -287,11 +291,11 @@ def test_log_growth_uses_default_when_not_set() -> None:
     assert policy.log_growth_seconds == _LOG_GROWTH
 
 
-def test_log_growth_none_uses_default() -> None:
-    """log_growth_seconds=None falls back to module default (30.0s)."""
+def test_log_growth_none_is_preserved() -> None:
+    """log_growth_seconds=None is preserved as None (operator opt-out)."""
     opts = InvokeOptions(
         idle_timeout_seconds=_IDLE_TIMEOUT,
         log_growth_seconds=None,
     )
     policy = policy_from_options(opts)
-    assert policy.log_growth_seconds == _LOG_GROWTH
+    assert policy.log_growth_seconds is None

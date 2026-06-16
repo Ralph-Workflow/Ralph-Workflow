@@ -565,7 +565,7 @@ def test_timeout_policy_defaults_match_timeout_defaults_constants() -> None:
     assert (
         policy.max_waiting_on_child_no_progress_seconds == MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
     )
-    assert policy.os_descendant_only_ceiling_seconds is None
-    assert policy.os_descendant_only_suspect_seconds is None
-    assert policy.cpu_idle_seconds is None
-    assert policy.log_growth_seconds is None
+    assert policy.os_descendant_only_ceiling_seconds == OS_DESCENDANT_ONLY_CEILING_SECONDS
+    assert policy.os_descendant_only_suspect_seconds == OS_DESCENDANT_ONLY_SUSPECT_SECONDS
+    assert policy.cpu_idle_seconds == CPU_IDLE_SECONDS
+    assert policy.log_growth_seconds == LOG_GROWTH_SECONDS

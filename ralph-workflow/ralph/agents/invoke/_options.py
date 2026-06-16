@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
+from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
 from ralph.agents.invoke._types import InvokeOptions
-from ralph.timeout_defaults import (
-    CPU_IDLE_SECONDS,
-    LOG_GROWTH_SECONDS,
-    OS_DESCENDANT_ONLY_CEILING_SECONDS,
-    OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -91,6 +86,14 @@ def build_invoke_options_from_config(
         cpu_idle_seconds=general_config.agent_cpu_idle_seconds,
         log_growth_seconds=general_config.agent_log_growth_seconds,
     )
+
+
+def _get_os_descendant_field(
+    value: float | None | object, fallback: float | None
+) -> float | None:
+    if value is _INVOKE_OPTS_UNSET:
+        return fallback
+    return cast("float | None", value)
 
 
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
@@ -210,25 +213,17 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             if opts.subagent_output_poll_interval_seconds is not None
             else _base.subagent_output_poll_interval_seconds
         ),
-        os_descendant_only_ceiling_seconds=(
-            opts.os_descendant_only_ceiling_seconds
-            if opts.os_descendant_only_ceiling_seconds is not None
-            else OS_DESCENDANT_ONLY_CEILING_SECONDS
+        os_descendant_only_ceiling_seconds=_get_os_descendant_field(
+            opts.os_descendant_only_ceiling_seconds, _base.os_descendant_only_ceiling_seconds
         ),
-        os_descendant_only_suspect_seconds=(
-            opts.os_descendant_only_suspect_seconds
-            if opts.os_descendant_only_suspect_seconds is not None
-            else OS_DESCENDANT_ONLY_SUSPECT_SECONDS
+        os_descendant_only_suspect_seconds=_get_os_descendant_field(
+            opts.os_descendant_only_suspect_seconds, _base.os_descendant_only_suspect_seconds
         ),
-        cpu_idle_seconds=(
-            opts.cpu_idle_seconds
-            if opts.cpu_idle_seconds is not None
-            else CPU_IDLE_SECONDS
+        cpu_idle_seconds=_get_os_descendant_field(
+            opts.cpu_idle_seconds, _base.cpu_idle_seconds
         ),
-        log_growth_seconds=(
-            opts.log_growth_seconds
-            if opts.log_growth_seconds is not None
-            else LOG_GROWTH_SECONDS
+        log_growth_seconds=_get_os_descendant_field(
+            opts.log_growth_seconds, _base.log_growth_seconds
         ),
     )
 

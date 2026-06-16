@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+_INVOKE_OPTS_UNSET: object = object()
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
@@ -47,10 +49,10 @@ class InvokeOptions:
     process_monitor_enabled: bool | None = None
     subagent_output_capture_enabled: bool | None = None
     subagent_output_poll_interval_seconds: float | None = None
-    os_descendant_only_ceiling_seconds: float | None = None
-    os_descendant_only_suspect_seconds: float | None = None
-    cpu_idle_seconds: float | None = None
-    log_growth_seconds: float | None = None
+    os_descendant_only_ceiling_seconds: float | None | object = _INVOKE_OPTS_UNSET
+    os_descendant_only_suspect_seconds: float | None | object = _INVOKE_OPTS_UNSET
+    cpu_idle_seconds: float | None | object = _INVOKE_OPTS_UNSET
+    log_growth_seconds: float | None | object = _INVOKE_OPTS_UNSET
     pure: bool = False
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
