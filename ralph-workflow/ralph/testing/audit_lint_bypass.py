@@ -99,6 +99,10 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("_runtime_resolvers", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
     # __init__ modules use lazy imports to avoid circular deps; targeted per-file
     ("__init__", "PLC0415"),
+    # __init__ modules intentionally order __all__ for discoverability (e.g.
+    # the 90% recipe before the 14-kwarg advanced helper) rather than
+    # alphabetical sort, so the registration helpers read top-down.
+    ("__init__", "RUF022"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

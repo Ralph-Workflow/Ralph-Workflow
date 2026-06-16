@@ -6,6 +6,7 @@ no real psutil.
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -13,6 +14,7 @@ import pytest
 import ralph.agents
 from ralph.agents import AgentCatalog, AgentRegistry, default_catalog, register_agent_support
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.agents.builtin_spec import BuiltinAgentSpec
 from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     strategy_for_command,
@@ -31,7 +33,12 @@ from ralph.agents.parsers import (
     get_parser,
     resolve_parser_key,
 )
-from ralph.agents.registration import get_registered_agent_support
+from ralph.agents.parsers._template import ParserTemplateBase
+from ralph.agents.registration import (
+    _DEFAULT_STRATEGY_BY_TRANSPORT,
+    get_registered_agent_support,
+)
+from ralph.agents.spec import AgentSpec
 from ralph.agents.support import AgentSupport
 from ralph.cli.commands.commit import collect_commit_agent_output
 from ralph.config.agent_config import AgentConfig
@@ -828,3 +835,146 @@ def test_register_agent_support_headless_and_interactive_lockstep() -> None:
 
     assert default_catalog().get(headless_name) is None
     assert default_catalog().get(interactive_name) is None
+
+
+class TestPostRefactorContract:
+    """Pin the post-refactor contract:
+
+    (a) the static ``_DEFAULT_STRATEGY_BY_TRANSPORT`` dict covers every
+        ``AgentTransport`` value (an audit-style coverage guard that
+        fails if a new transport is added without an entry);
+    (b) the ``AgentSupport`` dataclass shape parity between
+        ``from_registration_kwargs`` and ``BuiltinAgentSpec.to_support``
+        (frozen, slots, name/spec/parser_factory/strategy_factory/
+        config/is_builtin/no_default_session_flag);
+    (c) the ``AgentSpec`` consistency validators still reject
+        ``requires_pty`` without ``interactive`` (sanity, no behavior
+        change).
+
+    All tests are in-process, no I/O, no subprocess.
+    """
+
+    def test_static_default_strategy_table_covers_every_transport(self) -> None:
+        """``_DEFAULT_STRATEGY_BY_TRANSPORT`` must include every AgentTransport value."""
+        assert set(_DEFAULT_STRATEGY_BY_TRANSPORT) == set(AgentTransport), (
+            f"_DEFAULT_STRATEGY_BY_TRANSPORT missing transport(s); "
+            f"expected {sorted(AgentTransport)}, got {sorted(_DEFAULT_STRATEGY_BY_TRANSPORT)}"
+        )
+        # Every value must be a callable StrategyFactory.
+        for transport, factory in _DEFAULT_STRATEGY_BY_TRANSPORT.items():
+            assert callable(factory), (
+                f"_DEFAULT_STRATEGY_BY_TRANSPORT[{transport.name!r}] must be callable"
+            )
+
+    def test_agent_support_shape_parity_builtin_vs_kwargs(self) -> None:
+        """``AgentSupport.from_registration_kwargs`` and
+        ``BuiltinAgentSpec.to_support`` must produce instances with the
+        same field shape.
+
+        BuiltinAgentSpec.to_support delegates to from_registration_kwargs
+        with the same kwargs (plus ``is_builtin=True``), so the field
+        shape must be identical: name, spec, parser_factory,
+        strategy_factory, config, is_builtin, no_default_session_flag.
+        """
+        class _TemplateParser(ParserTemplateBase):
+            _STOP_EVENT_TYPES = frozenset()
+
+            def classify_line(
+                self, line: str
+            ) -> Iterator[AgentOutputLine]:
+                stripped = line.strip()
+                result = self.parse_json_line(stripped)
+                if result is not None:
+                    yield result
+                else:
+                    yield AgentOutputLine(
+                        type="raw", content=stripped, raw=stripped
+                    )
+
+        class _Strategy(BaseExecutionStrategy):
+            pass
+
+        # Materialise via the kwargs path.
+        from_kwargs = AgentSupport.from_registration_kwargs(
+            "kw-args-agent",
+            transport=AgentTransport.GENERIC,
+            parser_factory=_TemplateParser,
+            strategy_factory=_Strategy,
+            interactive=False,
+        )
+        # Materialise via the BuiltinAgentSpec path (with is_builtin=True).
+        spec_row = BuiltinAgentSpec(
+            transport=AgentTransport.GENERIC,
+            parser_factory=_TemplateParser,
+            strategy_factory=_Strategy,
+        )
+        from_builtin = spec_row.to_support("builtin-agent")
+
+        expected_fields = {
+            "name",
+            "spec",
+            "parser_factory",
+            "strategy_factory",
+            "config",
+            "is_builtin",
+            "no_default_session_flag",
+            "_name_lower",
+        }
+        assert set(from_kwargs.__dataclass_fields__) == expected_fields, (
+            f"AgentSupport field set changed; expected {expected_fields}, "
+            f"got {set(from_kwargs.__dataclass_fields__)}"
+        )
+        assert set(from_builtin.__dataclass_fields__) == expected_fields, (
+            f"AgentSupport field set changed; expected {expected_fields}, "
+            f"got {set(from_builtin.__dataclass_fields__)}"
+        )
+        # Both instances must be frozen + slots.
+        assert from_kwargs.__dataclass_params__.frozen is True
+        assert from_builtin.__dataclass_params__.frozen is True
+        # BuiltinAgentSpec.to_support sets is_builtin=True; kwargs path defaults to False.
+        assert from_kwargs.is_builtin is False
+        assert from_builtin.is_builtin is True
+
+    def test_agent_support_is_frozen_cannot_mutate(self) -> None:
+        """``AgentSupport`` must remain a frozen dataclass (no mutation)."""
+        class _TemplateParser(ParserTemplateBase):
+            _STOP_EVENT_TYPES = frozenset()
+
+            def classify_line(
+                self, line: str
+            ) -> Iterator[AgentOutputLine]:
+                stripped = line.strip()
+                result = self.parse_json_line(stripped)
+                if result is not None:
+                    yield result
+                else:
+                    yield AgentOutputLine(
+                        type="raw", content=stripped, raw=stripped
+                    )
+
+        class _Strategy(BaseExecutionStrategy):
+            pass
+
+        support = AgentSupport.from_registration_kwargs(
+            "frozen-agent",
+            transport=AgentTransport.GENERIC,
+            parser_factory=_TemplateParser,
+            strategy_factory=_Strategy,
+        )
+        with pytest.raises(FrozenInstanceError):
+            support.__setattr__("name", "renamed")
+
+    def test_agent_spec_consistency_validators_still_reject_inconsistent_state(
+        self,
+    ) -> None:
+        """``AgentSpec`` must still reject ``requires_pty=True`` without
+        ``interactive=True`` (sanity: the refactor must not loosen the
+        headless-vs-interactive axis validators).
+        """
+        with pytest.raises(ValueError, match="requires_pty=True requires interactive=True"):
+            AgentSpec(
+                name="bad",
+                transport=AgentTransport.CLAUDE_INTERACTIVE,
+                interactive=False,
+                requires_pty=True,
+            )

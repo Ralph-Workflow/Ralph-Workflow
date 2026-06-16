@@ -28,6 +28,7 @@ The agent-name-keyed configuration is stored in the caller's own
 
 from __future__ import annotations
 
+from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.agents._contracts import StrategyFactory
@@ -173,54 +174,86 @@ def register_agent_support_to_catalog(
 
 
 # Transport-derived default strategy classes for the public
-# ``register_my_agent`` helper.  Importing the classes here (rather than
-# at module load) keeps ``ralph.agents.registration`` importable without
-# pulling in the full execution-state module graph.
-_DEFAULT_STRATEGY_BY_TRANSPORT: dict[AgentTransport, StrategyFactory] = {
-    AgentTransport.CLAUDE_INTERACTIVE: cast(
-        "StrategyFactory", __import__(
-            "ralph.agents.execution_state.claude_interactive_execution_strategy",
-            fromlist=["ClaudeInteractiveExecutionStrategy"],
-        ).ClaudeInteractiveExecutionStrategy
+# ``register_my_agent`` helper.
+#
+# The table is split into two layers:
+#   1. ``_DEFAULT_STRATEGY_IMPORT_PATH`` is a static, greppable mapping
+#      from :class:`AgentTransport` to a ``"module.attr"`` import path.
+#      The string is the source of truth and lives in module source
+#      (not behind a dynamic ``__import__`` call), so ``git grep`` and
+#      static analysis see the wiring.
+#   2. ``_import_default_strategy`` performs the actual
+#      ``importlib.import_module`` + ``getattr`` once per path and caches
+#      the result, so each strategy class is materialised at most once
+#      per process.  Wrapping the import in a helper keeps
+#      ``ralph.agents.registration`` importable without pulling in the
+#      full execution-state module graph at module load.
+#   3. ``_DEFAULT_STRATEGY_BY_TRANSPORT`` is the public-facing mapping
+#      that :func:`_default_strategy_for_transport` reads.  It is a
+#      ``dict[AgentTransport, StrategyFactory]`` (the same public shape
+#      as before); the strategy factories are materialised lazily on
+#      first access.
+_DEFAULT_STRATEGY_IMPORT_PATH: dict[AgentTransport, str] = {
+    AgentTransport.CLAUDE_INTERACTIVE: (
+        "ralph.agents.execution_state.claude_interactive_execution_strategy"
+        ".ClaudeInteractiveExecutionStrategy"
     ),
-    AgentTransport.AGY: cast(
-        "StrategyFactory",
-        __import__(
-            "ralph.agents.execution_state._factory",
-            fromlist=["_make_agy_strategy"],
-        )._make_agy_strategy,
+    AgentTransport.AGY: "ralph.agents.execution_state._factory._make_agy_strategy",
+    AgentTransport.OPENCODE: (
+        "ralph.agents.execution_state.opencode_execution_strategy.OpenCodeExecutionStrategy"
     ),
-    AgentTransport.OPENCODE: cast(
-        "StrategyFactory", __import__(
-            "ralph.agents.execution_state.opencode_execution_strategy",
-            fromlist=["OpenCodeExecutionStrategy"],
-        ).OpenCodeExecutionStrategy
+    AgentTransport.CLAUDE: (
+        "ralph.agents.execution_state.claude_execution_strategy.ClaudeExecutionStrategy"
     ),
-    AgentTransport.CLAUDE: cast(
-        "StrategyFactory", __import__(
-            "ralph.agents.execution_state.claude_execution_strategy",
-            fromlist=["ClaudeExecutionStrategy"],
-        ).ClaudeExecutionStrategy
+    AgentTransport.CODEX: (
+        "ralph.agents.execution_state.generic_execution_strategy.GenericExecutionStrategy"
     ),
-    AgentTransport.CODEX: cast(
-        "StrategyFactory", __import__(
-            "ralph.agents.execution_state.generic_execution_strategy",
-            fromlist=["GenericExecutionStrategy"],
-        ).GenericExecutionStrategy
+    AgentTransport.NANOCODER: (
+        "ralph.agents.execution_state.generic_execution_strategy.GenericExecutionStrategy"
     ),
-    AgentTransport.NANOCODER: cast(
-        "StrategyFactory", __import__(
-            "ralph.agents.execution_state.generic_execution_strategy",
-            fromlist=["GenericExecutionStrategy"],
-        ).GenericExecutionStrategy
-    ),
-    AgentTransport.GENERIC: cast(
-        "StrategyFactory", __import__(
-            "ralph.agents.execution_state.generic_execution_strategy",
-            fromlist=["GenericExecutionStrategy"],
-        ).GenericExecutionStrategy
+    AgentTransport.GENERIC: (
+        "ralph.agents.execution_state.generic_execution_strategy.GenericExecutionStrategy"
     ),
 }
+
+_default_strategy_cache: dict[str, StrategyFactory] = {}
+
+
+def _import_default_strategy(import_path: str) -> StrategyFactory:
+    """Resolve a ``"module.attr"`` import path to a strategy factory.
+
+    The first call materialises the strategy by importing its module and
+    calling ``getattr(module, attr)``; subsequent calls return the cached
+    factory so each import path is touched at most once per process.
+    Tests can monkeypatch this helper to inject a fake strategy without
+    touching the static table.
+    """
+    cached = _default_strategy_cache.get(import_path)
+    if cached is not None:
+        return cached
+    module_name, _, attr_name = import_path.rpartition(".")
+    module = import_module(module_name)
+    factory = cast("StrategyFactory", getattr(module, attr_name))
+    _default_strategy_cache[import_path] = factory
+    return factory
+
+
+def _resolve_default_strategy_table() -> dict[AgentTransport, StrategyFactory]:
+    """Build the public dispatch table by importing every path once.
+
+    Returns a fresh dict so callers can iterate without mutating the
+    static import-path table.  The result feeds
+    :data:`_DEFAULT_STRATEGY_BY_TRANSPORT` on first access.
+    """
+    return {
+        transport: _import_default_strategy(path)
+        for transport, path in _DEFAULT_STRATEGY_IMPORT_PATH.items()
+    }
+
+
+_DEFAULT_STRATEGY_BY_TRANSPORT: dict[AgentTransport, StrategyFactory] = (
+    _resolve_default_strategy_table()
+)
 
 
 def _default_strategy_for_transport(transport: AgentTransport) -> StrategyFactory:

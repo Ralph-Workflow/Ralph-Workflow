@@ -14,7 +14,11 @@ from typing import TYPE_CHECKING
 from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.execution_state._base import BaseExecutionStrategy
 from ralph.agents.parsers._template import ParserTemplateBase
-from ralph.agents.registration import register_agent_support
+from ralph.agents.registration import (
+    register_agent_support,
+    register_agent_support_to_catalog,
+    register_my_agent,
+)
 from ralph.agents.registry import AgentRegistry
 from ralph.agents.support import AgentSupport
 from ralph.config.agent_config import AgentConfig
@@ -157,3 +161,136 @@ class TestRegisterAgentSupportShim:
             "from_registration_kwargs",
             "add",
         ], f"Expected ['from_registration_kwargs', 'add'], got {call_order}"
+
+
+class TestRegistrationDelegationToAgentCatalog:
+    """Pin the post-consolidation contract: every public registration
+    helper delegates to ``AgentCatalog.add`` (or, for
+    ``register_my_agent``, through ``register_agent_support`` which itself
+    delegates to ``AgentCatalog.add``).
+
+    These tests use ``monkeypatch`` on the class method so any future
+    wrapper or subclass is still detected — only the actual class method
+    counts as a call.
+    """
+
+    def test_register_agent_support_delegates_to_agent_catalog_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``register_agent_support`` calls ``AgentCatalog.add`` exactly once
+        with an :class:`AgentSupport` instance.
+        """
+        captured: list[AgentSupport] = []
+        original_add = AgentCatalog.add
+
+        def mock_add(self: AgentCatalog, support: AgentSupport) -> None:
+            captured.append(support)
+            return original_add(self, support)
+
+        monkeypatch.setattr(AgentCatalog, "add", mock_add)
+
+        register_agent_support(
+            name="delegation-shim-agent",
+            transport=AgentTransport.GENERIC,
+            parser_factory=_FakeParser,
+            strategy_factory=_FakeStrategy,
+            agent_registry=AgentRegistry(),
+            json_parser=JsonParserType.GENERIC,
+            interactive=False,
+            cmd="delegation-shim-agent",
+            output_flag=None,
+            yolo_flag=None,
+            verbose_flag=None,
+            can_commit=False,
+            model_flag=None,
+            print_flag=None,
+            streaming_flag=None,
+            session_flag=None,
+            display_name=None,
+            subagent_capability=None,
+        )
+
+        assert len(captured) == 1, (
+            f"register_agent_support must call AgentCatalog.add exactly once, "
+            f"got {len(captured)} call(s)"
+        )
+        captured_support = captured[0]
+        assert isinstance(captured_support, AgentSupport)
+        assert captured_support.name == "delegation-shim-agent"
+        assert captured_support.transport == AgentTransport.GENERIC
+
+    def test_register_agent_support_to_catalog_delegates_to_agent_catalog_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``register_agent_support_to_catalog`` calls ``AgentCatalog.add``
+        exactly once with the pre-built :class:`AgentSupport` instance.
+        """
+        captured: list[AgentSupport] = []
+        original_add = AgentCatalog.add
+
+        def mock_add(self: AgentCatalog, support: AgentSupport) -> None:
+            captured.append(support)
+            return original_add(self, support)
+
+        monkeypatch.setattr(AgentCatalog, "add", mock_add)
+
+        name = "delegation-catalog-agent"
+        support = AgentSupport.from_registration_kwargs(
+            name,
+            transport=AgentTransport.GENERIC,
+            parser_factory=_FakeParser,
+            strategy_factory=_FakeStrategy,
+        )
+        catalog = AgentCatalog()
+        register_agent_support_to_catalog(name, support, catalog)
+
+        assert len(captured) == 1, (
+            f"register_agent_support_to_catalog must call AgentCatalog.add exactly once, "
+            f"got {len(captured)} call(s)"
+        )
+        assert captured[0] is support, (
+            "register_agent_support_to_catalog must forward the same AgentSupport "
+            "instance to AgentCatalog.add"
+        )
+
+    def test_register_my_agent_delegates_through_register_agent_support(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``register_my_agent`` routes through ``register_agent_support``
+        exactly once with the expected kwargs.
+        """
+        captured: list[dict[str, object]] = []
+        original_register_agent_support = register_agent_support
+
+        def mock_register_agent_support(*args: object, **kwargs: object) -> AgentConfig:
+            captured.append({"args": args, "kwargs": kwargs})
+            return original_register_agent_support(*args, **kwargs)
+
+        monkeypatch.setattr(
+            "ralph.agents.registration.register_agent_support",
+            mock_register_agent_support,
+        )
+
+        registry = AgentRegistry()
+        register_my_agent(
+            name="delegation-my-agent",
+            transport=AgentTransport.GENERIC,
+            parser=_FakeParser,
+            agent_registry=registry,
+        )
+
+        assert len(captured) == 1, (
+            f"register_my_agent must call register_agent_support exactly once, "
+            f"got {len(captured)} call(s)"
+        )
+        call_args = captured[0]["args"]
+        call_kwargs = captured[0]["kwargs"]
+        assert call_args[0] == "delegation-my-agent", (
+            f"register_my_agent must forward name as first positional arg, "
+            f"got {call_args[0]!r}"
+        )
+        assert call_kwargs["transport"] == AgentTransport.GENERIC
+        assert call_kwargs["agent_registry"] is registry
+        assert call_kwargs["interactive"] is False
+        assert "parser_factory" in call_kwargs
+        assert "strategy_factory" in call_kwargs

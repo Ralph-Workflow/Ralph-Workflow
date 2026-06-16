@@ -4,7 +4,10 @@ The agent subsystem in Ralph coordinates executing, composing, and registering A
 
 ## How do I...?
 
-- [Add a new agent](adding-a-new-agent.md)
+- [Add a new agent (5-minute quickstart)](quickstart-add-a-new-agent.md)
+- [Add a new agent (advanced reference: Add, Update, Remove)](adding-a-new-agent.md)
+- [Update an existing agent](adding-a-new-agent.md#update-an-existing-agent)
+- [Remove an agent](adding-a-new-agent.md#remove-an-agent)
 - [Understand the architecture](architecture.md)
 - [Follow the timeout policy](timeout-policy.md)
 
