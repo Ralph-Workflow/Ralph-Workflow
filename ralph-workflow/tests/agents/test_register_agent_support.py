@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.agents.catalog import default_catalog
+from ralph.agents.catalog import AgentCatalog, default_catalog
 from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     strategy_for_command,
@@ -734,3 +734,77 @@ class TestCatalogBackedRegistration:
         assert isinstance(found.parser_factory(), FakeAgentParser)
         parser = default_catalog().get_parser("fake-catalog-lookup")
         assert isinstance(parser, FakeAgentParser)
+
+
+def test_register_agent_support_headless_and_interactive_lockstep() -> None:
+    """Black-box proof that ``register_agent_support`` keeps ``AgentCatalog`` and
+    ``AgentRegistry`` in lockstep on add and unregister for both transports.
+
+    This test exercises the public registration surface only:
+    ``ralph.agents`` (``AgentCatalog``, ``AgentRegistry``,
+    ``register_agent_support``), ``ralph.agents.execution_state``
+    (``BaseExecutionStrategy``), and ``ralph.config.enums``
+    (``AgentTransport``, ``JsonParserType``). The locally-defined
+    ``FakeAgentParser`` stub implements the public ``AgentParser`` protocol.
+
+    The autouse ``_reset_catalog`` fixture in this module owns the legacy
+    module-level dicts for cleanup; that fixture is the established pattern in
+    this file and its private imports are for cleanup only, not test logic.
+    The test's TEST LOGIC does not import from ``ralph.agents.builtin``,
+    ``ralph.agents.parsers._PARSER_REGISTRY``,
+    ``ralph.agents.execution_state._factory``,
+    ``ralph.agents.parsers._template``, or
+    ``ralph.agents.execution_state._base`` — those are private modules whose
+    leading-underscore names mark them as out of the public API.
+
+    See AGENTS.md: "All code must be testable in a black box way."
+    """
+    headless_name = "lockstep-headless"
+    interactive_name = "lockstep-interactive"
+
+    catalog = AgentCatalog()
+    registry = AgentRegistry(catalog=catalog)
+
+    register_agent_support(
+        headless_name,
+        transport=AgentTransport.GENERIC,
+        parser_factory=FakeAgentParser,
+        strategy_factory=FakeAgentStrategy,
+        agent_registry=registry,
+        json_parser=JsonParserType.GENERIC,
+        interactive=False,
+    )
+    register_agent_support(
+        interactive_name,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+        parser_factory=FakeAgentParser,
+        strategy_factory=FakeInteractiveAgentStrategy,
+        agent_registry=registry,
+        json_parser=JsonParserType.GENERIC,
+        interactive=True,
+    )
+
+    headless_catalog_entry = catalog.get(headless_name)
+    interactive_catalog_entry = catalog.get(interactive_name)
+    assert headless_catalog_entry is not None
+    assert interactive_catalog_entry is not None
+    assert headless_catalog_entry.name == headless_name
+    assert interactive_catalog_entry.name == interactive_name
+    assert headless_catalog_entry.transport == AgentTransport.GENERIC
+    assert interactive_catalog_entry.transport == AgentTransport.CLAUDE_INTERACTIVE
+
+    headless_config = registry.get(headless_name)
+    interactive_config = registry.get(interactive_name)
+    assert headless_config is not None
+    assert interactive_config is not None
+    assert headless_config.transport == AgentTransport.GENERIC
+    assert interactive_config.transport == AgentTransport.CLAUDE_INTERACTIVE
+
+    registry.unregister(headless_name)
+
+    assert catalog.get(headless_name) is None
+    assert registry.get(headless_name) is None
+    assert catalog.get(interactive_name) is not None
+    interactive_still = registry.get(interactive_name)
+    assert interactive_still is not None
+    assert interactive_still.transport == AgentTransport.CLAUDE_INTERACTIVE

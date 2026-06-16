@@ -26,7 +26,7 @@ If you are evaluating Ralph Workflow rather than maintaining it, start with the 
 
 ## Documentation families covered here
 
-- **agents** — orchestration, completion, retry, and transport behavior live under `docs/agents/` and `docs/sphinx/agents.md`
+- **agents** — orchestration, completion, retry, and transport behavior live under `docs/agents/` and `docs/sphinx/agents.md`. Start at [`docs/agents/README.md`](agents/README.md) for adding, updating, or removing agent support.
 - **code-style** — style, naming, and contributor-facing coding expectations live under `docs/code-style/` and the repo-root style documents
 - **tooling** — CLI, MCP, verification, and setup/tooling notes live under `docs/tooling/`, `docs/sphinx/cli.md`, and related references
 - **performance** — timeout, watchdog, and runtime/performance notes live under `docs/performance/` and the relevant Sphinx architecture pages

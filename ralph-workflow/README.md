@@ -234,6 +234,7 @@ This README intentionally leaves out deeper implementation details and defers to
 - **Configuration:** [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files and precedence
 - **Developer Reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — maintained contributor and architecture reference
 - **Modules Index:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — API/module entry points for deeper internals
+- **Adding and managing agent support:** [`docs/agents/README.md`](docs/agents/README.md) — entry point for adding, updating, or removing a built-in or custom agent
 
 ## Idle watchdog
 
