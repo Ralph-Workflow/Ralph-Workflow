@@ -814,6 +814,9 @@ def test_register_agent_support_headless_and_interactive_lockstep() -> None:
     assert headless_config.transport == AgentTransport.GENERIC
     assert interactive_config.transport == AgentTransport.CLAUDE_INTERACTIVE
 
+    assert default_catalog().get(headless_name) is None
+    assert default_catalog().get(interactive_name) is None
+
     registry.unregister(headless_name)
 
     assert catalog.get(headless_name) is None
@@ -822,3 +825,6 @@ def test_register_agent_support_headless_and_interactive_lockstep() -> None:
     interactive_still = registry.get(interactive_name)
     assert interactive_still is not None
     assert interactive_still.transport == AgentTransport.CLAUDE_INTERACTIVE
+
+    assert default_catalog().get(headless_name) is None
+    assert default_catalog().get(interactive_name) is None

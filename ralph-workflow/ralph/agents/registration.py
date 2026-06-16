@@ -83,7 +83,14 @@ def register_agent_support(
     """Register support for a new agent in one call.
 
     Delegates to ``AgentSupport.from_registration_kwargs`` +
-    ``default_catalog().add(support)``. The legacy module-level dicts
+    ``agent_registry.catalog.add(support)`` so the registration is written
+    through the caller-owned catalog bound to ``agent_registry``, not the
+    global default catalog. When ``agent_registry`` was constructed without
+    an explicit ``catalog=``, that bound catalog is
+    :func:`ralph.agents.catalog.default_catalog`, so the historical
+    behavior is preserved. When ``agent_registry=AgentRegistry(catalog=AgentCatalog())``
+    is used, the registration stays inside the caller-owned catalog and does
+    not leak into the default catalog. The legacy module-level dicts
     (``_PARSER_REGISTRY``, ``_CUSTOM_COMMAND_REGISTRY``,
     ``_STRATEGY_DISPATCH``) are write-through state populated atomically by
     ``AgentCatalog.add()`` and are deprecated; new code should use
@@ -139,7 +146,7 @@ def register_agent_support(
         subagent_capability=subagent_capability,
     )
 
-    default_catalog().add(support)
+    agent_registry.catalog.add(support)
     agent_registry.register(name, support.config)
     return support.config
 

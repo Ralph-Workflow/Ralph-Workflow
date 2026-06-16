@@ -66,6 +66,18 @@ class AgentRegistry:
         else:
             self._catalog = default_catalog()
 
+    @property
+    def catalog(self) -> AgentCatalog:
+        """Return the ``AgentCatalog`` bound to this registry.
+
+        When no catalog is injected at construction time, the registry falls
+        back to :func:`ralph.agents.catalog.default_catalog`. ``register_agent_support``
+        uses this property to write into the caller-owned catalog only, so a
+        fresh ``AgentRegistry(catalog=AgentCatalog())`` does not leak
+        registrations into the global default catalog.
+        """
+        return self._catalog
+
     @classmethod
     def from_config(cls, config: UnifiedConfig) -> AgentRegistry:
         """Create registry from UnifiedConfig.
