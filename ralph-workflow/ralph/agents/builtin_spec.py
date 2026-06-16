@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 # via **kwargs because they are passed as positional / named arguments by
 # :meth:`BuiltinAgentSpec.to_support`.  Kept as a frozenset so the surface
 # is explicit and future built-in agent additions do not silently break
-# the 6-entry frozen contract pinned by
+# the 7-entry frozen contract pinned by
 # ``test_agents/test_builtin_spec_consolidation.py``.
 _BUILTIN_SPEC_POSITIONAL_FIELDS: frozenset[str] = frozenset(
     {"transport", "parser_factory", "strategy_factory"}

@@ -145,7 +145,8 @@ Agents are configured in `ralph-workflow.toml` under three top-level sections:
 
 The shorthand forms for built-in transports are also accepted as agent names:
 `claude/<model>` (e.g. `claude/sonnet`), `opencode/<provider>` (e.g.
-`opencode/anthropic`), and `agy/<model>` (e.g. `agy/gemini-2.5`).  The config
+`opencode/anthropic`), `agy/<model>` (e.g. `agy/gemini-2.5`), and
+`pi/<model>` (e.g. `pi/anthropic/claude-sonnet-4-20250514`).  The config
 loader expands these into fully-qualified `AgentSpec` objects before registering
 the agent in the catalog.
 

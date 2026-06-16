@@ -291,6 +291,46 @@ class TestPiParserMessageUpdateTextDelta:
         assert len(text_lines) == 1
         assert text_lines[0].content == "Hello"
 
+    def test_text_delta_with_empty_text_end_flushes_accumulator(self) -> None:
+        """``text_delta + text_end(content="")`` must flush the buffered deltas.
+
+        Regression test for the analysis feedback: the parser used to
+        discard the accumulated deltas when ``text_end`` arrived with
+        an empty ``content`` field.  The fix is: ``text_end`` with
+        empty content falls back to the buffered accumulator; the
+        buffered deltas are the source of truth when the event does
+        not carry a final snapshot.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 0,
+                        "delta": "Hello",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_end",
+                        "contentIndex": 0,
+                        "content": "",
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 1
+        assert text_lines[0].content == "Hello"
+
     def test_text_delta_then_message_end_emits_exactly_one_text_line(self) -> None:
         """``text_delta`` + ``message_end(text=X)`` must emit exactly one text line.
 
@@ -452,6 +492,47 @@ class TestPiParserThinkingDelta:
         assert len(thinking_lines) == 1
         assert thinking_lines[0].content == "think..."
 
+    def test_thinking_delta_with_empty_thinking_end_flushes_accumulator(
+        self,
+    ) -> None:
+        """``thinking_delta + thinking_end(content="")`` must flush the buffered deltas.
+
+        Regression test for the analysis feedback: the parser used to
+        discard the accumulated thinking deltas when ``thinking_end``
+        arrived with an empty ``content`` field.  The fix is:
+        ``thinking_end`` with empty content falls back to the buffered
+        accumulator.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "thinking_delta",
+                        "contentIndex": 1,
+                        "delta": "think",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "thinking_end",
+                        "contentIndex": 1,
+                        "content": "",
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        thinking_lines = [r for r in results if r.type == "thinking"]
+        assert len(thinking_lines) == 1
+        assert thinking_lines[0].content == "think"
+
     def test_thinking_delta_then_message_end_emits_exactly_one_thinking_line(
         self,
     ) -> None:
@@ -485,6 +566,67 @@ class TestPiParserThinkingDelta:
         thinking_lines = [r for r in results if r.type == "thinking"]
         assert len(thinking_lines) == 1
         assert thinking_lines[0].content == "reasoning"
+
+    def test_message_end_emits_toolresult_block(self) -> None:
+        """``message_end(toolResult)`` must emit a ``tool_result`` line.
+
+        Per the plan, the ``message_end`` content array is walked for
+        text, thinking, toolCall, and toolResult blocks.  toolResult
+        blocks are emitted as ``type='tool_result'`` (or
+        ``type='error'`` if ``isError=true``) using the same consistent
+        rule as ``tool_execution_end``.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "toolResult",
+                            "toolCallId": "x",
+                            "result": "ok",
+                        }
+                    ],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        tool_result_lines = [r for r in results if r.type == "tool_result"]
+        assert len(tool_result_lines) == 1
+        assert tool_result_lines[0].content == "ok"
+
+    def test_message_end_emits_toolresult_block_error(self) -> None:
+        """``message_end(toolResult, isError=true)`` must emit ``type='error'``.
+
+        Single consistent ``isError`` rule: ``isError=True`` maps to
+        ``type='error'`` regardless of whether the result is delivered
+        via ``tool_execution_end`` or a ``toolResult`` block in
+        ``message_end``.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "toolResult",
+                            "toolCallId": "x",
+                            "result": "fail",
+                            "isError": True,
+                        }
+                    ],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        error_lines = [r for r in results if r.type == "error"]
+        assert len(error_lines) == 1
+        assert error_lines[0].content == "fail"
+        assert not any(r.type == "tool_result" for r in results)
 
     def test_message_end_emits_toolcall_block(self) -> None:
         """``message_end(toolCall)`` must emit a ``tool_use`` line.

@@ -4,7 +4,7 @@
 
 **Hand your coding agents a spec. Walk away. Come back to reviewable, tested commits.**
 
-Ralph Workflow is a free, open-source composable loop framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition.
+Ralph Workflow is a free, open-source composable loop framework that runs the coding agents you already use — Claude Code, Codex, OpenCode, Nanocoder, Google Anti Gravity, and Pi — on your own machine. Simple at the center, powerful in composition.
 
 [![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)

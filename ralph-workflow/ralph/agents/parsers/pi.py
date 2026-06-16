@@ -276,11 +276,15 @@ class _PiDispatch:
     ) -> Iterator[AgentOutputLine]:
         content = str(sub.get("content", ""))
         self._owner.saw_text_end = True
-        self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
         if content:
+            self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
             yield AgentOutputLine(
                 type="text", content=content, raw=stripped, metadata=sub
             )
+            return
+        acc = self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
+        if acc is not None:
+            yield from acc.flush(kind="text")
 
     def _handle_thinking_delta(
         self,
@@ -307,14 +311,20 @@ class _PiDispatch:
     ) -> Iterator[AgentOutputLine]:
         content = str(sub.get("content", ""))
         self._owner.saw_thinking_end = True
-        self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
         if content.strip():
+            self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
             yield AgentOutputLine(
                 type="thinking",
                 content=content,
                 raw=stripped,
                 metadata=sub,
             )
+            return
+        acc = self._owner._accumulators.pop(
+            _THINKING_ACCUMULATOR_KEY, None
+        )
+        if acc is not None:
+            yield from acc.flush(kind="thinking", require_strip=True)
 
     def _handle_toolcall_start(
         self,
@@ -398,6 +408,8 @@ class _PiDispatch:
                 yield from self._handle_thinking_block(block_dict, stripped)
             elif block_type == "toolCall":
                 yield from self._handle_toolcall_block(block_dict, stripped)
+            elif block_type == "toolResult":
+                yield from self._handle_toolresult_block(block_dict, stripped)
 
     def _handle_text_block(
         self,
@@ -433,6 +445,28 @@ class _PiDispatch:
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
+            raw=stripped,
+            metadata=block_dict,
+        )
+
+    def _handle_toolresult_block(
+        self,
+        block_dict: dict[str, object],
+        stripped: str,
+    ) -> Iterator[AgentOutputLine]:
+        is_error = block_dict.get("isError", False)
+        result = block_dict.get("result", "")
+        if is_error:
+            yield AgentOutputLine(
+                type="error",
+                content=str(result) if result else "tool result error",
+                raw=stripped,
+                metadata=block_dict,
+            )
+            return
+        yield AgentOutputLine(
+            type="tool_result",
+            content=str(result) if result else "",
             raw=stripped,
             metadata=block_dict,
         )
