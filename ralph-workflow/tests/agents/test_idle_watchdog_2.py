@@ -648,6 +648,7 @@ def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
         max_waiting_on_child_seconds=equal_ceiling,
         max_waiting_on_child_no_progress_seconds=equal_ceiling,
         no_progress_quiet_seconds=equal_ceiling,
+        no_progress_quiet_minimum_invocation_seconds=equal_ceiling,
         suspect_waiting_on_child_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )

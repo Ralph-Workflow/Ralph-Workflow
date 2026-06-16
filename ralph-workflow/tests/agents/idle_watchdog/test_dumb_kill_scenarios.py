@@ -425,3 +425,261 @@ def test_dumb_kill_recovery_controller_never_advances_to_failed_on_unavailable()
     assert not controller.unavailability_store.is_available("development", "claude"), (
         "claude must be on cooldown after no_progress_quiet typed cause"
     )
+
+
+def test_dumb_kill_three_agent_dispatching_parallel_scouts() -> None:
+    """Reproduce the third dumb-kill incident from the user's log.
+
+    User log excerpt::
+
+        2026-06-15T05:50:52.722153+00:00 INFO CONT [content-start][opencode/...] I need to
+            explore this codebase to understand the watchdog architecture before
+            planning. Let me dispatch parallel discovery scouts.
+        2026-06-16T05:53:23.711523+00:00 ERROR META [waiting] Background child work hit
+            hard ceiling (cumulative=194s, ceiling=120s, scoped_child_active=True,
+            oldest_child_seconds=-1781497724s, agent=opencode/minimax-coding-plan/MiniMax-M3)
+        2026-06-15 22:53:23.711 | WARNING  | idle_watchdog: FIRE reason=no_progress_quiet
+            idle_elapsed=151.0s invocation_elapsed=194.4s
+
+    The OLD watchdog fired NO_PROGRESS_QUIET at cumulative=194s (just 30s past
+    the 120s ceiling) while the agent was about to dispatch parallel discovery
+    scouts. The agent was alive, had a live child (scoped_child_active=True),
+    and the only signal was OS_DESCENDANT_ONLY_STALE_PROGRESS.
+
+    The NEW behavior:
+
+      - the dumb-kill floor (no_progress_quiet_minimum_invocation_seconds=120.0s)
+        prevents the fire BEFORE invocation_elapsed=120.0s even when all
+        channels are stale (the user log fired at 194s, so the floor is
+        not the primary protection here -- the smart-verdict gate is);
+      - the smart-verdict gate (StuckClassifier) defers the fire while the
+        live process monitor reports a live child (the classifier returns
+        LOADING via the subagent_liveness channel, and the gate defers).
+
+    The test MUST construct the same live-child prerequisites the existing
+    ``test_smart_verdict_dumb_kills.py::test_dumb_kill_two_pre_output_fragment``
+    uses, because the current ``_stuck_classifier.py:230-275`` (classify_stuck)
+    requires fresh first-party evidence, a subagent_liveness side-channel
+    with ``can_defer=True``, OR a live ``classify_quiet`` returning
+    WAITING_ON_CHILD to defer. Corroborator-only stale-child evidence
+    (alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS) without a live process
+    monitor is explicitly NOT a deferral signal per the classifier
+    docstring at ``_stuck_classifier.py:92-100``.
+
+    Required setup:
+      1. Inject the existing ``_LiveOnlyProcessMonitor(live_count=1)`` so
+         ``_subagent_liveness_summary`` sets ``can_defer=True`` and the
+         classifier returns LOADING via the subagent_liveness channel.
+      2. Call ``wd.evaluate(classify_quiet=_waiting)`` where ``_waiting``
+         returns ``AgentExecutionState.WAITING_ON_CHILD`` -- this is the
+         live signal the classifier's WAITING_ON_CHILD branch at
+         ``_stuck_classifier.py:257-258`` consults to return LOADING.
+      3. Configure ``no_progress_quiet_minimum_invocation_seconds=120.0s``
+         and ``no_progress_quiet_seconds=120.0s`` so the dumb-kill floor
+         is active. The user log's invocation_elapsed=194.4s is past the
+         floor, so the floor is satisfied; the live-subagent deferral is
+         the primary protection.
+
+    Assertions:
+      - verdict is CONTINUE (not FIRE) at the user's exact log scenario
+        (idle_elapsed=151s, invocation_elapsed=194s).
+      - The session phase is NOT failed_terminal.
+
+    The watchdog returns CONTINUE without firing because the
+    ``_is_no_progress_quiet`` short-circuits when the channel
+    evidence is active (the live process monitor reports a live
+    child, so the subagent_liveness channel is fresh, so
+    ``_channel_evidence_active`` returns True and the no-progress
+    path is not taken). The gate is never reached; the deferral
+    happens at the channel-evidence layer. This is the
+    dumb-kill protection the user requested.
+    """
+    monitor = _LiveOnlyProcessMonitor(live_count=1)
+
+    def _os_desc_only_corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
+    wd, clock = _make_watchdog(
+        _make_policy_with_floor(
+            idle_timeout=300.0,
+            max_waiting=600.0,
+            os_descendant_only_ceiling=300.0,
+            activity_ttl=30.0,
+            no_progress_quiet_seconds=120.0,
+            no_progress_quiet_minimum_invocation_seconds=120.0,
+        ),
+        process_monitor=monitor,
+        corroborator=_os_desc_only_corroborator,
+    )
+    wd.record_invocation_start()
+    wd.record_activity()
+
+    # Advance to the user's exact log scenario:
+    #   idle_elapsed=151s, cumulative=194s.
+    # The OLD watchdog would have FIRE'd at 120s (cumulative) and
+    # killed the agent mid-exploration. The NEW behavior defers the
+    # fire because the live process monitor reports a live child
+    # (subagent_liveness channel is fresh, can_defer=True) AND the
+    # smart-verdict gate would defer with DEFERRED_BY_STUCK_CLASSIFIER
+    # if it were reached.
+    clock.advance(151.0)
+
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    assert verdict == WatchdogVerdict.CONTINUE, (
+        f"expected CONTINUE at idle_elapsed=151s invocation_elapsed=194s"
+        f" (the user's exact log scenario), got {verdict}"
+    )
+
+
+def test_no_progress_quiet_does_not_fire_within_dumb_kill_floor() -> None:
+    """The dumb-kill floor protects a recently-launched agent.
+
+    Even when the corroborator says no progress and ALL channels
+    are stale, if ``invocation_elapsed <
+    no_progress_quiet_minimum_invocation_seconds`` the watchdog
+    returns CONTINUE. The floor prevents a recently-launched
+    agent that is doing real thinking work from being killed
+    before it has a chance to produce first-party activity
+    evidence.
+
+    Setup: corroborator reports
+    ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (so the no-progress path
+    is active), classify_quiet returns WAITING_ON_CHILD (so the
+    no_progress_quiet evaluator runs). The classifier returns
+    STUCK (no live subagent), the gate WOULD allow FIRE -- but
+    the dumb-kill floor fires FIRST in ``_is_no_progress_quiet``
+    and short-circuits the fire.
+
+    Assertions:
+      - verdict is CONTINUE (not FIRE) before the floor.
+      - last_fire_reason is None (the gate never fired).
+    """
+    def _os_desc_only_corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
+    wd, clock = _make_watchdog(
+        _make_policy_with_floor(
+            idle_timeout=300.0,
+            max_waiting=600.0,
+            os_descendant_only_ceiling=300.0,
+            activity_ttl=30.0,
+            no_progress_quiet_seconds=120.0,
+            no_progress_quiet_minimum_invocation_seconds=120.0,
+        ),
+        corroborator=_os_desc_only_corroborator,
+    )
+    wd.record_invocation_start()
+    wd.record_activity()
+
+    # Advance to just under the floor: 119s. NO_PROGRESS_QUIET cannot fire.
+    clock.advance(119.0)
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    assert verdict != WatchdogVerdict.FIRE, (
+        f"watchdog must not FIRE at invocation_elapsed=119s (under 120s floor),"
+        f" got {verdict}"
+    )
+
+
+def test_no_progress_quiet_still_fires_after_dumb_kill_floor_when_genuinely_stuck() -> None:
+    """The dumb-kill floor does NOT mask a genuinely stuck agent.
+
+    After the floor elapses, the watchdog must still fire
+    NO_PROGRESS_QUIET when the agent is genuinely stuck (no
+    output, no subagent, no workspace, all channels stale, no
+    live process monitor). The floor is additive, not a
+    replacement.
+
+    Setup: corroborator reports
+    ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (so the no-progress path
+    is active), NO process monitor, ALL channels stale,
+    invocation_elapsed well past the floor, classify_quiet
+    returns WAITING_ON_CHILD (so the no_progress_quiet
+    evaluator runs). The classifier returns STUCK and the gate
+    allows FIRE.
+
+    Assertions:
+      - verdict is FIRE (not CONTINUE) past the floor.
+      - last_fire_reason is NO_PROGRESS_QUIET.
+    """
+    def _os_desc_only_corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
+    wd, clock = _make_watchdog(
+        _make_policy_with_floor(
+            idle_timeout=300.0,
+            max_waiting=600.0,
+            os_descendant_only_ceiling=300.0,
+            activity_ttl=30.0,
+            no_progress_quiet_seconds=120.0,
+            no_progress_quiet_minimum_invocation_seconds=120.0,
+        ),
+        corroborator=_os_desc_only_corroborator,
+    )
+    wd.record_invocation_start()
+    wd.record_activity()
+
+    # Advance well past the dumb-kill floor (120s) and past the
+    # no_progress_quiet ceiling (120s). The floor has elapsed, the
+    # ceiling is reached, all channels are stale, and the agent is
+    # genuinely stuck. The watchdog must FIRE.
+    clock.advance(150.0)
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"watchdog must FIRE when the agent is genuinely stuck past"
+        f" the dumb-kill floor + ceiling, got {verdict}"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
+
+
+def _make_policy_with_floor(
+    *,
+    idle_timeout: float = 1.0,
+    drain_window: float = 0.0,
+    max_waiting: float = 600.0,
+    max_session: float | None = None,
+    activity_ttl: float | None = 30.0,
+    no_output_at_start: float | None = None,
+    os_descendant_only_ceiling: float | None = 300.0,
+    no_progress_quiet_seconds: float | None = 120.0,
+    no_progress_quiet_minimum_invocation_seconds: float | None = 120.0,
+) -> TimeoutPolicy:
+    """Build a TimeoutPolicy with the dumb-kill floor enabled.
+
+    Mirrors ``_make_policy`` but adds the
+    ``no_progress_quiet_minimum_invocation_seconds`` knob so the
+    floor is active in tests that exercise the dumb-kill
+    protection.
+    """
+    kwargs: dict[str, object] = {
+        "idle_timeout_seconds": idle_timeout,
+        "drain_window_seconds": drain_window,
+        "max_waiting_on_child_seconds": max_waiting,
+        "max_session_seconds": max_session,
+        "suspect_waiting_on_child_seconds": None,
+        "max_waiting_on_child_no_progress_seconds": None,
+        "activity_evidence_ttl_seconds": activity_ttl,
+        "os_descendant_only_ceiling_seconds": os_descendant_only_ceiling,
+        "no_output_at_start_seconds": no_output_at_start,
+        "no_progress_quiet_seconds": no_progress_quiet_seconds,
+        "no_progress_quiet_minimum_invocation_seconds": (
+            no_progress_quiet_minimum_invocation_seconds
+        ),
+        "post_tool_result_progression_seconds": None,
+        "repeated_error_window_count": 5,
+        "repeated_error_window_seconds": 60.0,
+        "idle_poll_interval_seconds": 0.05,
+        "waiting_status_interval_seconds": 30.0,
+    }
+    return TimeoutPolicy(**kwargs)

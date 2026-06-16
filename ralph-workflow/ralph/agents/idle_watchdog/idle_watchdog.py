@@ -518,10 +518,29 @@ class IdleWatchdog:
         return self._clock.monotonic() - self._invocation_started_at
 
     def _is_no_progress_quiet(self, now: float, corroboration: CorroborationSnapshot) -> bool:
-        """Return True when all no-progress quiet conditions are met."""
+        """Return True when all no-progress quiet conditions are met.
+
+        The dumb-kill floor (no_progress_quiet_minimum_invocation_seconds)
+        is consulted FIRST so a recently-launched agent that is doing real
+        thinking work (planning, exploration, dispatching subagents) but
+        has not yet produced first-party activity evidence is not killed.
+        When the floor field is None, the floor is disabled (not
+        recommended). The SESSION_CEILING_EXCEEDED and the post-tool-result
+        STALLED_AFTER_TOOL_RESULT paths are not affected by this floor.
+        """
         if self._config.no_progress_quiet_seconds is None:
             return False
         if self.invocation_elapsed_seconds < self._config.no_progress_quiet_seconds:
+            return False
+        # Dumb-kill floor: defer the fire while the agent has been alive
+        # for less than the configured floor. The floor must be checked
+        # BEFORE the channel-evidence check so a recently-launched agent
+        # with all channels stale still gets the floor protection.
+        if (
+            self._config.no_progress_quiet_minimum_invocation_seconds is not None
+            and self.invocation_elapsed_seconds
+            < self._config.no_progress_quiet_minimum_invocation_seconds
+        ):
             return False
         if corroboration.alive_by not in self._NON_PROGRESS_ALIVE_BY_VALUES:
             return False

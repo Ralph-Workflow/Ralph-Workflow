@@ -19,6 +19,7 @@ from ralph.timeout_defaults import (
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
     NO_OUTPUT_AT_START_SECONDS,
+    NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS,
     NO_PROGRESS_QUIET_SECONDS,
     OS_DESCENDANT_ONLY_CEILING_SECONDS,
     OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
@@ -136,6 +137,18 @@ class TimeoutPolicy:
         MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
     )
     no_progress_quiet_seconds: float | None = NO_PROGRESS_QUIET_SECONDS
+    # Dumb-kill floor for NO_PROGRESS_QUIET: the watchdog cannot fire this
+    # reason within the first ``no_progress_quiet_minimum_invocation_seconds``
+    # of an agent run, so a recently-launched agent that is doing real
+    # thinking work (planning, exploration, dispatching subagents) but has
+    # not yet produced first-party activity evidence is not killed. Must be
+    # > 0 when set (zero is rejected by the validator). When None, the
+    # floor is disabled (not recommended). The default of 120.0s matches
+    # the OS_DESCENDANT_ONLY_CEILING default. SESSION_CEILING_EXCEEDED
+    # is unaffected (operator-set hard cap).
+    no_progress_quiet_minimum_invocation_seconds: float | None = (
+        NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS
+    )
     # When set, the watchdog fires NO_OUTPUT_AT_START if the agent has been alive
     # for this many seconds with zero recorded activity (no stdout, no tool call,
     # no file change, no subagent output). Fires BEFORE the 600s cumulative
@@ -225,6 +238,7 @@ class TimeoutPolicy:
         self._validate_session_and_poll_fields()
         self._validate_waiting_status_fields()
         self._validate_no_progress_quiet_seconds()
+        self._validate_no_progress_quiet_minimum_invocation_seconds()
         self._validate_no_output_at_start_seconds()
         self._validate_post_tool_result_progression()
         self._validate_repeated_error_fields()
@@ -308,6 +322,33 @@ class TimeoutPolicy:
         limit = self.max_waiting_on_child_no_progress_seconds
         if limit is not None and self.no_progress_quiet_seconds > limit:
             msg = "no_progress_quiet_seconds must be <= max_waiting_on_child_no_progress_seconds"
+            raise ValueError(msg)
+
+    def _validate_no_progress_quiet_minimum_invocation_seconds(self) -> None:
+        """Validate the dumb-kill floor for NO_PROGRESS_QUIET.
+
+        The floor prevents the watchdog from killing a recently-launched
+        agent that is doing real work (planning, exploration, dispatching
+        subagents) but has not yet produced first-party activity evidence.
+        When set, the field MUST be > 0 (zero is rejected). When None,
+        the floor is disabled. When both the floor and
+        ``no_progress_quiet_seconds`` are set, the floor MUST be <= the
+        ceiling (the floor is a sub-window of the ceiling).
+        """
+        if self.no_progress_quiet_minimum_invocation_seconds is None:
+            return
+        if self.no_progress_quiet_minimum_invocation_seconds <= 0:
+            msg = "no_progress_quiet_minimum_invocation_seconds must be positive when set"
+            raise ValueError(msg)
+        if (
+            self.no_progress_quiet_seconds is not None
+            and self.no_progress_quiet_minimum_invocation_seconds
+            > self.no_progress_quiet_seconds
+        ):
+            msg = (
+                "no_progress_quiet_minimum_invocation_seconds must be <="
+                " no_progress_quiet_seconds"
+            )
             raise ValueError(msg)
 
     def _validate_no_output_at_start_seconds(self) -> None:

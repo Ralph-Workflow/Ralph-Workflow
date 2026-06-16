@@ -24,6 +24,7 @@ from ralph.timeout_defaults import (
     MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS,
     NO_PROGRESS_QUIET_SECONDS,
     OS_DESCENDANT_ONLY_CEILING_SECONDS,
     OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
@@ -252,6 +253,21 @@ class GeneralConfig(RalphBaseModel):
             " stdout output, BEFORE the standard no-progress ceiling (600s)."
             " Must be <= agent_idle_no_progress_waiting_on_child_seconds when set."
             " When None, the fast no-progress trip is disabled."
+        ),
+    )
+    agent_no_progress_quiet_minimum_invocation_seconds: float | None = Field(
+        default=NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS,
+        gt=0.0,
+        description=(
+            "Dumb-kill floor for NO_PROGRESS_QUIET: the watchdog cannot fire this"
+            " reason within the first N seconds of an agent run, so a"
+            " recently-launched agent that is doing real thinking work (planning,"
+            " exploration, dispatching subagents) but has not yet produced"
+            " first-party activity evidence is not killed. Must be > 0 when set"
+            " (zero is rejected). When None, the floor is disabled (not"
+            " recommended). SESSION_CEILING_EXCEEDED is unaffected (operator-set"
+            " hard cap). The default of 120.0s matches the"
+            " OS_DESCENDANT_ONLY_CEILING default."
         ),
     )
     agent_child_progress_ttl_seconds: float = Field(

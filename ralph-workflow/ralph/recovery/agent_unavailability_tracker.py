@@ -6,7 +6,9 @@ instead of directly managing _unavailable_timeouts and _backoff_attempts dicts.
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from ralph.agents.timeout_clock import SystemClock
@@ -221,3 +223,171 @@ class AgentUnavailabilityTracker:
 
 
 __all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry", "UnavailabilityStore"]
+
+
+# ---------------------------------------------------------------------------
+# No permanent skip rule (locked at import time)
+# ---------------------------------------------------------------------------
+#
+# An agent is NEVER marked permanently unavailable. The only two public
+# mutators on the unavailable set are ``mark_unavailable`` (adds with
+# exponential backoff) and ``reset_backoff`` (removes on cooldown expiry
+# or explicit reset). The remaining public surface
+# (``is_available``, ``earliest_unavailable_wait_ms``, ``snapshot``,
+# ``scope``) is read-only. The constructor (``__init__``) is allowed to
+# seed ``_entries`` from ``initial_timeouts`` because that is operator-
+# provided config, not a runtime mutation.
+#
+# The pipeline never assumes an agent is permanently broken; any agent
+# may become available again for any reason (e.g. user upgrades their
+# plan, infrastructure recovers). The check uses ``if/raise RuntimeError``
+# (NOT ``assert``) so it survives ``python -O`` per AGENTS.md.
+
+_ALLOWED_PUBLIC_MUTATORS: frozenset[str] = frozenset({"mark_unavailable", "reset_backoff"})
+_READONLY_PUBLIC_METHODS: frozenset[str] = frozenset(
+    {
+        "is_available",
+        "earliest_unavailable_wait_ms",
+        "snapshot",
+    }
+)
+_READONLY_PROPERTIES: frozenset[str] = frozenset({"scope"})
+
+
+def _is_property_decorated(member: ast.FunctionDef) -> bool:
+    """Return True when a class member is decorated with ``@property``."""
+    for d in member.decorator_list:
+        if isinstance(d, ast.Name) and d.id == "property":
+            return True
+        if isinstance(d, ast.Attribute) and d.attr == "property":
+            return True
+    return False
+
+
+def _classify_async_function(member: ast.AsyncFunctionDef) -> str:
+    """Classify an async function member (``skip`` or ``unknown``)."""
+    if member.name.startswith("_"):
+        return "skip"
+    return "unknown"
+
+
+def _classify_sync_function(member: ast.FunctionDef) -> str | None:
+    """Classify a sync function member.
+
+    Returns ``None`` for class-level non-method members and one of
+    ``"skip"``, ``"mutator"``, ``"readonly"``, ``"unknown"`` for
+    methods. Properties decorated with ``@property`` follow the
+    read-only allowlist; the other public methods follow the
+    mutator/read-only allowlist.
+    """
+    if member.name.startswith("_"):
+        return "skip"
+    if _is_property_decorated(member):
+        return "readonly" if member.name in _READONLY_PROPERTIES else "unknown"
+    if member.name in _ALLOWED_PUBLIC_MUTATORS:
+        return "mutator"
+    if member.name in _READONLY_PUBLIC_METHODS:
+        return "readonly"
+    return "unknown"
+
+
+def _classify_member(member: ast.AST) -> str | None:
+    """Classify a class member for the no-permanent-skip invariant check.
+
+    Returns:
+        "skip" -- the member is private (underscore-prefixed) and ignored.
+        "mutator" -- a public mutator in the allowlist.
+        "readonly" -- a public read-only method or property in the allowlist.
+        "unknown" -- a public method/property NOT in any allowlist; a
+            contract violation that fails the invariant.
+        None -- the member is not a method (e.g. a class-level constant).
+    """
+    if isinstance(member, ast.AsyncFunctionDef):
+        return _classify_async_function(member)
+    if isinstance(member, ast.FunctionDef):
+        return _classify_sync_function(member)
+    return None
+
+
+def _find_tracker_class_node(tree: ast.Module) -> ast.ClassDef:
+    """Find the ``AgentUnavailabilityTracker`` class in the module AST.
+
+    Raises ``RuntimeError`` with the invariant-violation message when
+    the class is not found. The error path is split from the main
+    invariant function so the class lookup is easy to follow in
+    isolation.
+    """
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "AgentUnavailabilityTracker":
+            return node
+    msg = (
+        "No-permanent-skip invariant violated: AgentUnavailabilityTracker"
+        " class not found in ralph.recovery.agent_unavailability_tracker."
+        " Restore the class definition or update the import-time"
+        " invariant in ralph.recovery.agent_unavailability_tracker."
+    )
+    raise RuntimeError(msg)
+
+
+def _parse_tracker_source(source_path: Path) -> ast.Module:
+    """Parse the tracker source file or raise a RuntimeError.
+
+    Splits the parse step from the invariant function so the
+    ``SyntaxError``-to-``RuntimeError`` translation is one short
+    function call.
+    """
+    source = source_path.read_text(encoding="utf-8")
+    try:
+        return ast.parse(source)
+    except SyntaxError as exc:
+        msg = (
+            "agent_unavailability_tracker.py failed to parse during the"
+            " no-permanent-skip invariant check. The tracker source is"
+            " broken; the no-permanent-skip rule cannot be verified."
+            f" Source: {source_path}. Parser error: {exc}"
+        )
+        raise RuntimeError(msg) from exc
+
+
+def _collect_unknown_public_methods(class_node: ast.ClassDef) -> list[str]:
+    """Return the names of public methods/properties that are not allowlisted."""
+    unknown: list[str] = []
+    for member in class_node.body:
+        kind = _classify_member(member)
+        if kind == "unknown" and isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            unknown.append(member.name)
+    return unknown
+
+
+def _assert_no_permanent_skip_invariant() -> None:
+    """Verify the no-permanent-skip rule on ``AgentUnavailabilityTracker``.
+
+    The check reads the tracker's source file from disk (not a compiled
+    bytecode cache) so it always reflects the current source. The only
+    public methods that may mutate the unavailable set are the two
+    allowed mutators; every other public method on the class must be
+    read-only. Adding a new mutator is a deliberate contract change
+    and must be paired with an update to the import-time invariant
+    and the test in ``tests/recovery/test_two_state_invariant.py``.
+    """
+    source_path = Path(__file__).resolve()
+    tree = _parse_tracker_source(source_path)
+    class_node = _find_tracker_class_node(tree)
+    unknown = _collect_unknown_public_methods(class_node)
+    if unknown:
+        methods = ", ".join(sorted(unknown))
+        msg = (
+            "No-permanent-skip invariant violated: AgentUnavailabilityTracker"
+            f" has public method(s) that are not in the allowlist: {methods}."
+            " The only public mutators on the unavailable set are"
+            " mark_unavailable and reset_backoff. Every other public method"
+            " must be read-only (is_available, earliest_unavailable_wait_ms,"
+            " snapshot) or a read-only property (scope). Adding a new mutator"
+            " is a deliberate contract change; update the import-time"
+            " invariant and the test in"
+            " tests/recovery/test_two_state_invariant.py in the same commit."
+        )
+        raise RuntimeError(msg)
+
+
+_assert_no_permanent_skip_invariant()

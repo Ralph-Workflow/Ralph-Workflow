@@ -257,6 +257,80 @@ stdout-only behavior.
 See `ralph/agents/idle_watchdog/_post_exit_watchdog.py` for the full post-exit transition matrix and
 verdict semantics.
 
+### Watchdog two-state invariant
+
+The recovery controller has exactly two recovery paths. There is no third
+state; a future PR that needs to introduce a new recovery state MUST update
+the import-time invariants below in the same commit. The two MAIN RULES
+(quoted verbatim from the user's prompt) are:
+
+> There are two types of retries: exponential backoff to the next agent, OR
+> retry with the same agent. There is never a state where we skip an agent
+> permanently. All agents are recoverable. We never exit the pipeline because
+> of agent unavailability.
+
+The two MAIN RULES are wired as:
+
+- **Exponential backoff to the next agent** -- driven by
+  `RecoveryController._mark_agent_unavailable` in
+  `ralph/recovery/controller.py`, which calls
+  `AgentUnavailabilityTracker.mark_unavailable` (per-reason
+  `ReasonBackoffPolicy` exponential backoff capped at `max_backoff_ms`).
+  The chain advances to the next available agent; `wrap=True` re-arming
+  in `_next_available_agent_index` reconsiders earlier agents whose
+  cooldown has expired.
+- **Same-agent retry** -- driven by
+  `RecoveryController._apply_chain_retry`, which calls
+  `AgentChain.with_retry_increment` and re-invokes the same agent in
+  place (chain retries is incremented; chain index does not advance).
+
+The invariant is locked at import time in two places:
+
+- `ralph/recovery/controller.py` -- `_assert_two_state_invariant` walks
+  the `RecoveryController` class source via `ast` and asserts the two
+  required methods are present (`_mark_agent_unavailable` and
+  `_apply_chain_retry`). The check uses `if/raise RuntimeError` (NOT
+  `assert`) so it survives `python -O` per AGENTS.md.
+- `ralph/recovery/agent_unavailability_tracker.py` --
+  `_assert_no_permanent_skip_invariant` walks the
+  `AgentUnavailabilityTracker` class source and asserts the only two
+  public mutators on the unavailable set are `mark_unavailable` and
+  `reset_backoff`. Every other public method (`is_available`,
+  `earliest_unavailable_wait_ms`, `snapshot`, `scope`) is read-only.
+  The constructor (`__init__`) is allowed to seed `_entries` from
+  `initial_timeouts` because that is operator-provided config, not a
+  runtime mutation.
+
+The never-exit invariant (the pipeline never exits because of agent
+unavailability) is implemented by the all-agents-unavailable wait
+branch in `RecoveryController._handle_retry_progression`. When every
+agent in a chain is on cooldown, the controller returns the canonical
+3-tuple `(new_state, effects, failure_event)` with
+`is_waiting_state=True`, `last_retry_delay_ms=<earliest_cooldown>`,
+and `effects=[]`. The run loop sleeps on `last_retry_delay_ms` and
+re-enters the same phase; the pipeline never reaches
+`failed_terminal` via this path.
+
+The dumb-kill floor (NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS,
+default 120.0s) prevents the watchdog from killing a recently-launched
+agent that is doing real thinking work (planning, exploration,
+dispatching subagents) but has not yet produced first-party activity
+evidence. The field is `float or None` with `gt=0.0` when set; 0.0 is
+rejected by pydantic and `TimeoutPolicy.__post_init__`. The
+`SESSION_CEILING_EXCEEDED` reason is unaffected by the floor
+(operator-set hard cap). See `ralph/timeout_defaults.py` for the
+constant and `ralph/agents/idle_watchdog/timeout_policy.py` for the
+validator.
+
+**How to evolve.** A future PR that needs to introduce a new recovery
+state MUST update the import-time invariant in
+`ralph/recovery/controller.py` and the test in
+`tests/recovery/test_two_state_invariant.py` in the same commit. The
+pipeline never assumes an agent is permanently broken; any new state
+must be reversible via cooldown expiry or explicit reset, and the new
+state must be added to the canonical 3-tuple return shape of
+`RecoveryController.handle` (per `controller.py:144`).
+
 ## OpenCode session continuation and completion contract
 
 OpenCode is a session-based agent that may spawn child agents or delegate background work. Ralph Workflow

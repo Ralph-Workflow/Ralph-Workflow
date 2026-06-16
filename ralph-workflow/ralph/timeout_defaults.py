@@ -219,6 +219,15 @@ LOG_GROWTH_SECONDS: float | None = 30.0
 #: and stdout has been idle. None disables it.
 NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
 
+#: Default dumb-kill floor: NO_PROGRESS_QUIET cannot fire within the first N seconds
+#: of an agent run. This prevents the watchdog from killing a recently-launched
+#: agent that is doing real thinking work (planning, exploration, dispatching
+#: subagents) but has not yet produced first-party activity evidence. The 120.0s
+#: default matches the OS_DESCENDANT_ONLY_CEILING default. The
+#: SESSION_CEILING_EXCEEDED reason is unaffected (operator-set hard cap).
+#: Set to ``None`` to disable the floor (not recommended).
+NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS: float | None = 120.0
+
 #: Default fast-fire window for the new NO_OUTPUT_AT_START watchdog reason. When
 #: the agent has been alive for this many seconds with zero recorded activity
 #: (no stdout, no tool call, no file change, no subagent output) the watchdog

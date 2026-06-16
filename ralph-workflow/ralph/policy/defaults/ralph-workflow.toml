@@ -54,6 +54,7 @@
 # agent_suspect_waiting_on_child_seconds = 600.0    # suspicion threshold; emits a warning but does not stop the run (<max_waiting_on_child_seconds)
 # agent_idle_no_progress_waiting_on_child_seconds = 600.0  # no-progress ceiling; fires when child alive but not making progress (<=max_waiting_on_child_seconds)
 # agent_os_descendant_only_ceiling_seconds = 120.0  # short ceiling (~120s) for OS-descendant-only case; fires CHILDREN_PERSIST_TOO_LONG in ~120s instead of waiting for the no-progress ceiling. None disables.
+# agent_no_progress_quiet_minimum_invocation_seconds = 120.0  # dumb-kill floor for NO_PROGRESS_QUIET: the watchdog cannot fire this reason within the first N seconds of an agent run, so a recently-launched agent doing real thinking work (planning, exploration, dispatching subagents) but with no first-party evidence yet is not killed. Must be > 0 when set; 0 is rejected. None disables (not recommended). SESSION_CEILING_EXCEEDED is unaffected.
 # agent_os_descendant_only_suspect_seconds = 60.0   # earlier SUSPECTED_FROZEN (~60s) for OS-descendant-only case; fires at min(suspect, this value). None disables.
 # agent_cpu_idle_seconds = 60.0                     # CPU idle probe: known descendant with 0 CPU for this long is reported as CPU_IDLE_WHILE_ALIVE. None disables.
 # agent_log_growth_seconds = 30.0                  # log-growth probe: per-run .agent/raw/{safe_id}.log not grown for this long is reported as LOG_STALE_WHILE_ALIVE. None disables.

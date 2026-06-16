@@ -38,6 +38,7 @@ controller never reaches ``failed_terminal`` via this path.
 
 from __future__ import annotations
 
+import ast
 from dataclasses import replace
 from datetime import UTC, datetime
 from importlib import import_module
@@ -71,6 +72,91 @@ from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 from ralph.recovery.recovery_controller_options import RecoveryControllerOptions
 
 __all__ = ["RecoveryController", "RecoveryControllerOptions", "compute_backoff_ms"]
+
+
+# ---------------------------------------------------------------------------
+# Two-state invariant (locked at import time)
+# ---------------------------------------------------------------------------
+#
+# There are two types of retries: exponential backoff to the next agent, OR
+# retry with the same agent. There is NEVER a state where we skip an agent
+# permanently. All agents are recoverable. We never exit the pipeline because
+# of agent unavailability.
+#
+# This invariant is enforced at module import time by walking the
+# ``RecoveryController`` class source via ``ast`` and asserting that the
+# two recovery paths are still wired. The check uses ``if/raise RuntimeError``
+# (NOT ``assert``) so the invariant survives ``python -O`` per AGENTS.md.
+# A future PR that needs to introduce a new recovery state MUST update this
+# check and the test in ``tests/recovery/test_two_state_invariant.py`` in the
+# same commit.
+
+_REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
+    {"_mark_agent_unavailable", "_apply_chain_retry"}
+)
+
+
+def _assert_two_state_invariant() -> None:
+    """Verify the two-state recovery invariant is wired into ``RecoveryController``.
+
+    The check reads the controller's source file from disk (not a compiled
+    bytecode cache) so it always reflects the current source. The only
+    methods required to be present on ``RecoveryController`` are the two
+    that correspond to the two MAIN RULES:
+
+      1. ``_mark_agent_unavailable`` -- exponential backoff to the next
+         agent via ``AgentUnavailabilityTracker.mark_unavailable``.
+      2. ``_apply_chain_retry`` -- same-agent retry via
+         ``AgentChain.with_retry_increment``.
+
+    Any future addition to this set MUST be paired with an update to the
+    import-time invariant and the test in
+    ``tests/recovery/test_two_state_invariant.py`` so the locked contract
+    is always in sync with the production code.
+    """
+    source_path = Path(__file__).resolve()
+    source = source_path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        msg = (
+            "recovery/controller.py failed to parse during the two-state"
+            " invariant check. The controller source is broken; the two-state"
+            f" recovery invariant cannot be verified. Source: {source_path}."
+            f" Parser error: {exc}"
+        )
+        raise RuntimeError(msg) from exc
+    class_node: ast.ClassDef | None = None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "RecoveryController":
+            class_node = node
+            break
+    if class_node is None:
+        msg = (
+            "Two-state invariant violated: RecoveryController class not found"
+            " in ralph.recovery.controller. The two-state recovery invariant"
+            " requires a single RecoveryController class to own the two"
+            " recovery paths. Restore the class definition or update the"
+            " import-time invariant in ralph.recovery.controller."
+        )
+        raise RuntimeError(msg)
+    method_names = {m.name for m in class_node.body if isinstance(m, ast.FunctionDef)}
+    missing = _REQUIRED_TWO_STATE_METHODS - method_names
+    if missing:
+        missing_list = ", ".join(sorted(missing))
+        msg = (
+            "Two-state recovery invariant violated: RecoveryController is missing"
+            f" required method(s): {missing_list}. The two MAIN RULES require"
+            " exactly two recovery paths: (1) exponential backoff to the next"
+            " agent via _mark_agent_unavailable, and (2) same-agent retry via"
+            " _apply_chain_retry. Restore the missing method(s) or update the"
+            " import-time invariant in ralph.recovery.controller and the test"
+            " in tests/recovery/test_two_state_invariant.py in the same commit."
+        )
+        raise RuntimeError(msg)
+
+
+_assert_two_state_invariant()
 
 if TYPE_CHECKING:
     from collections.abc import Callable

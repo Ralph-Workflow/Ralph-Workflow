@@ -32,6 +32,7 @@ def test_watchdog_fires_no_progress_quiet_on_prompt_signature() -> None:
         max_waiting_on_child_seconds=600.0,
         max_waiting_on_child_no_progress_seconds=600.0,
         no_progress_quiet_seconds=10.0,
+        no_progress_quiet_minimum_invocation_seconds=10.0,
         suspect_waiting_on_child_seconds=None,
     )
 
@@ -70,6 +71,7 @@ def test_watchdog_does_not_fire_no_progress_quiet_when_post_tool_result_fresh() 
         max_waiting_on_child_seconds=600.0,
         max_waiting_on_child_no_progress_seconds=600.0,
         no_progress_quiet_seconds=10.0,
+        no_progress_quiet_minimum_invocation_seconds=10.0,
         activity_evidence_ttl_seconds=30.0,
         suspect_waiting_on_child_seconds=None,
     )
@@ -109,6 +111,7 @@ def test_no_progress_quiet_diagnostic_payload_contains_required_fields() -> None
         max_waiting_on_child_seconds=600.0,
         max_waiting_on_child_no_progress_seconds=600.0,
         no_progress_quiet_seconds=10.0,
+        no_progress_quiet_minimum_invocation_seconds=10.0,
         activity_evidence_ttl_seconds=30.0,
         suspect_waiting_on_child_seconds=None,
     )

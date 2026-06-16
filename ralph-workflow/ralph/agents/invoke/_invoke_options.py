@@ -41,6 +41,7 @@ class InvokeOptions:
     child_exit_reconcile_seconds: float | None = None
     max_waiting_on_child_no_progress_seconds: float | None = None
     no_progress_quiet_seconds: float | None = None
+    no_progress_quiet_minimum_invocation_seconds: float | None = None
     post_tool_result_progression_seconds: float | None = None
     repeated_error_consecutive_threshold: int | None = None
     repeated_error_window_count: int | None = None
