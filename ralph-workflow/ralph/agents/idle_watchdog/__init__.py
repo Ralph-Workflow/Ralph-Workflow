@@ -16,6 +16,7 @@ DESCENDANT_HANG. See ralph.agents.post_exit_watchdog for the post-exit family.
 
 from ralph.process.child_liveness import AliveBy
 
+from ._stuck_classifier import StuckKind, classify_stuck
 from .corroboration_snapshot import (
     ChannelEvidenceSummary,
     CorroborationSnapshot,
@@ -33,6 +34,7 @@ __all__ = [
     "ChannelEvidenceSummary",
     "CorroborationSnapshot",
     "IdleWatchdog",
+    "StuckKind",
     "TimeoutPolicy",
     "WaitingCorroborator",
     "WaitingStatusEvent",
@@ -40,4 +42,5 @@ __all__ = [
     "WaitingStatusListener",
     "WatchdogFireReason",
     "WatchdogVerdict",
+    "classify_stuck",
 ]

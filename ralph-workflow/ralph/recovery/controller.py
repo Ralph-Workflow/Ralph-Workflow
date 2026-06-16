@@ -1,4 +1,40 @@
-"""RecoveryController: single owner of failure classification, budget, and fallover."""
+"""RecoveryController: single owner of failure classification, budget, and fallover.
+
+Never-Exit Invariant
+--------------------
+
+The recovery controller is the second half of the recovery contract
+documented in ``ralph.agents.idle_watchdog``. The pipeline NEVER exits
+because of agent unavailability. This is enforced by the
+all-agents-unavailable wait branch (in
+``_handle_retry_progression``) and the ``wrap=True`` re-arming in
+``_next_available_agent_index``:
+
+  - **All-agents-unavailable wait branch**: when every agent in the
+    chain is on cooldown, the controller returns
+    ``state.copy_with(last_retry_delay_ms=<earliest cooldown>,
+    is_waiting_state=True)`` and does NOT call
+    ``_enter_phase_failed``. The run loop sleeps on
+    ``last_retry_delay_ms`` and re-enters the same phase. The
+    ``is_waiting_state`` flag is the structured contract the run
+    loop keys off; ``last_error`` text is operator-readable context
+    only and is not parsed by the run loop.
+
+  - **wrap=True re-arming**: when the chain advances, the
+    ``_next_available_agent_index`` search is cyclic. Earlier agents
+    whose cooldown has expired are reconsidered; the recovered
+    agent is selected for the next attempt (it is not the agent
+    that was on cooldown longest).
+
+The pipeline has exactly two recovery states: exponential backoff to
+the next agent (``AgentUnavailabilityTracker.mark_unavailable``) and
+retry with the same agent (``AgentChain.record_retry``). The
+all-agents-unavailable wait branch is a third observable effect
+(``is_waiting_state=True``) but it is NOT a third state -- it is a
+transient holding pattern that the run loop interprets as
+"continue the same phase after the cooldown expires". The
+controller never reaches ``failed_terminal`` via this path.
+"""
 
 from __future__ import annotations
 

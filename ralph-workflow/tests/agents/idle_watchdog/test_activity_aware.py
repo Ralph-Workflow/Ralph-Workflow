@@ -201,8 +201,16 @@ def test_side_channel_workspace_source_defers_log_does_not() -> None:
     assert wd2.evaluate(classify_quiet=_active) == WatchdogVerdict.FIRE
 
 
-def test_bare_subagent_liveness_does_not_defer() -> None:
-    """AC-3: bare PID liveness does not reset the child-wait clock."""
+def test_bare_subagent_liveness_defers_fire() -> None:
+    """AC-02 (smart-verdict): bare PID liveness defers the fire.
+
+    The new design treats a live subagent without first-party evidence
+    as the LOADING stuck kind: the classifier returns LOADING and the
+    gate returns CONTINUE so a productive-but-quiet session is not
+    killed. This replaces the OLD behavior where bare liveness was
+    ignored and the watchdog fired at the cumulative child-wait
+    ceiling regardless of whether the child was making progress.
+    """
     monitor = FakeProcessMonitor(live_count=1)
     wd, clock = _make_watchdog(
         _make_policy(activity_ttl=1000.0),
@@ -212,7 +220,7 @@ def test_bare_subagent_liveness_does_not_defer() -> None:
     clock.advance(1.0)
 
     verdict = wd.evaluate(classify_quiet=_active)
-    assert verdict == WatchdogVerdict.FIRE
+    assert verdict == WatchdogVerdict.CONTINUE
 
 
 def test_session_ceiling_unaffected_by_first_party_activity() -> None:
@@ -228,11 +236,23 @@ def test_session_ceiling_unaffected_by_first_party_activity() -> None:
 
 
 def test_cumulative_waiting_ceiling_unaffected_by_activity() -> None:
-    """AC-13: cumulative waiting ceiling fires despite first-party activity."""
-    wd, clock = _make_watchdog(_make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0))
+    """AC-13: cumulative waiting ceiling fires despite first-party activity.
+
+    CHILDREN_PERSIST_TOO_LONG is treated as an absolute reason (like
+    SESSION_CEILING_EXCEEDED) -- both are operator-set hard caps, not
+    stuck-detection signals, and both bypass the smart-verdict gate.
+    A live subagent whose cumulative wait time has exceeded the
+    configured ceiling must be killed regardless of first-party
+    activity, because the cumulative wait is a wall-clock budget,
+    not a productivity signal.
+    """
+    wd, clock = _make_watchdog(
+        _make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0)
+    )
     wd.record_activity()
     clock.advance(0.1)
 
+    verdict = WatchdogVerdict.CONTINUE
     for _ in range(30):
         verdict = wd.evaluate(classify_quiet=_waiting)
         if verdict == WatchdogVerdict.FIRE:

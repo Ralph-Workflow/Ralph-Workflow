@@ -83,6 +83,9 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("run_loop", "PLC0415"),
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
+    ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators
+    ("idle_watchdog", "PLR0915"),  # _handle_waiting_branch orchestrates 5 reasons
+    ("_stuck_classifier", "PLR0911"),  # 7 distinct StuckKind outcomes
     ("heartbeat", "PLC0415"),
     ("canonical_submit", "PLC0415"),  # lazy import avoids cycle with tools.artifact
     ("artifact", "PLC0415"),  # lazy import avoids cycle with canonical_submit
@@ -160,7 +163,9 @@ _TEST_NOQA_EXEMPT_STEMS: frozenset[str] = frozenset(
 # Acceptable noqa codes — any code NOT in this set requires an allowlist entry.
 # Currently only complexity and global-state codes are acceptable when used
 # with a documented reason in the allowlist.
-_ACCEPTABLE_NOQA_CODES: frozenset[str] = frozenset({"PLR0911", "PLR0912", "PLW0603"})
+_ACCEPTABLE_NOQA_CODES: frozenset[str] = frozenset(
+    {"PLR0911", "PLR0912", "PLR0915", "PLW0603"}
+)
 
 
 class LintBypassViolation:

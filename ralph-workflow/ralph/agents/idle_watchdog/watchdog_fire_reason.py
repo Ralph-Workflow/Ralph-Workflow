@@ -22,3 +22,11 @@ class WatchdogFireReason(StrEnum):
     SESSION_CEILING_EXCEEDED = "session_ceiling_exceeded"
     PROCESS_EXIT_HANG = "process_exit_hang"
     DESCENDANT_HANG = "descendant_hang"
+    # Diagnostic-only reason. The watchdog NEVER produces FIRE for this
+    # reason; it is the StuckKind that the classifier returned when a
+    # candidate fire was deferred. Surfaced on the watchdog's
+    # last_fire_reason property for post-mortem diagnostics so an
+    # operator can see WHY a would-be fire was deferred. The
+    # import-time assertion in idle_watchdog.py locks the enum set so a
+    # future PR cannot silently add or remove a reason.
+    DEFERRED_BY_STUCK_CLASSIFIER = "deferred_by_stuck_classifier"

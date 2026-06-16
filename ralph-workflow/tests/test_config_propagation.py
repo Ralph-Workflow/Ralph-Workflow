@@ -182,7 +182,7 @@ def test_activity_evidence_ttl_zero_disables_feature() -> None:
 # OS-descendant-only and probe propagation
 # ---------------------------------------------------------------------------
 
-_OS_DESCENDANT_ONLY_CEILING = 120.0
+_OS_DESCENDANT_ONLY_CEILING = 300.0
 _OS_DESCENDANT_ONLY_SUSPECT = 60.0
 _CPU_IDLE = 60.0
 _LOG_GROWTH = 30.0

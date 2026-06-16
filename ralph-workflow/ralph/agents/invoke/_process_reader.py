@@ -115,6 +115,8 @@ class _ProcessLineReader:
         self._waiting_listener = ctx.waiting_listener
         self._pre_output_listener = ctx.pre_output_listener
         self._monitor = ctx.monitor
+        self._connectivity_state_provider = ctx.connectivity_state_provider
+        self._is_waiting_state_provider = ctx.is_waiting_state_provider
         self._clock = clock
         self._workspace_path = ctx.workspace_path
         self._lines_queue: list[str] = []
@@ -455,7 +457,10 @@ class _ProcessLineReader:
             listener=self._on_waiting_event,
             corroborator=self._corroborate,
             process_monitor=process_monitor,
+            connectivity_state_provider=self._connectivity_state_provider,
         )
+        if self._is_waiting_state_provider is not None:
+            watchdog.set_is_waiting_state(self._is_waiting_state_provider())
         watchdog.record_invocation_start()
 
         sink_token, subagent_token = self._bind_watchdog_monitors_and_sinks(watchdog)

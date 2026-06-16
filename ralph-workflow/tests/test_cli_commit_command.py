@@ -154,7 +154,8 @@ def test_build_invoke_options_from_config_maps_all_timeout_fields() -> None:
         agent_max_session_seconds=7200.0,
         agent_waiting_status_interval_seconds=60.0,
         agent_suspect_waiting_on_child_seconds=300.0,
-        agent_idle_no_progress_waiting_on_child_seconds=120.0,
+        agent_idle_no_progress_waiting_on_child_seconds=600.0,
+        agent_os_descendant_only_ceiling_seconds=300.0,
         agent_child_progress_ttl_seconds=30.0,
         agent_child_heartbeat_ttl_seconds=8.0,
         agent_child_stale_label_ttl_seconds=5.0,
@@ -190,7 +191,8 @@ def test_commit_invocation_passes_full_timeout_bundle(tmp_path: Path) -> None:
 
     general_config = GeneralConfig(
         agent_idle_timeout_seconds=99.0,
-        agent_idle_no_progress_waiting_on_child_seconds=200.0,
+        agent_idle_no_progress_waiting_on_child_seconds=600.0,
+        agent_os_descendant_only_ceiling_seconds=200.0,
     )
     attempt_context = CommitAttemptContext(
         repo_root=tmp_path,

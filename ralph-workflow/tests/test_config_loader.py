@@ -410,7 +410,7 @@ def test_load_config_child_progress_ttl_roundtrips(
 # OS-descendant-only and probe config knobs
 # ---------------------------------------------------------------------------
 
-_OS_DESCENDANT_ONLY_CEILING = 120.0
+_OS_DESCENDANT_ONLY_CEILING = 300.0
 _OS_DESCENDANT_ONLY_SUSPECT = 60.0
 _CPU_IDLE = 60.0
 _LOG_GROWTH = 30.0

@@ -35,6 +35,8 @@ class _ProcessReaderCtx:
     monitor: WorkspaceMonitor | None = None
     expected_session_id: str | None = None
     workspace_path: Path | None = None
+    connectivity_state_provider: Callable[[], str | None] | None = None
+    is_waiting_state_provider: Callable[[], bool] | None = None
 
 
 __all__ = [

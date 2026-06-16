@@ -175,11 +175,20 @@ MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS: float | None = 600.0
 #: Short ceiling on cumulative WAITING_ON_CHILD time when the only evidence of a
 #: running child is its OS-process-tree existence (alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS
 #: with no scoped child evidence and no first-party evidence channels active). Fires
-#: CHILDREN_PERSIST_TOO_LONG in ~120s instead of waiting for the 600s no-progress
-#: ceiling. A wedged-but-alive opencode subprocess produces 540s+ of PROGRESS events
-#: with zero observable progress signals; this ceiling detects that pattern in ~120s.
-#: Set to ``None`` to disable the override and fall back to the no-progress ceiling.
-OS_DESCENDANT_ONLY_CEILING_SECONDS: float | None = 120.0
+#: CHILDREN_PERSIST_TOO_LONG in ~300s instead of waiting for the 600s no-progress
+#: ceiling. The 300s default tolerates the typical 95th-percentile sub-step latency
+#: (file reads, MCP startup, model load, multi-step tool calls) so the ceiling does
+#: not fire while the agent is genuinely making forward progress; a wedged-but-alive
+#: opencode subprocess with zero observable progress signals is still detected well
+#: before the 600s no-progress ceiling. The previous 120s default produced the
+#: 'dumb-kill' regression documented in wt-012 where the watchdog fired at
+#: cumulative=159s, idle_elapsed=120s while the agent was reading
+#: ``.agent/CURRENT_PROMPT.md`` (a legitimate sub-step well below 120s of work).
+#: The smart-verdict gate in the watchdog (StuckClassifier) further protects against
+#: premature fires by deferring the verdict while any first-party channel is fresh
+#: or while the agent is in a waiting state. Set to ``None`` to disable the override
+#: and fall back to the no-progress ceiling.
+OS_DESCENDANT_ONLY_CEILING_SECONDS: float | None = 300.0
 
 #: Earlier SUSPECTED_FROZEN threshold when alive_by is OS_DESCENDANT_ONLY_STALE_PROGRESS.
 #: The watchdog fires the suspect event at min(suspect_waiting_on_child_seconds,

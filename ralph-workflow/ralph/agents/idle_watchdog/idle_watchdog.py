@@ -1,4 +1,77 @@
-"""Idle watchdog for detecting stalled agents."""
+"""Idle watchdog for detecting stalled agents.
+
+Two-State Invariant
+-------------------
+
+The watchdog is one half of the recovery contract; the recovery
+controller is the other. The pipeline can only enter TWO recovery
+states; no third state is allowed:
+
+  1. **Exponential backoff to the next agent** -- driven by
+     ``AgentUnavailabilityTracker.mark_unavailable`` in
+     ``ralph/recovery/agent_unavailability_tracker.py``. The current
+     agent is marked unavailable for a per-reason backoff; the chain
+     advances to the next agent whose cooldown has expired. The
+     ``wrap=True`` re-arming in
+     ``RecoveryController._next_available_agent_index`` reconsiders
+     earlier agents whose cooldown has expired.
+
+  2. **Retry with the same agent** -- driven by
+     ``AgentChain.record_retry``. The same agent is retried in-place
+     (chain.retries is incremented; the budget is debited but the
+     chain index does not advance).
+
+The watchdog contributes to state (1) only indirectly: when the
+watchdog fires and the controller classifies the failure as
+unavailable, the tracker applies the per-reason backoff. The
+watchdog contributes to state (2) when it fires and the controller
+classifies the failure as retryable.
+
+Hard rules
+----------
+
+  - The watchdog NEVER calls ``sys.exit``, ``os._exit``, or
+    ``raise SystemExit``. The run loop owns the exit decision.
+  - The watchdog NEVER marks an agent as permanently unavailable.
+    Every fire reason is transient; the cooldown math is owned by
+    ``AgentUnavailabilityTracker`` and the only way for an agent to
+    leave the unavailable set is for the cooldown to expire.
+  - Every non-absolute fire is gated by the ``StuckClassifier``
+    (``_stuck_classifier.py``) returning ``StuckKind.STUCK``. The
+    absolute ``SESSION_CEILING_EXCEEDED`` reason bypasses the gate
+    (it is an operator-set hard cap, not a stuck-detection
+    signal). The other fire reasons all defer while a first-party
+    channel is fresh, while connectivity is offline, or while the
+    pipeline is in a wait state.
+  - The watchdog is the sole owner of in-stream fire decisions;
+    ``PostExitWatchdog`` is the sole owner of post-exit fire
+    decisions. The import-time assertion on
+    ``WatchdogFireReason.__members__`` (below) locks the enum set
+    so a future PR cannot silently widen or narrow the fire set
+    without updating the watchdog owner.
+
+Channel freshness gate
+----------------------
+
+The ``evaluate()`` method consults a per-channel evidence summary
+before returning ``WatchdogVerdict.FIRE``. A fire is deferred
+(``WatchdogVerdict.CONTINUE``) when any of the following are true:
+
+  - ``state.is_waiting_state`` is True (the pipeline has already
+    committed to a wait -- this is the strongest signal and is
+    checked first).
+  - The connectivity monitor reports ``offline``.
+  - A first-party channel (``mcp_tool`` or ``subagent_output``) is
+    fresher than ``activity_evidence_ttl_seconds``.
+  - The subagent-liveness side-channel is fresh.
+  - The ``classify_quiet`` strategy returns ``WAITING_ON_CHILD`` or
+    ``RESUMABLE_CONTINUE``.
+
+The classifier is a deterministic 6-kind enum (THINKING, LOADING,
+WAITING_ON_CONNECTIVITY, TRANSITIONING, STUCK, DUPLICATE_KILL) and
+is a pure function of its inputs. See ``_stuck_classifier.py`` for
+the full contract.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +89,7 @@ from ralph.agents.idle_watchdog._evidence_tier import (
     EvidenceSummary,
     EvidenceTier,
 )
+from ralph.agents.idle_watchdog._stuck_classifier import StuckKind, classify_stuck
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.process.child_liveness import AliveBy
 
@@ -36,6 +110,40 @@ if TYPE_CHECKING:
     from ralph.process.monitor import ProcessMonitor, SubagentOutputCapture
 
     from .timeout_policy import TimeoutPolicy
+
+
+# Lock the WatchdogFireReason enum set. IdleWatchdog is the sole owner of
+# in-stream fire decisions; PostExitWatchdog is the sole owner of post-exit
+# fire decisions. Any future addition (or removal) of a reason requires
+# updating this assertion AND the watchdog owner's classification logic
+# so a future PR cannot silently widen (or narrow) the fire set.
+_EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
+    {
+        WatchdogFireReason.NO_OUTPUT_DEADLINE.value,
+        WatchdogFireReason.NO_OUTPUT_AT_START.value,
+        WatchdogFireReason.STALLED_AFTER_TOOL_RESULT.value,
+        WatchdogFireReason.REPEATED_ERROR_LOOP.value,
+        WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG.value,
+        WatchdogFireReason.NO_PROGRESS_QUIET.value,
+        WatchdogFireReason.SESSION_CEILING_EXCEEDED.value,
+        WatchdogFireReason.PROCESS_EXIT_HANG.value,
+        WatchdogFireReason.DESCENDANT_HANG.value,
+        WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER.value,
+    }
+)
+_actual = frozenset(member.value for member in WatchdogFireReason.__members__.values())
+if _actual != _EXPECTED_FIRE_REASONS:
+    missing = _EXPECTED_FIRE_REASONS - _actual
+    extra = _actual - _EXPECTED_FIRE_REASONS
+    msg = (
+        "WatchdogFireReason.__members__ drifted from the IdleWatchdog owner's"
+        " allowlist. The watchdog owner is the single source of truth for"
+        " fire decisions. Missing:"
+        f" {sorted(missing)}; extra: {sorted(extra)}."
+        " Update BOTH this assertion AND the watchdog owner's classification"
+        " logic so the fire decision is consistent with the new enum set."
+    )
+    raise RuntimeError(msg)
 
 
 @dataclass
@@ -148,6 +256,27 @@ class IdleWatchdog:
     # can see WHICH kinds were most active at the moment of a fire.
     # The workspace_kind_counts property returns a defensive copy.
     _workspace_kind_counts: dict[str, int] = field(default_factory=dict, init=False)
+    # Smart-verdict gate state. The watchdog consults the StuckClassifier
+    # before every non-absolute fire; the classifier returns one of six
+    # kinds and the gate returns CONTINUE for any non-STUCK kind so a
+    # productive session that does not look productive is not killed.
+    # The two state fields below are the inputs the classifier needs
+    # from the run-loop / connectivity monitor (the watchdog does not
+    # own these signals itself):
+    #   - is_waiting_state: True when the pipeline has already entered a
+    #     wait state (the run loop will sleep and re-enter the phase).
+    #     The classifier returns DUPLICATE_KILL when this is True so a
+    #     second FIRE during a wait is impossible.
+    #   - connectivity_state_provider: optional callable returning the
+    #     current connectivity state label ("online" / "offline" /
+    #     "unknown" / "degraded"). When "offline" the classifier returns
+    #     WAITING_ON_CONNECTIVITY and the gate defers the fire. The
+    #     callable is optional so the watchdog is constructible in tests
+    #     without a real ConnectivityMonitor.
+    _is_waiting_state: bool = field(default=False, init=False)
+    _connectivity_state_provider: Callable[[], str | None] | None = field(
+        default=None, init=False
+    )
 
     def __init__(
         self,
@@ -157,12 +286,14 @@ class IdleWatchdog:
         *,
         corroborator: WaitingCorroborator | None = None,
         process_monitor: ProcessMonitor | None = None,
+        connectivity_state_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._config = config
         self._clock = clock
         self._listener = listener
         self._corroborator = corroborator
         self._process_monitor = process_monitor
+        self._connectivity_state_provider = connectivity_state_provider
         now = clock.monotonic()
         self._last_activity = now
         self._session_started_at = now
@@ -197,6 +328,7 @@ class IdleWatchdog:
             window_seconds=config.repeated_error_window_seconds,
         )
         self._last_progress_fingerprint: str | None = None
+        self._is_waiting_state = False
         self._log = logger.bind(component="idle_watchdog")
 
     @property
@@ -215,6 +347,124 @@ class IdleWatchdog:
         self._invocation_started_at = now
         self._last_meaningful_output_at = now
         self._has_meaningful_output = False
+
+    def set_is_waiting_state(self, is_waiting_state: bool) -> None:
+        """Update the pipeline's wait-state flag for the StuckClassifier gate.
+
+        The run loop calls this once per phase iteration with the live
+        ``state.is_waiting_state`` value. The watchdog does not own this
+        state; it only mirrors it so the classifier can return
+        DUPLICATE_KILL when a candidate fire would land during a wait.
+        """
+        self._is_waiting_state = is_waiting_state
+
+    def set_connectivity_state_provider(
+        self,
+        provider: Callable[[], str | None] | None,
+    ) -> None:
+        """Inject a callable returning the current connectivity state label.
+
+        The watchdog does not own connectivity; it only mirrors the live
+        state so the classifier can return WAITING_ON_CONNECTIVITY when
+        the network is offline. None disables the connectivity branch
+        of the classifier (returns None for the connectivity_state
+        input, which the classifier treats as "online" - the gate does
+        not defer on the connectivity branch).
+        """
+        self._connectivity_state_provider = provider
+
+    def _current_connectivity_state(self) -> str | None:
+        """Return the current connectivity state label, or None.
+
+        Calls the injected provider if available; otherwise returns None
+        (the classifier treats None as "online" / no deferral).
+        """
+        if self._connectivity_state_provider is None:
+            return None
+        try:
+            return self._connectivity_state_provider()
+        except Exception:
+            self._log.debug("idle watchdog: connectivity provider raised (suppressed)")
+            return None
+
+    def _classify_stuck_now(
+        self,
+        *,
+        now: float,
+        idle_elapsed: float,
+    ) -> StuckKind:
+        """Build the classifier inputs from the watchdog's own state and return the kind.
+
+        This is a thin wrapper that calls the pure ``classify_stuck``
+        function with the watchdog's own per-channel evidence summary,
+        the cached is_waiting_state, the live connectivity state, and
+        the configured TTL. The watchdog already owns the per-channel
+        evidence and the classify_quiet strategy is plumbed by the
+        caller (read_lines) into ``evaluate()``; here we use a noop
+        stub for classify_quiet because the classifier's WAITING_ON_CHILD
+        branch is already covered by the side-channel liveness signal
+        the watchdog has recorded.
+
+        The function is intentionally side-effect free: it does not
+        update any watchdog state, does not log, and does not mutate
+        the fire reason. The gate is the side-effect boundary.
+        """
+        summary = self.last_evidence_summary(now)
+        connectivity = self._current_connectivity_state()
+
+        def _noop_classify_quiet() -> AgentExecutionState:
+            return AgentExecutionState.ACTIVE
+
+        return classify_stuck(
+            is_waiting_state=self._is_waiting_state,
+            connectivity_state=connectivity,
+            evidence_summary=summary,
+            classify_quiet=_noop_classify_quiet,
+            activity_evidence_ttl_seconds=self._config.activity_evidence_ttl_seconds,
+        )
+
+    def _gate_fire(
+        self,
+        fire_reason: WatchdogFireReason,
+        *,
+        now: float,
+        idle_elapsed: float,
+    ) -> WatchdogVerdict:
+        """Smart-verdict gate: defer non-absolute fires the classifier names non-STUCK.
+
+        The absolute SESSION_CEILING_EXCEEDED and CHILDREN_PERSIST_TOO_LONG
+        reasons bypass the gate -- both are operator-set hard caps
+        (session wall-clock and cumulative WAITING_ON_CHILD ceiling
+        respectively), not stuck-detection signals. Every other
+        reason is gated: the watchdog consults classify_stuck and
+        returns CONTINUE (with a debug log naming the kind) for any
+        non-STUCK kind.
+
+        The helper returns the final verdict the caller should use:
+        FIRE for an allowed fire, CONTINUE for a deferred fire. The
+        helper is the single boundary between the fire-decision helpers
+        and the verdict-returning logic; the helpers that compute a
+        candidate fire (e.g. _handle_waiting_branch,
+        _post_tool_result_stalled, _evaluate_no_progress_quiet,
+        _evaluate_no_output_at_start) call this helper to decide
+        whether the fire is actually allowed.
+        """
+        if fire_reason in {
+            WatchdogFireReason.SESSION_CEILING_EXCEEDED,
+            WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+        }:
+            return WatchdogVerdict.FIRE
+        kind = self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed)
+        if kind == StuckKind.STUCK:
+            return WatchdogVerdict.FIRE
+        self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+        self._log.debug(
+            "idle watchdog: deferred fire reason={} kind={} idle_elapsed={}s",
+            fire_reason,
+            kind,
+            round(idle_elapsed, 1),
+        )
+        return WatchdogVerdict.CONTINUE
 
     @property
     def invocation_elapsed_seconds(self) -> float:
@@ -247,6 +497,12 @@ class IdleWatchdog:
         corroboration = self._safe_corroborate()
         if not self._is_no_progress_quiet(now, corroboration):
             return None
+
+        gate_verdict = self._gate_fire(
+            WatchdogFireReason.NO_PROGRESS_QUIET, now=now, idle_elapsed=idle_elapsed
+        )
+        if gate_verdict == WatchdogVerdict.CONTINUE:
+            return WatchdogVerdict.CONTINUE
 
         self._last_fire_reason = WatchdogFireReason.NO_PROGRESS_QUIET
         diag: dict[str, object] = {
@@ -309,6 +565,12 @@ class IdleWatchdog:
             return None
         if self._channel_evidence_active(now):
             return None
+
+        gate_verdict = self._gate_fire(
+            WatchdogFireReason.NO_OUTPUT_AT_START, now=now, idle_elapsed=idle_elapsed
+        )
+        if gate_verdict == WatchdogVerdict.CONTINUE:
+            return WatchdogVerdict.CONTINUE
 
         self._last_fire_reason = WatchdogFireReason.NO_OUTPUT_AT_START
         diag: dict[str, object] = {
@@ -999,7 +1261,7 @@ class IdleWatchdog:
         except Exception:
             self._log.debug("idle watchdog: listener raised (suppressed)")
 
-    def evaluate(
+    def evaluate(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distinct verdict path
         self,
         *,
         classify_quiet: Callable[[], AgentExecutionState],
@@ -1035,18 +1297,27 @@ class IdleWatchdog:
             fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
         if fire_reason is not None:
             idle_elapsed = now - self._last_activity
-            self._emit_fire_log(
-                fire_reason,
-                now=now,
-                idle_elapsed=idle_elapsed,
-                message_suffix=(
-                    f" session_elapsed={round(now - self._session_started_at, 1)}s"
-                    if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
-                    else ""
-                ),
+            # Smart-verdict gate: SESSION_CEILING_EXCEEDED is the only
+            # absolute reason and bypasses the gate. REPEATED_ERROR_LOOP
+            # is gated because a wedged retry loop is a stuck-detection
+            # signal, not an operator-set hard cap.
+            gate_verdict = self._gate_fire(
+                fire_reason, now=now, idle_elapsed=idle_elapsed
             )
-            self._last_fire_reason = fire_reason
-            return WatchdogVerdict.FIRE
+            if gate_verdict == WatchdogVerdict.FIRE:
+                self._emit_fire_log(
+                    fire_reason,
+                    now=now,
+                    idle_elapsed=idle_elapsed,
+                    message_suffix=(
+                        f" session_elapsed={round(now - self._session_started_at, 1)}s"
+                        if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+                        else ""
+                    ),
+                )
+                self._last_fire_reason = fire_reason
+                return WatchdogVerdict.FIRE
+            return WatchdogVerdict.CONTINUE
 
         idle_elapsed = now - self._last_activity
         quiet_state = classify_quiet()
@@ -1113,17 +1384,40 @@ class IdleWatchdog:
         )
         return WatchdogVerdict.CONTINUE
 
-    def _post_tool_result_stalled(self, now: float, idle_elapsed: float) -> bool:
-        """Return True when post-tool-result progression has stalled long enough to fire."""
+    def _post_tool_result_stalled(
+        self, now: float, idle_elapsed: float
+    ) -> WatchdogVerdict | None:
+        """Return the verdict when post-tool-result progression has stalled long enough.
+
+        Returns ``None`` when the post-tool-result stall check is not
+        applicable (no tool result, not awaiting progression, or the
+        stall window has not yet elapsed). Returns ``WatchdogVerdict.FIRE``
+        when the stall has been confirmed and the gate allowed the fire.
+        Returns ``WatchdogVerdict.CONTINUE`` when the stall has been
+        confirmed but the StuckClassifier gate deferred the fire (e.g.
+        the agent is in a waiting state, the network is offline, or a
+        first-party channel is fresh).
+
+        The gate is consulted BEFORE the fire reason is set and BEFORE
+        the log is emitted so a deferred fire leaves no diagnostic trace
+        that suggests an actual fire.
+        """
         if (
             self._config.post_tool_result_progression_seconds is None
             or not self._awaiting_post_tool_result_progression
             or self._last_tool_result_at is None
         ):
-            return False
+            return None
         since_tool_result = now - self._last_tool_result_at
         if since_tool_result < self._config.post_tool_result_progression_seconds:
-            return False
+            return None
+        gate_verdict = self._gate_fire(
+            WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
+            now=now,
+            idle_elapsed=idle_elapsed,
+        )
+        if gate_verdict == WatchdogVerdict.CONTINUE:
+            return WatchdogVerdict.CONTINUE
         self._last_fire_reason = WatchdogFireReason.STALLED_AFTER_TOOL_RESULT
         self._emit_fire_log(
             WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
@@ -1131,7 +1425,7 @@ class IdleWatchdog:
             idle_elapsed=idle_elapsed,
             message_suffix=f" since_tool_result={round(since_tool_result, 1)}s",
         )
-        return True
+        return WatchdogVerdict.FIRE
 
     def _handle_drain_window(
         self,
@@ -1166,6 +1460,11 @@ class IdleWatchdog:
             return WatchdogVerdict.CONTINUE
 
         idle_elapsed = now - self._last_activity
+        gate_verdict = self._gate_fire(
+            WatchdogFireReason.NO_OUTPUT_DEADLINE, now=now, idle_elapsed=idle_elapsed
+        )
+        if gate_verdict == WatchdogVerdict.CONTINUE:
+            return WatchdogVerdict.CONTINUE
         self._last_fire_reason = WatchdogFireReason.NO_OUTPUT_DEADLINE
         self._emit_fire_log(
             WatchdogFireReason.NO_OUTPUT_DEADLINE,
@@ -1253,7 +1552,7 @@ class IdleWatchdog:
             return eff, "os_descendant_only"
         return self._config.suspect_waiting_on_child_seconds, "standard"
 
-    def _handle_waiting_branch(
+    def _handle_waiting_branch(  # noqa: PLR0915 - 5 orchestrated reasons + gate path
         self,
         now: float,
         classify_quiet: Callable[[], AgentExecutionState],
@@ -1329,6 +1628,13 @@ class IdleWatchdog:
         )
 
         if candidate_total >= effective_ceiling:
+            gate_verdict = self._gate_fire(
+                WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+                now=now,
+                idle_elapsed=idle_elapsed,
+            )
+            if gate_verdict == WatchdogVerdict.CONTINUE:
+                return WatchdogVerdict.CONTINUE
             self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
             corr_diag_hs = self._build_corroboration_diag(current_corr)
             corr_diag_hs["evidence"] = self._build_evidence_string(corr_diag_hs)
@@ -1423,6 +1729,13 @@ class IdleWatchdog:
         idle_elapsed = now - self._last_activity
         self._accumulate_waiting_run(now)
         if self._config.drain_window_seconds == 0.0:
+            gate_verdict = self._gate_fire(
+                WatchdogFireReason.NO_OUTPUT_DEADLINE,
+                now=now,
+                idle_elapsed=idle_elapsed,
+            )
+            if gate_verdict == WatchdogVerdict.CONTINUE:
+                return WatchdogVerdict.CONTINUE
             self._last_fire_reason = WatchdogFireReason.NO_OUTPUT_DEADLINE
             self._emit_fire_log(
                 WatchdogFireReason.NO_OUTPUT_DEADLINE,
@@ -1453,8 +1766,9 @@ class IdleWatchdog:
         """
         if self._in_drain_window:
             return self._handle_drain_window(now, classify_quiet)
-        if self._post_tool_result_stalled(now, idle_elapsed):
-            return WatchdogVerdict.FIRE
+        post_tool_verdict = self._post_tool_result_stalled(now, idle_elapsed)
+        if post_tool_verdict is not None:
+            return post_tool_verdict
         quiet_state = classify_quiet()
         if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
             return self._handle_waiting_branch(now, classify_quiet)
