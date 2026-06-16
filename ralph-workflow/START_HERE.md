@@ -149,6 +149,7 @@ Do not let the first run end as a private opinion.
 - [After Your First Ralph Workflow Run](docs/after-your-first-run.md) — turn a promising run or a rough run into the right Codeberg-first action
 - [Getting Started](docs/sphinx/getting-started.md)
 - [Quickstart](docs/sphinx/quickstart.md)
+- [Agent Subsystem](docs/agents/README.md) — understand how agents are registered, composed, and invoked
 - [Docs site](https://ralphworkflow.com/docs)
 - [Source on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 - [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow)

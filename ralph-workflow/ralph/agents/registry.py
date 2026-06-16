@@ -12,6 +12,10 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.agents.builtin import builtin_supports
+from ralph.agents.catalog import AgentCatalog, default_catalog
+from ralph.agents.registration import register_agent_support_to_catalog
+from ralph.agents.support import AgentSupport
 from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
@@ -27,66 +31,13 @@ if TYPE_CHECKING:
 
 def builtin_agents() -> dict[str, AgentConfig]:
     """Return the built-in agent configurations keyed by agent name."""
-    return {
-        # Interactive Claude runs inside Ralph Workflow's MCP boundary, so we
-        # bypass Claude's own approval prompts here and rely on the Ralph
-        # Workflow MCP/tool allowlist to remain the permission control layer.
-        "claude": AgentConfig(
-            cmd="claude",
-            output_flag=None,
-            yolo_flag="--dangerously-skip-permissions",
-            verbose_flag="--verbose",
-            can_commit=True,
-            json_parser=JsonParserType.CLAUDE,
-            session_flag="--resume {}",
-            transport=AgentTransport.CLAUDE_INTERACTIVE,
-        ),
-        "claude-headless": AgentConfig(
-            cmd="claude -p",
-            output_flag="--output-format=stream-json",
-            yolo_flag="--permission-mode auto",
-            verbose_flag="--verbose",
-            can_commit=True,
-            json_parser=JsonParserType.CLAUDE,
-            print_flag="--print",
-            streaming_flag="--include-partial-messages",
-            session_flag="--resume {}",
-            transport=AgentTransport.CLAUDE,
-        ),
-        "codex": AgentConfig(
-            cmd="codex exec",
-            output_flag="--json",
-            yolo_flag="--dangerously-bypass-approvals-and-sandbox",
-            can_commit=True,
-            json_parser=JsonParserType.CODEX,
-            transport=AgentTransport.CODEX,
-        ),
-        "opencode": AgentConfig(
-            cmd="opencode",
-            output_flag="--json-stream",
-            can_commit=False,
-            json_parser=JsonParserType.OPENCODE,
-            # opencode run --session <id> resumes an existing session
-            session_flag="--session {}",
-            transport=AgentTransport.OPENCODE,
-        ),
-        "nanocoder": AgentConfig(
-            cmd="nanocoder",
-            output_flag=None,
-            can_commit=False,
-            json_parser=JsonParserType.GENERIC,
-            transport=AgentTransport.NANOCODER,
-        ),
-        "agy": AgentConfig(
-            cmd="agy",
-            output_flag=None,
-            yolo_flag="--dangerously-skip-permissions",
-            print_flag="--print",
-            can_commit=False,
-            json_parser=JsonParserType.GENERIC,
-            transport=AgentTransport.AGY,
-        ),
-    }
+    return {support.name: support.config for support in builtin_supports()}
+
+
+def _seed_catalog_with_builtins(catalog: AgentCatalog) -> None:
+    for support in builtin_supports():
+        if catalog.get(support.name) is None:
+            register_agent_support_to_catalog(support.name, support, catalog)
 
 
 class AgentRegistry:
@@ -100,10 +51,32 @@ class AgentRegistry:
         agents: Dictionary mapping agent names to their configurations.
     """
 
-    def __init__(self, *, ccs_defaults: CcsConfig | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        ccs_defaults: CcsConfig | None = None,
+        catalog: AgentCatalog | None = None,
+    ) -> None:
         """Initialize an empty agent registry."""
         self.agents: dict[str, AgentConfig] = {}
         self._ccs_defaults = ccs_defaults or CcsConfig()
+        if catalog is not None:
+            self._catalog = catalog
+            _seed_catalog_with_builtins(self._catalog)
+        else:
+            self._catalog = default_catalog()
+
+    @property
+    def catalog(self) -> AgentCatalog:
+        """Return the ``AgentCatalog`` bound to this registry.
+
+        When no catalog is injected at construction time, the registry falls
+        back to :func:`ralph.agents.catalog.default_catalog`. ``register_agent_support``
+        uses this property to write into the caller-owned catalog only, so a
+        fresh ``AgentRegistry(catalog=AgentCatalog())`` does not leak
+        registrations into the global default catalog.
+        """
+        return self._catalog
 
     @classmethod
     def from_config(cls, config: UnifiedConfig) -> AgentRegistry:
@@ -116,6 +89,7 @@ class AgentRegistry:
             Populated AgentRegistry instance.
         """
         registry = cls(ccs_defaults=config.ccs)
+        _seed_catalog_with_builtins(default_catalog())
 
         for name, agent_config in builtin_agents().items():
             registry.register(name, agent_config)
@@ -138,6 +112,23 @@ class AgentRegistry:
         """
         self.agents[name] = config
         logger.debug("Registered agent: {}", name)
+        support: object = getattr(config, "_support", None)
+        if (
+            isinstance(support, AgentSupport)
+            and self._catalog is not None
+            and self._catalog.get(support.name) is None
+        ):
+            self._catalog.add(support)
+
+    def unregister(self, name: str) -> None:
+        """Unregister an agent from the registry and the bound catalog.
+
+        Args:
+            name: Agent name.
+        """
+        self.agents.pop(name, None)
+        if self._catalog is not None:
+            self._catalog.remove(name)
 
     def get(self, name: str) -> AgentConfig | None:
         """Get agent configuration by name.

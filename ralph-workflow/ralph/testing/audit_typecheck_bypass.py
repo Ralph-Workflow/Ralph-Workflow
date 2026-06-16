@@ -74,6 +74,20 @@ _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
     ("activity_stream", "misc"),
     ("phase_agent_handler", "misc"),
     ("phase_transition", "misc"),
+    # catalog.py: Mapping.get override is dynamic-typed to support both
+    # the seeded built-in parser classes and the custom _ParserRegistryEntry
+    # bundles; the override of Mapping.get is not a behavior change.
+    ("catalog", "override"),
+    # builtin_spec.py: **kwargs forwarded to AgentSupport.from_registration_kwargs
+    # with a typed dict typed as dict[str, object] (any kwargs value passes).
+    ("builtin_spec", "arg-type"),
+    # _factory.py / parsers/__init__.py: globals()["X"] = value uses a dynamic
+    # pattern mypy cannot narrow (the lazy view attribute assignment in
+    # __getattr__). attr-defined covers the cross-module _CUSTOM_COMMAND_REGISTRY
+    # access in strategy_for_command (resolved at runtime via the lazy view).
+    ("_factory", "misc"),
+    ("_factory", "attr-defined"),
+    ("__init__", "misc"),
 }
 
 # Policy-compliant reason markers (must appear on the same logical line

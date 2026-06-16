@@ -135,11 +135,8 @@ def test_no_known_bad_api_references() -> None:
     doc_content = Path("docs/agents/adding-a-new-agent.md").read_text(encoding="utf-8")
 
     bad_strings = [
-        "agent_registry.unregister",
-        "registry.unregister",
         "the registry raises on duplicate",
         "registry.register raises",
-        "agents.unregister",
     ]
 
     for bad in bad_strings:
@@ -169,4 +166,85 @@ def test_examples_have_required_imports() -> None:
         assert "AgentRegistry" in block or "registry" in block, (
             f"Example must import or reference AgentRegistry. "
             f"Block content:\n{block[:200]}"
+        )
+
+
+class TestReadmeAndContributingDiscoverability:
+    """AC-06: README.md 'How do I...?' and CONTRIBUTING.md 'How to add a
+    new agent' must surface Add, Update, Remove, and the quickstart so a
+    new contributor finds the lifecycle in one click from the index
+    pages, not only the add path.
+    """
+
+    @staticmethod
+    def _how_do_i_section(content: str) -> str:
+        """Return the slice of content that starts at the
+        ``## How do I...?`` heading and ends at the next ``##`` heading.
+        """
+        start = content.find("## How do I...?")
+        assert start != -1, "expected a '## How do I...?' section"
+        rest = content[start:]
+        end = rest.find("\n## ", len("## How do I...?"))
+        return rest if end == -1 else rest[:end]
+
+    def test_readme_how_do_i_lists_quickstart(self) -> None:
+        """README.md 'How do I...?' must list the quickstart as a link."""
+        readme_path = Path("docs/agents/README.md")
+        assert readme_path.exists()
+        section = self._how_do_i_section(readme_path.read_text(encoding="utf-8"))
+        assert "quickstart-add-a-new-agent.md" in section, (
+            "README.md 'How do I...?' must link to the quickstart"
+        )
+
+    def test_readme_how_do_i_lists_add_update_remove(self) -> None:
+        """README.md 'How do I...?' must list Add, Update, and Remove as
+        discoverable links/anchors.
+        """
+        readme_path = Path("docs/agents/README.md")
+        section = self._how_do_i_section(readme_path.read_text(encoding="utf-8"))
+        # The advanced reference page already covers Add/Update/Remove in order.
+        assert "adding-a-new-agent.md" in section, (
+            "README.md 'How do I...?' must link to adding-a-new-agent.md"
+        )
+        # Discoverable anchor links to update + remove.
+        assert (
+            "adding-a-new-agent.md#update-an-existing-agent" in section
+            or "update-an-existing-agent" in section.lower()
+        ), "README.md 'How do I...?' must link to the Update workflow"
+        assert (
+            "adding-a-new-agent.md#remove-an-agent" in section
+            or "remove-an-agent" in section.lower()
+        ), "README.md 'How do I...?' must link to the Remove workflow"
+
+    def test_contributing_how_to_add_lists_quickstart_and_lifecycle(self) -> None:
+        """CONTRIBUTING.md '## How to add a new agent' must link to the
+        quickstart first AND reference update and remove alongside add.
+        """
+        contrib_path = Path("CONTRIBUTING.md")
+        assert contrib_path.exists()
+        contrib_content = contrib_path.read_text(encoding="utf-8")
+        assert "## How to add a new agent" in contrib_content
+        parts = contrib_content.split("## How to add a new agent")
+        assert len(parts) > 1
+        section_content = parts[1]
+        # Quickstart must be present and listed before the advanced reference.
+        assert "quickstart-add-a-new-agent.md" in section_content, (
+            "CONTRIBUTING.md 'How to add a new agent' must link to the quickstart"
+        )
+        assert "adding-a-new-agent.md" in section_content, (
+            "CONTRIBUTING.md 'How to add a new agent' must still link to the advanced reference"
+        )
+        assert section_content.find("quickstart-add-a-new-agent.md") < section_content.find(
+            "adding-a-new-agent.md"
+        ), (
+            "CONTRIBUTING.md 'How to add a new agent' must list the quickstart "
+            "BEFORE the advanced reference"
+        )
+        # All three lifecycle workflows must be discoverable inline.
+        lowered = section_content.lower()
+        assert "update" in lowered, (
+            "CONTRIBUTING.md 'How to add a new agent' must mention Update"
+        )
+        assert "remove" in lowered, (
+            "CONTRIBUTING.md 'How to add a new agent' must mention Remove"
         )

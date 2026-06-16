@@ -340,12 +340,12 @@ def invoke_agent(
     ctx = replace(ctx, expected_session_id=opts.session_id)
     try:
         transport = _agent_transport(config)
-        use_pty = None
         support = default_catalog().get(config.cmd)
+        requires_pty = False
         if support is not None and isinstance(support.spec, AgentSpec):
-            use_pty = support.spec.requires_pty
+            requires_pty = support.spec.requires_pty
 
-        if use_pty is True:
+        if requires_pty:
             if transport == AgentTransport.CLAUDE_INTERACTIVE:
                 extras = _PtyExtras(
                     expected_session_id=opts.session_id,
@@ -374,37 +374,6 @@ def invoke_agent(
                     )
             else:
                 yield from run_pty_and_read_lines(cmd, ctx, _PtyExtras())
-        elif use_pty is False:
-            yield from run_subprocess_and_read_lines(cmd, ctx)
-        # If the agent is not in the catalog, or the catalog entry has no AgentSpec,
-        # fall back to the transport-enum branch to preserve backward compat for
-        # unregistered agents (which includes the 6 builtin agents).
-        elif transport == AgentTransport.CLAUDE_INTERACTIVE:
-            extras = _PtyExtras(
-                expected_session_id=opts.session_id,
-                stop_sentinel_path=opts.stop_sentinel_path,
-                permission_prompt_listener=opts.permission_prompt_listener,
-            )
-            yield from run_pty_and_read_lines(cmd, ctx, extras)
-        elif transport == AgentTransport.AGY:
-            run_id = (opts.extra_env or {}).get(str(MCP_RUN_ID_ENV)) or str(uuid4())
-            if opts.workspace_path is not None:
-                _clear_session_completion_sentinel(opts.workspace_path, run_id)
-            mcp_ctx = (
-                agy_workspace_mcp_endpoint(
-                    opts.workspace_path,
-                    runtime.mcp_endpoint,
-                    unsafe_mode=base_opts.unsafe_mode,
-                )
-                if runtime.mcp_endpoint and opts.workspace_path
-                else contextlib.nullcontext()
-            )
-            with mcp_ctx:
-                yield from run_pty_and_read_lines(
-                    cmd,
-                    ctx,
-                    _PtyExtras(expected_session_id=run_id),
-                )
         else:
             yield from run_subprocess_and_read_lines(cmd, ctx)
 

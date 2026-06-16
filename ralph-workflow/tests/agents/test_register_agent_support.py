@@ -6,32 +6,36 @@ no real psutil.
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
 from typing import TYPE_CHECKING, cast
 
 import pytest
 
+import ralph.agents
+from ralph.agents import AgentCatalog, AgentRegistry, default_catalog, register_agent_support
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
-from ralph.agents.catalog import default_catalog
+from ralph.agents.builtin_spec import BuiltinAgentSpec
 from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     strategy_for_command,
 )
-from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH, _STRATEGY_DISPATCH_DATA
+from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
 from ralph.agents.execution_state.generic_execution_strategy import (
     GenericExecutionStrategy,
 )
 from ralph.agents.parsers import (
     _CUSTOM_COMMAND_REGISTRY,
-    _CUSTOM_COMMAND_REGISTRY_DATA,
     _PARSER_REGISTRY,
-    _PARSER_REGISTRY_DATA,
     AgentOutputLine,
     ClaudeParser,
     get_parser,
     resolve_parser_key,
 )
-from ralph.agents.registration import get_registered_agent_support, register_agent_support
-from ralph.agents.registry import AgentRegistry
+from ralph.agents.parsers._template import ParserTemplateBase
+from ralph.agents.registration import (
+    get_registered_agent_support,
+)
+from ralph.agents.spec import AgentSpec
 from ralph.agents.support import AgentSupport
 from ralph.cli.commands.commit import collect_commit_agent_output
 from ralph.config.agent_config import AgentConfig
@@ -60,12 +64,12 @@ def _reset_catalog() -> None:
     cat = default_catalog()
     cat._entries.clear()
     cat._by_command.clear()
-    _PARSER_REGISTRY_DATA.clear()
-    _PARSER_REGISTRY_DATA.update(_GOLDEN_PARSERS)
-    _CUSTOM_COMMAND_REGISTRY_DATA.clear()
-    _CUSTOM_COMMAND_REGISTRY_DATA.update(_GOLDEN_CUSTOM)
-    _STRATEGY_DISPATCH_DATA.clear()
-    _STRATEGY_DISPATCH_DATA.update(cast("dict", _GOLDEN_STRATEGIES))
+    cat._state.parsers.clear()
+    cat._state.parsers.update(_GOLDEN_PARSERS)
+    cat._state.commands.clear()
+    cat._state.commands.update(_GOLDEN_CUSTOM)
+    cat._state.strategies.clear()
+    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
 
 
 class FakeAgentParser:
@@ -734,3 +738,251 @@ class TestCatalogBackedRegistration:
         assert isinstance(found.parser_factory(), FakeAgentParser)
         parser = default_catalog().get_parser("fake-catalog-lookup")
         assert isinstance(parser, FakeAgentParser)
+
+
+def test_register_agent_support_headless_and_interactive_lockstep() -> None:
+    """Black-box proof that ``register_agent_support`` keeps ``AgentCatalog`` and
+    ``AgentRegistry`` in lockstep on add and unregister for both transports.
+
+    This test exercises the public registration surface only:
+    ``ralph.agents`` (``AgentCatalog``, ``AgentRegistry``,
+    ``register_agent_support``, ``default_catalog``) bound at module top,
+    ``ralph.agents.execution_state`` (``BaseExecutionStrategy``) re-exported
+    by the public ``__init__``, ``ralph.config.enums`` (``AgentTransport``,
+    ``JsonParserType``), and the locally-defined ``FakeAgentParser`` stub
+    that implements the public ``AgentParser`` protocol.
+
+    The three runtime identity assertions at the top of the test body prove
+    that the bound names are the public-surface re-exports, not private
+    sub-module re-imports. If any re-export breaks (e.g., removed from
+    ``ralph.agents.__all__``), the module-level import fails before the test
+    ever runs.
+
+    The autouse ``_reset_catalog`` fixture in this module imports the legacy
+    module-level dicts (``_PARSER_REGISTRY_DATA``,
+    ``_CUSTOM_COMMAND_REGISTRY_DATA``, ``_STRATEGY_DISPATCH_DATA``) for
+    cleanup only — that fixture is the established pattern in this file and
+    is shared with the other tests that need golden-state restoration. The
+    lockstep test's own TEST LOGIC does not import from
+    ``ralph.agents.builtin``, ``ralph.agents.parsers._PARSER_REGISTRY``,
+    ``ralph.agents.execution_state._factory``,
+    ``ralph.agents.parsers._template``, or
+    ``ralph.agents.execution_state._base`` — those are private modules
+    whose leading-underscore names mark them as out of the public API.
+
+    See AGENTS.md: "All code must be testable in a black box way."
+    """
+    assert AgentCatalog is ralph.agents.AgentCatalog
+    assert AgentRegistry is ralph.agents.AgentRegistry
+    assert register_agent_support is ralph.agents.register_agent_support
+    assert default_catalog is ralph.agents.default_catalog
+
+    headless_name = "lockstep-headless"
+    interactive_name = "lockstep-interactive"
+
+    catalog = AgentCatalog()
+    registry = AgentRegistry(catalog=catalog)
+
+    register_agent_support(
+        headless_name,
+        transport=AgentTransport.GENERIC,
+        parser_factory=FakeAgentParser,
+        strategy_factory=FakeAgentStrategy,
+        agent_registry=registry,
+        json_parser=JsonParserType.GENERIC,
+        interactive=False,
+    )
+    register_agent_support(
+        interactive_name,
+        transport=AgentTransport.CLAUDE_INTERACTIVE,
+        parser_factory=FakeAgentParser,
+        strategy_factory=FakeInteractiveAgentStrategy,
+        agent_registry=registry,
+        json_parser=JsonParserType.GENERIC,
+        interactive=True,
+    )
+
+    headless_catalog_entry = catalog.get(headless_name)
+    interactive_catalog_entry = catalog.get(interactive_name)
+    assert headless_catalog_entry is not None
+    assert interactive_catalog_entry is not None
+    assert headless_catalog_entry.name == headless_name
+    assert interactive_catalog_entry.name == interactive_name
+    assert headless_catalog_entry.transport == AgentTransport.GENERIC
+    assert interactive_catalog_entry.transport == AgentTransport.CLAUDE_INTERACTIVE
+
+    headless_config = registry.get(headless_name)
+    interactive_config = registry.get(interactive_name)
+    assert headless_config is not None
+    assert interactive_config is not None
+    assert headless_config.transport == AgentTransport.GENERIC
+    assert interactive_config.transport == AgentTransport.CLAUDE_INTERACTIVE
+
+    assert default_catalog().get(headless_name) is None
+    assert default_catalog().get(interactive_name) is None
+
+    registry.unregister(headless_name)
+
+    assert catalog.get(headless_name) is None
+    assert registry.get(headless_name) is None
+    assert catalog.get(interactive_name) is not None
+    interactive_still = registry.get(interactive_name)
+    assert interactive_still is not None
+    assert interactive_still.transport == AgentTransport.CLAUDE_INTERACTIVE
+
+    assert default_catalog().get(headless_name) is None
+    assert default_catalog().get(interactive_name) is None
+
+
+class TestPostRefactorContract:
+    """Pin the post-refactor contract:
+
+    (a) ``AgentCatalog._DEFAULT_STRATEGIES`` is the SINGLE source of
+        truth for the transport-to-strategy dispatch table and must
+        include every ``AgentTransport`` value (an audit-style coverage
+        guard that fails if a new transport is added without an entry);
+    (b) the ``AgentSupport`` dataclass shape parity between
+        ``from_registration_kwargs`` and ``BuiltinAgentSpec.to_support``
+        (frozen, slots, name/spec/parser_factory/strategy_factory/
+        config/is_builtin/no_default_session_flag);
+    (c) the ``AgentSpec`` consistency validators still reject
+        ``requires_pty`` without ``interactive`` (sanity, no behavior
+        change).
+
+    All tests are in-process, no I/O, no subprocess.
+    """
+
+    def test_default_strategies_covers_every_transport(self) -> None:
+        """``AgentCatalog._DEFAULT_STRATEGIES`` must include every AgentTransport value.
+
+        This is the single source of truth for the transport-to-strategy
+        dispatch table after the wt-016 consolidation refactor; the
+        legacy ``_DEFAULT_STRATEGY_BY_TRANSPORT`` and
+        ``_DEFAULT_STRATEGY_IMPORT_PATH`` tables in
+        ``ralph.agents.registration`` have been removed.  If a new
+        ``AgentTransport`` is added without an entry here, the contract
+        test fails (the coverage guard).
+        """
+        default_strategies = default_catalog()._DEFAULT_STRATEGIES
+        assert set(default_strategies) == set(AgentTransport), (
+            f"AgentCatalog._DEFAULT_STRATEGIES missing transport(s); "
+            f"expected {sorted(AgentTransport)}, got {sorted(default_strategies)}"
+        )
+        # Every value must be a callable StrategyFactory.
+        for transport, factory in default_strategies.items():
+            assert callable(factory), (
+                f"AgentCatalog._DEFAULT_STRATEGIES[{transport.name!r}] must be callable"
+            )
+
+    def test_agent_support_shape_parity_builtin_vs_kwargs(self) -> None:
+        """``AgentSupport.from_registration_kwargs`` and
+        ``BuiltinAgentSpec.to_support`` must produce instances with the
+        same field shape.
+
+        BuiltinAgentSpec.to_support delegates to from_registration_kwargs
+        with the same kwargs (plus ``is_builtin=True``), so the field
+        shape must be identical: name, spec, parser_factory,
+        strategy_factory, config, is_builtin, no_default_session_flag.
+        """
+        class _TemplateParser(ParserTemplateBase):
+            _STOP_EVENT_TYPES = frozenset()
+
+            def classify_line(
+                self, line: str
+            ) -> Iterator[AgentOutputLine]:
+                stripped = line.strip()
+                result = self.parse_json_line(stripped)
+                if result is not None:
+                    yield result
+                else:
+                    yield AgentOutputLine(
+                        type="raw", content=stripped, raw=stripped
+                    )
+
+        class _Strategy(BaseExecutionStrategy):
+            pass
+
+        # Materialise via the kwargs path.
+        from_kwargs = AgentSupport.from_registration_kwargs(
+            "kw-args-agent",
+            transport=AgentTransport.GENERIC,
+            parser_factory=_TemplateParser,
+            strategy_factory=_Strategy,
+            interactive=False,
+        )
+        # Materialise via the BuiltinAgentSpec path (with is_builtin=True).
+        spec_row = BuiltinAgentSpec(
+            transport=AgentTransport.GENERIC,
+            parser_factory=_TemplateParser,
+            strategy_factory=_Strategy,
+        )
+        from_builtin = spec_row.to_support("builtin-agent")
+
+        expected_fields = {
+            "name",
+            "spec",
+            "parser_factory",
+            "strategy_factory",
+            "config",
+            "is_builtin",
+            "no_default_session_flag",
+            "_name_lower",
+        }
+        assert set(from_kwargs.__dataclass_fields__) == expected_fields, (
+            f"AgentSupport field set changed; expected {expected_fields}, "
+            f"got {set(from_kwargs.__dataclass_fields__)}"
+        )
+        assert set(from_builtin.__dataclass_fields__) == expected_fields, (
+            f"AgentSupport field set changed; expected {expected_fields}, "
+            f"got {set(from_builtin.__dataclass_fields__)}"
+        )
+        # Both instances must be frozen + slots.
+        assert from_kwargs.__dataclass_params__.frozen is True
+        assert from_builtin.__dataclass_params__.frozen is True
+        # BuiltinAgentSpec.to_support sets is_builtin=True; kwargs path defaults to False.
+        assert from_kwargs.is_builtin is False
+        assert from_builtin.is_builtin is True
+
+    def test_agent_support_is_frozen_cannot_mutate(self) -> None:
+        """``AgentSupport`` must remain a frozen dataclass (no mutation)."""
+        class _TemplateParser(ParserTemplateBase):
+            _STOP_EVENT_TYPES = frozenset()
+
+            def classify_line(
+                self, line: str
+            ) -> Iterator[AgentOutputLine]:
+                stripped = line.strip()
+                result = self.parse_json_line(stripped)
+                if result is not None:
+                    yield result
+                else:
+                    yield AgentOutputLine(
+                        type="raw", content=stripped, raw=stripped
+                    )
+
+        class _Strategy(BaseExecutionStrategy):
+            pass
+
+        support = AgentSupport.from_registration_kwargs(
+            "frozen-agent",
+            transport=AgentTransport.GENERIC,
+            parser_factory=_TemplateParser,
+            strategy_factory=_Strategy,
+        )
+        with pytest.raises(FrozenInstanceError):
+            support.__setattr__("name", "renamed")
+
+    def test_agent_spec_consistency_validators_still_reject_inconsistent_state(
+        self,
+    ) -> None:
+        """``AgentSpec`` must still reject ``requires_pty=True`` without
+        ``interactive=True`` (sanity: the refactor must not loosen the
+        headless-vs-interactive axis validators).
+        """
+        with pytest.raises(ValueError, match="requires_pty=True requires interactive=True"):
+            AgentSpec(
+                name="bad",
+                transport=AgentTransport.CLAUDE_INTERACTIVE,
+                interactive=False,
+                requires_pty=True,
+            )

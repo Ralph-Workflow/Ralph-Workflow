@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, ClassVar, cast
 
-from ._event_classification import is_lifecycle_event
-from ._template import ParserTemplateBase
+from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message
 from .text_accumulator import TextAccumulator
@@ -15,58 +13,45 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-class CodexParser(ParserTemplateBase):
-    """Parser for Codex's NDJSON streaming output with robust delta accumulation.
+def _parse_codex_object(
+    obj: dict[str, object],
+    stripped: str,
+) -> Iterator[AgentOutputLine]:
+    """Public parse-object helper preserved for back-compat with downstream tests.
 
-    Text deltas are accumulated into coherent blocks before emission, flushing on:
-    - ``response.completed`` / ``turn.completed`` / ``message_stop`` (end of message)
-    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
-    - Iterator exhaustion (final flush via ``flush_accumulators()``)
+    Delegates to the same per-event dispatch that ``CodexParser`` uses.
+    Kept as a module-level function so external callers (e.g. legacy tests
+    importing ``_parse_codex_object``) keep working unchanged.
+    """
+    yield from _CodexDispatch().dispatch(obj, stripped)
+
+
+class _CodexDispatch:
+    """Per-event-type dispatch for CodexParser.
+
+    Encapsulates the historical ``handler_map`` + ``_parse_object`` method
+    body as a plain callable so the subclass ``_dispatch_json_object`` can
+    delegate to it without re-implementing the routing.  Holds a reference
+    to the owning parser so accumulator state stays in one place.
     """
 
-    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
-        {"turn.completed", "message_stop", "done", "stop", "response.completed"}
-    )
-
-    def __init__(self) -> None:
+    def __init__(self, owner: CodexParser | None = None) -> None:
+        self._owner = owner
         self._accumulators: dict[str, TextAccumulator] = {}
         self._current_response_id: str | None = None
         self._stream_counter = 0
 
-    def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
-        stripped = line.strip()
-        if stripped.startswith("data:"):
-            stripped = stripped.removeprefix("data:").strip()
-        if not stripped:
-            return
-
-        if stripped == "[DONE]":
-            yield AgentOutputLine(type="stop", raw=stripped)
-            return
-
-        result = self.parse_json_line(stripped)
-        if result is not None:
-            yield result
-            return
-
-        obj = cast("dict[str, object]", json.loads(stripped, strict=False))
-        yield from self._parse_object(obj, stripped)
-
-    def flush_accumulators(self) -> Iterator[AgentOutputLine]:
-        for key in list(self._accumulators.keys()):
-            yield from self._flush_accumulator(key)
-
-    def _parse_object(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
-        """Parse a JSON object into AgentOutputLine instances."""
+    def dispatch(
+        self,
+        obj: dict[str, object],
+        stripped: str,
+    ) -> Iterator[AgentOutputLine]:
         event_type = str(obj.get("type", "unknown"))
 
-        if event_type in self._STOP_EVENT_TYPES:
-            yield from self.flush_accumulators()
+        if event_type in CodexParser._STOP_EVENT_TYPES:
+            yield from self._flush_all()
             self._current_response_id = None
             yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
-            return
-
-        if is_lifecycle_event(event_type):
             return
 
         handler_map = {
@@ -94,6 +79,10 @@ class CodexParser(ParserTemplateBase):
 
         yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
+    def _flush_all(self) -> Iterator[AgentOutputLine]:
+        for key in list(self._accumulators.keys()):
+            yield from self._flush_accumulator(key)
+
     def _parse_text_content(
         self,
         obj: dict[str, object],
@@ -103,7 +92,9 @@ class CodexParser(ParserTemplateBase):
         if content:
             yield AgentOutputLine(type="text", content=content, raw=stripped)
 
-    def _parse_text_delta(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_text_delta(
+        self, obj: dict[str, object], stripped: str
+    ) -> Iterator[AgentOutputLine]:
         delta_val = obj.get("delta")
         if isinstance(delta_val, dict):
             delta_obj = cast("dict[str, object]", delta_val)
@@ -126,19 +117,27 @@ class CodexParser(ParserTemplateBase):
                 return
 
         key = response_id
-        if key not in self._accumulators:
-            self._accumulators[key] = TextAccumulator()
-        yield from self._accumulators[key].accumulate(
+        accumulators = self._accumulators
+        if self._owner is not None:
+            accumulators = self._owner._accumulators
+        if key not in accumulators:
+            accumulators[key] = TextAccumulator()
+        yield from accumulators[key].accumulate(
             content, stripped, kind="text", keep_current_when_empty=True
         )
 
     def _flush_accumulator(self, key: str) -> Iterator[AgentOutputLine]:
-        if key not in self._accumulators:
+        accumulators = self._accumulators
+        if self._owner is not None:
+            accumulators = self._owner._accumulators
+        if key not in accumulators:
             return
-        acc = self._accumulators.pop(key)
+        acc = accumulators.pop(key)
         yield from acc.flush(kind="text")
 
-    def _parse_tool_use(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_tool_use(
+        self, obj: dict[str, object], stripped: str
+    ) -> Iterator[AgentOutputLine]:
         tool_name = str(obj.get("tool", obj.get("name", "unknown")))
         tool_input = obj.get("input", {})
         yield AgentOutputLine(
@@ -179,7 +178,9 @@ class CodexParser(ParserTemplateBase):
         if result:
             yield AgentOutputLine(type="text", content=result, raw=stripped, metadata=obj)
 
-    def _parse_item_event(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
+    def _parse_item_event(
+        self, obj: dict[str, object], stripped: str
+    ) -> Iterator[AgentOutputLine]:
         item_obj = obj.get("item")
         if not isinstance(item_obj, dict):
             yield AgentOutputLine(type=str(obj.get("type", "item")), raw=stripped, metadata=obj)
@@ -237,3 +238,44 @@ class CodexParser(ParserTemplateBase):
             return
 
         yield AgentOutputLine(type=f"item_{item_type}", raw=stripped, metadata=item_obj)
+
+
+class CodexParser(NdjsonParserBase):
+    """Parser for Codex's NDJSON streaming output with robust delta accumulation.
+
+    Text deltas are accumulated into coherent blocks before emission, flushing on:
+    - ``response.completed`` / ``turn.completed`` / ``message_stop`` (end of message)
+    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
+    - Iterator exhaustion (final flush via ``flush_accumulators()``)
+
+    Inherits from :class:`NdjsonParserBase` which owns the
+    ``data:`` strip, ``[DONE]`` short-circuit, JSON parse dispatch,
+    lifecycle suppression, and error extraction.  The subclass
+    ``_dispatch_json_object`` delegates to ``_CodexDispatch`` for the
+    per-event-type routing.
+    """
+
+    _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
+        {"turn.completed", "message_stop", "done", "stop", "response.completed"}
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._accumulators: dict[str, TextAccumulator] = {}
+        self._current_response_id: str | None = None
+        self._stream_counter = 0
+        self._dispatcher = _CodexDispatch(self)
+
+    def _dispatch_json_object(
+        self,
+        obj: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        yield from self._dispatcher.dispatch(obj, raw)
+
+    def flush_accumulators(self) -> Iterator[AgentOutputLine]:
+        for key in list(self._accumulators.keys()):
+            if key not in self._accumulators:
+                continue
+            acc = self._accumulators.pop(key)
+            yield from acc.flush(kind="text")

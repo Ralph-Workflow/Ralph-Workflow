@@ -189,3 +189,79 @@ def test_agy_workspace_mcp_endpoint_unsafe_mode_overwrites_stale_ralph(
         assert "other-server" in servers
 
     assert agy_config_path.read_text(encoding="utf-8") == original_text
+
+
+
+def test_agy_workspace_mcp_endpoint_unsafe_mode_merges_workspace_and_global(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
+    """unsafe_mode=True merges both workspace .agents/mcp_config.json and global config."""
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    agents_dir = workspace / ".agents"
+    agents_dir.mkdir()
+    workspace_config_file = agents_dir / "mcp_config.json"
+    workspace_config_file.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "workspace-http": {"serverUrl": "http://workspace-upstream:7777/mcp"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    global_text = json.dumps(
+        {
+            "mcpServers": {
+                "global-http": {"serverUrl": "http://global.example/mcp"},
+            }
+        },
+        indent=2,
+    )
+    agy_config_path.parent.mkdir(parents=True, exist_ok=True)
+    agy_config_path.write_text(global_text, encoding="utf-8")
+    endpoint = "http://127.0.0.1:9999/mcp"
+
+    with agy_workspace_mcp_endpoint(workspace, endpoint, unsafe_mode=True):
+        config = _read_config(agy_config_path)
+        servers = config["mcpServers"]
+        assert isinstance(servers, dict)
+        assert "workspace-http" in servers
+        assert "global-http" in servers
+        assert "ralph" in servers
+        ralph = servers["ralph"]
+        assert isinstance(ralph, dict)
+        assert ralph["serverUrl"] == endpoint
+        assert "url" not in ralph
+        ws_server = servers["workspace-http"]
+        assert ws_server["serverUrl"] == "http://workspace-upstream:7777/mcp"
+        global_server = servers["global-http"]
+        assert global_server["serverUrl"] == "http://global.example/mcp"
+
+    assert agy_config_path.read_text(encoding="utf-8") == global_text
+
+
+def test_agy_workspace_mcp_endpoint_serverurl_preserved_on_retained_upstreams(
+    tmp_path: Path, agy_config_path: Path
+) -> None:
+    """Retained upstream entries keep serverUrl key (not url) after unsafe_mode merge."""
+    original_text = json.dumps(
+        {
+            "mcpServers": {
+                "other-server": {"serverUrl": "http://other.example/mcp"},
+            }
+        },
+        indent=2,
+    )
+    agy_config_path.parent.mkdir(parents=True, exist_ok=True)
+    agy_config_path.write_text(original_text, encoding="utf-8")
+    endpoint = "http://127.0.0.1:9999/mcp"
+
+    with agy_workspace_mcp_endpoint(tmp_path, endpoint, unsafe_mode=True):
+        config = _read_config(agy_config_path)
+        servers = config["mcpServers"]
+        other = servers["other-server"]
+        assert "serverUrl" in other
+        assert "url" not in other
+        assert other["serverUrl"] == "http://other.example/mcp"

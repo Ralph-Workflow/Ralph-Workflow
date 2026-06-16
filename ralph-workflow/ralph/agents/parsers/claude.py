@@ -7,7 +7,7 @@ import re
 from typing import TYPE_CHECKING, Final, cast
 
 from ._event_classification import is_lifecycle_event
-from ._template import ParserTemplateBase
+from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
 from .base import extract_error_message, stringify_text_blocks
 from .text_accumulator import TextAccumulator
@@ -22,7 +22,7 @@ _CLAUDE_TOP_LEVEL_LIFECYCLE: Final[frozenset[str]] = frozenset(
 )
 
 
-class ClaudeParser(ParserTemplateBase):
+class ClaudeParser(NdjsonParserBase):
     """Parser for Claude's NDJSON streaming output with robust delta accumulation.
 
     Text deltas are accumulated into coherent blocks before emission, flushing on:
@@ -32,9 +32,29 @@ class ClaudeParser(ParserTemplateBase):
 
     Thinking deltas (``thinking_delta``) are accumulated separately from text
     deltas and emitted as ``type="thinking"`` lines.
+
+    Inherits from :class:`NdjsonParserBase` and delegates the NDJSON
+    scaffolding (``data:`` strip, ``[DONE]`` short-circuit, JSON parse,
+    error extraction, lifecycle interception) to the base layer via
+    :meth:`classify_line`.  Claude-specific behavior stays in subclass
+    hooks:
+
+      * :meth:`classify_line` first tries the prefixed-transcript parser
+        (``[claude]:``, ``claude/...:``) and only delegates to the base
+        when that hook returns ``None``.
+      * :meth:`_handle_lifecycle_event` carries the claude-specific
+        lifecycle side effects (``message_start`` recording,
+        ``message_stop`` flush, ``content_block_stop`` flush) and
+        returns ``None`` for lifecycle events the subclass wants to
+        dispatch (e.g. ``assistant`` / ``user`` / ``thinking``).
+      * :meth:`_dispatch_json_object` maps the per-event vocabulary
+        (stream_event, content_block_delta, content_block_start,
+        assistant, result, error) to :class:`AgentOutputLine` types
+        and drives the per-content-block accumulator state.
     """
 
     def __init__(self) -> None:
+        super().__init__()
         self._text_accumulator: dict[tuple[str, int], TextAccumulator] = {}
         self._thinking_accumulator: dict[tuple[str, int], TextAccumulator] = {}
         self._fallback_accumulator: TextAccumulator | None = None
@@ -43,6 +63,27 @@ class ClaudeParser(ParserTemplateBase):
         self._seen_content_blocks: set[tuple[str, int]] = set()
 
     def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
+        """Classify a single raw NDJSON line.
+
+        Order of operations:
+
+          1. Strip the line and short-circuit on empty.
+          2. Try the claude-specific prefixed-transcript parser (e.g.
+             ``claude/sonnet: hello``).  If it returns a non-None list,
+             yield from it and return.
+          3. Delegate the remaining NDJSON path to
+             :class:`NdjsonParserBase` which owns the ``data:`` prefix
+             strip, ``[DONE]`` short-circuit, JSON parse dispatch,
+             error extraction, and lifecycle-event interception.  The
+             base calls back into :meth:`_handle_lifecycle_event` for
+             the claude-specific lifecycle side effects (message_start
+             recording, message_stop flush, content_block_stop flush)
+             and into :meth:`_dispatch_json_object` for the per-event
+             dispatch (which routes claude's ``assistant`` / ``user``
+             / ``thinking`` events through the subclass hook rather
+             than suppressing them as the base's default lifecycle
+             policy would).
+        """
         stripped = line.strip()
         if not stripped:
             return
@@ -52,13 +93,7 @@ class ClaudeParser(ParserTemplateBase):
             yield from prefixed_lines
             return
 
-        result = self.parse_json_line(stripped)
-        if result is not None:
-            yield result
-            return
-
-        obj = cast("dict[str, object]", json.loads(stripped, strict=False))
-        yield from self._parse_top_level_object(obj, stripped)
+        yield from super().classify_line(stripped)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:
         for key in list(self._text_accumulator.keys()):
@@ -67,20 +102,6 @@ class ClaudeParser(ParserTemplateBase):
             yield from self._flush_thinking_accumulator(key)
         yield from self._flush_fallback_accumulator()
         yield from self._flush_fallback_thinking_accumulator()
-
-    def _parse_top_level_object(
-        self,
-        obj: dict[str, object],
-        raw: str,
-    ) -> Iterator[AgentOutputLine]:
-        event_type = str(obj.get("type", "unknown"))
-
-        lifecycle_result = self._handle_lifecycle_event(obj, event_type)
-        if lifecycle_result is not None:
-            yield from lifecycle_result
-            return
-
-        yield from self._dispatch_top_level_event(obj, raw, event_type)
 
     def _handle_lifecycle_event(
         self,
@@ -118,12 +139,13 @@ class ClaudeParser(ParserTemplateBase):
             if key in self._thinking_accumulator:
                 yield from self._flush_thinking_accumulator(key)
 
-    def _dispatch_top_level_event(
+    def _dispatch_json_object(
         self,
         obj: dict[str, object],
         raw: str,
-        event_type: str,
     ) -> Iterator[AgentOutputLine]:
+        event_type = str(obj.get("type", "unknown"))
+
         if event_type == "stream_event":
             event = obj.get("event")
             if isinstance(event, dict):

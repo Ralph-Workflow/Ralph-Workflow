@@ -446,9 +446,11 @@ uv run python -m twine check dist/*
 
 ## How to add a new agent
 
-To add, update, or remove agent support in Ralph Workflow, refer to the canonical recipe in [adding-a-new-agent.md](docs/agents/adding-a-new-agent.md).
+The fastest path is the 5-minute [quickstart](docs/agents/quickstart-add-a-new-agent.md) — it shows the opinionated 5-line `register_my_agent` recipe for both headless and interactive agents and is the recommended entry point.
 
-It covers three primary workflows:
-- **Add**: Registering a new headless or interactive agent using `register_agent_support`.
+For the 14-kwarg advanced form, CCS aliases, parser authoring, and the full lifecycle, see the canonical reference: [adding-a-new-agent.md](docs/agents/adding-a-new-agent.md).
+
+That reference covers three primary workflows, all reachable from a single first-click:
+- **Add**: Registering a new headless or interactive agent using `register_agent_support` (advanced) or `register_my_agent` (the 90% case).
 - **Update**: Modifying catalog entries (requiring a prior `remove`) or updating the caller's `AgentRegistry`.
 - **Remove**: Deleting catalog entries via `default_catalog().remove(name)` or registry entries via `del registry.agents[name]`.

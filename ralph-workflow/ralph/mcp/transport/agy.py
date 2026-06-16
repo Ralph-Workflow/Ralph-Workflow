@@ -71,10 +71,11 @@ def agy_workspace_mcp_endpoint(
     config_path = _agy_global_config_path()
     original_bytes = config_path.read_bytes() if config_path.is_file() else None
     current_config: dict[str, object] = {
-        "mcpServers": {RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint}}
+        "mcpServers": {RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint}},
+        "workspace_path": workspace_path,
     }
     merged_config = merge_existing_upstreams(
-        "agy", current_config, unsafe_mode=unsafe_mode
+        "agy", current_config, unsafe_mode=unsafe_mode, workspace_path=workspace_path
     )
     config_payload = merged_config
     try:

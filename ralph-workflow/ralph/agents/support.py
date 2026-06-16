@@ -32,6 +32,11 @@ class AgentSupport:
         parser_factory: Callable returning a parser instance.
         strategy_factory: Callable returning an execution strategy instance.
         config: The agent's AgentConfig.
+        is_builtin: Whether this is a built-in agent (catalog rejects
+            custom registrations under built-in names).
+        no_default_session_flag: When True, the agent opts out of the
+            default ``--resume {}`` session template that would otherwise
+            be applied for interactive agents.  Set by agy.
     """
 
     name: str
@@ -39,6 +44,8 @@ class AgentSupport:
     parser_factory: Callable[[], AgentParser]
     strategy_factory: StrategyFactory
     config: AgentConfig
+    is_builtin: bool = False
+    no_default_session_flag: bool = False
 
     _name_lower: str = ""
 
@@ -75,6 +82,8 @@ class AgentSupport:
         session_flag: str | None = None,
         display_name: str | None = None,
         subagent_capability: bool | None = None,
+        is_builtin: bool = False,
+        no_default_session_flag: bool = False,
     ) -> AgentSupport:
         """Build an AgentSupport from the legacy register_agent_support kwargs.
 
@@ -86,8 +95,9 @@ class AgentSupport:
             agent_registry: Accepted for signature compatibility with the legacy
                 ``register_agent_support`` API; unused inside this method.
             json_parser: Parser type token.
-            interactive: When True and ``session_flag`` is not provided, sets a
-                default resume template.
+            interactive: When True and ``session_flag`` is not provided and
+                ``no_default_session_flag`` is False, sets a default
+                ``--resume {}`` template.
             cmd: Executable command; defaults to ``name``.
             output_flag: Optional output format flag.
             yolo_flag: Optional autonomous flag string.
@@ -97,16 +107,23 @@ class AgentSupport:
             print_flag: Optional print flag.
             streaming_flag: Optional streaming flag.
             session_flag: Optional session continuation flag template.
-                When ``interactive=True`` and this is omitted, a
-                ``--resume {}`` template is used.
             display_name: Human-readable display name.
             subagent_capability: Whether the agent exposes usable sub-agent tooling.
+            is_builtin: When True, the agent is a built-in (catalog allows
+                the registration under reserved built-in names).
+            no_default_session_flag: When True, suppress the default
+                ``--resume {}`` template.  Replaces the historical hidden
+                ``name != "agy"`` special case; agy sets this to True.
 
         Returns:
             An AgentSupport instance ready for AgentCatalog.add().
         """
         effective_session_flag = session_flag
-        if effective_session_flag is None and interactive:
+        if (
+            effective_session_flag is None
+            and interactive
+            and not no_default_session_flag
+        ):
             effective_session_flag = "--resume {}"
 
         config = AgentConfig(
@@ -129,12 +146,17 @@ class AgentSupport:
             config,
             interactive=interactive,
             completion_required=bool(effective_session_flag),
+            no_default_session_flag=no_default_session_flag,
         )
 
-        return cls(
+        support = cls(
             name=name,
             spec=spec,
             parser_factory=parser_factory,
             strategy_factory=strategy_factory,
             config=config,
+            is_builtin=is_builtin,
+            no_default_session_flag=no_default_session_flag,
         )
+        object.__setattr__(config, "_support", support)
+        return support

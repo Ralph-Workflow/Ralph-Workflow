@@ -27,7 +27,7 @@ def claude_mcp_config(
     if workspace_path is not None:
         current_config["workspace_path"] = workspace_path
     merged_config = merge_existing_upstreams(
-        "claude", current_config, unsafe_mode=unsafe_mode
+        "claude", current_config, unsafe_mode=unsafe_mode, workspace_path=workspace_path
     )
     config_payload = merged_config
     return json.dumps(config_payload, separators=(",", ":"))
