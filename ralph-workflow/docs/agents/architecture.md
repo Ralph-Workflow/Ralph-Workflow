@@ -32,8 +32,13 @@ registration  →  parser  →  strategy  →  CommandBuilder
 6. **Config and chains** — `[agents.<name>]`, `[ccs_aliases.<name>]`,
    `[agent_chains]`, and `[agent_drains]` in `ralph-workflow.toml` configure every
    aspect of an agent's behaviour. The shorthand forms (`claude/<model>`,
-   `opencode/<provider>`, `agy/<model>`) are expanded by the config layer into
-   fully-qualified `AgentSpec` objects before registration.
+   `opencode/<provider>`, `agy/<model>`, `pi/<model>`) are expanded by the
+   config layer into fully-qualified `AgentSpec` objects before registration.
+   The `pi/<model>` shorthand preserves the full suffix (e.g.
+   `pi/anthropic/claude-sonnet-4-20250514` becomes
+   `--model anthropic/claude-sonnet-4-20250514`) using
+   `name.removeprefix('pi/')` so multi-segment `provider/id` patterns
+   round-trip intact.
 
 ## Registration
 
@@ -52,10 +57,12 @@ For details on how to register and manage custom agents, or to modify built-in o
 ## Parser and execution strategy
 
 Every parser (`ClaudeParser`, `CodexParser`, `OpenCodeParser`, `GeminiParser`,
-`GenericParser`) is registered in `_PARSER_REGISTRY`, a `types.MappingProxyType`
-view over `AgentCatalog`.  The registry is read-only at runtime — writes go
-through `AgentCatalog.add` / `AgentCatalog.remove`, which keep the view
-synchronised.
+`GenericParser`, `PiParser`) is registered in `_PARSER_REGISTRY`, a
+`types.MappingProxyType` view over `AgentCatalog`.  The registry is
+read-only at runtime — writes go through `AgentCatalog.add` /
+`AgentCatalog.remove`, which keep the view synchronised.  `PiParser`
+covers the documented `AgentSessionEvent` NDJSON vocabulary from
+`pi --mode json` (https://pi.dev/docs/latest/json).
 
 Every execution strategy (`GenericExecutionStrategy`,
 `CompletionEnforcingStrategy`, etc.) is registered in `_STRATEGY_DISPATCH`,
@@ -65,8 +72,8 @@ dispatch view reflects the change automatically.
 
 ## NDJSON parser layer (`NdjsonParserBase`)
 
-The 5 wire-format NDJSON parsers (`claude`, `opencode`, `codex`, `gemini`,
-`generic`) share a common base class `NdjsonParserBase` in
+The 6 wire-format NDJSON parsers (`claude`, `opencode`, `codex`, `gemini`,
+`generic`, `pi`) share a common base class `NdjsonParserBase` in
 `ralph/agents/parsers/_ndjson_base.py`. The base owns 6 behaviors that
 used to be duplicated across every parser's `classify_line`:
 

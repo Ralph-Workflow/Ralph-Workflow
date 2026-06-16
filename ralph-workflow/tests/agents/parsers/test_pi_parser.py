@@ -2,12 +2,16 @@
 
 PiParser is a black-box NDJSON parser for the JSON-stream output of
 ``pi --mode json <prompt>``.  The wire format is the documented
-``AgentSessionEvent`` union at https://pi.dev/docs/latest/json.  None of
-the pi event types appear in
-``ralph.agents.parsers._event_classification.LIFECYCLE_EVENT_TYPES``
-(except ``message_start``, which pi uses for assistant-turn boundaries
-and which the base correctly suppresses), so the parser routes every
-documented event through ``_dispatch_json_object``.
+``AgentSessionEvent`` union at https://pi.dev/docs/latest/json.  The
+only pi event that overlaps with the shared
+:data:`LIFECYCLE_EVENT_TYPES` frozenset is ``message_start``, which
+PiParser handles by overriding :meth:`_handle_lifecycle_event` to
+fall through to ``_dispatch_json_object`` for every event type, then
+marking ``message_start`` silent in the dispatcher.  This keeps the
+AC-04 invariant (every documented pi event reaches
+``_dispatch_json_object``) and pins the ``message_start`` -> no
+output behavior via a separate test that drives a
+``message_start`` event and asserts ``results == []``.
 
 This test module covers:
 
@@ -16,8 +20,7 @@ This test module covers:
     (b) ``[DONE]`` short-circuit -> ``type='stop'``
     (c) non-JSON line -> ``type='raw'``
     (d) non-dict JSON -> ``type='raw'``
-    (e) lifecycle events (e.g. ``message_start``) suppressed
-    (f) ``{'error': ...}`` shapes -> ``type='error'``
+    (e) ``{'error': ...}`` shapes -> ``type='error'``
 
   - pi-specific event types
     (g) session header line -> ``type='session'`` with ``metadata['id']``
@@ -47,6 +50,8 @@ from ralph.agents.parsers.pi import PiParser
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from ralph.agents.parsers.agent_output_line import AgentOutputLine
 
 
 def _lines(*raw: str) -> Iterator[str]:
@@ -110,14 +115,50 @@ class TestPiParserSharedNdjsonBehaviors:
         assert len(results) == 1
         assert results[0].type == "raw"
 
-    def test_lifecycle_message_start_suppressed(self) -> None:
-        """pi's ``message_start`` is in the LIFECYCLE_EVENT_TYPES frozenset
-        and must therefore be suppressed by the base layer.
+    def test_message_start_routes_through_dispatch_and_is_silent(self) -> None:
+        """``message_start`` is the only pi event in LIFECYCLE_EVENT_TYPES.
+
+        PiParser overrides :meth:`_handle_lifecycle_event` to fall
+        through to :meth:`_dispatch_json_object` for every event type,
+        honoring the AC-04 invariant.  The dispatcher then marks
+        ``message_start`` silent (via
+        :data:`_PI_SILENT_TOP_LEVEL_EVENTS`), so the observable
+        behavior is still no output.
         """
         parser = PiParser()
         line = _line({"type": "message_start", "message": {"role": "assistant"}})
         results = list(parser.parse(_lines(line)))
         assert results == []
+
+    def test_message_start_reaches_dispatch(self) -> None:
+        """``message_start`` must reach ``_dispatch_json_object`` (AC-04).
+
+        Uses a recording :class:`PiParser` subclass that appends every
+        ``_dispatch_json_object`` argument to a list before delegating
+        to the real implementation.  When a ``message_start`` event is
+        parsed, the recording list must contain a ``message_start``
+        entry, proving the event reached ``_dispatch_json_object`` (the
+        AC-04 invariant).
+        """
+        seen_event_types: list[str] = []
+
+        class _RecordingPiParser(PiParser):
+            def _dispatch_json_object(
+                self,
+                obj: dict[str, object],
+                raw: str,
+            ) -> Iterator[AgentOutputLine]:
+                seen_event_types.append(str(obj.get("type", "")))
+                yield from super()._dispatch_json_object(obj, raw)
+
+        parser = _RecordingPiParser()
+        line = _line({"type": "message_start", "message": {"role": "assistant"}})
+        results = list(parser.parse(_lines(line)))
+
+        assert results == []
+        # The dispatcher was called for the message_start event,
+        # proving it reached _dispatch_json_object (the AC-04 invariant).
+        assert "message_start" in seen_event_types
 
     def test_error_field_produces_error_line(self) -> None:
         parser = PiParser()
@@ -445,17 +486,15 @@ class TestPiParserThinkingDelta:
         assert len(thinking_lines) == 1
         assert thinking_lines[0].content == "reasoning"
 
-    def test_message_end_suppresses_duplicate_toolcall_block(self) -> None:
-        """``message_end(toolCall)`` must NOT emit a third ``tool_use`` line.
+    def test_message_end_emits_toolcall_block(self) -> None:
+        """``message_end(toolCall)`` must emit a ``tool_use`` line.
 
-        Regression test for the analysis feedback: the parser used to
-        emit three ``type='tool_use'`` lines for the
+        Per the plan, the ``message_end`` content array is walked for
+        text, thinking, and toolCall blocks; the toolCall block is
+        ALWAYS emitted.  For the
         ``toolcall_end + tool_execution_start + message_end(toolCall)``
-        sequence because ``message_end`` replayed the
-        ``message.content`` toolCall block.  The two events emitted by
-        the wire format (``toolcall_end`` from message_update and
-        ``tool_execution_start``) are sufficient; the redundant
-        ``message_end`` toolCall block is suppressed.
+        sequence the parser yields three ``type='tool_use'`` lines
+        (one from each event), all with the resolved tool name.
         """
         parser = PiParser()
         lines = [
@@ -495,9 +534,9 @@ class TestPiParserThinkingDelta:
         ]
         results = list(parser.parse(_lines(*lines)))
         tool_use_lines = [r for r in results if r.type == "tool_use"]
-        assert len(tool_use_lines) == 2
+        assert len(tool_use_lines) == 3
         assert all(r.content == "bash" for r in tool_use_lines)
-        # No 'unknown' placeholder from the suppressed toolCall block.
+        # No 'unknown' placeholder from any event in the sequence.
         assert not any(r.content == "unknown" for r in tool_use_lines)
 
     def test_interleaved_text_and_thinking_deltas(self) -> None:

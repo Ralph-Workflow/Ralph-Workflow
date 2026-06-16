@@ -315,7 +315,7 @@ class ConfigurableCommandBuilder:
             else self.spec.output_flag
         )
         if output_flag is not None and "opencode" not in self.spec.base_argv[0]:
-            cmd.append(output_flag)
+            cmd.extend(_split_optional_flag(output_flag))
 
         cmd.extend(self._build_yolo_session_flags(config, options))
 
@@ -445,18 +445,19 @@ class PiCommandBuilder(ConfigurableCommandBuilder):
     """CommandBuilder for AgentTransport.PI.
 
     The headless invocation is ``pi --mode json <prompt>`` per
-    https://pi.dev/docs/latest/usage.  ``--mode json`` is a two-token
-    flag and is therefore modeled via :attr:`format_flag` (the existing
-    multi-token escape hatch used by :class:`OpencodeCommandBuilder`
-    for ``--format json``).  ``--approve`` is the documented
-    non-interactive project-trust override (``-a`` short form).  The
-    prompt is a positional argument.
+    https://pi.dev/docs/latest/usage.  ``--mode json`` is modeled via
+    :attr:`CommandBuilderSpec.output_flag` (a literal plan-compliant
+    string); :class:`ConfigurableCommandBuilder` splits the string on
+    whitespace via :func:`_split_optional_flag` so the two argv tokens
+    ``--mode`` and ``json`` are emitted separately.  ``--approve`` is
+    the documented non-interactive project-trust override (``-a``
+    short form).  The prompt is a positional argument.
     """
 
     SPEC = CommandBuilderSpec(
         base_argv=("pi",),
-        format_flag=("--mode", "json"),
-        output_flag=None,
+        format_flag=None,
+        output_flag="--mode json",
         yolo_flag="--approve",
         model_flag_template="--model {}",
         positional_prompt=True,

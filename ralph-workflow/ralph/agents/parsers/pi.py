@@ -9,7 +9,10 @@ TypeScript union at https://pi.dev/docs/latest/json:
   - agent lifecycle: ``agent_start``, ``agent_end``
   - turn lifecycle: ``turn_start``, ``turn_end``
   - message lifecycle: ``message_start`` (in LIFECYCLE_EVENT_TYPES so the
-    base suppresses it), ``message_update`` (carries
+    base would suppress it; PiParser overrides
+    :meth:`_handle_lifecycle_event` to fall through to
+    ``_dispatch_json_object`` for every event type, and the dispatcher
+    marks ``message_start`` silent), ``message_update`` (carries
     ``assistantMessageEvent``), ``message_end``
   - tool execution: ``tool_execution_start``, ``tool_execution_update``,
     ``tool_execution_end`` (with ``isError`` boolean)
@@ -27,10 +30,17 @@ its own sub-type union:
   - ``done`` (``stopReason: 'stop' | 'length' | 'toolUse'``)
   - ``error`` (``reason: 'aborted' | 'error'``)
 
-Pi's ``message_start`` event is the only one that overlaps with the
-shared :data:`LIFECYCLE_EVENT_TYPES` frozenset, so the base layer
-silences it.  All other pi events are NOT in the lifecycle set and
-reach the subclass ``_dispatch_json_object`` hook for per-event routing.
+Pi's ``message_start`` event is the only pi event that overlaps with
+the shared :data:`LIFECYCLE_EVENT_TYPES` frozenset, so PiParser
+overrides :meth:`_handle_lifecycle_event` to return ``None`` for
+every event type, which causes the base layer to fall through to
+``_dispatch_json_object`` for the entire pi vocabulary.  The
+dispatcher then routes each event through the per-type handler map
+(silent for ``message_start`` / ``agent_start`` / ``turn_start``,
+typed output for the rest).  This keeps the AC-04 invariant: every
+documented pi event reaches ``_dispatch_json_object`` for routing
+decisions; the dispatch table is the single owner of what each event
+type emits.
 
 Inherits from :class:`NdjsonParserBase` which owns the 6 shared NDJSON
 behaviors (data: strip, [DONE] short-circuit, JSON parse dispatch,
@@ -70,7 +80,7 @@ _PI_STOP_EVENTS: frozenset[str] = frozenset({"agent_end", "turn_end"})
 
 
 _PI_SILENT_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
-    {"agent_start", "turn_start"}
+    {"agent_start", "turn_start", "message_start"}
 )
 
 
@@ -387,7 +397,7 @@ class _PiDispatch:
                 self._owner.saw_thinking_end = True
                 yield from self._handle_thinking_block(block_dict, stripped)
             elif block_type == "toolCall":
-                continue
+                yield from self._handle_toolcall_block(block_dict, stripped)
 
     def _handle_text_block(
         self,
@@ -466,12 +476,13 @@ class PiParser(NdjsonParserBase):
     ``tool_execution_end.isError=true`` maps to ``type='error'``;
     ``isError=false`` (or absent) maps to ``type='tool_result'``.
 
-    The ``message_end`` toolCall blocks are SUPPRESSED because the
-    same logical tool call is already emitted by either
-    ``message_update.assistantMessageEvent.type == 'toolcall_end'``
-    (the assistant's call) or by ``tool_execution_start`` (the start
-    of execution).  Emitting the ``message_end`` toolCall block would
-    duplicate an event the user has already seen.
+    The ``message_end`` content array is walked for text, thinking,
+    and toolCall blocks.  Text and thinking blocks honor the
+    terminal-snapshot rule: if the corresponding ``*_end`` snapshot
+    was already emitted, the ``message_end`` block is skipped.  The
+    toolCall block is ALWAYS emitted (per the plan) so downstream
+    consumers see the same logical tool call in the same place they
+    see text and thinking content from ``message_end``.
 
     Inherits from :class:`NdjsonParserBase` which owns the 6 shared
     NDJSON behaviors.  The subclass ``_dispatch_json_object`` delegates
@@ -496,6 +507,25 @@ class PiParser(NdjsonParserBase):
         """
         self.saw_text_end = False
         self.saw_thinking_end = False
+
+    def _handle_lifecycle_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine] | None:
+        """Override the base lifecycle hook to fall through to dispatch.
+
+        Pi's documented event vocabulary (per
+        https://pi.dev/docs/latest/json) includes ``message_start``,
+        which is in the shared :data:`LIFECYCLE_EVENT_TYPES` frozenset.
+        To honor the AC-04 invariant that EVERY pi event reaches
+        :meth:`_dispatch_json_object`, this hook returns ``None`` so
+        the base layer falls through to the dispatch table; the
+        dispatcher's :data:`_PI_SILENT_TOP_LEVEL_EVENTS` membership
+        then decides whether the event is silent (``message_start``,
+        ``agent_start``, ``turn_start``) or yields typed output.
+        """
+        return None
 
     def _dispatch_json_object(
         self,

@@ -42,6 +42,7 @@ caller can never accidentally register an interactive agent with
 | `CLAUDE`                 | `ClaudeExecutionStrategy`                       |
 | `CODEX`                  | `GenericExecutionStrategy`                      |
 | `NANOCODER`              | `GenericExecutionStrategy`                      |
+| `PI`                     | `GenericExecutionStrategy`                      |
 | `GENERIC`                | `GenericExecutionStrategy`                      |
 
 For interactive agents (`interactive=True`) the helper also auto-applies
