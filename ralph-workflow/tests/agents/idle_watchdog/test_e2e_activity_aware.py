@@ -32,11 +32,10 @@ from ralph.agents.idle_watchdog._evidence_tier import (
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.child_liveness import ChildLivenessRegistry, ChildLivenessSubagentPidSource
 from ralph.process.monitor import (
-    ClaudeCodeSubagentOutputDiscovery,
     DefaultProcessMonitor,
     DiscoveryStrategy,
     FileSubagentOutputCapture,
-    OpencodeSubagentOutputDiscovery,
+    NullDiscoveryStrategy,
     ProcessMonitor,
     ProcessRole,
     SubagentOutputCapture,
@@ -112,8 +111,8 @@ class _FakeProcessMonitor(ProcessMonitor):
 @pytest.mark.parametrize(
     "discovery",
     [
-        OpencodeSubagentOutputDiscovery(),
-        ClaudeCodeSubagentOutputDiscovery(),
+        NullDiscoveryStrategy(),
+        NullDiscoveryStrategy(),
     ],
 )
 def test_documented_discovery_returns_empty_when_path_not_documented(

@@ -662,7 +662,7 @@ def _run_commit_agent_attempt_with_recovery(
         parsed_output, raw_lines, resume_session_id = collect_commit_agent_output(
             list(raw_output),
             parser_type=resolve_parser_key(
-                agent.cmd, agent.json_parser, agent.transport
+                agent.cmd, agent.json_parser, cast("AgentTransport", agent.transport)
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
@@ -859,7 +859,7 @@ def invoke_commit_agent_attempt(
         parsed_output, raw_output, resume_session_id = collect_commit_agent_output(
             lines,
             parser_type=resolve_parser_key(
-                agent.cmd, agent.json_parser, agent.transport
+                agent.cmd, agent.json_parser, cast("AgentTransport", agent.transport)
             ),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import cast
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.mcp.transport.common import _load_mcpservers_from_paths
+from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 # AGY home config directory name within its default config root
@@ -70,15 +70,13 @@ def agy_workspace_mcp_endpoint(
     """Write a run-scoped Ralph MCP config to AGY's global path and restore it after exit."""
     config_path = _agy_global_config_path()
     original_bytes = config_path.read_bytes() if config_path.is_file() else None
-    if unsafe_mode:
-        existing = _load_mcpservers_from_paths(_agy_mcp_config_paths(workspace_path))
-        merged_servers: dict[str, object] = {
-            **existing,
-            RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint},
-        }
-    else:
-        merged_servers = {RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint}}
-    config_payload = {"mcpServers": merged_servers}
+    current_config: dict[str, object] = {
+        "mcpServers": {RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint}}
+    }
+    merged_config = merge_existing_upstreams(
+        "agy", current_config, unsafe_mode=unsafe_mode
+    )
+    config_payload = merged_config
     try:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")

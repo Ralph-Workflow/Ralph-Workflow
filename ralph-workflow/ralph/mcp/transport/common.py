@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
     UpstreamMcpServer,
+    normalize_upstream_mcp_servers,
     serialize_upstream_mcp_servers,
 )
 
@@ -105,9 +108,183 @@ def set_upstream_mcp_config(
     runtime_env.pop(UPSTREAM_MCP_CONFIG_ENV, None)
 
 
+def _load_opencode_mcp_servers_from_current_config(
+    current_config: dict[str, object],
+) -> dict[str, object]:
+    """Extract opencode mcp servers from a current_config dict."""
+    mcp_entry = current_config.get("mcp")
+    if not isinstance(mcp_entry, dict):
+        return {}
+    return cast("dict[str, object]", mcp_entry)
+
+
+def _load_codex_mcp_servers_from_current_config(
+    current_config: dict[str, object],
+) -> dict[str, object]:
+    """Extract codex mcp servers (TOML-style [mcp_servers.*]) from a current_config dict."""
+    servers: dict[str, object] = {}
+    for key, value in current_config.items():
+        if not isinstance(key, str) or not key.startswith("mcp_servers."):
+            continue
+        if isinstance(value, dict):
+            servers[key] = value
+    return servers
+
+
+def _upstream_as_dict(s: UpstreamMcpServer) -> dict[str, object]:
+    """Convert an UpstreamMcpServer to a plain dict."""
+    result: dict[str, object] = {
+        "name": s.name,
+        "transport": s.transport if s.transport else "http",
+        "url": s.url,
+    }
+    if s.command:
+        result["command"] = s.command
+    if s.args:
+        result["args"] = list(s.args)
+    if s.env:
+        result["env"] = dict(s.env)
+    return result
+
+
+def _merge_opencode(current_config: dict[str, object], unsafe_mode: bool) -> dict[str, object]:
+    ralph_opencode_mcp = cast(
+        "dict[str, object]", current_config.get("mcp", dict[str, object]())
+    )
+    ralph_opencode = ralph_opencode_mcp.get(RALPH_MCP_SERVER_NAME)
+    if not unsafe_mode:
+        if ralph_opencode is not None:
+            return {"mcp": {RALPH_MCP_SERVER_NAME: ralph_opencode}}
+        return {"mcp": {}}
+    existing_native = _load_opencode_mcp_servers_from_current_config(current_config)
+    merged: dict[str, object] = dict(existing_native)
+    if ralph_opencode is not None:
+        merged[RALPH_MCP_SERVER_NAME] = ralph_opencode
+    return {"mcp": merged}
+
+
+def _merge_codex(current_config: dict[str, object], unsafe_mode: bool) -> dict[str, object]:
+    existing_toml_servers = _load_codex_mcp_servers_from_current_config(current_config)
+    codex_ralph_key = "mcp_servers." + RALPH_MCP_SERVER_NAME
+    codex_ralph_entry = current_config.get(codex_ralph_key)
+    if not unsafe_mode:
+        if codex_ralph_entry is not None and isinstance(codex_ralph_entry, dict):
+            return {codex_ralph_key: codex_ralph_entry}
+        return {}
+    result = dict(existing_toml_servers)
+    if codex_ralph_entry is not None and isinstance(codex_ralph_entry, dict):
+        result[codex_ralph_key] = codex_ralph_entry
+    return result
+
+
+def _merge_default(
+    agent_name: str, current_config: dict[str, object], unsafe_mode: bool
+) -> dict[str, object]:
+    ralph_mcp_servers = cast(
+        "dict[str, object]", current_config.get("mcpServers", dict[str, object]())
+    )
+    ralph_entry = ralph_mcp_servers.get(RALPH_MCP_SERVER_NAME)
+    if not unsafe_mode:
+        if ralph_entry is not None:
+            return {"mcpServers": {RALPH_MCP_SERVER_NAME: ralph_entry}}
+        return {}
+    upstreams = _load_upstreams_for_agent(agent_name, current_config)
+    filtered_upstreams = tuple(s for s in upstreams if s.name != RALPH_MCP_SERVER_NAME)
+    existing_map: dict[str, object] = {s.name: _upstream_as_dict(s) for s in filtered_upstreams}
+    merged = dict(existing_map)
+    if ralph_entry is not None:
+        merged[RALPH_MCP_SERVER_NAME] = ralph_entry
+    return {"mcpServers": merged}
+
+
+def merge_existing_upstreams(
+    agent_name: str,
+    current_config: dict[str, object],
+    *,
+    unsafe_mode: bool,
+) -> dict[str, object]:
+    """Merge existing upstream servers into current_config based on agent and unsafe_mode.
+
+    This helper consolidates the unsafe_mode merge logic across the 4 JSON-based
+    transport files (claude, agy, nanocoder, opencode) into one dispatcher.
+
+    When unsafe_mode=False: returns only the ralph entry (existing upstreams dropped).
+    When unsafe_mode=True: merges existing agent-native servers with the ralph entry.
+
+    Codex uses TOML-style `mcp_servers.X` keys and is handled separately to preserve
+    the native TOML structure and all per-entry fields.
+
+    Args:
+        agent_name: One of "claude", "agy", "nanocoder", "opencode", "codex".
+        current_config: Agent-native config dict.
+            - claude/agy/nanocoder: {"mcpServers": {"<name>": {...}}}
+            - opencode: {"mcp": {"<name>": {"type", "url", "enabled", "timeout", ...}}}
+            - codex: {"mcp_servers.X": {...}, ...}  (TOML-style keys)
+        unsafe_mode: Whether to preserve existing upstream servers.
+
+    Returns:
+        Merged config dict with ralph entry and optionally existing upstreams.
+    """
+    if agent_name == "opencode":
+        return _merge_opencode(current_config, unsafe_mode)
+    if agent_name == "codex":
+        return _merge_codex(current_config, unsafe_mode)
+    return _merge_default(agent_name, current_config, unsafe_mode)
+
+
+def _load_upstreams_for_agent(
+    agent_name: str, current_config: dict[str, object]
+) -> tuple[UpstreamMcpServer, ...]:
+    """Load existing UpstreamMcpServer tuple for agent_name (unsafe_mode=True path).
+
+    Uses importlib to defer imports and avoid circular dependency at module init time.
+    All agent transport modules import _load_mcpservers_from_paths from this module,
+    so top-level imports would create:
+      common -> claude/agy/nanocoder -> common (not yet fully initialized)
+
+    workspace_path is extracted from current_config if present, to allow callers
+    to specify which workspace config files to load.
+
+    """
+    workspace_path = current_config.get("workspace_path")
+    if agent_name == "claude":
+        mod = importlib.import_module("ralph.mcp.transport.claude")
+        paths = cast("tuple[Path, ...]", mod._claude_mcp_config_paths(workspace_path))
+        servers = cast("dict[str, UpstreamMcpServer]", mod._load_mcpservers_from_paths(paths))
+        servers.pop(RALPH_MCP_SERVER_NAME, None)
+        return normalize_upstream_mcp_servers(servers)
+    if agent_name == "agy":
+        mod = importlib.import_module("ralph.mcp.transport.agy")
+        paths = cast("tuple[Path, ...]", mod._agy_mcp_config_paths(workspace_path))
+        normalizer = cast(
+            "Callable[[str, object], tuple[str, object] | None]",
+            mod._normalize_agy_server_entry,
+        )
+        servers = cast(
+            "dict[str, UpstreamMcpServer]",
+            mod._load_mcpservers_from_paths(paths, normalizer),
+        )
+        servers.pop(RALPH_MCP_SERVER_NAME, None)
+        return normalize_upstream_mcp_servers(servers)
+    if agent_name == "nanocoder":
+        mod = importlib.import_module("ralph.mcp.transport.nanocoder")
+        paths = cast("tuple[Path, ...]", mod._nanocoder_mcp_config_paths(workspace_path))
+        servers = cast("dict[str, UpstreamMcpServer]", mod._load_mcpservers_from_paths(paths))
+        servers.pop(RALPH_MCP_SERVER_NAME, None)
+        return normalize_upstream_mcp_servers(servers)
+    if agent_name == "opencode":
+        existing = _load_opencode_mcp_servers_from_current_config(current_config)
+        return normalize_upstream_mcp_servers(existing)
+    if agent_name == "codex":
+        existing = _load_codex_mcp_servers_from_current_config(current_config)
+        return normalize_upstream_mcp_servers(existing)
+    return ()
+
+
 __all__ = [
     "mcp_config_as_upstreams",
     "mcp_toml_as_upstreams",
+    "merge_existing_upstreams",
     "merge_mcp_toml_into_upstreams",
     "set_upstream_mcp_config",
 ]

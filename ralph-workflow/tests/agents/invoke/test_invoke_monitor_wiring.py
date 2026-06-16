@@ -14,9 +14,8 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
 from ralph.process.child_liveness import ChildLivenessSubagentPidSource
 from ralph.process.monitor import (
-    ClaudeCodeSubagentOutputDiscovery,
     DefaultProcessMonitor,
-    OpencodeSubagentOutputDiscovery,
+    NullDiscoveryStrategy,
     ProcessMonitor,
     ProcessRole,
     SubagentOutputCapture,
@@ -111,24 +110,23 @@ def test_invoke_wires_process_monitor_for_transport(
 
 
 @pytest.mark.parametrize(
-    ("transport", "expected_discovery"),
+    "transport",
     [
-        (AgentTransport.CLAUDE, ClaudeCodeSubagentOutputDiscovery),
-        (AgentTransport.CLAUDE_INTERACTIVE, ClaudeCodeSubagentOutputDiscovery),
-        (AgentTransport.OPENCODE, OpencodeSubagentOutputDiscovery),
-        (AgentTransport.CODEX, type(None)),
-        (AgentTransport.NANOCODER, type(None)),
-        (AgentTransport.GENERIC, type(None)),
-        (AgentTransport.AGY, type(None)),
+        AgentTransport.CLAUDE,
+        AgentTransport.CLAUDE_INTERACTIVE,
+        AgentTransport.OPENCODE,
+        AgentTransport.CODEX,
+        AgentTransport.NANOCODER,
+        AgentTransport.GENERIC,
+        AgentTransport.AGY,
     ],
 )
 def test_invoke_wires_discovery_strategy_for_transport(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     transport: AgentTransport,
-    expected_discovery: type,
 ) -> None:
-    """AC-10/AC-11: only documented transports get a discovery strategy."""
+    """All transports get NullDiscoveryStrategy (consolidated)."""
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
@@ -148,10 +146,7 @@ def test_invoke_wires_discovery_strategy_for_transport(
 
     monitor = captured.get("process_monitor")
     assert isinstance(monitor, DefaultProcessMonitor)
-    if expected_discovery is type(None):
-        assert monitor._discovery_strategy is None
-    else:
-        assert isinstance(monitor._discovery_strategy, expected_discovery)
+    assert isinstance(monitor._discovery_strategy, NullDiscoveryStrategy)
 
 
 @pytest.mark.parametrize(

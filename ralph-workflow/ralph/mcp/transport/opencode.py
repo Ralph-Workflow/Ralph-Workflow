@@ -11,6 +11,7 @@ from ralph.mcp.tools.names import (
     OPENCODE_NATIVE_TOOLS_TO_KEEP,
     claude_tool_name,
 )
+from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 from ralph.timeout_defaults import EXEC_MAX_TIMEOUT_MS
 
@@ -59,12 +60,15 @@ def build_opencode_provider_config(
         "enabled": True,
         "timeout": _OPENCODE_MCP_CLIENT_TIMEOUT_MS,
     }
-    if unsafe_mode and isinstance(existing_mcp, dict):
-        merged_mcp = dict(cast("dict[str, object]", existing_mcp))
-        merged_mcp["ralph"] = ralph_entry
-        config_obj["mcp"] = merged_mcp
-    else:
-        config_obj["mcp"] = {"ralph": ralph_entry}
+    current_config_mcp: dict[str, object] = (
+        dict(cast("dict[str, object]", existing_mcp)) if isinstance(existing_mcp, dict) else {}
+    )
+    current_config_mcp["ralph"] = ralph_entry
+    current_config: dict[str, object] = {"mcp": current_config_mcp}
+    merged = merge_existing_upstreams(
+        "opencode", current_config, unsafe_mode=unsafe_mode
+    )
+    config_obj["mcp"] = merged.get("mcp", {"ralph": ralph_entry})
 
     # The field OpenCode actually honors for the MCP request timeout (the per-server
     # `timeout` above is ignored). Without this, long tool calls (exec running tests/

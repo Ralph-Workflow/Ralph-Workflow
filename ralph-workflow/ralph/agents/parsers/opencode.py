@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, ClassVar, cast
 from ._event_classification import is_lifecycle_event
 from ._template import ParserTemplateBase
 from .agent_output_line import AgentOutputLine
-from .base import stringify_text_blocks
+from .base import extract_error_message, stringify_text_blocks
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -138,11 +138,7 @@ class OpenCodeParser(ParserTemplateBase):
         _part: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        error_obj = obj.get("error")
-        if isinstance(error_obj, dict):
-            error_msg = str(error_obj.get("message", error_obj.get("name", "unknown error")))
-        else:
-            error_msg = str(obj.get("message", "unknown error"))
+        error_msg = extract_error_message(obj)
         yield AgentOutputLine(type="error", content=error_msg, raw=raw, metadata=obj)
 
     def _parse_tool_use(

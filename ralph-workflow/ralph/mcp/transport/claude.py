@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
-from ralph.mcp.transport.common import _load_mcpservers_from_paths
+from ralph.mcp.transport.common import _load_mcpservers_from_paths, merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
 
@@ -23,12 +23,13 @@ def claude_mcp_config(
             "url": endpoint,
         }
     }
-    if unsafe_mode:
-        existing = _load_mcpservers_from_paths(_claude_mcp_config_paths(workspace_path))
-        merged_servers: dict[str, object] = {**existing, **ralph_entry}
-    else:
-        merged_servers = dict(ralph_entry)
-    config_payload = {"mcpServers": merged_servers}
+    current_config: dict[str, object] = {"mcpServers": dict(ralph_entry)}
+    if workspace_path is not None:
+        current_config["workspace_path"] = workspace_path
+    merged_config = merge_existing_upstreams(
+        "claude", current_config, unsafe_mode=unsafe_mode
+    )
+    config_payload = merged_config
     return json.dumps(config_payload, separators=(",", ":"))
 
 
@@ -36,9 +37,8 @@ def load_existing_claude_upstream_servers(
     workspace_path: Path | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
     """Read Claude's MCP config files and return any upstream MCP servers found."""
-    return normalize_upstream_mcp_servers(
-        _load_mcpservers_from_paths(_claude_mcp_config_paths(workspace_path))
-    )
+    servers = _load_mcpservers_from_paths(_claude_mcp_config_paths(workspace_path))
+    return normalize_upstream_mcp_servers(servers)
 
 
 def _claude_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:

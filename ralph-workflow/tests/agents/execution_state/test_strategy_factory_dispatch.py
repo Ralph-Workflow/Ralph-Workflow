@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from ralph.agents.execution_state import (
-    AgyExecutionStrategy,
     ClaudeExecutionStrategy,
     ClaudeInteractiveExecutionStrategy,
+    CompletionEnforcingStrategy,
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
     strategy_for_transport,
@@ -35,7 +35,7 @@ class TestStrategyFactoryDispatch:
             (AgentTransport.OPENCODE, OpenCodeExecutionStrategy),
             (AgentTransport.CLAUDE, ClaudeExecutionStrategy),
             (AgentTransport.CLAUDE_INTERACTIVE, ClaudeInteractiveExecutionStrategy),
-            (AgentTransport.AGY, AgyExecutionStrategy),
+            (AgentTransport.AGY, CompletionEnforcingStrategy),
             (AgentTransport.CODEX, GenericExecutionStrategy),
             (AgentTransport.NANOCODER, GenericExecutionStrategy),
             (AgentTransport.GENERIC, GenericExecutionStrategy),
@@ -60,7 +60,7 @@ class TestStrategyFactoryDispatch:
             _STRATEGY_DISPATCH[AgentTransport.CLAUDE_INTERACTIVE]
             is ClaudeInteractiveExecutionStrategy
         )
-        assert _STRATEGY_DISPATCH[AgentTransport.AGY] is AgyExecutionStrategy
+
         assert _STRATEGY_DISPATCH[AgentTransport.CODEX] is GenericExecutionStrategy
         assert _STRATEGY_DISPATCH[AgentTransport.NANOCODER] is GenericExecutionStrategy
         assert _STRATEGY_DISPATCH[AgentTransport.GENERIC] is GenericExecutionStrategy

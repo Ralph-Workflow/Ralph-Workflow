@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-__all__ = ["claude_mcp_config"]
+__all__ = ["_agent_transport", "claude_mcp_config"]
 
 from ralph.agents.invoke._command_builders import COMMAND_BUILDERS
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
@@ -23,10 +23,7 @@ if TYPE_CHECKING:
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    transport = config.transport
-    if transport is None:
-        return AgentTransport.GENERIC
-    return transport
+    return cast("AgentTransport", config.transport)
 
 
 def _shell_single_quote(value: str) -> str:

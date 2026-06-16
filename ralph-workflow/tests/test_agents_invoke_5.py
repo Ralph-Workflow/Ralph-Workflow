@@ -126,11 +126,12 @@ class TestResolveInvocationRuntime:
         assert result.mcp_endpoint == "http://localhost:9999"
         assert result.agent_env is not None
 
-    def test_agy_runtime_early_exit_when_no_endpoint(self) -> None:
+    def test_agy_runtime_early_exit_when_no_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
         config = AgentConfig(
             cmd="agy",
             transport=AgentTransport.AGY,
         )
+        monkeypatch.delenv(str(MCP_ENDPOINT_ENV), raising=False)
 
         result = invoke_module.resolve_invocation_runtime(config, None, None)
 

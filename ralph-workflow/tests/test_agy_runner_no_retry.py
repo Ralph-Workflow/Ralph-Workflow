@@ -5,7 +5,7 @@ from __future__ import annotations
 import types
 from typing import TYPE_CHECKING, cast
 
-from ralph.agents.execution_state import AgyExecutionStrategy
+from ralph.agents.execution_state import strategy_for_transport
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
     AgentInvocationError,
@@ -56,7 +56,7 @@ def test_agy_missing_completion_does_not_retry(tmp_path: Path) -> None:
                 "agy",
                 [],
                 CompletionCheckOptions(
-                    execution_strategy=AgyExecutionStrategy(),
+                    execution_strategy=strategy_for_transport(AgentTransport.AGY),
                     workspace_path=tmp_path,
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
@@ -117,7 +117,7 @@ def test_agy_completion_evidenced_run_does_not_fail(tmp_path: Path) -> None:
                 "agy",
                 [declare_line],
                 CompletionCheckOptions(
-                    execution_strategy=AgyExecutionStrategy(),
+                    execution_strategy=strategy_for_transport(AgentTransport.AGY),
                     workspace_path=tmp_path,
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
