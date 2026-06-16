@@ -229,6 +229,8 @@ class PtyLineReader:
             )
         ):
             return False
+        if self._raw_overflow is not None and self._raw_overflow.is_disabled:
+            return False
         _now = self._clock.monotonic()
         path_str = str(self._raw_overflow.path)
         current_size = self._raw_overflow.size_bytes
