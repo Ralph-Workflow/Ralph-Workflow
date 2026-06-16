@@ -9,6 +9,12 @@ from loguru import logger
 
 from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
 from ralph.agents.invoke._types import InvokeOptions
+from ralph.timeout_defaults import (
+    CPU_IDLE_SECONDS,
+    LOG_GROWTH_SECONDS,
+    OS_DESCENDANT_ONLY_CEILING_SECONDS,
+    OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -207,22 +213,22 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
         os_descendant_only_ceiling_seconds=(
             opts.os_descendant_only_ceiling_seconds
             if opts.os_descendant_only_ceiling_seconds is not None
-            else _base.os_descendant_only_ceiling_seconds
+            else OS_DESCENDANT_ONLY_CEILING_SECONDS
         ),
         os_descendant_only_suspect_seconds=(
             opts.os_descendant_only_suspect_seconds
             if opts.os_descendant_only_suspect_seconds is not None
-            else _base.os_descendant_only_suspect_seconds
+            else OS_DESCENDANT_ONLY_SUSPECT_SECONDS
         ),
         cpu_idle_seconds=(
             opts.cpu_idle_seconds
             if opts.cpu_idle_seconds is not None
-            else _base.cpu_idle_seconds
+            else CPU_IDLE_SECONDS
         ),
         log_growth_seconds=(
             opts.log_growth_seconds
             if opts.log_growth_seconds is not None
-            else _base.log_growth_seconds
+            else LOG_GROWTH_SECONDS
         ),
     )
 

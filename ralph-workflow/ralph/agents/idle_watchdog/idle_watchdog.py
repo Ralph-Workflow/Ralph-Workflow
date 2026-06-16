@@ -828,6 +828,7 @@ class IdleWatchdog:
         idle_elapsed: float,
         *,
         ceiling_seconds: float | None = None,
+        suspect_threshold_seconds: float | None = None,
         diagnostic: dict[str, str | int | float | bool | list[object]] | None = None,
     ) -> None:
         """Build and dispatch a WaitingStatusEvent to the listener.
@@ -837,6 +838,11 @@ class IdleWatchdog:
         if self._listener is None:
             return
         candidate_total = self._cumulative_waiting_on_child_seconds + current_run_seconds
+        _suspect = (
+            suspect_threshold_seconds
+            if suspect_threshold_seconds is not None
+            else self._config.suspect_waiting_on_child_seconds
+        )
         event = WaitingStatusEvent(
             kind=kind,
             cumulative_seconds=candidate_total,
@@ -847,7 +853,7 @@ class IdleWatchdog:
                 if ceiling_seconds is None
                 else ceiling_seconds
             ),
-            suspect_threshold_seconds=self._config.suspect_waiting_on_child_seconds,
+            suspect_threshold_seconds=_suspect,
             diagnostic=dict(diagnostic) if diagnostic else {},
         )
         try:
@@ -1211,6 +1217,7 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
+                suspect_threshold_seconds=effective_suspect,
                 diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
             )
             self._log.warning(
@@ -1244,6 +1251,7 @@ class IdleWatchdog:
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
                 ceiling_seconds=effective_ceiling,
+                suspect_threshold_seconds=effective_suspect,
                 diagnostic=cast("dict[str, str | int | float | bool | list[object]]", corr_diag_sf),
             )
 

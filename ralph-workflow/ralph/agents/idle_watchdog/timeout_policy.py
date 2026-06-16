@@ -338,16 +338,12 @@ class TimeoutPolicy:
             raise ValueError(msg)
 
     def _validate_os_descendant_only_fields(self) -> None:
-        if self.os_descendant_only_ceiling_seconds is not None:
-            if self.os_descendant_only_ceiling_seconds <= 0:
-                msg = "os_descendant_only_ceiling_seconds must be positive when set"
-                raise ValueError(msg)
-            if self.os_descendant_only_ceiling_seconds > self.max_waiting_on_child_seconds:
-                msg = (
-                    "os_descendant_only_ceiling_seconds must be <="
-                    " max_waiting_on_child_seconds"
-                )
-                raise ValueError(msg)
+        if (
+            self.os_descendant_only_ceiling_seconds is not None
+            and self.os_descendant_only_ceiling_seconds <= 0
+        ):
+            msg = "os_descendant_only_ceiling_seconds must be positive when set"
+            raise ValueError(msg)
         if self.os_descendant_only_suspect_seconds is not None:
             if self.os_descendant_only_suspect_seconds <= 0:
                 msg = "os_descendant_only_suspect_seconds must be positive when set"
@@ -362,23 +358,3 @@ class TimeoutPolicy:
                     " os_descendant_only_ceiling_seconds"
                 )
                 raise ValueError(msg)
-            if (
-                self.os_descendant_only_suspect_seconds
-                >= self.max_waiting_on_child_seconds
-            ):
-                msg = (
-                    "os_descendant_only_suspect_seconds must be <"
-                    " max_waiting_on_child_seconds"
-                )
-                raise ValueError(msg)
-        if (
-            self.os_descendant_only_ceiling_seconds is not None
-            and self.max_waiting_on_child_no_progress_seconds is not None
-            and self.os_descendant_only_ceiling_seconds
-            > self.max_waiting_on_child_no_progress_seconds
-        ):
-            msg = (
-                "os_descendant_only_ceiling_seconds must be <="
-                " max_waiting_on_child_no_progress_seconds"
-            )
-            raise ValueError(msg)

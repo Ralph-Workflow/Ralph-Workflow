@@ -217,6 +217,8 @@ class _ProcessLineReader:
         _now = self._clock.monotonic()
         path_str = str(self._raw_overflow.path)
         current_size = self._raw_overflow.size_bytes
+        if current_size == 0:
+            return False
         if path_str in self._log_growth_state:
             baseline_size, baseline_time = self._log_growth_state[path_str]
             if (

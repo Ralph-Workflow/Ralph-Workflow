@@ -220,20 +220,21 @@ class PtyLineReader:
         return False
 
     def _probe_log_growth(self, alive_by: AliveBy | None) -> bool:
-        if self._policy.log_growth_seconds is None:
-            return False
-        if not hasattr(self, "_raw_overflow"):
-            return False
-        if self._raw_overflow is None:
-            return False
-        _is_initial_state = bool(
-            alive_by is None or alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
-        )
-        if not _is_initial_state:
+        if (
+            self._policy.log_growth_seconds is None
+            or not hasattr(self, "_raw_overflow")
+            or self._raw_overflow is None
+            or not (
+                alive_by is None
+                or alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+            )
+        ):
             return False
         _now = self._clock.monotonic()
         path_str = str(self._raw_overflow.path)
         current_size = self._raw_overflow.size_bytes
+        if current_size == 0:
+            return False
         if path_str in self._log_growth_state:
             baseline_size, baseline_time = self._log_growth_state[path_str]
             if (
