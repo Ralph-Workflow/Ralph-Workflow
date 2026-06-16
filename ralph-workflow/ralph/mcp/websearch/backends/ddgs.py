@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.websearch._bounded_sdk_call import default_sdk_timeout_seconds, with_timeout
+
 from .base import SearchResult, WebSearchError
 
 if TYPE_CHECKING:
@@ -30,10 +32,29 @@ DDGS = cast("Callable[[], _DdgsTextClient] | None", getattr(_ddgs_module, "DDGS"
 class DdgsBackend:
     """In-process default backend backed by the ``ddgs`` package."""
 
+    def __init__(self, *, timeout_seconds: float | None = None) -> None:
+        self._timeout_seconds = timeout_seconds
+
+    @property
+    def timeout_seconds(self) -> float | None:
+        """Return the per-call timeout, or None to inherit the central default."""
+        return self._timeout_seconds
+
     def search(self, query: str, *, limit: int = 10) -> list[SearchResult]:
         client = self._create_client()
+        effective_timeout = (
+            self._timeout_seconds
+            if self._timeout_seconds is not None
+            else default_sdk_timeout_seconds()
+        )
         try:
-            raw_results = client.text(query, max_results=limit)
+            raw_results = with_timeout(
+                lambda: client.text(query, max_results=limit),
+                effective_timeout,
+                label="ddgs",
+            )
+        except WebSearchError:
+            raise
         except Exception as exc:
             raise WebSearchError("ddgs search failed") from exc
         return self._normalize_results(raw_results)

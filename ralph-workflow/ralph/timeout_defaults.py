@@ -3,9 +3,13 @@
 These constants are the single source of truth for all timeout and child-liveness
 numeric defaults. They are imported by ``ralph.agents.idle_watchdog.TimeoutPolicy``
 (dataclass field defaults), ``ralph.agents.invoke`` (child-liveness TTL module-level
-constants), and ``ralph.config.models.GeneralConfig`` (field defaults).
+constants), and ``ralph.config.models.GeneralConfig`` (field defaults), as well as
+``ralph.mcp.websearch.backends.brave`` / ``searxng``
+(``WEBSEARCH_BACKEND_TIMEOUT_SECONDS``) and ``ralph.mcp.websearch.backends.ddgs`` /
+``exa`` / ``tavily`` (``WEBSEARCH_SDK_TIMEOUT_SECONDS``, routed through
+``ralph.mcp.websearch._bounded_sdk_call.with_timeout``).
 
-Changing a constant here automatically propagates to all three layers so they
+Changing a constant here automatically propagates to all consumers so they
 cannot drift independently.
 """
 
@@ -130,6 +134,23 @@ SSE_DRAIN_CEILING_MS: int = 5_000
 #: shutdown.
 KILL_ESCALATION_CEILING_MS: int = 5_000
 
+#: Default per-call HTTP timeout for built-in websearch backends (Brave, SearXNG).
+#: Sourced by ralph.mcp.websearch.backends.brave and ralph.mcp.websearch.backends.searxng
+#: to replace the previously hard-coded _TIMEOUT_SECONDS = 10.0 literals. One source of
+#: truth so a 10s wedge cannot drift into a backend. Overridable via the
+#: ``[web_search]`` block of mcp.toml (WebSearchConfig.web_search_default_timeout_seconds).
+#: Must be > 0; the import-time invariant below rejects non-positive values.
+WEBSEARCH_BACKEND_TIMEOUT_SECONDS: float = 10.0
+
+#: Default per-call timeout for third-party-SDK-backed websearch backends (DDGS, Exa,
+#: Tavily). The SDKs wrap their own HTTP client; a hung SDK can otherwise block the
+#: dispatch worker for the full client timeout (330s), so the call is routed through
+#: ralph.mcp.websearch._bounded_sdk_call.with_timeout. Slightly more generous than the
+#: HTTP backend default because the SDKs add their own connection layer. Must be
+#: >= WEBSEARCH_BACKEND_TIMEOUT_SECONDS; the import-time invariant below rejects
+#: values that violate that ordering.
+WEBSEARCH_SDK_TIMEOUT_SECONDS: float = 30.0
+
 #: Default poll interval for subagent output capture. The watchdog polls
 #: observable subagent log streams at this cadence and ingests only new lines
 #: since the last poll.
@@ -253,3 +274,27 @@ CHILD_STALE_LABEL_TTL_SECONDS: float = 10.0
 
 #: Reconciliation window after stdout EOF for late terminal acks.
 CHILD_EXIT_RECONCILE_SECONDS: float = 5.0
+
+# ---------------------------------------------------------------------------
+# Import-time invariants
+# ---------------------------------------------------------------------------
+# Use ``if``/``raise RuntimeError`` (NOT bare ``assert``) so the guards survive
+# ``python -O`` and prevent a future regression from silently emptying the
+# constant set or violating the SDK >= HTTP ordering. These checks run on
+# import, are not stripped by ``-O``, and pin the contract that operators
+# rely on.
+
+if not (
+    WEBSEARCH_BACKEND_TIMEOUT_SECONDS > 0.0
+    and WEBSEARCH_SDK_TIMEOUT_SECONDS > 0.0
+):
+    raise RuntimeError(
+        'websearch timeout constants must be positive; '
+        f'got WEBSEARCH_BACKEND_TIMEOUT_SECONDS={WEBSEARCH_BACKEND_TIMEOUT_SECONDS!r} '
+        f'and WEBSEARCH_SDK_TIMEOUT_SECONDS={WEBSEARCH_SDK_TIMEOUT_SECONDS!r}'
+    )
+if not WEBSEARCH_SDK_TIMEOUT_SECONDS >= WEBSEARCH_BACKEND_TIMEOUT_SECONDS:
+    raise RuntimeError(
+        'WEBSEARCH_SDK_TIMEOUT_SECONDS must be >= WEBSEARCH_BACKEND_TIMEOUT_SECONDS; '
+        f'got SDK={WEBSEARCH_SDK_TIMEOUT_SECONDS!r} < HTTP={WEBSEARCH_BACKEND_TIMEOUT_SECONDS!r}'
+    )

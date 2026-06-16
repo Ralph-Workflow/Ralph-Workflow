@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.websearch._bounded_sdk_call import default_sdk_timeout_seconds, with_timeout
+
 from ..secrets import resolve_secret
 from .base import SearchResult, WebSearchError
 
@@ -47,12 +49,24 @@ class ExaBackend:
 
     api_key: str | None = None
     api_key_env: str | None = None
+    timeout_seconds: float | None = None
 
     def search(self, query: str, *, limit: int = 10) -> list[SearchResult]:
         exa_type = _load_exa_type()
         resolved_key = resolve_secret(self.api_key, self.api_key_env)
+        effective_timeout = (
+            self.timeout_seconds
+            if self.timeout_seconds is not None
+            else default_sdk_timeout_seconds()
+        )
         try:
-            response = exa_type(api_key=resolved_key).search(query, num_results=limit)
+            response = with_timeout(
+                lambda: exa_type(api_key=resolved_key).search(query, num_results=limit),
+                effective_timeout,
+                label="exa",
+            )
+        except WebSearchError:
+            raise
         except Exception as exc:
             raise WebSearchError("exa search failed") from exc
         return _normalize_results(response)

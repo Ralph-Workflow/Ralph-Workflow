@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import threading
 from importlib import import_module
 
 import pytest
@@ -98,3 +99,26 @@ def test_ddgs_backend_normalizes_sparse_result_fields(monkeypatch: pytest.Monkey
     assert results[0].title == "Example title"
     assert results[0].url == "https://example.com/a"
     assert results[0].snippet == "Example snippet"
+
+
+def test_ddgs_backend_bounded_by_with_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    ddgs_module = _import_ddgs_module()
+    bounded = import_module("ralph.mcp.websearch._bounded_sdk_call")
+    bounded.reset_default()
+    event = threading.Event()
+
+    class HangingDDGS:
+        def text(self, query: str, max_results: int) -> list[dict[str, str]]:
+            event.wait(timeout=10.0)
+            return []
+
+    monkeypatch.setattr(ddgs_module, "DDGS", HangingDDGS)
+    try:
+        backend = ddgs_module.DdgsBackend(timeout_seconds=0.05)
+        with pytest.raises(bounded.WebSearchError) as exc_info:
+            backend.search("q")
+    finally:
+        event.set()
+        bounded.reset_default()
+    assert "ddgs" in str(exc_info.value)
+    assert "0.05" in str(exc_info.value)

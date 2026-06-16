@@ -129,3 +129,28 @@ def test_live_search_returns_results() -> None:
 
     assert results
     assert all(result.title and result.url for result in results)
+
+
+def test_timeout_sourced_from_central_constants(monkeypatch: pytest.MonkeyPatch) -> None:
+    brave_backend = _import_brave_module()
+    constants = import_module("ralph.timeout_defaults")
+    monkeypatch.setitem(sys.modules, CLIENT_MODULE_NAME, ModuleType(CLIENT_MODULE_NAME))
+    captured: dict[str, float] = {}
+
+    def fake_get(
+        url: str,
+        *,
+        headers: dict[str, str],
+        params: dict[str, object],
+        timeout: float,
+    ) -> _FakeResponse:
+        captured["timeout"] = timeout
+        return _FakeResponse({"web": {"results": []}})
+
+    monkeypatch.setattr(brave_backend.httpx, "get", fake_get)
+
+    brave_backend.BraveBackend(api_key=API_KEY).search("python", limit=2)
+    assert captured["timeout"] == constants.WEBSEARCH_BACKEND_TIMEOUT_SECONDS
+
+    brave_backend.BraveBackend(api_key=API_KEY, timeout_seconds=20.0).search("python", limit=2)
+    assert captured["timeout"] == 20.0

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from importlib import import_module
 from types import ModuleType, SimpleNamespace
 from typing import Any, cast
@@ -110,3 +111,31 @@ def test_live_search_returns_results() -> None:
 
     assert results
     assert all(result.title and result.url for result in results)
+
+
+def test_exa_backend_bounded_by_with_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    exa_backend = _import_exa_module()
+    bounded = import_module("ralph.mcp.websearch._bounded_sdk_call")
+    bounded.reset_default()
+    event = threading.Event()
+
+    class HangingExa:
+        def __init__(self, *, api_key: str) -> None:
+            self._api_key = api_key
+
+        def search(self, query: str, *, num_results: int) -> object:
+            event.wait(timeout=10.0)
+            return SimpleNamespace(results=[])
+
+    fake_module = cast("Any", ModuleType("exa_py"))
+    fake_module.Exa = HangingExa
+    monkeypatch.setitem(sys.modules, "exa_py", fake_module)
+    try:
+        backend = exa_backend.ExaBackend(api_key=API_KEY, timeout_seconds=0.05)
+        with pytest.raises(bounded.WebSearchError) as exc_info:
+            backend.search("q")
+    finally:
+        event.set()
+        bounded.reset_default()
+    assert "exa" in str(exc_info.value)
+    assert "0.05" in str(exc_info.value)

@@ -30,6 +30,7 @@ from ralph.mcp.websearch.backends.tavily import TavilyBackend
 from ralph.mcp.websearch.secrets import resolve_secret
 
 if TYPE_CHECKING:
+    from ralph.config._web_search_backend_spec import WebSearchBackendSpec
     from ralph.workspace import Workspace
 
 WEB_SEARCH_CAPABILITY = "WebSearch"
@@ -39,24 +40,34 @@ MAX_LIMIT = 25
 
 
 def _build_backend(name: str, config: WebSearchConfig) -> WebSearchBackend:
+    default_timeout = config.web_search_default_timeout_seconds
+
+    def _resolved_timeout(spec: WebSearchBackendSpec | None) -> float | None:
+        if spec is None:
+            return default_timeout
+        per_backend = spec.timeout_seconds
+        if per_backend is not None:
+            return per_backend
+        return default_timeout
+
     if name == "ddgs":
-        return DdgsBackend()
+        return DdgsBackend(timeout_seconds=_resolved_timeout(config.backends.get("ddgs")))
     if name == "searxng":
         spec = config.backends.get("searxng")
         url = spec.url if spec is not None else None
         if not url:
             raise WebSearchError("searxng backend requires url in config")
-        return SearxngBackend(url=url)
+        return SearxngBackend(url=url, timeout_seconds=_resolved_timeout(spec))
     spec = config.backends.get(name)
     if spec is None:
         raise WebSearchError(f"backend {name!r} not configured")
     resolved_key = resolve_secret(spec.api_key, spec.api_key_env)
     if name == "tavily":
-        return TavilyBackend(api_key=resolved_key)
+        return TavilyBackend(api_key=resolved_key, timeout_seconds=_resolved_timeout(spec))
     if name == "brave":
-        return BraveBackend(api_key=resolved_key)
+        return BraveBackend(api_key=resolved_key, timeout_seconds=_resolved_timeout(spec))
     if name == "exa":
-        return ExaBackend(api_key=resolved_key)
+        return ExaBackend(api_key=resolved_key, timeout_seconds=_resolved_timeout(spec))
     raise WebSearchError(f"unsupported backend: {name!r}")
 
 

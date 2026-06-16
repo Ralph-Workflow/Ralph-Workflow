@@ -24,10 +24,11 @@ from urllib.parse import urljoin
 
 import httpx
 
+from ralph.timeout_defaults import WEBSEARCH_BACKEND_TIMEOUT_SECONDS
+
 from .base import SearchResult, WebSearchError
 
 _SEARCH_PATH = "/search"
-_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -35,14 +36,20 @@ class SearxngBackend:
     """Backend that queries a user-managed SearXNG instance."""
 
     url: str
+    timeout_seconds: float | None = None
 
     def search(self, query: str, *, limit: int = 10) -> list[SearchResult]:
         request_data: dict[str, str] = {"q": query, "format": "json"}
+        effective_timeout = (
+            self.timeout_seconds
+            if self.timeout_seconds is not None
+            else WEBSEARCH_BACKEND_TIMEOUT_SECONDS
+        )
         try:
             response = httpx.post(
                 self._search_url,
                 data=request_data,
-                timeout=_TIMEOUT_SECONDS,
+                timeout=effective_timeout,
             )
             response.raise_for_status()
             payload = cast("object", response.json())

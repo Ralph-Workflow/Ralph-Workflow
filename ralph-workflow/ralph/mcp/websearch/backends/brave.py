@@ -9,11 +9,12 @@ from typing import cast
 
 import httpx
 
+from ralph.timeout_defaults import WEBSEARCH_BACKEND_TIMEOUT_SECONDS
+
 from ..secrets import resolve_secret
 from .base import SearchResult, WebSearchError
 
 _DEFAULT_URL = "https://api.search.brave.com/res/v1/web/search"
-_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -23,10 +24,16 @@ class BraveBackend:
     api_key: str | None = None
     api_key_env: str | None = None
     url: str = _DEFAULT_URL
+    timeout_seconds: float | None = None
 
     def search(self, query: str, *, limit: int = 10) -> list[SearchResult]:
         _ensure_brave_extra_installed()
         resolved_key = resolve_secret(self.api_key, self.api_key_env)
+        effective_timeout = (
+            self.timeout_seconds
+            if self.timeout_seconds is not None
+            else WEBSEARCH_BACKEND_TIMEOUT_SECONDS
+        )
         try:
             response = httpx.get(
                 self.url,
@@ -35,7 +42,7 @@ class BraveBackend:
                     "X-Subscription-Token": resolved_key,
                 },
                 params={"q": query, "count": limit},
-                timeout=_TIMEOUT_SECONDS,
+                timeout=effective_timeout,
             )
             response.raise_for_status()
             payload = cast("object", response.json())

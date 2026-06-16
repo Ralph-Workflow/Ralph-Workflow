@@ -3,6 +3,7 @@ from __future__ import annotations
 import builtins
 import os
 import sys
+import threading
 from importlib import import_module
 from types import ModuleType
 from typing import Any, cast
@@ -115,3 +116,31 @@ def test_live_search_returns_results() -> None:
 
     assert results
     assert all(result.title and result.url for result in results)
+
+
+def test_tavily_backend_bounded_by_with_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    tavily_backend = _import_tavily_module()
+    bounded = import_module("ralph.mcp.websearch._bounded_sdk_call")
+    bounded.reset_default()
+    event = threading.Event()
+
+    class HangingTavily:
+        def __init__(self, *, api_key: str) -> None:
+            self._api_key = api_key
+
+        def search(self, query: str, *, max_results: int) -> dict[str, object]:
+            event.wait(timeout=10.0)
+            return {"results": []}
+
+    fake_module = cast("Any", ModuleType("tavily"))
+    fake_module.TavilyClient = HangingTavily
+    monkeypatch.setitem(sys.modules, "tavily", fake_module)
+    try:
+        backend = tavily_backend.TavilyBackend(api_key=API_KEY, timeout_seconds=0.05)
+        with pytest.raises(bounded.WebSearchError) as exc_info:
+            backend.search("q")
+    finally:
+        event.set()
+        bounded.reset_default()
+    assert "tavily" in str(exc_info.value)
+    assert "0.05" in str(exc_info.value)
