@@ -129,3 +129,32 @@ def test_pi_dynamic_alias_preserves_provider_id_suffix() -> None:
     config_with_thinking = registry.get("pi/anthropic/claude-sonnet-4-20250514:high")
     assert config_with_thinking is not None
     assert config_with_thinking.model_flag == "--model anthropic/claude-sonnet-4-20250514:high"
+
+
+def test_pi_dynamic_alias_rejects_malformed_model_ids() -> None:
+    """Malformed ``pi/<model>`` aliases must return ``None``.
+
+    Per https://pi.dev/docs/latest/usage the documented --model pattern is
+    ``provider/id`` with an optional ``:<thinking>`` suffix.  Aliases with
+    empty provider segments, empty model segments, empty thinking suffixes,
+    or otherwise structurally invalid shapes must NOT be accepted, since
+    they would emit undocumented ``--model <garbage>`` flags downstream.
+    """
+    registry = AgentRegistry()
+
+    # Empty provider (leading slash with no provider before it).
+    assert registry.get("pi//x") is None
+    # Empty model id (provider with trailing slash but no model name).
+    assert registry.get("pi/provider/") is None
+    # Both provider and model id empty.
+    assert registry.get("pi//") is None
+    # Just the prefix, no model id at all.
+    assert registry.get("pi/") is None
+    # Trailing slash with no model id (variant of `pi/provider/`).
+    assert registry.get("pi/anthropic/") is None
+    # Empty thinking suffix after a valid provider/id.
+    assert registry.get("pi/anthropic/claude-sonnet-4-20250514:") is None
+    # Empty base before the thinking colon.
+    assert registry.get("pi/:high") is None
+    # Bare colon with nothing on either side.
+    assert registry.get("pi/:") is None

@@ -276,7 +276,8 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
         }
         resolved = base_config.model_copy(update=agy_overrides)
     elif name.startswith("pi/"):
-        if len(segments) < _MIN_PI_SEGMENTS or not name.removeprefix("pi/"):
+        model_id = name.removeprefix("pi/")
+        if len(segments) < _MIN_PI_SEGMENTS or not _is_valid_pi_model_id(model_id):
             return None
 
         base_config = deepcopy(builtin_agents()["pi"])
@@ -288,7 +289,6 @@ def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | 
         # drop everything after the first `/` inside the model id.
         # https://pi.dev/docs/latest/usage: --model "Model pattern or ID;
         # supports provider/id and optional :<thinking>".
-        model_id = name.removeprefix("pi/")
         pi_overrides: dict[str, object] = {
             "model_flag": f"--model {shlex.quote(model_id)}",
             "can_commit": True,
@@ -325,3 +325,44 @@ def _normalize_nanocoder_provider_and_model(name: str) -> tuple[str, str | None]
     provider = parts[0]
     model = "/".join(parts[1:]) if len(parts) > 1 else None
     return provider, model
+
+
+def _is_valid_pi_model_id(model_id: str) -> bool:
+    """Validate a ``pi/<model>`` model id per the documented pi.dev pattern.
+
+    Per https://pi.dev/docs/latest/usage: ``--model <pattern>`` documents
+    that the pattern may be a ``provider/id`` pair (e.g.
+    ``anthropic/claude-sonnet-4-20250514``) or a plain model id, with an
+    optional ``:<thinking>`` suffix (e.g. ``:high``).  The validator
+    rejects any shape that would emit an undocumented
+    ``--model <garbage>`` flag downstream:
+
+      * empty model id (e.g. ``pi/``, ``pi//``)
+      * empty provider segment when ``/`` is present (e.g. ``pi//x``)
+      * empty model-name segment when ``/`` is present (e.g.
+        ``pi/provider/``)
+      * empty base before the optional ``:<thinking>`` colon (e.g.
+        ``pi/:high``)
+      * empty ``:<thinking>`` suffix (e.g. ``pi/anthropic/claude:``)
+
+    A bare single-segment name with no ``/`` is accepted as a plain
+    model id (e.g. ``pi/sonnet``, ``pi/claude-sonnet-4-20250514``).
+    """
+    if not model_id:
+        return False
+
+    if ":" in model_id:
+        base, _, thinking = model_id.partition(":")
+        if not base or not thinking:
+            return False
+    else:
+        base = model_id
+
+    if not base:
+        return False
+
+    if "/" not in base:
+        return True
+
+    provider, _, model_name = base.partition("/")
+    return bool(provider and model_name)
