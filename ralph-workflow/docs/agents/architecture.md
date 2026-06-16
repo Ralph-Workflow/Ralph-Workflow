@@ -35,9 +35,9 @@ registration  →  parser  →  strategy  →  CommandBuilder
 
 ## Registration
 
-The canonical way to add, update, or remove an agent is through the public
-`AgentCatalog` API.  See the step-by-step recipe in
-[adding-a-new-agent.md](adding-a-new-agent.md).
+The single canonical entry point for adding, updating, or removing an agent is
+`register_agent_support()` (defined in `ralph/agents/registration.py`).  See the
+step-by-step recipe in [adding-a-new-agent.md](adding-a-new-agent.md).
 
 ## Parser and execution strategy
 

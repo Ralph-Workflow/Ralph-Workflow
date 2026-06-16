@@ -45,7 +45,6 @@ def _make_agy_strategy(
     **_kwargs: object,
 ) -> BaseExecutionStrategy:
     """Factory for AGY strategy: CompletionEnforcingStrategy wrapping GenericExecutionStrategy."""
-    del _kwargs
 
     class AgyExecutionStrategy(CompletionEnforcingStrategy, GenericExecutionStrategy):
         pass

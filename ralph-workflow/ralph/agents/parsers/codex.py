@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar, cast
 from ._event_classification import is_lifecycle_event
 from ._template import ParserTemplateBase
 from .agent_output_line import AgentOutputLine
+from .base import extract_error_message
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -155,11 +156,7 @@ class CodexParser(ParserTemplateBase):
         yield AgentOutputLine(type="tool_result", content=result, raw=stripped, metadata=obj)
 
     def _parse_error(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
-        error_val = obj.get("error")
-        if isinstance(error_val, dict):
-            error_msg = str(cast("dict[str, object]", error_val).get("message", ""))
-        else:
-            error_msg = str(obj.get("message") or error_val or "unknown error")
+        error_msg = extract_error_message(obj)
         yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
 
     def _parse_turn_failed(

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, ClassVar, cast
 from ._event_classification import is_lifecycle_event
 from ._template import ParserTemplateBase
 from .agent_output_line import AgentOutputLine
+from .base import extract_error_message
 from .text_accumulator import TextAccumulator
 
 JsonValue = object
@@ -154,11 +155,7 @@ class GeminiParser(ParserTemplateBase):
         yield AgentOutputLine(type="tool_result", content=result, raw=stripped, metadata=obj)
 
     def _parse_error(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
-        error_val = obj.get("error")
-        if isinstance(error_val, dict):
-            error_msg = str(cast("JsonDict", error_val).get("message", ""))
-        else:
-            error_msg = str(error_val) if error_val else "unknown error"
+        error_msg = extract_error_message(obj)
         yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
 
     def _parse_message(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:

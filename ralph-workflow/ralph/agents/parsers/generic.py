@@ -16,6 +16,7 @@ from ralph.display.vt_normalizer import normalize_vt_text
 from ._event_classification import is_lifecycle_event
 from ._template import ParserTemplateBase
 from .agent_output_line import AgentOutputLine
+from .base import extract_error_message
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
@@ -103,7 +104,7 @@ class GenericParser(ParserTemplateBase):
 
         if self._is_error(obj):
             yield from self._flush_accumulator()
-            error_msg = self._extract_error(obj)
+            error_msg = extract_error_message(obj)
             yield AgentOutputLine(
                 type="error",
                 content=error_msg,
@@ -185,13 +186,7 @@ class GenericParser(ParserTemplateBase):
         type_val = str(obj.get("type", "")).lower()
         return "error" in type_val or bool(obj.get("error"))
 
-    def _extract_error(self, obj: dict[str, object]) -> str:
-        error = obj.get("error")
-        if isinstance(error, str):
-            return error
-        if isinstance(error, dict):
-            return str(error.get("message", error.get("type", "unknown error")))
-        return str(obj.get("message", obj.get("msg", "unknown error")))
+
 
     def _is_stop(self, obj: dict[str, object]) -> bool:
         type_val = str(obj.get("type", "")).lower()

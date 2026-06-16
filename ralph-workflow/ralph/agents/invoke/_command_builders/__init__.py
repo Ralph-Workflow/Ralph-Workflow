@@ -28,10 +28,7 @@ _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
-    transport = config.transport
-    if transport is None:
-        return AgentTransport.GENERIC
-    return transport
+    return cast("AgentTransport", config.transport)
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
