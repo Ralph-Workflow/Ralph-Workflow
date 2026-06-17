@@ -23,8 +23,6 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-from loguru import logger as _loguru_logger
-
 from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import run_pty_and_read_lines
 from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
@@ -99,7 +97,14 @@ def test_live_agy_produces_green_parity_table(
     workspace_mirror: Path,
     live_env: dict[str, str],
 ) -> None:
-    """The parity table reports file=yes, tool activity=yes, artifact=yes, breaks=none."""
+    """The parity table reports file=yes, tool activity=yes, artifact=yes, breaks=none.
+
+    If the live AGY is upstream-blocked (auth timed out, not logged in, quota
+    exhausted, model invalid, etc.) the test xfails with a clear reason so the
+    executor records the real outcome instead of failing on an environment
+    issue. The cli.log tail is inspected for the documented patterns before
+    the strict assertion runs.
+    """
     result = subprocess.run(
         [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
         capture_output=True,
@@ -110,6 +115,22 @@ def test_live_agy_produces_green_parity_table(
         check=False,
     )
     output = result.stdout + result.stderr
+
+    cli_log_path = Path(live_env["HOME"]) / ".gemini" / "antigravity-cli" / "cli.log"
+    cli_log_tail = ""
+    if cli_log_path.is_file():
+        try:
+            cli_log_tail = cli_log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
+        except OSError:
+            cli_log_tail = "<unreadable>"
+
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
+            "the parity row cannot be emitted. Re-run when the upstream "
+            f"condition clears. cli.log tail: {cli_log_tail[-200:]!r}"
+        )
 
     assert "│ agy/Claude Sonnet 4.6 (Thinking) │" in output, (
         f"Expected AGY parity row in output:\n{output[-5000:]}"
@@ -124,7 +145,14 @@ def test_live_agy_artifact_present(
     workspace_mirror: Path,
     live_env: dict[str, str],
 ) -> None:
-    """After the live smoke run, the smoke_test_result artifact is present."""
+    """After the live smoke run, the smoke_test_result artifact is present.
+
+    If the live AGY is upstream-blocked (auth timed out, not logged in, quota
+    exhausted, model invalid, etc.) the test xfails with a clear reason so the
+    executor records the real outcome instead of failing on an environment
+    issue. The cli.log tail is inspected for the documented patterns before
+    the strict assertion runs.
+    """
     result = subprocess.run(
         [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
         capture_output=True,
@@ -135,6 +163,23 @@ def test_live_agy_artifact_present(
         check=False,
     )
     output = result.stdout + result.stderr
+
+    cli_log_path = Path(live_env["HOME"]) / ".gemini" / "antigravity-cli" / "cli.log"
+    cli_log_tail = ""
+    if cli_log_path.is_file():
+        try:
+            cli_log_tail = cli_log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
+        except OSError:
+            cli_log_tail = "<unreadable>"
+
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
+            "the smoke_test_result artifact cannot be produced. "
+            f"Re-run when the upstream condition clears. "
+            f"cli.log tail: {cli_log_tail[-200:]!r}"
+        )
 
     artifact_path = workspace_mirror / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.is_file(), (
@@ -146,7 +191,14 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
     workspace_mirror: Path,
     live_env: dict[str, str],
 ) -> None:
-    """The parity row has Tool activity=yes, Artifact=yes, Breaks=none."""
+    """The parity row has Tool activity=yes, Artifact=yes, Breaks=none.
+
+    If the live AGY is upstream-blocked (auth timed out, not logged in, quota
+    exhausted, model invalid, etc.) the test xfails with a clear reason so the
+    executor records the real outcome instead of failing on an environment
+    issue. The cli.log tail is inspected for the documented patterns before
+    the strict assertion runs.
+    """
     result = subprocess.run(
         [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
         capture_output=True,
@@ -157,6 +209,23 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         check=False,
     )
     output = result.stdout + result.stderr
+
+    cli_log_path = Path(live_env["HOME"]) / ".gemini" / "antigravity-cli" / "cli.log"
+    cli_log_tail = ""
+    if cli_log_path.is_file():
+        try:
+            cli_log_tail = cli_log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
+        except OSError:
+            cli_log_tail = "<unreadable>"
+
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
+            "the breaks/tool/artifact assertions cannot be evaluated. "
+            f"Re-run when the upstream condition clears. "
+            f"cli.log tail: {cli_log_tail[-200:]!r}"
+        )
 
     assert "Breaks: none" in output or "No breaks" in output, (
         f"Expected no breaks in detailed report:\n{output[-5000:]}"
@@ -190,6 +259,16 @@ def test_live_agy_pty_read_thread_sees_output(
     while the kernel's PTY buffer still held bytes the live AGY had flushed.
     The fix replaces the early-exit with a bounded EIO drain
     (``_EIO_DRAIN_MAX=32``) so the master is fully drained.
+
+    Plan step 10(a) contract: when the live binary is reachable AND the cli.log
+    does NOT show a recent documented quota/model-error condition, the test
+    MUST require a yielded line containing the literal ``hello`` substring
+    (the canonical "Reply with exactly the word: hello" prompt response).
+    When the cli.log shows a documented upstream condition
+    (RESOURCE_EXHAUSTED 429, model-invalid, model-not-in-config,
+    INVALID_ARGUMENT 400, assistant prefill, stream read errors) the test
+    xfails with a clear reason so the executor records the real outcome
+    instead of silently passing on arbitrary output.
     """
     config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
     ctx = _AgentRunCtx(
@@ -220,34 +299,94 @@ def test_live_agy_pty_read_thread_sees_output(
 
     deadline = time.monotonic() + 30.0
     yielded: list[str] = []
+    saw_hello = False
     for line in run_pty_and_read_lines(cmd, ctx):
         yielded.append(line)
         if "hello" in line.lower():
-            return
+            saw_hello = True
+            break
         if time.monotonic() >= deadline:
             break
 
+    cli_log_path = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
     cli_log_tail = ""
-    cli_log = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
-    if cli_log.is_file():
+    if cli_log_path.is_file():
         try:
-            cli_log_tail = cli_log.read_text(encoding="utf-8", errors="replace")[-500:]
+            cli_log_tail = cli_log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
         except OSError:
             cli_log_tail = "<unreadable>"
 
-    if yielded:
-        _loguru_logger.warning(
-            "PTY drain fix verified: yielded {} lines from live agy. "
-            "Auth/quota state prevented 'hello' response. cli.log tail: {}",
-            len(yielded), cli_log_tail,
-        )
+    if saw_hello:
         return
 
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
+            "the canonical 'hello' response cannot be observed. "
+            "Re-run when the upstream condition clears. "
+            f"cli.log tail: {cli_log_tail[-200:]!r}"
+        )
+
     raise AssertionError(
-        "PTY read thread yielded 0 lines. Drain fix is broken: "
-        f"the kernel's PTY buffer was not drained after child exit. "
-        f"cli.log tail: {cli_log_tail}"
+        "PTY read thread yielded 0 lines OR no line contained the canonical "
+        "'hello' substring. Drain fix is broken: the kernel's PTY buffer was "
+        f"not drained after child exit. yielded={len(yielded)} lines. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}"
     )
+
+
+_UPSTREAM_BLOCKED_PATTERNS: tuple[tuple[str, str], ...] = (
+    (
+        r"Print mode:\s*auth timed out",
+        "AGY --print auth timed out (no OAuth credentials in test env)",
+    ),
+    (
+        r"You are not logged into Antigravity",
+        "AGY not logged into Antigravity (no OAuth credentials in test env)",
+    ),
+    (
+        r"RESOURCE_EXHAUSTED \(code 429\)",
+        "RESOURCE_EXHAUSTED (code 429) - API quota exhausted",
+    ),
+    (
+        r"Failed to resolve model flag\s+([^:]+):\s*model\s+(\S+)\s+is not recognized",
+        "Failed to resolve model flag - model ID is not recognized",
+    ),
+    (
+        r"Model ID\s+(\S+)\s+not in local config",
+        "Model ID not in local config",
+    ),
+    (
+        r"INVALID_ARGUMENT \(code 400\).*assistant message prefill",
+        "INVALID_ARGUMENT (code 400) - model does not support assistant prefill",
+    ),
+    (
+        r"connection reset by peer",
+        "stream reading error: connection reset by peer",
+    ),
+)
+
+
+def _detect_upstream_blocked_reason(cli_log_tail: str) -> str | None:
+    """Return the first documented upstream-blocked reason found in cli.log, else None.
+
+    Patterns are pinned to ``tmp/agy-source-of-truth.txt`` and the
+    ``_AGY_QUOTA_PATTERN`` / ``_AGY_MODEL_INVALID_PATTERN`` /
+    ``_AGY_MODEL_NOT_IN_CONFIG_PATTERN`` constants in
+    ``ralph/pipeline/plumbing/smoke_plumbing.py:130-141``. The additional
+    patterns (INVALID_ARGUMENT 400, assistant prefill, stream reset,
+    auth timed out, not logged in) cover the empirical 2026-06-16 dev-machine
+    cli.log evidence; they document the live-blocked state and are not part of
+    the published AGY contract.
+    """
+    if not cli_log_tail:
+        return None
+    for pattern, reason in _UPSTREAM_BLOCKED_PATTERNS:
+        flags = re.IGNORECASE | re.DOTALL if ".*" in pattern else re.IGNORECASE
+        if re.search(pattern, cli_log_tail, flags):
+            return reason
+    return None
 
 
 def test_live_agy_artifact_promoted_to_canonical_receipt(
@@ -267,6 +406,12 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     The expected ``run_id`` is the sanitized model-name pattern from
     ``ralph.pipeline.plumbing.smoke_plumbing.resolve_smoke_harness_spec``:
     ``interactive-agy-smoke-Claude-Sonnet-4.6-Thinking``.
+
+    If the live AGY is upstream-blocked (auth timed out, not logged in, quota
+    exhausted, model invalid, etc.) the test xfails with a clear reason so the
+    executor records the real outcome instead of failing on an environment
+    issue. The cli.log tail is inspected for the documented patterns before
+    the strict assertion runs.
     """
     result = subprocess.run(
         [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
@@ -278,6 +423,23 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
         check=False,
     )
     output = result.stdout + result.stderr
+
+    cli_log_path = Path(live_env["HOME"]) / ".gemini" / "antigravity-cli" / "cli.log"
+    cli_log_tail = ""
+    if cli_log_path.is_file():
+        try:
+            cli_log_tail = cli_log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
+        except OSError:
+            cli_log_tail = "<unreadable>"
+
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
+            "the smoke_test_result.json artifact cannot be produced. "
+            "Re-run when the upstream condition clears. "
+            f"cli.log tail: {cli_log_tail[-200:]!r}"
+        )
 
     artifact_path = workspace_mirror / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.is_file(), (

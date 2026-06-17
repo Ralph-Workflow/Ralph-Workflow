@@ -26,6 +26,7 @@ import pytest
 
 pytestmark = [
     pytest.mark.smoke,
+    pytest.mark.subprocess_e2e,
     pytest.mark.skipif(
         not shutil.which("agy"),
         reason="AGY binary not installed in PATH",
