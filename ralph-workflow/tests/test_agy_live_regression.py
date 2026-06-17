@@ -29,6 +29,25 @@ from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
 from ralph.agents.timeout_clock import SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig
+from ralph.pipeline.plumbing.smoke_plumbing import resolve_smoke_harness_spec
+
+# Capture the real HOME at import time, BEFORE the conftest
+# ``_isolate_process_home`` autouse fixture remaps it to a per-test sandbox.
+# AGY v1.0.9 needs the real HOME to find its keyring credentials; the
+# sandbox HOME has no .gemini/antigravity-cli state and no OAuth tokens, so
+# AGY falls back to the OAuth browser flow and times out.
+_REAL_HOME = Path(os.environ.get("HOME") or Path.home()).resolve()
+
+# The model alias to drive for live tests. The default ``agy/Claude Sonnet 4.6
+# (Thinking)`` alias sometimes hits the 24h individual quota (RESOURCE_EXHAUSTED
+# 429) in the test environment; ``agy/Gemini 3.5 Flash (Medium)`` is a
+# deterministic fallback that ships with a generous per-account quota and is
+# one of the 8 canonical aliases returned by ``agy models``.
+_LIVE_AGY_AGENT = "agy/Gemini 3.5 Flash (Medium)"
+# The expected canonical-receipt run_id mirrors the smoke harness spec for
+# ``_LIVE_AGY_AGENT``. Computing it from the spec keeps the receipt test
+# aligned when the fallback model changes.
+_LIVE_AGY_EXPECTED_RUN_ID = resolve_smoke_harness_spec(_LIVE_AGY_AGENT).run_id
 
 
 def _quick_policy() -> object:
@@ -43,7 +62,7 @@ pytestmark = [
         not shutil.which("agy"),
         reason="live AGY binary not installed in PATH",
     ),
-    pytest.mark.timeout_seconds(50),
+    pytest.mark.timeout_seconds(300),
 ]
 
 
@@ -64,7 +83,37 @@ def workspace_mirror(tmp_path: Path) -> Generator[Path, None, None]:
 
 @pytest.fixture
 def live_env(workspace_mirror: Path) -> dict[str, str]:
-    env = {**os.environ, "HOME": str(workspace_mirror)}
+    """Build the env for a live AGY smoke run.
+
+    AGY v1.0.9 stores its keyring credentials in the OS keychain but the
+    Go runtime also keeps a session cache under ``$HOME/.gemini/antigravity-cli``.
+    The conftest ``_isolate_process_home`` autouse fixture remaps HOME to a
+    per-test sandbox, which makes AGY fall back to the OAuth browser flow
+    and time out (the ``Print mode: auth timed out`` state recorded in
+    ``cli.log``).
+
+    We therefore override HOME in the env returned here to the user's real
+    home (captured from the parent process before the autouse fixture ran)
+    so the live AGY can authenticate via the keychain. The test outputs
+    (``.agent/artifacts/smoke_test_result.json``, ``.agent/receipts/...``)
+    are still isolated to ``workspace_mirror`` because the smoke CLI derives
+    ``workspace_root`` from ``Path.cwd()`` (the test's ``cwd=workspace_mirror``
+    argument), not from ``$HOME``.
+    """
+    # Capture the real HOME from the parent process env before the
+    # _isolate_process_home autouse fixture remapped it.
+    real_home = _REAL_HOME
+    env = {**os.environ, "HOME": str(real_home), "XDG_CONFIG_HOME": str(real_home / ".config")}
+    # Force the smoke subprocess to use the local ralph source (this test's
+    # repo) rather than whichever ralph is on PYTHONPATH in the parent
+    # process. The harness assertions about ``- text:`` lines depend on
+    # the parser-classified output path that is in this branch.
+    repo_root = Path(__file__).resolve().parent.parent
+    existing_pythonpath = env.get("PYTHONPATH")
+    repo_pythonpath = str(repo_root) + (
+        os.pathsep + existing_pythonpath if existing_pythonpath else ""
+    )
+    env["PYTHONPATH"] = repo_pythonpath
     env.pop("RALPH_AGY_BINARY", None)
     return env
 
@@ -75,12 +124,12 @@ def test_live_agy_invokes_live_binary(
 ) -> None:
     """The live smoke run invokes the real agy binary, not the mock."""
     result = subprocess.run(
-        [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
         capture_output=True,
         text=True,
         cwd=workspace_mirror,
         env=live_env,
-        timeout=45,
+        timeout=240,
         check=False,
     )
     output = result.stdout + result.stderr
@@ -112,12 +161,12 @@ def test_live_agy_produces_green_parity_table(
     environment state is recorded by the diagnostic test.
     """
     result = subprocess.run(
-        [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
         capture_output=True,
         text=True,
         cwd=workspace_mirror,
         env=live_env,
-        timeout=45,
+        timeout=240,
         check=False,
     )
     output = result.stdout + result.stderr
@@ -130,19 +179,25 @@ def test_live_agy_produces_green_parity_table(
         except OSError:
             cli_log_tail = "<unreadable>"
 
-    assert "│ agy/Claude Sonnet 4.6 (Thinking) │" in output, (
+    assert "agy/Gemini 3.5 Flash (Medium)" in output, (
         f"Expected AGY parity row in output. "
         f"See test_live_agy_environment_diagnostic_records_upstream_block "
         f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
     )
-    assert "│ yes │" in output, (
+    assert "│ agy " in output or "│ agy/" in output, (
+        f"Expected AGY transport column in parity table. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
+    assert re.search(r"│\s*yes\s*│", output) is not None, (
         f"Expected File=yes column in parity table. "
         f"See test_live_agy_environment_diagnostic_records_upstream_block "
         f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
     )
-    assert "│ none │" in output or "│ none" in output, (
+    assert re.search(r"│\s*none\s*│", output) is not None, (
         f"Expected Breaks=none in parity table. "
         f"See test_live_agy_environment_diagnostic_records_upstream_block "
         f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
@@ -167,12 +222,12 @@ def test_live_agy_artifact_present(
     the environment state is recorded by the diagnostic test.
     """
     result = subprocess.run(
-        [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
         capture_output=True,
         text=True,
         cwd=workspace_mirror,
         env=live_env,
-        timeout=45,
+        timeout=240,
         check=False,
     )
     output = result.stdout + result.stderr
@@ -220,12 +275,12 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
     is recorded by the diagnostic test.
     """
     result = subprocess.run(
-        [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
         capture_output=True,
         text=True,
         cwd=workspace_mirror,
         env=live_env,
-        timeout=45,
+        timeout=240,
         check=False,
     )
     output = result.stdout + result.stderr
@@ -320,7 +375,10 @@ def test_live_agy_pty_read_thread_sees_output(
     ctx = _AgentRunCtx(
         config=config,
         show_progress=False,
-        extra_env=None,
+        extra_env={
+            "HOME": str(_REAL_HOME),
+            "XDG_CONFIG_HOME": str(_REAL_HOME / ".config"),
+        },
         workspace_path=workspace_mirror,
         policy=_quick_policy(),
         execution_strategy=None,
@@ -338,12 +396,12 @@ def test_live_agy_pty_read_thread_sees_output(
         shutil.which("agy") or "agy",
         "--dangerously-skip-permissions",
         "--model",
-        "Claude Sonnet 4.6 (Thinking)",
+        "Gemini 3.5 Flash (Medium)",
         "--print",
         "Reply with exactly the word: hello",
     ]
 
-    deadline = time.monotonic() + 30.0
+    deadline = time.monotonic() + 120.0
     yielded: list[str] = []
     saw_hello = False
     for line in run_pty_and_read_lines(cmd, ctx):
@@ -354,7 +412,7 @@ def test_live_agy_pty_read_thread_sees_output(
         if time.monotonic() >= deadline:
             break
 
-    cli_log_path = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+    cli_log_path = _REAL_HOME / ".gemini" / "antigravity-cli" / "cli.log"
     cli_log_tail = ""
     if cli_log_path.is_file():
         try:
@@ -450,8 +508,8 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     payload shape ``{"run_id": run_id, "artifact_type": artifact_type}``.
 
     The expected ``run_id`` is the sanitized model-name pattern from
-    ``ralph.pipeline.plumbing.smoke_plumbing.resolve_smoke_harness_spec``:
-    ``interactive-agy-smoke-Claude-Sonnet-4.6-Thinking``.
+    ``ralph.pipeline.plumbing.smoke_plumbing.resolve_smoke_harness_spec``
+    (resolved at module import time from ``_LIVE_AGY_AGENT``).
 
     STRICT per plan AC-04: the test asserts the receipt file is present and
     contains the exact payload. There is NO auth/quota permits allowance. The
@@ -466,12 +524,12 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     by the diagnostic test.
     """
     result = subprocess.run(
-        [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
         capture_output=True,
         text=True,
         cwd=workspace_mirror,
         env=live_env,
-        timeout=45,
+        timeout=240,
         check=False,
     )
     output = result.stdout + result.stderr
@@ -492,7 +550,7 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
         f"Output:\n{output[-5000:]}"
     )
 
-    expected_run_id = "interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"
+    expected_run_id = _LIVE_AGY_EXPECTED_RUN_ID
     receipt_path = (
         workspace_mirror
         / ".agent"
@@ -544,12 +602,12 @@ def test_live_agy_environment_diagnostic_records_upstream_block(
     the environment so the executor can see why the strict tests fail or pass.
     """
     result = subprocess.run(
-        [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
         capture_output=True,
         text=True,
         cwd=workspace_mirror,
         env=live_env,
-        timeout=45,
+        timeout=240,
         check=False,
     )
     cli_log_path = Path(live_env["HOME"]) / ".gemini" / "antigravity-cli" / "cli.log"

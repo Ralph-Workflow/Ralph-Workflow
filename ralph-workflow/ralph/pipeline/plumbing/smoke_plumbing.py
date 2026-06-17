@@ -256,7 +256,8 @@ def _parser_key_for_config(config: AgentConfig) -> str:
 
 def _count_parsed_events(config: AgentConfig, lines: list[str]) -> int:
     parser = get_parser(_parser_key_for_config(config))
-    return sum(1 for _ in parser.parse(iter(lines)))
+    events = list(parser.parse(iter(lines)))
+    return len(events)
 
 
 def _tool_activity_seen(config: AgentConfig, lines: list[str]) -> bool:
@@ -613,11 +614,19 @@ def _run_smoke_agent(
     tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
     if not tool_activity_seen and params.config.transport == AgentTransport.AGY:
         tool_activity_seen = _agy_tool_activity_seen(params.workspace_root)
-    meaningful_output_lines = [line for line in live_output_lines if line.strip()][
+    parsed_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
+    live_filtered = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES
     ]
-    if not meaningful_output_lines:
-        meaningful_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
+    # Prefer the parser-classified events (with the ``text:`` / ``thinking:`` /
+    # ``tool_use:`` type prefix) when the parser produced any events. The
+    # parser-classified lines are the canonical ``what did the agent actually
+    # emit`` signal and are what the smoke report's "Observed output:" section
+    # labels as ``- text: ...`` for the operator. The raw ``live_output_lines``
+    # fallback is used when the parser produced no text-classified events
+    # (e.g. plain ``GenericParser`` output for a non-AGY agent that does not
+    # tag its own lines).
+    meaningful_output_lines = parsed_output_lines or live_filtered
 
     artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
 

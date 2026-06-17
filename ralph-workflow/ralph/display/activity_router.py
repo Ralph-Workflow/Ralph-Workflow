@@ -28,6 +28,7 @@ PARSERS: dict[ActivityProvider, type[AgentParser]] = {}
 def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
     """Populate ``PARSERS`` on first use to break the parsers/display cycle."""
     from ralph.agents.parsers import (
+        AgyParser,
         ClaudeParser,
         CodexParser,
         GeminiParser,
@@ -36,7 +37,7 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
     )
 
     return {
-        ActivityProvider.AGY: GenericParser,
+        ActivityProvider.AGY: AgyParser,
         ActivityProvider.CLAUDE: ClaudeParser,
         ActivityProvider.OPENCODE: OpenCodeParser,
         ActivityProvider.CODEX: CodexParser,
