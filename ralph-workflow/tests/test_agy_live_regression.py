@@ -99,11 +99,17 @@ def test_live_agy_produces_green_parity_table(
 ) -> None:
     """The parity table reports file=yes, tool activity=yes, artifact=yes, breaks=none.
 
-    If the live AGY is upstream-blocked (auth timed out, not logged in, quota
-    exhausted, model invalid, etc.) the test xfails with a clear reason so the
-    executor records the real outcome instead of failing on an environment
-    issue. The cli.log tail is inspected for the documented patterns before
-    the strict assertion runs.
+    STRICT per plan step 10(b): the test asserts the AGY parity row, | yes |
+    for file creation, and none for breaks. There is NO auth/quota permits
+    allowance. The companion test
+    ``test_live_agy_environment_diagnostic_records_upstream_block`` records
+    upstream-blocked environment states without gating this strict test.
+
+    This test only passes when the harness actually drives the live AGY to
+    produce the smoke artifact and emits the AGY parity row with file=yes and
+    breaks=none. In environments where the live AGY cannot authenticate
+    (e.g. missing OAuth credentials) this test fails honestly; the
+    environment state is recorded by the diagnostic test.
     """
     result = subprocess.run(
         [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
@@ -124,20 +130,23 @@ def test_live_agy_produces_green_parity_table(
         except OSError:
             cli_log_tail = "<unreadable>"
 
-    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
-    if upstream_reason is not None:
-        pytest.xfail(
-            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
-            "the parity row cannot be emitted. Re-run when the upstream "
-            f"condition clears. cli.log tail: {cli_log_tail[-200:]!r}"
-        )
-
     assert "│ agy/Claude Sonnet 4.6 (Thinking) │" in output, (
-        f"Expected AGY parity row in output:\n{output[-5000:]}"
+        f"Expected AGY parity row in output. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
-    assert "│ yes │" in output, f"Expected File=yes column in parity table:\n{output[-5000:]}"
+    assert "│ yes │" in output, (
+        f"Expected File=yes column in parity table. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
     assert "│ none │" in output or "│ none" in output, (
-        f"Expected Breaks=none in parity table:\n{output[-5000:]}"
+        f"Expected Breaks=none in parity table. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
 
 
@@ -147,11 +156,15 @@ def test_live_agy_artifact_present(
 ) -> None:
     """After the live smoke run, the smoke_test_result artifact is present.
 
-    If the live AGY is upstream-blocked (auth timed out, not logged in, quota
-    exhausted, model invalid, etc.) the test xfails with a clear reason so the
-    executor records the real outcome instead of failing on an environment
-    issue. The cli.log tail is inspected for the documented patterns before
-    the strict assertion runs.
+    STRICT: the test asserts the smoke_test_result.json file is on disk.
+    There is NO auth/quota permits allowance. The companion test
+    ``test_live_agy_environment_diagnostic_records_upstream_block`` records
+    upstream-blocked environment states without gating this strict test.
+
+    This test only passes when the harness actually drives the live AGY to
+    produce the smoke artifact. In environments where the live AGY cannot
+    authenticate (e.g. missing OAuth credentials) this test fails honestly;
+    the environment state is recorded by the diagnostic test.
     """
     result = subprocess.run(
         [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
@@ -172,18 +185,12 @@ def test_live_agy_artifact_present(
         except OSError:
             cli_log_tail = "<unreadable>"
 
-    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
-    if upstream_reason is not None:
-        pytest.xfail(
-            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
-            "the smoke_test_result artifact cannot be produced. "
-            f"Re-run when the upstream condition clears. "
-            f"cli.log tail: {cli_log_tail[-200:]!r}"
-        )
-
     artifact_path = workspace_mirror / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.is_file(), (
-        f"Expected smoke_test_result artifact at {artifact_path}\nOutput:\n{output[-5000:]}"
+        f"Expected smoke_test_result artifact at {artifact_path}. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
 
 
@@ -193,11 +200,17 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
 ) -> None:
     """The parity row has Tool activity=yes, Artifact=yes, Breaks=none.
 
-    If the live AGY is upstream-blocked (auth timed out, not logged in, quota
-    exhausted, model invalid, etc.) the test xfails with a clear reason so the
-    executor records the real outcome instead of failing on an environment
-    issue. The cli.log tail is inspected for the documented patterns before
-    the strict assertion runs.
+    STRICT: the test asserts no breaks, tool activity observed, and the
+    smoke_test_result artifact was submitted. There is NO auth/quota permits
+    allowance. The companion test
+    ``test_live_agy_environment_diagnostic_records_upstream_block`` records
+    upstream-blocked environment states without gating this strict test.
+
+    This test only passes when the harness actually drives the live AGY to
+    produce output that is classified as text events and the harness records
+    tool activity and artifact submission. In environments where the live
+    AGY cannot authenticate this test fails honestly; the environment state
+    is recorded by the diagnostic test.
     """
     result = subprocess.run(
         [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
@@ -218,28 +231,33 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         except OSError:
             cli_log_tail = "<unreadable>"
 
-    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
-    if upstream_reason is not None:
-        pytest.xfail(
-            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
-            "the breaks/tool/artifact assertions cannot be evaluated. "
-            f"Re-run when the upstream condition clears. "
-            f"cli.log tail: {cli_log_tail[-200:]!r}"
-        )
-
     assert "Breaks: none" in output or "No breaks" in output, (
-        f"Expected no breaks in detailed report:\n{output[-5000:]}"
+        f"Expected no breaks in detailed report. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
     assert "tool activity observed" in output.lower() or "tool activity" in output.lower(), (
-        f"Expected tool activity in output:\n{output[-5000:]}"
+        f"Expected tool activity in output. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
     assert "artifact submitted" in output.lower() or (
         "smoke_test_result artifact" in output.lower()
-    ), f"Expected artifact submission:\n{output[-5000:]}"
+    ), (
+        f"Expected artifact submission. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
 
     text_lines = re.findall(r"- text: [^\n]+", output) or []
     assert any(line.startswith("- text:") for line in text_lines), (
-        "Expected at least one - text: line in detailed report:\n" + output[-5000:]
+        "Expected at least one - text: line in detailed report. "
+        "See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        + output[-5000:]
     )
 
 
@@ -407,11 +425,17 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     ``ralph.pipeline.plumbing.smoke_plumbing.resolve_smoke_harness_spec``:
     ``interactive-agy-smoke-Claude-Sonnet-4.6-Thinking``.
 
-    If the live AGY is upstream-blocked (auth timed out, not logged in, quota
-    exhausted, model invalid, etc.) the test xfails with a clear reason so the
-    executor records the real outcome instead of failing on an environment
-    issue. The cli.log tail is inspected for the documented patterns before
-    the strict assertion runs.
+    STRICT per plan AC-04: the test asserts the receipt file is present and
+    contains the exact payload. There is NO auth/quota permits allowance. The
+    companion test
+    ``test_live_agy_environment_diagnostic_records_upstream_block`` records
+    upstream-blocked environment states without gating this strict test.
+
+    This test only passes when the harness actually drives the live AGY to
+    produce the smoke artifact AND the canonical receipt is promoted. In
+    environments where the live AGY cannot authenticate (e.g. missing OAuth
+    credentials) this test fails honestly; the environment state is recorded
+    by the diagnostic test.
     """
     result = subprocess.run(
         [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
@@ -432,18 +456,12 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
         except OSError:
             cli_log_tail = "<unreadable>"
 
-    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
-    if upstream_reason is not None:
-        pytest.xfail(
-            f"Live AGY --print is upstream-blocked ({upstream_reason}); "
-            "the smoke_test_result.json artifact cannot be produced. "
-            "Re-run when the upstream condition clears. "
-            f"cli.log tail: {cli_log_tail[-200:]!r}"
-        )
-
     artifact_path = workspace_mirror / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.is_file(), (
-        f"Expected smoke_test_result artifact at {artifact_path}\nOutput:\n{output[-5000:]}"
+        f"Expected smoke_test_result artifact at {artifact_path}. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
 
     expected_run_id = "interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"
@@ -456,11 +474,73 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     )
     assert receipt_path.is_file(), (
         f"Expected canonical receipt at {receipt_path}\n"
-        f"Artifact present: {artifact_path.is_file()}\nOutput:\n{output[-5000:]}"
+        f"Artifact present: {artifact_path.is_file()}. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
     )
 
     receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
     assert receipt_payload == {
         "run_id": expected_run_id,
         "artifact_type": "smoke_test_result",
-    }, f"Unexpected receipt payload: {receipt_payload}"
+    }, (
+        f"Unexpected receipt payload: {receipt_payload}. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}"
+    )
+
+
+def test_live_agy_environment_diagnostic_records_upstream_block(
+    workspace_mirror: Path,
+    live_env: dict[str, str],
+) -> None:
+    """Non-gating companion test that records the live AGY environment state.
+
+    The strict live tests in this file (``test_live_agy_produces_green_parity_table``,
+    ``test_live_agy_artifact_present``,
+    ``test_live_agy_no_breaks_and_tool_artifact_activity``,
+    ``test_live_agy_artifact_promoted_to_canonical_receipt``) now FAIL
+    honestly when the live AGY is upstream-blocked. This test runs the same
+    harness invocation and inspects ``~/.gemini/antigravity-cli/cli.log`` for
+    the documented upstream-blocked patterns (auth timed out, not logged in,
+    RESOURCE_EXHAUSTED 429, model-invalid, INVALID_ARGUMENT 400, stream reset).
+
+    When an upstream-blocked reason is detected, the test xfails with a clear
+    reason so the executor records the real environment state without
+    affecting the strict-test outcomes. When the environment is healthy
+    (no upstream-blocked reason in cli.log), the test passes -- this is the
+    diagnostic signal that the strict tests should be passing too.
+
+    This test is intentionally NOT a gate on the strict tests; it documents
+    the environment so the executor can see why the strict tests fail or pass.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
+        capture_output=True,
+        text=True,
+        cwd=workspace_mirror,
+        env=live_env,
+        timeout=45,
+        check=False,
+    )
+    cli_log_path = Path(live_env["HOME"]) / ".gemini" / "antigravity-cli" / "cli.log"
+    cli_log_tail = ""
+    if cli_log_path.is_file():
+        try:
+            cli_log_tail = cli_log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
+        except OSError:
+            cli_log_tail = "<unreadable>"
+
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            f"Live AGY environment diagnostic: upstream-blocked ({upstream_reason}); "
+            "strict live tests in this file will fail. "
+            f"cli.log tail: {cli_log_tail[-200:]!r}"
+        )
+
+    assert cli_log_tail, (
+        f"Expected cli.log to be present at {cli_log_path} when no upstream-blocked "
+        f"reason is detected. Output:\n{(result.stdout + result.stderr)[-2000:]}"
+    )
