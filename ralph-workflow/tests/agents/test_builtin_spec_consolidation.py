@@ -28,6 +28,7 @@ from ralph.agents.execution_state.claude_interactive_execution_strategy import (
 )
 from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
 from ralph.agents.execution_state.opencode_execution_strategy import OpenCodeExecutionStrategy
+from ralph.agents.parsers.agy import AgyParser
 from ralph.agents.parsers.claude import ClaudeParser
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
@@ -96,7 +97,7 @@ class TestBuiltinSupportsFrozen:
         (
             "agy",
             AgentTransport.AGY,
-            GenericParser,
+            AgyParser,
             _make_agy_strategy,
             "agy",
             None,

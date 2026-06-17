@@ -90,6 +90,9 @@ if TYPE_CHECKING:
 
 type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
 
+_EIO_DRAIN_MAX = 32
+_EIO_DRAIN_SELECT_SECONDS = 0.005
+
 
 class PtyLineReader:
     def __init__(
@@ -317,6 +320,32 @@ class PtyLineReader:
             alive_by=alive_by,
         )
 
+    def _drain_after_exit(
+        self, decoder: codecs.IncrementalDecoder, pending: str
+    ) -> str:
+        """Bounded EIO drain of the PTY master after the child has exited.
+
+        Replaces the prior early-exit ``break`` that could drop buffered
+        bytes the child flushed to the kernel's PTY queue between exit
+        and the parent ``poll`` return. Reuses the existing EIO-tolerant
+        ``read_master_chunk`` and is bounded by ``_EIO_DRAIN_MAX``.
+        """
+        for _ in range(_EIO_DRAIN_MAX):
+            if not wait_for_master_readable(
+                self._handle.master_fd, _EIO_DRAIN_SELECT_SECONDS
+            ):
+                break
+            chunk = read_master_chunk(self._handle.master_fd)
+            if not chunk:
+                break
+            pending += decoder.decode(chunk)
+            completed, pending = _split_complete_vt_lines(pending)
+            if completed:
+                with self._lines_lock:
+                    self._lines_queue.extend(completed)
+                    self._lines_event.set()
+        return pending
+
     def _read_thread(self) -> None:
         decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
         pending = ""
@@ -325,9 +354,8 @@ class PtyLineReader:
                 self._pre_output_listener()
         try:
             while True:
-                if self._handle.poll() is not None and not wait_for_master_readable(
-                    self._handle.master_fd, 0.01
-                ):
+                if self._handle.poll() is not None:
+                    pending = self._drain_after_exit(decoder, pending)
                     break
                 if not wait_for_master_readable(self._handle.master_fd, 0.05):
                     continue
@@ -351,8 +379,10 @@ class PtyLineReader:
                 with self._lines_lock:
                     self._lines_queue.append(snapshot_line)
                     self._lines_event.set()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.opt(exception=True).warning(
+                "PTY read thread for agent={} raised: {}", self._agent_name, exc
+            )
         finally:
             with self._lines_lock:
                 self._reader_done[0] = True

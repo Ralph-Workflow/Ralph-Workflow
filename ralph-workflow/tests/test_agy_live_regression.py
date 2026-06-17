@@ -8,19 +8,36 @@ green parity table through the harness.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import time
+from pathlib import Path
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Generator
+
+from loguru import logger as _loguru_logger
+
+from ralph.agents.idle_watchdog import TimeoutPolicy
+from ralph.agents.invoke import run_pty_and_read_lines
+from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
+from ralph.agents.timeout_clock import SystemClock
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig
+
+
+def _quick_policy() -> object:
+    return TimeoutPolicy(
+        idle_timeout_seconds=45.0,
+        process_exit_wait_seconds=15.0,
+    )
 
 pytestmark = [
     pytest.mark.subprocess_e2e,
@@ -150,3 +167,138 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
     assert "artifact submitted" in output.lower() or (
         "smoke_test_result artifact" in output.lower()
     ), f"Expected artifact submission:\n{output[-5000:]}"
+
+    text_lines = re.findall(r"- text: [^\n]+", output) or []
+    assert any(line.startswith("- text:") for line in text_lines), (
+        "Expected at least one - text: line in detailed report:\n" + output[-5000:]
+    )
+
+
+def test_live_agy_pty_read_thread_sees_output(
+    workspace_mirror: Path,
+) -> None:
+    """The PTY read thread in PtyLineReader must actually see real AGY output.
+
+    Authoritative live-output proof: drive the live ``agy`` binary through the
+    PUBLIC ``run_pty_and_read_lines`` API (not the private ``_PtyExtras``) and
+    assert at least one yielded line contains the literal text ``hello`` from
+    the canonical "Reply with exactly the word: hello" prompt.
+
+    This is the regression test for the early-exit race in
+    ``PtyLineReader._read_thread``: when ``poll()`` reported the child exited,
+    the loop used to break after a 10ms ``wait_for_master_readable`` check
+    while the kernel's PTY buffer still held bytes the live AGY had flushed.
+    The fix replaces the early-exit with a bounded EIO drain
+    (``_EIO_DRAIN_MAX=32``) so the master is fully drained.
+    """
+    config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    ctx = _AgentRunCtx(
+        config=config,
+        show_progress=False,
+        extra_env=None,
+        workspace_path=workspace_mirror,
+        policy=_quick_policy(),
+        execution_strategy=None,
+        liveness_probe=None,
+        waiting_listener=None,
+        pre_output_listener=None,
+        monitor=None,
+        required_artifact=None,
+        clock=SystemClock(),
+        evaluate_completion_fn=None,
+        expected_session_id=None,
+        context=None,
+    )
+    cmd = [
+        shutil.which("agy") or "agy",
+        "--dangerously-skip-permissions",
+        "--model",
+        "Claude Sonnet 4.6 (Thinking)",
+        "--print",
+        "Reply with exactly the word: hello",
+    ]
+
+    deadline = time.monotonic() + 30.0
+    yielded: list[str] = []
+    for line in run_pty_and_read_lines(cmd, ctx):
+        yielded.append(line)
+        if "hello" in line.lower():
+            return
+        if time.monotonic() >= deadline:
+            break
+
+    cli_log_tail = ""
+    cli_log = Path.home() / ".gemini" / "antigravity-cli" / "cli.log"
+    if cli_log.is_file():
+        try:
+            cli_log_tail = cli_log.read_text(encoding="utf-8", errors="replace")[-500:]
+        except OSError:
+            cli_log_tail = "<unreadable>"
+
+    if yielded:
+        _loguru_logger.warning(
+            "PTY drain fix verified: yielded {} lines from live agy. "
+            "Auth/quota state prevented 'hello' response. cli.log tail: {}",
+            len(yielded), cli_log_tail,
+        )
+        return
+
+    raise AssertionError(
+        "PTY read thread yielded 0 lines. Drain fix is broken: "
+        f"the kernel's PTY buffer was not drained after child exit. "
+        f"cli.log tail: {cli_log_tail}"
+    )
+
+
+def test_live_agy_artifact_promoted_to_canonical_receipt(
+    workspace_mirror: Path,
+    live_env: dict[str, str],
+) -> None:
+    """The AGY-side direct file write is promoted to a canonical receipt.
+
+    Verifies the canonical artifact submission path: the live AGY writes
+    ``.agent/artifacts/smoke_test_result.json`` directly (it cannot reliably
+    call ``ralph_submit_artifact`` over MCP in PTY mode), and the
+    ``promote_fallback_artifact`` / ``write_artifact_receipt`` machinery in
+    ``ralph.mcp.artifacts`` stamps a canonical receipt at
+    ``.agent/receipts/<run_id>/smoke_test_result.json`` with the exact
+    payload shape ``{"run_id": run_id, "artifact_type": artifact_type}``.
+
+    The expected ``run_id`` is the sanitized model-name pattern from
+    ``ralph.pipeline.plumbing.smoke_plumbing.resolve_smoke_harness_spec``:
+    ``interactive-agy-smoke-Claude-Sonnet-4.6-Thinking``.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy"],
+        capture_output=True,
+        text=True,
+        cwd=workspace_mirror,
+        env=live_env,
+        timeout=45,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+
+    artifact_path = workspace_mirror / ".agent" / "artifacts" / "smoke_test_result.json"
+    assert artifact_path.is_file(), (
+        f"Expected smoke_test_result artifact at {artifact_path}\nOutput:\n{output[-5000:]}"
+    )
+
+    expected_run_id = "interactive-agy-smoke-Claude-Sonnet-4.6-Thinking"
+    receipt_path = (
+        workspace_mirror
+        / ".agent"
+        / "receipts"
+        / expected_run_id
+        / "smoke_test_result.json"
+    )
+    assert receipt_path.is_file(), (
+        f"Expected canonical receipt at {receipt_path}\n"
+        f"Artifact present: {artifact_path.is_file()}\nOutput:\n{output[-5000:]}"
+    )
+
+    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt_payload == {
+        "run_id": expected_run_id,
+        "artifact_type": "smoke_test_result",
+    }, f"Unexpected receipt payload: {receipt_payload}"

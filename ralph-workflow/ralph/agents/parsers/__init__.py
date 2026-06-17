@@ -41,6 +41,7 @@ from ralph.config.enums import AgentTransport, JsonParserType
 
 from ._ndjson_base import NdjsonParserBase
 from .agent_output_line import AgentOutputLine
+from .agy import AgyParser
 from .base import AgentParser
 from .claude import ClaudeParser
 from .claude_interactive import ClaudeInteractiveParser
@@ -60,6 +61,7 @@ __all__ = [
     "_PARSER_REGISTRY",
     "AgentOutputLine",
     "AgentParser",
+    "AgyParser",
     "ClaudeInteractiveParser",
     "ClaudeParser",
     "CodexParser",
@@ -147,7 +149,12 @@ def resolve_parser_key(
     3. When ``json_parser`` is ``JsonParserType.GENERIC`` and a built-in
        parser is registered under the agent's command name, that command name
        is the key.
-    4. Otherwise fall back to ``str(json_parser)``.
+    4. When the command-name lookup fails (e.g. ``RALPH_AGY_BINARY`` rewrites
+       the cmd to a wrapper path), fall back to the transport-based parser
+       registered in the default catalog.  This ensures AgentTransport.AGY
+       routes through :class:`AgyParser` even when the command is the mock
+       wrapper path rather than the literal ``agy`` binary.
+    5. Otherwise fall back to ``str(json_parser)``.
 
     Args:
         command: The agent's configured command string (e.g. ``"claude"``).
@@ -170,6 +177,13 @@ def resolve_parser_key(
     parser_registry = _view("_PARSER_REGISTRY")
     if command_name and command_name in parser_registry and json_parser == JsonParserType.GENERIC:
         return command_name
+    if transport is not None and json_parser == JsonParserType.GENERIC:
+        from ralph.agents.catalog import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->parsers cycle
+            default_catalog,
+        )
+        for support in default_catalog().by_transport(transport):
+            if support.name.lower() in parser_registry:
+                return support.name.lower()
     return str(json_parser)
 
 

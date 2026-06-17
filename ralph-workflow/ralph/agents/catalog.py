@@ -31,6 +31,7 @@ from ralph.agents.execution_state.claude_interactive_execution_strategy import (
 )
 from ralph.agents.execution_state.generic_execution_strategy import GenericExecutionStrategy
 from ralph.agents.execution_state.opencode_execution_strategy import OpenCodeExecutionStrategy
+from ralph.agents.parsers.agy import AgyParser
 from ralph.agents.parsers.claude import ClaudeParser
 from ralph.agents.parsers.claude_interactive import ClaudeInteractiveParser
 from ralph.agents.parsers.codex import CodexParser
@@ -132,6 +133,7 @@ class _CatalogBackedMapping(Mapping[K, V]):
 _DEFAULT_BUILTIN_PARSER_TYPES: dict[
     str, tuple[type["AgentParser"], "AgentTransport", "StrategyFactory"]
 ] = {
+    "agy": (AgyParser, AgentTransport.AGY, _make_agy_strategy),
     "claude": (ClaudeParser, AgentTransport.CLAUDE, ClaudeExecutionStrategy),
     "claude_interactive": (
         ClaudeInteractiveParser,

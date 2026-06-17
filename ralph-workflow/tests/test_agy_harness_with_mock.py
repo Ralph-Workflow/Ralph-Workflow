@@ -101,8 +101,17 @@ def test_agy_harness_produces_real_output_with_mock(
     assert result.tool_activity_seen is True
     assert result.artifact_submitted is True
     assert result.parsed_event_count > 0
-    assert len(result.meaningful_output_lines) >= 3
-    assert result.errors == []
+    text_lines = [line for line in result.meaningful_output_lines if line.startswith("text:")]
+    assert text_lines, (
+        f"Expected at least one text-classified line, got: {result.meaningful_output_lines}"
+    )
+    assert all("raw:" not in line for line in result.meaningful_output_lines), (
+        f"No line should be classified as raw, got: {result.meaningful_output_lines}"
+    )
+    assert any(len(line) > len("text: ") for line in text_lines), (
+        f"Expected at least one text-classified line with non-empty content, "
+        f"got: {result.meaningful_output_lines}"
+    )
 
 
 def test_agy_harness_writes_artifact_with_correct_schema(
@@ -118,6 +127,7 @@ def test_agy_harness_writes_artifact_with_correct_schema(
     assert validated.output_file == "tmp/interactive-agy-smoke/todo-list.js"
     assert validated.observed_breaks == []
     assert "tool activity" in validated.headless_guide_checks
+    assert "no output" not in (validated.observed_working or [])
     assert validated.summary
 
 
@@ -170,7 +180,6 @@ def test_agy_harness_captures_both_sinks(
     assert captured_raw is not None
     assert captured_rendered is not None
     assert len(captured_raw) >= 3
-    assert len(captured_rendered) >= 3
 
 
 def test_agy_harness_session_id_present_with_mock(

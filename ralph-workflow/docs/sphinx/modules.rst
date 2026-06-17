@@ -1362,6 +1362,13 @@ ralph.agents.parsers
 .. automodule:: ralph.agents.parsers
    :no-members:
 
+ralph.agents.parsers.agy
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.parsers.agy
+   :members:
+   :show-inheritance:
+
 ralph.agents.parsers.base
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

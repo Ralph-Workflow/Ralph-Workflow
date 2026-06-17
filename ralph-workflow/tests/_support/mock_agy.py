@@ -113,12 +113,10 @@ def _write_smoke_test_result_artifact(artifact_dir: Path) -> Path:
 
 
 def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
-    print("AGY mock: starting print mode")
-    print(f"Model: {model or '(default)'}")
-    prompt_len = len(prompt) if prompt else 0
-    print(f"Prompt received ({prompt_len} chars)")
-    print("Workspace add-dir count: 1")
-    print("Creating todo-list.js ...")
+    print("I will create the todo list implementation.")
+    print("Using module.exports for CommonJS compatibility.")
+    print("Adding add, list, complete, remove methods.")
+    print("File created at tmp/interactive-agy-smoke/todo-list.js.")
     print("Writing smoke_test_result artifact ...")
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"

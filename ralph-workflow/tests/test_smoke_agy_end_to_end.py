@@ -110,3 +110,41 @@ def test_invoking_line_uses_single_model_argv_token() -> None:
         "AGY flag order is wrong: --dangerously-skip-permissions must precede --model: "
         + invoking_line
     )
+
+
+def test_live_smoke_report_shows_text_output() -> None:
+    """The 'Observed output:' section shows rendered model text, not the 'raw' type label."""
+    log_path = _log_path()
+    assert log_path.exists(), f"Live smoke log not found at {log_path}"
+
+    log_text = log_path.read_text(encoding="utf-8")
+    in_observed_output = False
+    rendered_text_lines: list[str] = []
+    raw_lines: list[str] = []
+    for line in log_text.splitlines():
+        if "Observed output:" in line:
+            in_observed_output = True
+            continue
+        if in_observed_output:
+            if not line.strip():
+                if rendered_text_lines or raw_lines:
+                    break
+                continue
+            if "Observed breaks:" in line or line.startswith("═") or line.startswith("─"):
+                break
+            stripped = line.lstrip(" -│┃").strip()
+            if not stripped:
+                continue
+            if stripped.startswith("agy/"):
+                if stripped.endswith(": raw"):
+                    raw_lines.append(stripped)
+                else:
+                    rendered_text_lines.append(stripped)
+
+    assert rendered_text_lines, (
+        f"Expected at least one rendered model-text line in 'Observed output:', got none. "
+        f"raw_lines={raw_lines}"
+    )
+    assert not raw_lines, (
+        f"Expected zero ': raw' lines in 'Observed output:', got: {raw_lines}"
+    )

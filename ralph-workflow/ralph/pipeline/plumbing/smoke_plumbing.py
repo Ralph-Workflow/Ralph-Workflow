@@ -419,8 +419,6 @@ def _parser_event_error(
     lines: list[str],
 ) -> str | None:
     """Return a parser-event error, or None when not applicable / passing."""
-    if config.transport == AgentTransport.AGY:
-        return None
     parsed_event_count = _count_parsed_events(config, lines) if lines else 0
     if parsed_event_count == 0:
         return "no parser events were observed"
@@ -433,8 +431,6 @@ def _meaningful_output_error(
     lines: list[str],
 ) -> str | None:
     """Return a meaningful-output error, or None when not applicable / passing."""
-    if config.transport == AgentTransport.AGY:
-        return None
     meaningful_output = [line for line in live_output_lines if line.strip()]
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
         meaningful_output = _meaningful_output_lines(config=config, lines=lines)
