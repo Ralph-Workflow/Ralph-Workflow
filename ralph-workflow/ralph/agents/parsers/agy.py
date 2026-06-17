@@ -70,20 +70,31 @@ class AgyParser(NdjsonParserBase):
     def __init__(self) -> None:
         super().__init__()
         self._text_accumulator: TextAccumulator | None = None
+        self._has_prior_text_line: bool = False
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
         """Classify an AGY plain-text line as ``type='text'`` and coalesce.
 
         VT normalization is applied first so ANSI-decorated lines (e.g.
         from a TUI run piped without a PTY) are classified consistently.
+
+        Consecutive non-blank lines are joined with a single ``\\n``
+        separator before being fed into the :class:`TextAccumulator` so
+        the rendered text output preserves the line boundaries that the
+        model emitted (the prior implementation concatenated lines
+        without separators, producing merged output like
+        ``I will create the todo list implementation.Using module.exports...``
+        that glued words from different lines together).
         """
         normalized = normalize_vt_text(stripped).strip()
         if not normalized:
             return
         if self._text_accumulator is None:
             self._text_accumulator = TextAccumulator()
+        chunk = f"\n{normalized}" if self._has_prior_text_line else normalized
+        self._has_prior_text_line = True
         yield from self._text_accumulator.accumulate(
-            normalized,
+            chunk,
             stripped,
             kind="text",
             keep_current_when_empty=False,
@@ -95,4 +106,5 @@ class AgyParser(NdjsonParserBase):
             return
         acc = self._text_accumulator
         self._text_accumulator = None
+        self._has_prior_text_line = False
         yield from acc.flush(kind="text")

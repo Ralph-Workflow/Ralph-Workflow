@@ -113,10 +113,30 @@ def test_declare_complete_marker_with_sentinel_satisfies_completion_contract(
 
 
 def test_artifact_on_disk_satisfies_completion_contract(tmp_path: Path) -> None:
-    """AGY with artifact on disk does not raise even without declare_complete."""
+    """AGY with artifact on disk does not raise even without declare_complete.
+
+    The legacy schema-validity fallback for ``.agent/artifacts/<type>.json``
+    was removed (analysis how_to_fix item 3): a stale canonical artifact
+    from a previous run can no longer satisfy the current run's
+    completion gate. The hardened contract requires either a current-run
+    receipt at ``.agent/receipts/<run_id>/<type>.json`` (promoted from
+    the agent's direct write) OR a completion sentinel via the real
+    declare_complete MCP tool. This test now writes the current-run
+    receipt and asserts the same no-raise outcome.
+    """
     artifact_dir = tmp_path / ".agent" / "artifacts"
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "development_result.json").write_text('{"summary": "done"}')
+    # The current-run receipt is what the AGY smoke plumbing now relies
+    # on (the receipt is promoted from the agent's direct write via
+    # ``promote_fallback_artifact``).
+    run_id = "agy-on-disk-run-id"
+    receipt_dir = tmp_path / ".agent" / "receipts" / run_id
+    receipt_dir.mkdir(parents=True)
+    (receipt_dir / "development_result.json").write_text(
+        f'{{"run_id": "{run_id}", "artifact_type": "development_result"}}',
+        encoding="utf-8",
+    )
 
     strategy = strategy_for_transport(AgentTransport.AGY)
     handle = _FakeHandle(returncode=0)
@@ -128,6 +148,7 @@ def test_artifact_on_disk_satisfies_completion_contract(tmp_path: Path) -> None:
         _CompletionCheckOptions(
             execution_strategy=strategy,
             workspace_path=tmp_path,
+            completion_run_id=run_id,
             required_artifact=RequiredArtifact(
                 phase="development",
                 artifact_type="development_result",

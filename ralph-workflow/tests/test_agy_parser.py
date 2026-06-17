@@ -48,7 +48,7 @@ def test_two_consecutive_text_lines_coalesce_into_one_text_event() -> None:
     line = parsed[0]
     assert line.type == "text"
     expected_content = (
-        "I will create the todo list implementation."
+        "I will create the todo list implementation.\n"
         "Using module.exports for CommonJS compatibility."
     )
     assert line.content == expected_content

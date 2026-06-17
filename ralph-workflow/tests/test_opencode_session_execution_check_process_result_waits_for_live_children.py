@@ -647,15 +647,28 @@ class TestCheckProcessResultWaitsForLiveChildren:
         )
 
     def test_artifact_present_at_exit_with_live_children_is_terminal(self, tmp_path: Path) -> None:
-        """Artifact already present at exit time is TERMINAL_COMPLETE even with live children.
+        """Current-run receipt at exit time is TERMINAL_COMPLETE even with live children.
 
         Regression for wt-97: an agent that exits rc=0 with children still alive must not
         be retried when the required artifact is already on disk at exit time.
         signals.required_artifact_present=True takes priority over live-child evidence.
+
+        The legacy on-disk ``.agent/artifacts/<type>.json``-only fallback
+        was removed (analysis how_to_fix item 3): a stale canonical
+        artifact from a previous run can no longer satisfy the current
+        run's completion gate. The hardened contract requires a
+        current-run receipt at ``.agent/receipts/<run_id>/<type>.json``.
         """
+        run_id = "seam-waits-on-disk-run-id"
         artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.json"
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text('{"summary": "done"}')
+        receipt_dir = tmp_path / ".agent" / "receipts" / run_id
+        receipt_dir.mkdir(parents=True, exist_ok=True)
+        (receipt_dir / "development_result.json").write_text(
+            f'{{"run_id": "{run_id}", "artifact_type": "development_result"}}',
+            encoding="utf-8",
+        )
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=True)
@@ -668,6 +681,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
+                completion_run_id=run_id,
                 liveness_probe=probe,
                 required_artifact=RequiredArtifact(
                     phase="development",

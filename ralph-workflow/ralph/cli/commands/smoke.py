@@ -183,7 +183,12 @@ def _render_smoke_report(
         if result.session_id is not None:
             working.append(f"- session ID observed: {result.session_id}")
         if result.explicit_completion_seen:
-            working.append("- declare_complete marker observed")
+            if result.transport == "agy":
+                working.append(
+                    "- canonical smoke_test_result receipt observed"
+                )
+            else:
+                working.append("- declare_complete marker observed")
         if result.parsed_event_count > 0:
             working.append(f"- parser emitted {result.parsed_event_count} event(s)")
         if result.tool_activity_seen:

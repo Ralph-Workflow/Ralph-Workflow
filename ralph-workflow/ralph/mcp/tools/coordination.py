@@ -7,6 +7,8 @@ completion declaration, workspace coordination, and environment reads.
 from __future__ import annotations
 
 import contextlib
+import hashlib
+import hmac
 import json
 import os
 import time
@@ -68,13 +70,29 @@ def _write_completion_sentinel(
     run_id: str,
     *,
     _write_fn: Callable[[str, str], None] | None = None,
+    sentinel_hmac: str | None = None,
 ) -> None:
-    """Write a run-scoped completion sentinel as best-effort evidence."""
+    """Write a run-scoped completion sentinel as best-effort evidence.
+
+    When ``sentinel_hmac`` is provided the sentinel payload includes
+    an ``hmac`` field binding the run id to a broker-owned secret so a
+    model that can write under ``.agent/`` cannot forge a valid
+    sentinel. ``_check_completion_sentinel`` in
+    ``ralph.agents.completion_signals`` verifies the HMAC the same way
+    when the secret is provided.
+    """
     if workspace is None:
         return
     sentinel_relpath = COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
     sentinel_abspath = workspace.absolute_path(sentinel_relpath)
     sentinel_payload: dict[str, str] = {"run_id": run_id}
+    if sentinel_hmac is not None:
+        digest = hmac.new(
+            sentinel_hmac.encode(),
+            run_id.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        sentinel_payload["hmac"] = digest
     payload = json.dumps(sentinel_payload, ensure_ascii=False)
     if _write_fn is not None:
         _write_fn(sentinel_abspath, payload)

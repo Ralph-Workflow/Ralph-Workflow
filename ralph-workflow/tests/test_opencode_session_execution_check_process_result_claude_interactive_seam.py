@@ -87,10 +87,27 @@ class TestCheckProcessResultClaudeInteractiveSeam:
     def test_artifact_present_without_explicit_completion_does_not_raise(
         self, tmp_path: Path
     ) -> None:
-        """Artifact on disk produces TERMINAL_COMPLETE without declare_complete."""
+        """Current-run receipt produces TERMINAL_COMPLETE without declare_complete.
+
+        The legacy on-disk ``.agent/artifacts/<type>.json``-only fallback
+        was removed (analysis how_to_fix item 3): a stale canonical
+        artifact from a previous run can no longer satisfy the current
+        run's completion gate. The hardened contract requires a
+        current-run receipt at ``.agent/receipts/<run_id>/<type>.json``,
+        which is what the AGY smoke plumbing now relies on (the
+        receipt is promoted from the agent's direct write via
+        ``promote_fallback_artifact``).
+        """
+        run_id = "seam-claude-on-disk-run-id"
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "development_result.json").write_text('{"summary": "done"}')
+        receipt_dir = tmp_path / ".agent" / "receipts" / run_id
+        receipt_dir.mkdir(parents=True)
+        (receipt_dir / "development_result.json").write_text(
+            f'{{"run_id": "{run_id}", "artifact_type": "development_result"}}',
+            encoding="utf-8",
+        )
 
         strategy = ClaudeInteractiveExecutionStrategy()
         handle = _FakeHandle(returncode=0)
@@ -102,6 +119,7 @@ class TestCheckProcessResultClaudeInteractiveSeam:
             _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
+                completion_run_id=run_id,
                 required_artifact=RequiredArtifact(
                     phase="development",
                     artifact_type="development_result",

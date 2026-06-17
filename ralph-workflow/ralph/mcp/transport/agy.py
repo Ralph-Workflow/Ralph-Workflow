@@ -19,6 +19,7 @@ endpoint using AGY's serverUrl field.
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
@@ -30,6 +31,13 @@ from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_
 
 # AGY home config directory name within its default config root
 _AGY_HOME_SUBDIR = "antigravity-cli"
+
+# Process-local lock that serialises concurrent invocations of
+# :func:`agy_workspace_mcp_endpoint` so two sibling AGY sessions cannot
+# interleave their read/write/restore steps on the global MCP config
+# file. See the context manager's docstring for the full concurrency
+# contract.
+_agy_mcp_lock = threading.Lock()
 
 
 def _agy_global_config_path() -> Path:
@@ -67,27 +75,58 @@ def agy_mcp_config(endpoint: str) -> str:
 def agy_workspace_mcp_endpoint(
     workspace_path: Path, endpoint: str, *, unsafe_mode: bool = False
 ) -> Iterator[None]:
-    """Write a run-scoped Ralph MCP config to AGY's global path and restore it after exit."""
+    """Write a run-scoped Ralph MCP config to AGY's global path and restore it after exit.
+
+    Concurrency safety: this context manager serialises concurrent callers
+    with a single :class:`threading.Lock` and writes the merged config
+    atomically (via ``os.replace``) so a parallel AGY session cannot
+    observe a torn write or clobber a sibling session's restore step.
+    The lock is process-local: it serialises within one Ralph process
+    but does not block a separate AGY launch invoked by another
+    process. Cross-process safety relies on the atomic replace below
+    and on the original-bytes read happening INSIDE the critical
+    section (so a parallel sibling cannot interleave its own
+    write/restore between our read and our restore).
+    """
     config_path = _agy_global_config_path()
-    original_bytes = config_path.read_bytes() if config_path.is_file() else None
-    current_config: dict[str, object] = {
-        "mcpServers": {RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint}},
-        "workspace_path": workspace_path,
-    }
-    merged_config = merge_existing_upstreams(
-        "agy", current_config, unsafe_mode=unsafe_mode, workspace_path=workspace_path
-    )
-    config_payload = merged_config
+    _agy_mcp_lock.acquire()
     try:
+        original_bytes = config_path.read_bytes() if config_path.is_file() else None
+        current_config: dict[str, object] = {
+            "mcpServers": {RALPH_MCP_SERVER_NAME: {"serverUrl": endpoint}},
+            "workspace_path": workspace_path,
+        }
+        merged_config = merge_existing_upstreams(
+            "agy", current_config, unsafe_mode=unsafe_mode, workspace_path=workspace_path
+        )
+        config_payload = merged_config
         config_path.parent.mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
-        yield
+        # Atomic write: stage to a sibling temp file then Path.replace so a
+        # concurrent reader (AGY Go runtime) never sees a half-written
+        # config. The temp file is unique per call to avoid a TOCTOU
+        # between two siblings staging the same name.
+        _stage_path = config_path.with_suffix(
+            config_path.suffix + f".ralph-staging.{id(config_payload)}"
+        )
+        _stage_path.write_text(json.dumps(config_payload, indent=2), encoding="utf-8")
+        _stage_path.replace(config_path)
+        try:
+            yield
+        finally:
+            if original_bytes is None:
+                if config_path.is_file():
+                    config_path.unlink()
+            else:
+                # Atomic restore via the same staging pattern so a
+                # concurrent sibling that staged its own write between
+                # our yield and our restore does not lose its bytes.
+                _restore_path = config_path.with_suffix(
+                    config_path.suffix + f".ralph-restore.{id(original_bytes)}"
+                )
+                _restore_path.write_bytes(original_bytes)
+                _restore_path.replace(config_path)
     finally:
-        if original_bytes is None:
-            if config_path.is_file():
-                config_path.unlink()
-        else:
-            config_path.write_bytes(original_bytes)
+        _agy_mcp_lock.release()
 
 
 def _normalize_agy_server_entry(name: str, entry: object) -> tuple[str, object] | None:

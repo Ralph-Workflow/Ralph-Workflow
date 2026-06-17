@@ -16,8 +16,10 @@ on (re)start without touching siblings or parallel workers.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 
@@ -36,21 +38,42 @@ def _receipt_path(workspace_root: Path, run_id: str, artifact_type: str) -> Path
     return _receipt_dir(workspace_root, run_id) / f"{artifact_type}.json"
 
 
+def _receipt_hmac(secret: str, run_id: str, artifact_type: str) -> str:
+    """Compute the HMAC-SHA256 of ``run_id`` and ``artifact_type`` with ``secret``.
+
+    The HMAC binds the receipt to the broker-owned ``secret`` so a model
+    that can write under ``.agent/`` (workspace write capabilities) cannot
+    forge a valid receipt without the secret. The secret is never exposed
+    via the agent's environment (notably not via ``MCP_RUN_ID_ENV`` or
+    any other broker-exposed variable).
+    """
+    msg = f"{run_id}\n{artifact_type}".encode()
+    return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+
+
 def write_artifact_receipt(
     workspace_root: Path,
     run_id: str,
     artifact_type: str,
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
+    receipt_secret: str | None = None,
 ) -> None:
     """Record that ``artifact_type`` was durably persisted during ``run_id``.
 
     Must be called only after the artifact itself is committed to storage so the
     receipt and the artifact appear together (or, on rollback, not at all).
+
+    When ``receipt_secret`` is provided the receipt includes a ``hmac``
+    field that binds it to the broker-owned secret. A model that can
+    write under ``.agent/`` cannot forge a receipt with a valid HMAC
+    because the secret is never exposed to the agent.
     """
     path = _receipt_path(workspace_root, run_id, artifact_type)
     backend.mkdir(path.parent, parents=True, exist_ok=True)
     receipt: dict[str, str] = {"run_id": run_id, "artifact_type": artifact_type}
+    if receipt_secret is not None:
+        receipt["hmac"] = _receipt_hmac(receipt_secret, run_id, artifact_type)
     backend.write_text(path, json.dumps(receipt), encoding="utf-8")
 
 
@@ -60,9 +83,33 @@ def artifact_receipt_present(
     artifact_type: str,
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
+    receipt_secret: str | None = None,
 ) -> bool:
-    """Return True when a receipt for ``(run_id, artifact_type)`` exists."""
-    return backend.exists(_receipt_path(workspace_root, run_id, artifact_type))
+    """Return True when a valid receipt for ``(run_id, artifact_type)`` exists.
+
+    When ``receipt_secret`` is provided the receipt's ``hmac`` field is
+    verified against ``(run_id, artifact_type)``; a receipt that exists
+    on disk but fails HMAC verification returns ``False``. This pins
+    the receipt to the broker-owned secret so a model with workspace
+    write capabilities cannot forge a valid receipt.
+    """
+    path = _receipt_path(workspace_root, run_id, artifact_type)
+    if not backend.exists(path):
+        return False
+    if receipt_secret is None:
+        return True
+    try:
+        raw = backend.read_text(path, encoding="utf-8")
+        parsed = cast("object", json.loads(raw))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    stored = cast("dict[str, object]", parsed).get("hmac")
+    if not isinstance(stored, str):
+        return False
+    expected = _receipt_hmac(receipt_secret, run_id, artifact_type)
+    return hmac.compare_digest(stored, expected)
 
 
 def delete_artifact_receipt(

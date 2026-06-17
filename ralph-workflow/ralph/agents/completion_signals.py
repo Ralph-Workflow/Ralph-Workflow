@@ -20,6 +20,8 @@ rather than relying on implicit success.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
@@ -87,22 +89,51 @@ def extract_explicit_completion(raw_output: list[str]) -> bool:
     return any(_EXPLICIT_COMPLETION_MARKER in line for line in raw_output)
 
 
+def _sentinel_hmac_matches(content: str, sentinel_secret: str, run_id: str) -> bool:
+    """Return True when the sentinel payload's HMAC matches the broker secret."""
+    try:
+        parsed = cast("object", json.loads(content))
+    except (json.JSONDecodeError, ValueError):
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    stored = cast("dict[str, object]", parsed).get("hmac")
+    if not isinstance(stored, str):
+        return False
+    expected = hmac.new(
+        sentinel_secret.encode(),
+        run_id.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(stored, expected)
+
+
 def _check_completion_sentinel(
     workspace: Path,
     run_id: str | None,
     *,
     _read_fn: Callable[[Path], str] | None = None,
+    sentinel_secret: str | None = None,
 ) -> bool:
-    """Return True when the run-scoped completion sentinel exists."""
+    """Return True when the run-scoped completion sentinel exists and is valid.
+
+    When ``sentinel_secret`` is provided the sentinel's ``hmac`` field is
+    verified against ``run_id``; a sentinel that exists on disk but
+    fails HMAC verification returns ``False``. This pins the sentinel
+    to the broker-owned secret so a model with workspace write
+    capabilities cannot forge a valid completion sentinel.
+    """
     if run_id is None:
         return False
     sentinel_path = workspace / _COMPLETION_SENTINEL_RELPATHFMT.format(run_id=run_id)
     read_fn = _read_fn or (lambda path: path.read_text(encoding="utf-8"))
     try:
-        read_fn(sentinel_path)
+        content = read_fn(sentinel_path)
     except (FileNotFoundError, OSError):
         return False
-    return True
+    if sentinel_secret is None:
+        return True
+    return _sentinel_hmac_matches(content, sentinel_secret, run_id)
 
 
 def _artifact_is_schema_valid(artifact_path: Path) -> bool:
@@ -176,16 +207,20 @@ def evaluate_completion(
             artifact_types=(),
             completion_sentinel_present=sentinel_present,
         )
-    artifact_path = workspace / ra.json_path
-    # A run-scoped submission receipt is authoritative proof the artifact was
-    # persisted, independent of where it landed; fall back to the on-disk path
-    # check only when no receipt is available (e.g. run_id not threaded).
+    # A run-scoped submission receipt is the SOLE authoritative proof that
+    # the artifact was persisted for this run. The legacy on-disk
+    # ``_artifact_is_schema_valid(artifact_path)`` fallback was removed
+    # because a stale canonical artifact from a previous run can satisfy
+    # the schema-validity check and falsely mark the current run as
+    # complete (see tests/test_agy_completion_adversarial.py for the
+    # negative-path test that pins this contract). When ``run_id`` is
+    # not threaded, completion cannot be determined from the artifact
+    # alone; callers that need a fallback must thread ``run_id``.
     present = (
         is_artifact_submitted(workspace, run_id, ra.artifact_type)
         if (run_id is not None)
         else False
     )
-    present = present or _artifact_is_schema_valid(artifact_path)
     optional = not ra.artifact_required
     sentinel_present = (
         _check_completion_sentinel(workspace, run_id) if run_id is not None else False
