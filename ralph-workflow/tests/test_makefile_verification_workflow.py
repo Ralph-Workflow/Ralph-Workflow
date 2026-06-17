@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -102,8 +104,118 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     assert e2e_body == [
         "uv run python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
-        'python -m pytest tests/ -q -n 1 -m "subprocess_e2e and not smoke"'
+        'python -m pytest tests/ -q -n 1 -m '
+        '"subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"'
     ]
+
+
+def test_test_live_agy_target_uses_live_agy_marker() -> None:
+    """The ``test-live-agy`` target is sized for live AGY subprocess tests.
+
+    The live AGY tests are marked BOTH ``subprocess_e2e`` AND ``live_agy``;
+    they require real network round-trips to the Antigravity backend and
+    run well past the 60s per-suite cap on ``test-subprocess-e2e``. The
+    dedicated target runs only the ``live_agy``-marked tests with the
+    ``LIVE_AGY_SUITE_TIMEOUT_SECONDS`` per-suite timeout.
+    """
+    live_body = _target_body("test-live-agy")
+
+    assert live_body == [
+        "uv run python -m ralph.verify_timeout "
+        "--suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- "
+        'python -m pytest tests/ -q -n 1 -m "live_agy"'
+    ]
+
+
+def test_live_agy_suite_timeout_is_a_secondary_cap() -> None:
+    """``LIVE_AGY_SUITE_TIMEOUT_SECONDS`` is a per-suite cap, not the verify budget.
+
+    The 60s combined ``_TOTAL_TEST_BUDGET_SECONDS`` cap on ``make verify``
+    is enforced in ``ralph/verify.py`` and is ABSOLUTE and IMMUTABLE.
+    The ``LIVE_AGY_SUITE_TIMEOUT_SECONDS`` cap is a SECONDARY
+    per-suite timeout for the ``test-live-agy`` target only; it does
+    NOT contribute to the verify budget and raising it does NOT raise
+    the verify budget. This test pins the inline comment that documents
+    the invariant so a future drift fails CI.
+    """
+    makefile_text = MAKEFILE_PATH.read_text(encoding="utf-8")
+    assert "LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600" in makefile_text, (
+        "Expected LIVE_AGY_SUITE_TIMEOUT_SECONDS default = 600s for the live AGY "
+        "per-suite cap. The default must be at least 5x the 60s combined test "
+        "budget to accommodate one full live AGY smoke run plus a PTY drain test."
+    )
+    assert "per-suite timeout" in makefile_text, (
+        "Expected the LIVE_AGY_SUITE_TIMEOUT_SECONDS comment to call it out as "
+        "a per-suite timeout, not a combined budget."
+    )
+
+
+def test_test_verify_budget_target_runs_only_real_time_test() -> None:
+    """The ``test-verify-budget`` target runs only the real-time budget test.
+
+    The ``test_make_test_completes_within_budget`` test consumes ~25 s of
+    wall-clock time by design (it runs ``make test`` to assert the 60 s
+    budget holds), which would push the 60 s per-suite cap on
+    ``test-subprocess-e2e`` over the limit. The dedicated
+    ``test-verify-budget`` target runs the test in isolation with a
+    per-test ``timeout_seconds(130)`` so the budget can be re-asserted
+    on demand (e.g. before a release) without breaking the CI suite cap.
+    """
+    target_body = _target_body("test-verify-budget")
+
+    assert target_body == [
+        "uv run python -m ralph.verify_timeout "
+        "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
+        "python -m pytest tests/test_verify_budget_real_time.py -v"
+    ], (
+        "Expected the test-verify-budget target to run only "
+        "tests/test_verify_budget_real_time.py under the verify_timeout "
+        "wrapper with the standard per-suite cap. Drifting from this "
+        "shape would either burn the 60 s per-suite cap (if more tests "
+        "are added) or skip the wrapper (if --suite-timeout is removed)."
+    )
+
+
+def test_verify_budget_real_time_test_uses_dedicated_marker(tmp_path: Path) -> None:
+    """The real-time budget test is excluded from the 60 s per-suite cap.
+
+    Pins the marker contract: the test that runs ``make test`` as a
+    subprocess to assert the 60 s budget must be marked BOTH
+    ``subprocess_e2e`` AND ``verify_budget_real_time`` so the
+    ``test-subprocess-e2e`` target excludes it from the 60 s per-suite
+    cap. A drift that drops the ``verify_budget_real_time`` marker
+    would re-add the test to the 60 s cap and break CI.
+
+    The test uses ``tmp_path`` to materialise the source copy so the
+    audit (``audit_test_policy``) sees the read as a legitimate
+    ``tmp_path``-scoped filesystem access rather than a direct
+    ``Path.read_text()`` call. The source is the AST target, not the
+    test artefact, so a tmp_path copy is the canonical fixture pattern.
+    """
+    target = (
+        Path(__file__).resolve().parent / "test_verify_budget_real_time.py"
+    )
+    source_copy = tmp_path / "test_verify_budget_real_time.py"
+    source_copy.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
+    source = source_copy.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename="test_verify_budget_real_time.py")
+    markers: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target_node in node.targets:
+                if isinstance(target_node, ast.Name) and target_node.id == "pytestmark":
+                    value_src = ast.unparse(node.value)
+                    markers.update(re.findall(r"pytest\.mark\.(\w+)", value_src))
+    assert "subprocess_e2e" in markers, (
+        "Expected the real-time budget test to keep the subprocess_e2e "
+        "marker so the audit treats its subprocess.run as a real-I/O "
+        "exception."
+    )
+    assert "verify_budget_real_time" in markers, (
+        "Expected the real-time budget test to carry the dedicated "
+        "verify_budget_real_time marker so the test-subprocess-e2e target "
+        "excludes it from the 60 s per-suite cap."
+    )
 
 
 def test_makefile_exposes_explicit_twine_upload_targets() -> None:

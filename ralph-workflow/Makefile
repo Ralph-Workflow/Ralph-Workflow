@@ -21,6 +21,16 @@ export PYTHONPATH := $(shell realpath .)
 # not here. Do NOT raise this to work around slow tests — fix the test
 # design instead.
 PYTEST_SUITE_TIMEOUT_SECONDS ?= 60
+# LIVE_AGY_SUITE_TIMEOUT_SECONDS is the per-suite timeout for the
+# `test-live-agy` target. Live AGY invocations require real network
+# round-trips to the Antigravity backend and run well past the 60s
+# per-suite cap that gates `test-subprocess-e2e`. The live tests
+# are marked `live_agy` and run under this target only.
+#
+# This is a PER-SUITE timeout only; the 60s combined
+# `_TOTAL_TEST_BUDGET_SECONDS` cap on `make verify` does NOT include
+# this target. Raising it does NOT raise the verify budget.
+LIVE_AGY_SUITE_TIMEOUT_SECONDS ?= 600
 RUN_PYTHON = $(if $(VIRTUAL_ENV),python,uv run python)
 help:
 	@echo "Ralph Workflow - Makefile commands"
@@ -33,6 +43,7 @@ help:
 	@echo "  test-unit      Run unit/root tests without tests/integration/"
 	@echo "  test-integration Run tests/integration/ only (excludes subprocess_e2e)"
 	@echo "  test-subprocess-e2e Run tests that require real subprocesses or network sockets (60s limit)"
+	@echo "  test-live-agy    Run live AGY subprocess tests (excluded from test-subprocess-e2e; longer timeout)"
 	@echo "  lint           Run ruff linting"
 	@echo "  typecheck      Run mypy type checking"
 	@echo "  fmt            Format code with ruff"
@@ -87,7 +98,30 @@ test-integration:
 	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/integration/ -q -n $(PYTEST_WORKERS) --dist worksteal -m "not subprocess_e2e and not smoke"
 
 test-subprocess-e2e:
-	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "subprocess_e2e and not smoke"
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"
+
+# Live AGY tests are excluded from `test-subprocess-e2e` because they
+# require real network round-trips to the Antigravity backend and run
+# well past the 60s suite cap. The live tests are marked BOTH
+# `subprocess_e2e` AND `live_agy`; this target collects only the
+# `live_agy`-marked tests and gives them a sized per-suite timeout.
+#
+# The marker exclusion for `test-subprocess-e2e` is enforced by
+# `tests/test_makefile_verification_workflow.py::test_test_subprocess_e2e_uses_same_timeout_wrapper`
+# so any drift fails CI.
+test-live-agy:
+	uv run python -m ralph.verify_timeout --suite-timeout $(LIVE_AGY_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/ -q -n 1 -m "live_agy"
+
+# Real-runtime budget test that runs ``make test`` to assert the 60 s combined
+# test budget. This test consumes ~25 s of wall-clock time by design (it
+# runs the full pytest suite as a subprocess to assert the budget holds),
+# so it is excluded from ``test-subprocess-e2e`` and the 60 s per-suite cap
+# via the ``verify_budget_real_time`` marker. Run on demand before/after a
+# release to confirm the 60 s budget still holds; the test budget is
+# otherwise pinned by the import-time invariants in ``ralph/verify.py``
+# and the per-test/per-suite invariants in ``tests/test_verify_invariants.py``.
+test-verify-budget:
+	uv run python -m ralph.verify_timeout --suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- python -m pytest tests/test_verify_budget_real_time.py -v
 
 coverage: test-cov
 

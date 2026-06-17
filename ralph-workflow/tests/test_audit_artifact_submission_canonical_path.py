@@ -4,6 +4,18 @@ The canonical-path audit enforces that all artifact submission side effects
 (receipts, completion sentinels, canonical artifact files, and the lower-level
 submit/receipt helpers) route through ``submit_artifact_canonical``. These tests
 pin the detection rules and the allow-list behavior.
+
+The file is marked ``subprocess_e2e`` (via the file-level ``pytestmark``) because
+the ``test_audit_invariants_*`` tests spawn a fresh ``python`` / ``python -O``
+subprocess to verify that the audit module's import-time invariants survive
+the optimizer. That subprocess I/O exceeds the 1 s per-test timeout on
+``make test`` under parallel load (9200+ tests, ``PYTEST_WORKERS=auto``) and
+must run under the dedicated ``test-subprocess-e2e`` target with a sized
+per-test timeout instead. The non-invariant tests (parser / write-detection
+unit tests) do not spawn subprocesses but the file-level marker is correct
+because (a) they share the audit helper module surface that the invariants
+guard, and (b) keeping the entire file in one suite preserves the audit
+invariant that the in-process and subprocess paths stay in lock-step.
 """
 
 from __future__ import annotations
@@ -14,6 +26,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from ralph.mcp.tools.artifact import _KNOWN_ARTIFACT_TYPES
 from ralph.testing.audit_artifact_submission_canonical_path import (
     _CANONICAL_TYPES,
@@ -21,6 +35,13 @@ from ralph.testing.audit_artifact_submission_canonical_path import (
     audit_file,
     main,
 )
+
+# File-level markers. ``subprocess_e2e`` excludes this file from ``make test``
+# (the budget-tracked 60 s step) because the audit-invariants tests spawn a
+# subprocess that can exceed 1 s under parallel load. ``timeout_seconds(5)``
+# gives the subprocess tests a sized per-test budget (5 s is 5x the default
+# 1 s budget and well under the 60 s per-suite cap on ``test-subprocess-e2e``).
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(5)]
 
 
 def _write(tmp_path: Path, rel_path: str, src: str) -> Path:

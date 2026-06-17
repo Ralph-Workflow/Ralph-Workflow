@@ -236,7 +236,22 @@ async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
     can handle prefixed transcript formats like 'claude: ...' correctly.
     """
     router = ActivityRouter()
-    executor = SubprocessAgentExecutor([sys.executable, "-c", "print('placeholder')"])
+    # Use a path that does NOT contain "agy", "claude", "opencode", "codex",
+    # "aider", or "gemini" substrings so ``detect_provider_from_command``
+    # resolves to ``ActivityProvider.GENERIC`` (which uses
+    # ``GenericParser``). ``sys.executable`` in this venv lives at
+    # ``.../wt-015-agy-support/ralph-workflow/.venv/bin/python`` and the
+    # "agy-support" path component triggers the AGY provider otherwise,
+    # which uses a different parser and does not surface the
+    # ``{"content": "structured"}`` mock as a text entry.
+    python_in_path = next(
+        p
+        for p in (sys.executable, "/usr/bin/python3", "/usr/local/bin/python3")
+        if p and not any(
+            needle in p for needle in ("agy", "claude", "opencode", "codex", "aider", "gemini")
+        )
+    )
+    executor = SubprocessAgentExecutor([python_in_path, "-c", "print('placeholder')"])
     executor.activity_router = router
     unit = make_unit("test-F")
 

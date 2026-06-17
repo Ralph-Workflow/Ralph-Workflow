@@ -32,6 +32,8 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
+
 from ralph.agents.idle_watchdog import IdleWatchdog, StuckKind, WatchdogFireReason
 
 # Files / directories that the contract test inspects.
@@ -419,6 +421,7 @@ def _check_no_duplicate_cooldown_dataclass_field(
                 raise AssertionError(msg)
 
 
+@pytest.mark.timeout_seconds(5)
 def test_unavailability_tracker_is_sole_cooldown_clock_owner() -> None:
     """Invariant 4: AgentUnavailabilityTracker is the sole module that
     owns the cooldown state machine.

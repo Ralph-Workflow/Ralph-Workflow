@@ -18,7 +18,11 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(130)]
+pytestmark = [
+    pytest.mark.subprocess_e2e,
+    pytest.mark.verify_budget_real_time,
+    pytest.mark.timeout_seconds(130),
+]
 
 _BUDGET_SECONDS = 60.0
 
@@ -29,6 +33,13 @@ def test_make_test_completes_within_budget() -> None:
     Uses real time.monotonic() (NOT mocked) to measure elapsed wall-clock
     time. The subprocess is given a 120s timeout for overhead, but the
     real assertion is on elapsed ≤ 60.0s.
+
+    ``PYTEST_WORKERS=auto`` is set in the subprocess env because the
+    test budget assertion must hold on the FASTEST realistic worker
+    count (a CI machine with many cores can parallelize fully). The
+    assertion ``elapsed <= 60.0s`` therefore catches regressions
+    against the parallel best case, not just the default 2-worker
+    sequential case.
     """
     ralph_workflow_dir = Path(__file__).resolve().parent.parent
     start = time.monotonic()
