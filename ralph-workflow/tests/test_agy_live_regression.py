@@ -577,6 +577,109 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     )
 
 
+@pytest.mark.timeout_seconds(240)
+def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
+    workspace_mirror: Path,
+    live_env: dict[str, str],
+) -> None:
+    """End-to-end live-binary proof: parser-classified text output AND canonical receipt.
+
+    Combines the two contract surfaces the user explicitly asked for into
+    one test: the harness drives the live AGY to produce non-empty
+    parser-classified text output AND the canonical artifact submission
+    chain (artifact + receipt) completes successfully.
+
+    Uses the existing xfail gate via ``_detect_upstream_blocked_reason``
+    (``_UPSTREAM_BLOCKED_PATTERNS`` at line 438-462) to convert a
+    documented upstream-blocked run into a clear xfail with the env
+    state. When the env is healthy the test is STRICT and asserts the
+    full contract end-to-end.
+
+    The companion tests
+    (``test_live_agy_pty_read_thread_sees_output``,
+    ``test_live_agy_artifact_promoted_to_canonical_receipt``,
+    ``test_live_agy_no_breaks_and_tool_artifact_activity``) cover the
+    individual surfaces; this test is the single place that proves the
+    full live path works end-to-end.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "ralph", "smoke-interactive-agy", "--agent", _LIVE_AGY_AGENT],
+        capture_output=True,
+        text=True,
+        cwd=workspace_mirror,
+        env=live_env,
+        timeout=240,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+
+    cli_log_path = Path(live_env["HOME"]) / ".gemini" / "antigravity-cli" / "cli.log"
+    cli_log_tail = ""
+    if cli_log_path.is_file():
+        try:
+            cli_log_tail = cli_log_path.read_text(encoding="utf-8", errors="replace")[-4096:]
+        except OSError:
+            cli_log_tail = "<unreadable>"
+
+    upstream_reason = _detect_upstream_blocked_reason(cli_log_tail)
+    if upstream_reason is not None:
+        pytest.xfail(
+            f"Live AGY is upstream-blocked ({upstream_reason}); "
+            "the canonical-receipt + parser-classified-output contract cannot be "
+            "observed in this env. The mock-binary test "
+            "test_agy_smoke_promotes_artifact_to_canonical_receipt is the "
+            "always-green regression-proof; the existing "
+            "test_live_agy_pty_read_thread_sees_output will pass once the env "
+            f"clears. cli.log tail: {cli_log_tail[-200:]!r}"
+        )
+
+    expected_run_id = _LIVE_AGY_EXPECTED_RUN_ID
+    artifact_path = (
+        workspace_mirror / ".agent" / "artifacts" / "smoke_test_result.json"
+    )
+    receipt_path = (
+        workspace_mirror
+        / ".agent"
+        / "receipts"
+        / expected_run_id
+        / "smoke_test_result.json"
+    )
+
+    assert artifact_path.is_file(), (
+        f"Expected smoke_test_result artifact at {artifact_path}. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
+    assert receipt_path.is_file(), (
+        f"Expected canonical receipt at {receipt_path}. "
+        f"Artifact present: {artifact_path.is_file()}. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
+    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt_payload == {
+        "run_id": expected_run_id,
+        "artifact_type": "smoke_test_result",
+    }, f"Unexpected receipt payload: {receipt_payload!r}"
+
+    text_lines = re.findall(r"- text: [^\n]+", output) or []
+    assert any(line.startswith("- text:") for line in text_lines), (
+        "Expected at least one - text: line in detailed report (parser-classified "
+        "output). cli.log tail: "
+        f"{cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+    )
+
+    assert "- tool activity observed" in output, (
+        "Expected the dash-prefixed '- tool activity observed' success marker. "
+        f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
+    )
+    assert "- smoke_test_result artifact submitted" in output, (
+        "Expected the dash-prefixed '- smoke_test_result artifact submitted' "
+        f"success marker. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
+
+
 def test_live_agy_environment_diagnostic_records_upstream_block(
     workspace_mirror: Path,
     live_env: dict[str, str],

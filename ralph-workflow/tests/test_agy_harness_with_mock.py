@@ -17,6 +17,7 @@ from ralph.pipeline import effect_executor as effect_executor_module
 from ralph.pipeline.factory import DefaultPipelineFactory
 from ralph.pipeline.plumbing.smoke_plumbing import (
     SmokeRunResult,
+    resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
 from ralph.workspace.scope import WorkspaceScope
@@ -45,6 +46,7 @@ def _run_agy_smoke_plumbing(
     tmp_path: Path,
     *,
     behavior: str = "normal",
+    agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
 ) -> SmokeRunResult:
     """Drive ``run_smoke_plumbing`` with the mock AGY binary in ``tmp_path``."""
     mock_path = _mock_agy_path()
@@ -63,7 +65,6 @@ def _run_agy_smoke_plumbing(
     # Dynamic agy/<model> aliases are resolved from builtins, not from
     # config.agents, so inject the overridden config under the exact
     # agent name so the mock binary is honored.
-    agent_name = "agy/Claude Sonnet 4.6 (Thinking)"
     agent_config = AgentRegistry.from_config(config).get(agent_name)
     if agent_config is not None:
         agent_config = smoke_module._maybe_apply_agy_binary_override(agent_config)
@@ -81,7 +82,7 @@ def _run_agy_smoke_plumbing(
     return run_smoke_plumbing(
         config=config,
         workspace_root=tmp_path,
-        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        agent_name=agent_name,
         prompt_file=prompt_file,
         output_file=smoke_dir / "todo-list.js",
         display_context=display_context,
@@ -190,3 +191,73 @@ def test_agy_harness_session_id_present_with_mock(
     result = _run_agy_smoke_plumbing(monkeypatch, tmp_path)
     assert result.session_id is not None
     assert result.session_id.startswith("interactive-agy-smoke-")
+
+
+def test_agy_smoke_promotes_artifact_to_canonical_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Mock-binary AGY end-to-end proves the canonical receipt promotion contract.
+
+    Drives the full smoke harness with the deterministic mock AGY binary
+    using the ``agy/Gemini 3.5 Flash (Medium)`` alias (the same alias used
+    by the live regression suite and by the smoke CLI default). Asserts
+    the four contract surfaces the user explicitly asked for:
+
+    1. The agent's direct artifact file write exists at
+       ``tmp_path / '.agent' / 'artifacts' / 'smoke_test_result.json'``
+       (the AGY-side write that the prompt instructs the model to perform).
+    2. The canonical receipt is promoted at
+       ``tmp_path / '.agent' / 'receipts' / <run_id> / 'smoke_test_result.json'``
+       via ``promote_fallback_artifact`` at
+       ``ralph/mcp/artifacts/canonical_submit.py:236``.
+    3. The receipt payload equals the exact shape written at
+       ``ralph/mcp/artifacts/completion_receipts.py:53``:
+       ``{"run_id": run_id, "artifact_type": "smoke_test_result"}``.
+    4. The mock wrote the file the prompt asked for at
+       ``tmp_path / 'tmp' / 'interactive-agy-smoke' / 'todo-list.js'``.
+
+    The expected ``run_id`` is computed from
+    ``resolve_smoke_harness_spec('agy/Gemini 3.5 Flash (Medium)').run_id``
+    (= ``interactive-agy-smoke-Gemini-3.5-Flash-Medium``) so the assertion
+    stays in sync with the harness's sanitization rule.
+
+    This test is the always-green mock-binary regression-proof that AGY
+    artifact submission works just like any other agent. The companion
+    live-binary test in ``tests/test_agy_live_regression.py`` covers the
+    same contract against the real binary (with an xfail gate for
+    documented upstream-blocked states).
+    """
+    result = _run_agy_smoke_plumbing(
+        monkeypatch,
+        tmp_path,
+        agent_name="agy/Gemini 3.5 Flash (Medium)",
+    )
+    assert result.artifact_submitted is True
+    assert result.file_created is True
+
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    assert artifact_path.is_file(), (
+        f"Expected the agent's direct artifact write at {artifact_path}"
+    )
+
+    todo_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
+    assert todo_path.is_file(), f"Expected the mock-written todo file at {todo_path}"
+
+    expected_run_id = resolve_smoke_harness_spec(
+        "agy/Gemini 3.5 Flash (Medium)"
+    ).run_id
+    receipt_path = (
+        tmp_path / ".agent" / "receipts" / expected_run_id / "smoke_test_result.json"
+    )
+    assert receipt_path.is_file(), (
+        f"Expected canonical receipt at {receipt_path}. The harness's "
+        f"_is_smoke_artifact_submitted must call is_artifact_submitted -> "
+        f"promote_fallback_artifact to write the receipt from the agent's "
+        f"direct .agent/artifacts/ write."
+    )
+    receipt_payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt_payload == {
+        "run_id": expected_run_id,
+        "artifact_type": "smoke_test_result",
+    }, f"Unexpected receipt payload: {receipt_payload!r}"
