@@ -521,16 +521,31 @@ def _make_artifact(tmp_path: Path, *, observed_breaks: list[str]) -> None:
     )
 
 
-def test_detect_smoke_errors_agy_artifact_requires_transcript_completion_marker(
+def test_detect_smoke_errors_agy_without_artifact_reports_missing_completion(
     tmp_path: Path,
 ) -> None:
-    """AGY with a complete artifact but no transcript marker still fails for
-    declare_complete.  Artifact presence does **not** substitute for the
-    completion signal."""
+    """AGY with no artifact write still fails the completion check.
+
+    The completion signal for AGY is the canonical receipt promoted from the
+    agent's direct artifact write (see
+    ``smoke_plumbing._explicit_completion_seen`` for the AGY branch and
+    the regression test
+    ``test_agy_smoke_completion_requires_receipt_not_transcript_marker`` in
+    tests/test_smoke_plumbing_uses_canonical_submit.py). When the agent
+    never writes the artifact, no receipt is promoted, and the smoke run
+    must fail with ``"smoke_test_result artifact was not submitted"`` —
+    not with the legacy ``"declare_complete marker was not observed"``
+    message, which was removed because the substring check was spoofable.
+    """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
-    _make_artifact(tmp_path, observed_breaks=[])
+    # CRUCIALLY: do NOT write the artifact. The smoke run must report the
+    # missing-receipt completion failure, not the legacy transcript-marker
+    # failure.
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    if artifact_path.exists():
+        artifact_path.unlink()
 
     config = AgentConfig(
         cmd="agy",
@@ -551,20 +566,70 @@ def test_detect_smoke_errors_agy_artifact_requires_transcript_completion_marker(
 
     errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
 
-    assert "declare_complete marker was not observed" in errors
+    # The new contract: AGY completion requires the canonical receipt
+    # (promoted from the artifact write). With no artifact, the
+    # completion check fails; the user-facing failure wording is
+    # transport-agnostic on purpose, so we assert that the failure
+    # surfaces as EITHER the receipt-missing failure (artifact not
+    # submitted) or the completion-marker failure (declare_complete
+    # marker was not observed) since both are user-visible signals of
+    # the same underlying gap. The important invariant is that the
+    # smoke run does NOT silently pass: a transcript substring cannot
+    # satisfy the AGY completion check (see the companion regression
+    # test ``test_agy_smoke_completion_requires_receipt_not_transcript_marker``
+    # in tests/test_smoke_plumbing_uses_canonical_submit.py for the
+    # strict contract).
+    assert (
+        "smoke_test_result artifact was not submitted" in errors
+        or "declare_complete marker was not observed" in errors
+    ), f"Expected a completion-failure error, got: {errors}"
+    # The transcript-only marker path must NOT satisfy completion.
+    # Drive the harness with a transcript that contains the substring
+    # and confirm the failure still fires (i.e. the substring is not
+    # trusted as a completion signal for AGY).
+    transcript_with_marker = ["I will create the todo list.", "Task declared complete:"]
+    errors_with_marker = smoke_plumbing_module._detect_smoke_errors(
+        params, transcript_with_marker, transcript_with_marker, None, None
+    )
+    assert "declare_complete marker was not observed" in errors_with_marker, (
+        "AGY completion must NOT be satisfied by the transcript substring "
+        "'Task declared complete:'. The substring is a spoofable signal and "
+        "the new contract requires the canonical receipt. "
+        f"Got errors: {errors_with_marker}"
+    )
+    assert "smoke_test_result artifact was not submitted" in errors_with_marker, (
+        "With no artifact and no receipt, AGY completion must fail for "
+        f"missing receipt. Got errors: {errors_with_marker}"
+    )
     assert "session ID was not observed" not in errors
-    assert "no tool activity was observed" not in errors
 
 
-def test_detect_smoke_errors_agy_artifact_without_tool_activity_check_reports_missing(
+def test_detect_smoke_errors_agy_self_reported_tool_activity_does_not_count(
     tmp_path: Path,
 ) -> None:
-    """AGY artifact that omits the tool-activity check still reports missing tool activity."""
+    """AGY tool activity must come from authoritative sources, not the artifact.
+
+    Replaces the prior test that pinned the removed self-certifying
+    contract (artifact ``headless_guide_checks`` declaring
+    ``"tool activity"`` was treated as proof of tool activity). The
+    authoritative sources for AGY are: (a) a ``[plain] tool: NAME`` parser
+    event in the transcript, or (b) the expected workspace file
+    ``tmp/interactive-agy-smoke/todo-list.js`` being written. The
+    artifact's self-report is NEVER trusted; see the regression test
+    ``test_agy_tool_activity_must_not_come_from_artifact`` in
+    ``tests/test_smoke_plumbing_uses_canonical_submit.py`` for the full
+    contract.
+    """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.write_text("export const todos = [];\n", encoding="utf-8")
+    # CRUCIALLY: do NOT write the workspace file. The file write is the
+    # authoritative AGY tool-activity signal, so a pre-created file would
+    # mask the regression.
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    # Self-reporting artifact: the headless_guide_checks declare "tool
+    # activity" but no actual tool activity is observed (no parser event,
+    # no file write). The harness must NOT trust the self-report.
     artifact_path.write_text(
         json.dumps(
             {
@@ -576,7 +641,7 @@ def test_detect_smoke_errors_agy_artifact_without_tool_activity_check_reports_mi
                     "output_file": "tmp/interactive-agy-smoke/todo-list.js",
                     "observed_working": ["tmp artifact created"],
                     "observed_breaks": [],
-                    "headless_guide_checks": ["session capture"],
+                    "headless_guide_checks": ["tool activity"],
                 },
             }
         ),
@@ -600,15 +665,26 @@ def test_detect_smoke_errors_agy_artifact_without_tool_activity_check_reports_mi
         bridge=None,
     )
 
+    # Empty transcript: no [plain] tool: events for the parser to classify.
     errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
 
     assert "no tool activity was observed" in errors
+    assert "expected todo-list.js was not created" in errors
 
 
-def test_detect_smoke_errors_agy_artifact_with_breaks_still_reports_completion(
+def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
     tmp_path: Path,
 ) -> None:
-    """AGY artifact with non-empty observed_breaks does not count as completion."""
+    """AGY with a canonical receipt satisfies completion even with breaks.
+
+    The completion signal for AGY is the canonical receipt promoted from
+    the agent's direct artifact write, independent of the
+    ``observed_breaks`` field. When the receipt is present, the completion
+    check passes; breaks are reported in the ``Observed breaks`` section
+    but do not block completion. The legacy test asserted the opposite
+    (breaks block completion) because the old substring check was both
+    spoofable and conflated completion with breaks.
+    """
     output_file = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     output_file.write_text("export const todos = [];\n", encoding="utf-8")
@@ -631,9 +707,25 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_still_reports_completion(
         bridge=None,
     )
 
-    errors = smoke_plumbing_module._detect_smoke_errors(params, [], [], None, None)
+    # Pre-compute the receipt status the way ``_run_smoke_agent`` would:
+    # call ``_is_smoke_artifact_submitted`` to promote the fallback artifact
+    # to a canonical receipt, mirroring the live runtime.
+    artifact_submitted = smoke_plumbing_module._is_smoke_artifact_submitted(
+        params.workspace_root
+    )
+    assert artifact_submitted is True, (
+        "Test setup invariant: the artifact must be promoted to a receipt"
+    )
 
-    assert "declare_complete marker was not observed" in errors
+    errors = smoke_plumbing_module._detect_smoke_errors(
+        params, [], [], None, None, artifact_submitted=artifact_submitted
+    )
+
+    # The receipt is present, so completion is satisfied; neither the
+    # transcript-marker failure nor the artifact-not-submitted failure
+    # should fire.
+    assert "declare_complete marker was not observed" not in errors
+    assert "smoke_test_result artifact was not submitted" not in errors
     assert "session ID was not observed" not in errors
 
 

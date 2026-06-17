@@ -62,7 +62,15 @@ Expected green parity table excerpt:
 | agy/Gemini 3.5 Flash (Medium) | agy       | yes  | interactive-agy-smoke-Gemini-3.5-Flash-Medium | 1             | yes           | yes      | none   |
 ```
 
-Live AGY is also exercised end-to-end by `tests/test_agy_live_regression.py` (8 black-box tests, marked `live_agy`) and `tests/test_smoke_agy_end_to_end.py` (4 black-box tests, marked `subprocess_e2e`); both suites run under `make verify` and either pass or skip via documented upstream-blocked gates.
+Live AGY is also exercised end-to-end by `tests/test_agy_live_regression.py` (8 black-box tests, marked `live_agy`) and `tests/test_smoke_agy_end_to_end.py` (4 black-box tests, marked `subprocess_e2e`). Neither suite runs under `make verify` (the 60 s combined test budget only covers the `ralph.test_suites` invocation that `make verify` runs); run them on demand with:
+
+```bash
+cd ralph-workflow
+make test-live-agy                # 8 live tests, 600 s per-suite cap
+uv run pytest tests/test_smoke_agy_end_to_end.py -q -m subprocess_e2e
+```
+
+The live suite either passes or xfails via documented upstream-blocked gates. The smoke-log e2e suite skips cleanly when `agy` is not on `PATH`.
 
 The full source-of-truth for AGY CLI behavior (version, flag set, model list, probe output, cli.log tail) is committed to `tmp/agy-source-of-truth.txt` and re-validated on every plan that touches AGY support; see the most recent `=== LIVE RE-MEASUREMENT ===` block for the current local-binary health verdict. The agent-by-agent documentation lives in `docs/sphinx/agents.md`; this README section is a one-paragraph pointer, not a duplicate.
 

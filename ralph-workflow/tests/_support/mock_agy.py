@@ -116,12 +116,25 @@ def _emit_normal_stdout(model: str | None, prompt: str | None) -> None:
     print("I will create the todo list implementation.")
     print("Using module.exports for CommonJS compatibility.")
     print("Adding add, list, complete, remove methods.")
+    # The ``[plain] tool: NAME`` convention is the GenericParser contract for
+    # tool-use events. The AGY smoke harness requires authoritative parser
+    # / transport evidence for tool activity — not the
+    # ``headless_guide_checks`` field in the model-authored artifact — so the
+    # mock emits a real tool-use line that the parser classifies as
+    # ``type='tool_use'`` (see
+    # ``ralph-workflow/ralph/agents/parsers/generic.py::_classify_plaintext_tool_line``).
+    print("[plain] tool: createTodoList")
     print("File created at tmp/interactive-agy-smoke/todo-list.js.")
     print("Writing smoke_test_result artifact ...")
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model or "default").strip("-")
     session_id = f"interactive-agy-smoke-{sanitized}"
     print(f"Session ID: {session_id}")
-    print("Task declared complete:")
+    # The smoke prompt for AGY (see ``smoke_plumbing._build_smoke_prompt``)
+    # intentionally does NOT instruct the model to print a transcript
+    # completion marker; the authoritative completion signal is the canonical
+    # receipt promoted from the agent's direct artifact write. The mock
+    # faithfully omits the transcript marker so test coverage matches the
+    # current prompt contract.
 
 
 def main(argv: list[str] | None = None) -> int:

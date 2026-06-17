@@ -39,7 +39,15 @@ def _run_mock_agy(
 
 
 def test_mock_normal_prints_and_writes_artifact(tmp_path: Path) -> None:
-    """Normal behavior emits stdout ending with the completion marker."""
+    """Normal behavior emits stdout with a tool-use line and writes the artifact.
+
+    The mock no longer emits a transcript completion marker because the AGY
+    smoke prompt no longer asks the agent to print one. The authoritative
+    completion signal is the canonical receipt promoted from the artifact
+    write; the authoritative tool-activity signal is the
+    ``[plain] tool: NAME`` line that the GenericParser classifies as
+    ``type='tool_use'``.
+    """
     result = _run_mock_agy(
         "--print",
         "--dangerously-skip-permissions",
@@ -51,7 +59,14 @@ def test_mock_normal_prints_and_writes_artifact(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert result.stdout.strip()
     lines = result.stdout.strip().splitlines()
-    assert lines[-1] == "Task declared complete:"
+    assert any(line == "[plain] tool: createTodoList" for line in lines), (
+        f"Expected a parser-classifiable tool-use line, got: {lines!r}"
+    )
+    assert "Task declared complete:" not in result.stdout, (
+        "Mock should NOT emit the transcript completion marker; the AGY "
+        "prompt no longer asks the agent to print one and the harness must "
+        "not trust it"
+    )
     assert any(line.startswith("Session ID: interactive-agy-smoke-") for line in lines)
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.exists()
@@ -111,7 +126,7 @@ def test_mock_different_canonical_model_name(tmp_path: Path) -> None:
         artifact_dir=tmp_path,
     )
     assert result.returncode == 0
-    assert "Task declared complete:" in result.stdout
+    assert "[plain] tool: createTodoList" in result.stdout
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.exists()
 

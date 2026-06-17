@@ -178,10 +178,15 @@ def _build_smoke_prompt(
         # AGY's current headless mode does not reliably call Ralph's
         # streamable-HTTP MCP tools, but it can write files directly. We
         # therefore instruct it to persist the smoke_test_result artifact as a
-        # file and emit the same completion marker the smoke detector watches.
-        # The completion-signal layer auto-promotes this direct write to a
-        # canonical receipt at completion-check time, so the AGY branch still
-        # satisfies the same single-source-of-truth contract as the MCP path.
+        # file. The completion-signal layer auto-promotes this direct write to
+        # a canonical receipt at completion-check time, and the receipt is the
+        # authoritative completion signal for AGY — the prompt intentionally
+        # does NOT instruct the model to print a transcript marker, because
+        # transcript text can be spoofed by ordinary model output and is not a
+        # trusted completion signal on its own (see
+        # ``_explicit_completion_seen`` for the AGY branch and the regression
+        # test ``test_agy_smoke_completion_requires_receipt_not_transcript_marker``
+        # in tests/test_agy_execution_contract.py).
         artifact_path = ".agent/artifacts/smoke_test_result.json"
         artifact_wrapper = (
             "{\n"
@@ -225,7 +230,9 @@ def _build_smoke_prompt(
             f"The inner content schema is: {artifact_content_schema}\n"
             "- Do not nest extra objects like rubric/details/metadata "
             "inside the artifact content.\n"
-            "- When finished, print exactly: Task declared complete:\n"
+            "- The smoke_test_result artifact write is the authoritative completion "
+            "signal. Do NOT print a transcript completion marker; the harness will not "
+            "trust one.\n"
         )
 
     return (
@@ -405,13 +412,31 @@ def _explicit_completion_seen(
     lines: list[str],
     workspace_root: Path,
     transport: AgentTransport | None,
+    *,
+    run_id: str = _SMOKE_RUN_ID,
 ) -> bool:
-    """Return whether the agent emitted an explicit completion signal.
+    """Return whether the agent emitted an authoritative completion signal.
 
-    Only the ``Task declared complete:`` transcript marker counts.  Artifact
-    presence does **not** substitute for the completion signal so a malformed
-    or markerless smoke session fails cleanly.
+    The completion signal must be authoritative — not a transcript substring
+    the model was told to print, which a misbehaving or partial run can emit
+    without truly completing.
+
+    - For non-AGY agents (Claude, etc.): the ``Task declared complete:``
+      transcript marker emitted by ``handle_declare_complete`` is the
+      authoritative signal, optionally corroborated by the completion
+      sentinel at ``.agent/completion_seen_<run_id>.json``.
+    - For AGY: the canonical receipt at
+      ``.agent/receipts/<run_id>/smoke_test_result.json`` is the
+      authoritative signal. AGY headless mode writes the artifact directly
+      without going through ``handle_declare_complete``, so there is no
+      completion sentinel to read; the receipt promoted from the agent's
+      direct artifact write is the only trusted completion path. Transcript
+      substrings are explicitly NOT accepted: the prompt no longer tells
+      the agent to print a marker, and any substring the model emits
+      incidentally is treated as ordinary model output.
     """
+    if transport == AgentTransport.AGY:
+        return _is_smoke_artifact_submitted(workspace_root, run_id)
     return any("Task declared complete:" in line for line in lines)
 
 
@@ -558,13 +583,48 @@ def _tool_activity_seen_for_errors(
     lines: list[str],
     tool_activity_seen: bool | None,
 ) -> bool:
-    """Resolve whether tool activity was observed, including AGY fallback."""
+    """Resolve whether tool activity was observed from authoritative sources only.
+
+    The earlier AGY-only fallback that read the persisted
+    ``smoke_test_result`` artifact's ``headless_guide_checks`` was removed:
+    tool activity must be derived from authoritative runtime evidence
+    (parser-classified tool events, file-write side effects, or transport
+    telemetry), not from the contents of the model-authored artifact. The
+    smoke prompt still tells the model to declare ``"tool activity"`` in
+    the artifact, but the harness MUST NOT trust the model-authored
+    self-report. The companion regression test
+    ``tests/test_smoke_plumbing_uses_canonical_submit.py::test_agy_tool_activity_must_not_come_from_artifact``
+    pins this invariant: a transcript that emits no parser-classified tool
+    events and writes no workspace file but writes a self-reporting
+    ``headless_guide_checks=["tool activity"]`` artifact fails the smoke
+    run with ``"no tool activity was observed"``.
+
+    Authoritative tool-activity sources, in priority order:
+
+    1. Parser-classified tool events from the transcript (the
+       ``[plain] tool: NAME`` convention handled by ``GenericParser``,
+       plus structured tool events from the JSON-aware parsers).
+    2. For AGY specifically: a workspace file write. The AGY source of
+       truth at ``ralph-workflow/tmp/agy-source-of-truth.txt`` documents
+       that AGY ``--print`` mode does not emit structured tool events on
+       stdout; tool activity surfaces as side-effect file writes inside
+       the workspace. The expected ``tmp/interactive-agy-smoke/todo-list.js``
+       file is the canonical authoritative write; its presence proves the
+       agent actually performed a tool action rather than only emitting
+       text.
+    """
     if tool_activity_seen is not None:
         return tool_activity_seen
-    seen = _tool_activity_seen(params.config, lines) if lines else False
-    if not seen and params.config.transport == AgentTransport.AGY:
-        return _agy_tool_activity_seen(params.workspace_root)
-    return seen
+    if _tool_activity_seen(params.config, lines) if lines else False:
+        return True
+    # AGY-specific authoritative signal: the expected workspace output
+    # file was created (a real file-write side effect, not a model
+    # self-report). Per the source-of-truth, AGY --print wires tool
+    # activity through file writes rather than structured stdout events.
+    return (
+        params.config.transport == AgentTransport.AGY
+        and params.output_file.exists()
+    )
 
 
 def _detect_smoke_errors(
@@ -575,6 +635,8 @@ def _detect_smoke_errors(
     final_exception: AgentInvocationError | None,
     tool_activity_seen: bool | None = None,
     artifact_submitted: bool = False,
+    *,
+    run_id: str = _SMOKE_RUN_ID,
 ) -> list[str]:
     """Detect errors in smoke run results."""
     errors = _detect_break_indicators(lines)
@@ -585,7 +647,9 @@ def _detect_smoke_errors(
     if session_id is None and params.config.transport != AgentTransport.AGY:
         errors.append("session ID was not observed")
 
-    if not _explicit_completion_seen(lines, params.workspace_root, params.config.transport):
+    if not _explicit_completion_seen(
+        lines, params.workspace_root, params.config.transport, run_id=run_id
+    ):
         errors.append("declare_complete marker was not observed")
 
     if parser_error := _parser_event_error(params.config, lines):
@@ -615,12 +679,18 @@ def _detect_smoke_errors(
 
 
 def _agy_tool_activity_seen(workspace_root: Path) -> bool:
-    """AGY-specific tool-activity fallback using the persisted artifact."""
-    artifact = read_smoke_test_result_artifact(workspace_root)
-    if isinstance(artifact, dict):
-        checks = artifact.get("headless_guide_checks")
-        if isinstance(checks, list) and "tool activity" in checks:
-            return True
+    """Deprecated AGY tool-activity fallback. Returns False unconditionally.
+
+    This helper used to read the persisted ``smoke_test_result`` artifact and
+    return True when ``headless_guide_checks`` contained ``"tool activity"``,
+    which let the smoke run self-certify tool activity from the
+    model-authored artifact. That path was removed: tool activity must come
+    from authoritative parser / transport events, never from the artifact
+    contents. The function is preserved as a no-op stub so external
+    imports keep working during the transition; the regression test
+    ``tests/test_agy_execution_contract.py::test_agy_tool_activity_must_not_come_from_artifact``
+    pins the new contract.
+    """
     return False
 
 
@@ -635,11 +705,25 @@ def _run_smoke_agent(
 
     lines = all_lines
     session_id = current_session_id or extract_transport_session_id(tuple(lines))
-    explicit_completion_seen = any("Task declared complete:" in line for line in lines)
+    artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
+    # Authoritative completion signal — see ``_explicit_completion_seen`` docstring.
+    # For AGY the receipt (==``artifact_submitted``) is the trusted signal; for
+    # other transports the ``Task declared complete:`` transcript marker from
+    # ``handle_declare_complete`` is the trusted signal. We compute the
+    # bool here so the SmokeRunResult can surface it without leaking
+    # transport-specific knowledge into the report.
+    explicit_completion_seen = _explicit_completion_seen(
+        lines, params.workspace_root, params.config.transport, run_id=run_id
+    )
     parsed_event_count = _count_parsed_events(params.config, lines) if lines else 0
-    tool_activity_seen = _tool_activity_seen(params.config, lines) if lines else False
-    if not tool_activity_seen and params.config.transport == AgentTransport.AGY:
-        tool_activity_seen = _agy_tool_activity_seen(params.workspace_root)
+    # Tool activity MUST come from authoritative parser / transport events
+    # or workspace file-write side effects — never from the agent-authored
+    # ``headless_guide_checks`` artifact. See
+    # ``_tool_activity_seen_for_errors`` docstring and the regression test
+    # ``test_agy_tool_activity_must_not_come_from_artifact``.
+    tool_activity_seen = _tool_activity_seen_for_errors(
+        params, lines, tool_activity_seen=None
+    )
     parsed_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
     live_filtered = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES
@@ -654,8 +738,6 @@ def _run_smoke_agent(
     # tag its own lines).
     meaningful_output_lines = parsed_output_lines or live_filtered
 
-    artifact_submitted = _is_smoke_artifact_submitted(params.workspace_root, run_id)
-
     errors = _detect_smoke_errors(
         params,
         lines,
@@ -664,6 +746,7 @@ def _run_smoke_agent(
         final_exception,
         tool_activity_seen=tool_activity_seen,
         artifact_submitted=artifact_submitted,
+        run_id=run_id,
     )
 
     config = params.config

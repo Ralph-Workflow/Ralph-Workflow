@@ -1,25 +1,28 @@
-"""End-to-end assertions for the live AGY smoke run log.
+"""End-to-end assertions for the AGY smoke harness.
 
-These tests inspect the captured log from ``ralph smoke-interactive-agy``
-without invoking a real subprocess, network call, or sleep. They fail if the
-smoke harness ever fabricates a success message that is not backed by a real
-AGY invocation, or if the AGY display name is split into multiple argv tokens.
+These tests run the user-facing ``ralph smoke-interactive-agy`` command in
+a bounded subprocess against the deterministic mock AGY binary, capture the
+smoke report, and assert the harness's contract surfaces. Each test creates
+its own isolated workspace under ``tmp_path`` so the run is reproducible
+and never depends on a preexisting repository log. The mock binary is the
+always-green contract proof; the live ``agy`` binary is exercised
+end-to-end by the 8-test live regression suite
+(``tests/test_agy_live_regression.py``) under ``make test-live-agy``.
 
-Policy note (2026-06-14): this file was previously unmarked and ran as part
-of ``make test``. It inspects real subprocess output written by a separate
-``ralph smoke-interactive-agy`` invocation, which violates the policy
-"non-subprocess_e2e tests must not use real file I/O" the audit enforces for
-the regular suite. The log file lives outside pytest's ``tmp_path`` fixture
-(``tmp/smoke-interactive-agy-run.log`` is a real on-disk artefact produced
-by a prior run), so the test is necessarily environment-coupled. Marked
-``subprocess_e2e`` to exclude it from the timed test-cov run; the targeted
-``make test-subprocess-e2e`` target remains the right invocation.
+Policy note: this file is marked ``subprocess_e2e`` and is excluded from
+the maintained ``ralph.test_suites`` invocation that ``make verify`` runs
+(the 60 s combined test budget only covers the in-process unit /
+integration suite). The tests below run on demand with
+``uv run pytest tests/test_smoke_agy_end_to_end.py -q -m subprocess_e2e``.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -27,23 +30,82 @@ import pytest
 pytestmark = [
     pytest.mark.smoke,
     pytest.mark.subprocess_e2e,
-    pytest.mark.skipif(
-        not shutil.which("agy"),
-        reason="AGY binary not installed in PATH",
-    ),
+    pytest.mark.timeout_seconds(60),
 ]
 
 
-def _log_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "tmp" / "smoke-interactive-agy-run.log"
+def _mock_agy_path() -> Path:
+    return Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
 
 
-def test_agy_binary_is_available_in_path() -> None:
-    assert shutil.which("agy") is not None
+def _run_fresh_agy_smoke(
+    tmp_path: Path,
+    *,
+    timeout_seconds: int = 120,
+) -> str:
+    """Drive the smoke command against the mock binary in an isolated workspace.
+
+    The mock binary is the always-green contract proof: it writes the
+    ``tmp/interactive-agy-smoke/todo-list.js`` file, the
+    ``.agent/artifacts/smoke_test_result.json`` artifact, and emits the
+    canonical output lines (including the ``[plain] tool: createTodoList``
+    line the GenericParser classifies as ``type='tool_use'`` so the
+    authoritative tool-activity signal is present in the transcript).
+    Returns the combined stdout + stderr (the smoke harness routes its
+    log lines through loguru which defaults to stderr, so the report
+    must be assembled from both streams).
+    """
+    mock_path = _mock_agy_path()
+    env = os.environ.copy()
+    env["RALPH_AGY_BINARY"] = str(mock_path)
+    env["MOCK_AGY_BEHAVIOR"] = "normal"
+    env["MOCK_AGY_ARTIFACT_DIR"] = str(tmp_path)
+    # Unset live-binary env vars to ensure the mock wins and no other
+    # test session state bleeds in.
+    env.pop("AGY_BINARY", None)
+    env.pop("MOCK_AGY_ARTIFACT_DIR_OVERRIDE", None)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ralph",
+            "smoke-interactive-agy",
+            "--agent",
+            "agy/Gemini 3.5 Flash (Medium)",
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+        check=False,
+    )
+    if result.returncode not in (0, 1):
+        raise AssertionError(
+            f"smoke-interactive-agy exited with unexpected returncode "
+            f"{result.returncode}; stdout:\n{result.stdout}\n"
+            f"stderr:\n{result.stderr}"
+        )
+    return result.stdout + result.stderr
 
 
-def _read_breaks_from_report(log_text: str) -> str:
-    lines = log_text.splitlines()
+def test_agy_binary_is_available_in_path_or_mock_under_test() -> None:
+    """Either the real ``agy`` is on ``PATH`` or the bundled mock exists.
+
+    The substantive tests below use the mock binary so they can run in
+    any environment, but the live binary being on ``PATH`` is still
+    useful for the live regression suite to discover the
+    ``pytest.mark.live_agy`` mark without crashing.
+    """
+    assert shutil.which("agy") is not None or _mock_agy_path().is_file(), (
+        "Expected either a real `agy` binary on PATH or the bundled mock "
+        f"AGY shell wrapper at {_mock_agy_path()}"
+    )
+
+
+def _read_breaks_from_report(report_text: str) -> str:
+    """Pull the ``Observed breaks:`` block out of the captured smoke report."""
+    lines = report_text.splitlines()
     in_breaks = False
     breaks_lines: list[str] = []
     for line in lines:
@@ -59,25 +121,17 @@ def _read_breaks_from_report(log_text: str) -> str:
     return " ".join(breaks_lines)
 
 
-def test_live_smoke_log_documents_real_agy_invocation() -> None:
-    log_path = _log_path()
-    assert log_path.exists(), f"Live smoke log not found at {log_path}"
-
-    log_text = log_path.read_text(encoding="utf-8")
-    # The smoke log may come from a live AGY binary (``Invoking agent: agy ...``)
-    # or from a mock binary invoked via ``RALPH_AGY_BINARY``; both must produce a
-    # recognisable AGY invocation line. We assert the --dangerously-skip-permissions
-    # flag is present, the binary is either the literal ``agy`` or an
-    # ``/abs/path/...mock_agy...`` path, and the AGY display name is preserved as
-    # a single argv token.
+def test_mock_smoke_log_documents_real_agy_invocation(tmp_path: Path) -> None:
+    """A freshly produced mock-backed smoke log shows a real ``agy`` invocation."""
+    log_text = _run_fresh_agy_smoke(tmp_path)
     assert "Invoking agent:" in log_text, "Log does not contain an Invoking agent line"
     assert "--dangerously-skip-permissions" in log_text, (
         "Invoking line is missing --dangerously-skip-permissions"
     )
-    assert (
-        "Invoking agent: agy --dangerously-skip-permissions" in log_text
-        or "mock_agy" in log_text
-    ), "Log does not show a real AGY or mock-AGY invocation"
+    assert "mock_agy" in log_text, (
+        "Log does not show a mock-AGY invocation (the mock is the only "
+        "binary used by this fresh-evidence test)"
+    )
 
     agy_row = next(
         (line for line in log_text.splitlines() if "agy/" in line and ("│" in line or "┃" in line)),
@@ -91,39 +145,21 @@ def test_live_smoke_log_documents_real_agy_invocation() -> None:
     file_created = cells[2]
     breaks = _read_breaks_from_report(log_text)
 
-    if file_created == "yes":
-        assert "AGY --print returned empty stdout" not in breaks, (
-            f"Expected no upstream diagnostic when file=yes, got: {breaks}"
-        )
-    else:
-        assert file_created == "no", f"Expected file=no or file=yes, got: {cells}"
-        # The live AGY contract surfaces "AGY --print returned empty stdout:" in
-        # the Breaks column; the mock path with MOCK_AGY_BEHAVIOR=quota_exhausted
-        # surfaces the informational "mock AGY produced empty stdout by design"
-        # note instead.
-        assert (
-            "AGY --print returned empty stdout:" in breaks
-            or "mock AGY produced empty stdout by design" in breaks
-        ), f"Expected upstream or mock empty-stdout diagnostic in breaks, got: {breaks}"
+    assert file_created == "yes", f"Expected file=yes on the fresh mock-backed run, got: {cells}"
+    assert "AGY --print returned empty stdout" not in breaks, (
+        f"Expected no upstream diagnostic on a fresh mock-backed run, got: {breaks}"
+    )
 
 
-def test_invoking_line_uses_single_model_argv_token() -> None:
-    log_path = _log_path()
-    assert log_path.exists(), f"Live smoke log not found at {log_path}"
-
-    log_text = log_path.read_text(encoding="utf-8")
+def test_mock_smoke_invoking_line_uses_single_model_argv_token(tmp_path: Path) -> None:
+    """The --model flag carries the canonical display name as a single argv token."""
+    log_text = _run_fresh_agy_smoke(tmp_path)
     invoking_line = next(
         (line for line in log_text.splitlines() if "Invoking agent:" in line),
         None,
     )
     assert invoking_line is not None, "No 'Invoking agent:' line found in log"
 
-    # The AGY model display name is the repo-consistent default shared
-    # with the live regression suite (``agy/Gemini 3.5 Flash (Medium)``).
-    # The --model flag must carry one of the 8 canonical model display
-    # names from ``agy models`` as a single argv token so shlex.split
-    # downstream keeps the display name as one token (the display name
-    # has spaces and parens, so a quoted single token is required).
     canonical_models = (
         "Gemini 3.5 Flash (Medium)",
         "Gemini 3.5 Flash (High)",
@@ -150,20 +186,9 @@ def test_invoking_line_uses_single_model_argv_token() -> None:
     )
 
 
-def test_live_smoke_report_shows_text_output() -> None:
-    """The 'Observed output:' section shows rendered model text, not the 'raw' type label.
-
-    The smoke harness's ``meaningful_output_lines`` is now parser-classified
-    (after the smoke_plumbing fix in the wt-015 cycle), so the rendered
-    Observed output section uses the ``- text: <content>`` line format from
-    ``_meaningful_output_lines`` instead of the legacy ``- agy/<name>: <content>``
-    rendered-from-display line. The test accepts both formats so a freshly
-    captured smoke log passes regardless of which path the harness used.
-    """
-    log_path = _log_path()
-    assert log_path.exists(), f"Live smoke log not found at {log_path}"
-
-    log_text = log_path.read_text(encoding="utf-8")
+def test_mock_smoke_report_shows_text_output(tmp_path: Path) -> None:
+    """The freshly produced smoke report shows parser-classified text output, not raw."""
+    log_text = _run_fresh_agy_smoke(tmp_path)
     in_observed_output = False
     rendered_text_lines: list[str] = []
     raw_lines: list[str] = []
@@ -182,7 +207,6 @@ def test_live_smoke_report_shows_text_output() -> None:
             stripped = line.lstrip(" -│┃").strip()
             if not stripped:
                 continue
-            # Parser-classified format: "- text: <content>" (current contract).
             if stripped.startswith("text: "):
                 parser_classified_lines.append(stripped)
                 continue

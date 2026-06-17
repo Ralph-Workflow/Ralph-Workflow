@@ -338,3 +338,161 @@ def test_smoke_tmp_fallback_promotion_consistent_with_errors(
     assert is_artifact_submitted(tmp_path, run_id, artifact_type)
     assert artifact_receipt_present(tmp_path, run_id, artifact_type)
     assert "smoke_test_result artifact was not submitted" not in result.errors
+
+
+def test_agy_tool_activity_must_not_come_from_artifact(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A model-authored ``headless_guide_checks`` self-report must not be trusted.
+
+    Regression test for the AGY smoke self-certification bug: the smoke run
+    used to read the persisted artifact's ``headless_guide_checks`` field and
+    return ``tool_activity_seen=True`` whenever the agent wrote
+    ``"tool activity"`` into the artifact, even when the transcript contained
+    no parser-classified tool events and no workspace file was written. Tool
+    activity must now come from authoritative runtime evidence only:
+    parser-classified tool events, or actual workspace file-write side
+    effects.
+
+    This test drives ``_run_smoke_agent`` with a transcript that contains NO
+    ``[plain] tool:`` line and deletes the pre-existing
+    ``todo-list.js`` (which the ``_make_params`` helper would otherwise
+    create) so the agent's only "evidence" of tool activity is the
+    self-reporting ``headless_guide_checks`` field in the persisted
+    artifact. The smoke run must fail with
+    ``"no tool activity was observed"`` so a self-certified artifact can
+    never produce a green parity result.
+    """
+    params = _make_params(tmp_path, "agy/test-model", _agy_config())
+    run_id = "interactive-agy-smoke-test-model"
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    # The ``_make_params`` helper pre-creates the output file so the
+    # smoke harness's ``file_created`` check has a path to inspect. The
+    # agent's authoritative tool-activity signal is the file write, so a
+    # pre-created file would mask the regression. Delete the pre-created
+    # file and assert the agent does NOT recreate it.
+    params.output_file.unlink()
+    assert not params.output_file.exists(), (
+        f"Test setup invariant: {params.output_file} should NOT exist before the run"
+    )
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        # Transcript contains plain text only — no ``[plain] tool:`` line
+        # for the parser to classify as ``type='tool_use'``.
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            raw_sink.append("I am just talking, not invoking a tool.")
+            raw_sink.append("I would have written a file but I did not.")
+        rendered_sink = kwargs.get("rendered_output_sink")
+        if isinstance(rendered_sink, deque):
+            rendered_sink.append("I am just talking, not invoking a tool.")
+            rendered_sink.append("I would have written a file but I did not.")
+        # Artifact self-reports tool activity. The harness must NOT trust this.
+        payload = {
+            "status": "passed",
+            "output_file": "tmp/interactive-agy-smoke/todo-list.js",
+            "observed_working": ["created todo-list.js"],
+            "observed_breaks": [],
+            "headless_guide_checks": ["tool activity", "parser events"],
+            "summary": "self-certified",
+        }
+        envelope = {
+            "name": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
+            "type": SMOKE_TEST_RESULT_ARTIFACT_TYPE,
+            "content": payload,
+        }
+        artifact_path.write_text(json.dumps(envelope), encoding="utf-8")
+        # CRUCIALLY: do NOT write the workspace output file. The harness
+        # must NOT trust the self-reported tool activity in the artifact.
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    # The artifact was promoted to a receipt, so ``artifact_submitted`` is True.
+    assert result.artifact_submitted is True
+    # BUT the self-reported ``tool activity`` in headless_guide_checks must
+    # NOT be trusted. The transcript had no parser-classified tool events
+    # AND the agent did not write the workspace output file.
+    assert result.file_created is False, (
+        "Test invariant: the agent should not have written the workspace file"
+    )
+    assert result.tool_activity_seen is False, (
+        "Tool activity must come from authoritative parser/transport events "
+        "or a real workspace file-write side effect, not from the "
+        "agent-authored artifact's headless_guide_checks"
+    )
+    assert "no tool activity was observed" in result.errors, (
+        f"Expected 'no tool activity was observed' in errors, got: {result.errors}"
+    )
+
+
+def test_agy_smoke_completion_requires_receipt_not_transcript_marker(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A transcript completion marker alone must not be accepted as completion for AGY.
+
+    Regression test for the AGY completion-spoofing bug: the prompt used to
+    instruct AGY to print ``Task declared complete:`` and the detector used
+    to accept any line containing the substring. The substring check is
+    spoofable — an agent that prints the marker without writing the artifact
+    would have been reported as completed. The prompt no longer tells AGY to
+    print a marker, and the completion detector for AGY now requires the
+    canonical receipt as the authoritative signal.
+
+    This test drives ``_run_smoke_agent`` with a transcript that contains
+    ``Task declared complete:`` but writes no artifact. The smoke run must
+    fail with ``"smoke_test_result artifact was not submitted"`` so a
+    transcript-only marker can never produce a green parity result.
+    """
+    params = _make_params(tmp_path, "agy/test-model", _agy_config())
+    run_id = "interactive-agy-smoke-test-model"
+    artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
+
+    def _fake_execute_agent_effect(*args: object, **kwargs: object) -> PipelineEvent:
+        raw_sink = kwargs.get("raw_output_sink")
+        if isinstance(raw_sink, deque):
+            raw_sink.append("I will create the todo list implementation.")
+            raw_sink.append("[plain] tool: createTodoList")
+            raw_sink.append("File created at tmp/interactive-agy-smoke/todo-list.js.")
+            # Transcript marker — MUST NOT be trusted on its own.
+            raw_sink.append("Task declared complete:")
+        rendered_sink = kwargs.get("rendered_output_sink")
+        if isinstance(rendered_sink, deque):
+            rendered_sink.append("I will create the todo list implementation.")
+            rendered_sink.append("tool_use: createTodoList")
+            rendered_sink.append("File created at tmp/interactive-agy-smoke/todo-list.js.")
+        # CRUCIALLY: no artifact is written. The harness must report a failure.
+        # Remove any pre-existing artifact so receipt promotion does not see one.
+        if artifact_path.exists():
+            artifact_path.unlink()
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(
+        "ralph.pipeline.plumbing.smoke_plumbing.execute_agent_effect",
+        _fake_execute_agent_effect,
+    )
+
+    result = _run_smoke_agent(params, run_id=run_id)
+
+    # The transcript marker MUST NOT satisfy the AGY completion check.
+    # The marker is in the transcript (raw output line emitted by the fake);
+    # the harness must report the marker NOT seen for completion purposes
+    # because no canonical receipt was promoted.
+    assert result.explicit_completion_seen is False, (
+        "AGY explicit completion must require the canonical receipt, not the "
+        "transcript 'Task declared complete:' marker. The marker alone is a "
+        "spoofable signal and was removed from the AGY prompt precisely so "
+        "the harness stops trusting it."
+    )
+    assert "smoke_test_result artifact was not submitted" in result.errors, (
+        f"Expected 'smoke_test_result artifact was not submitted' in errors, "
+        f"got: {result.errors}"
+    )
