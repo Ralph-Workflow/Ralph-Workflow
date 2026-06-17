@@ -34,6 +34,38 @@ ralph                         # 4. run the unattended workflow
 
 This also auto-symlinks the bundled skill bundle into the supported agent roots and seeds a batteries-included .gitignore covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns.
 
+## Supported agents
+
+Ralph Workflow ships with first-class support for six coding-agent CLIs. Each agent has a parity smoke test that exercises the full end-to-end pipeline (file writes, tool activity, artifact submission, parser-classified output) and a canonical `ralph smoke-interactive-<agent>` command you can run before your first real task.
+
+| Agent | Description | Verification command |
+|---|---|---|
+| **Claude Code** | Anthropic's CLI for Claude. The canonical reference agent. | `ralph smoke-interactive-claude` |
+| **Codex** | OpenAI's Codex CLI. | `ralph smoke-interactive-codex` |
+| **OpenCode** | Open-source terminal coding agent. | `ralph smoke-interactive-opencode` |
+| **Nanocoder** | Local-only TUI coding agent. | `ralph smoke-interactive-nanocoder` |
+| **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`, v1.0.9+). Runs in a PTY with a bounded drain so buffered stdout is captured end-to-end, and the AGY parser classifies live output into `text:` / `thinking:` / `tool_use:` events for the smoke report. | `ralph smoke-interactive-agy` |
+| **Pi** | Minimal coding agent. | `ralph smoke-interactive-pi` |
+
+The canonical end-to-end AGY verification (mock-backed, always green) is:
+
+```bash
+cd ralph-workflow && \
+  RALPH_AGY_BINARY="$(pwd)/tests/_support/mock_agy.sh" \
+  uv run python -m ralph smoke-interactive-agy --agent 'agy/Gemini 3.5 Flash (Medium)'
+```
+
+Expected green parity table excerpt:
+
+```text
+| Agent                         | Transport | File | Session                                       | Parser events | Tool activity | Artifact | Breaks |
+| agy/Gemini 3.5 Flash (Medium) | agy       | yes  | interactive-agy-smoke-Gemini-3.5-Flash-Medium | 1             | yes           | yes      | none   |
+```
+
+Live AGY is also exercised end-to-end by `tests/test_agy_live_regression.py` (8 black-box tests, marked `live_agy`) and `tests/test_smoke_agy_end_to_end.py` (4 black-box tests, marked `subprocess_e2e`); both suites run under `make verify` and either pass or skip via documented upstream-blocked gates.
+
+The full source-of-truth for AGY CLI behavior (version, flag set, model list, probe output, cli.log tail) is committed to `tmp/agy-source-of-truth.txt` and re-validated on every plan that touches AGY support; see the most recent `=== LIVE RE-MEASUREMENT ===` block for the current local-binary health verdict. The agent-by-agent documentation lives in `docs/sphinx/agents.md`; this README section is a one-paragraph pointer, not a duplicate.
+
 ## Parallel execution model
 
 Parallel plan execution is delegated to the executing AI agent. Plans declare `work_units` or `parallel_plan` to signal parallelization intent; the executing agent dispatches its own sub-agents to carry the work out. Ralph-managed fan-out is dormant in the bundled default and retained only for future use.
