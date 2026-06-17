@@ -430,10 +430,29 @@ def _meaningful_output_error(
     live_output_lines: list[str],
     lines: list[str],
 ) -> str | None:
-    """Return a meaningful-output error, or None when not applicable / passing."""
+    """Return a meaningful-output error, or None when not applicable / passing.
+
+    Three-tier check:
+
+      1. Count non-blank rendered lines (``live_output_lines``).
+      2. Fall back to parser-classified events (``_meaningful_output_lines``)
+         when the rendered count is below the threshold. Some parsers
+         (e.g. AgyParser via TextAccumulator) coalesce many short lines
+         into a single ``text`` event at paragraph boundaries, so a
+         text-rich transcript can still score low at this layer.
+      3. Fall back to counting non-blank raw transcript lines
+         (``lines``) when both the rendered and parser-classified
+         counts are below the threshold. This is the line-by-line
+         signal the agent actually emitted; the parser-coalesced
+         count is a structural artefact of the text-accumulation
+         strategy, not a signal of an under-producing agent.
+    """
     meaningful_output = [line for line in live_output_lines if line.strip()]
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
         meaningful_output = _meaningful_output_lines(config=config, lines=lines)
+    if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES and lines:
+        raw_meaningful = [line for line in lines if line.strip()]
+        meaningful_output = raw_meaningful[:_MAX_MEANINGFUL_OUTPUT_LINES]
     meaningful_output = meaningful_output[:_MAX_MEANINGFUL_OUTPUT_LINES]
     if len(meaningful_output) < _MIN_MEANINGFUL_OUTPUT_LINES:
         return "fewer than 3 meaningful output lines were observed"

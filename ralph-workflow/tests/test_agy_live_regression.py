@@ -200,9 +200,16 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
 ) -> None:
     """The parity row has Tool activity=yes, Artifact=yes, Breaks=none.
 
-    STRICT: the test asserts no breaks, tool activity observed, and the
-    smoke_test_result artifact was submitted. There is NO auth/quota permits
-    allowance. The companion test
+    STRICT: the test asserts the EXACT positive success markers in the
+    parity report and that the negative break markers are absent. The
+    negative markers (e.g. ``- no tool activity was observed``) and the
+    positive markers (e.g. ``- tool activity observed``) share substrings
+    like ``tool activity``, so a substring-only check would let an
+    upstream-blocked run pass falsely. The test now requires the
+    dash-prefixed positive success markers AND the absence of the
+    corresponding negative break markers.
+
+    There is NO auth/quota permits allowance. The companion test
     ``test_live_agy_environment_diagnostic_records_upstream_block`` records
     upstream-blocked environment states without gating this strict test.
 
@@ -231,22 +238,43 @@ def test_live_agy_no_breaks_and_tool_artifact_activity(
         except OSError:
             cli_log_tail = "<unreadable>"
 
-    assert "Breaks: none" in output or "No breaks" in output, (
-        f"Expected no breaks in detailed report. "
+    # Positive success markers: dash-prefixed bullet lines that appear in
+    # the "Observed working:" section of the parity report.
+    assert "- tool activity observed" in output, (
+        f"Expected the dash-prefixed '- tool activity observed' success marker. "
         f"See test_live_agy_environment_diagnostic_records_upstream_block "
         f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
     )
-    assert "tool activity observed" in output.lower() or "tool activity" in output.lower(), (
-        f"Expected tool activity in output. "
+    assert "- smoke_test_result artifact submitted" in output, (
+        f"Expected the dash-prefixed '- smoke_test_result artifact submitted' success marker. "
         f"See test_live_agy_environment_diagnostic_records_upstream_block "
         f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"
     )
-    assert "artifact submitted" in output.lower() or (
-        "smoke_test_result artifact" in output.lower()
-    ), (
-        f"Expected artifact submission. "
+    assert "No breaks observed" in output or "Breaks: none" in output, (
+        f"Expected no breaks marker in parity report. "
+        f"See test_live_agy_environment_diagnostic_records_upstream_block "
+        f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
+        f"Output:\n{output[-5000:]}"
+    )
+
+    # Negative break markers must NOT appear when the harness succeeds. The
+    # marker substrings (e.g. "tool activity", "smoke_test_result artifact")
+    # overlap with the positive success markers above, so a substring-only
+    # positive check would let an upstream-blocked run pass falsely.
+    forbidden_negative_markers = (
+        "- no tool activity was observed",
+        "- smoke_test_result artifact was not submitted",
+        "- expected todo-list.js was not created",
+        "- declare_complete marker was not observed",
+        "- no parser events were observed",
+        "- fewer than 3 meaningful output lines were observed",
+    )
+    present_negatives = [m for m in forbidden_negative_markers if m in output]
+    assert not present_negatives, (
+        f"Expected the parity report to contain no break markers, found: "
+        f"{present_negatives}. "
         f"See test_live_agy_environment_diagnostic_records_upstream_block "
         f"for upstream-blocked environment state. cli.log tail: {cli_log_tail[-200:]!r}\n"
         f"Output:\n{output[-5000:]}"

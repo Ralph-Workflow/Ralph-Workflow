@@ -530,6 +530,100 @@ def test_smoke_interactive_agy_with_mock_binary(
     assert re.search(r"│\s*agy\s*│\s*yes\s*│", output) is not None
 
 
+@pytest.mark.timeout_seconds(10)
+def test_resolve_agy_binary_override_normalizes_relative_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``_resolve_agy_binary_override`` returns the absolute path for a relative override.
+
+    Regression: the relative ``RALPH_AGY_BINARY=tests/_support/mock_agy.sh`` previously
+    raised ``FileNotFoundError`` at subprocess spawn time because the harness may
+    change cwd before spawning the agent. The fix resolves the relative path to an
+    absolute one so the override is always spawnable from a known location
+    regardless of the cwd the operator happened to be in.
+    """
+    mock_source = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    relative_target = tmp_path / "tests" / "_support" / "mock_agy.sh"
+    relative_target.parent.mkdir(parents=True, exist_ok=True)
+    relative_target.write_text(mock_source.read_text(encoding="utf-8"), encoding="utf-8")
+    relative_target.chmod(0o755)
+    monkeypatch.setenv("RALPH_AGY_BINARY", "tests/_support/mock_agy.sh")
+    monkeypatch.chdir(tmp_path)
+
+    resolved = smoke_module._resolve_agy_binary_override()
+    assert resolved is not None
+    assert Path(resolved).is_absolute()
+    assert Path(resolved).resolve() == relative_target.resolve()
+
+
+@pytest.mark.timeout_seconds(10)
+def test_resolve_agy_binary_override_returns_none_for_missing_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_resolve_agy_binary_override`` returns ``None`` for a non-executable override.
+
+    The override validation is the safety net that prevents the harness from
+    crashing on an unhandled ``OSError`` at subprocess spawn time. When the
+    override path is not executable, the helper logs a WARNING and returns
+    ``None`` so the caller falls back to the real ``agy`` binary on ``PATH``.
+    """
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/nonexistent/path/to/agy-mock.sh")
+    resolved = smoke_module._resolve_agy_binary_override()
+    assert resolved is None
+
+
+@pytest.mark.timeout_seconds(15)
+def test_smoke_interactive_agy_with_relative_mock_binary_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """End-to-end CLI regression for the relative ``RALPH_AGY_BINARY`` path.
+
+    The smoke harness must spawn the AGY mock even when ``RALPH_AGY_BINARY``
+    is a relative path (e.g. ``tests/_support/mock_agy.sh``). Previously this
+    raised ``FileNotFoundError`` because the relative path was passed to
+    ``subprocess.Popen`` unchanged, and the harness may change cwd before
+    spawning the agent. The fix resolves the relative path to an absolute
+    one before spawn.
+
+    The end-to-end check drives the public ``smoke_interactive_agy_command``
+    with the mock in place and asserts the parity report shows
+    ``file=yes`` and ``breaks=none`` (the harness contract the prior analysis
+    flagged as broken for the real CLI flow).
+    """
+    stream = _attach_console(monkeypatch)
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(smoke_module, "resolve_workspace_scope", lambda: scope)
+    monkeypatch.setattr(smoke_module, "load_config", lambda *_a, **_k: UnifiedConfig())
+
+    mock_source = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
+    relative_target = tmp_path / "tests" / "_support" / "mock_agy.sh"
+    relative_target.parent.mkdir(parents=True, exist_ok=True)
+    relative_target.write_text(mock_source.read_text(encoding="utf-8"), encoding="utf-8")
+    relative_target.chmod(0o755)
+    monkeypatch.setenv("RALPH_AGY_BINARY", "tests/_support/mock_agy.sh")
+    monkeypatch.setenv("MOCK_AGY_ARTIFACT_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = smoke_module.smoke_interactive_agy_command(
+        agent_name="agy/Claude Sonnet 4.6 (Thinking)",
+        display_context=None,
+    )
+
+    output = stream.getvalue()
+    assert exit_code == 0, (
+        f"Expected exit_code 0 for relative mock path; got {exit_code}. "
+        f"Output tail:\n{output[-3000:]}"
+    )
+    assert re.search(r"\u2502\s*agy\s*\u2502\s*yes\s*\u2502", output) is not None, (
+        f"Expected 'file=yes' in parity table; output tail:\n{output[-3000:]}"
+    )
+    assert "No breaks observed" in output or "Breaks: none" in output, (
+        f"Expected no breaks in parity report; output tail:\n{output[-3000:]}"
+    )
+
+
 def test_smoke_interactive_agy_documents_live_run_outcome() -> None:
     """The captured AGY smoke run log documents the measured outcome.
 

@@ -56,46 +56,70 @@ def get_agy_binary_override() -> str:
     return _agy_binary_override_env() or "agy"
 
 
-def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
-    """Return a copy of ``agent_config`` that uses ``RALPH_AGY_BINARY`` when set.
+def _resolve_agy_binary_override() -> str | None:
+    """Return the validated absolute ``RALPH_AGY_BINARY`` override or ``None``.
 
-    Validates the override path and leaves ``agent_config`` unchanged when the
-    path is not executable or not a regular file, logging a WARNING in that
-    case.
+    A relative override is resolved against the current working directory so
+    downstream :class:`subprocess.Popen` always sees an absolute path. The
+    cwd the harness later spawns the AGY binary from is not always the
+    directory the operator set ``RALPH_AGY_BINARY`` in (the smoke CLI may
+    change cwd before spawning the agent), so a relative override would
+    fail with ``FileNotFoundError`` at spawn time. The relative path is
+    logged so the operator can see the resolution.
+
+    The path must resolve to a regular file with executable bits set, or
+    to a name ``shutil.which`` can locate on ``PATH``. When validation
+    fails a WARNING is logged and ``None`` is returned so the caller
+    falls back to the real ``agy`` binary on ``PATH``.
     """
     override = _agy_binary_override_env()
-    if not override or agent_config.transport is not AgentTransport.AGY:
-        return agent_config
-    if shutil.which(override) is None and not (
-        Path(override).is_file() and os.access(override, os.X_OK)
+    if not override:
+        return None
+    resolved = Path(override).expanduser()
+    if not resolved.is_absolute():
+        resolved = resolved.resolve()
+        logger.info(
+            "Resolved relative RALPH_AGY_BINARY '{}' to absolute path '{}'",
+            override,
+            resolved,
+        )
+    if shutil.which(str(resolved)) is None and not (
+        resolved.is_file() and os.access(resolved, os.X_OK)
     ):
         logger.warning(
             "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
             override,
         )
+        return None
+    return str(resolved)
+
+
+def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
+    """Return a copy of ``agent_config`` that uses ``RALPH_AGY_BINARY`` when set.
+
+    Validates the override path (resolving relative paths to absolute) and
+    leaves ``agent_config`` unchanged when the path is not executable or
+    not a regular file, logging a WARNING in that case.
+    """
+    if agent_config.transport is not AgentTransport.AGY:
         return agent_config
-    logger.info("mock AGY binary in use: {}", override)
+    resolved = _resolve_agy_binary_override()
+    if resolved is None:
+        return agent_config
+    logger.info("mock AGY binary in use: {}", resolved)
     # Quote paths that contain spaces so downstream shlex.split keeps the
     # binary path as a single argv token.
-    return agent_config.model_copy(update={"cmd": shlex.quote(override)})
+    return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
 
 
 def _apply_agy_binary_override_to_config(config: UnifiedConfig) -> UnifiedConfig:
     """Return a config copy with AGY agents using ``RALPH_AGY_BINARY`` when set."""
-    override = _agy_binary_override_env()
-    if not override:
-        return config
-    if shutil.which(override) is None and not (
-        Path(override).is_file() and os.access(override, os.X_OK)
-    ):
-        logger.warning(
-            "RALPH_AGY_BINARY points to '{}', which is not executable; ignoring override",
-            override,
-        )
+    resolved = _resolve_agy_binary_override()
+    if resolved is None:
         return config
     # Quote paths that contain spaces so downstream shlex.split keeps the
     # binary path as a single argv token.
-    quoted = shlex.quote(override)
+    quoted = shlex.quote(resolved)
     new_agents: dict[str, AgentConfig] = {}
     for name, agent_config in config.agents.items():
         if agent_config.transport is AgentTransport.AGY:
@@ -245,6 +269,11 @@ def smoke_harness_agent_command(
             "Using mock AGY binary at '{}' (RALPH_AGY_BINARY)",
             agy_override,
         )
+        # The mock binary writes its output files under MOCK_AGY_ARTIFACT_DIR.
+        # The harness expects those files under ``workspace_root``, so default
+        # the env var to the workspace root when the operator has not set it
+        # explicitly. The mock honors an explicit override unchanged.
+        os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
     agent_config = _maybe_apply_agy_binary_override(agent_config)
     config = _apply_agy_binary_override_to_config(config)
     # Dynamic agy/<model> aliases are resolved from builtins, not from
