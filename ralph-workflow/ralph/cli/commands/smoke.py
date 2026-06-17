@@ -36,6 +36,7 @@ from ralph.pipeline.plumbing.smoke_plumbing import (
     _agy_binary_override_env,
     _build_smoke_prompt,
     _execute_smoke_turns,
+    is_mock_agy_override,
     resolve_smoke_harness_spec,
     run_smoke_plumbing,
 )
@@ -99,14 +100,22 @@ def _maybe_apply_agy_binary_override(agent_config: AgentConfig) -> AgentConfig:
 
     Validates the override path (resolving relative paths to absolute) and
     leaves ``agent_config`` unchanged when the path is not executable or
-    not a regular file, logging a WARNING in that case.
+    not a regular file, logging a WARNING in that case. The log message
+    distinguishes the deterministic mock binary from a real wrapper or
+    alternate live binary path: a mock override logs
+    ``mock AGY binary in use``; any other executable override logs
+    ``Using RALPH_AGY_BINARY override`` so a genuine live wrapper is not
+    misreported as a mock run.
     """
     if agent_config.transport is not AgentTransport.AGY:
         return agent_config
     resolved = _resolve_agy_binary_override()
     if resolved is None:
         return agent_config
-    logger.info("mock AGY binary in use: {}", resolved)
+    if is_mock_agy_override():
+        logger.info("mock AGY binary in use: {}", resolved)
+    else:
+        logger.info("Using RALPH_AGY_BINARY override: {}", resolved)
     # Quote paths that contain spaces so downstream shlex.split keeps the
     # binary path as a single argv token.
     return agent_config.model_copy(update={"cmd": shlex.quote(resolved)})
@@ -265,15 +274,26 @@ def smoke_harness_agent_command(
 
     agy_override = _agy_binary_override_env()
     if agy_override and agent_config.transport is AgentTransport.AGY:
-        logger.info(
-            "Using mock AGY binary at '{}' (RALPH_AGY_BINARY)",
-            agy_override,
-        )
-        # The mock binary writes its output files under MOCK_AGY_ARTIFACT_DIR.
-        # The harness expects those files under ``workspace_root``, so default
-        # the env var to the workspace root when the operator has not set it
-        # explicitly. The mock honors an explicit override unchanged.
-        os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
+        if is_mock_agy_override():
+            logger.info(
+                "Using mock AGY binary at '{}' (RALPH_AGY_BINARY)",
+                agy_override,
+            )
+            # The mock binary writes its output files under
+            # MOCK_AGY_ARTIFACT_DIR. The harness expects those files under
+            # ``workspace_root``, so default the env var to the workspace
+            # root when the operator has not set it explicitly. The mock
+            # honors an explicit override unchanged. A real wrapper or
+            # alternate live binary path does NOT need this default
+            # (it manages its own working directory), so we skip the
+            # setdefault for non-mock overrides to avoid polluting
+            # MOCK_AGY_ARTIFACT_DIR for unrelated tools.
+            os.environ.setdefault("MOCK_AGY_ARTIFACT_DIR", str(workspace_root))
+        else:
+            logger.info(
+                "Using RALPH_AGY_BINARY override for AGY transport: '{}'",
+                agy_override,
+            )
     agent_config = _maybe_apply_agy_binary_override(agent_config)
     config = _apply_agy_binary_override_to_config(config)
     # Dynamic agy/<model> aliases are resolved from builtins, not from

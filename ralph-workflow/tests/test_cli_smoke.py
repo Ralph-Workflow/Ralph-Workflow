@@ -21,6 +21,7 @@ from ralph.display.theme import RALPH_THEME
 from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.plumbing import smoke_plumbing as smoke_plumbing_module
+from ralph.pipeline.plumbing.smoke_plumbing import is_mock_agy_override
 from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from ralph.workspace.scope import WorkspaceScope
@@ -780,3 +781,85 @@ def test_apply_agy_binary_override_to_config_accepts_mock_shell_script(
     agy_cmd = result.agents["agy/Gemini 3.5 Flash (Medium)"].cmd
     assert agy_cmd != "agy"
     assert str(mock_path) in agy_cmd
+
+
+@pytest.mark.timeout_seconds(10)
+def test_is_mock_agy_override_classifies_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``is_mock_agy_override`` correctly distinguishes the mock from real wrappers."""
+    mock_path = str(Path(__file__).resolve().parent / "_support" / "mock_agy.sh")
+    monkeypatch.setenv("RALPH_AGY_BINARY", mock_path)
+    assert is_mock_agy_override() is True
+
+    monkeypatch.setenv("RALPH_AGY_BINARY", "/opt/agy-wrapper/agy")
+    assert is_mock_agy_override() is False
+
+    monkeypatch.setenv("RALPH_AGY_BINARY", "agy")
+    assert is_mock_agy_override() is False
+
+    monkeypatch.delenv("RALPH_AGY_BINARY", raising=False)
+    assert is_mock_agy_override() is False
+
+
+@pytest.mark.timeout_seconds(10)
+def test_maybe_apply_agy_binary_override_accepts_non_mock_executable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A non-mock executable override is accepted and applied verbatim.
+
+    Regression: the prior implementation treated every ``RALPH_AGY_BINARY``
+    override as a mock run, so a real wrapper or alternate live binary path
+    was misclassified and could not be diagnosed through the live
+    ``cli.log`` path. The override must be applied verbatim (the cmd is the
+    absolute override path quoted for spaces) and the operator-facing log
+    must NOT say ``mock AGY binary in use``.
+    """
+    # Create a tiny executable script in tmp_path that is NOT named
+    # ``mock_agy`` to verify the general-override path is exercised.
+    stub_path = tmp_path / "agy-wrapper.sh"
+    stub_path.write_text("#!/usr/bin/env sh\necho stub\n", encoding="utf-8")
+    stub_path.chmod(0o755)
+
+    agy_config = AgentConfig(cmd="agy", transport=AgentTransport.AGY)
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(stub_path))
+    result = smoke_module._maybe_apply_agy_binary_override(agy_config)
+    # The override is applied verbatim (no mock substitution), and the cmd
+    # is the absolute stub path (quoted because it lives in tmp_path which
+    # may contain spaces; the assertion uses ``in`` to allow shlex.quote
+    # to wrap it).
+    assert result.cmd != "agy"
+    assert str(stub_path) in result.cmd
+    # A non-mock override is NOT the mock: the helper must agree.
+    assert is_mock_agy_override() is False
+
+
+@pytest.mark.timeout_seconds(10)
+def test_apply_agy_binary_override_to_config_accepts_non_mock_executable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A non-mock executable override is honored by the config-level helper."""
+    stub_path = tmp_path / "agy-real-wrapper.sh"
+    stub_path.write_text("#!/usr/bin/env sh\necho real-wrapper\n", encoding="utf-8")
+    stub_path.chmod(0o755)
+
+    config = UnifiedConfig(
+        agents={
+            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(
+                cmd="agy", transport=AgentTransport.AGY
+            ),
+            "claude/haiku": AgentConfig(
+                cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE
+            ),
+        }
+    )
+    monkeypatch.setenv("RALPH_AGY_BINARY", str(stub_path))
+    result = smoke_module._apply_agy_binary_override_to_config(config)
+    agy_cmd = result.agents["agy/Gemini 3.5 Flash (Medium)"].cmd
+    # The override is applied: cmd is no longer ``agy`` and contains the stub.
+    assert agy_cmd != "agy"
+    assert str(stub_path) in agy_cmd
+    # The non-AGY agent is preserved.
+    assert result.agents["claude/haiku"].cmd == "claude"

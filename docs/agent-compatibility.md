@@ -27,7 +27,7 @@ This guide documents compatibility between Ralph Workflow and various AI coding 
 | **Claude Code** | ✅ Excellent | ✅ Excellent | Best overall compatibility |
 | **Codex (OpenAI)** | ✅ Excellent | ✅ Excellent | Great for security-focused reviews |
 | **OpenCode** | ✅ Good | ✅ Good | Requires `opencode` parser |
-| **Google Anti Gravity (AGY)** | ✅ Good | ✅ Good | First-class; PTY-based runtime injection with `.agents/mcp_config.json` managed by Ralph |
+| **Google Anti Gravity (AGY)** | ✅ Good | ✅ Good | First-class; PTY-based runtime injection with `~/.gemini/antigravity-cli/mcp_config.json` managed by Ralph |
 | **CCS/GLM** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
 | **ZhipuAI/ZAI** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
 | **Qwen** | ✅ Good | ⚠️ Partial | Universal prompt auto-applied |
@@ -131,14 +131,15 @@ json_parser = "generic"
 ```
 
 **MCP Setup**:
-- Ralph Workflow automatically injects the run-scoped Ralph MCP endpoint into `.agents/mcp_config.json` before AGY launches and restores the file after the run
-- run `ralph --check-mcp`
-- keep the AGY workspace config aligned with Ralph-owned MCP proxies
+- Ralph Workflow automatically injects the run-scoped Ralph MCP endpoint into AGY's **global** config file at `~/.gemini/antigravity-cli/mcp_config.json` before AGY launches and restores the original file after the run. The workspace-level `.agents/mcp_config.json` is read for upstream discovery but is NOT sufficient to initialise AGY's MCP client in PTY mode — measured behaviour shows AGY in `--print` mode only initialises its MCP client when the global config file exists.
+- Upstream MCP server definitions are read from both the workspace `.agents/mcp_config.json` and the global `~/.gemini/antigravity-cli/mcp_config.json`, normalised into a transport-neutral model, and re-exposed through Ralph's upstream proxy. The provider-visible config only ever contains the Ralph MCP endpoint.
+- See `ralph/mcp/transport/agy.py::agy_workspace_mcp_endpoint` for the implementation; run `ralph --check-mcp` to verify the wiring in your environment.
 
 **Notes**:
 - Completion contract: `declare_complete` or phase artifact, same as Claude interactive
 - Multimodal delivery uses the Gemini provider profile
-- PTY-based runtime injection into `.agents/mcp_config.json`, not manual pre-configuration
+- PTY-based runtime injection into the global `~/.gemini/antigravity-cli/mcp_config.json`, not manual pre-configuration. The injection writes only the Ralph entry and is restored on exit.
+- The `RALPH_AGY_BINARY` env var is a general binary override. When it points at the deterministic mock at `tests/_support/mock_agy.sh` (basename starts with `mock_agy`) the harness takes the mock diagnostic path; any other executable override (a real wrapper, alternate live binary, or `agy` on `PATH`) takes the live diagnostic path and surfaces the upstream `~/.gemini/antigravity-cli/cli.log` quota or model-id diagnostic on empty stdout.
 - AGY is a supported orchestration path, not a replacement for Ralph Workflow
 
 ## Agents with Known Issues

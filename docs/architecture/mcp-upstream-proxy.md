@@ -141,14 +141,16 @@ Provider-visible `config.toml` contains only the Ralph MCP server entry. Upstrea
 
 ### Google Anti Gravity
 
-Ralph writes a run-scoped Ralph-managed MCP config into AGY's workspace `.agents/mcp_config.json` before launch and restores the original file after the run:
+Ralph writes a run-scoped Ralph-managed MCP config into AGY's **global** config file at `~/.gemini/antigravity-cli/mcp_config.json` before launch and restores the original file after the run.
 
-- Global: `~/.gemini/antigravity-cli/mcp_config.json`
-- Workspace: `.agents/mcp_config.json`
+Measured behaviour: AGY's `--print` mode in a PTY only initialises its MCP client when this global config file exists. The workspace-level `.agents/mcp_config.json` is NOT sufficient on its own to initialise the AGY MCP client in PTY mode; Ralph reads from it for upstream discovery but does not inject the run-scoped endpoint there.
 
-Ralph reads upstream server definitions from the user's existing AGY config files using `load_existing_agy_upstream_servers`, normalizes them, and re-exposes them as proxied tool aliases via Ralph's upstream proxy. Ralph does not write to or replace the user's live AGY config files.
+- Global (injected by Ralph before launch, restored on exit): `~/.gemini/antigravity-cli/mcp_config.json`
+- Workspace (read-only for upstream discovery): `.agents/mcp_config.json`
 
-No manual pre-configuration is needed. Ralph injects the run-scoped `.agents/mcp_config.json` automatically before each AGY run and restores the original file afterward. Run `ralph --check-mcp` to verify the wiring. See `ralph/mcp/transport/agy.py` for the AGY runtime injection implementation.
+Ralph reads upstream server definitions from the user's existing AGY config files using `load_existing_agy_upstream_servers` (which checks both paths in order), normalizes them, and re-exposes them as proxied tool aliases via Ralph's upstream proxy. Ralph does not write to or replace the user's live workspace config file; it only writes and restores the global config file with the run-scoped Ralph entry.
+
+No manual pre-configuration is needed. Ralph injects the run-scoped global config automatically before each AGY run and restores the original file afterward. Run `ralph --check-mcp` to verify the wiring. See `ralph/mcp/transport/agy.py` for the AGY runtime injection implementation.
 
 ---
 

@@ -465,6 +465,27 @@ def _agy_binary_override_env() -> str | None:
     return os.environ.get("RALPH_AGY_BINARY")
 
 
+def is_mock_agy_override() -> bool:
+    """Return True when ``RALPH_AGY_BINARY`` points at the known mock binary.
+
+    The deterministic mock lives at ``tests/_support/mock_agy.sh`` (shell
+    wrapper) and ``tests/_support/mock_agy.py`` (Python module). We detect
+    the mock by checking the basename of the configured override path: a
+    basename that starts with ``mock_agy`` (or equals ``mock_agy``) is
+    treated as the mock. A real wrapper, alternate live binary path, or
+    ``agy`` on ``PATH`` is treated as the general binary override, not as
+    the mock. The detection is purely name-based so a future
+    general-purpose wrapper (e.g. ``/opt/agy-wrapper/agy``) is not
+    misdiagnosed as a mock run and can still report a real upstream
+    diagnostic from ``~/.gemini/antigravity-cli/cli.log``.
+    """
+    override = _agy_binary_override_env()
+    if not override:
+        return False
+    basename = Path(override).name
+    return basename.startswith("mock_agy") or basename == "mock_agy"
+
+
 def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | None:
     """Return an actionable diagnostic when AGY --print produced no usable output.
 
@@ -474,16 +495,21 @@ def _agy_upstream_diagnostic(lines: list[str], workspace_root: Path) -> str | No
     smoke detector surfaces that reason instead of leaving the user with a
     generic "no output" message.
 
-    When ``RALPH_AGY_BINARY`` is set we are driving a mock binary; an empty
-    stdout is expected when ``MOCK_AGY_BEHAVIOR`` is ``quota_exhausted`` or
-    ``invalid_model``, so we surface an informational note instead of the live
-    quota diagnostic.
+    When the override points at the known mock binary (see
+    :func:`is_mock_agy_override`), an empty stdout is expected when
+    ``MOCK_AGY_BEHAVIOR`` is ``quota_exhausted`` or ``invalid_model``; in that
+    case we surface an informational note instead of the live quota
+    diagnostic. A general ``RALPH_AGY_BINARY`` override (a real wrapper, an
+    alternate live binary path, or any non-mock executable) does NOT take
+    this branch and is diagnosed against the live ``cli.log`` instead, so a
+    genuine live-AGY failure is never masked as a mock-empty informational
+    note.
     """
     if lines:
         return None
     if read_smoke_test_result_artifact(workspace_root) is not None:
         return None
-    if _agy_binary_override_env():
+    if is_mock_agy_override():
         return (
             "mock AGY produced empty stdout by design "
             "(MOCK_AGY_BEHAVIOR=quota_exhausted or invalid_model) "
@@ -716,7 +742,10 @@ def run_smoke_plumbing(
         raise RuntimeError(f"Smoke test agent '{agent_name}' is unavailable in the registry")
     agy_override = _agy_binary_override_env()
     if agy_override:
-        logger.info("mock AGY binary in use: {}", agy_override)
+        if is_mock_agy_override():
+            logger.info("mock AGY binary in use: {}", agy_override)
+        else:
+            logger.info("Using RALPH_AGY_BINARY override: {}", agy_override)
     effective_output_file = output_file if output_file is not None else spec.output_file
 
     agents_policy = None
