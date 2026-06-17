@@ -333,7 +333,7 @@ def smoke_interactive_claude_command(
 
 
 def smoke_interactive_agy_command(
-    agent_name: str = "agy/Claude Sonnet 4.6 (Thinking)",
+    agent_name: str = "agy/Gemini 3.5 Flash (Medium)",
     *,
     display_context: DisplayContext | None = None,
     pro_hooks: ProPipelineHooks | None = None,
@@ -341,9 +341,15 @@ def smoke_interactive_agy_command(
 ) -> int:
     """Run the manual AGY end-to-end smoke harness via the PTY contract.
 
-    This drives the live ``agy`` binary. The default alias is the model that
-    currently works in this environment (``agy/Claude Sonnet 4.6 (Thinking)``);
-    use ``--agent`` to pin a different ``agy/<model>`` alias from ``agy models``.
+    This drives the live ``agy`` binary (or the ``RALPH_AGY_BINARY`` override
+    when set). The default alias is ``agy/Gemini 3.5 Flash (Medium)`` because
+    that model ships with a generous per-account quota in the
+    ``agy models`` list and reliably produces output in the harness
+    environment. The 7 live regression tests in
+    ``tests/test_agy_live_regression.py`` all use the same default alias so
+    the public CLI command and the live regression suite share one
+    repo-consistent, directly verified smoke path. Use ``--agent`` to pin a
+    different ``agy/<model>`` alias from ``agy models``.
     """
     agy_binary = get_agy_binary_override()
     if shutil.which(agy_binary) is None and not (
@@ -364,7 +370,7 @@ def smoke_interactive_agy_command(
     if agent_config is None:
         logger.error(
             "Agent '{}' is not available. Use --agent with an agy/<model> alias, "
-            "e.g. --agent 'agy/Claude Sonnet 4.6 (Thinking)'.",
+            "e.g. --agent 'agy/Gemini 3.5 Flash (Medium)'.",
             agent_name,
         )
         return 2

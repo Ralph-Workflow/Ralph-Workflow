@@ -798,8 +798,8 @@ app.command(name="smoke-interactive-claude")(smoke_interactive_claude)
 
 def smoke_interactive_agy(
     agent: str = typer.Option(
-        "agy/Claude Sonnet 4.6 (Thinking)",
-        help="AGY model alias to smoke (e.g. agy/Claude Sonnet 4.6 (Thinking)).",
+        "agy/Gemini 3.5 Flash (Medium)",
+        help="AGY model alias to smoke (e.g. agy/Gemini 3.5 Flash (Medium)).",
     ),
 ) -> None:
     """Run the manual PTY smoke test for Google Anti Gravity."""
