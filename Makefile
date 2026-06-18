@@ -3,9 +3,18 @@
 
 PY_DIR := ralph-workflow
 
-.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov test-subprocess-e2e clean install stable dev install-dev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs packaging-smoke
+.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov test-subprocess-e2e clean install stable dev install-dev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs packaging-smoke setup-hooks
 
 all: verify
+
+setup-hooks:
+	@if [ "$$(git config core.hooksPath)" != ".githooks" ]; then \
+		echo "  installing git hooks …"; \
+		git config core.hooksPath .githooks; \
+		echo "  ✓ hooks installed"; \
+	else \
+		echo "  ✓ hooks already installed"; \
+	fi
 
 build:
 	$(MAKE) -C $(PY_DIR) build
