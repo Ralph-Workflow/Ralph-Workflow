@@ -10,7 +10,7 @@ Ralph Workflow is a free, open-source Loop Engineering framework that runs the c
 
 *Nightcrawler credits Ralph Workflow as its inspiration · The original Loop Engineering toolkit · 10,700+ lifetime PyPI downloads · 4,000+ in the last 30 days (pepy.tech, 2026-06-12).*
 
-> **Built something with Ralph?** See the [Showcase](SHOWCASE.md) — add a credit line to your README and you're on the page (60-second task).
+> **Built something with Ralph?** See the [Showcase](SHOWCASE.md) — add a credit line to your README and you're on the page (60-second task). Also see the [Ecosystem Map](ECOSYSTEM.md) — projects using Ralph discovered through code-level search.
 
 > **Help us make Ralph better (60 seconds, optional).** If you've installed `ralph-workflow`, we'd love ONE line of feedback: **"How would you feel if you could no longer use Ralph Workflow?"** — Very / Somewhat / Not disappointed. Open a [pmf-survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey) issue (just the letter V/S/N + a sentence of what you'd use instead), or run `ralph --feedback` after a run. This is the only signal we get — we don't collect telemetry, so this is how we know whether to keep going.
 
