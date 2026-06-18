@@ -171,6 +171,8 @@ dist-homebrew: build-wheel
 # Combined 60s test budget enforced by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS (IMMUTABLE).
 verify: verify-drift
 	@uv run python -m ralph.verify
+	@echo "  social-proof gate …"
+	@python3 ../scripts/verify_social_proof.py
 
 # Drift detection: prevents the Pro contract invariants from regressing.
 #

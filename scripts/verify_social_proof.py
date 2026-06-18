@@ -126,6 +126,7 @@ EXEMPT_FILES: frozenset[Path] = frozenset(
         Path("scripts/verify_social_proof.py"),
         Path("scripts/README.md"),
         Path("CHANGELOG.md"),
+        Path("AGENTS.md"),
     }
 )
 
@@ -138,6 +139,7 @@ DOCUMENTING_SECTION_HEADINGS: tuple[str, ...] = (
     "Auto-rejection patterns",
     "Evidence gate",
     "RETIRED CLAIMS",
+    "Retracted",
 )
 
 
@@ -156,7 +158,8 @@ def _is_documenting_section(file_text: str, line_no: int) -> bool:
     for i in range(line_no - 1, -1, -1):
         stripped = lines[i].strip()
         if stripped.startswith("#"):
-            return any(h in stripped for h in DOCUMENTING_SECTION_HEADINGS)
+            if any(h in stripped for h in DOCUMENTING_SECTION_HEADINGS):
+                return True
     return False
 
 

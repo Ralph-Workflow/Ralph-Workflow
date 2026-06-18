@@ -2,7 +2,7 @@
 
 > Mirror of [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star/issues/discussion on Codeberg.
 
-**Hand your coding agents a spec tonight. Wake up to reviewable, tested commits.**
+**Hand your coding agents a spec. Walk away. Come back to reviewable, tested commits.**
 
 Ralph Workflow is a free, open-source composable loop framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition.
 
@@ -13,7 +13,7 @@ Ralph Workflow is a free, open-source composable loop framework that runs the co
 
 *10,700+ lifetime PyPI downloads · 4,000+ in the last 30 days (pepy.tech, 2026-06-12).*
 
-Run the coding agents you already use — Claude Code, Codex, OpenCode, Nanocoder, and Google Anti Gravity — on your own machine. Hand it a spec before you sleep, wake up to runnable, tested software.
+Run the coding agents you already use — Claude Code, Codex, OpenCode, Nanocoder, and Google Anti Gravity — on your own machine. Hand it a spec, walk away, come back to runnable, tested software.
 
 ## MCP server trust boundary
 
@@ -38,9 +38,9 @@ This also auto-symlinks the bundled skill bundle into the supported agent roots 
 
 Parallel plan execution is delegated to the executing AI agent. Plans declare `work_units` or `parallel_plan` to signal parallelization intent; the executing agent dispatches its own sub-agents to carry the work out. Ralph-managed fan-out is dormant in the bundled default and retained only for future use.
 
-## What an overnight run leaves you
+## What a run leaves you
 
-Here is the actual finish-receipt from the bundled [empty-name-validation example](examples/first-review-bundle/) — a real, unedited handoff, not a mock-up. You read this in the morning instead of a transcript:
+Here is the actual finish-receipt from the bundled [empty-name-validation example](examples/first-review-bundle/) — a real, unedited handoff, not a mock-up. You read this when you come back instead of a transcript:
 
 ```text
 # Development Result
@@ -69,9 +69,9 @@ Want to follow a full first run? Read the [real-task walkthrough](https://ralphw
 
 ## What it does
 
-Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph` command spawns planning, development iteration, review, and fix cycles across multiple agents, then produces finished git commits you can review in the morning.
+Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph` command spawns planning, development iteration, review, and fix cycles across multiple agents, then produces finished git commits you can review when you come back.
 
-**This is not a chat window or a prompt tool.** It's an orchestrator — an operating system for autonomous coding — that runs real engineering pipelines unattended, overnight, while you sleep. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
+**This is not a chat window or a prompt tool.** It's an orchestrator — an operating system for autonomous coding — that runs real engineering pipelines unattended. Fire it off overnight, over lunch, or while you're in meetings. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
 
 The name comes from the original Ralph loop: repeat a strong prompt until the model can make real progress. Ralph Workflow takes that simple, powerful idea and adds planning before implementation, verification after development, agent fallbacks, agent-agnostic execution, and customizable pipelines so unattended runs keep moving and teams can review the results with confidence.
 
@@ -85,7 +85,7 @@ The name comes from the original Ralph loop: repeat a strong prompt until the mo
 | Locked to one vendor | Claude + Codex + OpenCode + Nanocoder + AGY in the same pipeline — your choice |
 | "Look at the diff" | Runnable, tested software with integration checks |
 
-[See how Ralph Workflow compares to 14 other autonomous coding tools →](https://ralphworkflow.com/compare)
+[See how Ralph Workflow compares to 19 other autonomous coding tools →](https://ralphworkflow.com/compare)
 
 ## Who it's for
 
@@ -97,11 +97,11 @@ A good first run looks like:
 2. **Run `ralph`** — the orchestrator plans, builds, tests, and iterates
 3. **Review the commits** — come back to committed, tested code
 
-**[Start here: your first overnight task →](https://ralphworkflow.com/start)**
+**[Start here: your first unattended task →](https://ralphworkflow.com/start)**
 
 New to autonomous coding? The 4-step guide walks you through picking a task, writing a short spec, running Ralph Workflow, and judging the result honestly — all in one page. Prefer a deeper narrative? [Read the blog version →](https://ralphworkflow.com/blog/your-first-overnight-task-start-here-guide)
 
-Start with a bounded, verifiable task — the kind of work you would actually merge. A good first run is 2-6 hours, has a clear boundary, and a concrete correctness check. For a strong first run, pick a task with clear acceptance criteria: "add tests to an existing module so coverage reaches 80%", "refactor one subsystem with existing tests to confirm no regressions", or "build a fitness-app slice with concrete feature checks". The common thread is a well-specified outcome you can judge honestly in the morning, not how small the task is.
+Start with a bounded, verifiable task — the kind of work you would actually merge. A good first run is 2-6 hours, has a clear boundary, and a concrete correctness check. For a strong first run, pick a task with clear acceptance criteria: "add tests to an existing module so coverage reaches 80%", "refactor one subsystem with existing tests to confirm no regressions", or "build a fitness-app slice with concrete feature checks". The common thread is a well-specified outcome you can judge honestly when you return, not how small the task is.
 
 ## Install
 
@@ -186,7 +186,7 @@ ralph -T     # thorough: complex refactors, ten iterations
 
 1. Pick one real backlog task that is small enough to review in one sitting.
 2. Write it down in `PROMPT.md` with clear acceptance criteria.
-3. Run Ralph Workflow overnight.
+3. Run Ralph Workflow.
 4. Come back and ask one question: **would you merge this?**
 
 If yes, give it a harder task next.

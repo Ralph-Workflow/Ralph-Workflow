@@ -26,6 +26,16 @@ If instructions conflict, follow the stricter one.
 
 ## Non-negotiables
 
+### Social-proof gate (ABSOLUTE — no fabricated claims)
+
+- Every public-facing claim about adoption, credits, usage, or stats MUST be verifiable from a third-party source.
+- `scripts/verify_social_proof.py` is the gate. It runs in `make verify` (CI) and as a pre-commit hook. **Never weaken it.** If a legitimate claim is blocked, update the script's patterns — never delete the gate.
+- Banned forever: claiming a project "credits Ralph Workflow" without a `verify:` line; bare install/star/download counts without (source, date); the specific fabricated claims "Nightcrawler credits Ralph Workflow" (it credits ghuntley.com/ralph) and "~1,300 installs/month" (stale + wrong).
+- Before editing any public-facing markdown (README.md, ralph-workflow/README.md, SHOWCASE.md, docs/), run `scripts/verify_social_proof.py`. If it fails, fix the claims before committing.
+- The pre-commit hook at `.githooks/pre-commit-social-proof` must remain installed (`git config core.hooksPath .githooks`). If missing, `make verify` will flag it.
+
+### Code and test rules
+
 - Work in `ralph-workflow/` for code, tests, and verification.
 - Fix any bug, lint failure, type failure, test failure, or warning you surface before moving on.
 - Do not leave the repo in a broken state.
