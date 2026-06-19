@@ -81,6 +81,7 @@ Homepage = "https://ralphworkflow.com"
 Documentation = "https://ralphworkflow.com/docs"
 Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
 Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new"
+Community = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/USERS.md"
 
 [tool.hatch.version]
 source = "code"
