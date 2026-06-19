@@ -53,6 +53,8 @@ Watch a full first run — the getting-started walkthrough:
 
 > Ralph is free and runs locally — stars are the only signal we get that it's working for you, and they set what we build next. If a run shipped real software for you: ⭐ [star on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow).
 
+> See who's already building with Ralph → [USERS.md](USERS.md)
+
 ---
 
 ## What it does
