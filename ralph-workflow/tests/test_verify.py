@@ -23,6 +23,7 @@ _ARTIFACT_SUBMISSION_AUDIT_ARGS = (
     "-m",
     "ralph.testing.audit_artifact_submission_canonical_path",
 )
+_SOCIAL_PROOF_ARGS = ("../scripts/verify_social_proof.py",)
 
 
 class StubRunner:
@@ -159,6 +160,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="agent module state audit ok\n",
             ),
+            ("python3", _SOCIAL_PROOF_ARGS): _result(
+                command="python3",
+                args=_SOCIAL_PROOF_ARGS,
+                returncode=0,
+                stdout="social-proof gate ok\n",
+            ),
         }
     )
 
@@ -181,6 +188,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", _ARTIFACT_SUBMISSION_AUDIT_ARGS),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_registry_sync")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_module_state")),
+        ("python3", _SOCIAL_PROOF_ARGS),
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -378,14 +386,21 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="agent module state audit ok\n",
             ),
+            ("python3", _SOCIAL_PROOF_ARGS): _result(
+                command="python3",
+                args=_SOCIAL_PROOF_ARGS,
+                returncode=0,
+                stdout="social-proof gate ok\n",
+            ),
         }
     )
 
-    # Fourteen steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
+    # Fifteen steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
     # 5=test_policy audit, 6=mcp_timeout audit, 7=di_seam audit,
     # 8=activity_aware_watchdog audit, 9=watchdog_drift audit,
     # 10=parallelization_dormant audit, 11=artifact_submission_canonical_path audit,
-    # 12=agent_registry_sync audit, 13=agent_module_state audit).
+    # 12=agent_registry_sync audit, 13=agent_module_state audit,
+    # 14=social-proof gate).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
     # all other steps take 0s.
     times = [
@@ -394,6 +409,8 @@ def test_run_verify_single_step_within_budget(
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -651,12 +668,18 @@ def test_run_verify_non_test_steps_not_counted(
                 returncode=0,
                 stdout="agent module state audit ok\n",
             ),
+            ("python3", _SOCIAL_PROOF_ARGS): _result(
+                command="python3",
+                args=_SOCIAL_PROOF_ARGS,
+                returncode=0,
+                stdout="social-proof gate ok\n",
+            ),
         }
     )
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Fourteen steps (ruff, mypy, make test, eleven audits) x 2 monotonic
-    # calls per step = 28 entries.
+    # Fifteen steps (ruff, mypy, make test, eleven audits, social-proof gate)
+    # x 2 monotonic calls per step = 30 entries.
     times = [
         0.0,
         100.0,
@@ -686,6 +709,8 @@ def test_run_verify_non_test_steps_not_counted(
         1300.0,
         1300.0,
         1400.0,
+        1400.0,
+        1500.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 

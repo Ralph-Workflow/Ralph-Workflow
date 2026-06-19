@@ -195,6 +195,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_agent_module_state"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        "social-proof gate (verify_social_proof)",
+        "python3",
+        ("../scripts/verify_social_proof.py",),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})
