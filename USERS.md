@@ -51,6 +51,26 @@ ecosystem reference.
 
 ---
 
+## More builders — discovered 2026-06-19
+
+### rickvian — [rickvian/ralph-workflow](https://github.com/rickvian/ralph-workflow)
+Active fork/branch with 4 open feature issues (devcontainer templates, setup wizard,
+version tracking scaffolds, and a `ralph-version` file proposal). Building on Ralph
+Workflow as a base with new developer-experience features.
+*(discovered 2026-06-19 via gh search code — 4 open enhancement issues)*
+
+### Algorand Developer Relations — [algorand-devrel/algorand-agent-skills](https://github.com/algorand-devrel/algorand-agent-skills)
+Official Algorand blockchain developer relations team maintains a Ralph Workflow
+plan template (`ralph/plan.md`) as part of their agent skills toolkit. First known
+blockchain-ecosystem adoption.
+*(discovered 2026-06-19 via gh search code)*
+
+### bastani-inc — [bastani-inc/atomic](https://github.com/bastani-inc/atomic)
+Atomic CLI (enterprise AI coding tool) references Ralph Workflow extensively in their
+RFC for workflow SDK inline mode — cites Ralph's context clearing, task list lifecycle,
+and orchestration state as design inputs. Enterprise-level pattern adoption.
+*(discovered 2026-06-19 via gh search code — RFC document with multiple Ralph references)*
+
 ## Pattern adopters — projects implementing the Ralph loop pattern
 
 These projects independently converged on the same pattern (markdown-plan + progress.json +
