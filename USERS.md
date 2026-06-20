@@ -71,6 +71,39 @@ RFC for workflow SDK inline mode — cites Ralph's context clearing, task list l
 and orchestration state as design inputs. Enterprise-level pattern adoption.
 *(discovered 2026-06-19 via gh search code — RFC document with multiple Ralph references)*
 
+---
+
+## Plugin & tool integrations — discovered 2026-06-20
+
+### BLEN Inc — [blencorp/lisa](https://github.com/blencorp/lisa)
+**"Lisa plans. Ralph does."** — Professional engineering team (BLEN Inc) built an
+interactive specification interview workflow for Claude Code that conducts in-depth
+feature interviews and generates comprehensive specs designed to feed directly into
+Ralph Workflow. Exports PRDs in Ralph-compatible format (JSON with `branchName`,
+`-progress.txt` marker file). Cross-provider CLI (Claude Code, OpenCode, Cursor,
+Codex, Copilot). Public npm package `@blen/lisa`.
+*(discovered 2026-06-20 via gh search repos — explicit Ralph integration + Ralph-format output)*
+
+### Alexey Krol — [greatakela/framework-router](https://github.com/greatakela/framework-router)
+Claude Code plugin that installs and routes a combined GSD + gstack + Superpowers
+workflow into any project — **plus optional Ralph autonomous-build loop.** Ships
+`/enable-ralph A|B` command that switches on autonomous build once spec + roadmap
+are locked. Ralph included as payload (no install needed).
+*(discovered 2026-06-20 via gh search repos — `/enable-ralph` command, Ralph payload)*
+
+### gmickel — [gmickel/flow-next](https://github.com/gmickel/flow-next)
+Spec-driven AI workflow plugin (Claude Code, OpenAI Codex, Factory Droid) with
+zero-dep task tracking, worker subagents, **Ralph autonomous mode**, and cross-model
+reviews. Includes spoken command `/flow-next:ralph-init` and a Ralph TUI dashboard.
+*(discovered 2026-06-20 via gh search repos — Ralph autonomous mode, TUI, `/flow-next:ralph-init`)*
+
+### Cemini (multi-wiki research network) — [cemini23/cemini-claude-code-CCC](https://github.com/cemini23/cemini-claude-code-CCC)
+Public meta-wiki (part of Cemini's 8-wiki federation) documenting agent orchestration
+in Cursor and Claude Code — explicitly names Ralph as one of the canonical patterns
+alongside `/goal` and OpenSpec. Publicly accessible methodology documentation with
+YouTube channel (@Cemini23) and newsletter (Outlier Weekly).
+*(discovered 2026-06-20 via gh search repos — /goal·Ralph·OpenSpec patterns)*
+
 ## Pattern adopters — projects implementing the Ralph loop pattern
 
 These projects independently converged on the same pattern (markdown-plan + progress.json +
