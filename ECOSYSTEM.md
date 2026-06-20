@@ -1,57 +1,52 @@
-# Ralph Workflow — Ecosystem Map
+# Ralph Loop Ecosystem
 
-> **Last updated:** 2026-06-18 · This page collects known projects using, building on, or
-> referencing Ralph Workflow, discovered through code-level search (GitHub search, SourceGraph,
-> dependency analysis). It is distinct from the
-> [Showcase](SHOWCASE.md) — which lists **confirmed builders** with verifiable artifact evidence
-> (pyproject.toml dependency, source import, or README credit line).
->
-> The entries below do NOT yet meet the Showcase evidence gate. They represent the part of the
-> adoption curve that is invisible to `pip install` metrics: projects that use Ralph Workflow as
-> a pattern, a loop engine, a workflow template, or a discussion reference — without declaring
-> it as a formal dependency.
+Ralph Workflow is the reference implementation of the [Ralph Loop](https://ghuntley.com/ralph) pattern — an iterative plan-build-verify architecture for AI coding agents, originally attributed to Geoffrey Huntley (ghuntley.com). The pattern has inspired a thriving, independent ecosystem of 30+ projects. We didn't invent the loop — we built the production-grade toolkit for it.
 
----
+## Active Community Projects
 
-## Observed usage — projects building with or referencing Ralph
+These independent projects implement variations of the Ralph Loop pattern. They are not Ralph Workflow ecosystem projects — they are independent pattern derivatives that validate the architecture.
 
-| Project | Maintainer | What they're doing | Discovery date | Evidence |
-|---------|-----------|-------------------|----------------|----------|
-| [dgowrie/claude-workflows](https://github.com/dgowrie/claude-workflows/issues/52) | David Gowrie @ Grafana Labs | Filed 6-gap analysis running Ralph against real Grafana PRD (10 sub-issues), ran `ralph.sh --autonomous` | 2026-06-17 | Issue #52 documents production use, environment HALT report |
-| [YalDan/kodezart](https://github.com/YalDan/kodezart/issues/25) | YalDan | Production code orchestration service consuming Ralph's loop engine (ralph_workflow.py 1037L, ralph_loop.py 1486L) | 2026-06-17 | Source-level dependency; 3 convergence bugs filed (#32, #25, #19) |
-| [mwarger/ralph-crispies](https://github.com/mwarger/ralph-crispies) | Mat Warger | 4th-generation Ralph descendant: Forge → Super-Ralph → Crispies lineage. Now building testing/evaluation infrastructure (Promptfoo Workflow Evals) + Flue backend integration on top of the Ralph loop pattern | 2026-06-17 | Issues #1, #10 — 2 active PRDs labeled ready-for-agent, opened 2026-06-17 |
-| [qte77/ralph-loop-cc-tdd-wt-vibe-kanban-template](https://github.com/qte77/ralph-loop-cc-tdd-wt-vibe-kanban-template) | qte77 | Language-agnostic Ralph Loop template with plugin scaffold architecture, designing self-evolving offspring repos (ralph-engineering, ralph-research) | 2026-06-18 | Issue #32 is a design document for offspring repos; 107 repos, 10 followers |
-| [heinschulie/babylon](https://github.com/heinschulie/babylon) | heinschulie | Ralph v6 pipeline validation, 5-step pipeline (consult→tdd→refactor→review→verify) | 2026-06-17 | Issue #158 has 12 comments documenting Ralph pipeline usage |
-| [oneplusn-dev](https://github.com/oneplusn-dev) | oneplusn-dev | Chinese AI dev community article on Loop Engineering (2026-06-17) explicitly credits Ralph Workflow as the original implementer | 2026-06-17 | Public article with explicit Ralph Workflow credit |
+| Project | Stars | Description |
+|---------|-------|-------------|
+| [umputun/ralphex](https://github.com/umputun/ralphex) | 1,296 ⭐ | Multi-provider LLM loop with plan-build-verify cycle |
+| [Gens-ai/autopilot](https://github.com/Gens-ai/autopilot) | 14 ⭐ | Standalone Ralph agent with structured loop execution |
+| [gregorydickson/pickle-rick-claude](https://github.com/gregorydickson/pickle-rick-claude) | 26 ⭐ | Ralph-inspired Claude Code runner with twist characterization |
+| [benikigai/nightshift](https://github.com/benikigai/nightshift) | 14 ⭐ | Lights-out autonomous software work — ship specs, wake up to tested commits |
+| [DavisSylvester/ollama-dev-agent](https://github.com/DavisSylvester/ollama-dev-agent) | — | First local LLM Ralph adoption — runs on Ollama |
+| [dr-gareth-roberts/chief-wiggum-loop](https://github.com/dr-gareth-roberts/chief-wiggum-loop) | — | Enterprise security-hardened loop with sandboxing + stuck classifier |
+| [basfenix/SelfSteeringRalph](https://github.com/basfenix/SelfSteeringRalph) | 11 ⭐ | Self-steering Ralph variant with autonomous goal decomposition |
+| [KLIEBHAN/ralph-loop](https://github.com/KLIEBHAN/ralph-loop) | 3 ⭐ | Lightweight single-binary Ralph implementation |
+| [Apra-Labs/agentic-ai-workshop](https://github.com/Apra-Labs/agentic-ai-workshop) | 8 ⭐ | Educational Ralph Loop workshop with hands-on exercises |
+| [agent-frontier/wgm](https://github.com/agent-frontier/wgm) | 1 ⭐ | Rough request → working software pipeline |
+| [pbean/bmad-automator](https://github.com/pbean/bmad-automator) | — | BMAD enterprise agile integration with Ralph Loop |
+| [mikefreno/ralpi](https://github.com/mikefreno/ralpi) | — | Raspberry Pi Ralph agent extension |
+| [pro-vi/loopgen](https://github.com/pro-vi/loopgen) | — | Prompt compiler with Ralph Loop architecture |
+| [inshalazmat/AI_Business_Employee](https://github.com/inshalazmat/AI_Business_Employee) | — | AI employee powered by Ralph Loop pattern |
 
-## Pattern references — projects implementing the Ralph loop pattern
+## The Canonical Hub
 
-| Project | What they ship | Discovery date |
-|---------|---------------|----------------|
-| [obra/superpowers#1725](https://github.com/obra/superpowers/issues/1725) | Martingale42's resumable multi-agent execution pipeline — verbatim converged on `progress.json` + wake-up file (2026-06-10) | 2026-06-10 |
-| [marconae/speq-skill#14](https://github.com/marconae/speq-skill) | Spec-driven skill for Claude Code — author confirmed adjacent/complementary lane | 2026-06-09 |
-| [xpepper/pr-review-agent-skill#2](https://github.com/xpepper/pr-review-agent-skill) | Ralph-wiggum-loop — ships the same pattern (markdown-plan + sentinel-based termination) | 2026-06-10 |
-| [endario/unattended-loop](https://github.com/endario/unattended-loop) | Unattended loop pattern — parallel implementation | 2026-06-10 |
+[snwfdhmp/awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) (904 ⭐, 69 forks) is the community-maintained directory of Ralph Loop implementations, workshops, skill packs, and academic references. It's the best starting point for understanding the full ecosystem.
 
----
+## Ralph Workflow's Place
 
-## Why this page exists
+Ralph Workflow (`pip install ralph-workflow`) is the **Loop Engineering toolkit** — the only production-grade Python framework in the ecosystem with:
 
-The standard adoption metric for an open-source tool is "who depends on it" — pyproject.toml
-entries, npm installs, source imports. For an **infrastructure tool** like Ralph Workflow (an
-execution harness you clone or template, not a library you `pip install`), that metric is
-systematically blind. A project can run Ralph Workflow nightly on real production code without
-ever declaring it as a dependency — because Ralph is the runner, not the library.
+- **Spec-driven methodology**: Write a `workflow.md` — the agent plans, builds, and verifies against it
+- **Test-gated quality**: Every commit passes integration tests before landing
+- **Checkpoint/resume**: Crash-safe with progress preservation
+- **Multi-agent architecture**: Coordinator + sub-agents for complex projects
+- **Vendor-neutral**: Claude Code, OpenCode, Ollama, and more
 
-This page captures what `pip install` misses. It is maintained through **code-level search**
-(GitHub search for `ralph-workflow`, `ralph.sh`, `ralph_workflow.py`, `progress.json` pattern
-matches, SourceGraph references) and will be updated as new projects surface.
+The ecosystem proves the pattern works. Ralph Workflow makes it production-ready.
 
-If your project appears here and should be on the [Showcase](SHOWCASE.md) instead, add the
-verification evidence (pyproject.toml pin, source import line, or README credit) — the path
-is a 60-second task described in [SHOWCASE.md](#-adding-your-project-60-seconds).
+## Attribution
+
+The Ralph Loop pattern is attributed to Geoffrey Huntley (ghuntley.com/ralph). Ralph Workflow is an independent reference implementation — not the pattern's originator. We build on a community insight, not claim to own it.
+
+## Add Your Project
+
+Building something with the Ralph Loop pattern? [Open an issue](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues) or submit a PR to be listed here. Grab a [credit badge](CREDIT_TEMPLATE.md) for your README.
 
 ---
 
-*Found a project using Ralph? Search tools: `gh search code 'ralph-workflow' --limit 50`,
-`gh search code 'ralph_workflow.py' --limit 30`, `gh search issues 'Ralph Workflow' --state=open --limit 20`.*
+*Last updated: 2026-06-20 · [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) · [ghuntley.com/ralph](https://ghuntley.com/ralph)*
