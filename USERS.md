@@ -104,6 +104,29 @@ alongside `/goal` and OpenSpec. Publicly accessible methodology documentation wi
 YouTube channel (@Cemini23) and newsletter (Outlier Weekly).
 *(discovered 2026-06-20 via gh search repos — /goal·Ralph·OpenSpec patterns)*
 
+### John Ezra — [john-ezra/open-ralph](https://github.com/john-ezra/open-ralph)
+**"Light opencode plugin for the Ralph workflow."** — 5th independent plugin
+integration. npm package `@john-ezra/open-ralph`. OpenCode-native, 3-phase workflow
+(define → plan → build), Docker mode support. Published to npm for direct install.
+*(discovered 2026-06-20 via gh search repos — npm package, 1★, OpenCode integration)*
+
+### Jason Salomon-Rinnert — [aslomon/effectum](https://github.com/aslomon/effectum)
+**"Describe what you want. Get production-ready code."** — The most comprehensive
+Ralph-adjacent product discovered to date. Full autonomous development framework FOR
+Claude Code with PRD Workshop, 10 workflow commands, 8 quality gates, and overnight
+Ralph Loop builds. Permanent alias `/ralph-loop` → `effect:dev:run` in production.
+446 tests, 32 primary commands, 25 agent specializations, 43+ skills. npm package
+`@aslomon/effectum`. Explicitly credits Ralph Workflow as its core loop engine.
+This is the deepest integration signal found — a production framework with Ralph
+as a named permanent command alias.
+*(discovered 2026-06-20 via gh search repos — 2★, `/ralph-loop` alias, 446 tests)*
+
+### Gens AI — [Gens-ai/autopilot](https://github.com/Gens-ai/autopilot)
+**"Autonomous TDD workflow for Claude Code using Ralph Loop."** — Production product
+with 14★ and 4 forks. Built-in loop mechanism credited to the Ralph Wiggum technique.
+No external plugins required — the Ralph Loop pattern is baked into the core workflow.
+*(discovered 2026-06-20 via gh search repos — 14★, 4 forks, built-in Ralph loop)*
+
 ## Pattern adopters — projects implementing the Ralph loop pattern
 
 These projects independently converged on the same pattern (markdown-plan + progress.json +
