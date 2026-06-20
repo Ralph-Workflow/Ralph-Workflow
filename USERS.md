@@ -144,6 +144,39 @@ orchestration stack: flow-next (task management) + gstack (quality gates) + Ralp
 component in larger agent orchestration architectures.
 *(discovered 2026-06-20 via gh search repos — multi-tool orchestration pattern)*
 
+### Davis Sylvester — [DavisSylvester/ollama-dev-agent](https://github.com/DavisSylvester/ollama-dev-agent)
+**"Autonomous local code-generation agent powered by Ollama — Worker→Lint→Reviewer
+Ralph loop with self-healing retries."** — First local-LLM Ralph adoption discovered.
+Runs the Ralph Loop pattern with Ollama (no cloud API dependency). This validates
+Ralph's core claim: the tool works with ANY agent, including fully local ones.
+Created today (Jun 20). A positioning proof point for the "vendor-neutral" claim.
+*(discovered 2026-06-20 via gh search repos — local Ollama + Ralph, self-healing)*
+
+### benikigai — [benikigai/nightshift](https://github.com/benikigai/nightshift)
+**"Controlled agent harness for lights-out software work: persistent Ralph Loops,
+evaluator backpressure, guardrails, metrics, and git audit trails."** — 14★, 5 forks.
+Production-grade system explicitly designed for unattended overnight use. Includes
+evaluator backpressure (prevents runaway loops), guardrails, and full audit trails.
+This is the exact use case Ralph Workflow was built for — confirmed in production.
+*(discovered 2026-06-20 via gh search repos — 14★, 5 forks, lights-out production)*
+
+### Gregory Dickson — [gregorydickson/pickle-rick-claude](https://github.com/gregorydickson/pickle-rick-claude)
+**"Pickle Rick for Claude Code — autonomous PRD-driven coding loops + relentless
+code review. Ralph Loop toolkit."** — 26★, 5 forks. The highest-starred
+Ralph-adjacent project discovered in the ecosystem (exceeding even Gens-ai/autopilot
+at 14★). Built as a complete autonomous coding toolkit with Ralph Loop as its engine.
+Created Feb 2026, actively maintained.
+*(discovered 2026-06-20 via gh search repos — 26★, 5 forks, PRD-driven, Claude Code)*
+
+### Dr. Gareth Roberts — [dr-gareth-roberts/chief-wiggum-loop](https://github.com/dr-gareth-roberts/chief-wiggum-loop)
+**"Hardened, sandbox-safe variation on Anthropic's Ralph Loop for Claude Code:
+stuck classifier, worktree sandboxing, /wiggum-doctor preflight, /wiggum-resume,
+project-only lessons DB."** — The most technically deep Ralph variation discovered.
+Enterprise-grade features: stuck-loop detection + classification, git-worktree
+sandboxing for safe experimentation, preflight system health checks, and a per-project
+learning database. Demonstrates the hardening path for production adoption.
+*(discovered 2026-06-20 via gh search repos — security-hardened, sandbox-safe)*
+
 ## Pattern adopters — projects implementing the Ralph loop pattern
 
 These projects independently converged on the same pattern (markdown-plan + progress.json +
