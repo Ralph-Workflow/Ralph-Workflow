@@ -127,6 +127,23 @@ with 14★ and 4 forks. Built-in loop mechanism credited to the Ralph Wiggum tec
 No external plugins required — the Ralph Loop pattern is baked into the core workflow.
 *(discovered 2026-06-20 via gh search repos — 14★, 4 forks, built-in Ralph loop)*
 
+## More builders — discovered 2026-06-20
+
+### AutoMedica Labs — [auto-medica-labs/ralph-template](https://github.com/auto-medica-labs/ralph-template)
+**"An automatic Ralph workflow for autonomous software development tasks using the
+OpenCode CLI tool."** — First healthcare/health-tech domain adoption discovered.
+5★, actively maintained (last updated May 2026). Uses OpenCode as the agent runtime
+rather than Claude Code — confirms Ralph's vendor-neutral value proposition.
+*(discovered 2026-06-20 via gh search repos — 5★, OpenCode, health-tech domain)*
+
+### Ariceb — [ariccb/helixir-ralph-workflow](https://github.com/ariccb/helixir-ralph-workflow)
+**"Coordinated ralph workflow integrating flow-next task management with gstack
+quality gates."** — Demonstrates Ralph as a composition layer in a multi-tool
+orchestration stack: flow-next (task management) + gstack (quality gates) + Ralph
+(autonomous execution loop). Evidence that Ralph is being used as a protocol
+component in larger agent orchestration architectures.
+*(discovered 2026-06-20 via gh search repos — multi-tool orchestration pattern)*
+
 ## Pattern adopters — projects implementing the Ralph loop pattern
 
 These projects independently converged on the same pattern (markdown-plan + progress.json +
