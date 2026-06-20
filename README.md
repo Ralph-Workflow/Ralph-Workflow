@@ -2,7 +2,7 @@
 
 > Mirror of [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star/issues/discussion on Codeberg.
 
-**The original Loop Engineering toolkit.** Hand your coding agents a spec. Walk away. Come back to reviewable, tested commits.
+**The original Ralph Loop toolkit — production-grade Loop Engineering.** Hand your coding agents a spec. Walk away. Come back to reviewable, tested commits. The reference implementation of the Ralph Loop pattern that powers 25+ independent projects.
 
 Ralph Workflow is a free, open-source Loop Engineering framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition.
 
