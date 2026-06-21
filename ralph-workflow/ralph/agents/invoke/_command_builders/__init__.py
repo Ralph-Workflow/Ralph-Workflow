@@ -138,6 +138,27 @@ def _split_optional_flag(flag: str | None) -> list[str]:
     return shlex.split(flag)
 
 
+def _format_session_flag(
+    session_flag: str | None,
+    session_id: str | None,
+) -> list[str]:
+    """Format a session_flag template with ``session_id`` as exactly one argv value.
+
+    Plain ``str.format(session_id).split()`` would tokenize a session id
+    that contains spaces or flag-like text into multiple argv elements,
+    letting a hostile or malformed session id inject extra flags (e.g.
+    ``session_id='abc --model injected'`` would emit
+    ``['--session', 'abc', '--model', 'injected']`` and silently shadow
+    downstream flags).  ``shlex.quote`` only adds shell quotes when the
+    value contains characters that would otherwise be split, so
+    well-formed ids like ``'sess-1'`` are emitted unchanged.
+    """
+    if not session_flag or not session_id:
+        return []
+    formatted = session_flag.format(shlex.quote(session_id))
+    return shlex.split(formatted)
+
+
 def _command_already_enables_print_mode(cmd: list[str]) -> bool:
     return any(part in _HEADLESS_CLAUDE_PRINT_FLAGS for part in cmd)
 
@@ -290,11 +311,9 @@ class ConfigurableCommandBuilder:
         if "agy" in self.spec.base_argv[0]:
             if yolo is not None:
                 flags.extend(_split_optional_flag(yolo))
-            if config.session_flag and options.session_id:
-                flags.extend(config.session_flag.format(options.session_id).split())
+            flags.extend(_format_session_flag(config.session_flag, options.session_id))
         else:
-            if config.session_flag and options.session_id:
-                flags.extend(config.session_flag.format(options.session_id).split())
+            flags.extend(_format_session_flag(config.session_flag, options.session_id))
             if yolo is not None:
                 flags.extend(_split_optional_flag(yolo))
         return flags
@@ -435,7 +454,7 @@ class ClaudeInteractiveCommandBuilder:
         if options.verbose and config.verbose_flag:
             cmd.append(config.verbose_flag)
         if config.session_flag and options.session_id:
-            cmd.extend(config.session_flag.format(options.session_id).split())
+            cmd.extend(_format_session_flag(config.session_flag, options.session_id))
         if options.settings_json is not None:
             cmd.extend(["--settings", options.settings_json])
         if options.system_prompt_file:
@@ -520,7 +539,7 @@ class DefaultCommandBuilder:
             cmd.append(config.streaming_flag)
 
         if config.session_flag and options.session_id:
-            cmd.extend(config.session_flag.format(options.session_id).split())
+            cmd.extend(_format_session_flag(config.session_flag, options.session_id))
 
         cmd.extend(_split_optional_flag(config.yolo_flag))
 

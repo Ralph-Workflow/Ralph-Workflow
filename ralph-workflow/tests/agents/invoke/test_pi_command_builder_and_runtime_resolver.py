@@ -92,6 +92,84 @@ class TestPiCommandBuilder:
             "hello world",
         ]
 
+    def test_session_id_with_spaces_stays_one_argv_element(
+        self, tmp_path: Path
+    ) -> None:
+        """A session id containing spaces must stay as a single argv value.
+
+        Regression test for the analysis feedback: the previous
+        ``config.session_flag.format(session_id).split()`` tokenized the
+        formatted string on whitespace, so ``session_id='abc def'`` was
+        emitted as ``['--session', 'abc', 'def']`` (three tokens) and
+        a flag-like value such as ``'abc --model injected'`` would inject
+        ``--model injected`` as extra argv tokens.  The builder now
+        preserves the full session id in one element via shlex quoting.
+        """
+        prompt_file = _make_prompt(tmp_path)
+        cmd = PiCommandBuilder().build(
+            _pi_config(),
+            prompt_file,
+            options=BuildCommandOptions(
+                session_id="abc def", workspace_path=tmp_path
+            ),
+        )
+
+        assert cmd == [
+            "pi",
+            "--mode",
+            "json",
+            "--session",
+            "abc def",
+            "--approve",
+            "hello world",
+        ]
+        # The single argv element must hold the full session id, not a
+        # tokenized form.
+        assert "--session" in cmd
+        session_idx = cmd.index("--session")
+        assert cmd[session_idx + 1] == "abc def"
+        assert "abc" not in cmd or cmd.index("abc") == session_idx + 1
+        assert "def" not in cmd
+
+    def test_session_id_with_flag_like_value_does_not_inject_flags(
+        self, tmp_path: Path
+    ) -> None:
+        """A session id that looks like flags must NOT be tokenized into flags.
+
+        Regression test for the analysis feedback: with the previous
+        ``format(session_id).split()`` logic, ``session_id='abc --model
+        injected'`` produced ``['--session', 'abc', '--model', 'injected']``
+        which would silently override downstream flags.  The builder now
+        preserves the full session id in one element.
+        """
+        prompt_file = _make_prompt(tmp_path)
+        cmd = PiCommandBuilder().build(
+            _pi_config(),
+            prompt_file,
+            options=BuildCommandOptions(
+                session_id="abc --model injected", workspace_path=tmp_path
+            ),
+        )
+
+        # The session id must be one argv element, not three.
+        assert cmd == [
+            "pi",
+            "--mode",
+            "json",
+            "--session",
+            "abc --model injected",
+            "--approve",
+            "hello world",
+        ]
+        # The literal '--model' and 'injected' must NOT appear as
+        # separate argv tokens.
+        assert "injected" not in cmd
+        # '--model' may legitimately appear elsewhere (e.g. as the
+        # caller's model_flag); here the builder was constructed without
+        # a model_flag, so the only --model would come from the session
+        # id injection.
+        assert cmd.count("--model") == 0
+
     def test_model_flag_is_emitted_as_two_argv_tokens(self, tmp_path: Path) -> None:
         """``--model <value>`` is two argv tokens, not one."""
         prompt_file = _make_prompt(tmp_path)
