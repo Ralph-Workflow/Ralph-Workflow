@@ -7,22 +7,145 @@ JSON-vs-raw dispatch, ``is_stop_event`` for stop-type checking, and
 Subclasses override ``classify_line`` for parser-specific line dispatch
 and optionally ``flush_accumulators`` when the accumulator layout differs
 from the standard dict-based pattern.
+
+The shared ``emit_subagent_activity(line, sink)`` hook feeds per-parser
+subagent progress into the idle watchdog's subagent sink via the
+``invoke_subagent_sink`` contextvar.  See
+``_sanitize_parser_subagent_summary`` for the sanitization rules.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from json import JSONDecodeError
 from typing import TYPE_CHECKING, ClassVar, cast
 
 from .agent_output_line import AgentOutputLine
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from .text_accumulator import TextAccumulator
 
 __all__ = ["ParserTemplateBase"]
+
+# Lines whose type is "demonstrable work" (tool call, tool result, model
+# text, model thinking).  These are the ONLY line kinds the parser hook
+# forwards to the subagent sink so a hard-failing child (error), a
+# lifecycle event (message_start), or a raw fallback (raw) does not keep
+# the watchdog deferring a kill.
+_EMITTABLE_TYPES: frozenset[str] = frozenset({"tool_use", "tool_result", "text", "thinking"})
+
+# Hard cap on the emitted summary length so a chatty model cannot push
+# a 4 KB payload into the operator-visible subagent_activity field.
+# Mirrors the watchdog's ``_SUBAGENT_DESCRIPTION_MAX = 200`` constant.
+_MAX_SUMMARY_LENGTH: int = 200
+_MAX_PREFIX_LENGTH: int = 80
+
+
+# Sanitization patterns.  These mirror the watchdog's
+# ``_sanitize_subagent_description`` rules so the parser layer and the
+# watchdog layer never disagree about what an operator-visible summary
+# may contain.  See ``idle_watchdog.py:_sanitize_subagent_description``
+# for the full rationale.
+
+# Control characters (C0 + DEL) and ANSI/CSI/OSC sequences.
+_CONTROL_CHARS_RE: re.Pattern[str] = re.compile(
+    r"[\x00-\x1f\x7f]|\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07"
+)
+
+# JSON keys whose value is sensitive (mirrors
+# ``_SENSITIVE_JSON_KEYS`` in idle_watchdog.py).
+_SENSITIVE_JSON_KEYS: frozenset[str] = frozenset(
+    {"arguments", "args", "file_path", "input", "prompt", "content"}
+)
+
+# Bare-path prefixes that are sensitive.
+_SENSITIVE_PATH_TOKEN_RE: re.Pattern[str] = re.compile(
+    r"""
+    (?:/etc/|/proc/|/sys/|/root/|~/\.ssh/)[^\s\x1b\n]*
+    |
+    (?i:authorization)\s*:\s*(?i:bearer)[^\n]*
+    |
+    -----BEGIN\s+[A-Z ]*PRIVATE\s+KEY-----[^\n]*
+    """,
+    re.VERBOSE,
+)
+
+# Fallback pattern for malformed JSON values (mirrors
+# ``_SENSITIVE_MARKER_FALLBACK_RE``).
+_SENSITIVE_MARKER_FALLBACK_RE: re.Pattern[str] = re.compile(
+    r"""
+    "(?:arguments|file_path|input|prompt|content)"\s*:\s*"
+    .*?
+    (?=[,\}\]\n]|$)
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+
+def _redact_json_values(obj: object) -> object:
+    """Walk a parsed JSON structure and redact sensitive key values.
+
+    Mirrors the watchdog's ``_redact_json_values`` helper: a sensitive
+    key (``arguments``, ``args``, ``file_path``, ``input``, ``prompt``,
+    ``content``) is fully replaced with the literal ``<redacted>`` so
+    the surrounding JSON remains well-formed and non-sensitive sibling
+    fields cannot leak.
+    """
+    if isinstance(obj, dict):
+        result: dict[str, object] = {}
+        for key, value in obj.items():
+            if key in _SENSITIVE_JSON_KEYS:
+                result[key] = "<redacted>"
+            else:
+                result[key] = _redact_json_values(value)
+        return result
+    if isinstance(obj, list):
+        return [_redact_json_values(item) for item in obj]
+    return obj
+
+
+def _sanitize_parser_subagent_summary(line: str) -> str:
+    """Sanitize a one-line subagent summary for operator-visible output.
+
+    Mirrors the watchdog's ``_sanitize_subagent_description`` rules:
+    strips control characters, redacts sensitive JSON fragments,
+    redacts sensitive path roots, redacts bearer tokens, and caps
+    the result at ``_MAX_SUMMARY_LENGTH`` so the operator-visible
+    subagent_activity field never echoes raw tool arguments / file
+    paths / bearer tokens.
+
+    Returns the sanitized string (which may be empty when the input
+    was empty or only whitespace).
+    """
+    if not line:
+        return ""
+    cleaned = _CONTROL_CHARS_RE.sub("", line)
+    cleaned = _SENSITIVE_MARKER_FALLBACK_RE.sub("<redacted>", cleaned)
+    cleaned = _SENSITIVE_PATH_TOKEN_RE.sub("<redacted>", cleaned)
+    cleaned = cleaned.strip()
+    if len(cleaned) > _MAX_SUMMARY_LENGTH:
+        cleaned = cleaned[:_MAX_SUMMARY_LENGTH]
+    return cleaned
+
+
+def _tool_name_from_line(line: AgentOutputLine) -> str:
+    """Return the tool name for a tool_use / tool_result line, or 'unknown'.
+
+    Tries ``metadata.tool``, ``metadata.tool_name``, then the line
+    content itself (stripped).  Falls back to the literal ``"unknown"``
+    so the emitted summary is always well-formed.
+    """
+    metadata = line.metadata or {}
+    candidate = metadata.get("tool") or metadata.get("tool_name")
+    if isinstance(candidate, str) and candidate.strip():
+        return candidate.strip()
+    content = line.content.strip()
+    if content:
+        return content
+    return "unknown"
 
 
 class ParserTemplateBase:
@@ -41,6 +164,58 @@ class ParserTemplateBase:
 
     def __init__(self) -> None:
         self._accumulators = {}
+
+    def emit_subagent_activity(
+        self,
+        line: AgentOutputLine,
+        sink: Callable[[str], None],
+    ) -> None:
+        """Forward a parsed line to the watchdog's subagent sink.
+
+        Default hook for every NDJSON parser that inherits from this
+        template.  Builds a one-line ``<type>:<summary>`` summary
+        from the line's type and metadata, sanitizes it via
+        :func:`_sanitize_parser_subagent_summary`, and invokes
+        ``sink(summary)`` once per line.
+
+        The hook fires ONLY for the four "demonstrable work" line
+        kinds: ``tool_use``, ``tool_result``, ``text``, ``thinking``.
+        Lifecycle events, error lines, raw fallbacks, stop markers,
+        and unknown types do NOT invoke the sink (a hard-failing
+        child or a lifecycle heartbeat does not count as forward
+        progress and must not keep the watchdog deferring a kill).
+
+        Sink exceptions are swallowed so a buggy sink cannot crash
+        the activity stream; the watchdog already logs recorder
+        errors at DEBUG and the contract is "fail soft".
+
+        Subclasses may override this hook to add parser-specific
+        metadata enrichment (e.g. ``metadata.tool`` resolution
+        from a different field).  The default implementation is
+        deliberately conservative: it surfaces ``tool_use`` /
+        ``tool_result`` line types, ``text`` first-80-chars, and
+        ``thinking`` first-80-chars with the same sanitization
+        rules the watchdog uses internally so operator-visible
+        summaries are consistent end-to-end.
+        """
+        if line.type not in _EMITTABLE_TYPES:
+            return
+        tool_name = _tool_name_from_line(line)
+        if line.type in {"tool_use", "tool_result"}:
+            summary = f"{line.type}:{tool_name}"
+        else:
+            content = line.content.strip()
+            truncated = (
+                content[:_MAX_PREFIX_LENGTH] if len(content) > _MAX_PREFIX_LENGTH else content
+            )
+            summary = f"{line.type}:{truncated}"
+        summary = _sanitize_parser_subagent_summary(summary)
+        if not summary:
+            return
+        try:
+            sink(summary)
+        except Exception:
+            return
 
     def parse_json_line(self, line: str) -> AgentOutputLine | None:
         """Try to parse *line* as JSON and classify the result.

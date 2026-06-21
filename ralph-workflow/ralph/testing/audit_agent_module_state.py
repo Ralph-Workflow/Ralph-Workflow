@@ -101,9 +101,7 @@ def _scan_file(content: str, rel_path: str) -> list[RegistrySyncViolation]:
     try:
         tree = ast.parse(content)
     except SyntaxError as e:
-        violations.append(
-            RegistrySyncViolation(rel_path, e.lineno or 1, "syntax_error", str(e))
-        )
+        violations.append(RegistrySyncViolation(rel_path, e.lineno or 1, "syntax_error", str(e)))
         return violations
 
     for node in tree.body:

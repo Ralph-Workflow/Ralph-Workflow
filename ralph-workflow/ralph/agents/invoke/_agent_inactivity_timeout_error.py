@@ -60,6 +60,12 @@ class AgentInactivityTimeoutError(AgentInvocationError):
                 "Agent repeated the same error without making forward progress"
                 f"{detail}; aborting the retry loop"
             )
+        elif _opts.reason == WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL:
+            tool_name = _opts.diagnostic.get("tool_name", "tool") if _opts.diagnostic else "tool"
+            stderr_msg = (
+                f"Agent repeated the same {tool_name} tool call without making"
+                " forward progress; aborting the identical-tool-call loop"
+            )
         elif _opts.reason == WatchdogFireReason.NO_PROGRESS_QUIET:
             duration = f"{timeout_seconds:.0f}s"
             stderr_msg = (

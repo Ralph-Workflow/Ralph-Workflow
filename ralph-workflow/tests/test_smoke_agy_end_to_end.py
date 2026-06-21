@@ -220,6 +220,4 @@ def test_mock_smoke_report_shows_text_output(tmp_path: Path) -> None:
         "Expected at least one rendered model-text line in 'Observed output:'. "
         f"raw_lines={raw_lines} parser_classified_lines={parser_classified_lines}"
     )
-    assert not raw_lines, (
-        f"Expected zero ': raw' lines in 'Observed output:', got: {raw_lines}"
-    )
+    assert not raw_lines, f"Expected zero ': raw' lines in 'Observed output:', got: {raw_lines}"

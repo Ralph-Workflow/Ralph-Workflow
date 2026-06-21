@@ -558,6 +558,7 @@ def test_no_progress_quiet_does_not_fire_within_dumb_kill_floor() -> None:
       - verdict is CONTINUE (not FIRE) before the floor.
       - last_fire_reason is None (the gate never fired).
     """
+
     def _os_desc_only_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
@@ -583,8 +584,7 @@ def test_no_progress_quiet_does_not_fire_within_dumb_kill_floor() -> None:
     clock.advance(119.0)
     verdict = wd.evaluate(classify_quiet=_waiting)
     assert verdict != WatchdogVerdict.FIRE, (
-        f"watchdog must not FIRE at invocation_elapsed=119s (under 120s floor),"
-        f" got {verdict}"
+        f"watchdog must not FIRE at invocation_elapsed=119s (under 120s floor), got {verdict}"
     )
 
 
@@ -617,6 +617,7 @@ def test_no_progress_quiet_still_fires_after_dumb_kill_floor_when_genuinely_stuc
       - verdict is FIRE (not CONTINUE) past the floor.
       - last_fire_reason is NO_PROGRESS_QUIET.
     """
+
     def _dead_child_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=None,
@@ -740,6 +741,7 @@ def test_no_progress_quiet_does_not_fire_when_corroborator_reports_live_child() 
         ``_evaluate_no_progress_quiet`` returns ``None``.
       - ``last_fire_reason`` is ``None`` (NO fire happened).
     """
+
     def _os_desc_only_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
@@ -811,6 +813,7 @@ def test_cumulative_ceiling_remains_upper_bound_for_live_child_stalls() -> None:
         ``NO_PROGRESS_QUIET`` -- the gate refinement defers
         NO_PROGRESS_QUIET when alive_by is not None).
     """
+
     def _os_desc_only_corroborator() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,

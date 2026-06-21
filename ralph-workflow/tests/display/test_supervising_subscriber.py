@@ -93,10 +93,7 @@ def test_tracker_on_snapshot_view_shows_waiting_status(tmp_path: Path) -> None:
     # recent_activity (which exposes snapshot.waiting_status_line) so
     # supervising tooling can show what the subagent was doing at the
     # moment of the SUSPECTED_FROZEN event.
-    assert any(
-        "subagent=scout exploring" in line
-        for line in tracker.view.recent_activity
-    )
+    assert any("subagent=scout exploring" in line for line in tracker.view.recent_activity)
 
 
 def test_tracker_on_snapshot_instance_id_stable_across_notifications(tmp_path: Path) -> None:

@@ -49,9 +49,10 @@ def test_default_timeout_matches_timeout_defaults() -> None:
         == constants.WEBSEARCH_BACKEND_TIMEOUT_SECONDS
     )
     assert c.web_search.web_search_default_timeout_seconds == 10.0
-    assert config_module.WebSearchConfig.model_fields[
-        "web_search_default_timeout_seconds"
-    ].default == constants.WEBSEARCH_BACKEND_TIMEOUT_SECONDS
+    assert (
+        config_module.WebSearchConfig.model_fields["web_search_default_timeout_seconds"].default
+        == constants.WEBSEARCH_BACKEND_TIMEOUT_SECONDS
+    )
 
 
 def test_backend_spec_timeout_inherits_default() -> None:
@@ -62,9 +63,7 @@ def test_backend_spec_timeout_inherits_default() -> None:
 
 def test_backend_spec_with_timeout_seconds_accepted() -> None:
     spec_module = _import_spec_module()
-    spec = spec_module.WebSearchBackendSpec(
-        backend="brave", api_key="k", timeout_seconds=20.0
-    )
+    spec = spec_module.WebSearchBackendSpec(backend="brave", api_key="k", timeout_seconds=20.0)
     assert spec.timeout_seconds == 20.0
 
 
@@ -162,9 +161,7 @@ def test_build_backend_propagates_per_backend_override() -> None:
     config = config_module.WebSearchConfig.model_validate(
         {
             "web_search_default_timeout_seconds": 10.0,
-            "backends": {
-                "brave": {"backend": "brave", "api_key": "k", "timeout_seconds": 25.0}
-            },
+            "backends": {"brave": {"backend": "brave", "api_key": "k", "timeout_seconds": 25.0}},
         }
     )
     backend = tools_module._build_backend("brave", config)

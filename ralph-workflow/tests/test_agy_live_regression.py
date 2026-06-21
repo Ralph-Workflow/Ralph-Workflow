@@ -298,9 +298,7 @@ def test_live_agy_artifact_present(live_smoke_session: _LiveSmokeResult) -> None
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
 
-    artifact_path = (
-        live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
-    )
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -509,9 +507,7 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     cli_log_tail = live_smoke_session.cli_log_tail
     output = live_smoke_session.output
 
-    artifact_path = (
-        live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
-    )
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
     assert artifact_path.is_file(), (
         f"Expected smoke_test_result artifact at {artifact_path}. "
         f"cli.log tail: {cli_log_tail[-200:]!r}\nOutput:\n{output[-5000:]}"
@@ -535,10 +531,7 @@ def test_live_agy_artifact_promoted_to_canonical_receipt(
     assert receipt_payload == {
         "run_id": expected_run_id,
         "artifact_type": "smoke_test_result",
-    }, (
-        f"Unexpected receipt payload: {receipt_payload}. "
-        f"cli.log tail: {cli_log_tail[-200:]!r}"
-    )
+    }, f"Unexpected receipt payload: {receipt_payload}. cli.log tail: {cli_log_tail[-200:]!r}"
 
 
 @pytest.mark.timeout_seconds(240)
@@ -568,9 +561,7 @@ def test_live_agy_produces_parser_classified_text_and_canonical_receipt(
     output = live_smoke_session.output
 
     expected_run_id = live_smoke_session.expected_run_id
-    artifact_path = (
-        live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
-    )
+    artifact_path = live_smoke_session.workspace / ".agent" / "artifacts" / "smoke_test_result.json"
     receipt_path = (
         live_smoke_session.workspace
         / ".agent"

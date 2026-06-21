@@ -360,9 +360,7 @@ def run_audit(package_root: Path) -> list[RegistrySyncViolation]:
     builtin_file = package_root / "agents" / "builtin.py"
     if builtin_file.is_file():
         violations.extend(
-            audit_builtin_file(
-                builtin_file.read_text(encoding="utf-8"), "ralph/agents/builtin.py"
-            )
+            audit_builtin_file(builtin_file.read_text(encoding="utf-8"), "ralph/agents/builtin.py")
         )
 
     registry_file = package_root / "agents" / "registry.py"

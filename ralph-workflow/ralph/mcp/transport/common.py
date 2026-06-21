@@ -153,9 +153,7 @@ def _upstream_as_dict(s: UpstreamMcpServer, *, server_url_key: bool = False) -> 
 
 
 def _merge_opencode(current_config: dict[str, object], unsafe_mode: bool) -> dict[str, object]:
-    ralph_opencode_mcp = cast(
-        "dict[str, object]", current_config.get("mcp", dict[str, object]())
-    )
+    ralph_opencode_mcp = cast("dict[str, object]", current_config.get("mcp", dict[str, object]()))
     ralph_opencode = ralph_opencode_mcp.get(RALPH_MCP_SERVER_NAME)
     if not unsafe_mode:
         if ralph_opencode is not None:
@@ -268,9 +266,7 @@ def _load_upstreams_for_agent(
     workspace_path but the file-based loader would only see file servers.
     """
     _workspace_path = (
-        workspace_path
-        if workspace_path is not None
-        else current_config.get("workspace_path")
+        workspace_path if workspace_path is not None else current_config.get("workspace_path")
     )
     existing_mcp_servers = current_config.get("mcpServers")
     if agent_name in ("claude", "agy", "nanocoder"):

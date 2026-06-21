@@ -121,9 +121,7 @@ def test_dispatch_preserves_subagent_activity_for_hard_stop(
         diagnostic={"scoped_child_active": True, "oldest_child_seconds": 200.0},
         subagent_activity="active task",
     )
-    dispatch_waiting_event(
-        event, subscriber=sub, unit_id="test-agent", agent_name="test-agent"
-    )
+    dispatch_waiting_event(event, subscriber=sub, unit_id="test-agent", agent_name="test-agent")
 
     assert len(calls) == 1
     assert calls[0].subagent_activity == "active task"

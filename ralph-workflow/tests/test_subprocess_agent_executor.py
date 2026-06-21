@@ -247,7 +247,8 @@ async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
     python_in_path = next(
         p
         for p in (sys.executable, "/usr/bin/python3", "/usr/local/bin/python3")
-        if p and not any(
+        if p
+        and not any(
             needle in p for needle in ("agy", "claude", "opencode", "codex", "aider", "gemini")
         )
     )

@@ -158,14 +158,11 @@ def test_examples_have_required_imports() -> None:
     assert len(blocks) >= 2, "Must contain at least 2 python code examples"
 
     register_blocks = [b for b in blocks if "register_agent_support" in b]
-    assert len(register_blocks) >= 2, (
-        "Must contain at least 2 register_agent_support examples"
-    )
+    assert len(register_blocks) >= 2, "Must contain at least 2 register_agent_support examples"
 
     for block in register_blocks:
         assert "AgentRegistry" in block or "registry" in block, (
-            f"Example must import or reference AgentRegistry. "
-            f"Block content:\n{block[:200]}"
+            f"Example must import or reference AgentRegistry. Block content:\n{block[:200]}"
         )
 
 
@@ -242,9 +239,5 @@ class TestReadmeAndContributingDiscoverability:
         )
         # All three lifecycle workflows must be discoverable inline.
         lowered = section_content.lower()
-        assert "update" in lowered, (
-            "CONTRIBUTING.md 'How to add a new agent' must mention Update"
-        )
-        assert "remove" in lowered, (
-            "CONTRIBUTING.md 'How to add a new agent' must mention Remove"
-        )
+        assert "update" in lowered, "CONTRIBUTING.md 'How to add a new agent' must mention Update"
+        assert "remove" in lowered, "CONTRIBUTING.md 'How to add a new agent' must mention Remove"

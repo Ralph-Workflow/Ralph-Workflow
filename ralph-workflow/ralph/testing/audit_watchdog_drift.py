@@ -181,11 +181,7 @@ def _dotted_name(node: ast.expr) -> str | None:
 
 def _is_top_level_class(tree: ast.Module, name: str) -> list[ast.ClassDef]:
     """Return top-level class definitions with the given exact name."""
-    return [
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == name
-    ]
+    return [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == name]
 
 
 def _file_constructs_watchdog_fire_reason(tree: ast.Module) -> list[int]:

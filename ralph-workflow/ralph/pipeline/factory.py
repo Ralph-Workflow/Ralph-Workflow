@@ -357,12 +357,8 @@ class PipelineDeps:
         object.__setattr__(self, "marker_watcher_factory", marker_watcher_factory)
         object.__setattr__(self, "snapshot_registry", snapshot_registry)
         object.__setattr__(self, "recovery_sleep", recovery_sleep)
-        object.__setattr__(
-            self, "connectivity_state_provider", connectivity_state_provider
-        )
-        object.__setattr__(
-            self, "is_waiting_state_provider", is_waiting_state_provider
-        )
+        object.__setattr__(self, "connectivity_state_provider", connectivity_state_provider)
+        object.__setattr__(self, "is_waiting_state_provider", is_waiting_state_provider)
 
     @property
     def display_context(self) -> DisplayContext:

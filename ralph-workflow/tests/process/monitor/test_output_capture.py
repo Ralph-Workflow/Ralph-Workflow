@@ -82,7 +82,6 @@ def test_claude_discovery_returns_empty_for_undocumented_path(
     assert discovery.discover_subagent_outputs(0) == {}
 
 
-
 def test_discovery_returns_empty_when_no_logs(tmp_path: Path) -> None:
     """Discovery strategies return empty mapping when expected layout is absent."""
     discovery = NullDiscoveryStrategy()

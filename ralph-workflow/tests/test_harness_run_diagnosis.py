@@ -710,9 +710,7 @@ def test_detect_smoke_errors_agy_artifact_with_breaks_satisfies_completion(
     # Pre-compute the receipt status the way ``_run_smoke_agent`` would:
     # call ``_is_smoke_artifact_submitted`` to promote the fallback artifact
     # to a canonical receipt, mirroring the live runtime.
-    artifact_submitted = smoke_plumbing_module._is_smoke_artifact_submitted(
-        params.workspace_root
-    )
+    artifact_submitted = smoke_plumbing_module._is_smoke_artifact_submitted(params.workspace_root)
     assert artifact_submitted is True, (
         "Test setup invariant: the artifact must be promoted to a receipt"
     )

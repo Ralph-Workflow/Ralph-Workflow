@@ -26,9 +26,7 @@ class TestArchitectureDoc:
             "config",
         ]
         for layer in layers:
-            assert layer in content, (
-                f"architecture.md must mention the '{layer}' layer"
-            )
+            assert layer in content, f"architecture.md must mention the '{layer}' layer"
 
     def test_architecture_doc_links_to_adding_a_new_agent(self) -> None:
         """Assert the ## Adding a new agent section links to adding-a-new-agent.md."""

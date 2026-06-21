@@ -589,8 +589,7 @@ class TestResolveInvocationRuntimeParity:
 
         # Replace WORKSPACE_PATH_PLACEHOLDER in expected_argv with actual tmp_path
         expected = [
-            str(tmp_path) if x == "WORKSPACE_PATH_PLACEHOLDER" else x
-            for x in expected_argv
+            str(tmp_path) if x == "WORKSPACE_PATH_PLACEHOLDER" else x for x in expected_argv
         ]
 
         builder = ConfigurableCommandBuilder(spec)

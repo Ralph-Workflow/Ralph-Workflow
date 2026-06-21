@@ -192,8 +192,6 @@ class GenericParser(NdjsonParserBase):
         type_val = str(obj.get("type", "")).lower()
         return "error" in type_val or bool(obj.get("error"))
 
-
-
     def _is_stop(self, obj: dict[str, object]) -> bool:
         type_val = str(obj.get("type", "")).lower()
         return type_val in self._STOP_TYPES

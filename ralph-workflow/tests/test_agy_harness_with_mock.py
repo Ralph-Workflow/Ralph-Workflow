@@ -237,19 +237,13 @@ def test_agy_smoke_promotes_artifact_to_canonical_receipt(
     assert result.file_created is True
 
     artifact_path = tmp_path / ".agent" / "artifacts" / "smoke_test_result.json"
-    assert artifact_path.is_file(), (
-        f"Expected the agent's direct artifact write at {artifact_path}"
-    )
+    assert artifact_path.is_file(), f"Expected the agent's direct artifact write at {artifact_path}"
 
     todo_path = tmp_path / "tmp" / "interactive-agy-smoke" / "todo-list.js"
     assert todo_path.is_file(), f"Expected the mock-written todo file at {todo_path}"
 
-    expected_run_id = resolve_smoke_harness_spec(
-        "agy/Gemini 3.5 Flash (Medium)"
-    ).run_id
-    receipt_path = (
-        tmp_path / ".agent" / "receipts" / expected_run_id / "smoke_test_result.json"
-    )
+    expected_run_id = resolve_smoke_harness_spec("agy/Gemini 3.5 Flash (Medium)").run_id
+    receipt_path = tmp_path / ".agent" / "receipts" / expected_run_id / "smoke_test_result.json"
     assert receipt_path.is_file(), (
         f"Expected canonical receipt at {receipt_path}. The harness's "
         f"_is_smoke_artifact_submitted must call is_artifact_submitted -> "

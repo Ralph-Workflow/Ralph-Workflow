@@ -472,9 +472,7 @@ def test_load_config_os_descendant_only_ceiling_roundtrips(
     assert config.general.agent_os_descendant_only_ceiling_seconds == 90.0
 
 
-def test_load_config_cpu_idle_roundtrips(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_load_config_cpu_idle_roundtrips(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
     )
@@ -490,9 +488,7 @@ def test_load_config_cpu_idle_roundtrips(
     assert config.general.agent_cpu_idle_seconds == 45.0
 
 
-def test_load_config_log_growth_roundtrips(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_load_config_log_growth_roundtrips(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
     )

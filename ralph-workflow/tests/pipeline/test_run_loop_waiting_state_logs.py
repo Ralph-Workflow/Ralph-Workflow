@@ -92,7 +92,8 @@ def _build_recovery_controller_with_unavailable(
 
 
 def _build_loop_context_and_state(
-    *, mock_controller: MagicMock,
+    *,
+    mock_controller: MagicMock,
 ) -> tuple[_LoopContext, PipelineState, list[float], list[str]]:
     """Build the run-loop context, the initial wait-state pipeline state,
     and the empty emit/sleep capture lists.
@@ -138,8 +139,7 @@ def _build_loop_context_and_state(
     # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
         last_error=(
-            "all agents unavailable (last reason: out_of_credits);"
-            " waiting for cooldown expiry"
+            "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
         ),
         last_retry_delay_ms=200,
         last_unavailability_reason="out_of_credits",
@@ -165,6 +165,7 @@ def _drive_run_loop_until_complete(
     statement-count budget. The mock setup is identical for every
     assertion block.
     """
+
     def mock_emit_activity_line(display: object, phase: str | None, text: str) -> None:
         emitted.append(text)
 
@@ -201,9 +202,7 @@ def _assert_one_each(emitted: list[str], label: str) -> None:
 def _assert_waiting_record_shape(records: list[dict[str, Any]]) -> None:
     """Assert the structured WAITING log has the AC-08 contract fields."""
     waiting_records = [
-        r
-        for r in records
-        if "WAITING" in r["message"] and "all agents unavailable" in r["message"]
+        r for r in records if "WAITING" in r["message"] and "all agents unavailable" in r["message"]
     ]
     assert len(waiting_records) == 1, (
         f"expected exactly one structured WAITING log, got {len(waiting_records)}"
@@ -244,9 +243,9 @@ def _assert_resumed_record_shape(records: list[dict[str, Any]]) -> None:
 def _assert_pre_sleep_debug_record(records: list[dict[str, Any]]) -> None:
     """Assert the pre-sleep DEBUG log carries the structured recovery binding."""
     pre_sleep_records = [
-        r for r in records
-        if r["level"].name == "DEBUG"
-        and "Starting cooldown sleep" in r["message"]
+        r
+        for r in records
+        if r["level"].name == "DEBUG" and "Starting cooldown sleep" in r["message"]
     ]
     assert len(pre_sleep_records) == 1, (
         f"expected exactly one structured pre-sleep DEBUG log, "
@@ -254,8 +253,7 @@ def _assert_pre_sleep_debug_record(records: list[dict[str, Any]]) -> None:
     )
     pre_sleep_extra = pre_sleep_records[0]["extra"]
     assert pre_sleep_extra.get("recovery") is True, (
-        f"pre-sleep DEBUG log must carry recovery=True binding, "
-        f"got extra={pre_sleep_extra!r}"
+        f"pre-sleep DEBUG log must carry recovery=True binding, got extra={pre_sleep_extra!r}"
     )
     assert pre_sleep_extra.get("phase") == "development"
     assert pre_sleep_extra.get("delay_seconds") == 0.2
@@ -286,7 +284,11 @@ def test_run_loop_waiting_state_logs(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_controller=mock_controller,
     )
     records = _drive_run_loop_until_complete(
-        monkeypatch, ctx=ctx, state=state, slept=slept, emitted=emitted,
+        monkeypatch,
+        ctx=ctx,
+        state=state,
+        slept=slept,
+        emitted=emitted,
     )
     # Display-level: exactly one WAITING emit and one RESUMED emit.
     _assert_one_each(emitted, "WAITING")

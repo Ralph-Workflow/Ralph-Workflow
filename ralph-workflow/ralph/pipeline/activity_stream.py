@@ -15,6 +15,7 @@ from rich.text import Text
 from ralph.agents.invoke import extract_transport_session_id
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser, resolve_parser_key
 from ralph.config.enums import AgentTransport, Verbosity
+from ralph.display.activity_event_kind import ActivityEventKind
 from ralph.display.activity_router import map_parser_type_to_kind
 from ralph.display.parallel_display import (
     ParallelDisplay,
@@ -23,6 +24,7 @@ from ralph.display.parallel_display import (
     resolve_active_display,
     subscriber_for_display,
 )
+from ralph.mcp.server._activity_sink import invoke_subagent_sink
 from ralph.phases.required_artifacts import resolve_phase_required_artifact
 from ralph.pipeline.artifact_handoff_context import ArtifactHandoffContext
 from ralph.pipeline.events import PipelineEvent
@@ -279,7 +281,30 @@ def stream_parsed_agent_activity(
 
     parallel_display_cls = _parallel_display_cls()
     subscriber = subscriber_for_display(display)
+    emit_hook_raw: object = getattr(parser, "emit_subagent_activity", None)
+    # Cache for the latest sanitized subagent summary so the
+    # SUBAGENT_PROGRESS display event can re-use the exact string the
+    # sink received (avoids re-sanitizing or re-emitting raw payload).
+    last_subagent_summary: list[str] = []
     for parsed_line in parser.parse(_iter_lines()):
+        # Forward parsed lines to the per-parser subagent sink so the
+        # idle watchdog's per-channel evidence surface stays fresh for
+        # ALL parsers (Claude, OpenCode, Codex, Gemini, Pi, Agy,
+        # Generic, ClaudeInteractive).  The contextvar is bound by the
+        # line readers (_process_reader / _pty_line_reader) before the
+        # first yield so the sink reaches the per-run watchdog
+        # closure.  The call is wrapped in try/except so a buggy
+        # parser hook cannot crash the activity stream.
+        if callable(emit_hook_raw):
+            emit_hook = cast(
+                "Callable[[AgentOutputLine, Callable[[str], None]], None]",
+                emit_hook_raw,
+            )
+            last_subagent_summary.clear()
+            try:
+                _capture_summary_into(parsed_line, emit_hook, last_subagent_summary)
+            except Exception:
+                logger.debug("parser.emit_subagent_activity failed", exc_info=True)
         rendered = _render_agent_activity_line(parsed_line, agent_name)
         if rendered is not None and rendered_output_sink is not None:
             rendered_output_sink.append(rendered.plain)
@@ -299,6 +324,55 @@ def stream_parsed_agent_activity(
             record_on_subscriber = True
         if subscriber is not None and record_on_subscriber:
             _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
+
+        # Surface the sanitized subagent summary as a SUBAGENT_PROGRESS
+        # event on the parallel display so the operator sees
+        # real-time per-tool progress on the console transcript.  We
+        # only fire when (a) we are using a parallel display, (b) the
+        # parser hook emitted a summary for this line, and (c) the
+        # summary is non-empty.  The summary was already sanitized by
+        # the parser hook so no further sanitization is needed here.
+        if isinstance(display, parallel_display_cls) and last_subagent_summary:
+            summary = last_subagent_summary[0]
+            try:
+                display.emit_parsed_event(
+                    agent_name,
+                    ActivityEventKind.SUBAGENT_PROGRESS,
+                    summary,
+                    parsed_line.metadata or {},
+                )
+            except Exception:
+                logger.debug(
+                    "display.emit_parsed_event for SUBAGENT_PROGRESS failed",
+                    exc_info=True,
+                )
+
+
+def _capture_summary_into(
+    parsed_line: AgentOutputLine,
+    emit_hook: Callable[[AgentOutputLine, Callable[[str], None]], None],
+    sink_buffer: list[str],
+) -> None:
+    """Invoke the parser hook with a capturing sink that records the summary.
+
+    Mirrors the activity-stream ``emit_subagent_activity`` invocation
+    but records the emitted summary into ``sink_buffer`` so the
+    parallel display can re-use the same sanitized string for the
+    ``SUBAGENT_PROGRESS`` display event.  A buggy hook that raises
+    is swallowed here too so the activity stream continues.
+    """
+
+    def _capturing_sink(summary: str) -> None:
+        sink_buffer.append(summary)
+        try:
+            invoke_subagent_sink(summary)
+        except Exception:
+            return
+
+    try:
+        emit_hook(parsed_line, _capturing_sink)
+    except Exception:
+        return
 
 
 def _record_activity_on_subscriber(

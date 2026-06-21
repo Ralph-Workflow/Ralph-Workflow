@@ -88,18 +88,18 @@ def test_no_backend_declares_numeric_timeout_seconds_literal(module_name: str) -
 def test_http_backends_import_central_timeout(module_name: str) -> None:
     """HTTP backends import the central timeout constant from ralph.timeout_defaults."""
     source = _source_for(module_name)
-    assert (
-        "from ralph.timeout_defaults import WEBSEARCH_BACKEND_TIMEOUT_SECONDS" in source
-    ), f"{module_name} must import WEBSEARCH_BACKEND_TIMEOUT_SECONDS from ralph.timeout_defaults"
+    assert "from ralph.timeout_defaults import WEBSEARCH_BACKEND_TIMEOUT_SECONDS" in source, (
+        f"{module_name} must import WEBSEARCH_BACKEND_TIMEOUT_SECONDS from ralph.timeout_defaults"
+    )
 
 
 @pytest.mark.parametrize("module_name", SDK_BACKEND_MODULES)
 def test_sdk_backends_route_through_with_timeout(module_name: str) -> None:
     """SDK backends wrap their third-party SDK call in :func:`with_timeout`."""
     source = _source_for(module_name)
-    assert (
-        "from ralph.mcp.websearch._bounded_sdk_call import" in source
-    ), f"{module_name} must import from ralph.mcp.websearch._bounded_sdk_call"
+    assert "from ralph.mcp.websearch._bounded_sdk_call import" in source, (
+        f"{module_name} must import from ralph.mcp.websearch._bounded_sdk_call"
+    )
     assert "with_timeout(" in source, (
         f"{module_name} must call with_timeout(...) to bound the SDK call"
     )

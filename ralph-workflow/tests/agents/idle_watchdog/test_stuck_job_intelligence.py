@@ -91,9 +91,7 @@ def _make_policy(
         os_descendant_only_ceiling_seconds=None,
         no_output_at_start_seconds=no_output_at_start,
         no_progress_quiet_seconds=no_progress_quiet_seconds,
-        no_progress_quiet_minimum_invocation_seconds=(
-            no_progress_quiet_minimum_invocation_seconds
-        ),
+        no_progress_quiet_minimum_invocation_seconds=(no_progress_quiet_minimum_invocation_seconds),
         post_tool_result_progression_seconds=None,
         repeated_error_window_count=5,
         repeated_error_window_seconds=60.0,
@@ -189,8 +187,7 @@ def test_stuck_classifier_returns_loading_defers_no_output_at_start() -> None:
     verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
     assert verdict != WatchdogVerdict.FIRE, (
-        f"expected NO_OUTPUT_AT_START to defer (live subagent -> LOADING),"
-        f" got verdict={verdict}"
+        f"expected NO_OUTPUT_AT_START to defer (live subagent -> LOADING), got verdict={verdict}"
     )
     assert watchdog.last_fire_reason != WatchdogFireReason.NO_OUTPUT_AT_START, (
         f"expected last_fire_reason != NO_OUTPUT_AT_START (LOADING defers),"
@@ -305,9 +302,7 @@ def test_children_persist_too_long_uses_live_corroboration_alive_by() -> None:
 
     # Enter WAITING_ON_CHILD branch.
     clock.advance(2.0)
-    first = watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-    )
+    first = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
     assert first == WatchdogVerdict.WAITING_ON_CHILD
 
     # Advance past the cumulative ceiling (2.0s). The corroborator
@@ -317,9 +312,7 @@ def test_children_persist_too_long_uses_live_corroboration_alive_by() -> None:
     # (the corroboration is exposed to the classifier for future
     # extensibility but does not change the verdict).
     clock.advance(5.0)
-    verdict = watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-    )
+    verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
 
     assert verdict == WatchdogVerdict.FIRE, (
         f"expected CHILDREN_PERSIST_TOO_LONG to FIRE (the gate allows"
@@ -327,8 +320,7 @@ def test_children_persist_too_long_uses_live_corroboration_alive_by() -> None:
         f" extensibility but does not change the verdict), got verdict={verdict}"
     )
     assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG, (
-        f"expected last_fire_reason == CHILDREN_PERSIST_TOO_LONG,"
-        f" got {watchdog.last_fire_reason}"
+        f"expected last_fire_reason == CHILDREN_PERSIST_TOO_LONG, got {watchdog.last_fire_reason}"
     )
     # The corroborator must have been invoked LIVE during the fire
     # decision. This is the proof that the gate saw the live
@@ -390,18 +382,14 @@ def test_children_persist_too_long_stale_corroboration_does_not_defeat_ceiling()
 
     # Enter WAITING_ON_CHILD branch.
     clock.advance(2.0)
-    first = watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-    )
+    first = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
     assert first == WatchdogVerdict.WAITING_ON_CHILD
 
     # Advance past the no_progress ceiling (10.0s). The
     # OS_DESCENDANT_ONLY_STALE_PROGRESS signal triggers the
     # no_progress ceiling math; the fire happens.
     clock.advance(15.0)
-    verdict = watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-    )
+    verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
 
     assert verdict == WatchdogVerdict.FIRE, (
         f"expected CHILDREN_PERSIST_TOO_LONG to FIRE (stale OS_DESCENDANT"
@@ -452,13 +440,10 @@ def test_no_progress_quiet_stuck_when_corroborator_says_dead() -> None:
     # no_progress_quiet ceiling (120s). All channels are stale,
     # corroborator says dead. The watchdog must FIRE NO_PROGRESS_QUIET.
     clock.advance(150.0)
-    verdict = watchdog.evaluate(
-        classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-    )
+    verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
 
     assert verdict == WatchdogVerdict.FIRE, (
-        f"expected FIRE (corroborator says dead, no fresh channels),"
-        f" got verdict={verdict}"
+        f"expected FIRE (corroborator says dead, no fresh channels), got verdict={verdict}"
     )
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET
     # The corroborator's alive_by signal is captured at the moment of
@@ -468,9 +453,16 @@ def test_no_progress_quiet_stuck_when_corroborator_says_dead() -> None:
     )
 
 
-# Sanity check: StuckKind is importable and the six kinds exist.
-def test_stuck_classifier_module_exposes_six_kinds() -> None:
-    """The StuckKind enum exposes the six documented kinds."""
+# Sanity check: StuckKind is importable and the seven kinds exist.
+def test_stuck_classifier_module_exposes_seven_kinds() -> None:
+    """The StuckKind enum exposes the seven documented kinds.
+
+    SILENT_SUBAGENT is the seventh kind added in this PR (a
+    post-mortem diagnostic for "a subagent dispatched but went
+    silent for >180s").  See
+    ``tests/agents/idle_watchdog/test_stuck_classifier.py``
+    for the diagnostic-behavior contract tests.
+    """
     expected = {
         StuckKind.THINKING,
         StuckKind.LOADING,
@@ -478,5 +470,6 @@ def test_stuck_classifier_module_exposes_six_kinds() -> None:
         StuckKind.TRANSITIONING,
         StuckKind.STUCK,
         StuckKind.DUPLICATE_KILL,
+        StuckKind.SILENT_SUBAGENT,
     }
     assert set(StuckKind) == expected

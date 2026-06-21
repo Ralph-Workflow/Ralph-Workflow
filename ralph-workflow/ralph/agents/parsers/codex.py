@@ -92,9 +92,7 @@ class _CodexDispatch:
         if content:
             yield AgentOutputLine(type="text", content=content, raw=stripped)
 
-    def _parse_text_delta(
-        self, obj: dict[str, object], stripped: str
-    ) -> Iterator[AgentOutputLine]:
+    def _parse_text_delta(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         delta_val = obj.get("delta")
         if isinstance(delta_val, dict):
             delta_obj = cast("dict[str, object]", delta_val)
@@ -135,9 +133,7 @@ class _CodexDispatch:
         acc = accumulators.pop(key)
         yield from acc.flush(kind="text")
 
-    def _parse_tool_use(
-        self, obj: dict[str, object], stripped: str
-    ) -> Iterator[AgentOutputLine]:
+    def _parse_tool_use(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         tool_name = str(obj.get("tool", obj.get("name", "unknown")))
         tool_input = obj.get("input", {})
         yield AgentOutputLine(
@@ -178,9 +174,7 @@ class _CodexDispatch:
         if result:
             yield AgentOutputLine(type="text", content=result, raw=stripped, metadata=obj)
 
-    def _parse_item_event(
-        self, obj: dict[str, object], stripped: str
-    ) -> Iterator[AgentOutputLine]:
+    def _parse_item_event(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         item_obj = obj.get("item")
         if not isinstance(item_obj, dict):
             yield AgentOutputLine(type=str(obj.get("type", "item")), raw=stripped, metadata=obj)

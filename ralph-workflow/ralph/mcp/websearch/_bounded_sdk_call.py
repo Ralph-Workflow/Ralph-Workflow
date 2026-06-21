@@ -138,9 +138,7 @@ class _BoundedSdkCall:
             return future.result(timeout=timeout_seconds)
         except concurrent.futures.TimeoutError as exc:
             effective_label = label if label is not None else _default_label(callable_)
-            raise WebSearchError(
-                f"{effective_label} timed out after {timeout_seconds}s"
-            ) from exc
+            raise WebSearchError(f"{effective_label} timed out after {timeout_seconds}s") from exc
 
     def install_executor(self, executor: concurrent.futures.ThreadPoolExecutor) -> None:
         """Install a custom executor (test-only seam)."""
@@ -207,9 +205,7 @@ def with_timeout[T](
             return future.result(timeout=timeout_seconds)
         except concurrent.futures.TimeoutError as exc:
             effective_label = label if label is not None else _default_label(callable_)
-            raise WebSearchError(
-                f"{effective_label} timed out after {timeout_seconds}s"
-            ) from exc
+            raise WebSearchError(f"{effective_label} timed out after {timeout_seconds}s") from exc
     return _default_call.submit(callable_, timeout_seconds, label=label)
 
 

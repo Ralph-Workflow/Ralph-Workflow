@@ -194,12 +194,10 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
         assert verdict == WatchdogVerdict.CONTINUE, (
-            f"expected CONTINUE (live corroborator reports alive_by=FRESH_PROGRESS),"
-            f" got {verdict}"
+            f"expected CONTINUE (live corroborator reports alive_by=FRESH_PROGRESS), got {verdict}"
         )
         assert watchdog.last_fire_reason is None, (
-            f"expected last_fire_reason=None (no fire happened),"
-            f" got {watchdog.last_fire_reason}"
+            f"expected last_fire_reason=None (no fire happened), got {watchdog.last_fire_reason}"
         )
         # Proves the LIVE call semantics: the corroborator was invoked
         # during evaluate(), not by reading the stale last_alive_by field.
@@ -258,8 +256,7 @@ class TestNoOutputAtStartLiveCorroborationDefer:
             f" NO_OUTPUT_AT_START), got verdict={verdict}"
         )
         assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START, (
-            f"expected last_fire_reason == NO_OUTPUT_AT_START,"
-            f" got {watchdog.last_fire_reason}"
+            f"expected last_fire_reason == NO_OUTPUT_AT_START, got {watchdog.last_fire_reason}"
         )
 
     def test_cpu_idle_while_alive_does_not_defer_no_output_at_start(self) -> None:
@@ -348,8 +345,7 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
         assert verdict == WatchdogVerdict.FIRE, (
-            f"expected FIRE (stale AliveBy.STALE_LABEL_ONLY MUST NOT defer),"
-            f" got verdict={verdict}"
+            f"expected FIRE (stale AliveBy.STALE_LABEL_ONLY MUST NOT defer), got verdict={verdict}"
         )
         assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
@@ -449,8 +445,7 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         # manipulation.
         result = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
         assert result == WatchdogVerdict.WAITING_ON_CHILD, (
-            f"expected WAITING_ON_CHILD (entering the waiting branch),"
-            f" got {result}"
+            f"expected WAITING_ON_CHILD (entering the waiting branch), got {result}"
         )
 
         # (c) Advance 5s in the waiting state.
@@ -463,8 +458,7 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         # returns CONTINUE.
         result = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
         assert result == WatchdogVerdict.CONTINUE, (
-            f"expected CONTINUE (drain window entered after cycle),"
-            f" got {result}"
+            f"expected CONTINUE (drain window entered after cycle), got {result}"
         )
 
         # (e) Public-property observation: the cumulative is now
@@ -501,8 +495,7 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         )
         # AC-02: no fire reason was recorded (deferral, not fire).
         assert watchdog.last_fire_reason is None, (
-            f"expected last_fire_reason=None (no fire happened),"
-            f" got {watchdog.last_fire_reason}"
+            f"expected last_fire_reason=None (no fire happened), got {watchdog.last_fire_reason}"
         )
 
     def test_still_fires_when_live_corroborator_returns_empty_and_no_waiting_run(
@@ -535,12 +528,10 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
         assert verdict == WatchdogVerdict.FIRE, (
-            f"expected FIRE (corroborator empty, no prior waiting run),"
-            f" got verdict={verdict}"
+            f"expected FIRE (corroborator empty, no prior waiting run), got verdict={verdict}"
         )
         assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START, (
-            f"expected last_fire_reason == NO_OUTPUT_AT_START, got"
-            f" {watchdog.last_fire_reason}"
+            f"expected last_fire_reason == NO_OUTPUT_AT_START, got {watchdog.last_fire_reason}"
         )
 
 
@@ -586,9 +577,7 @@ class TestSafeCorroborateFailsClosed:
         watchdog.record_invocation_start()
 
         snapshot = watchdog._safe_corroborate()
-        assert snapshot is not None, (
-            "_safe_corroborate MUST normalize None to an empty snapshot"
-        )
+        assert snapshot is not None, "_safe_corroborate MUST normalize None to an empty snapshot"
         assert isinstance(snapshot, CorroborationSnapshot)
         assert snapshot.alive_by is None
         # scoped_child_active is None by default (Optional[bool]); the
@@ -612,9 +601,7 @@ class TestSafeCorroborateFailsClosed:
         clock = FakeClock(start=0.0)
 
         for bogus_value in ("not a snapshot", 42, {"alive_by": "OS_DESCENDANT"}, []):
-            watchdog = IdleWatchdog(
-                config, clock, corroborator=lambda value=bogus_value: value
-            )
+            watchdog = IdleWatchdog(config, clock, corroborator=lambda value=bogus_value: value)
             snapshot = watchdog._safe_corroborate()
             assert isinstance(snapshot, CorroborationSnapshot), (
                 f"non-snapshot return {bogus_value!r} MUST normalize to empty"
@@ -653,10 +640,8 @@ class TestSafeCorroborateFailsClosed:
 
         # No live evidence + no prior waiting run => NO_OUTPUT_AT_START fires.
         assert verdict == WatchdogVerdict.FIRE, (
-            f"expected FIRE (no live evidence, no prior waiting run),"
-            f" got verdict={verdict}"
+            f"expected FIRE (no live evidence, no prior waiting run), got verdict={verdict}"
         )
         assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START, (
-            f"expected last_fire_reason == NO_OUTPUT_AT_START, got"
-            f" {watchdog.last_fire_reason}"
+            f"expected last_fire_reason == NO_OUTPUT_AT_START, got {watchdog.last_fire_reason}"
         )

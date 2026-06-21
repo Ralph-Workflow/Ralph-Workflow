@@ -119,11 +119,7 @@ class AgentSupport:
             An AgentSupport instance ready for AgentCatalog.add().
         """
         effective_session_flag = session_flag
-        if (
-            effective_session_flag is None
-            and interactive
-            and not no_default_session_flag
-        ):
+        if effective_session_flag is None and interactive and not no_default_session_flag:
             effective_session_flag = "--resume {}"
 
         config = AgentConfig(

@@ -884,20 +884,17 @@ class TestPostRefactorContract:
         shape must be identical: name, spec, parser_factory,
         strategy_factory, config, is_builtin, no_default_session_flag.
         """
+
         class _TemplateParser(ParserTemplateBase):
             _STOP_EVENT_TYPES = frozenset()
 
-            def classify_line(
-                self, line: str
-            ) -> Iterator[AgentOutputLine]:
+            def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
                 stripped = line.strip()
                 result = self.parse_json_line(stripped)
                 if result is not None:
                     yield result
                 else:
-                    yield AgentOutputLine(
-                        type="raw", content=stripped, raw=stripped
-                    )
+                    yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
 
         class _Strategy(BaseExecutionStrategy):
             pass
@@ -945,20 +942,17 @@ class TestPostRefactorContract:
 
     def test_agent_support_is_frozen_cannot_mutate(self) -> None:
         """``AgentSupport`` must remain a frozen dataclass (no mutation)."""
+
         class _TemplateParser(ParserTemplateBase):
             _STOP_EVENT_TYPES = frozenset()
 
-            def classify_line(
-                self, line: str
-            ) -> Iterator[AgentOutputLine]:
+            def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
                 stripped = line.strip()
                 result = self.parse_json_line(stripped)
                 if result is not None:
                     yield result
                 else:
-                    yield AgentOutputLine(
-                        type="raw", content=stripped, raw=stripped
-                    )
+                    yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
 
         class _Strategy(BaseExecutionStrategy):
             pass

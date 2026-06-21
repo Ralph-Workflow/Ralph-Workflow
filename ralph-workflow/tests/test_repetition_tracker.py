@@ -12,6 +12,16 @@ forever. It must:
 - never trip on genuinely distinct messages, and
 - be fully disablable.
 
+Two independent repetition dimensions share the same consecutive + window
+thresholds:
+
+- the **error / cosmetic-progress** dimension via ``note_error``,
+- the **tool-call** dimension via ``mark_tool_call`` (NEW).
+
+The two dimensions track independent fingerprint deques so a real
+error-loop and a real tool-call-loop can co-exist without cancelling each
+other.
+
 All timing is driven by an injected ``FakeClock`` so the suite stays well
 within the 60s combined budget with zero real waits.
 """
@@ -125,3 +135,125 @@ def test_disabled_tracker_never_trips() -> None:
         tracker.note_error(msg)
         clock.advance(1.0)
     assert not tracker.tripped()
+
+
+# ---------------------------------------------------------------------------
+# Tool-call dimension (NEW in this PR).
+# ---------------------------------------------------------------------------
+
+
+def test_mark_tool_call_fingerprints_tool_name_args() -> None:
+    """``mark_tool_call`` MUST build a fingerprint on ``(tool_name, tool_args)``.
+
+    Two calls with the same tool name and same arguments produce the
+    same fingerprint (so the consecutive + window rules can trip on
+    identical re-issues).  Reordering dict keys MUST NOT affect the
+    fingerprint (sort_keys=True).
+    """
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=2, window_count=None, window_seconds=None)
+    tracker.mark_tool_call("Bash", {"command": "ls"})
+    tracker.mark_tool_call("Bash", {"command": "ls"})
+    # Two identical fingerprints -> consecutive streak of 2 = threshold.
+    assert tracker.tripped()
+    assert tracker.tripped_tool_dimension()
+
+
+def test_mark_tool_call_key_order_does_not_affect_fingerprint() -> None:
+    """Reordering dict keys in tool_args MUST NOT affect the fingerprint."""
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=2, window_count=None, window_seconds=None)
+    tracker.mark_tool_call("Bash", {"command": "ls", "workdir": "/tmp"})
+    tracker.mark_tool_call("Bash", {"workdir": "/tmp", "command": "ls"})
+    assert tracker.tripped_tool_dimension()
+
+
+def test_tripped_returns_true_after_repeated_identical_tool_calls() -> None:
+    """The tool-call dimension trips after N consecutive identical
+    ``mark_tool_call`` observations.
+
+    The error dimension is NOT tripped (no ``note_error`` calls) so
+    ``tripped_tool_dimension`` MUST return True so the watchdog can
+    emit ``REPEATED_IDENTICAL_TOOL_CALL``.
+    """
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=3, window_count=None, window_seconds=None)
+    for _ in range(2):
+        tracker.mark_tool_call("Bash", {"command": "ls"})
+        clock.advance(1.0)
+        assert not tracker.tripped()
+    tracker.mark_tool_call("Bash", {"command": "ls"})
+    assert tracker.tripped()
+    # The error dimension is empty so tripped_tool_dimension returns True.
+    assert tracker.tripped_tool_dimension()
+
+
+def test_different_tool_call_args_do_not_trip() -> None:
+    """Two tool calls with the same name but different args MUST NOT trip.
+
+    ``Bash:ls`` and ``Bash:cat foo.txt`` are different tool calls; the
+    tracker MUST NOT collapse them into a single fingerprint.
+    """
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=2, window_count=None, window_seconds=None)
+    tracker.mark_tool_call("Bash", {"command": "ls"})
+    tracker.mark_tool_call("Bash", {"command": "cat foo.txt"})
+    assert not tracker.tripped()
+    assert not tracker.tripped_tool_dimension()
+
+
+def test_tool_call_window_rule_trips_with_consecutive_streak_resets() -> None:
+    """The window rule trips on the tool-call dimension too: when a tiny
+    bit of cosmetic different-tool-call output interleaves with the
+    identical-tool-call wedge, the consecutive streak keeps resetting
+    but the window rule still trips.
+    """
+    clock = FakeClock()
+    # Disable consecutive so only the window rule can trip.
+    tracker = _tracker(clock, consecutive_threshold=None, window_count=4, window_seconds=600.0)
+    for _ in range(4):
+        tracker.mark_tool_call("Bash", {"command": "ls"})
+        tracker.mark_tool_call("Read", {"path": "/tmp/other.txt"})
+        clock.advance(20.0)
+    # 4 occurrences of the Bash:ls fingerprint within the 600s window.
+    assert tracker.tripped()
+    assert tracker.tripped_tool_dimension()
+
+
+def test_error_and_tool_dimensions_are_independent() -> None:
+    """Tripping the tool-call dimension MUST NOT trip the error dimension.
+
+    The two dimensions are tracked in separate deques so a real
+    tool-call wedge can be detected without a coincident error-loop.
+    """
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=3, window_count=None, window_seconds=None)
+    # Three identical tool calls trip the tool-call dimension.
+    for _ in range(3):
+        tracker.mark_tool_call("Bash", {"command": "ls"})
+        clock.advance(1.0)
+    assert tracker.tripped()
+    # tripped_tool_dimension returns True ONLY for the tool-call
+    # dimension.  Confirm the error dimension is empty.
+    assert tracker.tripped_tool_dimension()
+
+
+def test_error_dimension_takes_precedence_over_tool_dimension() -> None:
+    """When BOTH dimensions are tripped the watchdog fires
+    ``REPEATED_ERROR_LOOP`` so the canonical reason wins.
+
+    ``tripped_tool_dimension`` returns False in that case (the
+    error reason wins for routing purposes).  ``tripped`` returns
+    True so the watchdog fires.
+    """
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=3, window_count=None, window_seconds=None)
+    msg = "MCP error -32001: Request timed out"
+    for _ in range(3):
+        tracker.note_error(msg)
+        tracker.mark_tool_call("Bash", {"command": "ls"})
+        clock.advance(1.0)
+    assert tracker.tripped()
+    # Both dimensions tripped -> tool dimension is NOT the one that
+    # should drive the fire reason (error dimension wins).
+    assert not tracker.tripped_tool_dimension()

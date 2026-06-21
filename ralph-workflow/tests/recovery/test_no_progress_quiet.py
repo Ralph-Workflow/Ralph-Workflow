@@ -179,8 +179,7 @@ def test_run_loop_emits_waiting_then_resumed(monkeypatch: MonkeyPatch) -> None:
     # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
         last_error=(
-            "all agents unavailable (last reason: out_of_credits);"
-            " waiting for cooldown expiry"
+            "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
         ),
         last_retry_delay_ms=200,
         is_waiting_state=True,
@@ -266,8 +265,7 @@ def test_run_loop_never_crashes_on_sleep_exception(monkeypatch: MonkeyPatch) -> 
     # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
         last_error=(
-            "all agents unavailable (last reason: out_of_credits);"
-            " waiting for cooldown expiry"
+            "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
         ),
         last_retry_delay_ms=200,
         is_waiting_state=True,
@@ -390,8 +388,7 @@ def test_run_loop_guard_suppresses_duplicate_waiting_in_same_phase(
     # context only and is NOT a contract the run loop parses.
     state = state.copy_with(
         last_error=(
-            "all agents unavailable (last reason: out_of_credits);"
-            " waiting for cooldown expiry"
+            "all agents unavailable (last reason: out_of_credits); waiting for cooldown expiry"
         ),
         last_retry_delay_ms=200,
         is_waiting_state=True,

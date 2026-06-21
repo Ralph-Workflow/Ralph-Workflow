@@ -199,9 +199,7 @@ class AgentCatalog:
     _by_command: dict[str, "AgentSupport"] = field(default_factory=dict)
     _state: _AgentCatalogState = field(default_factory=_AgentCatalogState)
 
-    def _default_strategy_for_transport(
-        self, transport: AgentTransport
-    ) -> "StrategyFactory":
+    def _default_strategy_for_transport(self, transport: AgentTransport) -> "StrategyFactory":
         """Return the transport-derived default strategy factory for ``transport``.
 
         Looks up the agent's canonical default strategy table.  Raises
@@ -402,6 +400,7 @@ def _seed_default_catalog(catalog: AgentCatalog) -> None:
     from ralph.agents.builtin import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->builtin cycle
         builtin_supports,
     )
+
     for name, (factory, _transport, _strategy) in _DEFAULT_BUILTIN_PARSER_TYPES.items():
         catalog._state.parsers[name] = factory
     for support in builtin_supports():

@@ -191,7 +191,6 @@ def test_agy_workspace_mcp_endpoint_unsafe_mode_overwrites_stale_ralph(
     assert agy_config_path.read_text(encoding="utf-8") == original_text
 
 
-
 def test_agy_workspace_mcp_endpoint_unsafe_mode_merges_workspace_and_global(
     tmp_path: Path, agy_config_path: Path
 ) -> None:

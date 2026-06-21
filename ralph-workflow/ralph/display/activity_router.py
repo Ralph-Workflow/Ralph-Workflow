@@ -91,6 +91,7 @@ def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
         "error": ActivityEventKind.ERROR,
         "status": ActivityEventKind.STATUS,
         "lifecycle": ActivityEventKind.LIFECYCLE,
+        "subagent_progress": ActivityEventKind.SUBAGENT_PROGRESS,
     }
     return mapping.get(parser_type, ActivityEventKind.UNKNOWN)
 

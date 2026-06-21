@@ -47,14 +47,10 @@ class TestMergeExistingUpstreams:
         )
 
         current_config = {
-            "mcpServers": {
-                "ralph": {"type": "http", "url": "http://127.0.0.1:9999/mcp"}
-            }
+            "mcpServers": {"ralph": {"type": "http", "url": "http://127.0.0.1:9999/mcp"}}
         }
 
-        result = merge_existing_upstreams(
-            "claude", current_config, unsafe_mode=False
-        )
+        result = merge_existing_upstreams("claude", current_config, unsafe_mode=False)
 
         servers = result.get("mcpServers", {})
         assert "ralph" in servers
@@ -84,14 +80,10 @@ class TestMergeExistingUpstreams:
         )
 
         current_config = {
-            "mcpServers": {
-                "ralph": {"type": "http", "url": "http://127.0.0.1:9999/mcp"}
-            }
+            "mcpServers": {"ralph": {"type": "http", "url": "http://127.0.0.1:9999/mcp"}}
         }
 
-        result = merge_existing_upstreams(
-            "claude", current_config, unsafe_mode=True
-        )
+        result = merge_existing_upstreams("claude", current_config, unsafe_mode=True)
 
         servers = result.get("mcpServers", {})
         assert "ralph" in servers
@@ -106,18 +98,12 @@ class TestMergeExistingUpstreams:
             (
                 "claude",
                 lambda: {
-                    "mcpServers": {
-                        "ralph": {"type": "http", "url": "http://127.0.0.1:9999/mcp"}
-                    }
+                    "mcpServers": {"ralph": {"type": "http", "url": "http://127.0.0.1:9999/mcp"}}
                 },
             ),
             (
                 "agy",
-                lambda: {
-                    "mcpServers": {
-                        "ralph": {"serverUrl": "http://127.0.0.1:9999/mcp"}
-                    }
-                },
+                lambda: {"mcpServers": {"ralph": {"serverUrl": "http://127.0.0.1:9999/mcp"}}},
             ),
             (
                 "nanocoder",
@@ -171,9 +157,7 @@ class TestMergeExistingUpstreams:
         """
         current_config = current_config_factory()
 
-        result = merge_existing_upstreams(
-            agent_name, current_config, unsafe_mode=False
-        )
+        result = merge_existing_upstreams(agent_name, current_config, unsafe_mode=False)
 
         assert isinstance(result, dict)
         if agent_name in ("claude", "agy", "nanocoder"):
@@ -207,9 +191,7 @@ class TestMergeExistingUpstreams:
             }
         }
 
-        result = merge_existing_upstreams(
-            "opencode", current_config, unsafe_mode=True
-        )
+        result = merge_existing_upstreams("opencode", current_config, unsafe_mode=True)
 
         assert result["mcp"]["github"]["type"] == "http"
         assert result["mcp"]["github"]["url"] == "https://existing.invalid/sse"
@@ -241,9 +223,7 @@ class TestMergeExistingUpstreams:
             }
         }
 
-        result = merge_existing_upstreams(
-            "opencode", current_config, unsafe_mode=False
-        )
+        result = merge_existing_upstreams("opencode", current_config, unsafe_mode=False)
 
         assert "mcp" in result
         assert "ralph" in result["mcp"]
@@ -264,9 +244,7 @@ class TestMergeExistingUpstreams:
             },
         }
 
-        result = merge_existing_upstreams(
-            "codex", current_config, unsafe_mode=True
-        )
+        result = merge_existing_upstreams("codex", current_config, unsafe_mode=True)
 
         assert "mcp_servers.github" in result
         assert "mcp_servers.ralph" in result
@@ -275,8 +253,7 @@ class TestMergeExistingUpstreams:
         # the proper mcp_servers.ralph TOML key. This catches the bug where
         # result[RALPH_MCP_SERVER_NAME] was used instead of result[codex_ralph_key].
         assert "ralph" not in result, (
-            f"Ralph entry leaked to top-level 'ralph' key. "
-            f"Result keys: {list(result.keys())}"
+            f"Ralph entry leaked to top-level 'ralph' key. Result keys: {list(result.keys())}"
         )
         assert result["mcp_servers.github"]["url"] == "https://existing.invalid/sse"
         assert result["mcp_servers.ralph"]["url"] == "http://127.0.0.1:9999/sse"
@@ -296,9 +273,7 @@ class TestMergeExistingUpstreams:
             },
         }
 
-        result = merge_existing_upstreams(
-            "codex", current_config, unsafe_mode=False
-        )
+        result = merge_existing_upstreams("codex", current_config, unsafe_mode=False)
 
         assert "mcp_servers.ralph" in result
         assert "mcp_servers.github" not in result

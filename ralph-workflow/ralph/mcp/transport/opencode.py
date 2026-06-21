@@ -65,9 +65,7 @@ def build_opencode_provider_config(
     )
     current_config_mcp["ralph"] = ralph_entry
     current_config: dict[str, object] = {"mcp": current_config_mcp}
-    merged = merge_existing_upstreams(
-        "opencode", current_config, unsafe_mode=unsafe_mode
-    )
+    merged = merge_existing_upstreams("opencode", current_config, unsafe_mode=unsafe_mode)
     config_obj["mcp"] = merged.get("mcp", {"ralph": ralph_entry})
 
     # The field OpenCode actually honors for the MCP request timeout (the per-server

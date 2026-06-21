@@ -67,6 +67,7 @@ def _make_os_descendant_only_corroborator() -> WaitingCorroborator:
             scoped_child_active=True,
             scoped_child_count=1,
         )
+
     return _corr
 
 
@@ -159,6 +160,7 @@ def test_cpu_idle_override_picks_no_progress_ceiling() -> None:
     Advance to 190s -> FIRE with effective_ceiling_label='no_progress'
     and effective_ceiling=180.0.
     """
+
     def _cpu_idle_corr() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=AliveBy.CPU_IDLE_WHILE_ALIVE,
@@ -206,6 +208,7 @@ def test_log_growth_override_picks_no_progress_ceiling() -> None:
     Advance to 190s -> FIRE with effective_ceiling_label='no_progress'
     and effective_ceiling=180.0.
     """
+
     def _log_stale_corr() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=AliveBy.LOG_STALE_WHILE_ALIVE,
@@ -251,6 +254,7 @@ def test_fresh_progress_path_unchanged() -> None:
     -> CONTINUE (standard ceiling 600.0, not yet reached).
     Any PROGRESS event has effective_ceiling_label='standard'.
     """
+
     def _fresh_progress_corr() -> CorroborationSnapshot:
         return CorroborationSnapshot(
             alive_by=AliveBy.FRESH_PROGRESS,

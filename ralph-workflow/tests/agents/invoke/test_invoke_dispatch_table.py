@@ -33,11 +33,11 @@ def test_invoke_dispatch_table(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
     monkeypatch.setattr(
         "ralph.agents.invoke.run_pty_and_read_lines",
-        lambda cmd, ctx, extras=None: (pty_called.append(cmd) or iter(["pty line"])),
+        lambda cmd, ctx, extras=None: pty_called.append(cmd) or iter(["pty line"]),
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
-        lambda cmd, ctx: (sub_called.append(cmd) or iter(["sub line"])),
+        lambda cmd, ctx: sub_called.append(cmd) or iter(["sub line"]),
     )
 
     options = InvokeOptions(workspace_path=tmp_path, show_progress=False)

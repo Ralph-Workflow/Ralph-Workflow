@@ -101,9 +101,7 @@ def prepare_codex_home_with_upstreams(
         if merged_toml:
             appended_sections.append(merged_toml + "\n")
         ralph_section = (
-            f"[mcp_servers.{RALPH_MCP_SERVER_NAME}]\n"
-            f'url = "{endpoint}"\n'
-            f"enabled = true\n"
+            f'[mcp_servers.{RALPH_MCP_SERVER_NAME}]\nurl = "{endpoint}"\nenabled = true\n'
         )
         if ralph_section.strip() not in merged_toml:
             appended_sections.append(ralph_section)

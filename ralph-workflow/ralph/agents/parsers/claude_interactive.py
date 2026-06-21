@@ -5,13 +5,20 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from ._event_classification import is_lifecycle_kind
+from ._template import (
+    _EMITTABLE_TYPES,
+    _MAX_PREFIX_LENGTH,
+    _MAX_SUMMARY_LENGTH,
+    _sanitize_parser_subagent_summary,
+    _tool_name_from_line,
+)
 from .agent_output_line import AgentOutputLine
 from .claude_interactive_transcript_parser import ClaudeInteractiveTranscriptParser
 from .interactive_transcript_event import InteractiveTranscriptEvent
 from .text_accumulator import TextAccumulator
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 
 class ClaudeInteractiveParser:
@@ -21,6 +28,48 @@ class ClaudeInteractiveParser:
         self._parser = ClaudeInteractiveTranscriptParser()
         self._text_accumulator = TextAccumulator()
         self._thinking_accumulator = TextAccumulator()
+
+    def emit_subagent_activity(
+        self,
+        line: AgentOutputLine,
+        sink: Callable[[str], None],
+    ) -> None:
+        """Forward a parsed interactive-Claude line to the subagent sink.
+
+        Parallel standalone implementation of the
+        :meth:`ParserTemplateBase.emit_subagent_activity` hook for the
+        interactive-Claude transport (which does NOT inherit from
+        :class:`ParserTemplateBase`).  The hook fires ONLY for the
+        four ``_EMITTABLE_TYPES`` kinds so a hard-failing child or a
+        lifecycle heartbeat does not keep the watchdog deferring a
+        kill.  Sink exceptions are swallowed so a buggy sink cannot
+        crash the activity stream.
+
+        Summary format matches the NDJSON parser layer: ``tool_use:<name>``
+        for tool calls, ``tool_result:<name>`` for tool results,
+        ``text:<first-80-chars>`` for model text, and
+        ``thinking:<first-80-chars>`` for thinking blocks.
+        """
+        if line.type not in _EMITTABLE_TYPES:
+            return
+        tool_name = _tool_name_from_line(line)
+        if line.type in {"tool_use", "tool_result"}:
+            summary = f"{line.type}:{tool_name}"
+        else:
+            content = line.content.strip()
+            truncated = (
+                content[:_MAX_PREFIX_LENGTH] if len(content) > _MAX_PREFIX_LENGTH else content
+            )
+            summary = f"{line.type}:{truncated}"
+        summary = _sanitize_parser_subagent_summary(summary)
+        if not summary:
+            return
+        if len(summary) > _MAX_SUMMARY_LENGTH:
+            summary = summary[:_MAX_SUMMARY_LENGTH]
+        try:
+            sink(summary)
+        except Exception:
+            return
 
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         for raw in lines:

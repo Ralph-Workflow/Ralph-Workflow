@@ -169,6 +169,7 @@ def resolve_parser_key(
     from ralph.agents.catalog import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->parsers cycle
         _ParserRegistryEntry,
     )
+
     if isinstance(custom_entry, _ParserRegistryEntry) and custom_entry.transport == transport:
         return command_lower
     if transport == AgentTransport.CLAUDE_INTERACTIVE:
@@ -181,6 +182,7 @@ def resolve_parser_key(
         from ralph.agents.catalog import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->parsers cycle
             default_catalog,
         )
+
         for support in default_catalog().by_transport(transport):
             if support.name.lower() in parser_registry:
                 return support.name.lower()
@@ -207,6 +209,7 @@ def get_parser(parser_type: str) -> AgentParser:
     from ralph.agents.catalog import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->parsers cycle
         _ParserRegistryEntry,
     )
+
     if isinstance(custom_entry, _ParserRegistryEntry):
         return custom_entry.parser_factory()
     msg = f"Unknown parser type: {parser_type}"

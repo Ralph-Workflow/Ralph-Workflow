@@ -558,9 +558,7 @@ def _classify_unavailability_reason(
         # can take the Rule 1 branch (defense-in-depth; normally dead
         # code because the wt-012 gate refinement defers the fire
         # when alive_by is not None).
-        reason = (
-            None if child_alive is True else UnavailabilityReason.STALE_CHILD_QUIET
-        )
+        reason = None if child_alive is True else UnavailabilityReason.STALE_CHILD_QUIET
     elif watchdog_reason == "children_persist_too_long":
         reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
     elif (connectivity_state or "").casefold() == "online":
@@ -665,9 +663,7 @@ class FailureClassifier:
         # direct cause for the ``child_alive`` field.
         child_alive: bool | None = None
         if exc_obj is not None:
-            direct_cause = cast(
-                "BaseException | None", getattr(exc_obj, "__cause__", None)
-            )
+            direct_cause = cast("BaseException | None", getattr(exc_obj, "__cause__", None))
             if isinstance(direct_cause, IdleWatchdogKilledError):
                 child_alive = direct_cause.child_alive
 
@@ -697,10 +693,7 @@ class FailureClassifier:
                     watchdog_reason in _WATCHDOG_UNAVAILABILITY_REASONS
                     and watchdog_reason != "no_progress_quiet"
                 )
-                or (
-                    watchdog_reason == "no_progress_quiet"
-                    and child_alive in (False, None)
-                )
+                or (watchdog_reason == "no_progress_quiet" and child_alive in (False, None))
                 or (
                     (
                         exc_obj is None
@@ -852,9 +845,7 @@ class FailureClassifier:
             if next_cause is not None:
                 current = next_cause
             else:
-                current = cast(
-                    "BaseException | None", getattr(current, "__context__", None)
-                )
+                current = cast("BaseException | None", getattr(current, "__context__", None))
         return None
 
     def _classify_agent_invocation_error(

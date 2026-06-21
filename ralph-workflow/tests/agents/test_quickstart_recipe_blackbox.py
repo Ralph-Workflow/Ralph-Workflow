@@ -191,8 +191,7 @@ class TestQuickstartRecipeBlackbox:
             "Interactive recipe did not register an agent under the override name"
         )
         assert support.transport is AgentTransport.CLAUDE_INTERACTIVE, (
-            f"Interactive recipe transport must be CLAUDE_INTERACTIVE, "
-            f"got {support.transport!r}"
+            f"Interactive recipe transport must be CLAUDE_INTERACTIVE, got {support.transport!r}"
         )
         # The spec.interactive flag must match the recipe's kwargs (True for interactive).
         assert support.spec.interactive is True, (
@@ -216,9 +215,7 @@ class TestQuickstartRecipeBlackbox:
         )
 
         # 4. The PUBLIC build_command helper produces the expected argv.
-        argv = build_command(
-            support.config, "PROMPT.md", options=_build_default_options()
-        )
+        argv = build_command(support.config, "PROMPT.md", options=_build_default_options())
         assert argv, "build_command returned an empty argv for the interactive recipe"
         # argv[0] is the agent's cmd (defaults to name, which we overrode).
         assert argv[0] == "quickstart-interactive", (
@@ -247,8 +244,5 @@ class TestQuickstartRecipeBlackbox:
             try:
                 compile(snippet, "<quickstart-recipe-snippet>", "exec")
             except SyntaxError as exc:
-                msg = (
-                    f"Quickstart recipe block {block_index} failed to compile:\n"
-                    f"{snippet}\n{exc}"
-                )
+                msg = f"Quickstart recipe block {block_index} failed to compile:\n{snippet}\n{exc}"
                 raise AssertionError(msg) from exc

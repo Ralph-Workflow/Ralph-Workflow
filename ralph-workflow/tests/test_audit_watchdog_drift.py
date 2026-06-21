@@ -159,9 +159,7 @@ def test_audit_flags_duplicate_idle_watchdog_class() -> None:
         violations = audit.audit_watchdog_drift(package_root, repo_root=repo_root)
 
         matches = [v for v in violations if v.kind == "duplicate_idle_watchdog"]
-        assert matches, (
-            f"expected at least one duplicate_idle_watchdog violation; got {violations}"
-        )
+        assert matches, f"expected at least one duplicate_idle_watchdog violation; got {violations}"
         # The violation's file_path is the rel path; the test wants to see
         # the relative path of the file we wrote.  The audit emits
         # ``agents/some_other_module.py`` (no leading ralph/).
@@ -203,8 +201,7 @@ def test_audit_flags_watchdog_fire_reason_outside_canonical_owners() -> None:
 
         matches = [v for v in violations if v.kind == "fire_reason_outside_canonical_owner"]
         assert matches, (
-            f"expected at least one fire_reason_outside_canonical_owner violation;"
-            f" got {violations}"
+            f"expected at least one fire_reason_outside_canonical_owner violation; got {violations}"
         )
         rel = bad_path.relative_to(package_root).as_posix()
         assert any(v.file_path == rel for v in matches), (
@@ -229,8 +226,7 @@ def test_audit_flags_attribute_call_watchdog_fire_reason_outside_owner() -> None
 
         matches = [v for v in violations if v.kind == "fire_reason_outside_canonical_owner"]
         assert matches, (
-            f"expected at least one fire_reason_outside_canonical_owner violation;"
-            f" got {violations}"
+            f"expected at least one fire_reason_outside_canonical_owner violation; got {violations}"
         )
         rel = bad_path.relative_to(package_root).as_posix()
         assert any(v.file_path == rel for v in matches), (
@@ -362,9 +358,7 @@ def test_audit_module_imports_clean() -> None:
     for name, hits in forbidden_attrs.items():
         for path, lineno in hits:
             all_violations.append(f"{path}:{lineno}: attribute access on {name}")
-    assert not all_violations, (
-        f"audit module uses forbidden I/O primitives: {all_violations}"
-    )
+    assert not all_violations, f"audit module uses forbidden I/O primitives: {all_violations}"
 
 
 def test_audit_module_main_function_returns_zero_on_clean_tree() -> None:

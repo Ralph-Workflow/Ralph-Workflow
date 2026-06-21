@@ -75,8 +75,7 @@ class TestRegisterAgentSupportShim:
             "no_default_session_flag",
         }
         assert param_names == expected, (
-            f"register_agent_support signature changed. "
-            f"Expected {expected}, got {param_names}"
+            f"register_agent_support signature changed. Expected {expected}, got {param_names}"
         )
 
     def test_register_agent_support_returns_agent_config_from_catalog(self) -> None:
@@ -286,8 +285,7 @@ class TestRegistrationDelegationToAgentCatalog:
         call_args = captured[0]["args"]
         call_kwargs = captured[0]["kwargs"]
         assert call_args[0] == "delegation-my-agent", (
-            f"register_my_agent must forward name as first positional arg, "
-            f"got {call_args[0]!r}"
+            f"register_my_agent must forward name as first positional arg, got {call_args[0]!r}"
         )
         assert call_kwargs["transport"] == AgentTransport.GENERIC
         assert call_kwargs["agent_registry"] is registry

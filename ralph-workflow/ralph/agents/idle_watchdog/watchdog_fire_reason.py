@@ -8,7 +8,7 @@ class WatchdogFireReason(StrEnum):
 
     IdleWatchdog reasons (in-stream):
       NO_OUTPUT_DEADLINE, NO_OUTPUT_AT_START, CHILDREN_PERSIST_TOO_LONG,
-      SESSION_CEILING_EXCEEDED.
+      SESSION_CEILING_EXCEEDED, REPEATED_IDENTICAL_TOOL_CALL.
     PostExitWatchdog reasons (post-exit):
       PROCESS_EXIT_HANG, DESCENDANT_HANG.
     """
@@ -17,6 +17,7 @@ class WatchdogFireReason(StrEnum):
     NO_OUTPUT_AT_START = "no_output_at_start"
     STALLED_AFTER_TOOL_RESULT = "stalled_after_tool_result"
     REPEATED_ERROR_LOOP = "repeated_error_loop"
+    REPEATED_IDENTICAL_TOOL_CALL = "repeated_identical_tool_call"
     CHILDREN_PERSIST_TOO_LONG = "children_persist_too_long"
     NO_PROGRESS_QUIET = "no_progress_quiet"
     SESSION_CEILING_EXCEEDED = "session_ceiling_exceeded"

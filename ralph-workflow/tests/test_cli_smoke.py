@@ -752,9 +752,7 @@ def test_apply_agy_binary_override_to_config_ignores_nonexecutable_file(
     """``_apply_agy_binary_override_to_config`` ignores a non-executable override."""
     config = UnifiedConfig(
         agents={
-            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(
-                cmd="agy", transport=AgentTransport.AGY
-            ),
+            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
             "claude/haiku": AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
         }
     )
@@ -771,9 +769,7 @@ def test_apply_agy_binary_override_to_config_accepts_mock_shell_script(
     mock_path = Path(__file__).resolve().parent / "_support" / "mock_agy.sh"
     config = UnifiedConfig(
         agents={
-            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(
-                cmd="agy", transport=AgentTransport.AGY
-            ),
+            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", str(mock_path))
@@ -847,12 +843,8 @@ def test_apply_agy_binary_override_to_config_accepts_non_mock_executable(
 
     config = UnifiedConfig(
         agents={
-            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(
-                cmd="agy", transport=AgentTransport.AGY
-            ),
-            "claude/haiku": AgentConfig(
-                cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE
-            ),
+            "agy/Gemini 3.5 Flash (Medium)": AgentConfig(cmd="agy", transport=AgentTransport.AGY),
+            "claude/haiku": AgentConfig(cmd="claude", transport=AgentTransport.CLAUDE_INTERACTIVE),
         }
     )
     monkeypatch.setenv("RALPH_AGY_BINARY", str(stub_path))

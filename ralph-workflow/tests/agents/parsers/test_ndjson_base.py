@@ -67,9 +67,7 @@ class TestNdjsonParserBaseBehaviors:
 
     def test_strips_data_prefix(self) -> None:
         parser = _RecordingParser()
-        results = list(
-            parser.parse(_lines('data: {"type": "text", "content": "hi"}'))
-        )
+        results = list(parser.parse(_lines('data: {"type": "text", "content": "hi"}')))
         assert len(results) == 1
         assert results[0].type == "text"
         assert results[0].content == "hi"
@@ -82,9 +80,7 @@ class TestNdjsonParserBaseBehaviors:
 
     def test_strips_data_prefix_with_surrounding_whitespace(self) -> None:
         parser = _RecordingParser()
-        results = list(
-            parser.parse(_lines('   data:    {"type": "text", "content": "x"}   '))
-        )
+        results = list(parser.parse(_lines('   data:    {"type": "text", "content": "x"}   ')))
         assert len(results) == 1
         assert results[0].content == "x"
 
@@ -150,8 +146,7 @@ class TestNdjsonParserBaseBehaviors:
         line = json.dumps({"type": lifecycle_type})
         results = list(parser.parse(_lines(line)))
         assert results == [], (
-            f"Lifecycle event type {lifecycle_type!r} must be suppressed; "
-            f"got {results!r}"
+            f"Lifecycle event type {lifecycle_type!r} must be suppressed; got {results!r}"
         )
         # The lifecycle event must not have been dispatched to the subclass.
         assert parser.received == []
@@ -216,9 +211,7 @@ class TestNdjsonParserBaseClassifyNonJsonLine:
 
     def test_subclass_can_override_non_json(self) -> None:
         class _PlainToolParser(NdjsonParserBase):
-            def _classify_non_json_line(
-                self, stripped: str
-            ) -> Iterator[AgentOutputLine]:
+            def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
                 if stripped.startswith("[plain] tool:"):
                     return
                 yield from super()._classify_non_json_line(stripped)

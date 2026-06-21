@@ -144,9 +144,7 @@ class TestBlackboxRecipeEndToEnd:
         assert isinstance(parser, GenericParser)
 
         # 3. catalog.get_strategy(transport, command=name) returns the strategy.
-        strategy = registry.catalog.get_strategy(
-            AgentTransport.GENERIC, command="recipe-agent"
-        )
+        strategy = registry.catalog.get_strategy(AgentTransport.GENERIC, command="recipe-agent")
         assert isinstance(strategy, GenericExecutionStrategy)
 
         # 4. The PUBLIC build_command helper produces the expected argv.
@@ -215,9 +213,7 @@ def test_recipe_snippet_executes_against_real_parser() -> None:
     )
 
     support = registry_obj.catalog.get("my-agent")
-    assert support is not None, (
-        "Recipe snippet did not register an agent under 'my-agent'"
-    )
+    assert support is not None, "Recipe snippet did not register an agent under 'my-agent'"
     assert support.transport is AgentTransport.GENERIC
     # The snippet did not pass strategy=, so the helper used the
     # transport-derived default; assert the resolved default is NOT

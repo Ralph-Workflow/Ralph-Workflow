@@ -74,9 +74,7 @@ def extract_error_message(obj: object) -> str:
     error_val = obj.get("error")
     if isinstance(error_val, dict):
         return str(
-            error_val.get(
-                "message", error_val.get("type", error_val.get("name", "unknown error"))
-            )
+            error_val.get("message", error_val.get("type", error_val.get("name", "unknown error")))
         )
 
     result = "unknown error"

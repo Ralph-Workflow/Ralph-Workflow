@@ -178,9 +178,7 @@ def test_run_audit_against_repo_finds_no_violations() -> None:
     """
     package_root = Path(__file__).resolve().parent.parent
     violations = run_audit(package_root)
-    assert violations == [], (
-        f"audit_agent_module_state found unexpected violations: {violations}"
-    )
+    assert violations == [], f"audit_agent_module_state found unexpected violations: {violations}"
 
 
 def test_run_audit_fails_closed_on_unreadable_file(

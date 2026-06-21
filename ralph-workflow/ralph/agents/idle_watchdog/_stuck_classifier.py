@@ -61,6 +61,19 @@ class StuckKind(StrEnum):
     TRANSITIONING = "transitioning"
     STUCK = "stuck"
     DUPLICATE_KILL = "duplicate_kill"
+    # Diagnostic-only kind (NEW in this PR). Returned by
+    # ``classify_stuck`` when the subagent channel has evidence
+    # (count >= 1) but the most recent subagent_progress is older
+    # than ``silent_subagent_seconds`` AND there is no first-party
+    # or side-channel activity AND ``classify_quiet`` returned
+    # ACTIVE. The watchdog surfaces this label on the
+    # ``last_fire_reason`` property for post-mortem diagnostics
+    # parallel to ``DEFERRED_BY_STUCK_CLASSIFIER`` so an operator
+    # can see WHY a would-be fire was deferred ("a subagent
+    # dispatched then went silent for >180s"). SILENT_SUBAGENT
+    # is a non-FIRE label and is NOT one of the values that drive
+    # a fire reason.
+    SILENT_SUBAGENT = "silent_subagent"
 
 
 @runtime_checkable
@@ -207,6 +220,46 @@ def _subagent_liveness_fresh(
     return False
 
 
+def _silent_subagent_path(
+    summary: EvidenceSummary,
+    silent_subagent_seconds: float,
+) -> bool:
+    """Return True when a subagent channel has evidence but is stale.
+
+    Specifically: at least one subagent channel (SUBAGENT_OUTPUT or
+    SUBAGENT_LIVENESS) has ``counter >= 1`` AND ``last_at`` is older
+    than ``silent_subagent_seconds``.  This is the SILENT_SUBAGENT
+    diagnostic: a subagent was dispatched, made progress at least
+    once, then went silent for >silent_subagent_seconds.
+
+    The function is a pure deterministic helper used only by
+    :func:`classify_stuck` and only when ``silent_subagent_seconds > 0``.
+    The caller is responsible for the priority ordering (the
+    classifier checks this AFTER the LOADING branches so a
+    fresh subagent liveness signal still defers).
+    """
+    if silent_subagent_seconds <= 0:
+        return False
+    has_subagent_evidence = False
+    any_subagent_stale = False
+    for channel in summary.channels:
+        # ``channel_name`` may be an enum or a string (depending on
+        # the call site); normalize to a string for comparison.
+        name = (
+            channel.channel_name.value
+            if hasattr(channel.channel_name, "value")
+            else str(channel.channel_name)
+        )
+        if name not in {"subagent_output", "subagent_liveness"}:
+            continue
+        if (channel.counter or 0) < 1:
+            continue
+        has_subagent_evidence = True
+        if channel.age_seconds is None or channel.age_seconds >= silent_subagent_seconds:
+            any_subagent_stale = True
+    return has_subagent_evidence and any_subagent_stale
+
+
 def classify_stuck(
     *,
     is_waiting_state: bool,
@@ -214,9 +267,10 @@ def classify_stuck(
     evidence_summary: EvidenceSummary,
     classify_quiet: _ClassifyQuietCallable,
     activity_evidence_ttl_seconds: float | None,
+    silent_subagent_seconds: float | None = None,
     corroboration: CorroborationSnapshot | None = None,
 ) -> StuckKind:
-    """Classify the apparent stall into one of the six StuckKind values.
+    """Classify the apparent stall into one of the seven StuckKind values.
 
     Pure function: no I/O, no clock reads, no module-level mutable state.
     Returns the same kind for the same inputs on every call.
@@ -228,7 +282,11 @@ def classify_stuck(
       4. any side-channel subagent_liveness fresh -> LOADING
       5. classify_quiet is WAITING_ON_CHILD -> LOADING
       6. classify_quiet is RESUMABLE_CONTINUE -> TRANSITIONING
-      7. else -> STUCK
+      7. silent_subagent path: subagent channel has evidence but the
+         most recent signal is older than ``silent_subagent_seconds``,
+         no first-party / side-channel activity, classify_quiet is
+         ACTIVE -> SILENT_SUBAGENT
+      8. else -> STUCK
 
     The ``corroboration`` parameter is plumbed for the analysis-feedback
     contract (the gate can surface the live ``CorroborationSnapshot`` to
@@ -243,6 +301,7 @@ def classify_stuck(
         evidence_summary=evidence_summary,
         classify_quiet=classify_quiet,
         activity_evidence_ttl_seconds=activity_evidence_ttl_seconds,
+        silent_subagent_seconds=silent_subagent_seconds,
         corroboration=corroboration,
     )
 
@@ -254,6 +313,7 @@ def _classify_stuck_inner(  # noqa: PLR0911 - one return per StuckKind; the prio
     evidence_summary: EvidenceSummary,
     classify_quiet: _ClassifyQuietCallable,
     activity_evidence_ttl_seconds: float | None,
+    silent_subagent_seconds: float | None,
     corroboration: CorroborationSnapshot | None,
 ) -> StuckKind:
     if is_waiting_state:
@@ -282,4 +342,18 @@ def _classify_stuck_inner(  # noqa: PLR0911 - one return per StuckKind; the prio
         return StuckKind.LOADING
     if quiet_state == AgentExecutionState.RESUMABLE_CONTINUE:
         return StuckKind.TRANSITIONING
+    # SILENT_SUBAGENT diagnostic (branch 7): a subagent channel has
+    # evidence but the most recent signal is older than the
+    # silent-subagent threshold. This is a post-mortem label
+    # (parallel to DEFERRED_BY_STUCK_CLASSIFIER) that tells the
+    # operator "a subagent was dispatched but went silent for
+    # >180s".  Checked AFTER the WAITING_ON_CHILD / RESUMABLE_CONTINUE
+    # branches so a healthy agent that is legitimately waiting for
+    # a child does not get mislabeled as SILENT_SUBAGENT.
+    if (
+        silent_subagent_seconds is not None
+        and silent_subagent_seconds > 0
+        and _silent_subagent_path(evidence_summary, silent_subagent_seconds)
+    ):
+        return StuckKind.SILENT_SUBAGENT
     return StuckKind.STUCK

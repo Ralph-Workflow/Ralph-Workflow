@@ -310,9 +310,7 @@ class ConfigurableCommandBuilder:
             cmd.extend(self.spec.format_flag)
 
         output_flag = (
-            config.output_flag
-            if config.output_flag is not None
-            else self.spec.output_flag
+            config.output_flag if config.output_flag is not None else self.spec.output_flag
         )
         if output_flag is not None and "opencode" not in self.spec.base_argv[0]:
             cmd.extend(_split_optional_flag(output_flag))

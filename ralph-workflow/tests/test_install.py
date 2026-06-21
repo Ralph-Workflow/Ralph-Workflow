@@ -400,7 +400,7 @@ def test_built_wheel_includes_policy_default_tomls(built_wheel_path: Path) -> No
 @pytest.mark.timeout_seconds(10)
 def test_write_dev_launcher_creates_executable_script(tmp_path: Path) -> None:
     target = tmp_path / "nested" / "bin" / "rdev"
-    content = "#!/usr/bin/env bash\nexec uv run --project /tmp/ralph ralph \"$@\"\n"
+    content = '#!/usr/bin/env bash\nexec uv run --project /tmp/ralph ralph "$@"\n'
 
     install_module.write_dev_launcher(target, content)
 

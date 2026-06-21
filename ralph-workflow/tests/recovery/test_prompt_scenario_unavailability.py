@@ -228,7 +228,8 @@ def test_prompt_scenario_five_hour_stall_caught_at_30s() -> None:
     )
 
     available = controller.agents_now_available(
-        "development", ["claude", "opencode", "agy"],
+        "development",
+        ["claude", "opencode", "agy"],
     )
     assert "opencode" in available
     assert "claude" not in available
@@ -306,19 +307,25 @@ def test_prompt_scenario_distinguishes_out_of_credits_from_subagents() -> None:
     tracker = AgentUnavailabilityTracker(clock=clock)
 
     out_of_credits_entry = tracker.mark_unavailable(
-        "development", "claude", UnavailabilityReason.OUT_OF_CREDITS,
+        "development",
+        "claude",
+        UnavailabilityReason.OUT_OF_CREDITS,
     )
     assert out_of_credits_entry.base_backoff_ms == 60_000
     assert out_of_credits_entry.max_backoff_ms == 1_800_000
 
     no_output_entry = tracker.mark_unavailable(
-        "development", "opencode", UnavailabilityReason.NO_OUTPUT_AT_START,
+        "development",
+        "opencode",
+        UnavailabilityReason.NO_OUTPUT_AT_START,
     )
     assert no_output_entry.base_backoff_ms == 5_000
     assert no_output_entry.max_backoff_ms == 30_000
 
     stale_child_entry = tracker.mark_unavailable(
-        "development", "agy", UnavailabilityReason.STALE_CHILD_QUIET,
+        "development",
+        "agy",
+        UnavailabilityReason.STALE_CHILD_QUIET,
     )
     assert stale_child_entry.base_backoff_ms == 15_000
     assert stale_child_entry.max_backoff_ms == 300_000
@@ -429,15 +436,13 @@ def test_prompt_scenario_forever_wait_through_many_cooldown_cycles() -> None:
         )
 
         assert state.phase == "development", (
-            f"wait state must never enter 'failed_terminal', got "
-            f"phase={state.phase!r}"
+            f"wait state must never enter 'failed_terminal', got phase={state.phase!r}"
         )
         assert state.recovery_cycle_count == 0, (
             "wait state must never consume the recovery cycle cap"
         )
         assert state.last_retry_delay_ms > 0, (
-            "wait state must always have a positive sleep so the run "
-            "loop can resume"
+            "wait state must always have a positive sleep so the run loop can resume"
         )
         assert state.last_retry_delay_ms <= 30_000, (
             f"wait state delay must be bounded by NO_OUTPUT_AT_START "
@@ -603,7 +608,8 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
     )
 
     payload = controller.waiting_state_payload(
-        "development", ["claude", "opencode", "agy"],
+        "development",
+        ["claude", "opencode", "agy"],
     )
     assert isinstance(payload, list)
     assert len(payload) == 3
@@ -625,13 +631,13 @@ def test_prompt_scenario_session_scope_with_future_expansion_seam() -> None:
         )
 
     available = controller.agents_now_available(
-        "development", ["claude", "opencode", "agy"],
+        "development",
+        ["claude", "opencode", "agy"],
     )
     assert "opencode" in available
     assert "agy" in available
     assert "claude" not in available, (
-        f"claude was marked unavailable, must NOT appear in "
-        f"agents_now_available, got {available!r}"
+        f"claude was marked unavailable, must NOT appear in agents_now_available, got {available!r}"
     )
 
     snapshot = controller.snapshot()

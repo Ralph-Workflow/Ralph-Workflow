@@ -100,9 +100,7 @@ def build_invoke_options_from_config(
     )
 
 
-def _get_os_descendant_field(
-    value: float | None | object, fallback: float | None
-) -> float | None:
+def _get_os_descendant_field(value: float | None | object, fallback: float | None) -> float | None:
     if value is _INVOKE_OPTS_UNSET:
         return fallback
     return cast("float | None", value)
@@ -261,9 +259,7 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
         ),
         os_descendant_only_ceiling_seconds=_os_descendant_ceiling,
         os_descendant_only_suspect_seconds=_os_descendant_suspect,
-        cpu_idle_seconds=_get_os_descendant_field(
-            opts.cpu_idle_seconds, _base.cpu_idle_seconds
-        ),
+        cpu_idle_seconds=_get_os_descendant_field(opts.cpu_idle_seconds, _base.cpu_idle_seconds),
         log_growth_seconds=_get_os_descendant_field(
             opts.log_growth_seconds, _base.log_growth_seconds
         ),

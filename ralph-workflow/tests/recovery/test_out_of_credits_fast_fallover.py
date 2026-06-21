@@ -123,7 +123,9 @@ def test_controller_mark_agent_unavailable_caps_return_value_at_30_minutes() -> 
     # the 1_800_000ms cap (60_000 * 2^7 = 7_680_000ms).
     for _ in range(8):
         helper_return = controller._mark_agent_unavailable(
-            "development", "claude", UnavailabilityReason.OUT_OF_CREDITS,
+            "development",
+            "claude",
+            UnavailabilityReason.OUT_OF_CREDITS,
         )
         # The helper return value must NEVER exceed the cap.
         assert helper_return <= out_of_credits_max, (
@@ -136,8 +138,7 @@ def test_controller_mark_agent_unavailable_caps_return_value_at_30_minutes() -> 
         current_time_ms = int(clock.monotonic() * 1000)
         stored_remaining = stored_timeout - current_time_ms
         assert helper_return == stored_remaining, (
-            f"helper return {helper_return}ms disagrees with store "
-            f"remaining {stored_remaining}ms"
+            f"helper return {helper_return}ms disagrees with store remaining {stored_remaining}ms"
         )
         # Advance the clock past the cap so the next mark is from a fresh
         # exponential attempt (otherwise the tracker would refuse to mark

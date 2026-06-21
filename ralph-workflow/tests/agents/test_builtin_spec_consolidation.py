@@ -181,9 +181,7 @@ class TestBuiltinSupportsFrozen:
         """
         for support in builtin_supports():
             factory = support.strategy_factory
-            assert callable(factory), (
-                f"strategy_factory for {support.name!r} is not callable"
-            )
+            assert callable(factory), f"strategy_factory for {support.name!r} is not callable"
             instance = factory(label_scope=None, registry=None)
             assert isinstance(instance, BaseExecutionStrategy), (
                 f"strategy_factory for {support.name!r} produced non-strategy: {type(instance)}"
@@ -193,10 +191,6 @@ class TestBuiltinSupportsFrozen:
         """All 7 parser factories must be callable producing parser instances."""
         for support in builtin_supports():
             factory = support.parser_factory
-            assert callable(factory), (
-                f"parser_factory for {support.name!r} is not callable"
-            )
+            assert callable(factory), f"parser_factory for {support.name!r} is not callable"
             instance = factory()
-            assert instance is not None, (
-                f"parser_factory for {support.name!r} produced None"
-            )
+            assert instance is not None, f"parser_factory for {support.name!r} produced None"

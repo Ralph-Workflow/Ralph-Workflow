@@ -34,9 +34,7 @@ class TestGenericUsesNdjsonBase:
 
     def test_data_prefix_stripped(self) -> None:
         parser = GenericParser()
-        results = list(
-            parser.parse(_lines('data: {"content": "hello"}'))
-        )
+        results = list(parser.parse(_lines('data: {"content": "hello"}')))
         assert len(results) == 1
         assert results[0].type == "text"
         assert results[0].content == "hello"

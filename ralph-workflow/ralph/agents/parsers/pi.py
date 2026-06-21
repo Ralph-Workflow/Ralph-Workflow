@@ -84,17 +84,13 @@ _PI_SILENT_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
 )
 
 
-_PI_SILENT_SUB_EVENTS: frozenset[str] = frozenset(
-    {"text_start", "thinking_start"}
-)
+_PI_SILENT_SUB_EVENTS: frozenset[str] = frozenset({"text_start", "thinking_start"})
 
 
 def _make_passthrough(
     event_type: str,
 ) -> Callable[[dict[str, object], str], Iterator[AgentOutputLine]]:
-    def _handler(
-        obj: dict[str, object], stripped: str
-    ) -> Iterator[AgentOutputLine]:
+    def _handler(obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
     return _handler
@@ -250,9 +246,7 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         error_msg = str(obj.get("error", "extension error"))
-        yield AgentOutputLine(
-            type="error", content=error_msg, raw=stripped, metadata=obj
-        )
+        yield AgentOutputLine(type="error", content=error_msg, raw=stripped, metadata=obj)
 
     def _handle_text_delta(
         self,
@@ -265,9 +259,7 @@ class _PiDispatch:
         if self._owner.saw_text_end:
             return
         acc = self._get_text_accumulator()
-        yield from acc.accumulate(
-            delta, stripped, kind="text", keep_current_when_empty=True
-        )
+        yield from acc.accumulate(delta, stripped, kind="text", keep_current_when_empty=True)
 
     def _handle_text_end(
         self,
@@ -278,9 +270,7 @@ class _PiDispatch:
         self._owner.saw_text_end = True
         if content:
             self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
-            yield AgentOutputLine(
-                type="text", content=content, raw=stripped, metadata=sub
-            )
+            yield AgentOutputLine(type="text", content=content, raw=stripped, metadata=sub)
             return
         acc = self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
         if acc is not None:
@@ -320,9 +310,7 @@ class _PiDispatch:
                 metadata=sub,
             )
             return
-        acc = self._owner._accumulators.pop(
-            _THINKING_ACCUMULATOR_KEY, None
-        )
+        acc = self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
         if acc is not None:
             yield from acc.flush(kind="thinking", require_strip=True)
 
@@ -350,9 +338,7 @@ class _PiDispatch:
         tool_call = sub.get("toolCall")
         tool_name = "unknown"
         if isinstance(tool_call, dict):
-            tool_name = str(
-                cast("dict[str, object]", tool_call).get("name", "unknown")
-            )
+            tool_name = str(cast("dict[str, object]", tool_call).get("name", "unknown"))
         yield AgentOutputLine(
             type="tool_use",
             content=tool_name,
@@ -375,9 +361,7 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         reason = str(sub.get("reason", "error"))
-        yield AgentOutputLine(
-            type="error", content=reason, raw=stripped, metadata=sub
-        )
+        yield AgentOutputLine(type="error", content=reason, raw=stripped, metadata=sub)
 
     def _emit_message_content(
         self,
@@ -401,9 +385,7 @@ class _PiDispatch:
                 self._owner.saw_text_end = True
                 yield from self._handle_text_block(block_dict, stripped)
             elif block_type == "thinking" and not self._owner.saw_thinking_end:
-                self._owner._accumulators.pop(
-                    _THINKING_ACCUMULATOR_KEY, None
-                )
+                self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
                 self._owner.saw_thinking_end = True
                 yield from self._handle_thinking_block(block_dict, stripped)
             elif block_type == "toolCall":
@@ -418,9 +400,7 @@ class _PiDispatch:
     ) -> Iterator[AgentOutputLine]:
         text = str(block_dict.get("text", ""))
         if text:
-            yield AgentOutputLine(
-                type="text", content=text, raw=stripped, metadata=block_dict
-            )
+            yield AgentOutputLine(type="text", content=text, raw=stripped, metadata=block_dict)
 
     def _handle_thinking_block(
         self,

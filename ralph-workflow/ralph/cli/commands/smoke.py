@@ -184,9 +184,7 @@ def _render_smoke_report(
             working.append(f"- session ID observed: {result.session_id}")
         if result.explicit_completion_seen:
             if result.transport == "agy":
-                working.append(
-                    "- canonical smoke_test_result receipt observed"
-                )
+                working.append("- canonical smoke_test_result receipt observed")
             else:
                 working.append("- declare_complete marker observed")
         if result.parsed_event_count > 0:

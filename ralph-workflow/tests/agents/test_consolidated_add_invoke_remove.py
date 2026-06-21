@@ -48,11 +48,11 @@ def test_consolidated_headless_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
     monkeypatch.setattr(
         "ralph.agents.invoke.run_pty_and_read_lines",
-        lambda cmd, ctx, extras=None: (pty_called.append(cmd) or iter(["pty line"])),
+        lambda cmd, ctx, extras=None: pty_called.append(cmd) or iter(["pty line"]),
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
-        lambda cmd, ctx: (sub_called.append(cmd) or iter(["sub line"])),
+        lambda cmd, ctx: sub_called.append(cmd) or iter(["sub line"]),
     )
 
     # 1. Isolation check using fresh_catalog
@@ -217,11 +217,11 @@ def test_consolidated_interactive_flow(monkeypatch: pytest.MonkeyPatch, tmp_path
 
     monkeypatch.setattr(
         "ralph.agents.invoke.run_pty_and_read_lines",
-        lambda cmd, ctx, extras=None: (pty_called.append(cmd) or iter(["pty line"])),
+        lambda cmd, ctx, extras=None: pty_called.append(cmd) or iter(["pty line"]),
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
-        lambda cmd, ctx: (sub_called.append(cmd) or iter(["sub line"])),
+        lambda cmd, ctx: sub_called.append(cmd) or iter(["sub line"]),
     )
 
     # 1. Isolation check using fresh_catalog

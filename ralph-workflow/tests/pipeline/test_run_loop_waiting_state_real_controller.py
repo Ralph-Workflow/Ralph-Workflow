@@ -124,8 +124,7 @@ def _build_real_controller_with_unavailable(
 def _assert_waiting_log(records: list[dict[str, Any]], phase: str, agents: list[str]) -> None:
     """Assert the structured WAITING log has the AC-08 contract fields."""
     waiting_records = [
-        r for r in records
-        if "WAITING" in r["message"] and "all agents unavailable" in r["message"]
+        r for r in records if "WAITING" in r["message"] and "all agents unavailable" in r["message"]
     ]
     assert len(waiting_records) == 1, (
         f"expected exactly one structured WAITING log, got {len(waiting_records)}"
@@ -153,8 +152,7 @@ def _assert_waiting_log(records: list[dict[str, Any]], phase: str, agents: list[
 def _assert_resumed_log(records: list[dict[str, Any]], phase: str) -> None:
     """Assert the structured RESUMED log has the AC-08 contract fields."""
     resumed_records = [
-        r for r in records
-        if "RESUMED" in r["message"] and "cooldown expired" in r["message"]
+        r for r in records if "RESUMED" in r["message"] and "cooldown expired" in r["message"]
     ]
     assert len(resumed_records) == 1, (
         f"expected exactly one structured RESUMED log, got {len(resumed_records)}"
@@ -167,7 +165,8 @@ def _assert_resumed_log(records: list[dict[str, Any]], phase: str) -> None:
 
 
 def _build_run_loop_context(
-    *, controller: RecoveryController,
+    *,
+    controller: RecoveryController,
 ) -> tuple[_LoopContext, list[float], list[str]]:
     """Build a ``_LoopContext`` with deterministic mocks for the run loop.
 
@@ -242,7 +241,9 @@ def test_real_controller_wait_state_emits_waiting_logs(
     opts = _no_output_opts()
     exc = AgentInactivityTimeoutError("claude", 30.0, opts=opts)
     state, _effects, _failure_evt = controller.handle(
-        state, exc, FailureContext(phase=phase, agent="claude"),
+        state,
+        exc,
+        FailureContext(phase=phase, agent="claude"),
     )
 
     # Sanity: the controller really did enter the wait state. The real
@@ -312,9 +313,9 @@ def test_real_controller_wait_state_emits_waiting_logs(
     # ``logger.debug(...)`` (no bind) would silently drop the binding
     # and a future operator grep for ``recovery=True`` would miss it.
     pre_sleep_records = [
-        r for r in records
-        if r["level"].name == "DEBUG"
-        and "Starting cooldown sleep" in r["message"]
+        r
+        for r in records
+        if r["level"].name == "DEBUG" and "Starting cooldown sleep" in r["message"]
     ]
     assert len(pre_sleep_records) == 1, (
         f"expected exactly one structured pre-sleep DEBUG log, "
@@ -322,8 +323,7 @@ def test_real_controller_wait_state_emits_waiting_logs(
     )
     pre_sleep_extra = pre_sleep_records[0]["extra"]
     assert pre_sleep_extra.get("recovery") is True, (
-        f"pre-sleep DEBUG log must carry recovery=True binding, "
-        f"got extra={pre_sleep_extra!r}"
+        f"pre-sleep DEBUG log must carry recovery=True binding, got extra={pre_sleep_extra!r}"
     )
     assert pre_sleep_extra.get("phase") == phase
     assert pre_sleep_extra.get("delay_seconds") == state.last_retry_delay_ms / 1000.0
@@ -348,7 +348,10 @@ def test_controller_accepts_protocol_typed_unavailability_store() -> None:
             return "session"
 
         def mark_unavailable(
-            self, phase: str, agent: str, reason: UnavailabilityReason | None = None,
+            self,
+            phase: str,
+            agent: str,
+            reason: UnavailabilityReason | None = None,
         ) -> UnavailabilityEntry:
             return UnavailabilityEntry(
                 unavailable_until_ms=200,
@@ -387,9 +390,13 @@ def test_controller_accepts_protocol_typed_unavailability_store() -> None:
     # caller (the run loop, the controller) consumes the store only via
     # this property, never via the private ``_unavailability_tracker``.
     assert controller.unavailability_store is fake_store
-    assert not isinstance(
-        controller.unavailability_store, AgentUnavailabilityTracker,
-    ) or controller.unavailability_store is fake_store
+    assert (
+        not isinstance(
+            controller.unavailability_store,
+            AgentUnavailabilityTracker,
+        )
+        or controller.unavailability_store is fake_store
+    )
     # isinstance against the Protocol is also True.
     assert isinstance(controller.unavailability_store, UnavailabilityStore) is True
 

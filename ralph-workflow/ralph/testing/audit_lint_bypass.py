@@ -182,9 +182,7 @@ _TEST_NOQA_EXEMPT_STEMS: frozenset[str] = frozenset(
 # Acceptable noqa codes — any code NOT in this set requires an allowlist entry.
 # Currently only complexity and global-state codes are acceptable when used
 # with a documented reason in the allowlist.
-_ACCEPTABLE_NOQA_CODES: frozenset[str] = frozenset(
-    {"PLR0911", "PLR0912", "PLR0915", "PLW0603"}
-)
+_ACCEPTABLE_NOQA_CODES: frozenset[str] = frozenset({"PLR0911", "PLR0912", "PLR0915", "PLW0603"})
 
 
 class LintBypassViolation:

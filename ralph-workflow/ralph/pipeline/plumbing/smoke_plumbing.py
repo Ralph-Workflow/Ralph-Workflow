@@ -621,10 +621,7 @@ def _tool_activity_seen_for_errors(
     # file was created (a real file-write side effect, not a model
     # self-report). Per the source-of-truth, AGY --print wires tool
     # activity through file writes rather than structured stdout events.
-    return (
-        params.config.transport == AgentTransport.AGY
-        and params.output_file.exists()
-    )
+    return params.config.transport == AgentTransport.AGY and params.output_file.exists()
 
 
 def _detect_smoke_errors(
@@ -721,9 +718,7 @@ def _run_smoke_agent(
     # ``headless_guide_checks`` artifact. See
     # ``_tool_activity_seen_for_errors`` docstring and the regression test
     # ``test_agy_tool_activity_must_not_come_from_artifact``.
-    tool_activity_seen = _tool_activity_seen_for_errors(
-        params, lines, tool_activity_seen=None
-    )
+    tool_activity_seen = _tool_activity_seen_for_errors(params, lines, tool_activity_seen=None)
     parsed_output_lines = _meaningful_output_lines(params.config, lines) if lines else []
     live_filtered = [line for line in live_output_lines if line.strip()][
         :_MAX_MEANINGFUL_OUTPUT_LINES

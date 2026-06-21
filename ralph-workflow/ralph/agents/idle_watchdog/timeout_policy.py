@@ -193,6 +193,18 @@ class TimeoutPolicy:
     # internally for test callers and layered defaults; None is treated the
     # same as 0.0 (disabled).
     activity_evidence_ttl_seconds: float | None = AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS
+    # Staleness threshold (seconds) for the SILENT_SUBAGENT diagnostic.
+    # The watchdog's StuckClassifier returns ``StuckKind.SILENT_SUBAGENT``
+    # when the subagent channel has evidence (count >= 1) but the most
+    # recent signal is older than this threshold AND no first-party /
+    # side-channel activity is fresh AND classify_quiet is ACTIVE.  The
+    # SILENT_SUBAGENT kind is a post-mortem label parallel to
+    # DEFERRED_BY_STUCK_CLASSIFIER; it tells operators "a subagent was
+    # dispatched but went silent for >180s".  The default of 180.0s
+    # matches the activity_evidence_ttl_seconds default so the diagnostic
+    # surfaces once the deferral gate expires.  Set to None to disable
+    # the diagnostic.  When set, must be > 0.
+    silent_subagent_seconds: float | None = 180.0
     # Per-kind workspace file-change weights. Each value is BINARY:
     # weight==0.0 means the change is dropped (does not defer the
     # NO_OUTPUT_DEADLINE verdict); weight==1.0 means the change
@@ -243,6 +255,7 @@ class TimeoutPolicy:
         self._validate_post_tool_result_progression()
         self._validate_repeated_error_fields()
         self._validate_activity_evidence_ttl()
+        self._validate_silent_subagent_seconds()
         self._validate_workspace_change_weights()
         self._validate_subagent_output_poll_interval()
         self._validate_os_descendant_only_fields()
@@ -342,12 +355,10 @@ class TimeoutPolicy:
             raise ValueError(msg)
         if (
             self.no_progress_quiet_seconds is not None
-            and self.no_progress_quiet_minimum_invocation_seconds
-            > self.no_progress_quiet_seconds
+            and self.no_progress_quiet_minimum_invocation_seconds > self.no_progress_quiet_seconds
         ):
             msg = (
-                "no_progress_quiet_minimum_invocation_seconds must be <="
-                " no_progress_quiet_seconds"
+                "no_progress_quiet_minimum_invocation_seconds must be <= no_progress_quiet_seconds"
             )
             raise ValueError(msg)
 
@@ -399,6 +410,13 @@ class TimeoutPolicy:
             msg = "activity_evidence_ttl_seconds must be >= 0 when set"
             raise ValueError(msg)
 
+    def _validate_silent_subagent_seconds(self) -> None:
+        if self.silent_subagent_seconds is None:
+            return
+        if self.silent_subagent_seconds <= 0:
+            msg = "silent_subagent_seconds must be > 0 when set"
+            raise ValueError(msg)
+
     def _validate_workspace_change_weights(self) -> None:
         if self.workspace_change_weights is None:
             return
@@ -434,10 +452,7 @@ class TimeoutPolicy:
             self.os_descendant_only_ceiling_seconds is not None
             and self.os_descendant_only_ceiling_seconds > self.max_waiting_on_child_seconds
         ):
-            msg = (
-                "os_descendant_only_ceiling_seconds must be <="
-                " max_waiting_on_child_seconds"
-            )
+            msg = "os_descendant_only_ceiling_seconds must be <= max_waiting_on_child_seconds"
             raise ValueError(msg)
 
         if (
@@ -466,11 +481,7 @@ class TimeoutPolicy:
                 )
                 raise ValueError(msg)
             if self.suspect_waiting_on_child_seconds is not None and (
-                self.os_descendant_only_suspect_seconds
-                >= self.max_waiting_on_child_seconds
+                self.os_descendant_only_suspect_seconds >= self.max_waiting_on_child_seconds
             ):
-                msg = (
-                    "os_descendant_only_suspect_seconds must be <"
-                    " max_waiting_on_child_seconds"
-                )
+                msg = "os_descendant_only_suspect_seconds must be < max_waiting_on_child_seconds"
                 raise ValueError(msg)

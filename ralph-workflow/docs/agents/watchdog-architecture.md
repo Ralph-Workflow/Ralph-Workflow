@@ -193,6 +193,128 @@ the top level — it is consumed by the failure classifier and the
 two invoke readers, and moving it would break the
 `tests/test_property_matrix_consistency.py:159` pin.
 
+## Edge Case Coverage Matrix
+
+Every `WatchdogFireReason` is gated on a `TimeoutPolicy` field,
+owned by exactly one watchdog file, and pinned by at least one
+black-box test.  The matrix below is the contract for the
+fire-condition family: a future PR that adds a new fire reason
+MUST extend the matrix (the `idle_watchdog._EXPECTED_FIRE_REASONS`
+import-time lock enforces the enum-side of the contract; the
+matrix here enforces the test-side).
+
+| Fire reason | TimeoutPolicy gating | Verdict owner | Test path | Audit verdict (this PR) |
+| --- | --- | --- | --- | --- |
+| `SESSION_CEILING_EXCEEDED` | `max_session_seconds` | `IdleWatchdog.evaluate` | `tests/agents/idle_watchdog/test_activity_aware.py`, `tests/test_live_tool_unavailable_recovery.py` | preserved |
+| `CHILDREN_PERSIST_TOO_LONG` | `max_waiting_on_child_seconds` | `IdleWatchdog._handle_waiting_branch` | `tests/agents/idle_watchdog/test_os_descendant_only_escalation.py` | preserved |
+| `NO_OUTPUT_DEADLINE` | `idle_timeout_seconds` | `IdleWatchdog._handle_active_branch` | `tests/agents/idle_watchdog/test_smart_verdict_dumb_kills.py` | audited |
+| `NO_OUTPUT_AT_START` | `no_output_at_start_seconds` | `IdleWatchdog._evaluate_no_output_at_start` | `tests/agents/idle_watchdog/test_no_output_at_start.py` | **extended** (deferral test pinned) |
+| `NO_PROGRESS_QUIET` | `no_progress_quiet_seconds`, `no_progress_quiet_minimum_invocation_seconds` | `IdleWatchdog._evaluate_no_progress_quiet` | `tests/agents/idle_watchdog/test_no_progress_quiet_watchdog.py` | preserved |
+| `STALLED_AFTER_TOOL_RESULT` | `post_tool_result_progression_seconds` | `IdleWatchdog._post_tool_result_stalled` | `tests/test_live_post_tool_result_wedge.py` | preserved |
+| `REPEATED_ERROR_LOOP` | `repeated_error_consecutive_threshold`, `repeated_error_window_count`, `repeated_error_window_seconds` | `IdleWatchdog.evaluate` (consults `RepetitionTracker.tripped`) | `tests/test_repetition_tracker.py` | preserved |
+| `REPEATED_IDENTICAL_TOOL_CALL` | same as `REPEATED_ERROR_LOOP` | `IdleWatchdog.evaluate` (consults `RepetitionTracker.tripped_tool_dimension`) | `tests/test_repetition_tracker.py`, `tests/agents/idle_watchdog/test_watchdog_recovery_contract.py` | **extended** (new in this PR) |
+| `PROCESS_EXIT_HANG` | `process_exit_wait_seconds` | `PostExitWatchdog` | `tests/agents/test_post_exit_watchdog.py` | preserved |
+| `DESCENDANT_HANG` | `descendant_wait_timeout_seconds` | `PostExitWatchdog` | `tests/agents/test_post_exit_watchdog.py` | preserved |
+| `DEFERRED_BY_STUCK_CLASSIFIER` | n/a (diagnostic label) | `IdleWatchdog._gate_fire` | `tests/agents/idle_watchdog/test_stuck_classifier.py`, `tests/agents/idle_watchdog/test_watchdog_recovery_contract.py` | preserved |
+
+The five precedence-listed families in
+`ralph/agents/idle_watchdog/timeout_policy.py:46-64` are each
+mapped to their existing test paths above.
+
+### Per-fire-reason breadcrumbs pattern
+
+Each fire reason emitted by `IdleWatchdog` MUST be accompanied by
+a `WaitingStatusEvent` breadcrumbs line that names the channel
+summary at the moment of fire.  The `last_fire_reason` property
+on `IdleWatchdog` is the single source of truth for the fire
+reason and is set as the last fire decision (after the
+smart-verdict gate).  The diagnostic-only
+`DEFERRED_BY_STUCK_CLASSIFIER` label and the new
+`REPEATED_IDENTICAL_TOOL_CALL` label are surfaced through the
+same property so a post-mortem reader sees the WHY of a would-be
+fire alongside the canonical FIRE reason.
+
+### Resume-after-kill contract table
+
+The watchdog-kill → next-attempt flow is pinned end-to-end.  Each
+row maps a fire reason to the typed exception's
+`session_resume_safe` flag, the recovery action the recovery
+controller computes, the next-attempt session id, and the
+`AgentRetryIntent` the pipeline runner builds.
+
+| Reason | `session_resume_safe` | `recovery_action` | next-attempt session_id |
+| --- | --- | --- | --- |
+| `NO_OUTPUT_AT_START` | `True` | `resume` | prior |
+| `NO_OUTPUT_DEADLINE` | `True` | `resume` | prior |
+| `NO_PROGRESS_QUIET` | depends on `child_alive` (see `_WATCHDOG_UNAVAILABILITY_REASONS`) | `resume` (Rule 1) / unavailable (Rule 2) | prior or fresh |
+| `STALLED_AFTER_TOOL_RESULT` | `True` | `resume` | prior |
+| `REPEATED_ERROR_LOOP` | `True` | `resume` | prior |
+| `REPEATED_IDENTICAL_TOOL_CALL` | `True` | `resume` | prior |
+| `PROCESS_EXIT_HANG` | `False` | `fresh` | None |
+| `DESCENDANT_HANG` | `False` | `fresh` | None |
+| `SESSION_CEILING_EXCEEDED` | `False` | `fresh` | None |
+| `CHILDREN_PERSIST_TOO_LONG` | `False` | `fresh` | None |
+
+The contract test in
+`tests/agents/idle_watchdog/test_resume_after_kill_contract.py`
+pins each leg end-to-end with FakeClock + the existing
+`recovery_action_for_failure_reason` /
+`resolve_resume_session_id` /
+`agent_retry_intent_for_failure` helpers.
+
+### Per-parser visibility table
+
+The `ParserTemplateBase.emit_subagent_activity` hook (and the
+parallel standalone implementation on `ClaudeInteractiveParser`)
+feeds `invoke_subagent_sink` from the activity stream.  The
+matrix below maps each parser to the `AgentOutputLine.type` set
+that flows to the subagent sink via this PR's wiring.
+
+| Parser | Emittable types | Sink call format |
+| --- | --- | --- |
+| `ClaudeParser` | `tool_use`, `tool_result`, `text`, `thinking` (filtered via `_EMITTABLE_TYPES`) | `tool_use:<name>` / `tool_result:<name>` / `text:<first-80>` / `thinking:<first-80>` |
+| `OpenCodeParser` | same | same |
+| `CodexParser` | same | same |
+| `GeminiParser` | same | same |
+| `PiParser` | same | same |
+| `AgyParser` | same | same |
+| `GenericParser` | same | same |
+| `ClaudeInteractiveParser` | same | same (standalone impl; not a template subclass) |
+
+The contract test in
+`tests/agents/test_subagent_activity_emission.py` pins each
+parser's hook signature and the sanitized summary format.
+The wiring test in
+`tests/agents/test_stream_parsed_agent_activity_invokes_parser_emit_subagent.py`
+pins the activity-stream integration.
+
+### `IdleWatchdogKilledError.child_alive` three-valued semantics
+
+The `child_alive` field on `IdleWatchdogKilledError` carries the
+corroborator's `alive_by` signal at the moment of fire.  The
+field is three-valued so the failure classifier can route
+`NO_PROGRESS_QUIET` to the correct recovery rule without
+ambiguity:
+
+- `True`  -- the corroborator confirmed a live child
+  (`AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS`,
+  `CPU_IDLE_WHILE_ALIVE`, `LOG_STALE_WHILE_ALIVE`,
+  `FRESH_HEARTBEAT_ONLY`, or `STALE_LABEL_ONLY`).  Normally dead
+  code: the gate refinement in
+  `IdleWatchdog._is_no_progress_quiet` defers the
+  `NO_PROGRESS_QUIET` fire when the corroborator reports any
+  `alive_by` signal.
+- `False` -- the corroborator returned `alive_by=None` (no live
+  signal — i.e. the child is truly dead or missing).  The
+  conservative policy routes this to `is_unavailable=True`
+  with `unavailability_reason=STALE_CHILD_QUIET` (Rule 2:
+  exponential backoff to the next agent).
+- `None`  -- the construction site did not set the field
+  (legacy default).  The conservative policy preserves the
+  original `STALE_CHILD_QUIET` (Rule 2) behavior for
+  backward-compat with the existing construction sites that do
+  not set the field.
+
 ## Drift prevention
 
 The `ralph.testing.audit_watchdog_drift` AST audit is wired into

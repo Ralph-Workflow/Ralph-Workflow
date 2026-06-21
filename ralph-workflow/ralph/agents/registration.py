@@ -147,9 +147,7 @@ def _validate_and_materialize_support(
     )
 
 
-def _register_to_catalog(
-    name: str, support: AgentSupport, catalog: AgentCatalog
-) -> AgentConfig:
+def _register_to_catalog(name: str, support: AgentSupport, catalog: AgentCatalog) -> AgentConfig:
     """Add ``support`` to ``catalog`` and return the resulting config.
 
     Sole ``AgentCatalog.add()`` call site in the registration code

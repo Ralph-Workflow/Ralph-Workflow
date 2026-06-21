@@ -89,10 +89,7 @@ def _format_waiting_status_line(event: object) -> str:
     run = f"{cast_event.current_run_seconds:.0f}"
     subagent_part = _format_subagent_activity_suffix(cast_event.subagent_activity)
     if cast_event.kind == waiting_kind_cls.ENTERED:
-        return (
-            f"Background child work started waiting"
-            f" (cumulative={cum}s, ceiling={ceil}s)"
-        )
+        return f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
     if cast_event.kind == waiting_kind_cls.PROGRESS:
         delta = cast_event.diagnostic.get("workspace_event_delta")
         alive_by = cast_event.diagnostic.get("alive_by")

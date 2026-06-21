@@ -132,6 +132,7 @@ _EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
         WatchdogFireReason.NO_OUTPUT_AT_START.value,
         WatchdogFireReason.STALLED_AFTER_TOOL_RESULT.value,
         WatchdogFireReason.REPEATED_ERROR_LOOP.value,
+        WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL.value,
         WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG.value,
         WatchdogFireReason.NO_PROGRESS_QUIET.value,
         WatchdogFireReason.SESSION_CEILING_EXCEEDED.value,
@@ -166,9 +167,7 @@ _SUBAGENT_DESCRIPTION_MAX = 200
 # Tab (\x09) is also stripped because raw provider lines frequently
 # contain literal tabs from indented JSON or quoted multiline strings
 # that would otherwise render as unpredictable spacing in the UI.
-_CONTROL_CHARS_RE = re.compile(
-    r"[\x00-\x1f\x7f]|\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07"
-)
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]|\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07")
 
 
 # Marker prefixes that almost always precede sensitive payload (a tool
@@ -621,9 +620,7 @@ class IdleWatchdog:
     #     callable is optional so the watchdog is constructible in tests
     #     without a real ConnectivityMonitor.
     _is_waiting_state: bool = field(default=False, init=False)
-    _connectivity_state_provider: Callable[[], str | None] | None = field(
-        default=None, init=False
-    )
+    _connectivity_state_provider: Callable[[], str | None] | None = field(default=None, init=False)
     # The most recent ``classify_quiet`` callable received by
     # ``evaluate()``. The gate (``_gate_fire``) consults the classifier
     # on every non-absolute fire, and the classifier's
@@ -1926,16 +1923,24 @@ class IdleWatchdog:
             if session_elapsed >= self._config.max_session_seconds:
                 fire_reason = WatchdogFireReason.SESSION_CEILING_EXCEEDED
         if fire_reason is None and self._repetition_tracker.tripped():
-            fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
+            # Two independent repetition dimensions share the same
+            # consecutive + window thresholds.  When BOTH dimensions
+            # are tripped the error dimension wins (the canonical
+            # ``REPEATED_ERROR_LOOP`` reason).  When ONLY the
+            # tool-call dimension is tripped the watchdog fires
+            # ``REPEATED_IDENTICAL_TOOL_CALL`` so the failure
+            # classifier sees a precise cause.
+            if self._repetition_tracker.tripped_tool_dimension():
+                fire_reason = WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL
+            else:
+                fire_reason = WatchdogFireReason.REPEATED_ERROR_LOOP
         if fire_reason is not None:
             idle_elapsed = now - self._last_activity
             # Smart-verdict gate: SESSION_CEILING_EXCEEDED is the only
             # absolute reason and bypasses the gate. REPEATED_ERROR_LOOP
             # is gated because a wedged retry loop is a stuck-detection
             # signal, not an operator-set hard cap.
-            gate_verdict = self._gate_fire(
-                fire_reason, now=now, idle_elapsed=idle_elapsed
-            )
+            gate_verdict = self._gate_fire(fire_reason, now=now, idle_elapsed=idle_elapsed)
             if gate_verdict == WatchdogVerdict.FIRE:
                 self._emit_fire_log(
                     fire_reason,
@@ -2016,9 +2021,7 @@ class IdleWatchdog:
         )
         return WatchdogVerdict.CONTINUE
 
-    def _post_tool_result_stalled(
-        self, now: float, idle_elapsed: float
-    ) -> WatchdogVerdict | None:
+    def _post_tool_result_stalled(self, now: float, idle_elapsed: float) -> WatchdogVerdict | None:
         """Return the verdict when post-tool-result progression has stalled long enough.
 
         Returns ``None`` when the post-tool-result stall check is not
@@ -2251,9 +2254,7 @@ class IdleWatchdog:
         alive_by = current_corr.alive_by
         _os_desc_only = alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
         _os_desc_only_suspect = (
-            self._config.os_descendant_only_suspect_seconds is not None
-            if _os_desc_only
-            else False
+            self._config.os_descendant_only_suspect_seconds is not None if _os_desc_only else False
         )
         effective_suspect, suspect_reason = self._compute_effective_suspect(
             alive_by, candidate_total

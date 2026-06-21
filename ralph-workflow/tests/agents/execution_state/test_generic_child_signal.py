@@ -71,9 +71,7 @@ class TestClassifyGenericChildSignal:
         is classified as CHILD_PROGRESS.
         """
 
-        signal = _classify_generic_child_signal(
-            '{"type":"child_progress","msg":"thinking"}'
-        )
+        signal = _classify_generic_child_signal('{"type":"child_progress","msg":"thinking"}')
         assert signal is not None
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
@@ -101,9 +99,7 @@ class TestClassifyGenericChildSignal:
         as CHILD_PROGRESS (the explicit child-scoped event name
         carries the child scope).
         """
-        signal = _classify_generic_child_signal(
-            '{"event":"child_progress","data":"thinking"}'
-        )
+        signal = _classify_generic_child_signal('{"event":"child_progress","data":"thinking"}')
         assert signal is not None
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
@@ -120,9 +116,7 @@ class TestClassifyGenericChildSignal:
         prefix). A bare ``{"event":"progress"}`` line is treated as
         ordinary parent-level output.
         """
-        signal = _classify_generic_child_signal(
-            '{"event":"progress","data":"thinking"}'
-        )
+        signal = _classify_generic_child_signal('{"event":"progress","data":"thinking"}')
         assert signal is None, (
             f"bare progress event MUST NOT classify as child activity"
             f" per analysis-feedback fix, got {signal!r}"
@@ -160,9 +154,7 @@ class TestClassifyGenericChildSignal:
         activity was the false-positive deferral that masked the
         short NO_OUTPUT_AT_START kill.
         """
-        signal = _classify_generic_child_signal(
-            '{"type":"heartbeat","ts":1234567890}'
-        )
+        signal = _classify_generic_child_signal('{"type":"heartbeat","ts":1234567890}')
         assert signal is None, (
             f"bare heartbeat event MUST NOT classify as child activity"
             f" per analysis-feedback fix, got {signal!r}"
@@ -174,9 +166,7 @@ class TestClassifyGenericChildSignal:
         The analysis-feedback fix: bare ``{"event":"alive"}`` frames
         are generic provider wire events, NOT child activity.
         """
-        signal = _classify_generic_child_signal(
-            '{"event":"alive","ts":1234567890}'
-        )
+        signal = _classify_generic_child_signal('{"event":"alive","ts":1234567890}')
         assert signal is None, (
             f"bare alive event MUST NOT classify as child activity"
             f" per analysis-feedback fix, got {signal!r}"
@@ -188,9 +178,7 @@ class TestClassifyGenericChildSignal:
         The analysis-feedback fix: bare ``task_progress`` is a generic
         provider event, NOT child activity.
         """
-        signal = _classify_generic_child_signal(
-            '{"event":"task_progress","data":"thinking"}'
-        )
+        signal = _classify_generic_child_signal('{"event":"task_progress","data":"thinking"}')
         assert signal is None, (
             f"bare task_progress event MUST NOT classify as child activity"
             f" per analysis-feedback fix, got {signal!r}"
@@ -237,9 +225,7 @@ class TestClassifyGenericChildSignal:
         and is NOT classified (terminal signals do not invoke the
         sink, same contract as OpenCode).
         """
-        signal = _classify_generic_child_signal(
-            '{"type":"child_complete","child_id":"abc"}'
-        )
+        signal = _classify_generic_child_signal('{"type":"child_complete","child_id":"abc"}')
         assert signal is None
 
     def test_classify_generic_child_signal_returns_none_for_unrelated_line(self) -> None:
@@ -294,12 +280,9 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
         for a failure event.
         """
 
-        signal = _classify_generic_child_signal(
-            '{"type":"subagent_failed","child_id":"abc"}'
-        )
+        signal = _classify_generic_child_signal('{"type":"subagent_failed","child_id":"abc"}')
         assert signal is None, (
-            f"subagent_failed MUST classify to None (terminal event,"
-            f" not progress), got {signal!r}"
+            f"subagent_failed MUST classify to None (terminal event, not progress), got {signal!r}"
         )
 
     def test_subagent_cancelled_json_returns_none(self) -> None:
@@ -311,9 +294,7 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
         into the subagent sink.
         """
 
-        signal = _classify_generic_child_signal(
-            '{"event":"subagent_cancelled","child_id":"abc"}'
-        )
+        signal = _classify_generic_child_signal('{"event":"subagent_cancelled","child_id":"abc"}')
         assert signal is None, (
             f"subagent_cancelled MUST classify to None (terminal event,"
             f" not progress), got {signal!r}"
@@ -322,34 +303,25 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
     def test_subagent_terminal_json_returns_none(self) -> None:
         """``type="subagent_terminal"`` is a terminal event and must return None."""
 
-        signal = _classify_generic_child_signal(
-            '{"type":"subagent_terminal","child_id":"abc"}'
-        )
+        signal = _classify_generic_child_signal('{"type":"subagent_terminal","child_id":"abc"}')
         assert signal is None, (
-            f"subagent_terminal MUST classify to None (terminal event),"
-            f" got {signal!r}"
+            f"subagent_terminal MUST classify to None (terminal event), got {signal!r}"
         )
 
     def test_child_failed_json_returns_none(self) -> None:
         """``event="child_failed"`` is a terminal event and must return None."""
 
-        signal = _classify_generic_child_signal(
-            '{"event":"child_failed","child_id":"abc"}'
-        )
+        signal = _classify_generic_child_signal('{"event":"child_failed","child_id":"abc"}')
         assert signal is None, (
-            f"child_failed MUST classify to None (terminal event),"
-            f" got {signal!r}"
+            f"child_failed MUST classify to None (terminal event), got {signal!r}"
         )
 
     def test_child_cancelled_json_returns_none(self) -> None:
         """``type="child_cancelled"`` is a terminal event and must return None."""
 
-        signal = _classify_generic_child_signal(
-            '{"type":"child_cancelled","child_id":"abc"}'
-        )
+        signal = _classify_generic_child_signal('{"type":"child_cancelled","child_id":"abc"}')
         assert signal is None, (
-            f"child_cancelled MUST classify to None (terminal event),"
-            f" got {signal!r}"
+            f"child_cancelled MUST classify to None (terminal event), got {signal!r}"
         )
 
     def test_yaml_prose_line_returns_none(self) -> None:
@@ -362,9 +334,7 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
         ``record_subagent_work`` for unrelated parent-level output.
         """
 
-        signal = _classify_generic_child_signal(
-            "User wrote a YAML snippet: subagent: worker"
-        )
+        signal = _classify_generic_child_signal("User wrote a YAML snippet: subagent: worker")
         assert signal is None, (
             f"YAML prose line MUST classify to None (no leading"
             f" child-status marker), got {signal!r}"
@@ -379,9 +349,7 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
         CHILD_PROGRESS.
         """
 
-        signal = _classify_generic_child_signal(
-            "Documentation says child: value"
-        )
+        signal = _classify_generic_child_signal("Documentation says child: value")
         assert signal is None, (
             f"Documentation prose line MUST classify to None (no leading"
             f" child-status marker), got {signal!r}"
@@ -390,9 +358,7 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
     def test_subagent_colon_after_phrase_returns_none(self) -> None:
         """Phrase-like prose like ``about the subagent: overview`` must NOT classify."""
 
-        signal = _classify_generic_child_signal(
-            "Let me talk about the subagent: overview of work"
-        )
+        signal = _classify_generic_child_signal("Let me talk about the subagent: overview of work")
         assert signal is None, (
             f"Phrase-like prose MUST classify to None (no leading"
             f" child-status marker), got {signal!r}"
@@ -406,9 +372,7 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
         """
 
         signal = _classify_generic_child_signal("[child] do something")
-        assert signal is not None, (
-            "Explicit child marker MUST still classify as CHILD_PROGRESS"
-        )
+        assert signal is not None, "Explicit child marker MUST still classify as CHILD_PROGRESS"
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
     def test_subagent_progress_json_still_classifies(self) -> None:
@@ -419,12 +383,9 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
         progress event.
         """
 
-        signal = _classify_generic_child_signal(
-            '{"type":"subagent_progress","data":"thinking"}'
-        )
+        signal = _classify_generic_child_signal('{"type":"subagent_progress","data":"thinking"}')
         assert signal is not None, (
-            "Explicit subagent_progress JSON MUST still classify as"
-            " CHILD_PROGRESS"
+            "Explicit subagent_progress JSON MUST still classify as CHILD_PROGRESS"
         )
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
@@ -433,12 +394,8 @@ class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
         as CHILD_HEARTBEAT.
         """
 
-        signal = _classify_generic_child_signal(
-            '{"type":"subagent_heartbeat","ts":1234567890}'
-        )
-        assert signal is not None, (
-            "Explicit subagent_heartbeat JSON MUST still classify"
-        )
+        signal = _classify_generic_child_signal('{"type":"subagent_heartbeat","ts":1234567890}')
+        assert signal is not None, "Explicit subagent_heartbeat JSON MUST still classify"
         assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
 
 
@@ -469,9 +426,7 @@ class TestObserveLineDoesNotInvokeSinkForTerminalOrProse:
     ) -> None:
         """A terminal ``subagent_cancelled`` JSON line must NOT invoke the sink."""
         strategy = BaseExecutionStrategy()
-        strategy.observe_line(
-            '{"event":"subagent_cancelled","child_id":"abc"}'
-        )
+        strategy.observe_line('{"event":"subagent_cancelled","child_id":"abc"}')
 
         assert len(subagent_sink_spy) == 0, (
             f"terminal subagent_cancelled MUST NOT invoke the sink,"
@@ -891,9 +846,7 @@ class TestStrategyInheritanceUsesBaseChildSignalPath:
             f" child_progress line, got {len(subagent_sink_spy)} invocations"
         )
 
-    def test_agy_strategy_factory_returns_base_observer(
-        self, subagent_sink_spy: list[str]
-    ) -> None:
+    def test_agy_strategy_factory_returns_base_observer(self, subagent_sink_spy: list[str]) -> None:
         """``strategy_for_transport(AgentTransport.AGY)`` returns an
         AgyExecutionStrategy whose ``observe_line`` invokes the
         subagent sink exactly once for a child-progress line.

@@ -253,9 +253,7 @@ def test_cumulative_waiting_ceiling_unaffected_by_activity() -> None:
     cumulative wait has been exceeded. The cumulative wait is a
     wall-clock budget for STALLED sessions, not for productive ones.
     """
-    wd, clock = _make_watchdog(
-        _make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0)
-    )
+    wd, clock = _make_watchdog(_make_policy(idle_timeout=0.1, max_waiting=2.0, activity_ttl=1000.0))
     wd.record_activity()
     clock.advance(0.1)
 

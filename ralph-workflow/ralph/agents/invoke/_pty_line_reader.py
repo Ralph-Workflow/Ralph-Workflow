@@ -240,10 +240,7 @@ class PtyLineReader:
             self._policy.log_growth_seconds is None
             or not hasattr(self, "_raw_overflow")
             or self._raw_overflow is None
-            or not (
-                alive_by is None
-                or alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
-            )
+            or not (alive_by is None or alive_by == AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS)
         ):
             return False
         if self._raw_overflow is not None and self._raw_overflow.is_disabled:
@@ -320,9 +317,7 @@ class PtyLineReader:
             alive_by=alive_by,
         )
 
-    def _drain_after_exit(
-        self, decoder: codecs.IncrementalDecoder, pending: str
-    ) -> str:
+    def _drain_after_exit(self, decoder: codecs.IncrementalDecoder, pending: str) -> str:
         """Bounded EIO drain of the PTY master after the child has exited.
 
         Replaces the prior early-exit ``break`` that could drop buffered
@@ -331,9 +326,7 @@ class PtyLineReader:
         ``read_master_chunk`` and is bounded by ``_EIO_DRAIN_MAX``.
         """
         for _ in range(_EIO_DRAIN_MAX):
-            if not wait_for_master_readable(
-                self._handle.master_fd, _EIO_DRAIN_SELECT_SECONDS
-            ):
+            if not wait_for_master_readable(self._handle.master_fd, _EIO_DRAIN_SELECT_SECONDS):
                 break
             chunk = read_master_chunk(self._handle.master_fd)
             if not chunk:

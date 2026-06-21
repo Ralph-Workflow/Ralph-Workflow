@@ -345,9 +345,7 @@ def _assert_never_exit_invariant() -> None:
         )
         raise RuntimeError(msg)
 
-    has_return = any(
-        isinstance(node, ast.Return) for node in ast.walk(all_agents_unavailable_if)
-    )
+    has_return = any(isinstance(node, ast.Return) for node in ast.walk(all_agents_unavailable_if))
     if not has_return:
         msg = (
             "Never-exit invariant violated: the all-agents-unavailable"

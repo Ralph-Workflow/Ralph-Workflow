@@ -77,9 +77,7 @@ class TestPiCommandBuilder:
         cmd = PiCommandBuilder().build(
             _pi_config(),
             prompt_file,
-            options=BuildCommandOptions(
-                session_id="sess-1", workspace_path=tmp_path
-            ),
+            options=BuildCommandOptions(session_id="sess-1", workspace_path=tmp_path),
         )
 
         assert cmd == [
@@ -108,9 +106,7 @@ class TestPiCommandBuilder:
         assert "anthropic/claude-sonnet-4-20250514" in cmd
         # ``--model anthropic/claude-sonnet-4-20250514`` must not appear as a
         # single argv element.
-        assert (
-            "--model anthropic/claude-sonnet-4-20250514" not in cmd
-        )
+        assert "--model anthropic/claude-sonnet-4-20250514" not in cmd
 
     def test_full_argv_layout(self, tmp_path: Path) -> None:
         """Documented ``pi --mode json --session ID --approve --model M <prompt>`` layout."""

@@ -94,9 +94,7 @@ class TestRegisterMyAgent:
         assert support.strategy_factory is not BaseExecutionStrategy
         # The transport-derived default IS ClaudeInteractiveExecutionStrategy.
         assert support.strategy_factory is ClaudeInteractiveExecutionStrategy
-        strategy = registry.catalog.get_strategy(
-            AgentTransport.CLAUDE_INTERACTIVE, command="ci"
-        )
+        strategy = registry.catalog.get_strategy(AgentTransport.CLAUDE_INTERACTIVE, command="ci")
         assert isinstance(strategy, ClaudeInteractiveExecutionStrategy)
         assert not isinstance(strategy, BaseExecutionStrategy) or (
             type(strategy) is ClaudeInteractiveExecutionStrategy
@@ -311,9 +309,7 @@ class TestPublicSurfaceDiscoverability:
         registration symbol a reader sees.
         """
         all_list = ralph.agents.__all__
-        assert all_list.index("register_my_agent") < all_list.index(
-            "register_agent_support"
-        ), (
+        assert all_list.index("register_my_agent") < all_list.index("register_agent_support"), (
             f"ralph.agents.__all__ must list register_my_agent BEFORE register_agent_support; "
             f"got order: {all_list}"
         )

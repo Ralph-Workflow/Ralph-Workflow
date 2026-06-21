@@ -37,9 +37,7 @@ def _import_bounded() -> ModuleType:
 
 def test_fast_callable_returns_result() -> None:
     bounded = _import_bounded()
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=2, thread_name_prefix="test-fast"
-    )
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="test-fast")
     try:
         result = bounded.with_timeout(lambda: 42, timeout_seconds=1.0, _executor=executor)
     finally:
@@ -50,9 +48,7 @@ def test_fast_callable_returns_result() -> None:
 def test_slow_callable_raises_websearch_error_with_label() -> None:
     bounded = _import_bounded()
     event = threading.Event()
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=2, thread_name_prefix="test-slow"
-    )
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="test-slow")
     raised: BaseException | None = None
     try:
         try:
@@ -101,9 +97,7 @@ def test_raising_callable_propagates_original_exception() -> None:
 )
 def test_known_exception_types_propagate_unchanged(exc: BaseException) -> None:
     bounded = _import_bounded()
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=2, thread_name_prefix="test-known"
-    )
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="test-known")
     try:
         with pytest.raises(type(exc)) as exc_info:
             bounded.with_timeout(
@@ -169,4 +163,3 @@ def test_concurrent_calls_all_obey_timeout() -> None:
     for exc in raised:
         assert "tavily" in str(exc)
         assert "0.05" in str(exc)
-

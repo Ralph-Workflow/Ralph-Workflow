@@ -239,9 +239,7 @@ def test_resumable_continue_returns_transitioning() -> None:
     state. The watchdog must defer the verdict and let the run-loop
     handle the session transition.
     """
-    kind = classify_stuck(
-        **_inputs(classify_quiet_state=AgentExecutionState.RESUMABLE_CONTINUE)
-    )
+    kind = classify_stuck(**_inputs(classify_quiet_state=AgentExecutionState.RESUMABLE_CONTINUE))
     assert kind == StuckKind.TRANSITIONING
 
 
@@ -277,9 +275,7 @@ def test_priority_order_waiting_beats_offline() -> None:
     secondary: the pipeline may be on a wait cycle that pre-dates the
     connectivity state change.
     """
-    kind = classify_stuck(
-        **_inputs(is_waiting_state=True, connectivity_state="offline")
-    )
+    kind = classify_stuck(**_inputs(is_waiting_state=True, connectivity_state="offline"))
     assert kind == StuckKind.DUPLICATE_KILL
 
 
@@ -292,9 +288,7 @@ def test_priority_order_offline_beats_thinking() -> None:
     of work but cannot override the transport-level outage.
     """
     summary = _multi_summary(subagent_output_at=_NOW - 5.0)
-    kind = classify_stuck(
-        **_inputs(connectivity_state="offline", evidence_summary=summary)
-    )
+    kind = classify_stuck(**_inputs(connectivity_state="offline", evidence_summary=summary))
     assert kind == StuckKind.WAITING_ON_CONNECTIVITY
 
 
@@ -460,3 +454,152 @@ def test_corroboration_does_not_change_duplicate_kill_verdict() -> None:
 
     assert kind_no_corr == StuckKind.DUPLICATE_KILL
     assert kind_live_corr == StuckKind.DUPLICATE_KILL
+
+
+# ---------------------------------------------------------------------------
+# SILENT_SUBAGENT diagnostic (NEW in this PR).
+# ---------------------------------------------------------------------------
+
+
+def test_silent_subagent_when_progress_count_ge_1_and_stale() -> None:
+    """Test the SILENT_SUBAGENT diagnostic label.
+
+    A subagent channel has evidence (count >= 1) AND the most
+    recent signal is older than ``silent_subagent_seconds`` AND no
+    first-party / side-channel activity is fresh AND
+    classify_quiet is ACTIVE -> the classifier returns
+    StuckKind.SILENT_SUBAGENT.
+
+    This is a post-mortem label parallel to
+    DEFERRED_BY_STUCK_CLASSIFIER; the watchdog surfaces it on the
+    ``last_fire_reason`` property so an operator can see WHY a
+    would-be fire was deferred ("a subagent dispatched then went
+    silent for >180s").
+    """
+    summary = _multi_summary(
+        subagent_output_at=_NOW - 1000.0,  # well past 180s
+    )
+    inputs = cast(
+        "ClassifyStuckInputs",
+        {
+            "is_waiting_state": False,
+            "connectivity_state": "online",
+            "evidence_summary": summary,
+            "classify_quiet": _ClassifyQuietStub(
+                state=AgentExecutionState.ACTIVE,
+            ),
+            "activity_evidence_ttl_seconds": _TTL_SECONDS,
+        },
+    )
+    kind = classify_stuck(
+        **inputs,
+        silent_subagent_seconds=180.0,
+    )
+    assert kind == StuckKind.SILENT_SUBAGENT
+
+
+def test_no_silent_subagent_when_subagent_progress_is_fresh() -> None:
+    """Fresh subagent output (within the silent threshold) MUST yield
+    THINKING (not SILENT_SUBAGENT) so a healthy subagent does not get
+    mislabeled.
+
+    The classifier checks SILENT_SUBAGENT AFTER the LOADING / THINKING
+    branches so a fresh first-party subagent channel implies THINKING.
+    """
+    summary = _multi_summary(
+        subagent_output_at=_NOW - 5.0,  # well within 180s
+    )
+    inputs = cast(
+        "ClassifyStuckInputs",
+        {
+            "is_waiting_state": False,
+            "connectivity_state": "online",
+            "evidence_summary": summary,
+            "classify_quiet": _ClassifyQuietStub(
+                state=AgentExecutionState.ACTIVE,
+            ),
+            "activity_evidence_ttl_seconds": _TTL_SECONDS,
+        },
+    )
+    kind = classify_stuck(
+        **inputs,
+        silent_subagent_seconds=180.0,
+    )
+    assert kind == StuckKind.THINKING
+
+
+def test_no_silent_subagent_when_no_subagent_evidence() -> None:
+    """Without ANY subagent evidence, the classifier MUST NOT return
+    SILENT_SUBAGENT.  The diagnostic is gated on subagent evidence.
+
+    With no subagent evidence and classify_quiet=ACTIVE, the
+    classifier falls through to STUCK (the canonical "agent looks
+    quiet with no first-party evidence and no live subagent"
+    verdict).
+    """
+    inputs = _inputs()
+    kind = classify_stuck(
+        **inputs,
+        silent_subagent_seconds=180.0,
+    )
+    assert kind == StuckKind.STUCK
+
+
+def test_silent_subagent_disabled_when_silent_subagent_seconds_is_none() -> None:
+    """When ``silent_subagent_seconds`` is None (or absent), the
+    SILENT_SUBAGENT branch MUST NOT fire even if a subagent channel
+    has stale evidence.  The diagnostic is opt-in via the
+    ``silent_subagent_seconds`` TimeoutPolicy field.
+    """
+    summary = _multi_summary(
+        subagent_output_at=_NOW - 1000.0,
+    )
+    inputs = cast(
+        "ClassifyStuckInputs",
+        {
+            "is_waiting_state": False,
+            "connectivity_state": "online",
+            "evidence_summary": summary,
+            "classify_quiet": _ClassifyQuietStub(
+                state=AgentExecutionState.ACTIVE,
+            ),
+            "activity_evidence_ttl_seconds": _TTL_SECONDS,
+        },
+    )
+    kind = classify_stuck(
+        **inputs,
+        silent_subagent_seconds=None,
+    )
+    # Without the silent_subagent_seconds gate, the classifier
+    # falls through to STUCK.
+    assert kind == StuckKind.STUCK
+
+
+def test_silent_subagent_does_not_change_when_waiting() -> None:
+    """The SILENT_SUBAGENT branch MUST NOT change a verdict that is
+    already determined by a higher-priority branch.
+
+    With classify_quiet=WAITING_ON_CHILD, the classifier returns
+    LOADING (branch 5) BEFORE the SILENT_SUBAGENT branch (branch 7).
+    """
+    summary = _multi_summary(
+        subagent_output_at=_NOW - 1000.0,  # stale evidence
+    )
+    inputs = cast(
+        "ClassifyStuckInputs",
+        {
+            "is_waiting_state": False,
+            "connectivity_state": "online",
+            "evidence_summary": summary,
+            "classify_quiet": _ClassifyQuietStub(
+                state=AgentExecutionState.WAITING_ON_CHILD,
+            ),
+            "activity_evidence_ttl_seconds": _TTL_SECONDS,
+        },
+    )
+    kind = classify_stuck(
+        **inputs,
+        silent_subagent_seconds=180.0,
+    )
+    # LOADING wins (branch 5) over SILENT_SUBAGENT (branch 7).
+    assert kind == StuckKind.LOADING

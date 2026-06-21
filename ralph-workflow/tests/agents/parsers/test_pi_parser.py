@@ -555,9 +555,7 @@ class TestPiParserThinkingDelta:
                     "type": "message_end",
                     "message": {
                         "role": "assistant",
-                        "content": [
-                            {"type": "thinking", "thinking": "reasoning"}
-                        ],
+                        "content": [{"type": "thinking", "thinking": "reasoning"}],
                     },
                 }
             ),
@@ -667,9 +665,7 @@ class TestPiParserThinkingDelta:
                     "type": "message_end",
                     "message": {
                         "role": "assistant",
-                        "content": [
-                            {"type": "toolCall", "id": "c1", "name": "bash"}
-                        ],
+                        "content": [{"type": "toolCall", "id": "c1", "name": "bash"}],
                     },
                 }
             ),
@@ -953,9 +949,7 @@ class TestPiParserMessageUpdateToolcall:
         assert len(tool_use_lines) == 1
         assert tool_use_lines[0].content == "bash"
         # No intermediate 'unknown' placeholder tool_use lines.
-        assert not any(
-            r.type == "tool_use" and r.content == "unknown" for r in results
-        )
+        assert not any(r.type == "tool_use" and r.content == "unknown" for r in results)
 
     def test_toolcall_end_without_toolcall_uses_unknown_name(self) -> None:
         """If ``toolcall_end`` arrives without a ``toolCall`` payload

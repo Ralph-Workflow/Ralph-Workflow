@@ -138,7 +138,6 @@ def test_malformed_env_var_payload_falls_back_to_ralph_only() -> None:
     assert list(servers.keys()) == ["ralph"]
 
 
-
 def test_unsafe_mode_true_merges_existing_env_and_user_config_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

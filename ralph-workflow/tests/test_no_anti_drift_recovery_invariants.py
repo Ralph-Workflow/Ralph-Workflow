@@ -210,12 +210,7 @@ class TestPostExitWatchdogConsumesCallback:
     """
 
     def test_post_exit_watchdog_consumes_callback(self) -> None:
-        watchdog = (
-            RALPH_ROOT
-            / "agents"
-            / "idle_watchdog"
-            / "_post_exit_watchdog.py"
-        )
+        watchdog = RALPH_ROOT / "agents" / "idle_watchdog" / "_post_exit_watchdog.py"
         if not watchdog.exists():
             pytest.skip("post_exit_watchdog module not present")
         source = _read(watchdog)

@@ -18,11 +18,21 @@ Fingerprinting collapses per-occurrence noise (ISO timestamps, UUIDs, long hex
 ids, epoch-scale integers) so the same underlying error matches across
 occurrences, while stable signal such as a ``-32001`` error code survives.
 
+A second repetition dimension (``mark_tool_call``) tracks identical tool-call
+fingerprints independently.  An agent wedged in an identical-tool-call retry
+loop (e.g. the same ``Bash`` command with the same arguments re-issued N
+times without producing forward progress) trips
+``WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL`` via the same
+consecutive + window rules.  The two dimensions are tracked in parallel
+deques so a real error-loop and a real tool-call-loop can co-exist without
+cancelling each other.
+
 The clock is injected so all timing is deterministic in tests.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from collections import deque
 from typing import TYPE_CHECKING
@@ -47,6 +57,27 @@ _LONG_INT = re.compile(r"\d{7,}")
 _WHITESPACE = re.compile(r"\s+")
 
 
+def _tool_call_fingerprint(tool_name: str, tool_args: object) -> str:
+    """Build a stable fingerprint for ``(tool_name, tool_args)``.
+
+    Args MUST be JSON-serializable.  ``default=str`` falls back to
+    ``str(value)`` for non-JSON-serializable values so the fingerprint
+    is stable even when the args contain datetime / Path / custom
+    objects.  ``sort_keys=True`` ensures dict-key ordering does not
+    affect the fingerprint so ``{"a": 1, "b": 2}`` and
+    ``{"b": 2, "a": 1}`` produce the same fingerprint.
+    """
+    try:
+        args_blob = json.dumps(tool_args, sort_keys=True, default=str)
+    except TypeError:
+        # Last-ditch: stringify the args so we still produce a stable
+        # fingerprint.  This branch is rare (json.dumps with
+        # default=str covers nearly every type) but keeps the
+        # fingerprint deterministic under all inputs.
+        args_blob = repr(tool_args)
+    return f"{tool_name}|{args_blob}"
+
+
 class RepetitionTracker:
     """Counts repeated same-fingerprint events to detect a wedged retry loop."""
 
@@ -62,9 +93,15 @@ class RepetitionTracker:
         self._consecutive_threshold = consecutive_threshold
         self._window_count = window_count
         self._window_seconds = window_seconds
+        # Error / cosmetic-progress dimension (existing).
         self._events: deque[tuple[str, float]] = deque()
         self._last_fingerprint: str | None = None
         self._consecutive = 0
+        # Tool-call dimension (new in this PR).  Tracked independently
+        # so a real error-loop and a real tool-call-loop can co-exist.
+        self._tool_events: deque[tuple[str, float]] = deque()
+        self._last_tool_fingerprint: str | None = None
+        self._tool_consecutive = 0
 
     @staticmethod
     def fingerprint(message: str) -> str:
@@ -88,14 +125,74 @@ class RepetitionTracker:
         self._events.append((fingerprint, now))
         self._prune(now)
 
+    def mark_tool_call(
+        self,
+        tool_name: str,
+        tool_args: object,
+    ) -> None:
+        """Record one tool-call observation fingerprinted on ``(name, args)``.
+
+        Independent of :meth:`note_error` so an identical tool-call wedge
+        (e.g. ``Bash`` with the same arguments re-issued N times) trips
+        via the consecutive + window rules on the tool-call dimension
+        without requiring the agent to also emit errors.
+
+        Args:
+            tool_name: The tool name (e.g. ``"Bash"``).  Empty / None
+                tool names are coerced to ``"unknown"`` so the
+                fingerprint is always well-formed.
+            tool_args: The tool arguments (any JSON-serializable
+                structure).  ``None`` is treated as an empty dict.
+        """
+        name = tool_name or "unknown"
+        args = tool_args if tool_args is not None else {}
+        fingerprint = _tool_call_fingerprint(name, args)
+        now = self._clock.monotonic()
+        if fingerprint == self._last_tool_fingerprint:
+            self._tool_consecutive += 1
+        else:
+            self._last_tool_fingerprint = fingerprint
+            self._tool_consecutive = 1
+        self._tool_events.append((fingerprint, now))
+        self._prune_tool(now)
+
     def note_progress(self) -> None:
         """Record genuine forward progress; clears both trip conditions."""
         self._consecutive = 0
         self._last_fingerprint = None
         self._events.clear()
+        # Tool-call progress is not cleared here: the caller must
+        # explicitly note a real forward-progress event so a
+        # tool-call wedge is detected even when interleaved with
+        # cosmetic output.  Callers that want to share a single
+        # progress signal between the two dimensions can clear
+        # ``_tool_events`` separately via ``_reset_tool_progress``.
 
     def tripped(self) -> bool:
-        """Return True when either trip condition is currently satisfied."""
+        """Return True when either trip condition is currently satisfied.
+
+        Consults BOTH the error / cosmetic-progress dimension AND the
+        tool-call dimension.  Either dimension tripping causes the
+        watchdog to fire ``REPEATED_ERROR_LOOP`` (or
+        ``REPEATED_IDENTICAL_TOOL_CALL`` based on which dimension
+        tripped first).
+        """
+        if self._error_dimension_tripped():
+            return True
+        return self._tool_dimension_tripped()
+
+    def tripped_tool_dimension(self) -> bool:
+        """Return True when ONLY the tool-call dimension is tripped.
+
+        Convenience accessor for the watchdog's ``evaluate`` method so
+        it can emit ``REPEATED_IDENTICAL_TOOL_CALL`` rather than
+        ``REPEATED_ERROR_LOOP`` when only the tool-call wedge is
+        active.  Returns False when the error dimension is also
+        tripped (the error reason wins).
+        """
+        return self._tool_dimension_tripped() and not self._error_dimension_tripped()
+
+    def _error_dimension_tripped(self) -> bool:
         if (
             self._consecutive_threshold is not None
             and self._consecutive >= self._consecutive_threshold
@@ -104,10 +201,20 @@ class RepetitionTracker:
         if self._window_count is not None and self._window_seconds is not None:
             now = self._clock.monotonic()
             self._prune(now)
-            # Count the MOST-repeated fingerprint in the window (not just the most
-            # recent one): a single interleaved distinct line must not be able to
-            # mask a still-active error loop.
             if _max_fingerprint_count(self._events) >= self._window_count:
+                return True
+        return False
+
+    def _tool_dimension_tripped(self) -> bool:
+        if (
+            self._consecutive_threshold is not None
+            and self._tool_consecutive >= self._consecutive_threshold
+        ):
+            return True
+        if self._window_count is not None and self._window_seconds is not None:
+            now = self._clock.monotonic()
+            self._prune_tool(now)
+            if _max_fingerprint_count(self._tool_events) >= self._window_count:
                 return True
         return False
 
@@ -117,6 +224,13 @@ class RepetitionTracker:
         cutoff = now - self._window_seconds
         while self._events and self._events[0][1] < cutoff:
             self._events.popleft()
+
+    def _prune_tool(self, now: float) -> None:
+        if self._window_seconds is None:
+            return
+        cutoff = now - self._window_seconds
+        while self._tool_events and self._tool_events[0][1] < cutoff:
+            self._tool_events.popleft()
 
 
 def _max_fingerprint_count(events: Iterable[tuple[str, float]]) -> int:

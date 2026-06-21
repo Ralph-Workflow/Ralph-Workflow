@@ -61,11 +61,11 @@ def test_spec_requires_pty_true_uses_pty(
 
         monkeypatch.setattr(
             "ralph.agents.invoke.run_pty_and_read_lines",
-            lambda cmd, ctx, extras=None: (pty_called.append(cmd) or iter(["pty line"])),
+            lambda cmd, ctx, extras=None: pty_called.append(cmd) or iter(["pty line"]),
         )
         monkeypatch.setattr(
             "ralph.agents.invoke.run_subprocess_and_read_lines",
-            lambda cmd, ctx: (sub_called.append(cmd) or iter(["sub line"])),
+            lambda cmd, ctx: sub_called.append(cmd) or iter(["sub line"]),
         )
 
         config = AgentConfig(cmd="fake-pty-binary", transport=AgentTransport.GENERIC)
@@ -107,11 +107,11 @@ def test_spec_requires_pty_false_uses_subprocess(
 
         monkeypatch.setattr(
             "ralph.agents.invoke.run_pty_and_read_lines",
-            lambda cmd, ctx, extras=None: (pty_called.append(cmd) or iter(["pty line"])),
+            lambda cmd, ctx, extras=None: pty_called.append(cmd) or iter(["pty line"]),
         )
         monkeypatch.setattr(
             "ralph.agents.invoke.run_subprocess_and_read_lines",
-            lambda cmd, ctx: (sub_called.append(cmd) or iter(["sub line"])),
+            lambda cmd, ctx: sub_called.append(cmd) or iter(["sub line"]),
         )
 
         config = AgentConfig(cmd="fake-sub-binary", transport=AgentTransport.CLAUDE_INTERACTIVE)
@@ -142,11 +142,11 @@ def test_unregistered_claude_interactive_uses_subprocess_default(
 
     monkeypatch.setattr(
         "ralph.agents.invoke.run_pty_and_read_lines",
-        lambda cmd, ctx, extras=None: (pty_called.append(cmd) or iter(["pty line"])),
+        lambda cmd, ctx, extras=None: pty_called.append(cmd) or iter(["pty line"]),
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
-        lambda cmd, ctx: (sub_called.append(cmd) or iter(["sub line"])),
+        lambda cmd, ctx: sub_called.append(cmd) or iter(["sub line"]),
     )
 
     config = AgentConfig(cmd="unregistered-binary", transport=AgentTransport.CLAUDE_INTERACTIVE)
@@ -172,11 +172,11 @@ def test_unregistered_codex_uses_subprocess_fallback(
 
     monkeypatch.setattr(
         "ralph.agents.invoke.run_pty_and_read_lines",
-        lambda cmd, ctx, extras=None: (pty_called.append(cmd) or iter(["pty line"])),
+        lambda cmd, ctx, extras=None: pty_called.append(cmd) or iter(["pty line"]),
     )
     monkeypatch.setattr(
         "ralph.agents.invoke.run_subprocess_and_read_lines",
-        lambda cmd, ctx: (sub_called.append(cmd) or iter(["sub line"])),
+        lambda cmd, ctx: sub_called.append(cmd) or iter(["sub line"]),
     )
 
     config = AgentConfig(cmd="unregistered-binary-codex", transport=AgentTransport.CODEX)

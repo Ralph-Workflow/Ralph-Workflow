@@ -87,9 +87,7 @@ def test_classifier_reaches_typed_cause_two_hops_deep() -> None:
     """
     typed = IdleWatchdogKilledError(reason="no_output", signal=15)
     stream_timeout = _IdleStreamTimeoutError("watchdog fired", cause=typed)
-    agent_inactivity = _AgentInactivityTimeoutError(
-        "agent idle for too long", cause=stream_timeout
-    )
+    agent_inactivity = _AgentInactivityTimeoutError("agent idle for too long", cause=stream_timeout)
     classified = FailureClassifier().classify(
         agent_inactivity, phase="p", agent="a", connectivity_state="online"
     )

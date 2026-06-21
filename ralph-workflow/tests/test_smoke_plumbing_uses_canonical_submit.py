@@ -493,6 +493,5 @@ def test_agy_smoke_completion_requires_receipt_not_transcript_marker(
         "the harness stops trusting it."
     )
     assert "smoke_test_result artifact was not submitted" in result.errors, (
-        f"Expected 'smoke_test_result artifact was not submitted' in errors, "
-        f"got: {result.errors}"
+        f"Expected 'smoke_test_result artifact was not submitted' in errors, got: {result.errors}"
     )

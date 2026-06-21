@@ -325,9 +325,7 @@ def test_record_subagent_work_description_redacts_lowercase_bearer_token() -> No
     assert "SECRET123" not in stored, (
         f"lowercase bearer token 'SECRET123' must NOT leak, got: {stored!r}"
     )
-    assert "bearer" not in stored, (
-        f"lowercase 'bearer' marker must be redacted, got: {stored!r}"
-    )
+    assert "bearer" not in stored, f"lowercase 'bearer' marker must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -342,9 +340,7 @@ def test_record_subagent_work_description_redacts_uppercase_bearer_token() -> No
     assert "UPPERSECRET" not in stored, (
         f"uppercase bearer token 'UPPERSECRET' must NOT leak, got: {stored!r}"
     )
-    assert "BEARER" not in stored, (
-        f"uppercase 'BEARER' marker must be redacted, got: {stored!r}"
-    )
+    assert "BEARER" not in stored, f"uppercase 'BEARER' marker must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -360,7 +356,6 @@ def test_record_subagent_work_description_redacts_mixed_case_bearer_token() -> N
         f"mixed-case bearer token 'MiXeDcAsE' must NOT leak, got: {stored!r}"
     )
     assert "<redacted>" in stored
-
 
 
 def test_record_subagent_work_description_redacts_private_key_marker() -> None:
@@ -430,9 +425,7 @@ def test_record_subagent_work_description_redacts_well_formed_escaped_quote() ->
     # Source: {"arguments":"secret\"tail"}  (the \" is a real escape)
     wd.record_subagent_work(description='{"arguments":"secret\\"tail"}')
     stored = wd._last_subagent_progress_description or ""
-    assert "tail" not in stored, (
-        f"escaped-quote suffix 'tail' must be redacted, got: {stored!r}"
-    )
+    assert "tail" not in stored, f"escaped-quote suffix 'tail' must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -448,9 +441,7 @@ def test_record_subagent_work_description_redacts_malformed_inner_quote() -> Non
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"arguments":"secret"tail"}')
     stored = wd._last_subagent_progress_description or ""
-    assert "tail" not in stored, (
-        f"malformed-JSON suffix 'tail' must be redacted, got: {stored!r}"
-    )
+    assert "tail" not in stored, f"malformed-JSON suffix 'tail' must be redacted, got: {stored!r}"
     assert "secret" not in stored, (
         f"malformed-JSON prefix 'secret' must be redacted, got: {stored!r}"
     )
@@ -485,9 +476,7 @@ def test_record_subagent_work_description_redacts_escaped_file_path() -> None:
     assert "name" not in stored, (
         f"escaped-quote file_path suffix 'name' must be redacted, got: {stored!r}"
     )
-    assert "/etc/" not in stored, (
-        f"sensitive path /etc/ must be redacted, got: {stored!r}"
-    )
+    assert "/etc/" not in stored, f"sensitive path /etc/ must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -504,12 +493,8 @@ def test_record_subagent_work_description_redacts_bearer_token_with_quotes() -> 
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='Authorization: Bearer abc"def')
     stored = wd._last_subagent_progress_description or ""
-    assert "def" not in stored, (
-        f"bearer token suffix 'def' must be redacted, got: {stored!r}"
-    )
-    assert "Bearer" not in stored, (
-        f"bearer token prefix 'Bearer' must be redacted, got: {stored!r}"
-    )
+    assert "def" not in stored, f"bearer token suffix 'def' must be redacted, got: {stored!r}"
+    assert "Bearer" not in stored, f"bearer token prefix 'Bearer' must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -522,9 +507,7 @@ def test_record_subagent_work_description_redacts_input_field_with_quotes() -> N
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='{"input": "echo \\"hello\\" world"}')
     stored = wd._last_subagent_progress_description or ""
-    assert "world" not in stored, (
-        f"input field suffix 'world' must be redacted, got: {stored!r}"
-    )
+    assert "world" not in stored, f"input field suffix 'world' must be redacted, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -536,9 +519,7 @@ def test_record_subagent_work_description_redacts_repeated_escaped_quotes() -> N
     output.
     """
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"content": "say \\"hi\\" then \\"bye\\" now"}'
-    )
+    wd.record_subagent_work(description='{"content": "say \\"hi\\" then \\"bye\\" now"}')
     stored = wd._last_subagent_progress_description or ""
     for forbidden in ("hi", "bye", "now"):
         assert forbidden not in stored, (
@@ -591,19 +572,11 @@ def test_record_subagent_work_description_redacts_nested_object_arguments() -> N
     remains well-formed.
     """
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"arguments": {"command": "rm -rf /", "token": "abc"}}'
-    )
+    wd.record_subagent_work(description='{"arguments": {"command": "rm -rf /", "token": "abc"}}')
     stored = wd._last_subagent_progress_description or ""
-    assert "rm -rf /" not in stored, (
-        f"nested 'command' value must NOT leak, got: {stored!r}"
-    )
-    assert "token" not in stored, (
-        f"nested 'token' key must NOT leak, got: {stored!r}"
-    )
-    assert "abc" not in stored, (
-        f"nested 'abc' value must NOT leak, got: {stored!r}"
-    )
+    assert "rm -rf /" not in stored, f"nested 'command' value must NOT leak, got: {stored!r}"
+    assert "token" not in stored, f"nested 'token' key must NOT leak, got: {stored!r}"
+    assert "abc" not in stored, f"nested 'abc' value must NOT leak, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -615,9 +588,7 @@ def test_record_subagent_work_description_redacts_nested_list_arguments() -> Non
     operator-visible output.
     """
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"arguments": ["rm -rf /", "secret"]}'
-    )
+    wd.record_subagent_work(description='{"arguments": ["rm -rf /", "secret"]}')
     stored = wd._last_subagent_progress_description or ""
     assert "rm -rf /" not in stored
     assert "secret" not in stored
@@ -627,9 +598,7 @@ def test_record_subagent_work_description_redacts_nested_list_arguments() -> Non
 def test_record_subagent_work_description_redacts_nested_object_input() -> None:
     """Nested OBJECT under ``input`` is redacted in full."""
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"input": {"echo": "hello", "user": "admin"}}'
-    )
+    wd.record_subagent_work(description='{"input": {"echo": "hello", "user": "admin"}}')
     stored = wd._last_subagent_progress_description or ""
     assert "hello" not in stored
     assert "admin" not in stored
@@ -641,9 +610,7 @@ def test_record_subagent_work_description_redacts_nested_object_input() -> None:
 def test_record_subagent_work_description_redacts_nested_array_content() -> None:
     """Nested ARRAY under ``content`` is redacted in full."""
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"content": [{"text": "secret message"}]}'
-    )
+    wd.record_subagent_work(description='{"content": [{"text": "secret message"}]}')
     stored = wd._last_subagent_progress_description or ""
     assert "secret message" not in stored
     assert "text" not in stored
@@ -653,9 +620,7 @@ def test_record_subagent_work_description_redacts_nested_array_content() -> None
 def test_record_subagent_work_description_redacts_nested_prompt() -> None:
     """Nested OBJECT under ``prompt`` is redacted in full."""
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"prompt": {"role": "system", "content": "do the thing"}}'
-    )
+    wd.record_subagent_work(description='{"prompt": {"role": "system", "content": "do the thing"}}')
     stored = wd._last_subagent_progress_description or ""
     assert "do the thing" not in stored
     assert "role" not in stored
@@ -671,9 +636,7 @@ def test_record_subagent_work_description_redacts_nested_file_path() -> None:
     value in one shot.
     """
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"file_path": {"path": "/etc/passwd", "name": "shadow"}}'
-    )
+    wd.record_subagent_work(description='{"file_path": {"path": "/etc/passwd", "name": "shadow"}}')
     stored = wd._last_subagent_progress_description or ""
     assert "/etc/passwd" not in stored
     assert "shadow" not in stored
@@ -698,17 +661,11 @@ def test_record_subagent_work_description_reproducer_nested_token() -> None:
     assert "echo secret" not in stored, (
         f"nested 'command' value 'echo secret' must NOT leak, got: {stored!r}"
     )
-    assert "abc123" not in stored, (
-        f"nested 'token' value 'abc123' must NOT leak, got: {stored!r}"
-    )
-    assert "secret" not in stored, (
-        f"nested 'secret' value must NOT leak, got: {stored!r}"
-    )
+    assert "abc123" not in stored, f"nested 'token' value 'abc123' must NOT leak, got: {stored!r}"
+    assert "secret" not in stored, f"nested 'secret' value must NOT leak, got: {stored!r}"
     # The non-sensitive key 'name' is preserved so the operator
     # still sees WHICH tool was invoked.
-    assert "tool" in stored, (
-        f"non-sensitive 'name' key should survive, got: {stored!r}"
-    )
+    assert "tool" in stored, f"non-sensitive 'name' key should survive, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -731,15 +688,11 @@ def test_record_subagent_work_description_redacts_embedded_json_after_prefix() -
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(description='prefix {"prompt": "hello, world"}')
     stored = wd._last_subagent_progress_description or ""
-    assert "world" not in stored, (
-        f"comma-bearing value 'world' must NOT leak, got: {stored!r}"
-    )
+    assert "world" not in stored, f"comma-bearing value 'world' must NOT leak, got: {stored!r}"
     assert "hello" not in stored, (
         f"comma-bearing value prefix 'hello' must NOT leak, got: {stored!r}"
     )
-    assert "<redacted>" in stored, (
-        f"<redacted> marker must appear, got: {stored!r}"
-    )
+    assert "<redacted>" in stored, f"<redacted> marker must appear, got: {stored!r}"
 
 
 def test_record_subagent_work_description_redacts_embedded_json_with_comma() -> None:
@@ -750,16 +703,10 @@ def test_record_subagent_work_description_redacts_embedded_json_with_comma() -> 
     stopped at the first comma.
     """
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='prefix {"arguments": "abc,def", "x":1}'
-    )
+    wd.record_subagent_work(description='prefix {"arguments": "abc,def", "x":1}')
     stored = wd._last_subagent_progress_description or ""
-    assert "abc" not in stored, (
-        f"comma-bearing value 'abc' must NOT leak, got: {stored!r}"
-    )
-    assert "def" not in stored, (
-        f"comma-bearing value 'def' must NOT leak, got: {stored!r}"
-    )
+    assert "abc" not in stored, f"comma-bearing value 'abc' must NOT leak, got: {stored!r}"
+    assert "def" not in stored, f"comma-bearing value 'def' must NOT leak, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -776,26 +723,18 @@ def test_record_subagent_work_description_redacts_embedded_nested_object() -> No
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(
         description=(
-            'prefix {"name": "tool", "arguments":'
-            ' {"command": "echo secret", "token": "abc123"}}'
+            'prefix {"name": "tool", "arguments": {"command": "echo secret", "token": "abc123"}}'
         )
     )
     stored = wd._last_subagent_progress_description or ""
     assert "echo secret" not in stored, (
-        f"nested 'command' value 'echo secret' must NOT leak,"
-        f" got: {stored!r}"
+        f"nested 'command' value 'echo secret' must NOT leak, got: {stored!r}"
     )
-    assert "abc123" not in stored, (
-        f"nested 'token' value 'abc123' must NOT leak, got: {stored!r}"
-    )
-    assert "secret" not in stored, (
-        f"nested 'secret' value must NOT leak, got: {stored!r}"
-    )
+    assert "abc123" not in stored, f"nested 'token' value 'abc123' must NOT leak, got: {stored!r}"
+    assert "secret" not in stored, f"nested 'secret' value must NOT leak, got: {stored!r}"
     # The non-sensitive key 'name' is preserved so the operator
     # still sees WHICH tool was invoked.
-    assert "tool" in stored, (
-        f"non-sensitive 'name' key should survive, got: {stored!r}"
-    )
+    assert "tool" in stored, f"non-sensitive 'name' key should survive, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -807,20 +746,12 @@ def test_record_subagent_work_description_redacts_multiple_embedded_fragments() 
     """
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(
-        description=(
-            'prefix {"arguments": "first"} middle {"arguments": "second"}'
-        )
+        description=('prefix {"arguments": "first"} middle {"arguments": "second"}')
     )
     stored = wd._last_subagent_progress_description or ""
-    assert "first" not in stored, (
-        f"first fragment 'first' must NOT leak, got: {stored!r}"
-    )
-    assert "second" not in stored, (
-        f"second fragment 'second' must NOT leak, got: {stored!r}"
-    )
-    assert stored.count("<redacted>") == 2, (
-        f"both fragments must be redacted, got: {stored!r}"
-    )
+    assert "first" not in stored, f"first fragment 'first' must NOT leak, got: {stored!r}"
+    assert "second" not in stored, f"second fragment 'second' must NOT leak, got: {stored!r}"
+    assert stored.count("<redacted>") == 2, f"both fragments must be redacted, got: {stored!r}"
 
 
 def test_record_subagent_work_description_handles_malformed_inner_quote_after_prefix() -> None:
@@ -828,16 +759,10 @@ def test_record_subagent_work_description_handles_malformed_inner_quote_after_pr
     prefix is fully redacted (fallback regex handles it).
     """
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='prefix {"arguments": "secret"tail"}'
-    )
+    wd.record_subagent_work(description='prefix {"arguments": "secret"tail"}')
     stored = wd._last_subagent_progress_description or ""
-    assert "secret" not in stored, (
-        f"malformed-JSON 'secret' must NOT leak, got: {stored!r}"
-    )
-    assert "tail" not in stored, (
-        f"malformed-JSON 'tail' must NOT leak, got: {stored!r}"
-    )
+    assert "secret" not in stored, f"malformed-JSON 'secret' must NOT leak, got: {stored!r}"
+    assert "tail" not in stored, f"malformed-JSON 'tail' must NOT leak, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -875,23 +800,15 @@ def test_record_subagent_work_description_redacts_args_payload() -> None:
     assert "rm -rf /" not in stored, (
         f"nested 'command' value 'rm -rf /' must NOT leak, got: {stored!r}"
     )
-    assert "abc" not in stored, (
-        f"nested 'token' value 'abc' must NOT leak, got: {stored!r}"
-    )
-    assert "command" not in stored, (
-        f"nested 'command' KEY must NOT leak, got: {stored!r}"
-    )
-    assert "token" not in stored, (
-        f"nested 'token' KEY must NOT leak, got: {stored!r}"
-    )
+    assert "abc" not in stored, f"nested 'token' value 'abc' must NOT leak, got: {stored!r}"
+    assert "command" not in stored, f"nested 'command' KEY must NOT leak, got: {stored!r}"
+    assert "token" not in stored, f"nested 'token' KEY must NOT leak, got: {stored!r}"
     # The non-sensitive 'type' and 'name' fields are preserved so
     # the operator still sees WHICH tool was invoked.
     assert "tool_call" in stored, (
         f"non-sensitive 'type' value 'tool_call' should survive, got: {stored!r}"
     )
-    assert "bash" in stored, (
-        f"non-sensitive 'name' value 'bash' should survive, got: {stored!r}"
-    )
+    assert "bash" in stored, f"non-sensitive 'name' value 'bash' should survive, got: {stored!r}"
     assert "<redacted>" in stored
 
 
@@ -903,26 +820,19 @@ def test_record_subagent_work_description_redacts_scalar_args_value() -> None:
     value walked recursively and was preserved as-is.
     """
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"name":"bash","args":"secret_payload_value"}'
-    )
+    wd.record_subagent_work(description='{"name":"bash","args":"secret_payload_value"}')
     stored = wd._last_subagent_progress_description or ""
     assert "secret_payload_value" not in stored, (
-        f"scalar 'args' value 'secret_payload_value' must NOT leak,"
-        f" got: {stored!r}"
+        f"scalar 'args' value 'secret_payload_value' must NOT leak, got: {stored!r}"
     )
-    assert "bash" in stored, (
-        f"non-sensitive 'name' value 'bash' should survive, got: {stored!r}"
-    )
+    assert "bash" in stored, f"non-sensitive 'name' value 'bash' should survive, got: {stored!r}"
     assert "<redacted>" in stored
 
 
 def test_record_subagent_work_description_redacts_list_args_value() -> None:
     """A LIST ``args`` value is redacted in full (no element leak)."""
     wd, _clock = _make_watchdog()
-    wd.record_subagent_work(
-        description='{"args": ["rm -rf /", "secret"]}'
-    )
+    wd.record_subagent_work(description='{"args": ["rm -rf /", "secret"]}')
     stored = wd._last_subagent_progress_description or ""
     assert "rm -rf /" not in stored
     assert "secret" not in stored
@@ -941,19 +851,14 @@ def test_record_subagent_work_description_redacts_tool_call_line_with_nested_arg
     wd, _clock = _make_watchdog()
     wd.record_subagent_work(
         description=(
-            '{"type":"tool_call","name":"bash",'
-            '"args":{"command":"echo secret","token":"abc123"}}'
+            '{"type":"tool_call","name":"bash","args":{"command":"echo secret","token":"abc123"}}'
         )
     )
     stored = wd._last_subagent_progress_description or ""
     assert "echo secret" not in stored, (
-        f"nested 'command' value 'echo secret' MUST NOT leak,"
-        f" got: {stored!r}"
+        f"nested 'command' value 'echo secret' MUST NOT leak, got: {stored!r}"
     )
-    assert "abc123" not in stored, (
-        f"nested 'token' value 'abc123' MUST NOT leak,"
-        f" got: {stored!r}"
-    )
+    assert "abc123" not in stored, f"nested 'token' value 'abc123' MUST NOT leak, got: {stored!r}"
     # The non-sensitive 'type' and 'name' fields are preserved.
     assert "tool_call" in stored
     assert "bash" in stored

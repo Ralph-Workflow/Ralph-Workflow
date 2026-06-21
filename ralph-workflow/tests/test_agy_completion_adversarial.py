@@ -104,12 +104,7 @@ def test_forged_completion_sentinel_rejected_when_secret_provided(
     """
     _write_forged_completion_sentinel(workspace, RUN_ID)
     assert _check_completion_sentinel(workspace, RUN_ID) is True
-    assert (
-        _check_completion_sentinel(
-            workspace, RUN_ID, sentinel_secret=SENTINEL_SECRET
-        )
-        is False
-    )
+    assert _check_completion_sentinel(workspace, RUN_ID, sentinel_secret=SENTINEL_SECRET) is False
 
 
 def test_forged_receipt_rejected_when_secret_provided(workspace: Path) -> None:
@@ -123,9 +118,7 @@ def test_forged_receipt_rejected_when_secret_provided(workspace: Path) -> None:
     _write_forged_receipt(workspace, RUN_ID, ARTIFACT_TYPE)
     assert artifact_receipt_present(workspace, RUN_ID, ARTIFACT_TYPE) is True
     assert (
-        artifact_receipt_present(
-            workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET
-        )
+        artifact_receipt_present(workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET)
         is False
     )
 
@@ -137,13 +130,9 @@ def test_broker_written_receipt_accepted_with_secret(workspace: Path) -> None:
     This is the positive-path proof that HMAC enforcement does not
     regress the canonical submission path.
     """
-    write_artifact_receipt(
-        workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET
-    )
+    write_artifact_receipt(workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET)
     assert (
-        artifact_receipt_present(
-            workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET
-        )
+        artifact_receipt_present(workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET)
         is True
     )
 
@@ -196,9 +185,7 @@ def test_evaluate_completion_rejects_forged_receipt_without_receipt_secret(
     )
     assert signals.required_artifact_present is True
     assert (
-        artifact_receipt_present(
-            workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET
-        )
+        artifact_receipt_present(workspace, RUN_ID, ARTIFACT_TYPE, receipt_secret=RECEIPT_SECRET)
         is False
     )
 
@@ -220,12 +207,7 @@ def test_evaluate_completion_rejects_forged_completion_sentinel_with_secret(
     """
     _write_forged_completion_sentinel(workspace, RUN_ID)
     assert _check_completion_sentinel(workspace, RUN_ID) is True
-    assert (
-        _check_completion_sentinel(
-            workspace, RUN_ID, sentinel_secret=SENTINEL_SECRET
-        )
-        is False
-    )
+    assert _check_completion_sentinel(workspace, RUN_ID, sentinel_secret=SENTINEL_SECRET) is False
 
 
 def test_receipt_hmac_is_deterministic_and_collision_free(workspace: Path) -> None:

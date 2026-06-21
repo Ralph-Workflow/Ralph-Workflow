@@ -104,7 +104,7 @@ def test_test_subprocess_e2e_uses_same_timeout_wrapper() -> None:
     assert e2e_body == [
         "uv run python -m ralph.verify_timeout "
         "--suite-timeout $(PYTEST_SUITE_TIMEOUT_SECONDS) -- "
-        'python -m pytest tests/ -q -n 1 -m '
+        "python -m pytest tests/ -q -n 1 -m "
         '"subprocess_e2e and not smoke and not live_agy and not verify_budget_real_time"'
     ]
 
@@ -192,9 +192,7 @@ def test_verify_budget_real_time_test_uses_dedicated_marker(tmp_path: Path) -> N
     ``Path.read_text()`` call. The source is the AST target, not the
     test artefact, so a tmp_path copy is the canonical fixture pattern.
     """
-    target = (
-        Path(__file__).resolve().parent / "test_verify_budget_real_time.py"
-    )
+    target = Path(__file__).resolve().parent / "test_verify_budget_real_time.py"
     source_copy = tmp_path / "test_verify_budget_real_time.py"
     source_copy.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
     source = source_copy.read_text(encoding="utf-8")

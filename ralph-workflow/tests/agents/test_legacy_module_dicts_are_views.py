@@ -88,6 +88,4 @@ class TestLegacyDictsAreViews:
     def test_strategy_dispatch_keys_unchanged(self) -> None:
         """_STRATEGY_DISPATCH must contain all AgentTransport values."""
         for transport in AgentTransport:
-            assert transport in _STRATEGY_DISPATCH, (
-                f"{transport} must be in _STRATEGY_DISPATCH"
-            )
+            assert transport in _STRATEGY_DISPATCH, f"{transport} must be in _STRATEGY_DISPATCH"

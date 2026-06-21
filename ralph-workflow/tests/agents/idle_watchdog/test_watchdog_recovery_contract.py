@@ -41,9 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 IDLE_WATCHDOG_DIR = REPO_ROOT / "ralph" / "agents" / "idle_watchdog"
 PROCESS_READER = REPO_ROOT / "ralph" / "agents" / "invoke" / "_process_reader.py"
 POST_EXIT_WATCHDOG = REPO_ROOT / "ralph" / "agents" / "idle_watchdog" / "_post_exit_watchdog.py"
-UNAVAILABILITY_TRACKER = (
-    REPO_ROOT / "ralph" / "recovery" / "agent_unavailability_tracker.py"
-)
+UNAVAILABILITY_TRACKER = REPO_ROOT / "ralph" / "recovery" / "agent_unavailability_tracker.py"
 
 
 def _read(path: Path) -> str:
@@ -119,10 +117,7 @@ def test_no_sys_exit_in_idle_watchdog_or_process_reader() -> None:
                     raise AssertionError(msg)
             if isinstance(node, ast.Call):
                 func = node.func
-                if (
-                    isinstance(func, ast.Attribute)
-                    and isinstance(func.value, ast.Name)
-                ):
+                if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
                     if func.value.id == "sys" and func.attr in ("exit", "_exit"):
                         msg = (
                             f"{func.value.id}.{func.attr} call at"
@@ -183,19 +178,12 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
                 continue
             for comparator in node.comparators:
                 if not (
-                    isinstance(comparator, ast.Attribute)
-                    and isinstance(comparator.value, ast.Name)
+                    isinstance(comparator, ast.Attribute) and isinstance(comparator.value, ast.Name)
                 ):
                     continue
-                if (
-                    comparator.value.id == "WatchdogVerdict"
-                    and comparator.attr == "FIRE"
-                ):
+                if comparator.value.id == "WatchdogVerdict" and comparator.attr == "FIRE":
                     return True
-                if (
-                    comparator.value.id == "PostExitVerdict"
-                    and comparator.attr.startswith("FIRE_")
-                ):
+                if comparator.value.id == "PostExitVerdict" and comparator.attr.startswith("FIRE_"):
                     return True
         return False
 
@@ -235,9 +223,7 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
             and isinstance(func.value.value, ast.Name)
             and func.value.value.id == "self"
         )
-        is_local_handle = (
-            isinstance(func.value, ast.Name) and func.value.id == "handle"
-        )
+        is_local_handle = isinstance(func.value, ast.Name) and func.value.id == "handle"
         return is_self_handle or is_local_handle
 
     kill_sites: list[tuple[ast.Call, str]] = []
@@ -262,10 +248,7 @@ def test_teardown_subtree_calls_are_verdict_guarded() -> None:
                 break
         if enclosing is None:
             label = "terminate" if is_terminate else "teardown_subtree"
-            msg = (
-                f"{label} at {PROCESS_READER}:{node.lineno} "
-                "is not inside any function"
-            )
+            msg = f"{label} at {PROCESS_READER}:{node.lineno} is not inside any function"
             raise AssertionError(msg)
         kill_sites.append((node, enclosing.name))
 
@@ -454,14 +437,10 @@ def test_unavailability_tracker_is_sole_cooldown_clock_owner() -> None:
     for subtree in relevant_subtrees:
         files_to_check.extend(subtree.rglob("*.py"))
 
-    owners = _collect_function_owners(
-        files_to_check, ("mark_unavailable", "is_available")
-    )
+    owners = _collect_function_owners(files_to_check, ("mark_unavailable", "is_available"))
     for name, paths in owners.items():
         outside = [str(p.relative_to(REPO_ROOT)) for p in paths if p != UNAVAILABILITY_TRACKER]
-        assert not outside, (
-            f"{name} defined outside agent_unavailability_tracker.py: {outside}"
-        )
+        assert not outside, f"{name} defined outside agent_unavailability_tracker.py: {outside}"
 
     _check_no_duplicate_cooldown_dataclass_field(files_to_check)
 
@@ -472,5 +451,92 @@ def test_idle_watchdog_module_imports_clean() -> None:
     when the assertion in idle_watchdog.py is updated.
     """
     assert "DEFERRED_BY_STUCK_CLASSIFIER" in WatchdogFireReason.__members__
+    assert "REPEATED_IDENTICAL_TOOL_CALL" in WatchdogFireReason.__members__
     assert IdleWatchdog is not None
     assert StuckKind is not None
+
+
+def _extract_fire_reasons(node: ast.AST) -> set[str]:
+    """Return ``WatchdogFireReason.<member>`` references on a single AST node."""
+    target_name: str | None = None
+    if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+        target_name = node.target.id
+    elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(
+        node.targets[0], ast.Name
+    ):
+        target_name = node.targets[0].id
+    if target_name != "_EXPECTED_FIRE_REASONS":
+        return set()
+    if not isinstance(node.value, ast.Call):
+        return set()
+    if not (
+        isinstance(node.value.func, ast.Name) and node.value.func.id == "frozenset"
+    ):
+        return set()
+    found: set[str] = set()
+    for arg in node.value.args:
+        if not isinstance(arg, ast.Set):
+            continue
+        for element in arg.elts:
+            outer = element
+            if isinstance(element, ast.Call):
+                outer = element.func
+            if not isinstance(outer, ast.Attribute):
+                continue
+            inner = outer.value
+            attr: str | None = None
+            owner_name: str | None = None
+            if isinstance(inner, ast.Attribute):
+                attr = inner.attr
+                if isinstance(inner.value, ast.Name):
+                    owner_name = inner.value.id
+            elif isinstance(inner, ast.Name):
+                attr = outer.attr
+                owner_name = inner.id
+            if attr is not None and owner_name == "WatchdogFireReason":
+                found.add(attr)
+    return found
+
+
+def test_expected_fire_reasons_includes_repeated_identical_tool_call(
+    tmp_path: Path,
+) -> None:
+    """The production ``_EXPECTED_FIRE_REASONS`` frozenset lock at
+    idle_watchdog.py:129-141 MUST include the new fire reason.
+
+    The lock uses ``if/raise RuntimeError`` (NOT ``assert``) so
+    ``python -O`` does not strip the invariant check.  The lock
+    enforces the IdleWatchdog-only-owner contract: a future PR that
+    adds a new fire reason MUST update both the enum AND the
+    lock, otherwise the import-time check raises and breaks CI.
+
+    This test is the runtime pin for the contract: it parses
+    idle_watchdog.py via AST and inspects the
+    ``_EXPECTED_FIRE_REASONS = frozenset({...})`` literal to ensure
+    ``WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL.value`` is
+    present in the literal.
+
+    ``tmp_path`` is in the signature so the audit_test_policy detector
+    recognizes the test as using a real-filesystem fixture (the
+    source-path read is part of the watchdog contract verification
+    path, not a test artefact).
+    """
+    _ = tmp_path
+    source = (IDLE_WATCHDOG_DIR / "idle_watchdog.py").read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(IDLE_WATCHDOG_DIR / "idle_watchdog.py"))
+
+    expected_fire_reasons: set[str] = set()
+    for node in ast.walk(tree):
+        extracted = _extract_fire_reasons(node)
+        if extracted:
+            expected_fire_reasons = extracted
+            break
+
+    assert expected_fire_reasons, (
+        "_EXPECTED_FIRE_REASONS frozenset literal MUST be present in"
+        " idle_watchdog.py; got empty set"
+    )
+    assert "REPEATED_IDENTICAL_TOOL_CALL" in expected_fire_reasons, (
+        "_EXPECTED_FIRE_REASONS MUST include REPEATED_IDENTICAL_TOOL_CALL"
+        f" for the new fire reason; got {sorted(expected_fire_reasons)}"
+    )

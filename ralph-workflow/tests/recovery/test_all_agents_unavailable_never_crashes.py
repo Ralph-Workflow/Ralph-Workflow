@@ -200,12 +200,9 @@ def test_wait_state_survives_ten_cooldown_cycles() -> None:
     # bounded sleep so it can resume as soon as the earliest cooldown
     # expires.
     for i, delay in enumerate(observed_delays_ms):
-        assert delay > 0, (
-            f"iteration {i}: wait state delay must be positive, got {delay}ms"
-        )
+        assert delay > 0, f"iteration {i}: wait state delay must be positive, got {delay}ms"
         assert delay <= 200_000, (
-            f"iteration {i}: wait state delay must be bounded by max_backoff_ms, "
-            f"got {delay}ms"
+            f"iteration {i}: wait state delay must be bounded by max_backoff_ms, got {delay}ms"
         )
     # The wait state is bounded above by the initial wait state's
     # last_retry_delay_ms + the cumulative wall-clock advance. This is the
