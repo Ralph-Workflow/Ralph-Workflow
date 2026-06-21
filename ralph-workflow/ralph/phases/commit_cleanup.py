@@ -437,7 +437,7 @@ def build_cleanup_retry_hint(skipped_paths: list[str], safe_applied_count: int) 
 def _apply_cleanup_actions(
     repo_root: Path,
     cleanup: CommitCleanup,
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     """Apply cleanup actions to the repository, returning the rejected delete paths.
 
     Cleanup is BEST-EFFORT -- a single unsafe ``delete_file`` does NOT abort
@@ -457,6 +457,10 @@ def _apply_cleanup_actions(
       never raise on duplicate lines). Deletes run last so the
       skipped-path list returned from the function matches what the
       agent submitted.
+    * Each SAFE-but-FAILED-at-apply delete is appended to a separate
+      ``failed_delete_paths`` list so the caller can distinguish a
+      safety rejection from an apply-time failure. Apply-time failures
+      must NOT be counted as successful cleanup work.
 
     Args:
         repo_root: Repository root path (already resolved to a real
@@ -464,11 +468,18 @@ def _apply_cleanup_actions(
         cleanup: Validated commit_cleanup artifact model.
 
     Returns:
-        List of paths whose ``delete_file`` action was rejected (empty
-        list when every action was safe to apply). The caller uses this
-        list to decide whether to return ``AGENT_SUCCESS`` (with the
-        rejected paths surfaced via WARNING logs) or to escalate to a
-        ``PhaseFailureEvent`` with a structured retry hint.
+        Tuple of ``(skipped_delete_paths, failed_delete_paths)``:
+        * ``skipped_delete_paths`` -- paths rejected by the safety
+          classifier (would never be safe to delete).
+        * ``failed_delete_paths`` -- paths that passed the safety
+          classifier but failed at apply time (permission denied,
+          stale git lock, transient I/O). These must NOT be counted
+          as successful cleanup work.
+
+        The caller uses both lists to decide whether to return
+        ``AGENT_SUCCESS`` (with the rejected paths surfaced via
+        WARNING logs) or to escalate to a ``PhaseFailureEvent`` with
+        a structured retry hint.
     """
     gitignore_patterns: list[str] = []
     git_exclude_patterns: list[str] = []
@@ -487,9 +498,9 @@ def _apply_cleanup_actions(
 
     _apply_gitignore_patterns(repo_root, gitignore_patterns)
     _apply_git_exclude_patterns(repo_root, git_exclude_patterns)
-    _apply_safe_deletes(repo_root, safe_delete_files)
+    _succeeded, failed_delete_paths = _apply_safe_deletes(repo_root, safe_delete_files)
 
-    return skipped_delete_paths
+    return skipped_delete_paths, failed_delete_paths
 
 
 def _classify_action(
@@ -555,12 +566,30 @@ def _apply_git_exclude_patterns(repo_root: Path, patterns: list[str]) -> None:
             )
 
 
-def _apply_safe_deletes(repo_root: Path, safe_delete_files: list[str]) -> None:
-    """Apply the deduplicated safe ``delete_file`` actions best-effort."""
-    # Deduplicate so duplicate actions against the same path don't issue
-    # duplicate git rm / unlink calls (the underlying helpers already
-    # tolerate missing files with a no-op, but dedup keeps the logs
-    # cleaner and avoids double WARNING logs).
+def _apply_safe_deletes(
+    repo_root: Path, safe_delete_files: list[str]
+) -> tuple[list[str], list[str]]:
+    """Apply the deduplicated safe ``delete_file`` actions best-effort.
+
+    Returns a ``(succeeded_paths, failed_paths)`` tuple so the caller
+    can distinguish a delete that was skipped because of safety
+    classification from a delete that was attempted but failed at
+    apply time (permission denied, stale git lock, transient I/O).
+
+    Deduplicate so duplicate actions against the same path don't issue
+    duplicate git rm / unlink calls (the underlying helpers already
+    tolerate missing files with a no-op, but dedup keeps the logs
+    cleaner and avoids double WARNING logs).
+
+    Each path is attempted individually wrapped in try/except so a
+    single failure cannot abort the batch. Failures are logged at
+    WARNING level and returned in the ``failed_paths`` list -- the
+    caller (``_decide_cleanup_outcome``) uses that list to escalate to
+    a ``PhaseFailureEvent`` when every attempted delete failed, so a
+    silent batch of failures cannot masquerade as successful cleanup.
+    """
+    succeeded: list[str] = []
+    failed: list[str] = []
     seen_paths: set[str] = set()
     for file_path in safe_delete_files:
         if file_path in seen_paths:
@@ -569,11 +598,14 @@ def _apply_safe_deletes(repo_root: Path, safe_delete_files: list[str]) -> None:
         seen_paths.add(file_path)
         try:
             delete_file_from_repo(repo_root, file_path)
+            succeeded.append(file_path)
             logger.debug("Deleted file: {}", file_path)
         except Exception as exc:
+            failed.append(file_path)
             logger.warning(
                 "Failed to delete file {!r} (continuing batch): {}", file_path, exc
             )
+    return succeeded, failed
 
 
 def _load_cleanup_artifact(
@@ -681,11 +713,15 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
         return _missing_artifact_failure(phase_name)
 
     try:
-        skipped_delete_paths = _apply_cleanup_actions(repo_root, cleanup)
+        skipped_delete_paths, failed_delete_paths = _apply_cleanup_actions(
+            repo_root, cleanup
+        )
     except Exception as exc:
         return _cleanup_failed_event(phase_name, exc)
 
-    return _decide_cleanup_outcome(phase_name, cleanup, skipped_delete_paths)
+    return _decide_cleanup_outcome(
+        phase_name, cleanup, skipped_delete_paths, failed_delete_paths
+    )
 
 
 def _missing_artifact_failure(phase_name: str) -> list[Event]:
@@ -722,13 +758,19 @@ def _decide_cleanup_outcome(
     phase_name: str,
     cleanup: CommitCleanup,
     skipped_delete_paths: list[str],
+    failed_delete_paths: list[str] | None = None,
 ) -> list[Event]:
     """Decide the final event(s) for the cleanup phase.
 
     Decision logic:
-    * ALL deletes were skipped AND no safe work was done ->
-      ``PhaseFailureEvent`` with the structured retry hint so the agent
-      can self-correct on retry.
+    * ALL attempted deletes FAILED at apply time AND no safe non-delete
+      work was done -> ``PhaseFailureEvent`` with the structured retry
+      hint. This prevents a silent batch of apply-time failures
+      (permission denied, stale git lock, transient I/O) from
+      masquerading as successful cleanup.
+    * ALL deletes were skipped (safety classifier rejected them) AND
+      no safe work was done -> ``PhaseFailureEvent`` with the
+      structured retry hint so the agent can self-correct on retry.
     * Otherwise apply the ``analysis_complete`` branch
       (``AGENT_SUCCESS`` or ``PHASE_LOOPBACK``).
 
@@ -737,17 +779,57 @@ def _decide_cleanup_outcome(
     classifier dropped them -- otherwise a malformed batch with only
     unsafe deletes plus whitespace-only non-delete actions would
     silently bypass the structured retry hint path.
+
+    Args:
+        phase_name: Phase identifier (used in logs and event payloads).
+        cleanup: Validated commit_cleanup artifact model.
+        skipped_delete_paths: Paths whose ``delete_file`` was rejected
+            by the safety classifier.
+        failed_delete_paths: Paths that passed the safety classifier
+            but failed at apply time. ``None`` is treated as an empty
+            list for backward compatibility with older callers that
+            do not yet thread the apply-time result.
     """
-    safe_actions_count = _count_safe_actions(cleanup, skipped_delete_paths)
+    failed_paths = list(failed_delete_paths) if failed_delete_paths else []
+    safe_actions_count = _count_safe_actions(cleanup, skipped_delete_paths, failed_paths)
+    attempted_delete_count = _count_attempted_delete_actions(cleanup, skipped_delete_paths)
+    if failed_paths and safe_actions_count == 0 and attempted_delete_count > 0:
+        return _all_deletes_failed_failure(phase_name, failed_paths, safe_actions_count)
     delete_actions_count = _count_meaningful_delete_actions(cleanup)
     if skipped_delete_paths and safe_actions_count == 0 and delete_actions_count > 0:
-        return _all_deletes_rejected_failure(phase_name, skipped_delete_paths, safe_actions_count)
+        return _all_deletes_rejected_failure(
+            phase_name, skipped_delete_paths, safe_actions_count
+        )
     return _analysis_complete_outcome(cleanup)
 
 
-def _count_safe_actions(cleanup: CommitCleanup, skipped_delete_paths: list[str]) -> int:
-    """Count actions actually applied (mirrors ``_classify_action`` semantics)."""
+def _count_safe_actions(
+    cleanup: CommitCleanup,
+    skipped_delete_paths: list[str],
+    failed_delete_paths: list[str] | None = None,
+) -> int:
+    """Count actions actually applied (mirrors ``_classify_action`` semantics).
+
+    A ``delete_file`` action counts toward ``safe_actions_count`` only
+    when BOTH conditions hold:
+
+    1. The action passed the safety classifier (its ``path`` is not
+       in ``skipped_delete_paths``).
+    2. The apply-time ``delete_file_from_repo`` call did NOT raise
+       (its ``path`` is not in ``failed_delete_paths``).
+
+    Counting an apply-time failure as a successful cleanup would let
+    a silent batch of failures (permission denied, stale git lock,
+    transient I/O) masquerade as successful work and let the phase
+    return ``PHASE_LOOPBACK`` / ``AGENT_SUCCESS`` with nothing
+    actually cleaned up. Subtracting ``failed_delete_paths`` here is
+    the second half of the safety net: the first half is
+    ``_apply_safe_deletes`` returning the failed paths, and the
+    second is this function refusing to inflate the safe-actions
+    count with failures.
+    """
     skipped_set = set(skipped_delete_paths)
+    failed_set = set(failed_delete_paths) if failed_delete_paths else set()
     return (
         sum(
             1
@@ -767,6 +849,7 @@ def _count_safe_actions(cleanup: CommitCleanup, skipped_delete_paths: list[str])
                 and a.path
                 and a.path.strip()
                 and a.path not in skipped_set
+                and a.path not in failed_set
             )
         )
     )
@@ -787,6 +870,34 @@ def _count_meaningful_delete_actions(cleanup: CommitCleanup) -> int:
     )
 
 
+def _count_attempted_delete_actions(
+    cleanup: CommitCleanup,
+    skipped_delete_paths: list[str],
+) -> int:
+    """Count ``delete_file`` actions that the classifier actually attempted.
+
+    "Attempted" means: ``delete_file`` action with a non-whitespace
+    ``path`` AND the path was NOT skipped by the safety classifier.
+    Apply-time failures count toward this number -- they are real
+    attempts the phase tried to perform. Used by
+    ``_decide_cleanup_outcome`` to decide whether the
+    "all attempted deletes failed" branch should fire: that branch
+    needs to know how many deletes the classifier sent to apply,
+    not how many were rejected up front.
+    """
+    skipped_set = set(skipped_delete_paths)
+    return sum(
+        1
+        for a in cleanup.actions
+        if (
+            a.action == "delete_file"
+            and a.path
+            and a.path.strip()
+            and a.path not in skipped_set
+        )
+    )
+
+
 def _all_deletes_rejected_failure(
     phase_name: str,
     skipped_delete_paths: list[str],
@@ -796,6 +907,43 @@ def _all_deletes_rejected_failure(
     retry_hint = build_cleanup_retry_hint(skipped_delete_paths, safe_actions_count)
     logger.warning(
         "{}: all delete actions rejected. Returning PhaseFailureEvent with retry hint.",
+        phase_name,
+    )
+    return [
+        PhaseFailureEvent(
+            phase=phase_name,
+            reason=retry_hint,
+            recoverable=True,
+            retry_in_session=True,
+            failure_category=FailureCategory.ARTIFACT_VALIDATION,
+        )
+    ]
+
+
+def _all_deletes_failed_failure(
+    phase_name: str,
+    failed_delete_paths: list[str],
+    safe_actions_count: int,
+) -> list[Event]:
+    """Emit a ``PhaseFailureEvent`` when every attempted delete failed at apply time.
+
+    Distinct from ``_all_deletes_rejected_failure``: this fires when
+    the classifier accepted the paths (so they are NOT in
+    ``skipped_delete_paths``) but ``delete_file_from_repo`` raised on
+    every one. Without this branch the phase would return
+    ``PHASE_LOOPBACK`` / ``AGENT_SUCCESS`` with zero actual cleanup
+    work done, which is a silent failure.
+
+    The retry hint names the failed paths and tells the agent the
+    failure was apply-time (permission denied / stale git lock /
+    transient I/O), not a safety rejection, so the agent can self-
+    correct by retrying the same artifact or by reclassifying the
+    paths as ``add_to_git_exclude``.
+    """
+    retry_hint = build_cleanup_retry_hint(failed_delete_paths, safe_actions_count)
+    logger.warning(
+        "{}: all attempted delete_file actions failed at apply time. "
+        "Returning PhaseFailureEvent with retry hint.",
         phase_name,
     )
     return [

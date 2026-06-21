@@ -2030,7 +2030,7 @@ def test_empty_path_in_delete_action_is_skipped_with_debug_log(tmp_git_repo: Pat
         actions=[whitespace_action, real_action],
     )
 
-    skipped = _apply_cleanup_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
     # Whitespace-only paths are silently dropped -- not surfaced in the
     # retry hint because the agent cannot meaningfully retry them.
     assert skipped == []
@@ -2128,7 +2128,7 @@ def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
         actions=[unsafe_action, whitespace_action],
     )
 
-    skipped = _apply_cleanup_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
     assert "module.py" in skipped
 
     outcome = _decide_cleanup_outcome(
@@ -2166,7 +2166,7 @@ def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
         actions=[unsafe_action, whitespace_action],
     )
 
-    skipped = _apply_cleanup_actions(tmp_git_repo, cleanup)
+    skipped, _failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
     assert "module.py" in skipped
 
     outcome = _decide_cleanup_outcome(
@@ -2309,4 +2309,204 @@ def test_build_cleanup_retry_hint_with_skipped_paths_and_zero_safe_count() -> No
     assert "Safe actions applied: 0" not in hint, (
         f"Zero-safe-count summary must NOT use the 'Safe actions applied: N' "
         f"form; got: {hint!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_apply_time_delete_failure_triggers_phase_failure_event(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: apply-time ``delete_file_from_repo`` failure escalates to ``PhaseFailureEvent``.
+
+    Pins the fix for the bug where a delete that PASSED the safety
+    classifier but FAILED at apply time (permission denied, stale git
+    lock, transient I/O) was silently counted as successful cleanup.
+    The prior code returned ``PHASE_LOOPBACK`` / ``AGENT_SUCCESS`` with
+    zero actual cleanup work -- a silent failure.
+
+    The test patches ``delete_file_from_repo`` to raise for an
+    otherwise-safe binary artifact, drives ``handle_commit_cleanup_phase``
+    through the full ``InvokeAgentEffect`` flow, and asserts the phase
+    returns a single ``PhaseFailureEvent`` carrying the structured
+    retry hint that names the failed path. The binary artifact MUST
+    still exist on disk (the delete was attempted and failed).
+    """
+    workspace = FsWorkspace(tmp_git_repo)
+    binary = tmp_git_repo / "binary.exe"
+    binary.write_bytes(b"\x00MZ")
+
+    cleanup_artifact = {
+        "analysis_complete": False,
+        "actions": [
+            {"action": "delete_file", "path": "binary.exe"},
+        ],
+    }
+    _write_commit_cleanup_artifact(workspace, cleanup_artifact)
+
+    def _raise_on_delete(repo_root: Path, file_path: str) -> None:
+        raise OSError(f"simulated apply-time failure for {file_path}")
+
+    monkeypatch.setattr(
+        "ralph.phases.commit_cleanup.delete_file_from_repo",
+        _raise_on_delete,
+    )
+
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit_cleanup",
+        prompt_file="cleanup.txt",
+    )
+    events = handle_commit_cleanup_phase(effect, ctx)
+
+    assert len(events) == 1, (
+        f"Expected exactly one PhaseFailureEvent, got {len(events)}: {events!r}"
+    )
+    assert isinstance(events[0], PhaseFailureEvent), (
+        f"Expected PhaseFailureEvent when all attempted deletes failed at "
+        f"apply time, got {type(events[0]).__name__}: {events[0]!r}"
+    )
+    assert "binary.exe" in events[0].reason, (
+        f"PhaseFailureEvent.reason must name the failed path binary.exe; "
+        f"got: {events[0].reason!r}"
+    )
+    assert "Cleanup retry hint" in events[0].reason, (
+        f"PhaseFailureEvent.reason must carry the structured retry hint; "
+        f"got: {events[0].reason!r}"
+    )
+    assert events[0].recoverable is True
+    assert events[0].failure_category == FailureCategory.ARTIFACT_VALIDATION
+    assert binary.exists(), (
+        "Binary artifact must still exist -- the delete was attempted and "
+        "failed; the phase must NOT silently report success."
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_apply_time_delete_failure_with_safe_gitignore_succeeds(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: apply-time failure on delete + safe gitignore pattern = AGENT_SUCCESS.
+
+    Pins the partial-success contract: when an apply-time delete
+    failure happens ALONGSIDE a successful ``add_to_gitignore``
+    action, the gitignore action's success counts toward
+    ``safe_actions_count`` so the phase returns ``AGENT_SUCCESS``,
+    not ``PhaseFailureEvent``. The failure is still surfaced via
+    WARNING log and the failed path is recorded -- the phase does not
+    silently swallow the failure, it just does not escalate when
+    other safe work succeeded.
+    """
+    workspace = FsWorkspace(tmp_git_repo)
+    binary = tmp_git_repo / "binary.exe"
+    binary.write_bytes(b"\x00MZ")
+
+    cleanup_artifact = {
+        "analysis_complete": True,
+        "actions": [
+            {"action": "delete_file", "path": "binary.exe"},
+            {"action": "add_to_gitignore", "pattern": "*.scratch"},
+        ],
+    }
+    _write_commit_cleanup_artifact(workspace, cleanup_artifact)
+
+    def _raise_on_delete(repo_root: Path, file_path: str) -> None:
+        raise OSError(f"simulated apply-time failure for {file_path}")
+
+    monkeypatch.setattr(
+        "ralph.phases.commit_cleanup.delete_file_from_repo",
+        _raise_on_delete,
+    )
+
+    ctx = PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        artifacts_policy=object(),
+        agents_policy=object(),
+    )
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit_cleanup",
+        prompt_file="cleanup.txt",
+    )
+    events = handle_commit_cleanup_phase(effect, ctx)
+
+    assert events == [PipelineEvent.AGENT_SUCCESS], (
+        f"Phase must return AGENT_SUCCESS when the gitignore action "
+        f"succeeded alongside the apply-time delete failure; got: {events!r}"
+    )
+    gitignore_text = (tmp_git_repo / ".gitignore").read_text()
+    assert "*.scratch" in gitignore_text, (
+        f"Gitignore action must still be applied even when the delete "
+        f"action failed at apply time; got: {gitignore_text!r}"
+    )
+    assert binary.exists(), (
+        "Binary artifact must still exist -- the delete failed at apply time."
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_apply_cleanup_actions_returns_separate_skipped_and_failed_lists(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: ``_apply_cleanup_actions`` returns ``(skipped, failed)`` disjoint tuple.
+
+    Pins the public contract: the function returns a tuple of two
+    disjoint lists so callers can distinguish safety-classifier
+    rejections from apply-time failures. The first element is the
+    list of paths the classifier rejected (``_is_safe_to_delete``
+    returned False); the second is the list of paths the classifier
+    accepted but ``delete_file_from_repo`` raised on. The two lists
+    MUST be disjoint -- a path can only be in one or the other.
+    """
+    workspace = FsWorkspace(tmp_git_repo)
+    _ = workspace  # kept so future tests can drive PhaseContext via this helper
+    safe_binary = tmp_git_repo / "binary.exe"
+    safe_binary.write_bytes(b"\x00MZ")
+    unsafe_source = tmp_git_repo / "module.py"
+    unsafe_source.write_text("source code")
+
+    cleanup = CommitCleanup.model_construct(
+        analysis_complete=True,
+        actions=[
+            CommitCleanupAction.model_construct(
+                action="delete_file", path="binary.exe"
+            ),
+            CommitCleanupAction.model_construct(
+                action="delete_file", path="module.py"
+            ),
+        ],
+    )
+
+    def _raise_on_delete(repo_root: Path, file_path: str) -> None:
+        raise OSError(f"simulated apply-time failure for {file_path}")
+
+    monkeypatch.setattr(
+        "ralph.phases.commit_cleanup.delete_file_from_repo",
+        _raise_on_delete,
+    )
+
+    skipped, failed = _apply_cleanup_actions(tmp_git_repo, cleanup)
+
+    assert "module.py" in skipped, (
+        f"Unsafe path module.py must be in skipped; got: {skipped!r}"
+    )
+    assert "binary.exe" in failed, (
+        f"Safe-but-failed path binary.exe must be in failed; got: {failed!r}"
+    )
+    assert set(skipped).isdisjoint(set(failed)), (
+        f"skipped and failed lists must be disjoint; "
+        f"skipped={skipped!r}, failed={failed!r}"
     )
