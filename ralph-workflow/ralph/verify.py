@@ -196,6 +196,12 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
     (
+        "agent internal paths audit (audit_agent_internal_paths)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_agent_internal_paths"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
+    (
         "social-proof gate (verify_social_proof)",
         "python3",
         ("../scripts/verify_social_proof.py",),

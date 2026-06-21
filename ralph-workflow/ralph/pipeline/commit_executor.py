@@ -134,7 +134,7 @@ def execute_commit_effect(
                 cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
         cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
-        logger.error("Commit failed: {}", exc)
+        logger.error("Commit failed ({}): {}", type(exc).__name__, exc)
         return PipelineEvent.COMMIT_FAILURE
     return PipelineEvent.COMMIT_SUCCESS
 
@@ -164,20 +164,26 @@ def _commit_include_paths(repo_root: Path, payload: dict[str, object]) -> list[s
     raw_excluded = payload.get("excluded_files")
     if not isinstance(raw_files, list) and not isinstance(raw_excluded, list):
         return None
-    return _commit_include_paths_from_changed(payload, _changed_commit_paths(repo_root))
+    return _commit_include_paths_from_changed(
+        payload, _changed_commit_paths(repo_root), repo_root=repo_root
+    )
 
 
 def _commit_include_paths_from_changed(
-    payload: dict[str, object], changed_paths: list[str]
+    payload: dict[str, object],
+    changed_paths: list[str],
+    repo_root: Path | None = None,
 ) -> list[str] | None:
-    resolution = _resolve_commit_scope(payload, changed_paths)
+    resolution = _resolve_commit_scope(payload, changed_paths, repo_root=repo_root)
     if resolution.include_paths is None:
         return None
     return list(resolution.include_paths)
 
 
 def _resolve_commit_scope(
-    payload: dict[str, object], changed_paths: list[str]
+    payload: dict[str, object],
+    changed_paths: list[str],
+    repo_root: Path | None = None,
 ) -> _CommitScopeResolution:
     raw_files = payload.get("files")
     raw_excluded = payload.get("excluded_files")
@@ -193,6 +199,7 @@ def _resolve_commit_scope(
             if not isinstance(raw_path, str):
                 continue
             normalized = _normalize_repo_relative_path(raw_path)
+            _reject_symlink_in_commit_scope(normalized, repo_root)
             if normalized not in normalized_changed:
                 raise ValueError(
                     "Commit artifact requested file "
@@ -210,11 +217,71 @@ def _resolve_commit_scope(
         raw_path = item.get("path")
         if not isinstance(raw_path, str) or not raw_path.strip():
             continue
-        excluded.add(_normalize_repo_relative_path(raw_path))
+        normalized_excluded = _normalize_repo_relative_path(raw_path)
+        _reject_symlink_in_commit_scope(normalized_excluded, repo_root)
+        excluded.add(normalized_excluded)
     filtered_paths: tuple[str, ...] = tuple(
         path for path in changed if _normalize_repo_relative_path(path) not in excluded
     )
     return _CommitScopeResolution(include_paths=filtered_paths)
+
+
+def _reject_symlink_in_commit_scope(normalized_path: str, repo_root: Path | None) -> None:
+    """Reject ``normalized_path`` if it escapes ``repo_root`` via symlinks.
+
+    Defense-in-depth: a malformed commit payload could include a path
+    that is a symlink OR a path whose parent directory is a symlink
+    chain pointing outside the worktree. ``_normalize_repo_relative_path``
+    only checks the literal path string (absolute / ``..`` segments) and
+    does not look at the filesystem. Without this guard, a symlink at
+    a relative path (or any symlink in the parent chain) could stage a
+    file outside the worktree when ``git add`` resolves the symlink
+    target.
+
+    Two checks are applied:
+
+    1. **Literal-path symlink check** (defense-in-depth at the boundary):
+       walks every parent directory AND the candidate path itself and
+       rejects the first symlink found. Catches the obvious case where
+       ``foo`` is a symlink in the worktree pointing somewhere else.
+
+    2. **Resolved-path escape check** (defense-in-depth against parent
+       symlink chains): resolves the candidate path with ``strict=False``
+       (so broken symlinks also fire) and verifies the resolved
+       location is still under ``repo_root``. Catches the parent-chain
+       case where ``dir/file.txt`` is regular, but ``dir`` is a symlink
+       pointing outside the worktree (the literal-path check above
+       catches it too, but the resolved-path check provides a clean
+       error message for the escape attempt).
+
+    The checks are best-effort: a missing path is allowed through (the
+    symlink won't fire if it doesn't exist; ``_stage_files`` will
+    surface a real I/O error if needed).
+    """
+    if repo_root is None:
+        return
+    repo_root_resolved = Path(repo_root).resolve(strict=False)
+    candidate = repo_root / normalized_path
+    if candidate.is_symlink():
+        raise ValueError(
+            f"Refusing to stage symlink in commit scope: {normalized_path!r}"
+        )
+    for parent in candidate.parents:
+        if parent == repo_root_resolved or parent == Path(repo_root):
+            break
+        if parent.is_symlink():
+            raise ValueError(
+                f"Refusing to stage path whose parent directory is a symlink "
+                f"chain escape in commit scope: {normalized_path!r}"
+            )
+    try:
+        resolved_candidate = candidate.resolve(strict=False)
+        resolved_candidate.relative_to(repo_root_resolved)
+    except ValueError as exc:
+        raise ValueError(
+            f"Refusing to stage path outside repository root in commit scope: "
+            f"{normalized_path!r}"
+        ) from exc
 
 
 def _dedupe_repo_relative_paths(paths: list[str]) -> list[str]:

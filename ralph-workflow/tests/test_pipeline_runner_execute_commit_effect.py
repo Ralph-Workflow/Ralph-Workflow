@@ -10,10 +10,12 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+from loguru import logger as loguru_logger
 from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
+from ralph.git.operations import GitOperationError
 from ralph.pipeline import commit_executor as commit_executor_module
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
@@ -597,6 +599,205 @@ class TestExecuteCommitEffect:
     ) -> None:
         actual = commit_executor_module._commit_include_paths_from_changed(payload, changed_paths)
         assert actual == expected
+
+    def test_resolve_commit_scope_rejects_symlink_inside_repo_pointing_to_sibling(
+        self, tmp_git_repo: Path
+    ) -> None:
+        """A symlink inside the repo pointing to a sibling file is rejected.
+
+        Defense-in-depth: ``_resolve_commit_scope`` already escapes
+        absolute paths and ``..`` segments via ``_normalize_repo_relative_path``,
+        but a symlink whose literal path is inside the repo can still
+        resolve outside. The hardening rejects symlinks at the
+        ``_resolve_commit_scope`` boundary so a malformed commit payload
+        cannot stage files outside the worktree.
+        """
+        sibling_target = tmp_git_repo / "sibling_target.txt"
+        sibling_target.write_text("I am the sibling target\n")
+        symlink_chain = tmp_git_repo / "symlink_chain"
+        symlink_chain.symlink_to(sibling_target)
+
+        with pytest.raises(ValueError, match="symlink"):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["symlink_chain"], "excluded_files": []},
+                ["symlink_chain"],
+                repo_root=tmp_git_repo,
+            )
+
+    def test_resolve_commit_scope_rejects_symlink_pointing_outside_repo(
+        self, tmp_git_repo: Path, tmp_path: Path
+    ) -> None:
+        """A symlink pointing outside the repo is rejected.
+
+        A symlink whose literal path is inside the repo can still resolve
+        outside via its target. The hardening rejects such symlinks at
+        the ``_resolve_commit_scope`` boundary so a malformed commit
+        payload cannot stage files outside the worktree.
+        """
+        outside = tmp_path / "outside_target.txt"
+        outside.write_text("outside the repo\n")
+        escape_sym = tmp_git_repo / "escape_sym"
+        escape_sym.symlink_to(outside)
+
+        with pytest.raises(ValueError, match="symlink"):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["escape_sym"], "excluded_files": []},
+                ["escape_sym"],
+                repo_root=tmp_git_repo,
+            )
+
+    def test_resolve_commit_scope_rejects_absolute_path(self) -> None:
+        """An absolute path in the ``files`` list is rejected.
+
+        The hardening checks the absolute-path vector at the
+        ``_resolve_commit_scope`` boundary in addition to the existing
+        check in ``_normalize_repo_relative_path`` -- defense-in-depth.
+        """
+        with pytest.raises(ValueError, match="repository root"):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["/etc/passwd"], "excluded_files": []},
+                ["/etc/passwd"],
+            )
+
+    def test_resolve_commit_scope_rejects_dotdot_segment(self) -> None:
+        """A ``..`` segment in the ``files`` list is rejected.
+
+        The hardening checks the parent-traversal vector at the
+        ``_resolve_commit_scope`` boundary in addition to the existing
+        check in ``_normalize_repo_relative_path``.
+        """
+        with pytest.raises(ValueError, match=r"\.\."):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["../escape"], "excluded_files": []},
+                ["../escape"],
+            )
+
+    def test_resolve_commit_scope_rejects_parent_symlink_chain_escape(
+        self, tmp_git_repo: Path, tmp_path: Path
+    ) -> None:
+        """A path whose parent directory is a symlink chain escape is rejected.
+
+        Defense-in-depth: a parent-directory symlink pointing outside the
+        worktree (e.g. ``linkdir`` is a symlink to ``/tmp/.../outside``)
+        would otherwise resolve to a location outside ``repo_root`` when
+        ``git add`` follows the symlink. The literal-path symlink check
+        in ``_resolve_commit_scope`` walks every parent directory and
+        rejects the first symlink found, so the file inside
+        ``linkdir/payload.txt`` (a regular file) cannot be staged.
+        """
+        linkdir = tmp_git_repo / "linkdir"
+        linkdir.symlink_to(tmp_path)
+        target_file = linkdir / "payload.txt"
+        target_file.write_text("payload outside the repo\n")
+
+        with pytest.raises(ValueError, match=r"parent directory is a symlink"):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["linkdir/payload.txt"], "excluded_files": []},
+                ["linkdir/payload.txt"],
+                repo_root=tmp_git_repo,
+            )
+
+    def test_resolve_commit_scope_rejects_resolved_path_escape(
+        self, tmp_git_repo: Path, tmp_path: Path
+    ) -> None:
+        """A path whose resolved location escapes repo_root is rejected.
+
+        Defense-in-depth against symlink chains. Even though the
+        parent-walk catches the same scenario when ``is_symlink()``
+        fires on the parent directory, the resolved-path check provides
+        a defense-in-depth guarantee: any candidate whose resolved
+        location is not under ``repo_root.resolve()`` is rejected.
+        The error message in this case carries the ``parent directory``
+        wording because the parent-walk fires first; the test pins
+        that the resolved-path escape is rejected regardless of which
+        check wins.
+        """
+        outside_dir = tmp_path / "outside_dir"
+        outside_dir.mkdir()
+        linkdir = tmp_git_repo / "deep"
+        linkdir.symlink_to(outside_dir)
+        outside_payload = outside_dir / "payload.txt"
+        outside_payload.write_text("outside the repo\n")
+
+        with pytest.raises(
+            ValueError,
+            match=r"(parent directory is a symlink|outside repository root)",
+        ):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["deep/payload.txt"], "excluded_files": []},
+                ["deep/payload.txt"],
+                repo_root=tmp_git_repo,
+            )
+
+    def test_execute_commit_effect_logs_exception_type_on_failure(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        """The COMMIT_FAILURE log message must include the exception type.
+
+        Post-mortem diagnosis of ``COMMIT_FAILURE`` events depends on the
+        log message surfacing the exception type name (e.g.,
+        ``GitOperationError``, ``OSError``, ``ValueError``) -- otherwise
+        an operator sees only the str message (e.g., ``index.lock
+        contention``) with no signal about which subsystem raised.
+
+        Pins the contract that the log line includes both
+        ``type(exc).__name__`` AND the str message.
+        """
+        captured: list[str] = []
+
+        sink_id = loguru_logger.add(
+            lambda message: captured.append(str(message)),
+            level="ERROR",
+            format="{message}",
+        )
+        try:
+            stage_all = MagicMock()
+            create_commit = MagicMock(
+                side_effect=GitOperationError("create_commit", "index.lock contention")
+            )
+            message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+            text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+            message_file.parent.mkdir(parents=True, exist_ok=True)
+            text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
+            monkeypatch.setattr(runner_module, "repo_has_commit_work", lambda _repo_root: True)
+            message_file.write_text(
+                json.dumps(
+                    {
+                        "name": "commit_message",
+                        "type": "commit_message",
+                        "content": {"type": "commit", "subject": "fix: pipeline artifact message"},
+                        "created_at": "STATIC",
+                        "updated_at": "STATIC",
+                        "metadata": {},
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = runner_module.execute_commit_effect(
+                CommitEffect(message_file=str(message_file)),
+                create_commit,
+                stage_all,
+                tmp_path,
+            )
+
+            assert result == PipelineEvent.COMMIT_FAILURE
+
+            error_messages = [m for m in captured if "Commit failed" in m]
+            assert error_messages, (
+                f"Expected a 'Commit failed' ERROR log message, got: {captured!r}"
+            )
+            error_text = error_messages[-1]
+            assert "GitOperationError" in error_text, (
+                f"Log message must include the exception type name "
+                f"'GitOperationError', got: {error_text!r}"
+            )
+            assert "index.lock contention" in error_text, (
+                f"Log message must include the str message "
+                f"'index.lock contention', got: {error_text!r}"
+            )
+        finally:
+            loguru_logger.remove(sink_id)
 
     @pytest.mark.parametrize(
         "payload",

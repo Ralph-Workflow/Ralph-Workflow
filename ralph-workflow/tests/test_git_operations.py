@@ -14,6 +14,9 @@ from git import Actor, GitCommandError, Repo
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.operations import (
     GitOperationError,
+    _atomic_append_text,
+    _git_status_porcelain_lines,
+    _recover_stale_git_lock,
     append_to_gitignore,
     create_commit,
     find_repo_root,
@@ -28,6 +31,26 @@ from ralph.git.operations import (
     stage_all,
 )
 from ralph.git.subprocess_runner import run_git
+
+
+def _unused_pid() -> int:
+    """Return a PID that is overwhelmingly likely to not be running.
+
+    PIDs cycle quickly, so a pid equal to ``os.getpid() + 1_000_000`` is
+    almost certainly not alive by the time the test runs. We do NOT use a
+    fixed integer like 999999 because some CI environments pre-allocate
+    PIDs in low ranges.
+    """
+    return os.getpid() + 1_000_000
+
+
+def _make_index_lock_error(lock_path: Path) -> GitCommandError:
+    return GitCommandError(
+        ["git", "add", "-A"],
+        128,
+        stderr=f"fatal: Unable to create '{lock_path}': File exists.\n\n"
+        "Another git process seems to be running in this repository",
+    )
 
 # Real-git tests fork `git` subprocesses; under full-suite worksteal
 # parallelism the default 1s wall-clock alarm intermittently fires on a
@@ -229,7 +252,7 @@ def test_stage_all(tmp_git_repo: Path) -> None:
 
 def test_stage_all_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
     lock_path = tmp_git_repo / ".git" / "index.lock"
-    lock_path.write_text("locked", encoding="utf-8")
+    lock_path.write_text(str(_unused_pid()), encoding="utf-8")
     stale_time = time.time() - 60
     os.utime(lock_path, (stale_time, stale_time))
 
@@ -303,7 +326,7 @@ def test_create_commit() -> None:
 
 def test_create_commit_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
     lock_path = tmp_git_repo / ".git" / "index.lock"
-    lock_path.write_text("locked", encoding="utf-8")
+    lock_path.write_text(str(_unused_pid()), encoding="utf-8")
     stale_time = time.time() - 60
     os.utime(lock_path, (stale_time, stale_time))
     calls = {"count": 0}
@@ -506,3 +529,357 @@ def test_push_without_remote(tmp_git_repo: Path) -> None:
 
     with pytest.raises(GitOperationError):
         push(tmp_git_repo, remote="no-such-remote", branch="test-branch")
+
+
+# --- Phase 5 edge-case tests for _atomic_append_text ---
+#
+# Each test pins one observable behavior of the atomic helper. The names
+# follow the plan: test_atomic_append_text_<behavior> so the test id maps
+# directly to the staging-filename contract pinned by the audit invariant.
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_empty_payload_is_noop(tmp_path: Path) -> None:
+    """Empty payload is a no-op: no exception, no staging file remains.
+
+    The helper must accept an empty payload and complete without raising
+    or leaving a dangling staging sibling. The boundary check
+    (``existing ends with \\n``) is also a no-op because the staging
+    write_text and Path.replace are both invoked, but the content is
+    identical to the existing file -- the helper should still clean up
+    the staging file via the BaseException-suppress block.
+    """
+    target = tmp_path / "empty_payload.txt"
+    target.write_text("initial\n", encoding="utf-8")
+    pre_bytes = target.read_bytes()
+
+    _atomic_append_text(target, "", encoding="utf-8")
+
+    assert target.read_bytes() == pre_bytes, (
+        "Empty payload must NOT modify the target file"
+    )
+    staging_siblings = [
+        p for p in target.parent.iterdir()
+        if p.name.startswith(target.name) and ".ralph-staging." in p.name
+    ]
+    assert not staging_siblings, (
+        f"Empty payload must NOT leave a staging sibling, found: "
+        f"{[str(s) for s in staging_siblings]}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_preserves_crlf_in_existing_content(tmp_path: Path) -> None:
+    """CRLF-terminated existing content is preserved byte-for-byte through the atomic round-trip.
+
+    Pins the byte-preserving contract: a target file containing
+    ``b"line-one\\r\\nline-two\\r\\n"`` followed by an append of
+    ``"line-three\\n"`` must publish
+    ``b"line-one\\r\\nline-two\\r\\nline-three\\n"`` -- every CRLF
+    in the existing content is preserved, the appended LF does NOT
+    get converted, and the boundary insert (if any) is byte-accurate.
+
+    The helper reads via ``Path.read_bytes()`` and writes via
+    ``Path.write_bytes()`` so the CRLF byte sequence ``\\r\\n`` is
+    passed through unchanged. A text-mode round trip via
+    ``read_text``/``write_text`` would normalize CRLF to LF on POSIX
+    (universal-newlines mode) and silently corrupt the source. A future
+    refactor that regresses to text mode surfaces here as a CRLF
+    byte-presence failure.
+    """
+    target = tmp_path / "crlf_existing.txt"
+    target.write_bytes(b"line-one\r\nline-two\r\n")
+
+    _atomic_append_text(target, "line-three\n", encoding="utf-8")
+
+    raw_bytes = target.read_bytes()
+    assert raw_bytes == b"line-one\r\nline-two\r\nline-three\n", (
+        f"CRLF-terminated existing content must be preserved byte-for-byte. "
+        f"Expected: b'line-one\\r\\nline-two\\r\\nline-three\\n', got: {raw_bytes!r}"
+    )
+    assert raw_bytes.count(b"\r\n") == 2, (
+        f"Both CRLF terminators must be present in the published bytes, "
+        f"got: {raw_bytes!r}"
+    )
+    raw_text = target.read_text(encoding="utf-8")
+    assert "line-one" in raw_text, "First line text must be preserved"
+    assert "line-two" in raw_text, "Second line text must be preserved"
+    assert "line-three" in raw_text, "Appended payload must be present in output"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_inserts_separator_when_existing_lacks_trailing_newline(
+    tmp_path: Path,
+) -> None:
+    """When the existing file lacks a trailing newline, the helper inserts one.
+
+    Pins the boundary normalization branch: a file containing
+    ``"existing-without-newline"`` followed by a payload of
+    ``"*.cache\\n"`` must publish ``"existing-without-newline\\n*.cache"``
+    so the two rules are separate lines. The helper's separator logic
+    is what the audit-invariant comment in
+    ``ralph/git/operations.py`` calls out.
+    """
+    target = tmp_path / "no_trailing_newline.txt"
+    target.write_text("existing-without-newline", encoding="utf-8")
+
+    _atomic_append_text(target, "*.cache\n", encoding="utf-8")
+
+    raw = target.read_text(encoding="utf-8")
+    assert "existing-without-newline\n*.cache" in raw, (
+        f"Boundary must contain a newline so the two rules are separate lines; "
+        f"got: {raw!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_propagates_oserror_when_target_is_directory(
+    tmp_path: Path,
+) -> None:
+    """When the target path is a directory, the underlying OSError must propagate.
+
+    The helper uses ``Path.read_text()`` to load existing content and
+    ``Path.write_text()`` to publish the staged file -- both fail with
+    ``OSError`` (specifically ``IsADirectoryError`` on POSIX, subclass of
+    ``OSError``) when the path resolves to a directory. The helper does
+    NOT swallow ``OSError``; the failure surfaces to the caller.
+    """
+    target = tmp_path / "im_a_directory"
+    target.mkdir()
+
+    assert target.is_dir()
+    with pytest.raises(OSError):
+        _atomic_append_text(target, "payload\n", encoding="utf-8")
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_replaces_target_symlink(tmp_path: Path) -> None:
+    """When the target path is a symlink, ``Path.replace`` REPLACES the symlink.
+
+    The helper stages the new content in a sibling file (under the
+    target's parent, NOT the symlink target's directory) and then
+    ``Path.replace(staging, target)`` -- on POSIX, ``Path.replace`` on
+    a symlink replaces the symlink itself (NOT the symlink target's
+    file). This is the documented pathlib behavior.
+
+    The test pins that the staging step uses the target's parent
+    directory (NOT the symlink resolution), and the replace step
+    replaces the symlink (NOT the symlink target's file).
+    """
+    real_dir = tmp_path / "real_target_dir"
+    real_dir.mkdir()
+    real_file = real_dir / "real.txt"
+    real_file.write_text("REAL content\n")
+
+    symlink_dir = tmp_path / "symlink_dir"
+    symlink_dir.symlink_to(real_dir)
+
+    target_via_symlink = symlink_dir / "via_symlink.txt"
+    target_via_symlink.symlink_to(real_file)
+    assert target_via_symlink.is_symlink()
+
+    _atomic_append_text(target_via_symlink, "appended\n", encoding="utf-8")
+
+    # The real file is NOT modified.
+    assert real_file.read_text(encoding="utf-8") == "REAL content\n", (
+        "Path.replace on a symlink must NOT follow the symlink and write to "
+        "the target's underlying file"
+    )
+    # The symlink itself may now be a regular file (replace replaced it).
+    assert not target_via_symlink.is_symlink(), (
+        "Path.replace must have replaced the symlink with a regular file"
+    )
+    assert target_via_symlink.read_text(encoding="utf-8") == "REAL content\nappended\n", (
+        "New regular file at the symlink's path must contain the published content"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Regression coverage for analysis-feedback correctness holes in the touched
+# git-operations surface:
+#   1. _recover_stale_git_lock must NOT auto-unlink a Git lock file based on
+#      age alone -- unlinking a live lock can corrupt a long-running Git
+#      operation. Recovery must be gated on a stronger stale-proof (the PID
+#      stored in the lock file, when present, must no longer be running).
+#   2. _git_status_porcelain_lines must NOT silently collapse a non-zero
+#      ``git status --porcelain`` return into ``[]`` -- that hides real
+#      failures and makes ``has_staged_changes`` / ``list_changed_paths`` /
+#      ``get_staged_files`` report a clean repo.
+#   3. has_staged_changes must report ONLY staged changes -- an
+#      untracked-only worktree must return False, and the
+#      ``No staged changes to commit`` CLI message must continue to be the
+#      user-facing truth.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.timeout_seconds(5)
+def test_recover_stale_git_lock_fails_closed_when_lock_has_no_pid(
+    tmp_path: Path,
+) -> None:
+    """A lock file with non-numeric content is NOT auto-unlinked.
+
+    Git writes the holding PID into ``index.lock``/``HEAD.lock``/etc. When
+    the lock content is not a parseable PID, the helper cannot prove the
+    lock is stale (the writing process could still be alive but not have
+    written a PID for some reason). The helper must fail closed: do NOT
+    unlink, return False, and surface the contention as a normal error.
+    """
+    lock_path = tmp_path / "index.lock"
+    lock_path.write_text("not-a-pid", encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(lock_path, (stale_time, stale_time))
+
+    error = _make_index_lock_error(lock_path)
+
+    assert _recover_stale_git_lock("stage_all", error) is False, (
+        "Lock with no parseable PID must NOT be auto-unlinked (fail-closed)"
+    )
+    assert lock_path.exists(), "Lock file must remain on disk when recovery fails"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_recover_stale_git_lock_fails_closed_when_lock_pid_is_alive(
+    tmp_path: Path,
+) -> None:
+    """A lock file with a still-alive PID is NOT auto-unlinked.
+
+    Even when the lock file is older than the stale threshold, if the PID
+    recorded in the lock is still running the lock is live and must NOT be
+    unlinked. A legitimate long-running ``git gc`` or ``git fetch`` could
+    have written that PID a moment ago.
+    """
+    lock_path = tmp_path / "index.lock"
+    current_pid = os.getpid()
+    lock_path.write_text(str(current_pid), encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(lock_path, (stale_time, stale_time))
+
+    error = _make_index_lock_error(lock_path)
+
+    assert _recover_stale_git_lock("stage_all", error) is False, (
+        "Lock with still-alive PID must NOT be auto-unlinked (fail-closed)"
+    )
+    assert lock_path.exists(), "Lock file must remain on disk when PID is still alive"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_recover_stale_git_lock_recovers_when_lock_pid_is_dead(
+    tmp_path: Path,
+) -> None:
+    """A lock file with a dead PID IS unlinked and the helper returns True.
+
+    Strong stale-proof: when the PID stored in the lock file is no longer
+    running, the lock is provably stale and safe to remove. The helper
+    unlinks the file and returns True so the caller can retry.
+    """
+    lock_path = tmp_path / "index.lock"
+    lock_path.write_text(str(_unused_pid()), encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(lock_path, (stale_time, stale_time))
+
+    error = _make_index_lock_error(lock_path)
+
+    assert _recover_stale_git_lock("stage_all", error) is True, (
+        "Lock with dead PID must be unlinked and recovery must succeed"
+    )
+    assert not lock_path.exists(), "Lock file must be unlinked when PID is dead"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_recover_stale_git_lock_returns_false_for_non_lock_error() -> None:
+    """A non-lock GitCommandError does NOT trigger recovery.
+
+    Errors that do not match the lock-path regex must return False so the
+    caller re-raises the original exception.
+    """
+    error = GitCommandError(
+        ["git", "status"],
+        128,
+        stderr="fatal: not a git repository: '.git'",
+    )
+
+    assert _recover_stale_git_lock("status", error) is False
+
+
+@pytest.mark.timeout_seconds(5)
+def test_git_status_porcelain_lines_raises_on_nonzero_return(
+    tmp_git_repo: Path,
+) -> None:
+    """A non-zero ``git status --porcelain`` return raises GitOperationError.
+
+    Previously the helper silently returned ``[]``, which made
+    ``has_staged_changes``/``list_changed_paths``/``get_staged_files``
+    report a clean repo on real failures. The fix surfaces the failure so
+    callers can route through their GitPython fallback (or fail loud).
+    """
+    def _broken_run_git(
+        args: tuple[str, ...], *, cwd: Path, label: str
+    ) -> GitRunResult:
+        return GitRunResult(
+            args=("git", *args),
+            returncode=128,
+            stdout="",
+            stderr="fatal: simulated git status failure",
+        )
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.run_git", _broken_run_git)
+    try:
+        with pytest.raises(GitOperationError, match="git-status"):
+            _git_status_porcelain_lines(tmp_git_repo)
+    finally:
+        monkeypatch.undo()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_git_status_porcelain_lines_returns_lines_on_zero_return(
+    tmp_git_repo: Path,
+) -> None:
+    """A zero ``git status --porcelain`` return returns the split lines."""
+    lines = _git_status_porcelain_lines(tmp_git_repo)
+    assert isinstance(lines, list)
+    # A freshly cloned template has a clean working tree.
+    assert lines == []
+
+
+@pytest.mark.timeout_seconds(5)
+def test_has_staged_changes_returns_false_for_untracked_only_repo(
+    tmp_git_repo: Path,
+) -> None:
+    """An untracked-only worktree has NO staged changes.
+
+    ``has_staged_changes`` is the API contract for "is there anything
+    staged for the next commit?" -- untracked files do not satisfy that
+    contract. The CLI message ``No staged changes to commit`` must remain
+    accurate for an untracked-only repo.
+    """
+    untracked = tmp_git_repo / "untracked.txt"
+    untracked.write_text("never staged", encoding="utf-8")
+
+    assert has_staged_changes(tmp_git_repo) is False, (
+        "Untracked-only worktree must NOT report staged changes; the "
+        "staged-changes API is strictly about git-added files"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_has_staged_changes_returns_false_for_untracked_only_via_subprocess(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Untracked-only detection stays correct under the subprocess path.
+
+    ``has_staged_changes`` prefers ``git status --porcelain`` when
+    available. With ONLY untracked files in the worktree, the porcelain
+    output is a single ``??`` line; the helper must return False even
+    though it sees the untracked line.
+    """
+    untracked = tmp_git_repo / "untracked_only.txt"
+    untracked.write_text("never staged", encoding="utf-8")
+
+    # Sanity: the real ``git status --porcelain`` path returns the
+    # expected untracked line, and the helper still returns False.
+    assert has_staged_changes(tmp_git_repo) is False, (
+        "Subprocess path: untracked-only worktree must return False"
+    )
+

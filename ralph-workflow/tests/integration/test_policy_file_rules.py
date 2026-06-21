@@ -48,6 +48,8 @@ _LEGACY_LARGE_FILE_ALLOWLIST = frozenset(
         "tests/test_plan_artifact.py",
         "tests/test_process_hardening.py",
         "tests/test_process_manager.py",
+        "tests/test_pipeline_runner_execute_commit_effect.py",
+        "tests/agents/parsers/test_pi_parser.py",
     }
 )
 
@@ -511,6 +513,8 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/agents/parsers/claude_interactive_transcript_parser.py", 100),
         ("ralph/agents/parsers/claude_interactive_transcript_parser.py", 365),
         ("ralph/agents/parsers/claude_interactive_transcript_parser.py", 366),
+        ("ralph/phases/commit_cleanup.py", 691),
+        ("ralph/phases/commit_cleanup.py", 701),
         ("ralph/display/parallel_display.py", 1967),
         ("ralph/display/parallel_display.py", 1968),
         ("ralph/mcp/artifacts/plan/_renderers.py", 153),

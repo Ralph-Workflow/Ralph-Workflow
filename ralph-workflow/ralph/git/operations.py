@@ -6,8 +6,11 @@ wrapping GitPython to provide the functionality needed by the pipeline.
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -63,35 +66,101 @@ def _parse_lock_path_from_error(error_text: str) -> Path | None:
     return lock_path
 
 
+def _is_pid_alive(pid: int) -> bool:
+    """Return True iff ``pid`` resolves to a running process.
+
+    Cross-platform best-effort: ``os.kill(pid, 0)`` returns 0 if the
+    process is alive and raises ``ProcessLookupError``/``PermissionError``
+    otherwise. ``PermissionError`` means the PID exists but is owned by
+    another user (we treat that as "alive" so we never unlink a live
+    lock by mistake).
+    """
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _read_lock_pid(lock_path: Path) -> int | None:
+    """Parse the holding PID from ``lock_path`` content.
+
+    Git writes the holding PID as ASCII text into ``index.lock``,
+    ``HEAD.lock``, and ``packed-refs.lock``. When the content is not a
+    parseable PID, return ``None`` so the caller can fail closed.
+    """
+    try:
+        raw = lock_path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    first_line = raw.splitlines()[0].strip()
+    try:
+        return int(first_line)
+    except ValueError:
+        return None
+
+
 def _recover_stale_git_lock(
     operation: str,
     error: Exception,
     *,
     stale_lock_age_seconds: float = _STALE_GIT_LOCK_AGE_SECONDS,
 ) -> bool:
+    """Recover from a transient Git lock-file error.
+
+    Recovery is **fail-closed**: the helper only unlinks a lock when it
+    can prove the holding process is no longer running (via the PID Git
+    wrote into the lock file). Age alone is NOT proof of staleness -- a
+    legitimate long-running ``git gc``/``git fetch``/``git filter-repo``
+    can hold a lock longer than the age threshold, and unlinking its
+    live lock can corrupt the repository.
+
+    Returns:
+        True when the lock was successfully recovered (or the lock was
+        already gone so the caller can safely retry), False when the
+        lock could not be proven stale and the caller must surface the
+        contention to the user.
+    """
     error_text = str(error)
     lock_path = _parse_lock_path_from_error(error_text)
     if lock_path is None:
         return False
-    if lock_path.exists():
-        age_seconds = time.time() - lock_path.stat().st_mtime
-        if age_seconds < stale_lock_age_seconds:
-            return False
-        try:
-            lock_path.unlink()
-        except OSError:
-            return False
+    if not lock_path.exists():
         logger.warning(
-            "Recovered stale git lock for {} by removing {} (age={:.1f}s)",
+            "Retrying {} after transient git lock contention; lock path already disappeared: {}",
+            operation,
+            lock_path,
+        )
+        return True
+    holding_pid = _read_lock_pid(lock_path)
+    if holding_pid is None or _is_pid_alive(holding_pid):
+        age_seconds = time.time() - lock_path.stat().st_mtime
+        logger.warning(
+            "Refusing to auto-unlink git lock for {} (path={}, age={:.1f}s, "
+            "holding_pid={}); fail-closed to protect a potentially live lock.",
             operation,
             lock_path,
             age_seconds,
+            holding_pid,
         )
-        return True
+        return False
+    try:
+        lock_path.unlink()
+    except OSError:
+        return False
     logger.warning(
-        "Retrying {} after transient git lock contention; lock path already disappeared: {}",
+        "Recovered stale git lock for {} by removing {} (holding_pid={} is no longer alive)",
         operation,
         lock_path,
+        holding_pid,
     )
     return True
 
@@ -255,27 +324,27 @@ def has_staged_changes(repo_root: Path | str) -> bool:
         repo_root: Path to the repository root.
 
     Returns:
-        True if there are staged changes.
+        True if there are staged changes. Untracked-only worktrees
+        return False -- this helper is the staged-only contract used by
+        ``commit`` to decide whether a commit can proceed.
     """
     try:
         status_lines = _git_status_porcelain_lines(Path(repo_root))
-    except OSError:
+    except (OSError, GitOperationError):
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
-            return bool(repo.index.diff("HEAD")) or bool(repo.untracked_files)
+            return bool(repo.index.diff("HEAD"))
         finally:
             _close_repo(repo)
-    return any(
-        line.startswith("??") or (line and line[0] not in {" ", "?"}) for line in status_lines
-    )
+    return any(_line_is_staged(line) for line in status_lines)
 
 
 def list_changed_paths(repo_root: Path | str) -> list[str]:
     """Return unique changed paths from ``git status --porcelain`` in output order."""
     try:
         status_lines = _git_status_porcelain_lines(Path(repo_root))
-    except OSError:
+    except (OSError, GitOperationError):
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
@@ -285,7 +354,7 @@ def list_changed_paths(repo_root: Path | str) -> list[str]:
 
     changed_paths: list[str] = []
     for line in status_lines:
-        if not line or len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
+        if not _line_is_staged(line) or len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
             continue
         path_part = line[_PORCELAIN_STATUS_PREFIX_LEN:]
         if " -> " in path_part:
@@ -303,11 +372,11 @@ def get_staged_files(repo_root: Path | str) -> list[str]:
         repo_root: Path to the repository root.
 
     Returns:
-        List of staged file paths.
+        List of staged file paths. Untracked-only worktrees return ``[]``.
     """
     try:
         status_lines = _git_status_porcelain_lines(Path(repo_root))
-    except OSError:
+    except (OSError, GitOperationError):
         repo: Repo | None = None
         try:
             repo = Repo(repo_root)
@@ -318,7 +387,7 @@ def get_staged_files(repo_root: Path | str) -> list[str]:
 
     staged_paths: list[str] = []
     for line in status_lines:
-        if not line or line[0] in {" ", "?"} or len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
+        if not _line_is_staged(line) or len(line) <= _PORCELAIN_STATUS_PREFIX_LEN:
             continue
         path_part = line[_PORCELAIN_STATUS_PREFIX_LEN:]
         if " -> " in path_part:
@@ -329,10 +398,39 @@ def get_staged_files(repo_root: Path | str) -> list[str]:
     return staged_paths
 
 
+def _line_is_staged(line: str) -> bool:
+    """Return True iff ``line`` (from ``git status --porcelain``) represents a staged change.
+
+    Untracked files (``??``) are explicitly excluded -- the staged-only
+    contract does NOT include them. ``has_uncommitted_changes`` is the
+    API for the broader dirty-state check.
+    """
+    if not line:
+        return False
+    if line.startswith("??"):
+        return False
+    return line[0] not in {" ", "?"}
+
+
 def _git_status_porcelain_lines(repo_root: Path) -> list[str]:
+    """Run ``git status --porcelain`` and return the split output lines.
+
+    Raises:
+        GitOperationError: when ``git status --porcelain`` exits with a
+            non-zero return code. Earlier versions silently collapsed a
+            non-zero return into ``[]`` which made downstream helpers
+            (``has_staged_changes`` / ``list_changed_paths`` /
+            ``get_staged_files``) report a false-clean repo. The
+            failure now surfaces so callers can route through the
+            GitPython fallback path or fail loud.
+    """
     result = run_git(("status", "--porcelain"), cwd=repo_root, label="git-status")
     if result.returncode != 0:
-        return []
+        raise GitOperationError(
+            "git-status",
+            f"git status --porcelain failed (rc={result.returncode}): "
+            f"{result.stderr.strip() or '<no stderr>'}",
+        )
     return result.stdout.splitlines()
 
 
@@ -563,8 +661,78 @@ def append_to_gitignore(repo_root: Path | str, patterns: list[str]) -> None:
 
     new_patterns = [p for p in patterns if p not in existing]
     if new_patterns:
-        with gitignore_path.open("a", encoding="utf-8") as f:
-            if new_patterns[0]:
-                f.write("\n")
-            f.write("\n".join(new_patterns))
+        payload = ("\n".join(new_patterns)) + "\n"
+        _atomic_append_text(gitignore_path, payload)
         logger.debug("Appended {} patterns to .gitignore", len(new_patterns))
+
+
+def _atomic_append_text(
+    path: Path,
+    payload: str,
+    *,
+    encoding: str = "utf-8",
+) -> None:
+    """Append ``payload`` to ``path`` atomically via sibling-staging + ``Path.replace``.
+
+    Mirrors the pattern from ``ralph/mcp/transport/agy.py:99-127`` so a
+    SIGKILL mid-write leaves the target file intact -- the new content is
+    staged in a sibling file (with a sha256(payload)-derived hash plus
+    os.getpid() suffix), then ``Path.replace()``-published atomically.
+
+    Boundary normalization: when ``path`` exists and its content does NOT
+    end with ``\\n``, the helper inserts a single ``\\n`` separator before
+    the appended payload. Without this, appending ``"*.cache\\n"`` to a
+    file containing ``"existing-without-newline"`` would publish
+    ``"existing-without-newline*.cache\\n"`` -- a malformed single-line
+    rule rather than two separate rules.
+
+    Byte-preserving round-trip: the helper reads the existing file via
+    ``Path.read_bytes()`` and writes the staged file via
+    ``Path.write_bytes()``. This preserves CRLF (``\\r\\n``), BOM, and
+    any other byte-level content the caller wrote -- a text-mode round
+    trip via ``read_text``/``write_text`` would normalize CRLF to LF
+    on POSIX (universal-newlines mode) and silently corrupt
+    Windows-style or gitattributes-style content. The payload string
+    is encoded with the same ``encoding`` argument for the write so the
+    boundary insert (when needed) does not double-encode the existing
+    bytes.
+
+    Read-failure policy: when ``path.exists()`` is True but the read
+    raises ``OSError`` (permission denied, broken FS, transient I/O), the
+    helper fails closed by re-raising the underlying ``OSError``. A
+    silent fallback to ``existing = ""`` would publish ``payload`` over
+    the original content via ``Path.replace()`` -- exactly the silent
+    corruption the atomic helper exists to prevent. Callers that want a
+    best-effort fallback (e.g. bootstrap auto-seed) wrap the call in
+    their own try/except. A missing ``path`` is treated as empty
+    (legitimate creation case).
+
+    If the staging write or replace fails, the staging file is removed
+    before re-raising so the helper never leaves a dangling sibling.
+
+    Args:
+        path: Target file path. Parent directory must already exist (or
+            be creatable via ``path.parent.mkdir(parents=True, exist_ok=True)``).
+        payload: Text to append. The helper normalizes the boundary
+            against the existing content (see above).
+        encoding: Text encoding for the staging write. Default ``utf-8``.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = b""
+    if path.exists():
+        existing = path.read_bytes()
+    separator = b""
+    if existing and not existing.endswith(b"\n"):
+        separator = b"\n"
+    _staging_hash = hashlib.sha256(payload.encode(encoding)).hexdigest()[:16]
+    _staging_pid = os.getpid()
+    staging = path.with_suffix(
+        path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}"
+    )
+    try:
+        staging.write_bytes(existing + separator + payload.encode(encoding))
+        staging.replace(path)
+    except BaseException:
+        with suppress(FileNotFoundError):
+            staging.unlink()
+        raise

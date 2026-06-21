@@ -237,6 +237,7 @@ verify-drift:
 	    | grep -v "cli/commands/diagnose.py" \
 	    | grep -v "cli/commands/run.py" \
 	    | grep -v "cli/commands/smoke.py" \
+	    | grep -v "phases/_agent_internal_paths.py" \
 	    | grep -v "config/welcome.py" \
 	    | grep -v "onboarding.py" \
 	    | grep -v "files/operations.py" \
