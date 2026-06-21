@@ -81,6 +81,7 @@ the full contract.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -178,24 +179,34 @@ _CONTROL_CHARS_RE = re.compile(
 #
 # Patterns chosen to match provider-specific output frames whose value
 # is potentially sensitive:
-#   * ``"arguments": "<value>"`` -- JSON-encoded tool arguments (value up to next quote)
-#   * ``"file_path": "<path>"`` -- Gemini/Claude file-path field (path up to next quote)
-#   * ``"input": "<value>"`` -- Gemini input envelope (value up to next quote)
-#   * ``"prompt": "<value>"`` -- echoed prompt fragment (value up to next quote)
-#   * ``"content": "<value>"`` -- content fragment (value up to next quote)
+#   * ``"arguments": "<value>"`` -- JSON-encoded tool arguments
+#   * ``"file_path": "<path>"`` -- Gemini/Claude file-path field
+#   * ``"input": "<value>"`` -- Gemini input envelope
+#   * ``"prompt": "<value>"`` -- echoed prompt fragment
+#   * ``"content": "<value>"`` -- content fragment
 #   * ``/etc/<path>``, ``/proc/<path>``, ``/sys/<path>`` -- sensitive roots + content
 #   * ``/root/<path>``, ``~/.ssh/<path>`` -- private homes + content
 #   * ``Authorization: Bearer <token>`` -- bearer token leakage (rest of line redacted)
 #   * ``-----BEGIN ... PRIVATE KEY-----`` -- PEM private key fragments (rest of line redacted)
 #
-# The JSON-quoted variants consume the value up to the next unescaped
-# ``"`` so a secret like ``"arguments": "secret"`` is fully redacted;
-# the bare-path variants consume the rest of the line so ``/etc/passwd``
+# The JSON-quoted variants use ``"(?:[^"\\\n]|\\.)*"`` so the entire
+# JSON string value is consumed, INCLUDING any escaped quotes (``\"``)
+# or other JSON escape sequences (``\n``, ``\t``, ``\\``, ``\u00ff``,
+# etc.). The pattern handles inputs like:
+#   * ``"arguments": "secret"``               -> redacted as ``<redacted>``
+#   * ``"arguments": "secret\"tail"``         -> redacted as ``<redacted>``
+#     (the trailing ``tail"`` would otherwise leak)
+#   * ``"prompt": "line1\nline2"``            -> redacted as ``<redacted>``
+#   * ``"content": "say \"hi\""``             -> redacted as ``<redacted>``
+# Without the ``\\.`` alternation, the inner ``[^"\n]*`` would stop at
+# the first escaped quote and the rest of the line would reach
+# operator-visible waiting-status output verbatim -- the analysis
+# feedback that motivated the fix.
+#
+# The bare-path variants consume the rest of the line so ``/etc/passwd``
 # becomes ``<redacted>``.
-_SENSITIVE_MARKER_RE = re.compile(
+_SENSITIVE_PATH_TOKEN_RE = re.compile(
     r"""
-    "(?:arguments|file_path|input|prompt|content)"\s*:\s*"[^"\n]*"
-    |
     (?:/etc/|/proc/|/sys/|/root/|~/\.ssh/)[^\s\x1b\n]*
     |
     Authorization\s*:\s*Bearer[^\n]*
@@ -204,6 +215,57 @@ _SENSITIVE_MARKER_RE = re.compile(
     """,
     re.VERBOSE,
 )
+
+
+# Fallback pattern for malformed JSON where the value contains
+# unescaped quotes. The strict pattern
+# ``"(?:[^"\\\n]|\\.)*"`` requires the value to be a well-formed
+# JSON string (closing ``"`` after a sequence of non-quote /
+# non-backslash characters OR an escape sequence). When the value
+# contains an UNESCAPED inner quote, the strict pattern stops at
+# the first unescaped quote and leaves the rest of the value
+# visible (e.g. ``{"arguments": "secret"tail"}`` -> redacts
+# only ``{"arguments": "secret"`` and leaves ``tail"}`` visible).
+#
+# The fallback matches the marker, opening quote, and EVERYTHING
+# up to a sensible boundary: closing quote, comma, brace,
+# bracket, or newline. The non-greedy ``*?`` with the trailing
+# positive-lookahead ``(?=["\\,\}\]\n]|$)`` ensures the match
+# stops at the FIRST boundary character so the redacted text
+# does not consume JSON structural characters.
+_SENSITIVE_MARKER_FALLBACK_RE = re.compile(
+    r"""
+    "(?:arguments|file_path|input|prompt|content)"\s*:\s*"
+    .*?
+    (?=[,\}\]\n]|$)
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+
+# JSON keys whose value is treated as sensitive in raw provider
+# lines. Used by ``_redact_json_values`` to walk a parsed JSON
+# structure and replace matching values with ``<redacted>``.
+_SENSITIVE_JSON_KEYS: frozenset[str] = frozenset(
+    {"arguments", "file_path", "input", "prompt", "content"}
+)
+
+
+def _redact_json_values(obj: object) -> object:
+    """Walk a parsed JSON structure and redact sensitive key values."""
+    if isinstance(obj, dict):
+        result: dict[str, object] = {}
+        for key, value in obj.items():
+            if key in _SENSITIVE_JSON_KEYS and isinstance(
+                value, (str, int, float, bool)
+            ):
+                result[key] = "<redacted>"
+            else:
+                result[key] = _redact_json_values(value)
+        return result
+    if isinstance(obj, list):
+        return [_redact_json_values(item) for item in obj]
+    return obj
 
 
 def _sanitize_subagent_description(line: str) -> str:
@@ -227,11 +289,51 @@ def _sanitize_subagent_description(line: str) -> str:
 
     Returns an empty string when the sanitized text is empty or
     only whitespace.
+
+    Implementation note: the sanitizer applies a multi-pass
+    redaction so a single line that mixes well-formed JSON,
+    malformed JSON, and free-form text is fully redacted:
+
+    1. JSON structural pass: if the line parses as a JSON object
+       or array, walk the structure and redact sensitive key
+       values (``arguments``, ``file_path``, ``input``,
+       ``prompt``, ``content``). The structural walker handles
+       escaped quotes correctly because it uses the JSON
+       parser.
+
+    2. Strict regex pass: re-apply the well-formed JSON regex
+       (``_SENSITIVE_MARKER_RE``) which matches
+       ``"key": "value"`` patterns with proper escaping. This
+       catches any sensitive markers that survived the JSON pass
+       (e.g. multiple objects on the same line, or trailing text
+       after a JSON object).
+
+    3. Fallback regex pass: apply the unescaped-quote fallback
+       (``_SENSITIVE_MARKER_FALLBACK_RE``) to catch malformed
+       JSON values that contain unescaped inner quotes. This is
+       the analysis-feedback fix: ``{"arguments": "secret"tail"}``
+       must redact the entire ``secret"tail`` value, not just
+       ``secret``.
     """
     if not line:
         return ""
     cleaned = _CONTROL_CHARS_RE.sub("", line)
-    cleaned = _SENSITIVE_MARKER_RE.sub("<redacted>", cleaned)
+    stripped_for_json = cleaned.strip()
+    if stripped_for_json.startswith(("{", "[")):
+        parsed_obj: object = None
+        try:
+            parsed_obj = cast("object", json.loads(stripped_for_json, strict=False))
+        except (json.JSONDecodeError, ValueError):
+            parsed_obj = None
+        if parsed_obj is not None:
+            try:
+                redacted_obj = _redact_json_values(parsed_obj)
+                redacted_text: str = json.dumps(redacted_obj, ensure_ascii=False)
+                cleaned = redacted_text
+            except (TypeError, ValueError):
+                pass
+    cleaned = _SENSITIVE_MARKER_FALLBACK_RE.sub("<redacted>", cleaned)
+    cleaned = _SENSITIVE_PATH_TOKEN_RE.sub("<redacted>", cleaned)
     cleaned = cleaned.strip()
     if len(cleaned) > _SUBAGENT_DESCRIPTION_MAX:
         cleaned = cleaned[:_SUBAGENT_DESCRIPTION_MAX]
@@ -532,6 +634,7 @@ class IdleWatchdog:
         *,
         now: float,
         idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None = None,
     ) -> StuckKind:
         """Build the classifier inputs from the watchdog's own state and return the kind.
 
@@ -540,6 +643,19 @@ class IdleWatchdog:
         the cached ``is_waiting_state``, the live connectivity state,
         a noop ``classify_quiet`` that always returns ``ACTIVE``, and
         the configured TTL.
+
+        When ``corroboration`` is provided, the live ``alive_by`` signal
+        is threaded into the classifier as the canonical "live child"
+        input. The classifier returns ``LOADING`` immediately when the
+        live corroborator reports a live child so the gate defers the
+        fire even when no process monitor is injected (the
+        ``subagent_liveness`` channel's ``can_defer=True`` is only
+        set by the process-monitor path -- a corroborator-only signal
+        must reach the classifier through this parameter or it is
+        invisible to the gate). This is the
+        analysis-feedback contract for ``CHILDREN_PERSIST_TOO_LONG``:
+        the gate must see the live corroboration, not the stale
+        ``self._last_alive_by`` post-fire field.
 
         The classifier's ``WAITING_ON_CHILD`` and ``RESUMABLE_CONTINUE``
         branches are intentionally NOT consulted from the gate. The
@@ -585,6 +701,7 @@ class IdleWatchdog:
             evidence_summary=summary,
             classify_quiet=_noop_classify_quiet,
             activity_evidence_ttl_seconds=self._config.activity_evidence_ttl_seconds,
+            corroboration=corroboration,
         )
 
     def _gate_fire(
@@ -593,6 +710,7 @@ class IdleWatchdog:
         *,
         now: float,
         idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None = None,
     ) -> WatchdogVerdict:
         """Smart-verdict gate: defer non-absolute fires the classifier names non-STUCK.
 
@@ -606,6 +724,14 @@ class IdleWatchdog:
         the watchdog consults ``classify_stuck`` and returns CONTINUE
         (with a debug log naming the kind) for any non-STUCK kind.
 
+        When the caller supplies a live ``corroboration`` snapshot, it
+        is threaded into the classifier as the canonical "live child"
+        input (the analysis-feedback contract for
+        ``CHILDREN_PERSIST_TOO_LONG`` and ``NO_OUTPUT_AT_START``).
+        Without this parameter the classifier would only see the
+        process-monitor subagent_liveness channel -- a corroborator-only
+        live signal would be invisible to the gate.
+
         The helper returns the final verdict the caller should use:
         FIRE for an allowed fire, CONTINUE for a deferred fire. The
         helper is the single boundary between the fire-decision helpers
@@ -617,7 +743,9 @@ class IdleWatchdog:
         """
         if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
             return WatchdogVerdict.FIRE
-        kind = self._classify_stuck_now(now=now, idle_elapsed=idle_elapsed)
+        kind = self._classify_stuck_now(
+            now=now, idle_elapsed=idle_elapsed, corroboration=corroboration
+        )
         if kind == StuckKind.STUCK:
             return WatchdogVerdict.FIRE
         self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
@@ -813,7 +941,10 @@ class IdleWatchdog:
             return None
 
         gate_verdict = self._gate_fire(
-            WatchdogFireReason.NO_OUTPUT_AT_START, now=now, idle_elapsed=idle_elapsed
+            WatchdogFireReason.NO_OUTPUT_AT_START,
+            now=now,
+            idle_elapsed=idle_elapsed,
+            corroboration=corroboration,
         )
         if gate_verdict == WatchdogVerdict.CONTINUE:
             return WatchdogVerdict.CONTINUE
@@ -1926,6 +2057,7 @@ class IdleWatchdog:
                 WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
                 now=now,
                 idle_elapsed=idle_elapsed,
+                corroboration=current_corr,
             )
             if gate_verdict == WatchdogVerdict.CONTINUE:
                 return WatchdogVerdict.CONTINUE

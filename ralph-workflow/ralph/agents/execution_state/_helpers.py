@@ -175,42 +175,48 @@ def _classify_opencode_child_signal(line: str) -> AgentActivitySignal | None:
 #
 # The OpenCode strategy uses the specialised ``_classify_opencode_child_signal``
 # above (which understands the OpenCode wire format). For every other
-# transport (Claude, Codex, Generic, Agy, Nanocoder) we run a NARROW
-# generic classifier that recognises ONLY transport markers that
-# explicitly identify child / subagent scope:
+# transport (Claude, Codex, Generic, Agy, Nanocoder) we run a PERMISSIVE
+# generic classifier that recognises BOTH:
 #
-#   * JSON envelopes whose ``type`` / ``event`` key starts with ``child_``
-#     or ``subagent_`` (e.g. ``child_progress``, ``subagent_progress``,
+#   * child-scoped event names (``child_progress``, ``subagent_progress``,
 #     ``child_heartbeat``, ``subagent_heartbeat``, ``child_alive``,
-#     ``subagent_alive``) -> CHILD_PROGRESS / CHILD_HEARTBEAT.
-#   * JSON envelopes whose ``type`` / ``event`` value is exactly
-#     ``child_progress`` / ``child_heartbeat`` etc. -> CHILD_PROGRESS /
-#     CHILD_HEARTBEAT.
-#   * Plain-text markers (``[child]``, ``[subagent]``, ``subagent: ``,
-#     ``child: ``, etc.) -> CHILD_PROGRESS.
-#   * Plain-text heartbeat markers (case-insensitive ``subagent heartbeat``
-#     / ``child heartbeat``) -> CHILD_HEARTBEAT.
+#     ``subagent_alive``) and the ``child_`` / ``subagent_`` prefix
+#     family -> CHILD_PROGRESS / CHILD_HEARTBEAT.
+#   * Bare transport-level progress / heartbeat / alive event names
+#     (``progress``, ``tool_call``, ``task_progress``, ``heartbeat``,
+#     ``alive``) -> CHILD_PROGRESS / CHILD_HEARTBEAT. PLAN AC-08
+#     explicitly enumerates these as the cross-transport contract
+#     so Claude / Codex / Generic / Agy / Nanocoder transports (which
+#     emit bare event names without the ``child_`` / ``subagent_``
+#     prefix) also feed the watchdog's per-channel evidence surface.
 #
-# IMPORTANT: bare top-level ``tool_call`` (used by Gemini's parser for
-# ordinary tool use) and generic ``heartbeat`` lifecycle events (in
-# :data:`LIFECYCLE_EVENT_TYPES` from :mod:`ralph.agents.parsers._event_classification`)
-# are NOT classified as child activity by the generic classifier. OpenCode
-# keeps its own special-cased ``tool_call`` / ``heartbeat`` recognition in
-# ``_OPENCODE_CHILD_KIND`` because the OpenCode wire format makes those
-# events child-scoped; the generic classifier must NOT inherit that
-# behaviour because it would create false-positive subagent evidence on
-# non-OpenCode transports (a Gemini ``tool_call`` is a regular tool use,
-# not a child agent).
+# Plain-text markers (``[child]``, ``[subagent]``, ``subagent: ``,
+# ``child: ``, ``subagent progress``, ``child progress``, ``task progress``)
+# also classify as CHILD_PROGRESS, and ``subagent heartbeat`` /
+# ``child heartbeat`` classify as CHILD_HEARTBEAT.
 #
 # Terminal signals (``child_complete``, ``child_failed``,
-# ``child_terminal``, ``subagent_complete`` etc.) are NOT classified by the
+# ``child_terminal``, ``subagent_complete``) are NOT classified by the
 # generic classifier -- terminal signals do not invoke the sink (same
 # contract as OpenCode).
 _GENERIC_CHILD_PROGRESS_KIND: frozenset[str] = frozenset(
-    {"child_progress", "subagent_progress"}
+    {
+        "child_progress",
+        "subagent_progress",
+        "progress",
+        "tool_call",
+        "task_progress",
+    }
 )
 _GENERIC_CHILD_HEARTBEAT_KIND: frozenset[str] = frozenset(
-    {"child_heartbeat", "subagent_heartbeat", "child_alive", "subagent_alive"}
+    {
+        "child_heartbeat",
+        "subagent_heartbeat",
+        "child_alive",
+        "subagent_alive",
+        "heartbeat",
+        "alive",
+    }
 )
 _GENERIC_CHILD_TERMINAL_KIND: frozenset[str] = frozenset(
     {"child_complete", "child_failed", "child_terminal", "subagent_complete"}
@@ -263,6 +269,23 @@ def _classify_generic_child_signal(line: str) -> AgentActivitySignal | None:
     returns ``None`` otherwise (including for empty / whitespace-only
     lines, regular stdout, and terminal child events).
 
+    The classifier recognises three families of markers so
+    Claude / Codex / Generic / Agy / Nanocoder transports (which
+    use bare event names without a ``child_`` / ``subagent_`` prefix)
+    still feed the watchdog's per-channel evidence surface:
+
+    1. JSON envelopes whose ``type`` / ``event`` value is in
+       :data:`_GENERIC_CHILD_PROGRESS_KIND` (e.g. ``child_progress``,
+       ``progress``, ``tool_call``, ``task_progress``) -> CHILD_PROGRESS.
+    2. JSON envelopes whose ``type`` / ``event`` value is in
+       :data:`_GENERIC_CHILD_HEARTBEAT_KIND` (e.g. ``child_heartbeat``,
+       ``heartbeat``, ``child_alive``, ``alive``) -> CHILD_HEARTBEAT.
+    3. Plain-text markers (case-insensitive ``in`` substring test)
+       ``[child]``, ``[subagent]``, ``subagent progress``,
+       ``child progress``, ``task progress``, ``subagent: ``,
+       ``child: `` -> CHILD_PROGRESS; ``subagent heartbeat`` /
+       ``child heartbeat`` -> CHILD_HEARTBEAT.
+
     This classifier is purely additive on top of the existing
     ``_classify_opencode_child_signal`` specialised classifier.
     Transport-specific strategies continue to use the specialised
@@ -289,15 +312,17 @@ def _classify_generic_child_signal_from_json(
     Terminal events return ``None`` (terminal signals do not invoke
     the sink).
 
-    The classifier is intentionally NARROW: it only recognises
-    ``type``/``event`` values that EXPLICITLY identify child or
-    subagent scope (``child_progress``, ``subagent_progress``,
-    ``child_heartbeat``, ``subagent_heartbeat``, ...) or that start
-    with the ``child_`` / ``subagent_`` prefix. Bare ``tool_call``
-    (Gemini tool use) and bare ``heartbeat`` (generic lifecycle
-    event) are NOT classified -- they are not child-scoped and
-    would otherwise feed the watchdog a false-positive subagent
-    signal.
+    The classifier is intentionally PERMISSIVE: it recognises
+    ``type``/``event`` values in the progress set
+    (``:data:`_GENERIC_CHILD_PROGRESS_KIND` `` -- ``child_progress``,
+    ``progress``, ``tool_call``, ``task_progress``, ...) and the
+    heartbeat set (``:data:`_GENERIC_CHILD_HEARTBEAT_KIND` `` --
+    ``child_heartbeat``, ``heartbeat``, ``child_alive``, ``alive``)
+    so bare Codex ``event=progress`` and bare Codex
+    ``event=heartbeat`` both feed the watchdog. The classifier also
+    recognises any ``type``/``event`` value starting with the
+    ``child_`` / ``subagent_`` prefix (e.g. ``subagent_progress``)
+    as CHILD_PROGRESS. Terminal events are explicitly excluded.
     """
     event_kind = _extract_event_kind_from_json(line)
     if event_kind is None:

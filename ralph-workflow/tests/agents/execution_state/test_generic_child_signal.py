@@ -26,9 +26,13 @@ from ralph.agents.execution_state import (
     BaseExecutionStrategy,
     ClaudeExecutionStrategy,
     ClaudeInteractiveExecutionStrategy,
+    GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
+    strategy_for_transport,
 )
+from ralph.agents.execution_state._factory import _make_agy_strategy
 from ralph.agents.execution_state._helpers import _classify_generic_child_signal
+from ralph.config.enums import AgentTransport
 from ralph.mcp.server._activity_sink import (
     reset_subagent_sink,
     set_subagent_sink,
@@ -94,11 +98,13 @@ class TestClassifyGenericChildSignal:
     def test_classify_generic_child_signal_matches_codex_json_event(self) -> None:
         """Codex-style JSON with a child-scoped event name
         ``{"event":"child_progress","data":"thinking"}`` is classified
-        as CHILD_PROGRESS. Bare ``event="progress"`` (a generic
-        lifecycle event in ``_event_classification.LIFECYCLE_EVENT_TYPES``)
-        is NOT classified because it does not identify child/subagent
-        scope -- the analysis-feedback guard against false-positive
-        subagent activity from non-OpenCode transports.
+        as CHILD_PROGRESS. PLAN AC-08 also requires bare Codex
+        ``event="progress"`` (a generic lifecycle event in
+        ``_event_classification.LIFECYCLE_EVENT_TYPES``) to be
+        classified as CHILD_PROGRESS so Claude / Codex / Generic /
+        Agy / Nanocoder transports (which emit bare event names
+        without the ``child_`` / ``subagent_`` prefix) feed the
+        watchdog's per-channel evidence surface.
         """
         signal = _classify_generic_child_signal(
             '{"event":"child_progress","data":"thinking"}'
@@ -106,46 +112,88 @@ class TestClassifyGenericChildSignal:
         assert signal is not None
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
-    def test_classify_generic_child_signal_returns_none_for_bare_progress_event(
-        self,
-    ) -> None:
-        """A bare ``event="progress"`` JSON line is a generic lifecycle
-        event and is NOT classified as CHILD_PROGRESS. The cross-transport
-        classifier only recognises event names that explicitly identify
-        child/subagent scope (e.g. ``child_progress``,
-        ``subagent_progress``).
+    def test_classify_generic_child_signal_matches_bare_progress_event(self) -> None:
+        """A bare ``event="progress"`` JSON line is classified as
+        CHILD_PROGRESS per PLAN AC-08's cross-transport contract.
+
+        The cross-transport classifier recognises bare progress event
+        names so Claude / Codex / Generic / Agy / Nanocoder transports
+        (which emit bare ``event=progress`` without the ``child_`` /
+        ``subagent_`` prefix) feed the watchdog's per-channel
+        evidence surface. This is the OPEN-half of the
+        permission contract; terminal / unrelated lines are still
+        filtered out by the explicit None branches.
         """
         signal = _classify_generic_child_signal(
             '{"event":"progress","data":"thinking"}'
         )
-        assert signal is None
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
-    def test_classify_generic_child_signal_returns_none_for_bare_tool_call_event(
-        self,
-    ) -> None:
-        """A bare ``type="tool_call"`` JSON line is an ordinary Gemini
-        tool use (per ``ralph/agents/parsers/gemini.py``) and is NOT
-        classified as CHILD_PROGRESS. OpenCode's special-cased
-        ``tool_call`` recognition in ``_OPENCODE_CHILD_KIND`` is
-        transport-specific; the generic classifier must NOT inherit
-        that mapping or it would create false-positive subagent
-        evidence on every Gemini tool call.
+    def test_classify_generic_child_signal_matches_bare_tool_call_event(self) -> None:
+        """A bare ``type="tool_call"`` JSON line is classified as
+        CHILD_PROGRESS per PLAN AC-08's cross-transport contract.
+
+        The cross-transport classifier recognises bare ``tool_call``
+        event names so non-OpenCode transports (which emit bare
+        ``type=tool_call`` without the ``child_`` / ``subagent_``
+        prefix) also feed the watchdog's per-channel evidence
+        surface. OpenCode's specialised classifier retains its own
+        ``tool_call`` recognition in ``_OPENCODE_CHILD_KIND``; the
+        generic classifier adds cross-transport coverage so the
+        watchdog sees child / subagent activity from any transport.
         """
         signal = _classify_generic_child_signal(
             '{"type":"tool_call","name":"bash","args":{"cmd":"ls"}}'
         )
-        assert signal is None
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
-    def test_classify_generic_child_signal_returns_none_for_bare_heartbeat_event(
-        self,
-    ) -> None:
-        """A bare ``type="heartbeat"`` JSON line is a generic lifecycle
-        event (per ``_event_classification.LIFECYCLE_EVENT_TYPES``) and
-        is NOT classified as CHILD_HEARTBEAT. Only event names that
-        explicitly identify child/subagent scope are recognised.
+    def test_classify_generic_child_signal_matches_bare_heartbeat_event(self) -> None:
+        """A bare ``type="heartbeat"`` JSON line is classified as
+        CHILD_HEARTBEAT per PLAN AC-08's cross-transport contract.
+
+        The cross-transport classifier recognises bare ``heartbeat``
+        event names so non-OpenCode transports (which emit bare
+        ``type=heartbeat`` without the ``child_`` / ``subagent_``
+        prefix) also feed the watchdog's per-channel evidence
+        surface. The heartbeat set is distinct from the progress
+        set so the watchdog can tell a real progress signal from
+        a keep-alive heartbeat.
         """
         signal = _classify_generic_child_signal(
             '{"type":"heartbeat","ts":1234567890}'
+        )
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
+
+    def test_classify_generic_child_signal_matches_bare_alive_event(self) -> None:
+        """A bare ``event="alive"`` JSON line is classified as
+        CHILD_HEARTBEAT per PLAN AC-08's cross-transport contract.
+        """
+        signal = _classify_generic_child_signal(
+            '{"event":"alive","ts":1234567890}'
+        )
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
+
+    def test_classify_generic_child_signal_matches_task_progress_event(self) -> None:
+        """A bare ``event="task_progress"`` JSON line is classified as
+        CHILD_PROGRESS per PLAN AC-08's cross-transport contract.
+        """
+        signal = _classify_generic_child_signal(
+            '{"event":"task_progress","data":"thinking"}'
+        )
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+
+    def test_classify_generic_child_signal_returns_none_for_terminal_event(self) -> None:
+        """A ``type="child_complete"`` JSON line is a terminal event
+        and is NOT classified (terminal signals do not invoke the
+        sink, same contract as OpenCode).
+        """
+        signal = _classify_generic_child_signal(
+            '{"type":"child_complete","child_id":"abc"}'
         )
         assert signal is None
 
@@ -220,6 +268,11 @@ class TestBaseExecutionStrategyObserveLineWiring:
 class TestStrategyInheritanceUsesBaseChildSignalPath:
     """ClaudeExecutionStrategy and ClaudeInteractiveExecutionStrategy do NOT
     override ``observe_line`` -- the new base behavior applies automatically.
+
+    PLAN AC-09 explicitly calls out Codex/Generic/Agy/Nanocoder as
+    inheriting the same path automatically. This class adds direct
+    inheritance + wiring assertions for every transport named in
+    PLAN AC-09 so the cross-transport contract is observable.
     """
 
     def test_claude_execution_strategy_does_not_override_observe_line(self) -> None:
@@ -266,6 +319,162 @@ class TestStrategyInheritanceUsesBaseChildSignalPath:
         assert len(subagent_sink_spy) == 1, (
             f"expected exactly one sink invocation for ClaudeInteractive strategy"
             f" on child_progress line, got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_generic_execution_strategy_does_not_override_observe_line(self) -> None:
+        """GenericExecutionStrategy inherits BaseExecutionStrategy.observe_line.
+
+        The Codex, Nanocoder, and Agy fallback strategies all delegate
+        to ``GenericExecutionStrategy`` (or a subclass of it), so
+        confirming ``GenericExecutionStrategy`` does NOT override
+        ``observe_line`` is the single-source-of-truth check that
+        pins PLAN AC-09's "Codex / Generic / Agy / Nanocoder all
+        inherit this behavior automatically" contract.
+        """
+        assert "observe_line" not in GenericExecutionStrategy.__dict__, (
+            "GenericExecutionStrategy MUST NOT override observe_line; the base"
+            " implementation applies the cross-transport generic child-signal"
+            " classifier automatically. Codex / Nanocoder / Agy-fallback"
+            " all inherit from GenericExecutionStrategy."
+        )
+
+    def test_generic_execution_strategy_inherits_generic_child_signal_path(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """GenericExecutionStrategy.observe_line on a child-progress line
+        invokes the sink exactly once (inherited from base).
+        """
+        strategy = GenericExecutionStrategy()
+        strategy.observe_line('{"type":"child_progress","msg":"thinking"}')
+
+        assert len(subagent_sink_spy) == 1, (
+            f"expected exactly one sink invocation for Generic strategy on"
+            f" child_progress line, got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_agy_strategy_inherits_base_observe_line(self) -> None:
+        """The AgyExecutionStrategy (CompletionEnforcingStrategy + GenericExecutionStrategy)
+        does NOT override ``observe_line`` so the base implementation applies.
+
+        The Agy factory (``_make_agy_strategy``) creates a subclass that
+        inherits from ``CompletionEnforcingStrategy`` and
+        ``GenericExecutionStrategy``; neither parent overrides
+        ``observe_line``, so the Agy strategy must use the base
+        implementation too. We assert this by instantiating the
+        factory and confirming the resulting class does NOT
+        override ``observe_line``.
+        """
+        agy_instance = _make_agy_strategy()
+        agy_cls = type(agy_instance)
+        assert "observe_line" not in agy_cls.__dict__, (
+            f"AgyExecutionStrategy ({agy_cls.__name__}) MUST NOT override"
+            f" observe_line; the base implementation applies the cross-transport"
+            f" generic child-signal classifier automatically."
+        )
+        # Confirm the inheritance chain is correct.
+        assert issubclass(agy_cls, GenericExecutionStrategy), (
+            f"AgyExecutionStrategy ({agy_cls.__name__}) MUST inherit from"
+            f" GenericExecutionStrategy; got MRO: {agy_cls.__mro__}"
+        )
+
+    def test_agy_strategy_inherits_generic_child_signal_path(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """AgyExecutionStrategy.observe_line on a child-progress line
+        invokes the sink exactly once (inherited from base).
+        """
+        strategy = _make_agy_strategy()
+        strategy.observe_line('{"type":"child_progress","msg":"thinking"}')
+
+        assert len(subagent_sink_spy) == 1, (
+            f"expected exactly one sink invocation for Agy strategy on"
+            f" child_progress line, got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_codex_strategy_factory_returns_base_observer(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """``strategy_for_transport(AgentTransport.CODEX)`` returns a
+        ``GenericExecutionStrategy`` whose ``observe_line`` invokes the
+        subagent sink exactly once for a child-progress line.
+
+        The Codex transport does NOT have a dedicated strategy class
+        in the codebase -- it delegates to ``GenericExecutionStrategy``
+        via the catalog (``_DEFAULT_STRATEGIES`` table in
+        ``ralph.agents.catalog``). This test pins the AC-09
+        contract for the Codex transport end-to-end: the
+        ``strategy_for_transport`` factory returns a strategy that
+        feeds the watchdog's per-channel evidence surface.
+        """
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        assert isinstance(strategy, GenericExecutionStrategy), (
+            f"Codex transport must use GenericExecutionStrategy (the catalog"
+            f" default), got {type(strategy).__name__}"
+        )
+        strategy.observe_line('{"type":"child_progress","msg":"thinking"}')
+
+        assert len(subagent_sink_spy) == 1, (
+            f"expected exactly one sink invocation for Codex strategy on"
+            f" child_progress line, got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_codex_strategy_factory_uses_bare_event_name(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """``strategy_for_transport(AgentTransport.CODEX)`` recognises bare
+        Codex ``event=progress`` as a child signal (PLAN AC-08).
+
+        Codex emits bare ``{"event":"progress",...}`` frames without
+        the ``child_`` / ``subagent_`` prefix. The cross-transport
+        classifier recognises these as CHILD_PROGRESS so the
+        watchdog sees Codex subagent activity.
+        """
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        strategy.observe_line('{"event":"progress","data":"thinking"}')
+
+        assert len(subagent_sink_spy) == 1, (
+            f"expected exactly one sink invocation for Codex strategy on"
+            f" bare event=progress line, got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_nanocoder_strategy_factory_returns_base_observer(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """``strategy_for_transport(AgentTransport.NANOCODER)`` returns a
+        ``GenericExecutionStrategy`` whose ``observe_line`` invokes the
+        subagent sink exactly once for a child-progress line.
+
+        PLAN AC-09 explicitly names Nanocoder as one of the
+        transports that inherits the new base behaviour. The
+        Nanocoder transport falls through to ``GenericExecutionStrategy``
+        via the catalog's transport-keyed strategy dispatch
+        (``_STRATEGY_DISPATCH``).
+        """
+        strategy = strategy_for_transport(AgentTransport.NANOCODER)
+        assert isinstance(strategy, GenericExecutionStrategy), (
+            f"Nanocoder transport must use GenericExecutionStrategy (the catalog"
+            f" default), got {type(strategy).__name__}"
+        )
+        strategy.observe_line('{"type":"child_progress","msg":"thinking"}')
+
+        assert len(subagent_sink_spy) == 1, (
+            f"expected exactly one sink invocation for Nanocoder strategy on"
+            f" child_progress line, got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_agy_strategy_factory_returns_base_observer(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """``strategy_for_transport(AgentTransport.AGY)`` returns an
+        AgyExecutionStrategy whose ``observe_line`` invokes the
+        subagent sink exactly once for a child-progress line.
+        """
+        strategy = strategy_for_transport(AgentTransport.AGY)
+        strategy.observe_line('{"type":"child_progress","msg":"thinking"}')
+
+        assert len(subagent_sink_spy) == 1, (
+            f"expected exactly one sink invocation for Agy strategy on"
+            f" child_progress line, got {len(subagent_sink_spy)} invocations"
         )
 
 

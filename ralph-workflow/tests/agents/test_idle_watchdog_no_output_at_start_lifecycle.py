@@ -210,26 +210,47 @@ class TestNoOutputAtStartLiveCorroborationDefer:
     def test_defers_no_output_at_start_when_cumulative_waiting_on_child_positive(
         self,
     ) -> None:
-        """Cumulative waiting time > 0 defers NO_OUTPUT_AT_START.
+        """Cumulative waiting time > 0 defers NO_OUTPUT_AT_START (AC-02).
 
-        Drive one full WAITING_ON_CHILD entry/exit cycle so
-        cumulative_waiting_on_child_seconds > 0, reset to ACTIVE state
-        (no live corroborator alive_by), then advance past
-        no_output_at_start_seconds with no new activity. The watchdog
-        must defer NO_OUTPUT_AT_START because the agent has already
-        demonstrated it is alive by surviving a waiting run.
+        The watchdog must defer NO_OUTPUT_AT_START when
+        ``cumulative_waiting_on_child_seconds > 0`` because an agent
+        that survived a full waiting run has demonstrated it is alive
+        enough that ``NO_OUTPUT_AT_START`` no longer applies.
 
-        Setup: idle_timeout_seconds=300 (well past the no_output_at_start
-        threshold) so the watchdog does NOT fire NO_OUTPUT_DEADLINE
-        before the no_output_at_start check. ``has_meaningful_output``
-        stays False (no ``record_activity()`` call) so the NO_OUTPUT_AT_START
-        check proceeds to the cumulative-waiting deferral gate.
+        This test PROVES the AC-02 contract end-to-end:
+
+        1. Configure so ``NO_OUTPUT_DEADLINE`` cannot win:
+           - ``idle_timeout_seconds=300.0`` so the watchdog returns
+             ``CONTINUE`` (via the ``idle_elapsed < idle_timeout``
+             early-out) before the NO_OUTPUT_DEADLINE fire path.
+           - ``no_progress_quiet_seconds=None`` so the
+             NO_PROGRESS_QUIET path is disabled.
+           - ``drain_window_seconds=0.0`` so the active branch does
+             not enter a drain window.
+        2. Drive past ``no_output_at_start_seconds`` (60s) with no
+           activity and no live corroborator alive_by, after
+           simulating a prior waiting run via
+           ``_cumulative_waiting_on_child_seconds``.
+        3. Assert the returned verdict is
+           ``WatchdogVerdict.CONTINUE`` (the AC-02 contract).
+        4. Assert no fire reason was recorded
+           (``last_fire_reason is None``).
+
+        The pre-fix test config (``idle_timeout_seconds=10.0``) let
+        the watchdog fire ``NO_OUTPUT_DEADLINE`` AFTER the
+        ``NO_OUTPUT_AT_START`` deferral check, which let a
+        regression to ``NO_OUTPUT_DEADLINE`` slip through the
+        ``last_fire_reason != NO_OUTPUT_AT_START`` assertion. The
+        new configuration closes that loophole: the only way for
+        the test to fail is if the deferral gate itself is broken.
         """
         config = TimeoutPolicy(
-            idle_timeout_seconds=10.0,
+            idle_timeout_seconds=300.0,
             no_output_at_start_seconds=60.0,
             max_waiting_on_child_seconds=1800.0,
             max_waiting_on_child_no_progress_seconds=600.0,
+            no_progress_quiet_seconds=None,
+            drain_window_seconds=0.0,
         )
         clock = FakeClock(start=0.0)
 
@@ -243,45 +264,34 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         watchdog = IdleWatchdog(config, clock, corroborator=_empty_corroborator)
         watchdog.record_invocation_start()
 
-        # Drive a WAITING_ON_CHILD entry/exit cycle. Advance past the
-        # idle deadline (10s) to enter WAITING_ON_CHILD on the first
-        # evaluate; advance a bit more so the run accumulates waiting
-        # time; then transition back to ACTIVE on the next evaluate to
-        # accumulate the run into cumulative_waiting_on_child_seconds.
-        # The NO_OUTPUT_AT_START check returns None during the cycle
-        # itself because `(now - _last_meaningful_output_at) < 60s` at
-        # clock=11 and clock=31, so the gate deferral is NOT exercised
-        # during the cycle -- it is exercised AFTER the cycle when
-        # `now - _last_meaningful_output_at >= 60s` AND
-        # `cumulative_waiting_on_child_seconds > 0`.
-        clock.advance(11.0)
-        first_verdict = watchdog.evaluate(
-            classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
-        )
-        assert first_verdict == WatchdogVerdict.WAITING_ON_CHILD
+        # Simulate a prior waiting run by directly setting the
+        # cumulative field. The watchdog's interface does not expose
+        # a setter (the cumulative is a private invariant that
+        # ``_accumulate_waiting_run`` maintains internally); tests
+        # may manipulate internal state for setup. The intent is
+        # to drive the exact precondition the AC-02 deferral gate
+        # requires: ``cumulative_waiting_on_child_seconds > 0``.
+        watchdog._cumulative_waiting_on_child_seconds = 5.0
 
-        clock.advance(20.0)
-        watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
-        # The exit transitions out of WAITING_ON_CHILD; the cumulative
-        # waiting time is now > 0.
-        assert watchdog.cumulative_waiting_on_child_seconds > 0.0
-
-        # Now drive past no_output_at_start_seconds (60s) with no new
-        # activity and no live corroborator alive_by. The watchdog must
-        # defer NO_OUTPUT_AT_START because cumulative_waiting_on_child_seconds
-        # is positive. Idle_elapsed (92) is past idle_timeout (10) but
-        # the deferral check returns None BEFORE the idle_timeout check,
-        # so the watchdog does NOT fire NO_OUTPUT_AT_START -- it then
-        # proceeds to fire NO_OUTPUT_DEADLINE (a different fire path),
-        # which is the expected behavior. The KEY assertion is that
-        # ``last_fire_reason != NO_OUTPUT_AT_START`` -- if the deferral
-        # gate were broken, NO_OUTPUT_AT_START would have fired first.
+        # Drive past no_output_at_start_seconds (60s) with no new
+        # activity and no live corroborator alive_by. With
+        # idle_timeout_seconds=300 the watchdog returns CONTINUE
+        # via the idle_elapsed < idle_timeout early-out BEFORE
+        # reaching the NO_OUTPUT_DEADLINE / active branch. The
+        # only verdict path that runs is the
+        # ``_evaluate_no_output_at_start`` deferral gate -- if
+        # the gate is broken, NO_OUTPUT_AT_START fires.
         clock.advance(61.0)
-        watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
-        assert watchdog.last_fire_reason != WatchdogFireReason.NO_OUTPUT_AT_START, (
-            f"expected last_fire_reason != NO_OUTPUT_AT_START (NO_OUTPUT_AT_START"
-            f" must defer when cumulative_waiting_on_child_seconds > 0),"
+        # AC-02: verdict is CONTINUE (deferral gate kept us alive).
+        assert verdict == WatchdogVerdict.CONTINUE, (
+            f"expected CONTINUE (NO_OUTPUT_AT_START must defer when"
+            f" cumulative_waiting_on_child_seconds > 0), got verdict={verdict}"
+        )
+        # AC-02: no fire reason was recorded (deferral, not fire).
+        assert watchdog.last_fire_reason is None, (
+            f"expected last_fire_reason=None (no fire happened),"
             f" got {watchdog.last_fire_reason}"
         )
 

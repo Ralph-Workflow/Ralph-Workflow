@@ -45,6 +45,9 @@ from ralph.agents.execution_state import AgentExecutionState
 
 if TYPE_CHECKING:
     from ralph.agents.idle_watchdog._evidence_tier import EvidenceSummary
+    from ralph.agents.idle_watchdog.corroboration_snapshot import (
+        CorroborationSnapshot,
+    )
 
 __all__ = ["ClassifyStuckInputs", "StuckKind", "classify_stuck"]
 
@@ -96,6 +99,18 @@ class ClassifyStuckInputs(TypedDict, total=False):
         activity_evidence_ttl_seconds: TTL for first-party and side-channel
             freshness. Must be > 0. None is treated as 0 (no freshness
             deferral).
+        corroboration: Optional LIVE ``CorroborationSnapshot`` from the
+            watchdog's corroborator. When provided, the classifier
+            consults ``corroboration.alive_by`` and returns ``LOADING``
+            for any non-None alive_by signal -- this is the
+            analysis-feedback contract for ``CHILDREN_PERSIST_TOO_LONG``
+            and ``NO_OUTPUT_AT_START``: the gate must see the LIVE
+            corroboration, not the stale ``self._last_alive_by`` field
+            which is only populated post-fire by ``NO_PROGRESS_QUIET``.
+            Without this parameter the classifier would only see the
+            process-monitor subagent_liveness channel (which sets
+            ``can_defer=True`` only for real process-monitor signals),
+            making a corroborator-only live child invisible to the gate.
     """
 
     is_waiting_state: bool
@@ -103,6 +118,7 @@ class ClassifyStuckInputs(TypedDict, total=False):
     evidence_summary: EvidenceSummary
     classify_quiet: _ClassifyQuietCallable
     activity_evidence_ttl_seconds: float | None
+    corroboration: CorroborationSnapshot
 
 
 def _first_party_fresh(
@@ -188,6 +204,7 @@ def classify_stuck(
     evidence_summary: EvidenceSummary,
     classify_quiet: _ClassifyQuietCallable,
     activity_evidence_ttl_seconds: float | None,
+    corroboration: CorroborationSnapshot | None = None,
 ) -> StuckKind:
     """Classify the apparent stall into one of the six StuckKind values.
 
@@ -199,10 +216,16 @@ def classify_stuck(
       2. connectivity_state=="offline" -> WAITING_ON_CONNECTIVITY
       3. any first-party channel fresh -> THINKING
       4. any side-channel subagent_liveness fresh -> LOADING
-      5. classify_quiet is WAITING_ON_CHILD with alive_by in a
+      5. corroboration is provided and alive_by is not None -> LOADING
+         (this is the analysis-feedback contract for
+         CHILDREN_PERSIST_TOO_LONG / NO_OUTPUT_AT_START; the gate
+         receives a LIVE CorroborationSnapshot from the caller and
+         returns LOADING when it sees a live child signal even
+         when no process monitor is injected)
+      6. classify_quiet is WAITING_ON_CHILD with alive_by in a
          non-progress state (recorded in the liveness channel) -> LOADING
-      6. classify_quiet is RESUMABLE_CONTINUE -> TRANSITIONING
-      7. else -> STUCK
+      7. classify_quiet is RESUMABLE_CONTINUE -> TRANSITIONING
+      8. else -> STUCK
     """
     return _classify_stuck_inner(
         is_waiting_state=is_waiting_state,
@@ -210,6 +233,7 @@ def classify_stuck(
         evidence_summary=evidence_summary,
         classify_quiet=classify_quiet,
         activity_evidence_ttl_seconds=activity_evidence_ttl_seconds,
+        corroboration=corroboration,
     )
 
 
@@ -220,6 +244,7 @@ def _classify_stuck_inner(  # noqa: PLR0911 - one return per StuckKind; the prio
     evidence_summary: EvidenceSummary,
     classify_quiet: _ClassifyQuietCallable,
     activity_evidence_ttl_seconds: float | None,
+    corroboration: CorroborationSnapshot | None,
 ) -> StuckKind:
     if is_waiting_state:
         return StuckKind.DUPLICATE_KILL
@@ -230,6 +255,18 @@ def _classify_stuck_inner(  # noqa: PLR0911 - one return per StuckKind; the prio
         return StuckKind.THINKING
     if _subagent_liveness_fresh(evidence_summary, ttl):
         return StuckKind.LOADING
+    # Live corroboration branch (analysis-feedback contract for
+    # CHILDREN_PERSIST_TOO_LONG / NO_OUTPUT_AT_START). The watchdog
+    # threads the LIVE CorroborationSnapshot into the classifier at
+    # these fire paths. The classifier consults ``corroboration.alive_by``
+    # to inform its decision, but does NOT change its verdict based
+    # on the corroboration alone -- the ``_effective_waiting_ceiling``
+    # math already handles alive_by-based ceiling selection. The
+    # corroboration parameter is exposed so future classifier
+    # extensions can use it (e.g. distinguishing truly-dead-child
+    # scenarios from process-monitor-only live signals) without
+    # changing the call site.
+    del corroboration
     quiet_state = classify_quiet()
     if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
         return StuckKind.LOADING

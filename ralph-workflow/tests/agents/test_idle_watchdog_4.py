@@ -360,3 +360,160 @@ def test_record_subagent_work_description_does_not_mutate_last_activity() -> Non
     baseline = wd._last_activity
     wd.record_subagent_work(description="anything goes here")
     assert wd._last_activity == baseline
+
+
+# ---------------------------------------------------------------------------
+# (t) Escaped-quote redaction regression (analysis-feedback: leaked suffix text)
+# ---------------------------------------------------------------------------
+
+
+def test_record_subagent_work_description_redacts_well_formed_escaped_quote() -> None:
+    """A well-formed JSON ``"arguments": "secret\\"tail"`` is fully redacted.
+
+    The strict regex ``"[^"\\n]*"`` would stop at the first
+    unescaped quote and leave ``tail"`` visible. The sanitizer's
+    multi-pass redaction (JSON parser + strict regex + fallback
+    regex) handles the escaped quote and redacts the entire value.
+    """
+    wd, _clock = _make_watchdog()
+    # Source: {"arguments":"secret\"tail"}  (the \" is a real escape)
+    wd.record_subagent_work(description='{"arguments":"secret\\"tail"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "tail" not in stored, (
+        f"escaped-quote suffix 'tail' must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_malformed_inner_quote() -> None:
+    """A malformed JSON with an UNESCAPED inner quote is fully redacted.
+
+    The input ``{"arguments":"secret"tail"}`` is not valid JSON; the
+    JSON parser rejects it and the fallback regex
+    ``_SENSITIVE_MARKER_FALLBACK_RE`` matches the marker, opening
+    quote, and everything up to the next JSON boundary character
+    so the trailing ``tail"}`` never reaches operator-visible output.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"arguments":"secret"tail"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "tail" not in stored, (
+        f"malformed-JSON suffix 'tail' must be redacted, got: {stored!r}"
+    )
+    assert "secret" not in stored, (
+        f"malformed-JSON prefix 'secret' must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_escaped_prompt_content() -> None:
+    """An escaped-quote ``prompt`` / ``content`` value is fully redacted.
+
+    Regression for the analysis-feedback case: a raw provider line
+    like ``{"prompt": "say \\"hi\\" please"}`` must NOT leak the
+    ``"hi" please"`` suffix into operator-visible output.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"prompt": "say \\"hi\\" please"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "please" not in stored, (
+        f"escaped-quote suffix 'please' must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_escaped_file_path() -> None:
+    """An escaped-quote ``file_path`` value is fully redacted.
+
+    ``{"file_path": "/etc/secret\\"name"}`` must NOT leak the
+    ``name"`` suffix into operator-visible output.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"file_path": "/etc/secret\\"name"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "name" not in stored, (
+        f"escaped-quote file_path suffix 'name' must be redacted, got: {stored!r}"
+    )
+    assert "/etc/" not in stored, (
+        f"sensitive path /etc/ must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_bearer_token_with_quotes() -> None:
+    """A bearer token header with a quoted suffix is fully redacted.
+
+    The provider format ``Authorization: Bearer abc"def`` (raw
+    provider line, not JSON-wrapped) must NOT leak the ``def``
+    suffix. The path regex
+    ``_SENSITIVE_PATH_TOKEN_RE`` matches
+    ``Authorization\\s*:\\s*Bearer[^\\n]*`` and consumes the rest of
+    the line, so the quoted suffix is redacted.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='Authorization: Bearer abc"def')
+    stored = wd._last_subagent_progress_description or ""
+    assert "def" not in stored, (
+        f"bearer token suffix 'def' must be redacted, got: {stored!r}"
+    )
+    assert "Bearer" not in stored, (
+        f"bearer token prefix 'Bearer' must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_input_field_with_quotes() -> None:
+    """An ``input`` field with escaped quotes is fully redacted.
+
+    ``{"input": "echo \\"hello\\" world"}`` must NOT leak the
+    ``world"`` suffix into operator-visible output.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"input": "echo \\"hello\\" world"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "world" not in stored, (
+        f"input field suffix 'world' must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_repeated_escaped_quotes() -> None:
+    """Multiple escaped quotes in a single value are all redacted.
+
+    ``{"content": "say \\"hi\\" then \\"bye\\" now"}`` must NOT
+    leak any of ``hi``, ``bye``, or ``now`` into operator-visible
+    output.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"content": "say \\"hi\\" then \\"bye\\" now"}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    for forbidden in ("hi", "bye", "now"):
+        assert forbidden not in stored, (
+            f"escaped-quote value {forbidden!r} must be redacted, got: {stored!r}"
+        )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_reproducer_no_leaked_suffix() -> None:
+    """Reproducer for the analysis-feedback reproducer.
+
+    The exact input from the analysis feedback (``{"arguments":"secret\\"tail"}``)
+    must produce sanitized output that does NOT contain the
+    forbidden ``tail`` suffix. This is the contract that motivated
+    the fallback regex fix.
+    """
+    wd, _clock = _make_watchdog()
+    # Reproducer line verbatim from the analysis feedback.
+    wd.record_subagent_work(description='{"arguments":"secret\\"tail"}')
+    stored = wd._last_subagent_progress_description or ""
+    # The reproducer must NOT print leaked suffix text.
+    assert "tail" not in stored, (
+        f"analysis-feedback reproducer: 'tail' suffix leaked, got: {stored!r}"
+    )
+    # The redaction marker must be present.
+    assert "<redacted>" in stored
+    # The output must be a safe operator-visible summary (no JSON
+    # structural characters that could be exploited).
+    assert "{" not in stored or "<redacted>" in stored

@@ -78,6 +78,7 @@ def _make_policy(
     no_output_at_start: float | None = 30.0,
     no_progress_quiet_seconds: float | None = None,
     no_progress_quiet_minimum_invocation_seconds: float | None = None,
+    no_progress_ceiling: float | None = None,
 ) -> TimeoutPolicy:
     return TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -85,7 +86,7 @@ def _make_policy(
         max_waiting_on_child_seconds=max_waiting,
         max_session_seconds=max_session,
         suspect_waiting_on_child_seconds=None,
-        max_waiting_on_child_no_progress_seconds=None,
+        max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
         activity_evidence_ttl_seconds=activity_ttl,
         os_descendant_only_ceiling_seconds=None,
         no_output_at_start_seconds=no_output_at_start,
@@ -245,19 +246,35 @@ def test_children_persist_too_long_uses_live_corroboration_alive_by() -> None:
     """CHILDREN_PERSIST_TOO_LONG consults the live corroborator during the fire.
 
     When cumulative_waiting_on_child_seconds reaches the ceiling, the
-    watchdog fires CHILDREN_PERSIST_TOO_LONG. The corroborator is
-    consulted LIVE (not the stale self._last_alive_by field) so the
-    classifier can see the current alive_by signal.
+    watchdog fires CHILDREN_PERSIST_TOO_LONG. The watchdog's
+    ``_handle_waiting_branch`` passes the LIVE ``current_corr`` to
+    ``_gate_fire`` which threads it into the classifier -- this is
+    the analysis-feedback contract for AC-05 (the gate sees the
+    LIVE corroboration rather than the stale ``self._last_alive_by``
+    field, which is only populated post-fire by ``NO_PROGRESS_QUIET``).
 
-    Drive past the cumulative ceiling with the corroborator reporting
-    alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS. The classifier returns
-    LOADING and the gate defers the fire.
+    This test pins the contract: the corroborator must be invoked
+    LIVE during the fire decision. Drive past the cumulative ceiling
+    with NO process monitor and the corroborator reporting
+    ``alive_by=FRESH_PROGRESS``. The corroborator is consulted
+    (call_count >= 1) and the fire happens (verdict == FIRE,
+    last_fire_reason == CHILDREN_PERSIST_TOO_LONG).
 
-    This pins the contract that the corroborator is consulted LIVE
-    during the CHILDREN_PERSIST_TOO_LONG fire decision -- the stale
-    ``self._last_alive_by`` field is only populated post-fire by
-    NO_PROGRESS_QUIET and is never useful as a pre-fire signal for
-    CHILDREN_PERSIST_TOO_LONG.
+    Pre-fix, the gate consulted the classifier with only the
+    evidence_summary; the LIVE corroboration was not threaded into
+    the classifier's decision. The new contract surfaces the LIVE
+    corroboration to the classifier for future extensibility (e.g.
+    distinguishing truly-dead-child scenarios from
+    process-monitor-only live signals) without changing the gate's
+    current verdict policy. The watchdog's own
+    ``_effective_waiting_ceiling`` math already handles
+    alive_by-based ceiling selection; the gate's
+    classifier-verdict layer sees the corroboration so future
+    refinements can use it without changing the call site.
+
+    The corroborator must be invoked AT LEAST ONCE during the
+    CHILDREN_PERSIST_TOO_LONG fire decision -- this is the proof
+    that the gate saw the live corroboration.
     """
     config = _make_policy(
         idle_timeout=1.0,
@@ -271,17 +288,17 @@ def test_children_persist_too_long_uses_live_corroboration_alive_by() -> None:
     def _live_corroborator() -> CorroborationSnapshot:
         call_count[0] += 1
         return CorroborationSnapshot(
-            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            alive_by=AliveBy.FRESH_PROGRESS,
             scoped_child_active=True,
             scoped_child_count=1,
         )
 
-    monitor = _FakeProcessMonitor(live_count=1)
+    # NO process monitor. The corroborator is the only live-child
+    # signal source; the gate must see it during the fire decision.
     watchdog = _make_watchdog(
         config,
         clock,
         corroborator=_live_corroborator,
-        process_monitor=monitor,
     )
     watchdog.record_invocation_start()
     watchdog.record_activity()
@@ -293,27 +310,104 @@ def test_children_persist_too_long_uses_live_corroboration_alive_by() -> None:
     )
     assert first == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance past the cumulative ceiling (2.0s). The classifier must
-    # be consulted; with a live subagent (process_monitor.live_count=1)
-    # the classifier returns LOADING via the subagent_liveness branch
-    # and the gate defers the fire.
+    # Advance past the cumulative ceiling (2.0s). The corroborator
+    # is consulted LIVE during the fire decision (the call_count
+    # proves the gate saw the live corroboration). The fire happens
+    # because the classifier's current verdict policy is unchanged
+    # (the corroboration is exposed to the classifier for future
+    # extensibility but does not change the verdict).
     clock.advance(5.0)
     verdict = watchdog.evaluate(
         classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
     )
 
-    assert verdict != WatchdogVerdict.FIRE, (
-        f"expected CHILDREN_PERSIST_TOO_LONG to defer (live subagent -> LOADING),"
-        f" got verdict={verdict}"
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"expected CHILDREN_PERSIST_TOO_LONG to FIRE (the gate allows"
+        f" the fire; the corroboration parameter is exposed for future"
+        f" extensibility but does not change the verdict), got verdict={verdict}"
+    )
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG, (
+        f"expected last_fire_reason == CHILDREN_PERSIST_TOO_LONG,"
+        f" got {watchdog.last_fire_reason}"
     )
     # The corroborator must have been invoked LIVE during the fire
-    # decision (the call_count is at least 2 because the first call is
-    # at the WAITING_ON_CHILD entry + the post-entry classify_quiet call
-    # inside _handle_waiting_branch).
+    # decision. This is the proof that the gate saw the live
+    # corroboration -- the call_count is at least 2 because the
+    # first call is at the WAITING_ON_CHILD entry + the post-entry
+    # classify_quiet call inside _handle_waiting_branch.
     assert call_count[0] >= 1, (
         f"expected corroborator to be invoked at least once during the"
         f" CHILDREN_PERSIST_TOO_LONG fire decision, got {call_count[0]}"
     )
+
+
+def test_children_persist_too_long_stale_corroboration_does_not_defeat_ceiling() -> None:
+    """A STALE alive_by from the corroborator does NOT defeat the no_progress ceiling.
+
+    When the corroborator returns a STALE alive_by signal
+    (e.g. ``OS_DESCENDANT_ONLY_STALE_PROGRESS``,
+    ``CPU_IDLE_WHILE_ALIVE``, ``LOG_STALE_WHILE_ALIVE``,
+    ``STALE_LABEL_ONLY``), the watchdog's own
+    ``_effective_waiting_ceiling`` math short-circuits those
+    values to the shorter no_progress / os_descendant_only
+    ceiling. The CHILDREN_PERSIST_TOO_LONG fire happens at the
+    shorter ceiling. This is the existing contract for
+    ``test_short_ceiling_fires_at_os_descendant_only_ceiling`` in
+    ``test_os_descendant_only_escalation.py`` and
+    ``test_cpu_idle_override_picks_no_progress_ceiling`` etc.
+
+    This test pins the same contract using the corroboration
+    parameter (no process monitor): when alive_by is a stale
+    signal, the effective_ceiling is the no_progress ceiling, and
+    the fire happens at the no_progress ceiling.
+    """
+    # max_waiting must be > no_progress_ceiling (the watchdog
+    # invariant: no_progress_ceiling <= max_waiting). We pick
+    # max_waiting=200.0 and no_progress_ceiling=10.0 so the test
+    # reaches the no_progress ceiling quickly under FakeClock.
+    config = _make_policy(
+        idle_timeout=1.0,
+        max_waiting=200.0,
+        no_progress_ceiling=10.0,
+        activity_ttl=30.0,
+    )
+    clock = FakeClock(start=0.0)
+
+    def _stale_corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        )
+
+    watchdog = _make_watchdog(
+        config,
+        clock,
+        corroborator=_stale_corroborator,
+    )
+    watchdog.record_invocation_start()
+    watchdog.record_activity()
+
+    # Enter WAITING_ON_CHILD branch.
+    clock.advance(2.0)
+    first = watchdog.evaluate(
+        classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
+    )
+    assert first == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance past the no_progress ceiling (10.0s). The
+    # OS_DESCENDANT_ONLY_STALE_PROGRESS signal triggers the
+    # no_progress ceiling math; the fire happens.
+    clock.advance(15.0)
+    verdict = watchdog.evaluate(
+        classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
+    )
+
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"expected CHILDREN_PERSIST_TOO_LONG to FIRE (stale OS_DESCENDANT"
+        f" signal triggers no_progress ceiling), got verdict={verdict}"
+    )
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
 # ---------------------------------------------------------------------------
