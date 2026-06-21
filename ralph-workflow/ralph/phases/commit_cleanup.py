@@ -820,27 +820,59 @@ def _decide_cleanup_outcome(
       can self-correct on retry.
     * Otherwise apply the ``analysis_complete`` branch
       (``AGENT_SUCCESS`` or ``PHASE_LOOPBACK``).
+
+    Both counts use the same ``.strip()`` checks as ``_classify_action``
+    so whitespace-only patterns and paths are counted the same way the
+    classifier dropped them -- otherwise a malformed batch with only
+    unsafe deletes plus whitespace-only non-delete actions would
+    silently bypass the structured retry hint path.
     """
     safe_actions_count = _count_safe_actions(cleanup, skipped_delete_paths)
-    delete_actions_count = sum(
-        1 for a in cleanup.actions if a.action == "delete_file" and a.path
-    )
+    delete_actions_count = _count_meaningful_delete_actions(cleanup)
     if skipped_delete_paths and safe_actions_count == 0 and delete_actions_count > 0:
         return _all_deletes_rejected_failure(phase_name, skipped_delete_paths, safe_actions_count)
     return _analysis_complete_outcome(cleanup)
 
 
 def _count_safe_actions(cleanup: CommitCleanup, skipped_delete_paths: list[str]) -> int:
-    """Count how many actions were applied safely (not in ``skipped_delete_paths``)."""
+    """Count actions actually applied (mirrors ``_classify_action`` semantics)."""
     skipped_set = set(skipped_delete_paths)
     return (
-        sum(1 for a in cleanup.actions if a.action == "add_to_gitignore" and a.pattern)
-        + sum(1 for a in cleanup.actions if a.action == "add_to_git_exclude" and a.pattern)
+        sum(
+            1
+            for a in cleanup.actions
+            if a.action == "add_to_gitignore" and a.pattern and a.pattern.strip()
+        )
         + sum(
             1
             for a in cleanup.actions
-            if a.action == "delete_file" and a.path and a.path not in skipped_set
+            if a.action == "add_to_git_exclude" and a.pattern and a.pattern.strip()
         )
+        + sum(
+            1
+            for a in cleanup.actions
+            if (
+                a.action == "delete_file"
+                and a.path
+                and a.path.strip()
+                and a.path not in skipped_set
+            )
+        )
+    )
+
+
+def _count_meaningful_delete_actions(cleanup: CommitCleanup) -> int:
+    """Count ``delete_file`` actions with non-whitespace ``path`` values.
+
+    Mirrors ``_classify_action``: a whitespace-only ``path`` is silently
+    dropped during application, so it must NOT be counted as a meaningful
+    delete here -- otherwise the outcome branch could escalate to
+    ``PhaseFailureEvent`` for batches that contained no real delete work.
+    """
+    return sum(
+        1
+        for a in cleanup.actions
+        if a.action == "delete_file" and a.path and a.path.strip()
     )
 
 

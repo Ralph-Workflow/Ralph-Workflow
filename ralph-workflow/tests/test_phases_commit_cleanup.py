@@ -1968,6 +1968,97 @@ def test_all_unsafe_deletes_with_no_safe_work_returns_failure_event(
     assert source.exists()
 
 
+def test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event(
+    tmp_git_repo: Path,
+) -> None:
+    """Regression (analysis feedback): unsafe delete + whitespace-only gitignore pattern.
+
+    Pins the contract that an unsafe ``delete_file`` plus a whitespace-only
+    ``add_to_gitignore`` pattern (which is silently dropped by ``_classify_action``)
+    must NOT bypass the ``_all_deletes_rejected_failure`` branch. The outcome
+    decision must be based on actually-applied classified actions, not raw
+    truthiness of the artifact fields -- otherwise the structured retry hint
+    is suppressed and the agent cannot self-correct on retry.
+    """
+    source = tmp_git_repo / "module.py"
+    source.write_text("source code")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": False,
+            "actions": [
+                {"action": "delete_file", "path": "module.py"},
+                {"action": "add_to_gitignore", "pattern": "   "},
+            ],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert "module.py" in result[0].reason
+    assert "Cleanup retry hint" in result[0].reason
+    assert source.exists()
+
+
+def test_unsafe_delete_with_whitespace_only_git_exclude_returns_failure_event(
+    tmp_git_repo: Path,
+) -> None:
+    """Regression (analysis feedback): unsafe delete + whitespace-only git_exclude pattern.
+
+    Mirrors ``test_unsafe_delete_with_whitespace_only_gitignore_returns_failure_event``
+    but with the ``add_to_git_exclude`` action. The whitespace-only pattern is
+    silently dropped by ``_classify_action``, so the outcome decision must
+    still escalate to ``PhaseFailureEvent`` (the unsafe delete was the only
+    meaningful work, and it was rejected).
+    """
+    source = tmp_git_repo / "module.py"
+    source.write_text("source code")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": False,
+            "actions": [
+                {"action": "delete_file", "path": "module.py"},
+                {"action": "add_to_git_exclude", "pattern": "   "},
+            ],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert "module.py" in result[0].reason
+    assert "Cleanup retry hint" in result[0].reason
+    assert source.exists()
+
+
+def test_whitespace_only_delete_path_with_safe_gitignore_succeeds(
+    tmp_git_repo: Path,
+) -> None:
+    """Regression (analysis feedback): whitespace-only ``delete_file`` + safe gitignore succeeds.
+
+    A whitespace-only ``delete_file`` path is silently dropped by
+    ``_classify_action``. When paired with a non-whitespace ``add_to_gitignore``
+    pattern, the gitignore action is the only meaningful work and the phase
+    must succeed (not fail) -- so the safe-applied-action path is preserved.
+    """
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": True,
+            "actions": [
+                {"action": "delete_file", "path": "   "},
+                {"action": "add_to_gitignore", "pattern": "*.scratch"},
+            ],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    gitignore_text = (tmp_git_repo / ".gitignore").read_text()
+    assert "*.scratch" in gitignore_text
+
+
 def test_retry_hint_named_for_each_rejected_path(tmp_git_repo: Path) -> None:
     """AC-03: PhaseFailureEvent.reason contains structured hint naming every rejected path."""
     source_a = tmp_git_repo / "a.py"
