@@ -16,6 +16,7 @@ from ralph.git.commit_cleanup import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -132,6 +133,111 @@ def test_atomic_append_text_writes_via_path_replace(
         "Staging file must not dangle after a successful atomic publish"
     )
     assert target.read_text(encoding="utf-8") == "initial\nextra\n"
+
+
+def test_atomic_append_text_fails_closed_on_unreadable_existing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the existing file cannot be read, the helper must NOT clobber it.
+
+    Regression for the analysis decision ``how_to_fix`` item: the previous
+    implementation caught ``OSError`` from ``Path.read_text`` and silently
+    treated the file as empty, then published ``existing + payload`` via
+    ``Path.replace()``. A transient read failure (permission denied,
+    broken FS, transient I/O error) would therefore CLOBBER the original
+    content with just the appended payload -- exactly the kind of silent
+    corruption the atomic helper exists to prevent.
+
+    The fix is fail-closed: when ``path.exists()`` is True but the read
+    raises ``OSError``, the helper re-raises so the caller can decide.
+    A missing file is still treated as empty (legitimate creation case).
+    """
+    target = tmp_path / "gitignore_existing.txt"
+    target.write_text("EXISTING-CONTENT\n", encoding="utf-8")
+    pre_bytes = target.read_bytes()
+
+    fail_read = True
+    real_read_text = type(target).read_text
+
+    def fake_read_text(self: Path, *args: object, **kwargs: object) -> str:
+        if self == target and fail_read:
+            raise PermissionError("simulated read failure")
+        return real_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(target), "read_text", fake_read_text)
+
+    with pytest.raises(OSError):
+        ops._atomic_append_text(target, "NEW\n", encoding="utf-8")
+
+    fail_read = False
+    assert target.read_bytes() == pre_bytes, (
+        "Existing content must be preserved when read fails (no clobber). "
+        f"Expected: {pre_bytes!r}, got: {target.read_bytes()!r}"
+    )
+
+
+def _publish_atomic_helper(_repo_root: Path, target: Path, _pattern: str) -> None:
+    ops._atomic_append_text(target, "*.cache\n")
+
+
+def _publish_append_to_gitignore(repo_root: Path, _target: Path, pattern: str) -> None:
+    ops.append_to_gitignore(repo_root, [pattern])
+
+
+def _publish_add_to_git_exclude(repo_root: Path, _target: Path, pattern: str) -> None:
+    add_to_git_exclude(repo_root, [pattern])
+
+
+@pytest.mark.parametrize(
+    ("target_subpath", "publish_callable"),
+    [
+        pytest.param(
+            "gitignore_no_newline.txt",
+            _publish_atomic_helper,
+            id="atomic-helper-direct",
+        ),
+        pytest.param(
+            ".gitignore",
+            _publish_append_to_gitignore,
+            id="append_to_gitignore",
+        ),
+        pytest.param(
+            ".git/info/exclude",
+            _publish_add_to_git_exclude,
+            id="add_to_git_exclude",
+        ),
+    ],
+)
+def test_atomic_append_text_separator_normalization(
+    tmp_git_repo: Path,
+    target_subpath: str,
+    publish_callable: Callable[[Path, Path, str], object],
+) -> None:
+    """Boundary normalization: an existing file lacking a trailing newline gets one inserted.
+
+    Regression for the analysis decision ``how_to_fix`` item: the previous
+    implementation concatenated ``existing + payload`` without normalizing
+    the boundary. For a file containing ``"existing-without-newline"`` and
+    a payload of ``"*.cache\\n"`` the published result was
+    ``"existing-without-newline*.cache\\n"`` -- a malformed single-line
+    ignore rule rather than two separate rules.
+
+    Parametrized across the three production callers
+    (``_atomic_append_text`` directly, ``append_to_gitignore``, and
+    ``add_to_git_exclude``) to verify boundary normalization is applied
+    at every layer, not just at the helper level.
+    """
+    target = tmp_git_repo / target_subpath
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("existing-without-newline", encoding="utf-8")
+
+    publish_callable(tmp_git_repo, target, "*.cache")
+
+    raw = target.read_text(encoding="utf-8")
+    assert "existing-without-newline\n*.cache" in raw, (
+        f"Boundary must contain a newline so the two rules are separate lines; "
+        f"got: {raw!r}"
+    )
 
 
 def test_atomic_append_text_cleans_sibling_on_exception(

@@ -582,25 +582,43 @@ def _atomic_append_text(
     staged in a sibling file (with an ``id(payload)``-derived suffix for
     TOCTOU safety), then ``Path.replace()``-published atomically.
 
+    Boundary normalization: when ``path`` exists and its content does NOT
+    end with ``\\n``, the helper inserts a single ``\\n`` separator before
+    the appended payload. Without this, appending ``"*.cache\\n"`` to a
+    file containing ``"existing-without-newline"`` would publish
+    ``"existing-without-newline*.cache\\n"`` -- a malformed single-line
+    rule rather than two separate rules.
+
+    Read-failure policy: when ``path.exists()`` is True but the read
+    raises ``OSError`` (permission denied, broken FS, transient I/O), the
+    helper fails closed by re-raising the underlying ``OSError``. A
+    silent fallback to ``existing = ""`` would publish ``payload`` over
+    the original content via ``Path.replace()`` -- exactly the silent
+    corruption the atomic helper exists to prevent. Callers that want a
+    best-effort fallback (e.g. bootstrap auto-seed) wrap the call in
+    their own try/except. A missing ``path`` is treated as empty
+    (legitimate creation case).
+
     If the staging write or replace fails, the staging file is removed
     before re-raising so the helper never leaves a dangling sibling.
 
     Args:
         path: Target file path. Parent directory must already exist (or
             be creatable via ``path.parent.mkdir(parents=True, exist_ok=True)``).
-        payload: Text to append. The caller is responsible for any
-            leading separator (newline, etc.).
+        payload: Text to append. The helper normalizes the boundary
+            against the existing content (see above).
         encoding: Text encoding for the staging write. Default ``utf-8``.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     existing = ""
-    try:
+    if path.exists():
         existing = path.read_text(encoding=encoding)
-    except OSError:
-        existing = ""
+    separator = ""
+    if existing and not existing.endswith("\n"):
+        separator = "\n"
     staging = path.with_suffix(path.suffix + f".ralph-staging.{id(payload)}")
     try:
-        staging.write_text(existing + payload, encoding=encoding)
+        staging.write_text(existing + separator + payload, encoding=encoding)
         staging.replace(path)
     except BaseException:
         with suppress(FileNotFoundError):
