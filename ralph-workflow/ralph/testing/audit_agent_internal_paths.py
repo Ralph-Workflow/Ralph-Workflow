@@ -635,6 +635,28 @@ _INVARIANTS: tuple[Invariant, ...] = (
             '"checkpoint.json"',
         ),
     ),
+    Invariant(
+        rel_path="git/operations.py",
+        # Staging filename in ``_atomic_append_text`` MUST be content-derived
+        # so concurrent invocations cannot collide on the staging sibling.
+        # The previous ``id(payload)``-derived suffix collided whenever the
+        # caller constructed equal-id strings back-to-back (e.g. empty payload
+        # or shared string-literal dedup) -- the staging ``write_text`` would
+        # then either truncate a sibling's half-written content or hit a
+        # ``FileExistsError`` on rename. The sha256(payload).hexdigest()[:16]
+        # plus os.getpid() suffix is collision-free across processes and
+        # across identical payloads in the same process.
+        present=(
+            "hashlib.sha256(payload.encode(encoding)).hexdigest()[:16]",
+            "os.getpid()",
+        ),
+        absent=(
+            # Legacy ``id(payload)``-derived staging suffix -- a regression
+            # back to that pattern is a collision risk for concurrent
+            # invocations and must be caught by this audit.
+            "id(payload)",
+        ),
+    ),
 )
 
 
@@ -704,6 +726,8 @@ def main(argv: list[str] | None = None) -> int:
         "exposes a build_cleanup_retry_hint helper for structured PhaseFailureEvent reasons, "
         "bootstrap.py defines _DEFAULT_GIT_EXCLUDE_PATTERNS + auto_seed_default_git_exclude "
         "+ root-anchored /checkpoint.json (NOT bare checkpoint.json), "
+        "git/operations.py _atomic_append_text staging filename is content-derived "
+        "(sha256(payload).hexdigest()[:16] + os.getpid()), NOT id(payload)-derived, "
         f"behavioral check accepts all {len(_BEHAVIORAL_ACCEPT_PATHS)} canonical paths "
         f"and rejects all {len(_BEHAVIORAL_REJECT_PATHS)} negative paths."
     )

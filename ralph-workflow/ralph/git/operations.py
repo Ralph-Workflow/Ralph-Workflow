@@ -6,6 +6,8 @@ wrapping GitPython to provide the functionality needed by the pipeline.
 
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 import time
 from contextlib import suppress
@@ -579,8 +581,9 @@ def _atomic_append_text(
 
     Mirrors the pattern from ``ralph/mcp/transport/agy.py:99-127`` so a
     SIGKILL mid-write leaves the target file intact -- the new content is
-    staged in a sibling file (with an ``id(payload)``-derived suffix for
-    TOCTOU safety), then ``Path.replace()``-published atomically.
+    staged in a sibling file (with a sha256(payload)-derived hash plus
+    os.getpid() suffix for TOCTOU safety), then ``Path.replace()``-published
+    atomically.
 
     Boundary normalization: when ``path`` exists and its content does NOT
     end with ``\\n``, the helper inserts a single ``\\n`` separator before
@@ -616,7 +619,9 @@ def _atomic_append_text(
     separator = ""
     if existing and not existing.endswith("\n"):
         separator = "\n"
-    staging = path.with_suffix(path.suffix + f".ralph-staging.{id(payload)}")
+    _staging_hash = hashlib.sha256(payload.encode(encoding)).hexdigest()[:16]
+    _staging_pid = os.getpid()
+    staging = path.with_suffix(path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}")
     try:
         staging.write_text(existing + separator + payload, encoding=encoding)
         staging.replace(path)
