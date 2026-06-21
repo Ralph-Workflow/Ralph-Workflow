@@ -202,6 +202,254 @@ def _check_fast_path_placement() -> list[str]:
     return problems
 
 
+# Target function whose on-entry auto-seed placement the audit pins.
+_AUTO_SEED_TARGET_FUNCTION: str = "handle_commit_cleanup_phase"
+
+# Real exported helper names from ralph.config.bootstrap. PA-003 closed:
+# the prior audit used a nonexistent symbol ``auto_seed_default_git_execute``
+# as a string literal, which would silently pass the AST check if the
+# literal was merely present. The audit now uses the actual exported
+# names so the placement check matches the real call sites.
+_AUTO_SEED_GITIGNORE_HELPER: str = "auto_seed_default_gitignore"
+_AUTO_SEED_GITEXCLUDE_HELPER: str = "auto_seed_default_git_exclude"
+
+# Anchor calls whose relative position we use to verify the auto-seed
+# block sits between the ensure_git_initialized call and the artifact
+# load. Both anchor names are stable identifiers that have existed since
+# the original commit_cleanup phase was introduced.
+_AUTO_SEED_PRIOR_ANCHOR: str = "ensure_git_initialized"
+_AUTO_SEED_LATER_ANCHOR: str = "_load_cleanup_artifact"
+
+
+def _check_auto_seed_placement() -> list[str]:
+    """Verify both auto-seed helpers are called between the prior and later anchors.
+
+    Walks ``handle_commit_cleanup_phase`` body in source order and verifies
+    that:
+
+    1. The ``ensure_git_initialized`` anchor appears BEFORE both
+       ``auto_seed_default_gitignore`` and ``auto_seed_default_git_exclude``.
+    2. The ``_load_cleanup_artifact`` anchor appears AFTER both seed calls.
+    3. Both seed helpers are present in the body (this is the PA-003
+       closure -- the prior audit's string-literal check could be
+       satisfied by a commented-out line; the AST check requires an
+       actual ``ast.Call`` node).
+
+    The audit uses the REAL exported helper names
+    (``auto_seed_default_gitignore`` and ``auto_seed_default_git_exclude``)
+    and walks the AST to find the actual ``Call`` nodes so a commented-out
+    import or a docstring mention cannot satisfy the invariant.
+
+    Returns:
+        List of violation strings. Empty on success.
+    """
+    rel_path = "phases/commit_cleanup.py"
+    source = _read_or_synthesize_violation(rel_path)
+    if isinstance(source, list):
+        return source
+
+    tree = _parse_source_or_synthesize_violation(rel_path, source)
+    if isinstance(tree, list):
+        return tree
+
+    target = _find_target_function(tree)
+    if isinstance(target, list):
+        return target
+
+    sites = _collect_call_sites(target)
+
+    problems: list[str] = []
+    problems.extend(_anchor_or_seed_missing_violations(rel_path, sites))
+    if problems:
+        return problems
+    problems.extend(_ordering_violations(rel_path, sites))
+    return problems
+
+
+def _read_or_synthesize_violation(rel_path: str) -> str | list[str]:
+    """Read the target file or return a single-element violation list."""
+    try:
+        return _read(rel_path)
+    except FileNotFoundError:
+        return [f"{rel_path}: file not found"]
+
+
+def _parse_source_or_synthesize_violation(rel_path: str, source: str) -> ast.AST | list[str]:
+    """Parse source into an AST or return a single-element violation list."""
+    try:
+        return ast.parse(source)
+    except SyntaxError as exc:
+        return [f"{rel_path}: syntax error during AST parse: {exc}"]
+
+
+def _find_target_function(tree: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | list[str]:
+    """Locate the ``handle_commit_cleanup_phase`` function in the parsed AST."""
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == (
+            _AUTO_SEED_TARGET_FUNCTION
+        ):
+            return node
+    return [
+        f"phases/commit_cleanup.py: function {_AUTO_SEED_TARGET_FUNCTION!r} not found -- "
+        "auto-seed placement cannot be verified"
+    ]
+
+
+class _CallSites:
+    """Container for the call-site line numbers the auto-seed audit cares about."""
+
+    def __init__(self) -> None:
+        self.prior_line: int | None = None
+        self.later_line: int | None = None
+        self.gitignore_lines: list[int] = []
+        self.gitexclude_lines: list[int] = []
+
+
+def _collect_call_sites(target: ast.FunctionDef | ast.AsyncFunctionDef) -> _CallSites:
+    """Walk the target function and bucket each ``ast.Call`` by helper name."""
+    sites = _CallSites()
+    for stmt in ast.walk(target):
+        if not isinstance(stmt, ast.Call):
+            continue
+        func = stmt.func
+        if not isinstance(func, ast.Name):
+            continue
+        _record_call_site(sites, func.id, stmt.lineno)
+    return sites
+
+
+def _record_call_site(sites: _CallSites, name: str, lineno: int) -> None:
+    """Update ``sites`` with the line of one named call."""
+    if name == _AUTO_SEED_PRIOR_ANCHOR:
+        if sites.prior_line is None or lineno < sites.prior_line:
+            sites.prior_line = lineno
+    elif name == _AUTO_SEED_LATER_ANCHOR:
+        if sites.later_line is None or lineno > sites.later_line:
+            sites.later_line = lineno
+    elif name == _AUTO_SEED_GITIGNORE_HELPER:
+        sites.gitignore_lines.append(lineno)
+    elif name == _AUTO_SEED_GITEXCLUDE_HELPER:
+        sites.gitexclude_lines.append(lineno)
+
+
+def _anchor_or_seed_missing_violations(rel_path: str, sites: _CallSites) -> list[str]:
+    """Return anchor- and seed-presence violations (or [] if all are present)."""
+    problems: list[str] = []
+    if sites.prior_line is None:
+        problems.append(
+            f"{rel_path}: function {_AUTO_SEED_TARGET_FUNCTION!r} does not call "
+            f"{_AUTO_SEED_PRIOR_ANCHOR!r} -- cannot anchor auto-seed placement"
+        )
+    if sites.later_line is None:
+        problems.append(
+            f"{rel_path}: function {_AUTO_SEED_TARGET_FUNCTION!r} does not call "
+            f"{_AUTO_SEED_LATER_ANCHOR!r} -- cannot anchor auto-seed placement"
+        )
+    if not sites.gitignore_lines:
+        problems.append(_seed_call_missing_message(rel_path, _AUTO_SEED_GITIGNORE_HELPER, sites))
+    if not sites.gitexclude_lines:
+        problems.append(_seed_call_missing_message(rel_path, _AUTO_SEED_GITEXCLUDE_HELPER, sites))
+    return problems
+
+
+def _seed_call_missing_message(rel_path: str, helper: str, sites: _CallSites) -> str:
+    """Format the ``MUST call ... between anchor A and anchor B`` message."""
+    prior_line = sites.prior_line
+    later_line = sites.later_line
+    return (
+        f"{rel_path}: {_AUTO_SEED_TARGET_FUNCTION!r} MUST call {helper!r} between "
+        f"{_AUTO_SEED_PRIOR_ANCHOR!r} (line {prior_line}) and "
+        f"{_AUTO_SEED_LATER_ANCHOR!r} (line {later_line}); no call found"
+    )
+
+
+def _ordering_violations(rel_path: str, sites: _CallSites) -> list[str]:
+    """Return ordering violations for each helper call vs. the anchor lines."""
+    problems: list[str] = []
+    if sites.prior_line is None or sites.later_line is None:
+        return problems
+    for helper, lines in (
+        (_AUTO_SEED_GITIGNORE_HELPER, sites.gitignore_lines),
+        (_AUTO_SEED_GITEXCLUDE_HELPER, sites.gitexclude_lines),
+    ):
+        for lineno in lines:
+            problems.extend(_ordering_violations_for_call(rel_path, helper, lineno, sites))
+    return problems
+
+
+def _ordering_violations_for_call(
+    rel_path: str,
+    helper: str,
+    lineno: int,
+    sites: _CallSites,
+) -> list[str]:
+    """Return before/after anchor violations for a single helper call line."""
+    problems: list[str] = []
+    assert sites.prior_line is not None
+    assert sites.later_line is not None
+    if lineno < sites.prior_line:
+        problems.append(
+            f"{rel_path}: {helper!r} call at line {lineno} is BEFORE the "
+            f"{_AUTO_SEED_PRIOR_ANCHOR!r} anchor at line {sites.prior_line} -- "
+            "auto-seed must run AFTER ensure_git_initialized"
+        )
+    if lineno > sites.later_line:
+        problems.append(
+            f"{rel_path}: {helper!r} call at line {lineno} is AFTER the "
+            f"{_AUTO_SEED_LATER_ANCHOR!r} anchor at line {sites.later_line} -- "
+            "auto-seed must run BEFORE the artifact load"
+        )
+    return problems
+
+
+def _check_best_effort_invariants() -> list[str]:
+    """Verify cleanup is best-effort and has a structured retry-hint helper.
+
+    Asserts:
+
+    1. ``ralph/phases/commit_cleanup.py`` does NOT contain the literal
+       string ``raise ValueError`` paired with ``Refusing to delete
+       non-housekeeping`` -- the hard fail was removed in favor of a
+       WARNING log + skipped_delete_paths return.
+    2. ``ralph/phases/commit_cleanup.py`` DOES define a
+       ``build_cleanup_retry_hint`` helper (the structured reason
+       producer for ``PhaseFailureEvent``).
+
+    Returns:
+        List of violation strings. Empty on success.
+    """
+    problems: list[str] = []
+    rel_path = "phases/commit_cleanup.py"
+    try:
+        source = _read(rel_path)
+    except FileNotFoundError:
+        return [f"{rel_path}: file not found"]
+
+    forbidden_hard_fail_phrase = "Refusing to delete non-housekeeping"
+    if forbidden_hard_fail_phrase in source:
+        # A coarse-grained check that catches the original ``raise
+        # ValueError(f\"... Refusing to delete non-housekeeping ...\")``
+        # pattern. The audit fails if this phrase is anywhere in the
+        # file because the only legitimate use was the removed hard
+        # fail -- the WARNING log uses a different phrasing.
+        problems.append(
+            f"{rel_path}: forbidden literal still present "
+            f"{forbidden_hard_fail_phrase!r} -- the cleanup phase MUST be "
+            "best-effort. Unsafe ``delete_file`` actions should be logged at "
+            "WARNING and accumulated in skipped_delete_paths, not raised. "
+            "Reintroducing this string is a security-policy regression."
+        )
+
+    if "build_cleanup_retry_hint" not in source:
+        problems.append(
+            f"{rel_path}: missing required symbol 'build_cleanup_retry_hint' -- "
+            "the phase MUST provide a structured retry-hint producer for "
+            "PhaseFailureEvent when all delete actions are rejected"
+        )
+
+    return problems
+
+
 # Accept set: every canonical Ralph runtime artifact.
 _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     # Top-level basenames under .agent/ (14 total per AGENT_INTERNAL_TOP_LEVEL_BASENAMES).
@@ -413,11 +661,21 @@ def main(argv: list[str] | None = None) -> int:
         problems.extend(invariant.violations())
     problems.extend(_behavioral_invariants())
     problems.extend(_check_fast_path_placement())
+    problems.extend(_check_auto_seed_placement())
+    problems.extend(_check_best_effort_invariants())
 
     literal_count = sum(len(i.present) + len(i.absent) for i in _INVARIANTS)
     behavioral_count = len(_BEHAVIORAL_ACCEPT_PATHS) + len(_BEHAVIORAL_REJECT_PATHS)
     placement_count = 1
-    total = literal_count + behavioral_count + placement_count
+    auto_seed_count = 1
+    best_effort_count = 2
+    total = (
+        literal_count
+        + behavioral_count
+        + placement_count
+        + auto_seed_count
+        + best_effort_count
+    )
 
     if problems:
         print(f"AGENT-INTERNAL-PATHS AUDIT FAILED: {len(problems)} invariant violation(s)")
@@ -440,6 +698,10 @@ def main(argv: list[str] | None = None) -> int:
         "commit_cleanup.py imports and invokes is_agent_internal_path as the fast-path, "
         "_is_safe_to_delete places is_agent_internal_path(path) as the "
         "FIRST executable statement (AST placement), "
+        "handle_commit_cleanup_phase auto-seeds canonical .gitignore + .git/info/exclude "
+        "patterns between ensure_git_initialized and _load_cleanup_artifact (AST placement), "
+        "cleanup is best-effort (no 'Refusing to delete non-housekeeping' hard fail) AND "
+        "exposes a build_cleanup_retry_hint helper for structured PhaseFailureEvent reasons, "
         "bootstrap.py defines _DEFAULT_GIT_EXCLUDE_PATTERNS + auto_seed_default_git_exclude "
         "+ root-anchored /checkpoint.json (NOT bare checkpoint.json), "
         f"behavioral check accepts all {len(_BEHAVIORAL_ACCEPT_PATHS)} canonical paths "

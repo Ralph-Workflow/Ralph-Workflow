@@ -9,8 +9,10 @@ from unittest.mock import MagicMock
 import pytest
 from git import Repo
 
+from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
+from ralph.mcp.artifacts._commit_cleanup_action import CommitCleanupAction
 from ralph.phases import PhaseContext
-from ralph.phases.commit_cleanup import handle_commit_cleanup_phase
+from ralph.phases.commit_cleanup import _apply_cleanup_actions, handle_commit_cleanup_phase
 from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.workspace.fs import FsWorkspace
@@ -1715,3 +1717,279 @@ def test_delete_tracked_source_files_inside_engine_dirs_rejected(
     assert len(result) == 1
     assert isinstance(result[0], PhaseFailureEvent)
     assert target.exists()
+
+
+# ---------------------------------------------------------------------------
+# Best-effort cleanup hardening (AC-01, AC-02, AC-05)
+# ---------------------------------------------------------------------------
+#
+# Cleanup is BEST-EFFORT: a single unsafe ``delete_file`` does NOT abort the
+# phase. Safe actions (matching files, gitignore patterns, git exclude
+# patterns) are still applied even when one or more delete actions are
+# rejected. The phase only returns ``PhaseFailureEvent`` when EVERY delete
+# action was unsafe AND no safe action was applied -- in that case the event
+# carries a structured retry hint naming the rejected paths.
+
+
+def test_delete_tracked_agent_internal_files_best_effort_no_phase_failure(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-01/AC-02: mixed batch of safe-delete + safe-gitignore never fails the phase.
+
+    Pins the contract that a tracked engine-internal file (``.agent/raw/opencode.log``)
+    plus an unrelated gitignore pattern can be applied together without a
+    PhaseFailureEvent, even though the original bug emitted one for this path.
+    """
+    target = tmp_git_repo / ".agent" / "raw" / "opencode.log"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("log content")
+    _track_and_commit(tmp_git_repo, ".agent/raw/opencode.log")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": True,
+            "actions": [
+                {"action": "delete_file", "path": ".agent/raw/opencode.log"},
+                {"action": "add_to_gitignore", "pattern": "*.scratch"},
+            ],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not target.exists()
+    gitignore = tmp_git_repo / ".gitignore"
+    assert "*.scratch" in gitignore.read_text()
+
+
+def test_mixed_safe_and_unsafe_delete_actions_are_best_effort(tmp_git_repo: Path) -> None:
+    """AC-01/AC-02: safe delete + unsafe delete in same batch: safe delete wins."""
+    binary = tmp_git_repo / "binary.exe"
+    binary.write_bytes(b"\x00MZ")
+    source = tmp_git_repo / "helper.py"
+    source.write_text("def helper(): pass")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": True,
+            "actions": [
+                {"action": "delete_file", "path": "binary.exe"},
+                {"action": "delete_file", "path": "helper.py"},
+            ],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not binary.exists()
+    # Unsafe delete was skipped -- the file MUST remain.
+    assert source.exists()
+
+
+def test_unsafe_delete_does_not_abort_phase_when_safe_delete_present(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-01: unsafe delete with a safe gitignore action still succeeds."""
+    source = tmp_git_repo / "module.py"
+    source.write_text("source code")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": True,
+            "actions": [
+                {"action": "add_to_gitignore", "pattern": "*.tmp"},
+                {"action": "delete_file", "path": "module.py"},
+            ],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert source.exists()
+    gitignore = tmp_git_repo / ".gitignore"
+    assert "*.tmp" in gitignore.read_text()
+
+
+def test_cleanup_phase_auto_seeds_gitignore_canonical_patterns_on_entry(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-04: handle_commit_cleanup_phase seeds canonical .gitignore on every entry."""
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {"analysis_complete": True, "actions": []},
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    gitignore = tmp_git_repo / ".gitignore"
+    assert gitignore.exists()
+    gitignore_text = gitignore.read_text()
+    # The auto-seeded canonical pattern for the .agent/ dir MUST be present.
+    assert ".agent/" in gitignore_text
+    # The root-anchored /checkpoint.json pattern MUST be present.
+    assert "/checkpoint.json" in gitignore_text
+
+
+def test_cleanup_phase_auto_seeds_git_exclude_canonical_patterns_on_entry(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-04: handle_commit_cleanup_phase seeds canonical .git/info/exclude on every entry."""
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {"analysis_complete": True, "actions": []},
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    exclude = tmp_git_repo / ".git" / "info" / "exclude"
+    assert exclude.exists()
+    exclude_text = exclude.read_text()
+    # The auto-seeded patterns MUST include canonical per-user excludes
+    # the bootstrap helper writes (any sentinel pattern from the default set).
+    assert exclude_text.strip() != ""
+
+
+def test_duplicate_delete_file_actions_idempotent(tmp_git_repo: Path) -> None:
+    """AC-05: duplicate delete_file actions are deduplicated, not double-applied."""
+    binary = tmp_git_repo / "duplicate.exe"
+    binary.write_bytes(b"\x00MZ")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": True,
+            "actions": [
+                {"action": "delete_file", "path": "duplicate.exe"},
+                {"action": "delete_file", "path": "duplicate.exe"},
+            ],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    assert not binary.exists()
+
+
+def test_empty_path_in_delete_action_is_skipped_with_debug_log(tmp_git_repo: Path) -> None:
+    """AC-05: whitespace path is silently dropped; Pydantic rejects empty at schema layer.
+
+    Pins the contract that the handler is defensive against malformed
+    action dicts that bypass validation -- if a path sneaks through as
+    whitespace, the handler skips it with a DEBUG log and continues.
+    Whitespace paths are NOT added to ``skipped_delete_paths`` because
+    they are not retryable -- the agent should never re-submit the same
+    empty/whitespace value, so there is no value in surfacing them via
+    the structured retry hint. The artifact schema layer (Pydantic
+    ``CommitCleanupAction``) already rejects empty ``path`` values, so
+    this test exercises the runtime fallback via direct invocation of
+    ``_apply_cleanup_actions`` with a constructed model.
+    """
+    binary = tmp_git_repo / "binary.exe"
+    binary.write_bytes(b"\x00MZ")
+
+    cleanup = CommitCleanup.model_validate(
+        {
+            "analysis_complete": True,
+            "actions": [
+                # Bypasses the strict _validate_action_fields via the
+                # already-validated model constructor (whitespace is a
+                # valid ``str`` per the type annotation).
+                CommitCleanupAction(action="delete_file", path="   "),
+                CommitCleanupAction(action="delete_file", path="binary.exe"),
+            ],
+        }
+    )
+
+    skipped = _apply_cleanup_actions(tmp_git_repo, cleanup)
+    # Whitespace-only paths are silently dropped -- not surfaced in the
+    # retry hint because the agent cannot meaningfully retry them.
+    assert skipped == []
+    # The real delete still succeeds alongside the whitespace skip.
+    assert not binary.exists()
+
+
+def test_empty_pattern_in_gitignore_action_is_skipped(tmp_git_repo: Path) -> None:
+    """AC-05: whitespace-only pattern is dropped before append_to_gitignore.
+
+    Pins the contract that the handler is defensive against whitespace
+    patterns bypassing the strict Pydantic validation -- the runtime
+    branch filters them out with a DEBUG log instead of crashing.
+    """
+    cleanup = CommitCleanup.model_validate(
+        {
+            "analysis_complete": True,
+            "actions": [
+                CommitCleanupAction(action="add_to_gitignore", pattern="   "),
+                CommitCleanupAction(action="add_to_gitignore", pattern="*.real"),
+            ],
+        }
+    )
+
+    _apply_cleanup_actions(tmp_git_repo, cleanup)
+    gitignore_text = (tmp_git_repo / ".gitignore").read_text()
+    assert "*.real" in gitignore_text
+
+
+def test_all_safe_actions_with_no_delete_succeeds(tmp_git_repo: Path) -> None:
+    """AC-05: a batch with only gitignore + git-exclude actions succeeds."""
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": True,
+            "actions": [
+                {"action": "add_to_gitignore", "pattern": "*.binary"},
+                {"action": "add_to_git_exclude", "pattern": ".my-local-cache"},
+            ],
+        },
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+    gitignore_text = (tmp_git_repo / ".gitignore").read_text()
+    assert "*.binary" in gitignore_text
+    exclude_text = (tmp_git_repo / ".git" / "info" / "exclude").read_text()
+    assert ".my-local-cache" in exclude_text
+
+
+def test_all_unsafe_deletes_with_no_safe_work_returns_failure_event(
+    tmp_git_repo: Path,
+) -> None:
+    """AC-03: when ALL delete actions are unsafe and no safe work was done, fail with hint."""
+    source = tmp_git_repo / "module.py"
+    source.write_text("source code")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": False,
+            "actions": [{"action": "delete_file", "path": "module.py"}],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert "module.py" in result[0].reason
+    assert source.exists()
+
+
+def test_retry_hint_named_for_each_rejected_path(tmp_git_repo: Path) -> None:
+    """AC-03: PhaseFailureEvent.reason contains structured hint naming every rejected path."""
+    source_a = tmp_git_repo / "a.py"
+    source_b = tmp_git_repo / "b.py"
+    source_a.write_text("a")
+    source_b.write_text("b")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {
+            "analysis_complete": False,
+            "actions": [
+                {"action": "delete_file", "path": "a.py"},
+                {"action": "delete_file", "path": "b.py"},
+            ],
+        },
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert "a.py" in result[0].reason
+    assert "b.py" in result[0].reason
+    assert "Cleanup retry hint" in result[0].reason
+    assert source_a.exists()
+    assert source_b.exists()

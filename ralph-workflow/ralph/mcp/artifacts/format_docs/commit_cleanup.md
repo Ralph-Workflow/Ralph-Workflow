@@ -75,11 +75,24 @@ The directory allowlist above is RESTRICTED by file extension. Files under the l
 
 For source-code files at the `.agent/` top level that are NOT in the basenames list (e.g. `.agent/test.py`, `.agent/CHANGELOG.md`, `.agent/utils.py`, `.agent/scripts/build.sh`), and for arbitrary subdirectories under `.agent/` (e.g. `.agent/notes/foo.txt`, `.agent/data/seed.json`), DO NOT delete them — they are user-authored content even if they happen to live under `.agent/`. The same applies to source-code files anywhere else in the repo.
 
+**Do NOT recommend broad `.agent/`, `artifacts/`, or `reports/` directory deletion** — only the specific basenames/extensions listed above are deletable. A blanket directory-prefix recommendation will be silently dropped by the runtime safety boundary.
+
+## Engine safety contract
+
+The `commit_cleanup` phase is hardened to be ROCK SOLID against any malformed or borderline cleanup batch:
+
+- **Cleanup is best-effort.** A single unsafe `delete_file` action (one that targets source code, test files, documentation, configuration, or any other non-housekeeping path) does NOT abort the whole phase. The unsafe action is logged at WARNING level and accumulated in a returned `skipped_delete_paths` list; safe actions (other matching deletes, gitignore patterns, git-exclude patterns) continue to apply.
+- **The phase only returns `PhaseFailureEvent` when EVERY delete action was rejected AND no safe action was applied.** In that case the event's `reason` field carries a structured retry hint naming every rejected path, so the agent can resubmit without those paths or reclassify them as `add_to_git_exclude`.
+- **Canonical Ralph runtime artifact paths (the basenames and per-directory extensions above) are ALWAYS deletable** — even when tracked in HEAD. The fast-path exemption in `is_agent_internal_path` runs as the FIRST executable statement of `_is_safe_to_delete`, so the engine-owned allowlist cannot be silently bypassed by a future refactor that adds a check above it.
+- **The phase auto-seeds canonical Ralph patterns into `.gitignore` and `.git/info/exclude` on every entry** (not just bootstrap). The seed uses the real exported helpers `auto_seed_default_gitignore` and `auto_seed_default_git_exclude` from `ralph.config.bootstrap`; both calls are wrapped in `try/except Exception` so a seeding failure (e.g. read-only filesystem, missing gitdir) cannot fail the phase.
+
 ## Dumb-proof checklist
 
 - Did you set `artifact_type` to `"commit_cleanup"`?
 - Did you set `analysis_complete` to `true` when there is nothing more to clean?
-- Did you use `delete_file` only for actual binary/generated files present in the diff?
+- Did you use `delete_file` only for actual binary/generated files present in the diff OR for paths in the Ralph runtime-artifact allowlist above?
+- Did you cross-check the Security boundary to avoid recommending `.agent/<dir>/<wrong-extension>` or arbitrary `.agent/<sub>/...` paths?
 - Did you use `add_to_gitignore` for project-wide patterns like `*.pyc`?
 - Did you use `add_to_git_exclude` for machine-local files like `.env.local`?
 - Did you NOT recommend deleting source code, test files, or documentation?
+- Did you NOT recommend broad `.agent/`, `artifacts/`, or `reports/` directory deletion?
