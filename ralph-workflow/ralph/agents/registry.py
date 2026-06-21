@@ -349,6 +349,13 @@ def _is_valid_pi_model_id(model_id: str) -> bool:
         ``:<thinking>`` suffix is allowed; multi-colon shapes like
         ``pi/foo:bar:baz`` fall outside the documented
         ``provider/id[:<thinking>]`` syntax)
+      * more than one ``/`` separator (the documented pattern is at
+        most one ``/`` between provider and id; multi-slash shapes
+        like ``pi/provider/model/extra`` or ``pi/anthropic/claude/foo``
+        are not documented at https://pi.dev/docs/latest/usage and
+        must NOT be silently accepted - they would round-trip as
+        ``--model provider/model/extra`` which is an undocumented
+        pattern and may be silently misparsed downstream)
       * empty provider segment when ``/`` is present (e.g. ``pi//x``)
       * empty model-name segment when ``/`` is present (e.g.
         ``pi/provider/``)
@@ -372,4 +379,6 @@ def _is_valid_pi_model_id(model_id: str) -> bool:
     if "/" not in base:
         return True
     provider, _, model_name = base.partition("/")
+    if "/" in model_name:
+        return False
     return bool(provider and model_name)

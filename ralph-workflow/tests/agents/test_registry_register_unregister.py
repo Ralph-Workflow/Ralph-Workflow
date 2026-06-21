@@ -158,3 +158,43 @@ def test_pi_dynamic_alias_rejects_malformed_model_ids() -> None:
     assert registry.get("pi/:high") is None
     # Bare colon with nothing on either side.
     assert registry.get("pi/:") is None
+
+
+def test_pi_dynamic_alias_rejects_multi_slash_model_ids() -> None:
+    """Multi-slash ``pi/<model>`` aliases must return ``None``.
+
+    Per https://pi.dev/docs/latest/usage the documented ``--model`` pattern
+    is ``provider/id`` (exactly one ``/``) with an optional ``:<thinking>``
+    suffix.  Aliases with more than one ``/`` inside the model id (e.g.
+    ``pi/provider/model/extra`` or ``pi/anthropic/claude/extra``) are
+    undocumented and must NOT resolve, since accepting them would emit
+    a silently-misparsed ``--model provider/model/extra`` flag downstream.
+
+    The single-segment bare id form (``pi/sonnet``,
+    ``pi/claude-sonnet-4-20250514``) and the documented two-segment
+    ``provider/id`` form (``pi/anthropic/claude-sonnet-4-20250514``,
+    ``pi/anthropic/claude-sonnet-4-20250514:high``) must still resolve.
+    """
+    registry = AgentRegistry()
+
+    # Three segments after the ``pi/`` prefix (one ``/`` too many).
+    assert registry.get("pi/provider/model/extra") is None
+    # Three segments with a real provider and two extra model segments.
+    assert registry.get("pi/anthropic/claude/extra") is None
+    # Three segments with a thinking suffix still has one slash too many.
+    assert registry.get("pi/provider/model/extra:high") is None
+    # Four segments (deeply nested multi-slash) must also be rejected.
+    assert registry.get("pi/anthropic/claude/foo/bar") is None
+
+    # Sanity: documented shapes still resolve and carry the suffix verbatim.
+    bare = registry.get("pi/anthropic/claude-sonnet-4-20250514")
+    assert bare is not None
+    assert bare.model_flag == "--model anthropic/claude-sonnet-4-20250514"
+
+    bare_id = registry.get("pi/sonnet")
+    assert bare_id is not None
+    assert bare_id.model_flag == "--model sonnet"
+
+    thinking = registry.get("pi/anthropic/claude-sonnet-4-20250514:high")
+    assert thinking is not None
+    assert thinking.model_flag == "--model anthropic/claude-sonnet-4-20250514:high"
