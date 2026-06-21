@@ -5,10 +5,11 @@ This is the gate that stands between the project and a repeat of the 2026-06-11
 SHOWCASE.md / README.md failure, where unsubstantiated "Built with Ralph" claims
 and a stale "~1,300 installs/month" stat were published as social proof.
 
-The script is intentionally simple: it scans a fixed set of public-facing
-markdown files for banned patterns. If a pattern matches, the script exits
-non-zero and prints the offending file/line. Run it before any commit that
-touches the README, the landing page, comparison pages, or blog posts.
+The script is intentionally simple: it scans ALL markdown files in the
+repository for banned patterns. If a pattern matches, the script exits
+non-zero and prints the offending file/line. Run it before any commit.
+There is no scope carve-out. Every public-facing markdown file is in scope.
+Fabrication is never acceptable anywhere.
 
 If a legitimate claim is being blocked by a false-positive pattern, **update
 the script**. Do not delete it. Do not weaken the gate. The gate is the only
@@ -38,13 +39,15 @@ from typing import Iterable
 # Configuration
 # ---------------------------------------------------------------------------
 
-# Default public-facing files. Add to this list when a new public surface
-# appears (landing page, new comparison page, etc.). Do NOT remove entries.
-DEFAULT_PATHS: tuple[Path, ...] = (
-    Path("README.md"),
-    Path("ralph-workflow/README.md"),
-    Path("SHOWCASE.md"),
-    Path("USERS.md"),
+# Default: scan the entire repo. No whitelist, no carve-outs, no files that
+# are "out of scope" for truth. Every public-facing markdown file is in scope.
+# Fabrication is never acceptable anywhere — that's why there is no whitelist.
+#
+# The list of built-in exempt paths (scripts/, CHANGELOG.md, etc.) is in
+# EXEMPT_FILES below — those are the ONLY files excluded, and only because
+# they document the gate itself or are internal tooling.
+DEFAULT_ROOTS: tuple[Path, ...] = (
+    Path("."),
 )
 
 # Banned patterns. Each entry is (name, regex, severity, why).
@@ -133,6 +136,26 @@ EXEMPT_FILES: frozenset[Path] = frozenset(
         Path("scripts/README.md"),
         Path("CHANGELOG.md"),
         Path("AGENTS.md"),
+        Path("CLAUDE.md"),
+    }
+)
+
+# Directories excluded from the default full-repo scan. These contain
+# vendored/generated content that is not our public-facing copy.
+# Hidden dirs like .git are excluded by the iterator, not this set.
+EXEMPT_DIRS: frozenset[str] = frozenset(
+    {
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        ".eggs",
+        "site-packages",
     }
 )
 
@@ -239,6 +262,9 @@ def iter_paths(roots: Iterable[Path]) -> Iterable[Path]:
         for path in root.rglob("*.md"):
             if path in EXEMPT_FILES or path in seen:
                 continue
+            # Skip vendored/generated content in excluded dirs
+            if any(p.name in EXEMPT_DIRS for p in path.parents):
+                continue
             seen.add(path)
             yield path
 
@@ -266,18 +292,23 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv)
 
+    # Directories that are test fixtures / workflow output — not public copy
+    global EXEMPT_DIRS
+    _test_fixture_roots: set[str] = set()
+    if not args.paths:
+        repo = Path(".")
+        for d in repo.iterdir():
+            if d.is_dir() and d.name.startswith("wt-"):
+                _test_fixture_roots.add(d.name)
+    if _test_fixture_roots:
+        EXEMPT_DIRS = frozenset(EXEMPT_DIRS | _test_fixture_roots)
+
     if args.paths:
         roots: list[Path] = list(args.paths)
     else:
-        roots = [p for p in DEFAULT_PATHS if p.exists()]
-        for extra in (
-            Path("content/blog"),
-            Path("docs"),
-            Path("ralph_site/current/content/blog"),
-            Path("ralph_site/current/docs"),
-        ):
-            if extra.exists():
-                roots.append(extra)
+        # Scan the entire repo. No carve-outs for "unimportant" files.
+        # If a markdown file is public-facing, it's in scope.
+        roots = [p for p in DEFAULT_ROOTS if p.exists()]
 
     paths_to_scan = list(iter_paths(roots))
     all_findings: list[Finding] = []
