@@ -15,6 +15,8 @@ from ralph.git.git_run_result import GitRunResult
 from ralph.git.operations import (
     GitOperationError,
     _atomic_append_text,
+    _git_status_porcelain_lines,
+    _recover_stale_git_lock,
     append_to_gitignore,
     create_commit,
     find_repo_root,
@@ -29,6 +31,26 @@ from ralph.git.operations import (
     stage_all,
 )
 from ralph.git.subprocess_runner import run_git
+
+
+def _unused_pid() -> int:
+    """Return a PID that is overwhelmingly likely to not be running.
+
+    PIDs cycle quickly, so a pid equal to ``os.getpid() + 1_000_000`` is
+    almost certainly not alive by the time the test runs. We do NOT use a
+    fixed integer like 999999 because some CI environments pre-allocate
+    PIDs in low ranges.
+    """
+    return os.getpid() + 1_000_000
+
+
+def _make_index_lock_error(lock_path: Path) -> GitCommandError:
+    return GitCommandError(
+        ["git", "add", "-A"],
+        128,
+        stderr=f"fatal: Unable to create '{lock_path}': File exists.\n\n"
+        "Another git process seems to be running in this repository",
+    )
 
 # Real-git tests fork `git` subprocesses; under full-suite worksteal
 # parallelism the default 1s wall-clock alarm intermittently fires on a
@@ -230,7 +252,7 @@ def test_stage_all(tmp_git_repo: Path) -> None:
 
 def test_stage_all_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
     lock_path = tmp_git_repo / ".git" / "index.lock"
-    lock_path.write_text("locked", encoding="utf-8")
+    lock_path.write_text(str(_unused_pid()), encoding="utf-8")
     stale_time = time.time() - 60
     os.utime(lock_path, (stale_time, stale_time))
 
@@ -304,7 +326,7 @@ def test_create_commit() -> None:
 
 def test_create_commit_recovers_from_stale_index_lock(tmp_git_repo: Path) -> None:
     lock_path = tmp_git_repo / ".git" / "index.lock"
-    lock_path.write_text("locked", encoding="utf-8")
+    lock_path.write_text(str(_unused_pid()), encoding="utf-8")
     stale_time = time.time() - 60
     os.utime(lock_path, (stale_time, stale_time))
     calls = {"count": 0}
@@ -669,5 +691,195 @@ def test_atomic_append_text_replaces_target_symlink(tmp_path: Path) -> None:
     )
     assert target_via_symlink.read_text(encoding="utf-8") == "REAL content\nappended\n", (
         "New regular file at the symlink's path must contain the published content"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Regression coverage for analysis-feedback correctness holes in the touched
+# git-operations surface:
+#   1. _recover_stale_git_lock must NOT auto-unlink a Git lock file based on
+#      age alone -- unlinking a live lock can corrupt a long-running Git
+#      operation. Recovery must be gated on a stronger stale-proof (the PID
+#      stored in the lock file, when present, must no longer be running).
+#   2. _git_status_porcelain_lines must NOT silently collapse a non-zero
+#      ``git status --porcelain`` return into ``[]`` -- that hides real
+#      failures and makes ``has_staged_changes`` / ``list_changed_paths`` /
+#      ``get_staged_files`` report a clean repo.
+#   3. has_staged_changes must report ONLY staged changes -- an
+#      untracked-only worktree must return False, and the
+#      ``No staged changes to commit`` CLI message must continue to be the
+#      user-facing truth.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.timeout_seconds(5)
+def test_recover_stale_git_lock_fails_closed_when_lock_has_no_pid(
+    tmp_path: Path,
+) -> None:
+    """A lock file with non-numeric content is NOT auto-unlinked.
+
+    Git writes the holding PID into ``index.lock``/``HEAD.lock``/etc. When
+    the lock content is not a parseable PID, the helper cannot prove the
+    lock is stale (the writing process could still be alive but not have
+    written a PID for some reason). The helper must fail closed: do NOT
+    unlink, return False, and surface the contention as a normal error.
+    """
+    lock_path = tmp_path / "index.lock"
+    lock_path.write_text("not-a-pid", encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(lock_path, (stale_time, stale_time))
+
+    error = _make_index_lock_error(lock_path)
+
+    assert _recover_stale_git_lock("stage_all", error) is False, (
+        "Lock with no parseable PID must NOT be auto-unlinked (fail-closed)"
+    )
+    assert lock_path.exists(), "Lock file must remain on disk when recovery fails"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_recover_stale_git_lock_fails_closed_when_lock_pid_is_alive(
+    tmp_path: Path,
+) -> None:
+    """A lock file with a still-alive PID is NOT auto-unlinked.
+
+    Even when the lock file is older than the stale threshold, if the PID
+    recorded in the lock is still running the lock is live and must NOT be
+    unlinked. A legitimate long-running ``git gc`` or ``git fetch`` could
+    have written that PID a moment ago.
+    """
+    lock_path = tmp_path / "index.lock"
+    current_pid = os.getpid()
+    lock_path.write_text(str(current_pid), encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(lock_path, (stale_time, stale_time))
+
+    error = _make_index_lock_error(lock_path)
+
+    assert _recover_stale_git_lock("stage_all", error) is False, (
+        "Lock with still-alive PID must NOT be auto-unlinked (fail-closed)"
+    )
+    assert lock_path.exists(), "Lock file must remain on disk when PID is still alive"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_recover_stale_git_lock_recovers_when_lock_pid_is_dead(
+    tmp_path: Path,
+) -> None:
+    """A lock file with a dead PID IS unlinked and the helper returns True.
+
+    Strong stale-proof: when the PID stored in the lock file is no longer
+    running, the lock is provably stale and safe to remove. The helper
+    unlinks the file and returns True so the caller can retry.
+    """
+    lock_path = tmp_path / "index.lock"
+    lock_path.write_text(str(_unused_pid()), encoding="utf-8")
+    stale_time = time.time() - 60
+    os.utime(lock_path, (stale_time, stale_time))
+
+    error = _make_index_lock_error(lock_path)
+
+    assert _recover_stale_git_lock("stage_all", error) is True, (
+        "Lock with dead PID must be unlinked and recovery must succeed"
+    )
+    assert not lock_path.exists(), "Lock file must be unlinked when PID is dead"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_recover_stale_git_lock_returns_false_for_non_lock_error() -> None:
+    """A non-lock GitCommandError does NOT trigger recovery.
+
+    Errors that do not match the lock-path regex must return False so the
+    caller re-raises the original exception.
+    """
+    error = GitCommandError(
+        ["git", "status"],
+        128,
+        stderr="fatal: not a git repository: '.git'",
+    )
+
+    assert _recover_stale_git_lock("status", error) is False
+
+
+@pytest.mark.timeout_seconds(5)
+def test_git_status_porcelain_lines_raises_on_nonzero_return(
+    tmp_git_repo: Path,
+) -> None:
+    """A non-zero ``git status --porcelain`` return raises GitOperationError.
+
+    Previously the helper silently returned ``[]``, which made
+    ``has_staged_changes``/``list_changed_paths``/``get_staged_files``
+    report a clean repo on real failures. The fix surfaces the failure so
+    callers can route through their GitPython fallback (or fail loud).
+    """
+    def _broken_run_git(
+        args: tuple[str, ...], *, cwd: Path, label: str
+    ) -> GitRunResult:
+        return GitRunResult(
+            args=("git", *args),
+            returncode=128,
+            stdout="",
+            stderr="fatal: simulated git status failure",
+        )
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.run_git", _broken_run_git)
+    try:
+        with pytest.raises(GitOperationError, match="git-status"):
+            _git_status_porcelain_lines(tmp_git_repo)
+    finally:
+        monkeypatch.undo()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_git_status_porcelain_lines_returns_lines_on_zero_return(
+    tmp_git_repo: Path,
+) -> None:
+    """A zero ``git status --porcelain`` return returns the split lines."""
+    lines = _git_status_porcelain_lines(tmp_git_repo)
+    assert isinstance(lines, list)
+    # A freshly cloned template has a clean working tree.
+    assert lines == []
+
+
+@pytest.mark.timeout_seconds(5)
+def test_has_staged_changes_returns_false_for_untracked_only_repo(
+    tmp_git_repo: Path,
+) -> None:
+    """An untracked-only worktree has NO staged changes.
+
+    ``has_staged_changes`` is the API contract for "is there anything
+    staged for the next commit?" -- untracked files do not satisfy that
+    contract. The CLI message ``No staged changes to commit`` must remain
+    accurate for an untracked-only repo.
+    """
+    untracked = tmp_git_repo / "untracked.txt"
+    untracked.write_text("never staged", encoding="utf-8")
+
+    assert has_staged_changes(tmp_git_repo) is False, (
+        "Untracked-only worktree must NOT report staged changes; the "
+        "staged-changes API is strictly about git-added files"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_has_staged_changes_returns_false_for_untracked_only_via_subprocess(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Untracked-only detection stays correct under the subprocess path.
+
+    ``has_staged_changes`` prefers ``git status --porcelain`` when
+    available. With ONLY untracked files in the worktree, the porcelain
+    output is a single ``??`` line; the helper must return False even
+    though it sees the untracked line.
+    """
+    untracked = tmp_git_repo / "untracked_only.txt"
+    untracked.write_text("never staged", encoding="utf-8")
+
+    # Sanity: the real ``git status --porcelain`` path returns the
+    # expected untracked line, and the helper still returns False.
+    assert has_staged_changes(tmp_git_repo) is False, (
+        "Subprocess path: untracked-only worktree must return False"
     )
 
