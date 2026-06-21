@@ -644,18 +644,24 @@ class IdleWatchdog:
         a noop ``classify_quiet`` that always returns ``ACTIVE``, and
         the configured TTL.
 
-        When ``corroboration`` is provided, the live ``alive_by`` signal
+        When ``corroboration`` is provided, the live ``CorroborationSnapshot``
         is threaded into the classifier as the canonical "live child"
-        input. The classifier returns ``LOADING`` immediately when the
-        live corroborator reports a live child so the gate defers the
-        fire even when no process monitor is injected (the
-        ``subagent_liveness`` channel's ``can_defer=True`` is only
-        set by the process-monitor path -- a corroborator-only signal
-        must reach the classifier through this parameter or it is
-        invisible to the gate). This is the
-        analysis-feedback contract for ``CHILDREN_PERSIST_TOO_LONG``:
-        the gate must see the live corroboration, not the stale
-        ``self._last_alive_by`` post-fire field.
+        input. The classifier's CURRENT verdict policy is INTENTIONALLY
+        NON-DECISIVE on corroboration alone: the value is plumbed so the
+        gate can surface the live corroboration at every fire path (the
+        analysis-feedback contract for ``CHILDREN_PERSIST_TOO_LONG`` and
+        ``NO_OUTPUT_AT_START``: the gate must see the LIVE corroboration,
+        not the stale ``self._last_alive_by`` post-fire field which is
+        only populated post-fire by ``NO_PROGRESS_QUIET``), but the
+        classifier does NOT change its verdict based on the
+        corroboration alone. The watchdog's own evaluators
+        (``_is_no_progress_quiet``, ``_effective_waiting_ceiling``) own
+        the ``alive_by``-driven deferrals; the classifier labels the
+        apparent stall, it does not re-derive the wait/defer verdict
+        from a different snapshot. See ``ClassifyStuckInputs.corroboration``
+        and the ``test_corroboration_*`` regression tests in
+        ``tests/agents/idle_watchdog/test_stuck_classifier.py`` for the
+        full contract.
 
         The classifier's ``WAITING_ON_CHILD`` and ``RESUMABLE_CONTINUE``
         branches are intentionally NOT consulted from the gate. The
@@ -730,7 +736,12 @@ class IdleWatchdog:
         ``CHILDREN_PERSIST_TOO_LONG`` and ``NO_OUTPUT_AT_START``).
         Without this parameter the classifier would only see the
         process-monitor subagent_liveness channel -- a corroborator-only
-        live signal would be invisible to the gate.
+        live signal would be invisible to the gate. The classifier's
+        CURRENT verdict policy does NOT change based on the
+        corroboration alone; the watchdog's own evaluators own the
+        ``alive_by``-driven deferrals. The corroboration parameter is
+        exposed so future classifier extensions can use it without
+        changing the call site.
 
         The helper returns the final verdict the caller should use:
         FIRE for an allowed fire, CONTINUE for a deferred fire. The

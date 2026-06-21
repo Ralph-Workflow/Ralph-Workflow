@@ -28,6 +28,7 @@ from ralph.agents.idle_watchdog._stuck_classifier import (
     StuckKind,
     classify_stuck,
 )
+from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
 from ralph.process.child_liveness import AliveBy
 
 _TTL_SECONDS = 30.0
@@ -295,3 +296,167 @@ def test_priority_order_offline_beats_thinking() -> None:
         **_inputs(connectivity_state="offline", evidence_summary=summary)
     )
     assert kind == StuckKind.WAITING_ON_CONNECTIVITY
+
+
+# ---------------------------------------------------------------------------
+# Corroboration non-decisiveness contract
+# ---------------------------------------------------------------------------
+#
+# The ``corroboration`` parameter is plumbed through ``classify_stuck`` so the
+# watchdog can surface the live ``CorroborationSnapshot`` to the classifier at
+# every fire path. The classifier's CURRENT verdict policy is intentionally
+# NON-DECISIVE on corroboration alone: the value is accepted as a parameter
+# but is not consulted when the classifier chooses a ``StuckKind``. The
+# watchdog's own evaluators (``_is_no_progress_quiet``,
+# ``_effective_waiting_ceiling``, etc.) own the ``alive_by``-driven
+# deferrals; the classifier's job is to label the apparent stall, not to
+# re-derive a wait/defer verdict from a different snapshot.
+#
+# The reason for this design: keeping the classifier verdict policy stable
+# means future classifier extensions (e.g. distinguishing truly-dead-child
+# scenarios from process-monitor-only live signals) can use the corroboration
+# parameter without breaking the existing fire decision. The call site stays
+# the same; only the classifier's internal branches change.
+#
+# These tests pin the contract: a non-None ``alive_by`` in the corroboration
+# MUST NOT change the verdict returned by ``classify_stuck``. If a future
+# PR adds corroboration-based decision logic to the classifier, these tests
+# must be updated to reflect the new contract AND the module docstring +
+# ``ClassifyStuckInputs.corroboration`` documentation must be aligned with
+# the new behavior. Adding decision logic without updating the tests and
+# docs is a regression of the analysis-feedback contract for AC-05.
+# ---------------------------------------------------------------------------
+
+
+def test_corroboration_is_plumbed_but_does_not_change_stuck_verdict() -> None:
+    """A live corroboration does NOT change a STUCK verdict.
+
+    All channels are stale, is_waiting_state=False, connectivity=online,
+    classify_quiet=ACTIVE -> the verdict is STUCK. The corroboration
+    parameter is plumbed but does not change the verdict: both
+    corroboration=None and corroboration with alive_by=FRESH_PROGRESS
+    return StuckKind.STUCK.
+    """
+    inputs = _inputs()
+
+    kind_no_corr = classify_stuck(**inputs)
+    kind_live_corr = classify_stuck(
+        **inputs,
+        corroboration=CorroborationSnapshot(
+            alive_by=AliveBy.FRESH_PROGRESS,
+            scoped_child_active=True,
+            scoped_child_count=1,
+        ),
+    )
+    kind_stale_corr = classify_stuck(
+        **inputs,
+        corroboration=CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+        ),
+    )
+    kind_dead_corr = classify_stuck(
+        **inputs,
+        corroboration=CorroborationSnapshot(alive_by=None),
+    )
+
+    assert kind_no_corr == StuckKind.STUCK
+    assert kind_live_corr == StuckKind.STUCK
+    assert kind_stale_corr == StuckKind.STUCK
+    assert kind_dead_corr == StuckKind.STUCK
+
+
+def test_corroboration_does_not_change_thinking_verdict() -> None:
+    """A live corroboration does NOT change a THINKING verdict.
+
+    A fresh subagent_output channel implies THINKING. The corroboration
+    parameter is plumbed but does not change the verdict: both
+    corroboration=None and corroboration with alive_by=FRESH_PROGRESS
+    return StuckKind.THINKING.
+    """
+    summary = _multi_summary(subagent_output_at=_NOW - 5.0)
+    inputs = _inputs(evidence_summary=summary)
+
+    kind_no_corr = classify_stuck(**inputs)
+    kind_live_corr = classify_stuck(
+        **inputs,
+        corroboration=CorroborationSnapshot(
+            alive_by=AliveBy.FRESH_PROGRESS,
+            scoped_child_active=True,
+        ),
+    )
+
+    assert kind_no_corr == StuckKind.THINKING
+    assert kind_live_corr == StuckKind.THINKING
+
+
+def test_corroboration_does_not_change_loading_verdict_via_subagent_liveness() -> None:
+    """LOADING via subagent_liveness is unchanged by corroboration alive_by.
+
+    The fresh subagent_liveness channel implies LOADING. The
+    corroboration parameter is plumbed but does not change the verdict:
+    both corroboration=None and corroboration with alive_by=FRESH_PROGRESS
+    return StuckKind.LOADING. This is the path the watchdog uses to defer
+    dumb kills when a process monitor reports a live subagent.
+    """
+    summary = _multi_summary(
+        subagent_liveness_at=_NOW - 5.0,
+        alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+    )
+    inputs = _inputs(evidence_summary=summary)
+
+    kind_no_corr = classify_stuck(**inputs)
+    kind_live_corr = classify_stuck(
+        **inputs,
+        corroboration=CorroborationSnapshot(
+            alive_by=AliveBy.FRESH_PROGRESS,
+            scoped_child_active=True,
+        ),
+    )
+
+    assert kind_no_corr == StuckKind.LOADING
+    assert kind_live_corr == StuckKind.LOADING
+
+
+def test_corroboration_does_not_change_offline_verdict() -> None:
+    """WAITING_ON_CONNECTIVITY beats corroboration alive_by.
+
+    Even with a live corroboration (alive_by=FRESH_PROGRESS), the offline
+    connectivity state still wins: the classifier returns
+    WAITING_ON_CONNECTIVITY. The corroboration does not change the
+    verdict; the network state is the problem, not the agent.
+    """
+    inputs = _inputs(connectivity_state="offline")
+
+    kind_no_corr = classify_stuck(**inputs)
+    kind_live_corr = classify_stuck(
+        **inputs,
+        corroboration=CorroborationSnapshot(
+            alive_by=AliveBy.FRESH_PROGRESS,
+            scoped_child_active=True,
+        ),
+    )
+
+    assert kind_no_corr == StuckKind.WAITING_ON_CONNECTIVITY
+    assert kind_live_corr == StuckKind.WAITING_ON_CONNECTIVITY
+
+
+def test_corroboration_does_not_change_duplicate_kill_verdict() -> None:
+    """DUPLICATE_KILL is the strongest signal and is not changed by corroboration.
+
+    is_waiting_state=True wins first. The corroboration does not change
+    the verdict: both corroboration=None and corroboration with
+    alive_by=FRESH_PROGRESS return StuckKind.DUPLICATE_KILL.
+    """
+    inputs = _inputs(is_waiting_state=True)
+
+    kind_no_corr = classify_stuck(**inputs)
+    kind_live_corr = classify_stuck(
+        **inputs,
+        corroboration=CorroborationSnapshot(
+            alive_by=AliveBy.FRESH_PROGRESS,
+            scoped_child_active=True,
+        ),
+    )
+
+    assert kind_no_corr == StuckKind.DUPLICATE_KILL
+    assert kind_live_corr == StuckKind.DUPLICATE_KILL

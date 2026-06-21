@@ -100,17 +100,27 @@ class ClassifyStuckInputs(TypedDict, total=False):
             freshness. Must be > 0. None is treated as 0 (no freshness
             deferral).
         corroboration: Optional LIVE ``CorroborationSnapshot`` from the
-            watchdog's corroborator. When provided, the classifier
-            consults ``corroboration.alive_by`` and returns ``LOADING``
-            for any non-None alive_by signal -- this is the
-            analysis-feedback contract for ``CHILDREN_PERSIST_TOO_LONG``
-            and ``NO_OUTPUT_AT_START``: the gate must see the LIVE
-            corroboration, not the stale ``self._last_alive_by`` field
-            which is only populated post-fire by ``NO_PROGRESS_QUIET``.
-            Without this parameter the classifier would only see the
-            process-monitor subagent_liveness channel (which sets
-            ``can_defer=True`` only for real process-monitor signals),
-            making a corroborator-only live child invisible to the gate.
+            watchdog's corroborator. The value is plumbed into the
+            classifier so the gate can surface the live corroboration at
+            every fire path (the analysis-feedback contract for
+            ``CHILDREN_PERSIST_TOO_LONG`` and ``NO_OUTPUT_AT_START``).
+            The classifier's CURRENT verdict policy is INTENTIONALLY
+            NON-DECISIVE on corroboration alone: the value is accepted
+            as a parameter but is not consulted when the classifier
+            chooses a ``StuckKind``. The watchdog's own evaluators
+            (``_is_no_progress_quiet``, ``_effective_waiting_ceiling``,
+            etc.) own the ``alive_by``-driven deferrals; the
+            classifier's job is to label the apparent stall, not to
+            re-derive a wait/defer verdict from a different snapshot.
+            Exposing the parameter keeps the call site stable so future
+            classifier extensions (e.g. distinguishing truly-dead-child
+            scenarios from process-monitor-only live signals) can use
+            it without changing the call site. If a future PR makes
+            the classifier verdict depend on ``corroboration.alive_by``,
+            it MUST update this docstring AND the
+            ``test_corroboration_*`` regression tests in
+            ``tests/agents/idle_watchdog/test_stuck_classifier.py`` to
+            reflect the new contract.
     """
 
     is_waiting_state: bool
@@ -216,16 +226,16 @@ def classify_stuck(
       2. connectivity_state=="offline" -> WAITING_ON_CONNECTIVITY
       3. any first-party channel fresh -> THINKING
       4. any side-channel subagent_liveness fresh -> LOADING
-      5. corroboration is provided and alive_by is not None -> LOADING
-         (this is the analysis-feedback contract for
-         CHILDREN_PERSIST_TOO_LONG / NO_OUTPUT_AT_START; the gate
-         receives a LIVE CorroborationSnapshot from the caller and
-         returns LOADING when it sees a live child signal even
-         when no process monitor is injected)
-      6. classify_quiet is WAITING_ON_CHILD with alive_by in a
-         non-progress state (recorded in the liveness channel) -> LOADING
-      7. classify_quiet is RESUMABLE_CONTINUE -> TRANSITIONING
-      8. else -> STUCK
+      5. classify_quiet is WAITING_ON_CHILD -> LOADING
+      6. classify_quiet is RESUMABLE_CONTINUE -> TRANSITIONING
+      7. else -> STUCK
+
+    The ``corroboration`` parameter is plumbed for the analysis-feedback
+    contract (the gate can surface the live ``CorroborationSnapshot`` to
+    the classifier at every fire path) but does NOT participate in the
+    priority order. The watchdog's own evaluators own the
+    ``alive_by``-driven deferrals; the classifier labels the apparent
+    stall, it does not re-derive the wait/defer verdict.
     """
     return _classify_stuck_inner(
         is_waiting_state=is_waiting_state,
@@ -255,17 +265,17 @@ def _classify_stuck_inner(  # noqa: PLR0911 - one return per StuckKind; the prio
         return StuckKind.THINKING
     if _subagent_liveness_fresh(evidence_summary, ttl):
         return StuckKind.LOADING
-    # Live corroboration branch (analysis-feedback contract for
-    # CHILDREN_PERSIST_TOO_LONG / NO_OUTPUT_AT_START). The watchdog
-    # threads the LIVE CorroborationSnapshot into the classifier at
-    # these fire paths. The classifier consults ``corroboration.alive_by``
-    # to inform its decision, but does NOT change its verdict based
-    # on the corroboration alone -- the ``_effective_waiting_ceiling``
-    # math already handles alive_by-based ceiling selection. The
-    # corroboration parameter is exposed so future classifier
-    # extensions can use it (e.g. distinguishing truly-dead-child
-    # scenarios from process-monitor-only live signals) without
-    # changing the call site.
+    # The ``corroboration`` parameter is plumbed for the analysis-feedback
+    # contract (the watchdog threads the LIVE CorroborationSnapshot into
+    # the classifier at every fire path) but is INTENTIONALLY not
+    # consulted by the current verdict policy. The watchdog's own
+    # evaluators (``_is_no_progress_quiet``, ``_effective_waiting_ceiling``)
+    # own the ``alive_by``-driven deferrals; the classifier labels the
+    # apparent stall, it does not re-derive the wait/defer verdict. Future
+    # classifier extensions can use the parameter without changing the
+    # call site. See ``ClassifyStuckInputs.corroboration`` for the full
+    # contract and the regression tests in
+    # ``tests/agents/idle_watchdog/test_stuck_classifier.py`` that pin it.
     del corroboration
     quiet_state = classify_quiet()
     if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
