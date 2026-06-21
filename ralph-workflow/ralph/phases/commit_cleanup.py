@@ -24,6 +24,7 @@ from ralph.mcp.artifacts._typed_artifact_validation_error import (
     TypedArtifactValidationError,
 )
 from ralph.mcp.artifacts.typed_artifacts import normalize_commit_cleanup_content
+from ralph.phases._agent_internal_paths import is_agent_internal_path
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     load_phase_artifact,
@@ -292,16 +293,22 @@ def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
     are allowed to be deleted when untracked, but tracked files are always
     protected.
 
-    The check order matters: protected basenames win over suffix-based rules
-    (so ``LICENSE.txt`` is protected even though ``.txt`` is a generated-text
-    suffix), and housekeeping basenames win over the unsafe-extension
-    fall-through (so ``coverage.xml`` is deletable even though ``.xml`` is in
-    ``_UNSAFE_EXTENSIONS``).
+    The check order matters:
+    1. The agent-internal fast path (FIRST) -- Ralph runtime artifacts
+       under ``.agent/`` plus root-level ``checkpoint.json`` are
+       unconditionally deletable, even when tracked in HEAD.
+    2. Protected basenames win over suffix-based rules (so ``LICENSE.txt``
+       is protected even though ``.txt`` is a generated-text suffix).
+    3. Housekeeping basenames win over the unsafe-extension fall-through
+       (so ``coverage.xml`` is deletable even though ``.xml`` is in
+       ``_UNSAFE_EXTENSIONS``).
     """
     candidate = Path(path)
     path_lower = path.lower()
     suffix = candidate.suffix.lower()
 
+    if is_agent_internal_path(path):
+        return True
     if _is_protected_path(repo_root, candidate, path_lower):
         return False
     return _is_deletable_housekeeping(repo_root, candidate, suffix)

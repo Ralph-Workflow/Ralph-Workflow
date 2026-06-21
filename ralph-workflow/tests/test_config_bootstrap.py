@@ -11,6 +11,9 @@ from git import Repo
 import ralph.config.loader as loader_module
 import ralph.policy
 from ralph.config.bootstrap import (
+    _DEFAULT_GIT_EXCLUDE_PATTERNS,
+    _DEFAULT_GITIGNORE_PATTERNS,
+    auto_seed_default_git_exclude,
     ensure_global_config,
     ensure_global_mcp_config,
     ensure_global_policy_configs,
@@ -33,6 +36,7 @@ _EXPECTED_DEFAULT_GITIGNORE_LINES = (
     ".agent/",
     "/PROMPT*",
     "wt-*/",
+    "/checkpoint.json",
     # Python
     "__pycache__/",
     "*.py[codz]",
@@ -791,3 +795,162 @@ def test_global_template_missing_active_drain_breaks_first_run_startup(
     config = loader_module.load_config(workspace_scope=WorkspaceScope(project_root))
     with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
         load_policy(project_root / ".agent", config=config)
+
+
+# ---------------------------------------------------------------------------
+# Git-exclude auto-seed (PA-002, PA-003, PA-004)
+# ---------------------------------------------------------------------------
+#
+# Mirrors the ``auto_seed_default_gitignore`` surface for ``.git/info/exclude``
+# so engine-owned runtime artifacts never enter the repo in the first place.
+# Canonical patterns use root-anchored ``/checkpoint.json`` (NOT bare
+# ``checkpoint.json`` which would match every nested subdirectory) and the
+# ``.agent/completion_seen_*.json`` glob (NOT the Python abstraction
+# identifier ``completion_sentinel_*.json``).
+
+
+def test_ensure_local_configs_seeds_git_exclude(tmp_path: Path) -> None:
+    """``ensure_local_configs`` must seed ``.git/info/exclude`` with the canonical patterns.
+
+    Note: ``.git/info/exclude`` only lives inside an actual git repo, so this
+    test uses a real ``Repo.init``-created repo instead of a bare tmp_path.
+    """
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    Repo.init(repo_root)
+    agent_dir = repo_root / ".agent"
+
+    ensure_local_configs(agent_dir)
+
+    exclude_path = repo_root / ".git" / "info" / "exclude"
+    assert exclude_path.exists(), ".git/info/exclude must be created by bootstrap"
+    content = exclude_path.read_text(encoding="utf-8")
+    for pattern in _DEFAULT_GIT_EXCLUDE_PATTERNS:
+        assert pattern in content, f"Missing canonical exclude pattern: {pattern!r}"
+
+
+def test_ensure_local_configs_git_exclude_idempotent(tmp_path: Path) -> None:
+    """Re-running bootstrap must not duplicate any canonical exclude pattern."""
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    Repo.init(repo_root)
+    agent_dir = repo_root / ".agent"
+
+    ensure_local_configs(agent_dir)
+    ensure_local_configs(agent_dir)
+
+    exclude_path = repo_root / ".git" / "info" / "exclude"
+    lines = set(exclude_path.read_text(encoding="utf-8").splitlines())
+    for pattern in _DEFAULT_GIT_EXCLUDE_PATTERNS:
+        assert pattern in lines, (
+            f"Pattern {pattern!r} missing from .git/info/exclude: {sorted(lines)!r}"
+        )
+        assert sum(1 for line in lines if line == pattern) == 1, (
+            f"Pattern {pattern!r} duplicated in .git/info/exclude: {sorted(lines)!r}"
+        )
+
+
+def test_ensure_local_configs_git_exclude_covers_canonical_paths(tmp_git_repo: Path) -> None:
+    """A representative agent-runtime artifact path is listed in the exclude file."""
+    agent_dir = tmp_git_repo / ".agent"
+    ensure_local_configs(agent_dir)
+
+    exclude_path = tmp_git_repo / ".git" / "info" / "exclude"
+    content = exclude_path.read_text(encoding="utf-8")
+    # The canonical on-disk completion-sentinel filename glob MUST be present.
+    assert ".agent/completion_seen_*.json" in content, (
+        f"Canonical completion-sentinel glob missing from .git/info/exclude:\n{content}"
+    )
+    # The root-anchored ``/checkpoint.json`` MUST be present in exclude too.
+    assert "/checkpoint.json" in content, (
+        f"Root-anchored /checkpoint.json missing from .git/info/exclude:\n{content}"
+    )
+
+
+def test_auto_seed_default_git_exclude_creates_file_when_missing(tmp_path: Path) -> None:
+    """Without an existing ``.git/info/exclude``, the helper creates one.
+
+    Note: the helper works on ``repo_root/.git/info/exclude`` directly -- it
+    does NOT require an actual git working tree (it creates the parent dirs).
+    """
+    repo_root = tmp_path / "fake_repo"
+    repo_root.mkdir()
+    assert not (repo_root / ".git" / "info" / "exclude").exists()
+
+    appended = auto_seed_default_git_exclude(repo_root)
+
+    exclude_path = repo_root / ".git" / "info" / "exclude"
+    assert exclude_path.exists()
+    content = exclude_path.read_text(encoding="utf-8")
+    for pattern in _DEFAULT_GIT_EXCLUDE_PATTERNS:
+        assert pattern in content, f"Missing default exclude pattern: {pattern!r}"
+    assert appended == list(_DEFAULT_GIT_EXCLUDE_PATTERNS)
+
+
+def test_auto_seed_default_git_exclude_is_idempotent(tmp_path: Path) -> None:
+    """Calling the helper twice returns ``[]`` on the second call and does not duplicate."""
+    repo_root = tmp_path / "fake_repo"
+    repo_root.mkdir()
+    auto_seed_default_git_exclude(repo_root)
+
+    appended = auto_seed_default_git_exclude(repo_root)
+
+    assert appended == [], f"Expected empty list on idempotent call, got {appended!r}"
+    lines = set((repo_root / ".git" / "info" / "exclude").read_text(encoding="utf-8").splitlines())
+    for pattern in _DEFAULT_GIT_EXCLUDE_PATTERNS:
+        assert pattern in lines, f"Pattern {pattern!r} missing: {sorted(lines)!r}"
+        assert sum(1 for line in lines if line == pattern) == 1, (
+            f"Pattern {pattern!r} duplicated: {sorted(lines)!r}"
+        )
+
+
+def test_auto_seed_default_git_exclude_preserves_user_entries(tmp_path: Path) -> None:
+    """A user-customized exclude file with the full default set is preserved."""
+    repo_root = tmp_path / "fake_repo"
+    repo_root.mkdir()
+    exclude_path = repo_root / ".git" / "info" / "exclude"
+    user_block = "\n".join(("# my custom exclude", *_DEFAULT_GIT_EXCLUDE_PATTERNS))
+    exclude_path.parent.mkdir(parents=True, exist_ok=True)
+    exclude_path.write_text(user_block + "\n", encoding="utf-8")
+
+    appended = auto_seed_default_git_exclude(repo_root)
+
+    assert appended == []
+    content_lines = exclude_path.read_text(encoding="utf-8").splitlines()
+    assert content_lines[0] == "# my custom exclude"
+    for pattern in _DEFAULT_GIT_EXCLUDE_PATTERNS:
+        assert pattern in content_lines, f"Missing pattern: {pattern!r}"
+
+
+def test_auto_seed_default_git_exclude_handles_missing_git_repo(tmp_path: Path) -> None:
+    """When the repo_root has no ``.git/`` directory, the helper still works.
+
+    It creates the ``.git/info/`` parents and writes the file. This is the
+    "Ralph is invoked in a non-git project" case -- bootstrap must not raise.
+    """
+    repo_root = tmp_path / "no_git"
+    repo_root.mkdir()
+    assert not (repo_root / ".git").exists()
+
+    appended = auto_seed_default_git_exclude(repo_root)
+
+    assert appended == list(_DEFAULT_GIT_EXCLUDE_PATTERNS)
+    assert (repo_root / ".git" / "info" / "exclude").exists()
+
+
+def test_default_gitignore_includes_root_anchored_checkpoint_json() -> None:
+    """``_DEFAULT_GITIGNORE_PATTERNS`` MUST contain root-anchored ``/checkpoint.json``.
+
+    PA-002 regression: bare ``checkpoint.json`` (without leading slash) would
+    match every nested directory. The root-anchored form ``/checkpoint.json``
+    follows the existing ``/PROMPT*`` and ``/storage/*.key`` convention.
+    """
+    assert "/checkpoint.json" in _DEFAULT_GITIGNORE_PATTERNS, (
+        f"/checkpoint.json MUST be in _DEFAULT_GITIGNORE_PATTERNS, got: "
+        f"{_DEFAULT_GITIGNORE_PATTERNS!r}"
+    )
+    bare_match = [p for p in _DEFAULT_GITIGNORE_PATTERNS if p == "checkpoint.json"]
+    assert not bare_match, (
+        f"bare 'checkpoint.json' MUST NOT appear (would match every subdir); "
+        f"got bare match in: {_DEFAULT_GITIGNORE_PATTERNS!r}"
+    )

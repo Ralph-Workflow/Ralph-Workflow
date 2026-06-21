@@ -46,6 +46,19 @@ Each action object must have:
 - Do NOT use `add_to_gitignore` for machine-local patterns; use `add_to_git_exclude` instead
 - Do NOT delete files that are part of the actual commit (source code, tests, docs)
 
+## Ralph runtime artifacts (ALWAYS safe to delete)
+
+The following paths are Ralph Workflow runtime artifacts. They are unconditionally deletable from any commit, even when tracked in HEAD:
+
+- Any path under `.agent/raw/`, `.agent/tmp/`, `.agent/artifacts/`, `.agent/workers/`, `.agent/receipts/`, `.agent/prompt_history/`, `.agent/artifact-formats/`
+- Specific basenames at the `.agent/` top level: `.agent/CURRENT_PROMPT.md`, `.agent/PLAN.md`, `.agent/ISSUES.md`, `.agent/DEVELOPMENT_RESULT.md`, `.agent/FIX_RESULT.md`, `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`, `.agent/PLANNING_ANALYSIS_DECISION.md`, `.agent/REVIEW_ANALYSIS_DECISION.md`, `.agent/checkpoint.json`, `.agent/rebase_checkpoint.json`, `.agent/rebase_checkpoint.json.bak`, `.agent/rebase.lock`, `.agent/start_commit`, `.agent/mcp.toml`
+- Completion sentinels: any `.agent/completion_seen_*.json` (the filename glob is `completion_seen_*.json`, NOT `completion_sentinel_*.json`)
+- Root-level: bare `checkpoint.json` at the repo root
+
+## Security boundary
+
+For source-code files under `.agent/` that are NOT in the list above (e.g. `.agent/test.py`, `.agent/CHANGELOG.md`, `.agent/utils.py`, `.agent/scripts/build.sh`, `.agent/notes/foo.txt`, `.agent/data/seed.json`), DO NOT delete them — they are user-authored content even if they happen to live under `.agent/`. The same applies to source-code files anywhere else in the repo.
+
 ## Dumb-proof checklist
 
 - Did you set `artifact_type` to `"commit_cleanup"`?

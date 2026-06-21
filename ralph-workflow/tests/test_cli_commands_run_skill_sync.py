@@ -209,6 +209,54 @@ def test_sync_seeds_default_gitignore_on_every_run(
     run_module.install_project_baseline_skills.assert_not_called()
 
 
+def test_sync_seeds_default_git_exclude_on_every_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The .git/info/exclude auto-seed is INDEPENDENT of the project-scope skill predicate."""
+    mock_manager = MagicMock()
+    mock_manager.check_skills_for_updates.return_value = False
+    monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
+
+    monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: False)
+    monkeypatch.setattr(run_module, "install_project_baseline_skills", MagicMock())
+
+    gitignore_mock = MagicMock()
+    git_exclude_mock = MagicMock()
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_gitignore", gitignore_mock)
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_git_exclude", git_exclude_mock)
+
+    run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    gitignore_mock.assert_called_once_with(tmp_path)
+    git_exclude_mock.assert_called_once_with(tmp_path)
+    run_module.install_project_baseline_skills.assert_not_called()
+
+
+def test_sync_git_exclude_seed_is_non_fatal_on_exception(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A raising git exclude auto-seed must not raise; logger.debug is emitted."""
+    mock_manager = MagicMock()
+    mock_manager.check_skills_for_updates.return_value = False
+    monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
+
+    monkeypatch.setattr(
+        "ralph.config.bootstrap.auto_seed_default_git_exclude",
+        MagicMock(side_effect=RuntimeError("simulated")),
+    )
+
+    captured: list[str] = []
+    sink_id = logger.add(captured.append, level="DEBUG", format="{message}")
+    try:
+        run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert any(
+        "Project .gitignore/.git/info/exclude auto-seed failed" in message for message in captured
+    ), f"Expected debug log line, got: {captured!r}"
+
+
 def test_sync_gitignore_seed_is_non_fatal_on_exception(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -229,9 +277,9 @@ def test_sync_gitignore_seed_is_non_fatal_on_exception(
     finally:
         logger.remove(sink_id)
 
-    assert any("Project .gitignore auto-seed failed" in message for message in captured), (
-        f"Expected debug log line, got: {captured!r}"
-    )
+    assert any(
+        "Project .gitignore/.git/info/exclude auto-seed failed" in message for message in captured
+    ), f"Expected debug log line, got: {captured!r}"
 
 
 def test_sync_surfaces_force_init_skills_hint_on_user_global_update_available(

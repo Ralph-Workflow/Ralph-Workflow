@@ -579,11 +579,15 @@ def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> 
     except Exception as exc:  # project-scope install is best-effort; must not break the pipeline
         logger.debug("Project-scope skill install failed (non-fatal): {}", exc)
     try:
-        from ralph.config.bootstrap import auto_seed_default_gitignore
+        from ralph.config.bootstrap import (
+            auto_seed_default_git_exclude,
+            auto_seed_default_gitignore,
+        )
 
         auto_seed_default_gitignore(target_root)
-    except Exception as exc:  # gitignore auto-seed is best-effort
-        logger.debug("Project .gitignore auto-seed failed (non-fatal): {}", exc)
+        auto_seed_default_git_exclude(target_root)
+    except Exception as exc:  # gitignore / git exclude auto-seed is best-effort
+        logger.debug("Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {}", exc)
 
 
 sync_shipped_skills_on_pipeline_run = _sync_shipped_skills_on_pipeline_run

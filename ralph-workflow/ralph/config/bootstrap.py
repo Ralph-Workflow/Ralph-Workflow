@@ -20,6 +20,7 @@ Bootstrap creates the standard first-run config set:
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import shutil
 from collections.abc import Mapping
@@ -52,6 +53,7 @@ _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
     ".agent/",
     "/PROMPT*",
     "wt-*/",
+    "/checkpoint.json",
     # Python
     "__pycache__/",
     "*.py[codz]",
@@ -179,6 +181,67 @@ _DEFAULT_GITIGNORE_PATTERNS: tuple[str, ...] = (
     "Desktop.ini",
     "ehthumbs.db",
     "$RECYCLE.BIN/",
+)
+
+
+# Machine-local exclude patterns for ``.git/info/exclude``. These never enter
+# the repo -- they keep the user-level state out of every clone.
+#
+# Every pattern here is the canonical on-disk form (NOT the Python abstraction
+# identifier). The completion-sentinel glob is ``completion_seen_*.json``
+# (the canonical on-disk filename pattern -- confirmed against
+# ``COMPLETION_SENTINEL_RELPATHFMT`` in ``ralph.mcp.tools.coordination``).
+# Root-anchored ``/checkpoint.json`` is used (NOT bare ``checkpoint.json``
+# which would silently match every nested directory).
+#
+# NOTE: ``_agent_internal_paths.py`` is loaded via ``importlib`` rather than
+# a normal ``from ... import`` so this module never transitively triggers
+# ``ralph.phases.__init__.py``. A normal import would create a cycle
+# (``ralph.config`` -> ``bootstrap`` -> ``ralph.phases.__init__`` ->
+# ``ralph.policy.loader`` -> ``ralph.phases``), so the leaf module is loaded
+# directly by file path. The audit
+# (``ralph/testing/audit_agent_internal_paths.py``) uses the same pattern.
+def _load_agent_internal_paths_module() -> ModuleType:
+    """Load ``_agent_internal_paths`` directly without triggering ``ralph.phases.__init__``.
+
+    Returns:
+        The loaded ``_agent_internal_paths`` module.
+    """
+    module_path = Path(__file__).resolve().parent.parent / "phases" / "_agent_internal_paths.py"
+    spec = importlib.util.spec_from_file_location(
+        "_ralph_agent_internal_paths_bootstrap_target", module_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot build import spec for {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_agent_internal_paths_module = _load_agent_internal_paths_module()
+_AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB: str = (
+    _agent_internal_paths_module._AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB
+)
+AGENT_INTERNAL_DIR_GLOBS: frozenset[str] = _agent_internal_paths_module.AGENT_INTERNAL_DIR_GLOBS
+AGENT_INTERNAL_ROOT_BASENAMES: frozenset[str] = (
+    _agent_internal_paths_module.AGENT_INTERNAL_ROOT_BASENAMES
+)
+AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = (
+    _agent_internal_paths_module.AGENT_INTERNAL_TOP_LEVEL_BASENAMES
+)
+
+
+_DEFAULT_GIT_EXCLUDE_PATTERNS: tuple[str, ...] = (
+    # Engine-internal directories under .agent/ -- everything inside is engine-owned.
+    *tuple(f".agent/{dir_name}/" for dir_name in sorted(AGENT_INTERNAL_DIR_GLOBS)),
+    # Completion sentinels -- on-disk filename glob, NOT Python abstraction identifier.
+    f".agent/{_AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB}",
+    # Engine-internal top-level files under .agent/.
+    *tuple(f".agent/{name}" for name in sorted(AGENT_INTERNAL_TOP_LEVEL_BASENAMES)),
+    # Root-anchored root basenames (only checkpoint.json today). The leading
+    # slash matches only at the repo root -- bare ``checkpoint.json`` would
+    # silently match every nested directory (PA-002).
+    *tuple(f"/{name}" for name in sorted(AGENT_INTERNAL_ROOT_BASENAMES)),
 )
 
 
@@ -359,6 +422,7 @@ def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> lis
         for policy_filename in _LOCAL_POLICY_FILENAMES
     )
     _ensure_default_gitignore(agent_dir.parent)
+    _ensure_default_git_exclude(agent_dir.parent)
     return results
 
 
@@ -380,6 +444,85 @@ def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[Bootst
 
 def _ensure_default_gitignore(repo_root: Path) -> None:
     append_to_gitignore(repo_root, list(_DEFAULT_GITIGNORE_PATTERNS))
+
+
+def _ensure_default_git_exclude(repo_root: Path) -> None:
+    """Append the canonical engine-internal patterns to ``.git/info/exclude``.
+
+    Uses ``add_to_git_exclude`` from ``ralph.git.commit_cleanup`` which is
+    idempotent and preserves user-added entries. Idempotent on its own --
+    the helper will simply return ``[]`` when every default pattern is
+    already present.
+
+    Graceful no-op when ``repo_root`` is not a git repository: the
+    underlying ``add_to_git_exclude`` calls ``Repo(repo_root)`` which
+    raises ``InvalidGitRepositoryError`` if there is no ``.git`` directory.
+    Bootstrap is called from non-git working trees (e.g. ``ensure_local_configs``
+    in unit tests that pass a bare ``tmp_path``); failing here would break
+    those tests for no real benefit.
+
+    Raises:
+        OSError: When the underlying filesystem operation fails.
+    """
+    from git import InvalidGitRepositoryError
+
+    from ralph.git.commit_cleanup import add_to_git_exclude
+
+    try:
+        add_to_git_exclude(repo_root, list(_DEFAULT_GIT_EXCLUDE_PATTERNS))
+    except InvalidGitRepositoryError:
+        # Non-git working tree -- nothing to seed. The gitignore path
+        # (``_ensure_default_gitignore``) also does not require a git repo.
+        return
+
+
+def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
+    """Auto-seed ``.git/info/exclude`` on a normal ``ralph`` run.
+
+    Mirrors ``auto_seed_default_gitignore`` but for the per-user
+    ``.git/info/exclude`` file. Reads the existing file (if any), computes
+    the patterns from ``_DEFAULT_GIT_EXCLUDE_PATTERNS`` that are not
+    already present, appends them via ``add_to_git_exclude``, and returns
+    the list of patterns that were actually appended.
+
+    Idempotent: a second call with the same ``repo_root`` returns ``[]``
+    when every default pattern is already present. Does NOT clobber
+    user-added entries.
+
+    Tolerates a missing ``.git/`` directory: the helper writes
+    ``.git/info/exclude`` directly into the filesystem (treating
+    ``repo_root`` as the canonical working-tree root), creating the parent
+    dirs as needed. This matches the pattern used by
+    ``add_to_git_exclude`` for non-git invocations and lets the helper be
+    called from Ralph invocations that have not yet initialized git.
+
+    Args:
+        repo_root: Path to the repository (or project) root.
+
+    Returns:
+        List of patterns that were appended on this call. Empty when the
+        existing file already covered every default pattern.
+    """
+    git_dir = repo_root / ".git"
+    exclude_path = git_dir / "info" / "exclude"
+    existing: set[str] = set()
+    file_existed = exclude_path.exists()
+    if file_existed:
+        try:
+            existing = set(exclude_path.read_text(encoding="utf-8").splitlines())
+        except OSError:
+            existing = set()
+    missing = [p for p in _DEFAULT_GIT_EXCLUDE_PATTERNS if p not in existing]
+    if missing:
+        exclude_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = "\n".join(missing)
+        if file_existed:
+            with exclude_path.open("a", encoding="utf-8") as f:
+                f.write("\n")
+                f.write(payload)
+        else:
+            exclude_path.write_text(payload, encoding="utf-8")
+    return list(missing)
 
 
 def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
