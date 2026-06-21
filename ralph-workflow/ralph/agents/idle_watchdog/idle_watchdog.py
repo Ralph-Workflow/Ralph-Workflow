@@ -1042,18 +1042,28 @@ class IdleWatchdog:
         live signals is present:
 
         - ``self._safe_corroborate()`` returns a ``CorroborationSnapshot``
-          with ``alive_by != None`` -- the corroborator (process tree / OS
-          descendant scan / heartbeat) confirms a live child agent. The
-          ``self._last_alive_by`` field is intentionally NOT consulted here:
-          it is only populated post-fire by ``NO_PROGRESS_QUIET`` at line 620
-          and is never set for ``NO_OUTPUT_AT_START``. Reading the stale
-          field would never trigger (when ``NO_PROGRESS_QUIET`` has never
-          fired) or forever suppress ``NO_OUTPUT_AT_START`` after a prior
-          ``NO_PROGRESS_QUIET`` fire.
+          whose ``alive_by`` is a FRESH corroboration state -- the
+          corroborator (process tree / OS descendant scan / heartbeat)
+          confirms a live child agent with a recent progress or
+          heartbeat signal. The helper ``_alive_by_is_fresh(...)``
+          (driven by ``_FRESH_ALIVE_BY_STATES`` = ``{FRESH_PROGRESS,
+          FRESH_HEARTBEAT_ONLY}``) returns True ONLY for those two
+          states. Stale ``AliveBy`` values (``OS_DESCENDANT_ONLY_STALE_PROGRESS``,
+          ``CPU_IDLE_WHILE_ALIVE``, ``LOG_STALE_WHILE_ALIVE``,
+          ``STALE_LABEL_ONLY``) and ``None`` DO NOT defer: they describe
+          a child that has stopped producing fresh evidence and the
+          short ``NO_OUTPUT_AT_START`` kill MUST still apply. The
+          ``self._last_alive_by`` field is intentionally NOT consulted
+          here: it is only populated post-fire by ``NO_PROGRESS_QUIET``
+          at line 620 and is never set for ``NO_OUTPUT_AT_START``.
+          Reading the stale field would never trigger (when
+          ``NO_PROGRESS_QUIET`` has never fired) or forever suppress
+          ``NO_OUTPUT_AT_START`` after a prior ``NO_PROGRESS_QUIET``
+          fire.
         - ``self._cumulative_waiting_on_child_seconds > 0`` -- the agent
-          has already survived a full ``WAITING_ON_CHILD`` entry/exit cycle
-          this invocation, which demonstrates it is alive enough that
-          ``NO_OUTPUT_AT_START`` no longer applies.
+          has already survived a full ``WAITING_ON_CHILD`` entry/exit
+          cycle this invocation, which demonstrates it is alive enough
+          that ``NO_OUTPUT_AT_START`` no longer applies.
         """
         if (
             self._config.no_output_at_start_seconds is None

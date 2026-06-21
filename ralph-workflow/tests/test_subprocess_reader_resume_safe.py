@@ -468,14 +468,25 @@ def test_subprocess_reader_session_resume_safe_for_no_output_at_start(
     is used (InvokeOptions does not expose the field; the default is the
     canonical operator-configured value).
 
+    The session id is threaded via ``InvokeOptions.session_id`` (the
+    ``expected_session_id`` fallback path) rather than via a captured
+    stream line -- if we emitted a ``{"type":"session",...}`` line, the
+    OpenCode strategy would classify it as ``OUTPUT_LINE``, which
+    ``_record_line_activity`` routes to ``record_activity()`` and
+    sets ``_has_meaningful_output=True``, so the no_output_at_start
+    trigger would never become eligible. The fallback path proves the
+    resume-safe wiring without perturbing the no_output_at_start
+    contract.
+
     The agent never records any activity; the watchdog fires
     NO_OUTPUT_AT_START after 30s. The subprocess reader must raise
     ``AgentInactivityTimeoutError`` with ``session_resume_safe=True``
-    and the captured ``resumable_session_id``.
-
-    This pins the third of the four resume-eligible reasons
-    (NO_OUTPUT_AT_START). The eligibility-set logic is a closed
-    literal in ``_process_reader.py`` shared by all reasons.
+    AND populate ``resumable_session_id`` from the expected-session-id
+    fallback so the high-level ``invoke_agent`` seam resumes the SAME
+    session id (NOT a fresh-from-scratch restart). This pins the third
+    of the four resume-eligible reasons (NO_OUTPUT_AT_START). The
+    eligibility-set logic is a closed literal in ``_process_reader.py``
+    shared by all reasons.
     """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
@@ -504,15 +515,11 @@ def test_subprocess_reader_session_resume_safe_for_no_output_at_start(
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
-    opts = InvokeOptions(
-        show_progress=False,
-        workspace_path=tmp_path,
-        idle_timeout_seconds=300.0,
-        max_waiting_on_child_seconds=600.0,
-        max_session_seconds=None,
-        max_waiting_on_child_no_progress_seconds=None,
-        waiting_status_interval_seconds=100.0,
-        idle_poll_interval_seconds=0.01,
+    opts = _make_invocation_options(
+        tmp_path=tmp_path,
+        idle_timeout=300.0,
+        max_waiting=600.0,
+        session_id="sess-no-output-at-start",
     )
 
     try:
@@ -534,4 +541,8 @@ def test_subprocess_reader_session_resume_safe_for_no_output_at_start(
     assert exc_info.value.session_resume_safe is True, (
         f"Expected session_resume_safe=True for NO_OUTPUT_AT_START, "
         f"got {exc_info.value.session_resume_safe}"
+    )
+    assert exc_info.value.resumable_session_id == "sess-no-output-at-start", (
+        f"Expected resumable_session_id='sess-no-output-at-start'"
+        f" (same-session resume contract), got {exc_info.value.resumable_session_id!r}"
     )
