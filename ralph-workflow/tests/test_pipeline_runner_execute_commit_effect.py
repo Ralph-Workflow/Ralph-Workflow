@@ -672,6 +672,63 @@ class TestExecuteCommitEffect:
                 ["../escape"],
             )
 
+    def test_resolve_commit_scope_rejects_parent_symlink_chain_escape(
+        self, tmp_git_repo: Path, tmp_path: Path
+    ) -> None:
+        """A path whose parent directory is a symlink chain escape is rejected.
+
+        Defense-in-depth: a parent-directory symlink pointing outside the
+        worktree (e.g. ``linkdir`` is a symlink to ``/tmp/.../outside``)
+        would otherwise resolve to a location outside ``repo_root`` when
+        ``git add`` follows the symlink. The literal-path symlink check
+        in ``_resolve_commit_scope`` walks every parent directory and
+        rejects the first symlink found, so the file inside
+        ``linkdir/payload.txt`` (a regular file) cannot be staged.
+        """
+        linkdir = tmp_git_repo / "linkdir"
+        linkdir.symlink_to(tmp_path)
+        target_file = linkdir / "payload.txt"
+        target_file.write_text("payload outside the repo\n")
+
+        with pytest.raises(ValueError, match=r"parent directory is a symlink"):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["linkdir/payload.txt"], "excluded_files": []},
+                ["linkdir/payload.txt"],
+                repo_root=tmp_git_repo,
+            )
+
+    def test_resolve_commit_scope_rejects_resolved_path_escape(
+        self, tmp_git_repo: Path, tmp_path: Path
+    ) -> None:
+        """A path whose resolved location escapes repo_root is rejected.
+
+        Defense-in-depth against symlink chains. Even though the
+        parent-walk catches the same scenario when ``is_symlink()``
+        fires on the parent directory, the resolved-path check provides
+        a defense-in-depth guarantee: any candidate whose resolved
+        location is not under ``repo_root.resolve()`` is rejected.
+        The error message in this case carries the ``parent directory``
+        wording because the parent-walk fires first; the test pins
+        that the resolved-path escape is rejected regardless of which
+        check wins.
+        """
+        outside_dir = tmp_path / "outside_dir"
+        outside_dir.mkdir()
+        linkdir = tmp_git_repo / "deep"
+        linkdir.symlink_to(outside_dir)
+        outside_payload = outside_dir / "payload.txt"
+        outside_payload.write_text("outside the repo\n")
+
+        with pytest.raises(
+            ValueError,
+            match=r"(parent directory is a symlink|outside repository root)",
+        ):
+            commit_executor_module._resolve_commit_scope(
+                {"files": ["deep/payload.txt"], "excluded_files": []},
+                ["deep/payload.txt"],
+                repo_root=tmp_git_repo,
+            )
+
     def test_execute_commit_effect_logs_exception_type_on_failure(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
     ) -> None:

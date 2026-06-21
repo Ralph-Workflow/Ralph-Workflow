@@ -39,9 +39,15 @@ from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
+from ralph.git.operations import create_commit, stage_all
 from ralph.phases import PhaseContext, handle_phase
 from ralph.pipeline import runner
-from ralph.pipeline.effects import CommitEffect, Effect, InvokeAgentEffect
+from ralph.pipeline.effects import (
+    CommitEffect,
+    EarlySkipCommitEffect,
+    Effect,
+    InvokeAgentEffect,
+)
 from ralph.pipeline.events import PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
@@ -93,6 +99,29 @@ def _write_commit_cleanup_artifact(workspace: FsWorkspace, content: dict) -> Non
     path = Path(workspace.root) / ".agent" / "artifacts" / "commit_cleanup.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(artifact), encoding="utf-8")
+
+
+def _write_commit_message_artifacts(repo_root: Path, subject: str) -> None:
+    """Write a valid commit_message artifact pair so execute_commit_effect can run.
+
+    The canonical ``execute_commit_effect`` reads ``.agent/tmp/commit_message.json``
+    (structured payload) AND ``.agent/tmp/commit-message.txt`` (rendered mirror).
+    Both must be present and valid. Without these, the real commit effect returns
+    COMMIT_FAILURE because the message file is empty / unreadable.
+    """
+    artifact_path = repo_root / ".agent" / "tmp" / "commit_message.json"
+    text_path = repo_root / ".agent" / "tmp" / "commit-message.txt"
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_payload = {
+        "name": "commit_message",
+        "type": "commit_message",
+        "content": {"type": "commit", "subject": subject},
+        "created_at": "2024-01-01T00:00:00Z",
+        "updated_at": "2024-01-01T00:00:00Z",
+        "metadata": {},
+    }
+    artifact_path.write_text(json.dumps(artifact_payload), encoding="utf-8")
+    text_path.write_text(subject, encoding="utf-8")
 
 
 def _track_and_commit(repo_root: Path, rel_path: str) -> None:
@@ -154,16 +183,31 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
     memory_workspace: MemoryWorkspace,
     engine_internal_workspace: FsWorkspace,
 ) -> None:
-    """End-to-end proof: final-cleanup -> final-commit transition works.
+    """End-to-end proof: final-cleanup -> final-commit transition creates a real git commit.
+
+    Drives ``runner.run`` end-to-end with the canonical
+    ``CommitCleanupAlwaysLoopbackInvoker`` helper PLUS a real
+    ``execute_commit_effect`` call for every ``CommitEffect`` (the runner's
+    own DI seam).
 
     Exercises the ``development_final_commit_cleanup`` phase through the
     same ``runner.run`` harness as the development variant. The cleanup
     handler is registered for ALL role='commit_cleanup' phases, so the
     same ``handle_commit_cleanup_phase`` handles both the development
     and final-commit cleanup variants.
+
+    After the pipeline terminates:
+    * Every originally-failing tracked file is deleted from disk.
+    * ``.gitignore`` and ``.git/info/exclude`` were auto-seeded.
+    * The pipeline terminated at ``complete`` (NOT ``failed_terminal``).
+    * A real git commit was created (Repo.head.log count incremented
+      beyond the template's initial commit, and the new commit's tree
+      does NOT contain the deleted tracked files).
     """
     repo_root = Path(engine_internal_workspace.root)
     policy_bundle = _default_policy_bundle()
+
+    initial_commit_count = _git_commit_count(repo_root)
 
     for rel_path in ORIGINALLY_FAILING_PATHS:
         assert (repo_root / rel_path).exists(), (
@@ -173,11 +217,15 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
     _write_commit_cleanup_artifact(
         engine_internal_workspace,
         {
-            "analysis_complete": False,
+            "analysis_complete": True,
             "actions": [
                 {"action": "delete_file", "path": path} for path in ORIGINALLY_FAILING_PATHS
             ],
         },
+    )
+    _write_commit_message_artifacts(
+        repo_root,
+        "fix(commit): harden final-cleanup -> final-commit transition",
     )
 
     invoker = CommitCleanupAlwaysLoopbackInvoker(memory_workspace)
@@ -193,18 +241,14 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
             invoker.invoke(effect.agent_name, effect.phase)
             return PipelineEvent.AGENT_SUCCESS
         if isinstance(effect, CommitEffect):
-            commit_event_for = cast(
-                "Callable[[str], PipelineEvent] | None",
-                getattr(invoker, "commit_event_for", None),
+            return runner.execute_commit_effect(
+                effect,
+                create_commit,
+                stage_all,
+                repo_root,
             )
-            last_phase = getattr(invoker, "last_phase", None)
-            if (
-                commit_event_for is not None
-                and isinstance(last_phase, str)
-                and (last_phase.endswith("_commit") or last_phase == "commit")
-            ):
-                return commit_event_for(last_phase)
-            return PipelineEvent.COMMIT_SUCCESS
+        if isinstance(effect, EarlySkipCommitEffect):
+            return PipelineEvent.COMMIT_SKIPPED
         msg = f"Unexpected effect type: {type(effect)!r}"
         raise AssertionError(msg)
 
@@ -222,6 +266,18 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
         **_kwargs: object,
     ) -> PipelineEvent:
         if effect.phase in cleanup_phases:
+            ctx = PhaseContext.model_construct(
+                workspace=workspace,
+                registry=AgentRegistry.from_config(config),
+                chain_manager=ChainManager(policy_bundle.agents),
+                pipeline_policy=policy_bundle.pipeline,
+                agents_policy=policy_bundle.agents,
+                artifacts_policy=policy_bundle.artifacts,
+                config=config,
+            )
+            events = handle_phase(effect, ctx)
+            return events[0] if events else PipelineEvent.AGENT_SUCCESS
+        if effect.phase in ("development_commit", "development_final_commit"):
             ctx = PhaseContext.model_construct(
                 workspace=workspace,
                 registry=AgentRegistry.from_config(config),
@@ -287,8 +343,45 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
             f"Expected {fragment!r} in auto-seeded .git/info/exclude, got:\n{exclude_text}"
         )
 
+    final_commit_count = _git_commit_count(repo_root)
+    assert final_commit_count > initial_commit_count, (
+        f"Real git commit was NOT created: pre-run count={initial_commit_count}, "
+        f"post-run count={final_commit_count}. The execute_commit_effect call "
+        "must actually stage and commit changes via real git."
+    )
+
+    new_commit_tree_paths = _newest_commit_tree_paths(repo_root)
+    for rel_path in ORIGINALLY_FAILING_PATHS:
+        assert rel_path not in new_commit_tree_paths, (
+            f"Deleted tracked file {rel_path!r} must NOT appear in the new "
+            f"commit's tree; got paths: {sorted(new_commit_tree_paths)}"
+        )
+
     final_state = saved_states[-1]
     assert getattr(final_state, "phase", None) == "complete", (
         f"Pipeline must terminate at 'complete', got {getattr(final_state, 'phase', None)!r}. "
         "Entering 'failed_terminal' would mean a PhaseFailureEvent was emitted."
     )
+
+
+def _newest_commit_tree_paths(repo_root: Path) -> set[str]:
+    """Return the set of paths in the most recent commit's tree."""
+    repo = Repo(repo_root)
+    try:
+        newest = repo.head.commit
+        paths: set[str] = set()
+        for blob in newest.tree.traverse():
+            if blob.type == "blob":
+                paths.add(blob.path)
+        return paths
+    finally:
+        repo.close()
+
+
+def _git_commit_count(repo_root: Path) -> int:
+    """Return the number of commits in ``repo_root``'s git log."""
+    repo = Repo(repo_root)
+    try:
+        return sum(1 for _ in repo.iter_commits("HEAD"))
+    finally:
+        repo.close()
