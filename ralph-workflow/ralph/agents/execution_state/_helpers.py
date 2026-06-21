@@ -171,6 +171,139 @@ def _classify_opencode_child_signal(line: str) -> AgentActivitySignal | None:
     return AgentActivitySignal(kind, raw=line)
 
 
+# Cross-transport generic child-signal classifier.
+#
+# The OpenCode strategy uses the specialised ``_classify_opencode_child_signal``
+# above (which understands the OpenCode wire format). For every other
+# transport (Claude, Codex, Generic, Agy, Nanocoder) we run a permissive
+# generic classifier that recognises:
+#
+#   * JSON envelopes whose ``type`` / ``event`` key is in a small set of
+#     ``child_progress`` / ``progress`` / ``tool_call`` /
+#     ``task_progress`` labels -> CHILD_PROGRESS.
+#   * JSON envelopes whose ``type`` / ``event`` key is in a small set of
+#     ``child_heartbeat`` / ``heartbeat`` / ``child_alive`` /
+#     ``alive`` labels -> CHILD_HEARTBEAT.
+#   * Plain-text markers (``[child]``, ``[subagent]``, ``subagent: ``,
+#     ``child: ``, etc.) -> CHILD_PROGRESS.
+#   * Plain-text heartbeat markers (case-insensitive ``subagent heartbeat``)
+#     -> CHILD_HEARTBEAT.
+#
+# Terminal signals (``child_complete``, ``child_failed``,
+# ``child_terminal``) are NOT classified by the generic classifier --
+# terminal signals do not invoke the sink (same contract as OpenCode).
+_GENERIC_CHILD_PROGRESS_KIND: frozenset[str] = frozenset(
+    {"child_progress", "progress", "tool_call", "task_progress"}
+)
+_GENERIC_CHILD_HEARTBEAT_KIND: frozenset[str] = frozenset(
+    {"child_heartbeat", "heartbeat", "child_alive", "alive"}
+)
+_GENERIC_CHILD_TERMINAL_KIND: frozenset[str] = frozenset(
+    {"child_complete", "child_failed", "child_terminal"}
+)
+_GENERIC_PROGRESS_MARKERS: tuple[str, ...] = (
+    "[child]",
+    "[subagent]",
+    "subagent progress",
+    "child progress",
+    "task progress",
+    "subagent: ",
+    "child: ",
+)
+_GENERIC_HEARTBEAT_MARKERS: tuple[str, ...] = ("subagent heartbeat", "child heartbeat")
+
+
+def _extract_event_kind_from_json(line: str) -> str | None:
+    """Return the lowercased ``type`` / ``event`` value from a JSON envelope, or None.
+
+    A best-effort extractor: returns None for non-JSON, non-dict, or
+    empty inputs. The two keys ``type`` and ``event`` are tried in order
+    so a single helper handles both OpenCode-style and Codex-style wire
+    formats.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    try:
+        parsed = cast("object", json.loads(stripped, strict=False))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    obj = cast("dict[str, object]", parsed)
+    raw_type = obj.get("type")
+    if isinstance(raw_type, str) and raw_type:
+        return raw_type.strip().lower()
+    raw_event = obj.get("event")
+    if isinstance(raw_event, str) and raw_event:
+        return raw_event.strip().lower()
+    return None
+
+
+def _classify_generic_child_signal(line: str) -> AgentActivitySignal | None:
+    """Permissive cross-transport child-signal classifier.
+
+    Returns an ``AgentActivitySignal`` for lines that look like a
+    child progress / heartbeat signal from ANY supported transport;
+    returns ``None`` otherwise (including for empty / whitespace-only
+    lines, regular stdout, and terminal child events).
+
+    This classifier is purely additive on top of the existing
+    ``_classify_opencode_child_signal`` specialised classifier.
+    Transport-specific strategies continue to use the specialised
+    classifier for their own wire format; the generic classifier is
+    the safety net for transports that emit child-signal markers
+    using a different format (Claude ``[child]``, Codex JSON
+    ``event=progress``, plain-text ``subagent heartbeat``).
+    """
+    if not line.strip():
+        return None
+    signal = _classify_generic_child_signal_from_json(line)
+    if signal is not None:
+        return signal
+    return _classify_generic_child_signal_from_text(line)
+
+
+def _classify_generic_child_signal_from_json(
+    line: str,
+) -> AgentActivitySignal | None:
+    """Classify a JSON envelope by its ``type``/``event`` field.
+
+    Returns ``None`` for non-JSON, non-dict, or unknown type/event
+    envelopes (the caller falls through to plain-text matching).
+    Terminal events return ``None`` (terminal signals do not invoke
+    the sink).
+    """
+    event_kind = _extract_event_kind_from_json(line)
+    if event_kind is None:
+        return None
+    if event_kind in _GENERIC_CHILD_TERMINAL_KIND:
+        return None
+    if event_kind in _GENERIC_CHILD_HEARTBEAT_KIND:
+        return AgentActivitySignal(AgentActivityKind.CHILD_HEARTBEAT, raw=line)
+    if event_kind in _GENERIC_CHILD_PROGRESS_KIND:
+        return AgentActivitySignal(AgentActivityKind.CHILD_PROGRESS, raw=line)
+    return None
+
+
+def _classify_generic_child_signal_from_text(
+    line: str,
+) -> AgentActivitySignal | None:
+    """Classify a plain-text line by its marker tokens.
+
+    Heartbeat markers take precedence over progress markers; the
+    classifier matches on a case-insensitive ``in`` substring test.
+    """
+    lowered = line.lower()
+    for marker in _GENERIC_HEARTBEAT_MARKERS:
+        if marker in lowered:
+            return AgentActivitySignal(AgentActivityKind.CHILD_HEARTBEAT, raw=line)
+    for marker in _GENERIC_PROGRESS_MARKERS:
+        if marker in lowered:
+            return AgentActivitySignal(AgentActivityKind.CHILD_PROGRESS, raw=line)
+    return None
+
+
 def _route_opencode_line_to_registry(
     line: str,
     registry: ChildLivenessRegistry,

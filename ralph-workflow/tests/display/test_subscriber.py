@@ -24,6 +24,7 @@ class _EventOptions:
     ceiling: float = 1800.0
     suspect: Any = 600.0
     diagnostic: Any = None
+    subagent_activity: str | None = None
 
 
 def _make_subscriber(tmp_path: Path) -> PipelineSubscriber:
@@ -44,6 +45,7 @@ def _event(opts: _EventOptions) -> WaitingStatusEvent:
         ceiling_seconds=opts.ceiling,
         suspect_threshold_seconds=opts.suspect,
         diagnostic=opts.diagnostic or {},
+        subagent_activity=opts.subagent_activity,
     )
 
 
@@ -314,3 +316,98 @@ def test_record_permission_prompt_action_updates_activity_and_decision_log(tmp_p
         entry[1] == "permission_prompt_auto_answered" and "Allow this action?" in entry[2]
         for entry in sub.decision_log
     )
+
+
+# ---------------------------------------------------------------------------
+# Task: subagent_activity rendering in subscriber
+# ---------------------------------------------------------------------------
+
+
+def test_progress_event_with_subagent_activity_renders_suffix(tmp_path: Path) -> None:
+    """PROGRESS event with subagent_activity appends a ``subagent=<text>`` suffix."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.PROGRESS,
+                subagent_activity="thinking about edge cases",
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "still active" in line
+    assert "subagent=thinking about edge cases" in line
+
+
+def test_hard_stop_event_with_subagent_activity_renders_suffix(tmp_path: Path) -> None:
+    """HARD_STOP event with subagent_activity appends a ``subagent=<text>`` suffix."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.HARD_STOP,
+                diagnostic={
+                    "scoped_child_active": True,
+                    "oldest_child_seconds": 720.0,
+                    "cumulative": 1800.0,
+                },
+                subagent_activity="active task",
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "hit hard ceiling" in line
+    assert "subagent=active task" in line
+
+
+def test_suspected_frozen_event_with_subagent_activity_renders_suffix(
+    tmp_path: Path,
+) -> None:
+    """SUSPECTED_FROZEN event with subagent_activity appends a ``subagent=<text>`` suffix."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.SUSPECTED_FROZEN,
+                diagnostic={"evidence": "time_only"},
+                subagent_activity="scout exploring",
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "may be frozen" in line
+    assert "subagent=scout exploring" in line
+
+
+def test_event_without_subagent_activity_omits_suffix(tmp_path: Path) -> None:
+    """PROGRESS event without subagent_activity does NOT append a ``subagent=`` suffix."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(_event(_EventOptions(kind=WaitingStatusKind.PROGRESS)))
+    line = _last_line(sub)
+    assert line is not None
+    assert "subagent=" not in line
+
+
+def test_subagent_activity_truncates_to_80_chars(tmp_path: Path) -> None:
+    """Subagent activity longer than 80 chars is truncated with an ellipsis."""
+    sub = _make_subscriber(tmp_path)
+    long_text = "x" * 200
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.PROGRESS,
+                subagent_activity=long_text,
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    # The full text must NOT be in the line; it must be truncated.
+    assert long_text not in line
+    assert "..." in line
+    # The truncated part should be 80 chars of x followed by '...'
+    assert "subagent=" in line
+    assert line.endswith("...")

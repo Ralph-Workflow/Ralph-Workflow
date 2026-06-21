@@ -343,6 +343,13 @@ class IdleWatchdog:
         self._last_mcp_tool_call_at = None
         self._subagent_progress_count = 0
         self._last_subagent_progress_at = None
+        # Optional human-readable description of the most recent subagent
+        # observation (truncated to 200 chars). Surfaced via the
+        # ``subagent_activity`` field on ``WaitingStatusEvent``s so
+        # operators see what the subagent was doing at the moment of
+        # the event (transition, suspicion, fire). Reset to ``None`` in
+        # ``record_invocation_start`` and updated by ``record_subagent_work``.
+        self._last_subagent_progress_description: str | None = None
         self._subagent_output_count = 0
         self._last_subagent_output_at = None
         self._subagent_output_captures = {}
@@ -394,6 +401,7 @@ class IdleWatchdog:
         self._invocation_started_at = now
         self._last_meaningful_output_at = now
         self._has_meaningful_output = False
+        self._last_subagent_progress_description = None
 
     def set_is_waiting_state(self, is_waiting_state: bool) -> None:
         """Update the pipeline's wait-state flag for the StuckClassifier gate.
@@ -649,7 +657,7 @@ class IdleWatchdog:
         )
         return WatchdogVerdict.FIRE
 
-    def _evaluate_no_output_at_start(
+    def _evaluate_no_output_at_start(  # noqa: PLR0911 - 3 early-exit guards + 2 deferral gates + final verdict path; each is a distinct condition
         self,
         now: float,
         idle_elapsed: float,
@@ -662,6 +670,23 @@ class IdleWatchdog:
         subagent output). This is different from NO_PROGRESS_QUIET which fires
         inside WAITING_ON_CHILD deferral when the agent HAS produced output at
         some point but is now stuck with stale-progress evidence.
+
+        Defers (returns ``None``) before the gate when EITHER of the following
+        live signals is present:
+
+        - ``self._safe_corroborate()`` returns a ``CorroborationSnapshot``
+          with ``alive_by != None`` -- the corroborator (process tree / OS
+          descendant scan / heartbeat) confirms a live child agent. The
+          ``self._last_alive_by`` field is intentionally NOT consulted here:
+          it is only populated post-fire by ``NO_PROGRESS_QUIET`` at line 620
+          and is never set for ``NO_OUTPUT_AT_START``. Reading the stale
+          field would never trigger (when ``NO_PROGRESS_QUIET`` has never
+          fired) or forever suppress ``NO_OUTPUT_AT_START`` after a prior
+          ``NO_PROGRESS_QUIET`` fire.
+        - ``self._cumulative_waiting_on_child_seconds > 0`` -- the agent
+          has already survived a full ``WAITING_ON_CHILD`` entry/exit cycle
+          this invocation, which demonstrates it is alive enough that
+          ``NO_OUTPUT_AT_START`` no longer applies.
         """
         if (
             self._config.no_output_at_start_seconds is None
@@ -677,6 +702,29 @@ class IdleWatchdog:
         }:
             return None
         if self._channel_evidence_active(now):
+            return None
+        # Defer when the LIVE corroborator reports a live child agent.
+        # We MUST call ``_safe_corroborate()`` here, NOT read
+        # ``self._last_alive_by``: that field is only populated post-fire
+        # by ``NO_PROGRESS_QUIET`` (line 620) so it carries stale state
+        # from a prior fire and is never useful as a pre-fire deferral
+        # signal for ``NO_OUTPUT_AT_START``. The LIVE call returns the
+        # fresh snapshot from the corroborator at the moment of this
+        # evaluation. See ``TestNoOutputAtStartLiveCorroborationDefer``
+        # in ``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``
+        # for the contract that pins this behavior.
+        corroboration = self._safe_corroborate()
+        if corroboration.alive_by is not None:
+            return None
+        # Defer when we have already accumulated ``WAITING_ON_CHILD`` time
+        # this run; an agent that survived a full waiting run has
+        # demonstrated it is alive enough that ``NO_OUTPUT_AT_START`` no
+        # longer applies. The cumulative ceiling
+        # (``max_waiting_on_child_seconds``) is the bounded upper bound
+        # for live-child stalls; this gate is a NO_OUTPUT_AT_START-specific
+        # early-out that prevents a false-positive kill when the
+        # corroborator is not injected.
+        if self._cumulative_waiting_on_child_seconds > 0.0:
             return None
 
         gate_verdict = self._gate_fire(
@@ -843,7 +891,12 @@ class IdleWatchdog:
         self._mcp_tool_call_count += 1
         self._last_mcp_tool_call_at = timestamp
 
-    def record_subagent_work(self, now: float | None = None) -> None:
+    def record_subagent_work(
+        self,
+        now: float | None = None,
+        *,
+        description: str | None = None,
+    ) -> None:
         """Record a subagent work activity signal (subagent_output channel).
 
         Increments the subagent_output first-party channel counter and updates
@@ -861,10 +914,19 @@ class IdleWatchdog:
             now: Optional monotonic timestamp override; tests use this to
                 drive FakeClock without time travel. Defaults to the
                 watchdog's injected clock.
+            description: Optional short string describing the subagent
+                activity being recorded (e.g. the raw line that triggered
+                the activity sink). Truncated to 200 chars and surfaced
+                via the ``subagent_activity`` field on subsequent
+                ``WaitingStatusEvent``s so operators can see the most
+                recent subagent signal at the moment of any event.
         """
         timestamp = now if now is not None else self._clock.monotonic()
         self._subagent_progress_count += 1
         self._last_subagent_progress_at = timestamp
+        if description is not None:
+            stripped = description.strip()[:200]
+            self._last_subagent_progress_description = stripped or None
 
     def record_subagent_output(self, line_count: int = 1, now: float | None = None) -> None:
         """Record fresh subagent output as first-party evidence.
@@ -1381,6 +1443,7 @@ class IdleWatchdog:
             ),
             suspect_threshold_seconds=_suspect,
             diagnostic=dict(diagnostic) if diagnostic else {},
+            subagent_activity=self._last_subagent_progress_description,
         )
         try:
             self._listener(event)

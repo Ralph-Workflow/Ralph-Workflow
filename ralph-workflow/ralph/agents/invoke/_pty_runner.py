@@ -131,6 +131,7 @@ def run_pty_and_read_lines(
                 )
         except _IdleStreamTimeoutError as exc:
             session_resume_safe = exc.reason in {
+                WatchdogFireReason.NO_OUTPUT_AT_START,
                 WatchdogFireReason.NO_OUTPUT_DEADLINE,
                 WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
                 WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,

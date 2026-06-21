@@ -29,6 +29,14 @@ class WaitingStatusEvent:
         ceiling_seconds: The active WAITING_ON_CHILD ceiling for this event.
         suspect_threshold_seconds: The suspect_waiting_on_child_seconds threshold, or None.
         diagnostic: Optional dict of extra diagnostic keys for HARD_STOP events.
+        subagent_activity: Optional short string (truncated to 200 chars by the
+            watchdog at write time) describing the most recent child-progress
+            observation recorded via ``record_subagent_work``. The watchdog
+            captures the latest raw line so operators see which subagent
+            activity was current at the moment of the event (fires, transitions,
+            suspicion, progress). ``None`` when no subagent observation has
+            happened yet. Optional with a default so existing positional
+            callers continue to work without changes.
     """
 
     kind: WaitingStatusKind
@@ -38,6 +46,7 @@ class WaitingStatusEvent:
     ceiling_seconds: float
     suspect_threshold_seconds: float | None
     diagnostic: dict[str, str | int | float | bool | list[object]] = field(default_factory=dict)
+    subagent_activity: str | None = None
 
 
 WaitingStatusListener = Callable[[WaitingStatusEvent], None]

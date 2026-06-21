@@ -51,6 +51,7 @@ class _WaitingEventLike(Protocol):
     ceiling_seconds: float
     current_run_seconds: float
     diagnostic: dict[str, object]
+    subagent_activity: str | None
     kind: _WaitingKindLike
 
 
@@ -86,8 +87,13 @@ def _format_waiting_status_line(event: object) -> str:
     cum = f"{cast_event.cumulative_seconds:.0f}"
     ceil = f"{cast_event.ceiling_seconds:.0f}"
     run = f"{cast_event.current_run_seconds:.0f}"
+    subagent_part = _format_subagent_activity_suffix(cast_event.subagent_activity)
     if cast_event.kind == waiting_kind_cls.ENTERED:
-        return f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
+        base = (
+            f"Background child work started waiting"
+            f" (cumulative={cum}s, ceiling={ceil}s)"
+        )
+        return base + subagent_part
     if cast_event.kind == waiting_kind_cls.PROGRESS:
         delta = cast_event.diagnostic.get("workspace_event_delta")
         alive_by = cast_event.diagnostic.get("alive_by")
@@ -96,17 +102,20 @@ def _format_waiting_status_line(event: object) -> str:
             parts.append(f"workspace_events_since_wait={delta}")
         if alive_by is not None:
             parts.append(f"alive_by={alive_by}")
-        return f"Background child work still active ({', '.join(parts)})"
+        base = f"Background child work still active ({', '.join(parts)})"
+        return base + subagent_part
     if cast_event.kind == waiting_kind_cls.SUSPECTED_FROZEN:
         evidence = str(cast_event.diagnostic.get("evidence", "unknown"))
         alive_by = cast_event.diagnostic.get("alive_by")
         suffix = f", alive_by={alive_by}" if alive_by is not None else ""
-        return (
+        base = (
             f"Background child work may be frozen"
             f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence}{suffix})"
         )
+        return base + subagent_part
     if cast_event.kind == waiting_kind_cls.EXITED:
-        return f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
+        base = f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
+        return base + subagent_part
     scoped = cast_event.diagnostic.get("scoped_child_active", "?")
     oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
@@ -114,11 +123,34 @@ def _format_waiting_status_line(event: object) -> str:
         if oldest_val is not None
         else ""
     )
-    return (
+    base = (
         f"Background child work hit hard ceiling"
         f" (cumulative={cum}s, ceiling={ceil}s,"
         f" scoped_child_active={scoped}{oldest_part})"
     )
+    return base + subagent_part
+
+
+_SUBAGENT_ACTIVITY_MAX = 80
+
+
+def _format_subagent_activity_suffix(text: str | None) -> str:
+    """Return a ``subagent=<truncated>`` suffix when ``text`` is non-empty.
+
+    Truncates to 80 chars plus an ellipsis when longer. Returns an empty
+    string when ``text`` is ``None`` or whitespace-only so callers can
+    append the result unconditionally without producing empty parens.
+
+    Used by ``_format_waiting_status_line`` for the PROGRESS,
+    SUSPECTED_FROZEN, HARD_STOP, and ENTERED event kinds (EXITED is a
+    transition marker and is excluded by design).
+    """
+    if not text or not text.strip():
+        return ""
+    cleaned = text.strip()
+    if len(cleaned) > _SUBAGENT_ACTIVITY_MAX:
+        cleaned = cleaned[:_SUBAGENT_ACTIVITY_MAX] + "..."
+    return f", subagent={cleaned}"
 
 
 def _with_agent_visibility(line: str, agent_name: str | None) -> str:

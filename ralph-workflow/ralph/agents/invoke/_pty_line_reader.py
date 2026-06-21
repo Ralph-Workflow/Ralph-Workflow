@@ -861,8 +861,8 @@ class PtyLineReader:
         def _mcp_sink(_tool_name: str) -> None:
             watchdog.record_mcp_tool_call()
 
-        def _subagent_sink(_line: str) -> None:
-            watchdog.record_subagent_work()
+        def _subagent_sink(line: str) -> None:
+            watchdog.record_subagent_work(description=line)
 
         sink_token = set_active_sink(_mcp_sink)
         subagent_token = set_subagent_sink(_subagent_sink)

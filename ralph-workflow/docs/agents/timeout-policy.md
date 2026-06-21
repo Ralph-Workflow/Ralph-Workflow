@@ -346,6 +346,36 @@ The default threshold for `no_output_at_start_seconds` is tuned to **30s** (down
 - Long enough to accommodate typical 95th-percentile first-token latency of slower models (e.g. Claude Code or Opencode).
 - Short enough to fall over to the next agent before hitting cumulative session or waiting ceilings.
 
+### NO_OUTPUT_AT_START deferral gates (wt-021)
+
+The NO_OUTPUT_AT_START trip is deferred (returns ``CONTINUE`` instead of ``FIRE``) when EITHER of the following LIVE signals is present at the moment of the evaluate:
+
+- ``self._safe_corroborate()`` returns a ``CorroborationSnapshot`` with ``alive_by != None`` -- the corroborator (process tree / OS descendant scan / heartbeat) confirms a live child agent. The deferral consults ``_safe_corroborate()`` LIVE inside ``_evaluate_no_output_at_start`` (NOT ``self._last_alive_by``, which is stale post-fire state set only by ``NO_PROGRESS_QUIET`` at ``idle_watchdog.py:620`` and is never populated for ``NO_OUTPUT_AT_START``).
+- ``self._cumulative_waiting_on_child_seconds > 0`` -- the agent has already survived a full ``WAITING_ON_CHILD`` entry/exit cycle this invocation, which demonstrates it is alive enough that ``NO_OUTPUT_AT_START`` no longer applies.
+
+The deferral is consult-only -- the underlying NO_OUTPUT_AT_START trigger logic, the StuckClassifier gate, and the channel-evidence deferral are all unchanged. An agent that returns an empty ``CorroborationSnapshot`` AND has no prior waiting run still fires ``NO_OUTPUT_AT_START`` at the threshold (no false-positive deferral). See ``TestNoOutputAtStartLiveCorroborationDefer`` in ``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``.
+
+### NO_OUTPUT_AT_START is now session-resume-safe
+
+The ``NO_OUTPUT_AT_START`` reason has been added to the ``session_resume_safe`` whitelist in BOTH ``_process_reader.py`` (subprocess path) and ``_pty_runner.py`` (PTY path). A watchdog kill with reason ``NO_OUTPUT_AT_START`` now raises ``AgentInactivityTimeoutError`` with ``session_resume_safe=True`` and the captured ``resumable_session_id``, so the high-level ``invoke_agent`` seam resumes the SAME agent session via the orchestrator's resume-style retry (NOT a fresh-from-scratch restart). See ``tests/test_subprocess_reader_resume_safe.py::test_subprocess_reader_session_resume_safe_for_no_output_at_start`` and ``tests/test_claude_interactive_timeout_reason.py::test_run_pty_and_read_lines_resume_safe_for_no_output_at_start``.
+
+### Cross-transport subagent visibility
+
+A new ``_classify_generic_child_signal`` classifier in ``ralph/agents/execution_state/_helpers.py`` recognises permissive child-signal markers across transports:
+
+- JSON envelopes whose ``type`` / ``event`` key is in ``{child_progress, progress, tool_call, task_progress}`` -> ``CHILD_PROGRESS``.
+- JSON envelopes whose ``type`` / ``event`` key is in ``{child_heartbeat, heartbeat, child_alive, alive}`` -> ``CHILD_HEARTBEAT``.
+- Plain-text markers (``[child]``, ``[subagent]``, ``subagent: ``, ``child: ``, ``subagent progress``, ``child progress``, ``task progress``) -> ``CHILD_PROGRESS``.
+- Plain-text heartbeat markers (case-insensitive ``subagent heartbeat`` / ``child heartbeat``) -> ``CHILD_HEARTBEAT``.
+
+The classifier is wired into ``BaseExecutionStrategy.observe_line`` so EVERY transport's ``observe_line`` automatically invokes the watchdog's subagent activity sink on child signals (no per-transport classifier needed). The OpenCode strategy continues to override ``observe_line`` entirely (it owns the specialised OpenCode wire format); the base implementation is only invoked for strategies that do NOT override ``observe_line`` (Claude, Codex, Generic, Agy, Nanocoder), so there is NO double-invocation. See ``tests/agents/execution_state/test_generic_child_signal.py``.
+
+### Stuck-job intelligence across fire paths
+
+The ``StuckClassifier`` is consulted by ``_gate_fire`` at every non-absolute fire path (``NO_OUTPUT_DEADLINE``, ``NO_OUTPUT_AT_START``, ``NO_PROGRESS_QUIET``, ``STALLED_AFTER_TOOL_RESULT``, ``CHILDREN_PERSIST_TOO_LONG``). The classifier returns one of six ``StuckKind`` values; the gate returns ``CONTINUE`` for any non-``STUCK`` kind so a productive session that does not look productive is not killed. The ``SESSION_CEILING_EXCEEDED`` reason is the only absolute reason that bypasses the gate (it is an operator-set hard cap, not a stuck-detection signal).
+
+The classifier consults the per-channel evidence summary (``IdleWatchdog.last_evidence_summary(now)``) which includes a fresh subagent-liveness signal whenever a process monitor reports a live subagent, AND the cumulative-waiting / corroborator live signals via the watchdog's own evaluators. The ``_evaluate_no_progress_quiet`` evaluator consults ``_safe_corroborate()`` LIVE and defers the ``NO_PROGRESS_QUIET`` fire when ``corroboration.alive_by != None`` -- the cumulative ``CHILDREN_PERSIST_TOO_LONG`` ceiling (default 600s) is the correct upper bound for live-child stalls, NOT the 120s ``NO_PROGRESS_QUIET`` fire. See ``tests/agents/idle_watchdog/test_stuck_job_intelligence.py`` and ``tests/agents/idle_watchdog/test_smart_verdict_dumb_kills.py``.
+
 ### LIFECYCLE frames do NOT reset the NO_OUTPUT_AT_START baseline
 
 The watchdog distinguishes between **meaningful output** and **cosmetic

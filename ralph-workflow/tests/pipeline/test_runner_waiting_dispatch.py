@@ -89,3 +89,42 @@ def test_subscriber_exception_does_not_propagate(tmp_path: Path) -> None:
         unit_id="test-agent",
         agent_name="test-agent",
     )
+
+
+def test_dispatch_preserves_subagent_activity_for_hard_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A HARD_STOP event with subagent_activity is forwarded to the subscriber.
+
+    Dispatching a HARD_STOP event with ``subagent_activity='active task'``
+    invokes the subscriber with the same ``subagent_activity`` value
+    preserved on the ``WaitingStatusEvent`` (the subscriber then formats
+    the ``subagent=`` suffix into the waiting status line).
+    """
+    calls: list[WaitingStatusEvent] = []
+    sub = _make_subscriber(tmp_path)
+
+    def _record(
+        event: WaitingStatusEvent, *, unit_id: object = None, agent_name: object = None
+    ) -> None:
+        calls.append(event)
+
+    monkeypatch.setattr(sub, "record_waiting_status", _record)
+
+    event = WaitingStatusEvent(
+        kind=WaitingStatusKind.HARD_STOP,
+        cumulative_seconds=200.0,
+        current_run_seconds=180.0,
+        idle_elapsed_seconds=15.0,
+        ceiling_seconds=1800.0,
+        suspect_threshold_seconds=None,
+        diagnostic={"scoped_child_active": True, "oldest_child_seconds": 200.0},
+        subagent_activity="active task",
+    )
+    dispatch_waiting_event(
+        event, subscriber=sub, unit_id="test-agent", agent_name="test-agent"
+    )
+
+    assert len(calls) == 1
+    assert calls[0].subagent_activity == "active task"
+    assert calls[0].kind == WaitingStatusKind.HARD_STOP

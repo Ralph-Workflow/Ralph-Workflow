@@ -454,3 +454,84 @@ def test_subprocess_reader_session_resume_safe_for_no_output_deadline(
         f"Expected session_resume_safe=True for NO_OUTPUT_DEADLINE, "
         f"got {exc_info.value.session_resume_safe}"
     )
+
+
+def test_subprocess_reader_session_resume_safe_for_no_output_at_start(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """NO_OUTPUT_AT_START is also a resume-eligible reason.
+
+    Drive NO_OUTPUT_AT_START with an ACTIVE-classifying strategy and a
+    long idle_timeout_seconds so the watchdog fires NO_OUTPUT_AT_START
+    BEFORE NO_OUTPUT_DEADLINE. The default no_output_at_start_seconds=30s
+    is used (InvokeOptions does not expose the field; the default is the
+    canonical operator-configured value).
+
+    The agent never records any activity; the watchdog fires
+    NO_OUTPUT_AT_START after 30s. The subprocess reader must raise
+    ``AgentInactivityTimeoutError`` with ``session_resume_safe=True``
+    and the captured ``resumable_session_id``.
+
+    This pins the third of the four resume-eligible reasons
+    (NO_OUTPUT_AT_START). The eligibility-set logic is a closed
+    literal in ``_process_reader.py`` shared by all reasons.
+    """
+    config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+
+    class _ActiveStrategy(_WaitingStrategy):
+        def classify_quiet(
+            self,
+            handle: object,
+            liveness_probe: object,
+        ) -> AgentExecutionState:
+            return AgentExecutionState.ACTIVE
+
+    monkeypatch.setattr(
+        invoke_module,
+        "strategy_for_command",
+        lambda *args, **kwargs: _ActiveStrategy(),
+    )
+
+    proc = _FakeProcess(stdout_lines=[])
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: proc,
+    )
+    monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
+
+    clock = FakeClock()
+    opts = InvokeOptions(
+        show_progress=False,
+        workspace_path=tmp_path,
+        idle_timeout_seconds=300.0,
+        max_waiting_on_child_seconds=600.0,
+        max_session_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        waiting_status_interval_seconds=100.0,
+        idle_poll_interval_seconds=0.01,
+    )
+
+    try:
+        with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+            list(
+                invoke_agent(
+                    config,
+                    str(prompt_file),
+                    options=opts,
+                    _clock=clock,
+                )
+            )
+    finally:
+        proc._gate.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_AT_START, (
+        f"Expected reason=NO_OUTPUT_AT_START, got {exc_info.value.reason}"
+    )
+    assert exc_info.value.session_resume_safe is True, (
+        f"Expected session_resume_safe=True for NO_OUTPUT_AT_START, "
+        f"got {exc_info.value.session_resume_safe}"
+    )

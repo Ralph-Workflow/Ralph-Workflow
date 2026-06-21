@@ -81,6 +81,7 @@ def test_tracker_on_snapshot_view_shows_waiting_status(tmp_path: Path) -> None:
             ceiling_seconds=1800.0,
             suspect_threshold_seconds=600.0,
             diagnostic={"evidence": "time_only"},
+            subagent_activity="scout exploring",
         )
     )
 
@@ -88,6 +89,14 @@ def test_tracker_on_snapshot_view_shows_waiting_status(tmp_path: Path) -> None:
     assert tracker.view.instance_id == "work-wait"
     assert tracker.view.run_id == "run-wait"
     assert tracker.view.current_stage == "development"
+    # The tracker view must surface the subagent_activity in its
+    # recent_activity (which exposes snapshot.waiting_status_line) so
+    # supervising tooling can show what the subagent was doing at the
+    # moment of the SUSPECTED_FROZEN event.
+    assert any(
+        "subagent=scout exploring" in line
+        for line in tracker.view.recent_activity
+    )
 
 
 def test_tracker_on_snapshot_instance_id_stable_across_notifications(tmp_path: Path) -> None:

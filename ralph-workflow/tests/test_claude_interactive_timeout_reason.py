@@ -412,3 +412,89 @@ def test_pty_line_reader_check_fire_classifies_as_agent_via_chain() -> None:
         )
     finally:
         os.close(master_fd)
+
+
+class _NoOutputAtStartRaisingPtyLineReader:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+
+    def read_lines(self) -> object:
+        if False:
+            yield ""
+        raise _IdleStreamTimeoutError(
+            30.0,
+            WatchdogFireReason.NO_OUTPUT_AT_START,
+            diagnostic={"invocation_elapsed": 30.0},
+        )
+
+
+def test_run_pty_and_read_lines_resume_safe_for_no_output_at_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PTY runner preserves session_resume_safe=True for NO_OUTPUT_AT_START.
+
+    The PTY runner must raise ``AgentInactivityTimeoutError`` with
+    ``session_resume_safe=True`` when the watchdog fires
+    ``NO_OUTPUT_AT_START`` -- the agent produced no output for the
+    configured ``no_output_at_start_seconds`` (default 30s). A
+    watchdog kill at the NO_OUTPUT_AT_START threshold is NOT a phase
+    transition: the same agent session should be resumed via the
+    ``resumable_session_id`` so the recovery controller does NOT
+    restart from scratch.
+
+    This pins the PTY-path membership of ``NO_OUTPUT_AT_START`` in the
+    session_resume_safe whitelist (the closed literal in
+    ``_pty_runner.py``).
+    """
+    master_fd = os.open("/dev/null", os.O_RDONLY)
+    try:
+        handle = _FakeHandle(master_fd)
+        monkeypatch.setattr(
+            "ralph.agents.invoke._pty_runner.get_process_manager",
+            lambda: _FakePtyManager(handle),
+        )
+        monkeypatch.setattr(
+            "ralph.agents.invoke._pty_runner.PtyLineReader",
+            _NoOutputAtStartRaisingPtyLineReader,
+        )
+        ctx = SimpleNamespace(
+            clock=FakeClock(),
+            workspace_path=None,
+            extra_env={},
+            config=SimpleNamespace(cmd="claude"),
+            show_progress=False,
+            policy=SimpleNamespace(process_exit_wait_seconds=0.1),
+            execution_strategy=None,
+            liveness_probe=None,
+            waiting_listener=None,
+            monitor=None,
+            required_artifact=None,
+            evaluate_completion_fn=lambda *args, **kwargs: None,
+        )
+
+        with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+            list(
+                run_pty_and_read_lines(
+                    ["claude"],
+                    ctx,
+                    extras=SimpleNamespace(
+                        expected_session_id="session-keep",
+                        stop_sentinel_path=None,
+                        permission_prompt_listener=None,
+                    ),
+                )
+            )
+
+        assert exc_info.value.session_resume_safe is True, (
+            f"Expected session_resume_safe=True for NO_OUTPUT_AT_START, "
+            f"got {exc_info.value.session_resume_safe}"
+        )
+        assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_AT_START, (
+            f"Expected reason=NO_OUTPUT_AT_START, got {exc_info.value.reason}"
+        )
+        assert exc_info.value.resumable_session_id == "session-keep", (
+            f"Expected resumable_session_id='session-keep', "
+            f"got {exc_info.value.resumable_session_id!r}"
+        )
+    finally:
+        os.close(master_fd)

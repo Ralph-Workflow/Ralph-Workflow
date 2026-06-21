@@ -7,9 +7,19 @@ the fallback path for every transport.
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
+from ralph.agents.activity import AgentActivityKind
+from ralph.mcp.server._activity_sink import (
+    get_subagent_sink as _has_subagent_sink,
+)
+from ralph.mcp.server._activity_sink import (
+    invoke_subagent_sink as _invoke_subagent_sink,
+)
+
 from ._helpers import (
+    _classify_generic_child_signal,
     _error_output_signal,
     _non_blank_output_signal,
     _progress_report_signal,
@@ -47,8 +57,36 @@ class BaseExecutionStrategy:
         self._registry = registry
 
     def observe_line(self, line: str) -> None:
-        """Observe a raw provider line for optional strategy-specific state updates."""
-        del line
+        """Observe a raw provider line and route child signals to the subagent sink.
+
+        The base implementation now applies the cross-transport generic
+        child-signal classifier (``_classify_generic_child_signal``) and
+        invokes the active subagent activity sink for any line that
+        matches a CHILD_PROGRESS or CHILD_HEARTBEAT marker. This makes
+        every transport's ``observe_line`` automatically feed the
+        watchdog's per-channel evidence surface without each transport
+        needing its own classifier.
+
+        Transport-specialised strategies (OpenCode) continue to override
+        ``observe_line`` entirely; the base implementation is only
+        invoked when a subclass does NOT override the method, so the
+        OpenCode path does not double-invoke the sink.
+
+        Sink exceptions are swallowed (same pattern as
+        ``opencode_execution_strategy.py``) so a buggy sink cannot break
+        the line loop.
+        """
+        if not _has_subagent_sink():
+            return
+        signal = _classify_generic_child_signal(line)
+        if signal is None:
+            return
+        if signal.kind in (
+            AgentActivityKind.CHILD_PROGRESS,
+            AgentActivityKind.CHILD_HEARTBEAT,
+        ):
+            with contextlib.suppress(Exception):
+                _invoke_subagent_sink(line)
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         """Classify a raw output line for idle-watchdog activity.
