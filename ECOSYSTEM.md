@@ -39,6 +39,28 @@ Ralph Workflow (`pip install ralph-workflow`) is the **Loop Engineering toolkit*
 
 The ecosystem proves the pattern works. Ralph Workflow makes it production-ready.
 
+## Ralph Workflow in the Wild
+
+These projects actively use `ralph-workflow` — as a dependency, integration, skill, or reference implementation. They're not loop-pattern variants; they're real tool users, discovered through code-level GitHub search.
+
+| Project | Stars | Integration |
+|---------|-------|-------------|
+| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) | 254 ⭐ | Dynamic workflows with Pi extensions, custom models, MCP, sub-agents, artifacts, review gates — redesign specs reference ralph-workflow |
+| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) | 66 ⭐ | "Ralphify is the runtime for loop engineering" — practitioner cookbook with Claude Code patterns |
+| [tao3k/xiuxian-artisan-workshop](https://github.com/tao3k/xiuxian-artisan-workshop) | 14 ⭐ | Game design bridge between human intent and machine execution, inspired by Ralph Workflow philosophy |
+| [v1truv1us/ai-eng-system](https://github.com/v1truv1us/ai-eng-system) | 7 ⭐ | `/ralph-workflow` command integrating Ralph into AI engineering system |
+| [jamesaphoenix/tx](https://github.com/jamesaphoenix/tx) | 4 ⭐ | Headless agent infrastructure (memory + tasks + orchestration), PRD-driven design paired with ralph-workflow |
+| [coji831/agentic-devops-solar-ralph](https://github.com/coji831/agentic-devops-solar-ralph) | 2 ⭐ | SOLAR Agentic DevOps integration with Ralph operator guides and workflow mapping |
+| [skurekjakub/ralph-orchestrator](https://github.com/skurekjakub/ralph-orchestrator) | 1 ⭐ | Orchestrator with detailed workflow diagrams (Phase 1 Setup → Phase N Delivery) |
+| [sjhorn/ralph](https://github.com/sjhorn/ralph) | — | Go wrapper implementing a Ralph Wiggum loop, includes Adam Tuttle's workflow documentation |
+| [3mdistal/ralph](https://github.com/3mdistal/ralph) | — | Community fork — "Ralph Loop: Autonomous coding task orchestrator for OpenCode" with GitHub label integration |
+| [suredream/ralphlow](https://github.com/suredream/ralphlow) | — | Workflow lock file system (`.ralph-workflow`) with structured architecture |
+| [Was85/ralph-rlm-agent-framework](https://github.com/Was85/ralph-rlm-agent-framework) | — | Agent framework with ralph-workflow instructions and Claude skill integration |
+| [dscherm/comfyprompts](https://github.com/dscherm/comfyprompts) | — | Mini-ralphs with delegation matrix — multiple agents delegating via ralph-workflow.md |
+| [Delqhi-Projects/ZOE-Solar-Accounting-OCR](https://github.com/Delqhi-Projects/ZOE-Solar-Accounting-OCR) | — | Ralph/Lisa pipeline executor for Solar Accounting OCR workflows |
+
+> **Using ralph-workflow?** Add the [Built with Ralph Loop](assets/built-with-ralph-loop.svg) badge to your README — it creates a discoverable backlink to the project via GitHub code search.
+
 ## Attribution
 
 The Ralph Loop pattern is attributed to Geoffrey Huntley (ghuntley.com/ralph). Ralph Workflow is an independent reference implementation — not the pattern's originator. We build on a community insight, not claim to own it.
