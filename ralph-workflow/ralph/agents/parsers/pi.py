@@ -19,7 +19,20 @@ TypeScript union at https://pi.dev/docs/latest/json:
   - queue: ``queue_update``
   - compaction: ``compaction_start``, ``compaction_end``
   - auto-retry: ``auto_retry_start``, ``auto_retry_end``
-  - extension: ``extension_error``
+
+The current published AgentSessionEvent union enumerates EXACTLY these
+16 top-level event types (re-fetched 2026-06-20 from
+https://pi.dev/docs/latest/json; mirrored in
+``tmp/pi-dev-docs/inventory.md``).  Anything outside this list is
+forward-compat, not part of the documented contract.
+
+Forward-compat only (NOT in the current published union):
+
+  - ``extension_error`` — defensively accepted so a legacy or future
+    pi.dev build that emits it does not break the parser; routed to
+    ``type='error'``.  Deliberately excluded from the committed
+    fixture and from the wire-format spec assertion so the live-doc
+    contract stays aligned with the published pi.dev docs.
 
 The ``message_update`` events carry an ``assistantMessageEvent`` with
 its own sub-type union:

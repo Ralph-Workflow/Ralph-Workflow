@@ -105,7 +105,7 @@ Why this is a good first fit:
 - the NDJSON wire format is fully documented and pinned by the wire-format spec test at `tests/agents/parsers/test_pi_dev_wire_format_spec.py`
 - the public-surface black-box test at `tests/agents/test_pi_dev_blackbox.py` exercises the full `AgentRegistry` -> `catalog` -> `build_command` path so docs and runtime cannot drift
 
-Verify the install end-to-end with `uv run pytest tests/agents/test_pi_dev_blackbox.py -q` and the documented wire format with `uv run pytest tests/agents/parsers/test_pi_dev_wire_format_spec.py -q`. See <https://pi.dev/docs/latest/json> for the wire-format spec and <https://pi.dev/docs/latest/usage> for the CLI flag table.
+Verify Ralph Workflow's pi integration and wire-format contract with `uv run pytest tests/agents/test_pi_dev_blackbox.py -q` (registry -> catalog -> parser -> build_command chain) and `uv run pytest tests/agents/parsers/test_pi_dev_wire_format_spec.py -q` (documented event vocabulary pinned to the committed fixture). Both tests are black-box and intentionally avoid a real pi install, subprocess, or network call; they verify Ralph Workflow's parser and CLI-flag wiring against the documented pi.dev wire format, not the install/auth state of the local pi binary. For local install and auth validation, follow the official pi.dev setup at <https://pi.dev/docs/latest/usage>; for the wire-format spec see <https://pi.dev/docs/latest/json>.
 
 ## Best first-run rule
 
