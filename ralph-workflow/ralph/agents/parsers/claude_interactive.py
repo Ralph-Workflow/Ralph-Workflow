@@ -28,6 +28,7 @@ class ClaudeInteractiveParser:
         self._parser = ClaudeInteractiveTranscriptParser()
         self._text_accumulator = TextAccumulator()
         self._thinking_accumulator = TextAccumulator()
+        self._last_tool_name: str | None = None
 
     def emit_subagent_activity(
         self,
@@ -94,6 +95,7 @@ class ClaudeInteractiveParser:
                     tool_name = (
                         event.text.split(":", 1)[-1].strip() if ":" in event.text else event.text
                     )
+                    self._last_tool_name = tool_name
                     yield AgentOutputLine(
                         type="tool_use",
                         content=tool_name,
@@ -102,7 +104,12 @@ class ClaudeInteractiveParser:
                     )
                     continue
                 if event.kind == "tool_result":
-                    yield AgentOutputLine(type="tool_result", content=event.text, raw=raw)
+                    yield AgentOutputLine(
+                        type="tool_result",
+                        content=event.text,
+                        raw=raw,
+                        metadata={"tool": self._last_tool_name or "unknown"},
+                    )
         yield from self._flush_accumulators()
 
     def _flush_accumulators(self) -> Iterator[AgentOutputLine]:

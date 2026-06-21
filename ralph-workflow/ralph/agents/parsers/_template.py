@@ -134,17 +134,15 @@ def _sanitize_parser_subagent_summary(line: str) -> str:
 def _tool_name_from_line(line: AgentOutputLine) -> str:
     """Return the tool name for a tool_use / tool_result line, or 'unknown'.
 
-    Tries ``metadata.tool``, ``metadata.tool_name``, then the line
-    content itself (stripped).  Falls back to the literal ``"unknown"``
-    so the emitted summary is always well-formed.
+    Tries ``metadata.tool``, ``metadata.tool_name``, then ``metadata.name``
+    (the field Claude's content blocks use).  Falls back to the literal
+    ``"unknown"`` so the emitted summary is always well-formed and never
+    echoes raw tool-result content when metadata is missing.
     """
     metadata = line.metadata or {}
-    candidate = metadata.get("tool") or metadata.get("tool_name")
+    candidate = metadata.get("tool") or metadata.get("tool_name") or metadata.get("name")
     if isinstance(candidate, str) and candidate.strip():
         return candidate.strip()
-    content = line.content.strip()
-    if content:
-        return content
     return "unknown"
 
 

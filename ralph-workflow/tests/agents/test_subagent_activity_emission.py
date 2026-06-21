@@ -28,6 +28,7 @@ Acceptance (per the plan, step 2):
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from ralph.agents.parsers import (
@@ -335,3 +336,53 @@ def test_tool_use_without_tool_name_falls_back_to_unknown() -> None:
         sink,
     )
     assert captured == ["tool_use:unknown"], f"expected 'tool_use:unknown', got {captured}"
+
+
+def test_tool_result_without_tool_name_falls_back_to_unknown() -> None:
+    """A tool_result line WITHOUT a tool_name MUST emit 'tool_result:unknown'.
+
+    Tool-result lines often carry raw result text in ``line.content``.
+    The hook MUST NOT fall back to that content; doing so would leak
+    operator-visible subagent output into the watchdog summary.
+    """
+    parser = get_parser("claude")
+    captured, sink = _sink()
+    parser.emit_subagent_activity(
+        AgentOutputLine(type="tool_result", content="secret result", raw="", metadata={}),
+        sink,
+    )
+    assert captured == ["tool_result:unknown"], (
+        f"expected 'tool_result:unknown', got {captured}"
+    )
+
+
+def test_claude_interactive_tool_result_does_not_leak_content() -> None:
+    """A real ClaudeInteractiveParser tool_result line must not echo raw content.
+
+    The transcript parser emits ``tool_result`` events with the raw
+    result text in ``line.content`` and no metadata.tool by default.
+    The parser now threads the last seen tool name into metadata, so
+    the summary must be ``tool_result:<name>`` rather than
+    ``tool_result:<raw result text>``.
+    """
+    parser = get_parser("claude_interactive")
+    captured, sink = _sink()
+    payload = json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [
+                {"type": "tool_use", "name": "Bash"},
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "t1",
+                    "content": [{"type": "text", "text": "secret output"}],
+                },
+            ]
+        },
+    })
+    lines = list(parser.parse(iter([payload])))
+    tool_result_line = next(line for line in lines if line.type == "tool_result")
+    parser.emit_subagent_activity(tool_result_line, sink)
+    assert captured == ["tool_result:Bash"], (
+        f"expected 'tool_result:Bash', got {captured}"
+    )
