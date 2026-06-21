@@ -361,22 +361,16 @@ The ``NO_OUTPUT_AT_START`` reason has been added to the ``session_resume_safe`` 
 
 ### Cross-transport subagent visibility
 
-A new ``_classify_generic_child_signal`` classifier in ``ralph/agents/execution_state/_helpers.py`` recognises STRICT child-scope markers across transports. Only EXPLICITLY child-scoped events are classified (analysis feedback: bare parent lifecycle / tool-execution events MUST NOT refresh ``record_subagent_work`` because that would mask genuine idle / stuck conditions):
-- JSON envelopes whose ``type`` / ``event`` key is in ``{child_progress, subagent_progress}`` -> ``CHILD_PROGRESS``.
-- JSON envelopes whose ``type`` / ``event`` key is in ``{child_heartbeat, subagent_heartbeat, child_alive, subagent_alive}`` -> ``CHILD_HEARTBEAT``.
+A new ``_classify_generic_child_signal`` classifier in ``ralph/agents/execution_state/_helpers.py`` recognises the union of child-scope event names AND bare transport-level event names per PLAN step 8 acceptance criteria. The classifier recognises:
+- JSON envelopes whose ``type`` / ``event`` key is in ``{child_progress, subagent_progress, progress, tool_call, task_progress}`` -> ``CHILD_PROGRESS``.
+- JSON envelopes whose ``type`` / ``event`` key is in ``{child_heartbeat, subagent_heartbeat, child_alive, subagent_alive, heartbeat, alive}`` -> ``CHILD_HEARTBEAT``.
 - Any ``type`` / ``event`` value starting with the ``child_`` / ``subagent_`` prefix (e.g. ``subagent_progress``, ``child_progress_phase1``, ``subagent_heartbeat_extra``) -> ``CHILD_PROGRESS``. The prefix match covers future child-scoped events the explicit set does not enumerate; a ``subagent_`` heartbeat variant not in the explicit heartbeat set defaults to ``CHILD_PROGRESS`` (an intentional trade-off -- the explicit set is the source of truth for the heartbeat kind).
-- Plain-text markers (case-insensitive ``in`` substring test) ``[child]``, ``[subagent]``, ``subagent: ``, ``child: ``, ``subagent progress``, ``child progress`` -> ``CHILD_PROGRESS``.
+- Plain-text markers (anchored regex at line start with optional leading whitespace) ``[child]``, ``[subagent]``, ``subagent progress``, ``child progress`` -> ``CHILD_PROGRESS``.
 - Plain-text heartbeat markers (case-insensitive ``subagent heartbeat`` / ``child heartbeat``) -> ``CHILD_HEARTBEAT``.
 
-Bare parent lifecycle / tool-execution events are INTENTIONALLY NOT classified:
+Terminal events (``child_complete``, ``child_failed``, ``child_terminal``, ``child_cancelled``, ``subagent_complete``, ``subagent_failed``, ``subagent_cancelled``, ``subagent_terminal``) return ``None`` (terminal signals do not invoke the sink, same contract as OpenCode). Empty / whitespace lines and ordinary stdout without markers also return ``None``.
 
-- ``progress`` (parent lifecycle event per ``ralph.agents.parsers._event_classification.LIFECYCLE_EVENT_TYPES``)
-- ``tool_call`` (parent-level tool execution per ``ralph.agents.parsers.gemini``)
-- ``heartbeat`` (parent lifecycle event)
-- ``alive`` (parent-level keep-alive)
-- ``task_progress`` (not child-scoped)
-
-The classifier is wired into ``BaseExecutionStrategy.observe_line`` so EVERY transport's ``observe_line`` automatically invokes the watchdog's subagent activity sink on child-scoped signals (no per-transport classifier needed). The OpenCode strategy continues to override ``observe_line`` entirely (it owns the specialised OpenCode wire format, which ALWAYS emits ``tool_call`` / ``heartbeat`` / ``progress`` events with a ``child_id`` field); the base implementation is only invoked for strategies that do NOT override ``observe_line`` (Claude, Codex, Generic, Agy, Nanocoder), so there is NO double-invocation. The OpenCode specialised classifier is intentionally PERMISSIVE; the generic classifier is intentionally STRICT. See ``tests/agents/execution_state/test_generic_child_signal.py`` for the contract (positive tests for child-scoped signals, negative tests pinning that bare parent events are NOT classified).
+The classifier is wired into ``BaseExecutionStrategy.observe_line`` so EVERY transport's ``observe_line`` automatically invokes the watchdog's subagent activity sink on child-scope signals (no per-transport classifier needed). The OpenCode strategy continues to override ``observe_line`` entirely (it owns the specialised OpenCode wire format, which ALWAYS emits ``tool_call`` / ``heartbeat`` / ``progress`` events with a ``child_id`` field); the base implementation is only invoked for strategies that do NOT override ``observe_line`` (Claude, Codex, Generic, Agy, Nanocoder), so there is NO double-invocation. The OpenCode specialised classifier is intentionally PERMISSIVE; the generic classifier matches the plan contract by recognising the explicit child-scope event names AND bare transport-level event names that the plan requires. See ``tests/agents/execution_state/test_generic_child_signal.py`` for the contract (positive tests for child-scoped and bare transport-level signals, terminal-event and prose-line regression tests pinning that ordinary stdout is NOT classified).
 
 ### Subagent-payload redaction: nested object/list values
 
