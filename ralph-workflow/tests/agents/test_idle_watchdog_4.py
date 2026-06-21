@@ -883,3 +883,75 @@ def test_record_subagent_work_description_redacts_tool_call_line_with_nested_arg
     assert "tool_call" in stored
     assert "bash" in stored
     assert "<redacted>" in stored
+
+
+# (vii) Mixed-case sensitive-key redaction (analysis-feedback:
+# ``Prompt`` / ``Arguments`` / ``Input`` / ``Content`` must redact
+# exactly like lowercase variants).
+
+
+def test_record_subagent_work_description_redacts_mixed_case_prompt_key() -> None:
+    """A description with ``\"Prompt\": \"<secret>\"`` has the value redacted.
+
+    The JSON walker must normalize keys when checking the sensitive set;
+    mixed-case provider keys must not leak just because they are capitalized.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"Prompt": "SECRET-upper"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "SECRET-upper" not in stored, (
+        f"mixed-case 'Prompt' value 'SECRET-upper' must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_mixed_case_arguments_key() -> None:
+    """A description with ``\"Arguments\": {...}`` has the nested value redacted."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"Arguments": {"token": "SECRET-mixed"}}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "SECRET-mixed" not in stored, (
+        f"mixed-case 'Arguments' value 'SECRET-mixed' must NOT leak, got: {stored!r}"
+    )
+    assert "token" not in stored, f"nested sibling 'token' must NOT leak, got: {stored!r}"
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_mixed_case_input_key() -> None:
+    """A description with ``\"Input\": \"<secret>\"`` has the value redacted."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"Input": "SECRET-input"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "SECRET-input" not in stored, (
+        f"mixed-case 'Input' value 'SECRET-input' must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_mixed_case_content_key() -> None:
+    """A description with ``\"Content\": \"<secret>\"`` has the value redacted."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"Content": "SECRET-content"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "SECRET-content" not in stored, (
+        f"mixed-case 'Content' value 'SECRET-content' must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_malformed_mixed_case_arguments() -> None:
+    """A malformed JSON value under ``\"Arguments\"`` is fully redacted.
+
+    The fallback regex is also case-insensitive, so mixed-case markers in
+    malformed JSON are caught exactly like lowercase markers.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"Arguments": "secret"tail"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "secret" not in stored, (
+        f"malformed mixed-case 'Arguments' prefix 'secret' must NOT leak, got: {stored!r}"
+    )
+    assert "tail" not in stored, (
+        f"malformed mixed-case 'Arguments' suffix 'tail' must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored

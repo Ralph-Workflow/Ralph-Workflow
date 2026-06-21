@@ -170,3 +170,29 @@ def test_signal_activity_wakes_wait_until_in_threaded_context() -> None:
     t.join()
 
     assert result == "woken"
+
+
+def test_wait_until_respects_non_divisible_timeout_boundary() -> None:
+    """wait_until must not overshoot the requested timeout by a full poll interval.
+
+    Analysis-feedback regression: with timeout_s=3.1 and poll_interval_s=0.5,
+    the previous implementation always waited the full 0.5s tick, ending at
+    3.5s instead of 3.1s. The fix clamps the final wait to the remaining
+    deadline, so FakeClock stops at the timeout boundary.
+    """
+    clock = FakeClock(start=0.0)
+
+    def _predicate() -> None:
+        return None
+
+    class _Watchdog(WatchLoopBase):
+        def check(self) -> None:
+            self.wait_until(
+                predicate=_predicate,
+                timeout_s=3.1,
+                poll_interval_s=0.5,
+            )
+
+    wd = _Watchdog(clock)
+    wd.check()
+    assert clock.monotonic() == pytest.approx(3.1, abs=0.001)

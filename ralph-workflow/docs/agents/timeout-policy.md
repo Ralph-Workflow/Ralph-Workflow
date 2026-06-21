@@ -97,8 +97,12 @@ and shows whether that channel is allowed to defer the verdict
 (``can_defer``). Only strong channels defer: first-party channels
 (``mcp_tool``, ``subagent_output``) and quality-filtered workspace
 changes (``workspace`` with positive source-code weight) set
-``can_defer=true``; stdout, bare subagent liveness, and weak workspace
-changes set ``can_defer=false``.
+``can_defer=true``. Process-monitor-confirmed live subagent liveness
+(``subagent_liveness`` when the injected process monitor reports at
+least one live spawned subagent) also sets ``can_defer=true`` so the
+dumb-kill protection can defer while a real child is alive. Corroborator-
+only stale child evidence (bare PID existence with no fresh progress or
+heartbeat), stdout, and weak workspace changes set ``can_defer=false``.
 
 ```
 extra = {
@@ -121,9 +125,13 @@ active at the moment of the fire, e.g. ``{"source": 5, "log": 0}``
 indicates that the agent was making source-code changes but
 emitting no stdout (the conservative default policy would still
 defer the verdict on those source changes — this is the expected
-behavior). A bare subagent PID with no observable output appears
-under ``subagent_liveness`` with ``can_defer=false``; it is
-reported but does not reset the idle clock.
+behavior). Corroborator-only stale child evidence (a bare subagent
+PID with no observable output and no live process-monitor
+confirmation) appears under ``subagent_liveness`` with
+``can_defer=false``; it is reported but does not reset the idle
+clock. When an injected process monitor confirms live spawned
+subagents, the same channel reports with ``can_defer=true`` and is
+eligible to defer through ``_channel_evidence_active``.
 
 ## Migration
 
@@ -447,10 +455,13 @@ The deferral logic in ``_channel_evidence_active`` consults the full
 tier-aware evidence summary (see the [Tier-labelled per-channel evidence
 summary](#tier-labelled-per-channel-evidence-summary) section above) and
 defers the NO_OUTPUT_AT_START trip while any first-party or
-quality-filtered side-channel is fresh. A bare subagent PID with no
-observable output is reported in the summary under
-``subagent_liveness`` with ``can_defer=False``; it is informational and
-does NOT reset the idle clock.
+quality-filtered side-channel is fresh. Process-monitor-confirmed live
+subagent liveness (``subagent_liveness`` with ``can_defer=True``) also
+defers the trip. Corroborator-only stale child evidence (a bare subagent
+PID with no observable output and no live process-monitor confirmation)
+is reported in the summary under ``subagent_liveness`` with
+``can_defer=False``; it is informational and does NOT reset the idle
+clock.
 
 These three channels are locked behind black-box tests in
 ``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``:
