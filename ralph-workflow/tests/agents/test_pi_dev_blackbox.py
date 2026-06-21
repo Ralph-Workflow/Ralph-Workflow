@@ -39,20 +39,58 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+import pytest
+
+from ralph.agents.catalog import default_catalog
 from ralph.agents.execution_state._base import BaseExecutionStrategy
+from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
 from ralph.agents.execution_state.generic_execution_strategy import (
     GenericExecutionStrategy,
 )
 from ralph.agents.invoke import BuildCommandOptions, build_command
+from ralph.agents.parsers import _CUSTOM_COMMAND_REGISTRY, _PARSER_REGISTRY
 from ralph.agents.parsers.pi import PiParser
 from ralph.agents.registry import AgentRegistry
+from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import UnifiedConfig
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+# Snapshot the default catalog at import time so the override tests
+# below (which install a configured [agents.pi] override) cannot leak
+# into sibling tests in the same pytest session.  The catalog is a
+# module-level singleton, so without this fixture an installed
+# override would survive across test modules.
+_GOLDEN_PARSERS: dict[str, object] = dict(_PARSER_REGISTRY)
+_GOLDEN_CUSTOM: dict[str, object] = dict(_CUSTOM_COMMAND_REGISTRY)
+_GOLDEN_STRATEGIES: dict[AgentTransport, object] = dict(_STRATEGY_DISPATCH)
+_GOLDEN_ENTRIES: dict[str, object] = dict(default_catalog()._entries)
+_GOLDEN_BY_COMMAND: dict[str, object] = dict(default_catalog()._by_command)
+
+
+def _restore_golden_catalog() -> None:
+    cat = default_catalog()
+    cat._entries.clear()
+    cat._entries.update(_GOLDEN_ENTRIES)
+    cat._by_command.clear()
+    cat._by_command.update(_GOLDEN_BY_COMMAND)
+    cat._state.parsers.clear()
+    cat._state.parsers.update(_GOLDEN_PARSERS)
+    cat._state.commands.clear()
+    cat._state.commands.update(_GOLDEN_CUSTOM)
+    cat._state.strategies.clear()
+    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_catalog() -> object:
+    _restore_golden_catalog()
+    yield
+    _restore_golden_catalog()
 
 
 _PROMPT_TEXT = "hello world"
@@ -360,3 +398,95 @@ class TestPiDevBlackboxIndividualEvents:
         results = list(parser.parse(_lines(line)))
         assert any(r.type == "tool_result" for r in results)
         assert not any(r.type == "error" for r in results)
+
+
+class TestPiDevBlackboxConfigOverride:
+    """End-to-end coverage of configured ``[agents.pi]`` overrides.
+
+    Pins the D92 catalog-sync contract: a configured ``[agents.pi]``
+    override must propagate to BOTH ``registry.get`` and
+    ``registry.catalog.get`` so downstream consumers
+    (``catalog.get_parser``, ``catalog.get_strategy``,
+    ``build_command``, the ``pi/<model>`` dynamic alias) all see the
+    configured command, not the built-in ``pi`` binary.
+    """
+
+    def test_override_propagates_to_registry_and_catalog(self) -> None:
+        """Both ``registry.get('pi')`` and ``registry.catalog.get('pi')``
+        must reflect the configured ``[agents.pi]`` override.
+        """
+        config = UnifiedConfig(
+            agents={
+                "pi": AgentConfig(
+                    cmd="pi-custom",
+                    transport=AgentTransport.PI,
+                    session_flag="--session {}",
+                    yolo_flag="--approve",
+                )
+            }
+        )
+        registry = AgentRegistry.from_config(config)
+
+        # registry.get path (already worked pre-fix).
+        direct = registry.get("pi")
+        assert direct is not None
+        assert direct.cmd == "pi-custom"
+
+        # catalog.get path (this is the D92 gap being closed).
+        catalog_pi = registry.catalog.get("pi")
+        assert catalog_pi is not None, (
+            "registry.catalog.get('pi') must resolve the configured "
+            "override; the D92 gap left it pinned to the built-in"
+        )
+        assert catalog_pi.config.cmd == "pi-custom"
+        # The override must preserve the built-in's parser factory and
+        # strategy factory (they are structural to the pi transport).
+        assert catalog_pi.parser_factory is PiParser
+        assert catalog_pi.strategy_factory is GenericExecutionStrategy
+
+    def test_override_propagates_to_dynamic_alias_endpoints(self) -> None:
+        """The ``pi/<model>`` dynamic alias must use the override base.
+
+        Both ``registry.get('pi/<model>')`` and
+        ``registry.catalog.get('pi/<model>')`` must derive the
+        synthesized support from the override's ``cmd``/``flags``,
+        not from the built-in.  Regression coverage for the D92
+        dynamic-alias-sync gap.
+        """
+        config = UnifiedConfig(
+            agents={
+                "pi": AgentConfig(
+                    cmd="pi-custom",
+                    transport=AgentTransport.PI,
+                    session_flag="--session {}",
+                    yolo_flag="--approve",
+                )
+            }
+        )
+        registry = AgentRegistry.from_config(config)
+
+        # registry.get path
+        alias = registry.get("pi/anthropic/claude-sonnet-4-20250514")
+        assert alias is not None
+        assert alias.cmd == "pi-custom", (
+            f"pi/<model> must carry the override cmd, got {alias.cmd!r}"
+        )
+        assert alias.model_flag == "--model anthropic/claude-sonnet-4-20250514"
+
+        # catalog.get path
+        catalog_alias = registry.catalog.get(
+            "pi/anthropic/claude-sonnet-4-20250514"
+        )
+        assert catalog_alias is not None, (
+            "registry.catalog.get('pi/<model>') must resolve through the "
+            "override base config"
+        )
+        assert catalog_alias.config.cmd == "pi-custom"
+        assert (
+            catalog_alias.config.model_flag
+            == "--model anthropic/claude-sonnet-4-20250514"
+        )
+        # The synthesized dynamic-alias support must keep the built-in's
+        # parser factory and strategy factory.
+        assert catalog_alias.parser_factory is PiParser
+        assert catalog_alias.strategy_factory is GenericExecutionStrategy

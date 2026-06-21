@@ -40,6 +40,7 @@ from ralph.agents.parsers.generic import GenericParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
 from ralph.agents.support import AgentSupport
+from ralph.config.agent_config import AgentConfig
 from ralph.config.enums import AgentTransport
 
 if TYPE_CHECKING:
@@ -314,6 +315,70 @@ class AgentCatalog:
             if self._state.strategies.get(support.spec.transport) is support.strategy_factory:
                 self._state.strategies.pop(support.spec.transport, None)
 
+    def replace_builtin(self, name: str, support: AgentSupport) -> None:
+        """Replace an existing built-in entry with a new built-in entry.
+
+        Used by :meth:`AgentRegistry.register` to install a configured
+        ``[agents.<name>]`` override on top of a built-in so the public
+        catalog surface stays in lockstep with ``registry.get(<name>)``.
+
+        The replacement support must carry ``is_builtin=True`` so a
+        subsequent override can replace it as well.  The transport's
+        parser factory and strategy factory are intentionally
+        preserved (the override cannot change them — those are
+        structural to the transport, not user preference), so the
+        override only changes the per-instance fields (cmd, flags,
+        session flag).
+
+        Both ``_entries`` (name-keyed) and ``_by_command`` (cmd-keyed)
+        are updated.  ``_state.parsers`` and ``_state.commands`` are
+        also rewritten through :meth:`_write_through` so downstream
+        callers that resolve parsers / strategies by name or by cmd
+        continue to see the correct entry.
+
+        Raises:
+            ValueError: If ``support.is_builtin`` is False, if no entry
+                exists under ``name``, or if the existing entry is not
+                a built-in (i.e. user cannot replace a non-built-in
+                registration through this path).
+        """
+        if not support.is_builtin:
+            msg = (
+                f"Replacement support must have is_builtin=True: {name!r}"
+            )
+            raise ValueError(msg)
+
+        name_lower = name.lower()
+        existing = self._entries.get(name_lower)
+        if existing is None:
+            msg = f"Cannot replace non-existent catalog entry: {name!r}"
+            raise ValueError(msg)
+        if not existing.is_builtin:
+            msg = (
+                f"Cannot replace non-built-in catalog entry through "
+                f"replace_builtin: {name!r}"
+            )
+            raise ValueError(msg)
+
+        old_cmd_lower = existing.cmd.lower()
+        new_cmd_lower = support.cmd.lower()
+
+        # Tear down the existing built-in's index entries so the new
+        # support fully replaces them.  Strategy factories and the
+        # seeded parser CLASS under ``_state.parsers[name_lower]`` are
+        # intentionally left in place (the override cannot change the
+        # transport's structural parser / strategy factories; see
+        # ``AgentRegistry.register`` for the override synthesis path).
+        self._entries.pop(name_lower, None)
+        if old_cmd_lower != new_cmd_lower:
+            self._by_command.pop(old_cmd_lower, None)
+        self._state.commands.pop(old_cmd_lower, None)
+
+        # Install the new built-in override.
+        self._entries[name_lower] = support
+        self._by_command[new_cmd_lower] = support
+        self._write_through(support, name_lower, new_cmd_lower)
+
     def get(self, name_or_command: str) -> "AgentSupport | None":
         """Look up by agent name first, then by command, then via dynamic alias resolver.
 
@@ -454,6 +519,13 @@ def _resolve_dynamic_support(
     built-in's parser factory, strategy factory, and spec so ``catalog.get_parser``,
     ``catalog.get_strategy``, and ``build_command`` continue to work end-to-end.
 
+    The base config is looked up via the catalog itself
+    (``catalog._entries.get(<name>).config``) so a configured
+    ``[agents.<name>]`` override installed through
+    :meth:`AgentCatalog.replace_builtin` propagates to dynamic alias
+    resolution end-to-end.  Falls back to the built-in when the alias
+    base name has no catalog entry (e.g. for ``ccs/<alias>``).
+
     Returns ``None`` when the alias does not match any documented pattern or when
     the resolved ``AgentConfig.cmd`` is not backed by a registered built-in (which
     would indicate a resolver bug rather than a caller error).
@@ -465,7 +537,17 @@ def _resolve_dynamic_support(
         CcsConfig,
     )
 
-    config = _resolve_dynamic_agent(name_or_command, CcsConfig())
+    def _catalog_base_lookup(agent_name: str) -> AgentConfig | None:
+        entry = catalog._entries.get(agent_name.lower())
+        if entry is not None:
+            return entry.config
+        return None
+
+    config = _resolve_dynamic_agent(
+        name_or_command,
+        CcsConfig(),
+        base_lookup=_catalog_base_lookup,
+    )
     if config is None:
         return None
 
