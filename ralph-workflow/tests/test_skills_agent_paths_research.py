@@ -71,9 +71,34 @@ def test_agent_skill_roots_cover_documented_supported_agents() -> None:
     out_of_scope_agents = {
         "nanocoder",
         "gemini-cli",
+        "pi",
     }
     assert not (out_of_scope_agents & live), (
         f"Live registry unexpectedly contains out-of-scope agents: {out_of_scope_agents & live}"
+    )
+
+
+def test_agent_skill_roots_excludes_pi_for_no_user_global_root() -> None:
+    """pi must be absent from user-global ``AGENT_SKILL_ROOTS``.
+
+    The pi.dev documentation does NOT document a user-global skill
+    discovery root analogous to ``~/.claude/skills/``,
+    ``~/.codex/skills/``, or ``~/.config/opencode/skills/``; the only
+    documented user-global skill loader is the per-invocation
+    ``--skill <path>`` flag, which is a transient argv shape rather
+    than a persistent discovery root. This is the user-global half
+    of the pi scope split (re-fetched 2026-06-21 from
+    ``https://pi.dev/docs/latest/usage``); the project-scope half is
+    pinned by
+    ``tests/test_skills_project_paths_research.py::test_project_sibling_roots_count_is_four``
+    which asserts ``pi`` IS present in ``project_sibling_skill_roots``
+    at the documented ``.agents/skills/`` path.
+    """
+    live = {entry.agent for entry in _live_roots()}
+    assert "pi" not in live, (
+        f"Live user-global registry unexpectedly contains 'pi': {sorted(live)}. "
+        "The pi.dev docs do not document a user-global skill discovery root; "
+        "see _agent_paths.py PI SCOPE SPLIT (pi.dev) section for the rationale."
     )
 
 

@@ -24,26 +24,45 @@ OUT OF SCOPE
 - Gemini CLI bare: no skill system. (The shipped ``agy`` entry covers
   Google's Antigravity CLI which IS a different product.)
 
-PI EXCLUSION (pi.dev)
-=====================
-The ``pi`` built-in agent is deliberately absent from
-``AGENT_SKILL_ROOTS`` and from the project-sibling skill roots above.
-The pi.dev documentation does NOT document a user-global skill
-discovery root analogous to ``~/.claude/skills/``,
-``~/.codex/skills/``, or ``~/.config/opencode/skills/``; the only
-documented skill loader is the per-invocation ``--skill <path>``
-flag, which is a transient argv shape rather than a persistent
-discovery root. Sources verified at audit time:
-``https://pi.dev/docs/latest/usage`` and
-``https://pi.dev/docs/latest/json`` (see
+PI SCOPE SPLIT (pi.dev)
+======================
+The ``pi`` built-in agent is split across the two scopes:
+
+  - **User-global** (``AGENT_SKILL_ROOTS``): ``pi`` is deliberately
+    absent.  The pi.dev documentation does NOT document a user-global
+    skill discovery root analogous to ``~/.claude/skills/``,
+    ``~/.codex/skills/``, or ``~/.config/opencode/skills/``; the only
+    documented user-global skill loader is the per-invocation
+    ``--skill <path>`` flag, which is a transient argv shape rather
+    than a persistent discovery root.  Sources verified at audit
+    time: ``https://pi.dev/docs/latest/usage`` (per-invocation
+    ``--skill <path>`` and ``--no-skills`` flag table) and
+    ``https://pi.dev/docs/latest/json``.
+
+  - **Project-local** (``project_sibling_skill_roots``): ``pi`` is
+    present at the documented ``.agents/skills`` project folder.
+    The pi docs explicitly state (re-fetched 2026-06-21 from
+    ``https://pi.dev/docs/latest/usage``): "On interactive startup,
+    pi asks before trusting a project folder that contains
+    project-local settings, resources, or project
+    ``.agents/skills``" -- so ``.agents/skills/`` is a documented
+    project-scope skill resource for pi, even though no user-global
+    root exists.  The project-scope entry is added at
+    ``(``.agents``, ``skills``)`` with the same ``source_url`` +
+    ``last_verified_iso`` research contract as the user-global
+    entries; the source URL points at the pi.dev usage page that
+    documents the ``.agents/skills`` trust flow.
+
+Adding a pi entry to ``AGENT_SKILL_ROOTS`` (user-global) requires a
+live-verified upstream source URL documenting a user-global root;
+none exists today.  The two skills-paths research tests
+(``tests/test_skills_agent_paths_research.py`` and
+``tests/test_skills_project_paths_research.py``) pin this scope
+split: pi is absent from the user-global registry AND present in
+the project-scope registry.  See
 ``ralph-workflow/.agent/pi-research-notes.md`` and
 ``ralph-workflow/.agent/tmp/pi_drift_audit.md`` for the
-audit-of-record). Adding a pi entry to this registry requires a
-live-verified upstream source URL documenting the user-global root;
-none exists today. The two skills-paths research tests
-(``tests/test_skills_agent_paths_research.py`` and
-``tests/test_skills_project_paths_research.py``) pin this
-no-pi-in-registry contract.
+audit-of-record.
 
 MAINTENANCE
 ===========
@@ -62,20 +81,22 @@ in the project siblings; it is the fan-out source managed by
 install_project_baseline_skills.
 
 SCOPE-DOWN RATIONALE (PA-007): The prompt mentions ``./.claude/skills/``,
-``./.agents/skills``, etc. as sibling examples. We mirror only the 3
+``./.agents/skills``, etc. as sibling examples. We mirror the 3
 non-canonical USER-GLOBAL entries (claude, codex, agy) as project
-siblings. The opencode project sibling is intentionally absent because:
+siblings, plus the one project-scope-only entry that the upstream
+pi.dev documentation proves is documented: ``./.agents/skills/`` for
+pi.  The opencode project sibling is intentionally absent because:
 (a) the project canonical ``./.opencode/skills/`` IS the opencode
 project root, so it would be a self-symlink (forbidden); (b) the
 user-global opencode root at ``~/.config/opencode/skills/`` is already
-covered by the canonical user-global install; (c) the project-scope
-``./.agents/skills/`` path mentioned in the opencode docs is a
-USER-GLOBAL fallback for opencode (already covered by the canonical
-claude install at ``~/.claude/skills/`` per the OPENCODE CLAUDE-SKILLS
-FALLBACK section above). Therefore adding either ``./.opencode/skills/``
-or ``./.agents/skills/`` as a project sibling would either create a
-self-symlink or duplicate the user-global coverage. The 3 non-canonical
-user-global entries are the right mirror set.
+covered by the canonical user-global install.  The pi project
+sibling at ``./.agents/skills/`` is added because the pi docs prove
+it is a documented project-scope skill resource; the user-global
+fallback for opencode at ``./.agents/skills/`` mentioned in the
+opencode docs is still satisfied by the canonical claude install at
+``~/.claude/skills/`` per the OPENCODE CLAUDE-SKILLS FALLBACK section
+above.  The 4 project siblings (claude, codex, agy, pi) are the
+right mirror set.
 """
 
 from __future__ import annotations
@@ -220,28 +241,64 @@ def project_sibling_skill_roots(
     """Return project-scope sibling skill roots (fan-out targets).
 
     Mirrors the 3 non-canonical USER-GLOBAL entries (claude, codex, agy)
-    onto the project workspace. The opencode project sibling is intentionally
-    absent: it would be a self-symlink to ``./.opencode/skills/`` which is
-    the project canonical, and the user-global opencode root is already
-    covered by the user-global install. See the MAINTENANCE section above
-    for the full scope-down rationale (PA-007).
+    onto the project workspace, plus the one project-scope-only entry
+    that the upstream pi.dev documentation proves is documented:
+    ``./.agents/skills/`` for pi.
+
+    The opencode project sibling is intentionally absent: it would be a
+    self-symlink to ``./.opencode/skills/`` which is the project
+    canonical, and the user-global opencode root is already covered by
+    the user-global install.
+
+    The pi project sibling is present even though pi is absent from
+    ``AGENT_SKILL_ROOTS`` (no documented user-global root). The pi docs
+    explicitly state (re-fetched 2026-06-21 from
+    ``https://pi.dev/docs/latest/usage``) that pi loads project-local
+    ``.agents/skills`` from the trusted project folder; this is a
+    documented project-scope skill resource for pi, not a user-global
+    root. See the PI SCOPE SPLIT (pi.dev) section above for the full
+    scope-decision rationale and the MAINTENANCE section for the
+    full scope-down rationale (PA-007).
     """
     _ = workspace_root  # workspace_root is forwarded at resolve() time, not used here
     by_agent: dict[str, AgentSkillRoot] = {entry.agent: entry for entry in AGENT_SKILL_ROOTS}
-    agents: tuple[tuple[str, tuple[str, ...]], ...] = (
-        ("claude", (".claude", "skills")),
-        ("codex", (".codex", "skills")),
-        ("agy", (".gemini", "antigravity-cli", "skills")),
+    # pi has NO documented user-global root, so it does not appear in
+    # ``AGENT_SKILL_ROOTS`` and we cannot use ``by_agent[agent].source_url``
+    # to populate its project-scope entry. The pi source URL points at the
+    # pi.dev usage page that documents the ``.agents/skills`` project
+    # trust flow.
+    pi_source_url = "https://pi.dev/docs/latest/usage"
+    pi_last_verified_iso = _AGENT_PATH_LAST_VERIFIED
+    agents: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
+        (
+            "claude",
+            (".claude", "skills"),
+            by_agent["claude"].source_url,
+            by_agent["claude"].last_verified_iso,
+        ),
+        (
+            "codex",
+            (".codex", "skills"),
+            by_agent["codex"].source_url,
+            by_agent["codex"].last_verified_iso,
+        ),
+        (
+            "agy",
+            (".gemini", "antigravity-cli", "skills"),
+            by_agent["agy"].source_url,
+            by_agent["agy"].last_verified_iso,
+        ),
+        ("pi", (".agents", "skills"), pi_source_url, pi_last_verified_iso),
     )
     return tuple(
         ProjectAgentSkillRoot(
             agent=agent,
             path_segments=segments,
-            source_url=by_agent[agent].source_url,
+            source_url=source_url,
             is_canonical=False,
-            last_verified_iso=by_agent[agent].last_verified_iso,
+            last_verified_iso=last_verified_iso,
         )
-        for agent, segments in agents
+        for agent, segments, source_url, last_verified_iso in agents
     )
 
 
