@@ -26,13 +26,54 @@ If instructions conflict, follow the stricter one.
 
 ## Non-negotiables
 
-### Social-proof gate (ABSOLUTE — no fabricated claims)
+### ═══ FABRICATION GUARD (ABSOLUTE — 3 levels, zero bypass) ═══
 
-- Every public-facing claim about adoption, credits, usage, or stats MUST be verifiable from a third-party source.
-- `scripts/verify_social_proof.py` is the gate. It runs in `make verify` (CI) and as a pre-commit hook. **Never weaken it.** If a legitimate claim is blocked, update the script's patterns — never delete the gate.
-- Banned forever: claiming a project "credits Ralph Workflow" without a `verify:` line; bare install/star/download counts without (source, date); the specific fabricated claims "Nightcrawler credits Ralph Workflow" (it credits ghuntley.com/ralph) and "~1,300 installs/month" (stale + wrong).
-- Before editing any public-facing markdown (README.md, ralph-workflow/README.md, SHOWCASE.md, docs/), run `scripts/verify_social_proof.py`. If it fails, fix the claims before committing.
-- The pre-commit hook at `.githooks/pre-commit-social-proof` must remain installed (`git config core.hooksPath .githooks`). If missing, `make verify` will flag it.
+The D91 incident (commit 58a1d25e9, 2026-06-21) fabricated an entire entry
+(`john-ezra/open-ralph`) in USERS.md — a nonexistent repo, npm package, and user.
+This was the second fabrication in the project (after the 2026-06-11 SHOWCASE.md
+failure). Fabrication is the single gravest threat to this project's credibility.
+
+**The guard system:**
+
+- **`scripts/fabrication_guard.py`** — multi-level fabrication defense:
+  - Level 1 (regex patterns, no network, <100ms): catches known bad patterns.
+    Runs as a **pre-commit hook** (`.git/hooks/pre-commit`) — blocks bad commits.
+  - Level 2 (existence checks, network, cached): verifies every GitHub repo,
+    npm package, and external URL actually exists. Run with `--level 2`.
+  - Level 3 (quantitative verification, network, needs GITHUB_TOKEN):
+    cross-references star counts, fork counts, line counts against live API.
+    Run with `--level 3`.
+- **`scripts/verify_social_proof.py`** — thin backward-compat wrapper.
+
+**Mandatory protocol (DO NOT SKIP — no exceptions):**
+
+1. Before editing ANY public-facing markdown (README.md, ralph-workflow/README.md,
+   SHOWCASE.md, USERS.md, docs/), run:
+   ```bash
+   ./scripts/fabrication_guard.py --level 1 <file>
+   ```
+2. If adding NEW external references (GitHub repos, npm packages, URLs), run:
+   ```bash
+   ./scripts/fabrication_guard.py --level 2 <file>
+   ```
+3. After editing, run the same check again.
+4. If ANY level fails: FIX THE CLAIMS, do NOT weaken the guard, do NOT commit
+   until clean.
+5. The pre-commit hook will block you if you forget. Do NOT use `--no-verify`
+   to bypass it. Bypassing the guard is fabrication.
+
+**Non-negotiable rules:**
+
+- Every public-facing claim about adoption, credits, usage, or stats MUST be
+  verifiable from a third-party source.
+- GitHub repo links in claim files (USERS.md, SHOWCASE.md, README.md) MUST have
+  a `verify: repo-exists` annotation.
+- npm package claims MUST have a `verify: npm-@org/pkg-exists` annotation
+  verified against the npm registry.
+- Bare star/download/install counts MUST be paired with (source, date).
+- Banned forever: "Nightcrawler credits Ralph Workflow" (it credits
+  ghuntley.com/ralph); "~1,300 installs/month" (stale + fabricated).
+- Fabrication is NEVER acceptable anywhere. No file is out of scope for truth.
 
 ### Code and test rules
 

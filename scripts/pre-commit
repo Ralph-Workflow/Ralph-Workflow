@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# pre-commit — Fabrication guard (Level 1) for Ralph Workflow
+#
+# This hook runs automatically before every commit. It blocks any commit
+# that introduces banned patterns in staged markdown files.
+#
+# To bypass in an emergency (NOT for routine use):
+#   git commit --no-verify -m "message"
+#
+# Installed by: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
+
+# Only run if there are staged markdown files
+STAGED_MD=$(git diff --cached --name-only --diff-filter=ACM | grep '\.md$' || true)
+if [ -z "$STAGED_MD" ]; then
+    exit 0
+fi
+
+GUARD="$REPO_ROOT/scripts/fabrication_guard.py"
+if [ ! -f "$GUARD" ]; then
+    echo "⚠  fabrication_guard.py not found — skipping check."
+    exit 0
+fi
+
+echo "▸ Fabrication guard (Level 1) — checking staged files..."
+python3 "$GUARD" --level 1 --quick
+RET=$?
+
+if [ $RET -ne 0 ]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🔴 COMMIT BLOCKED — fabrication guard failed (Level 1)"
+    echo ""
+    echo "   Fix the issues above before committing."
+    echo "   Do NOT use --no-verify to bypass this gate."
+    echo ""
+    echo "   If a legitimate claim is blocked, update the guard:"
+    echo "   $GUARD"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    exit 1
+fi
+
+echo "  ✓ Level 1 passed"
+exit 0
