@@ -142,6 +142,8 @@ class TestPiDevWireFormatSpec:
             "toolcall_start",
             "toolcall_delta",
             "toolcall_end",
+            "done",
+            "error",
         }
 
         actual_sub_events: set[str] = set()

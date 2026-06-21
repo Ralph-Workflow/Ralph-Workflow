@@ -338,6 +338,17 @@ def _is_valid_pi_model_id(model_id: str) -> bool:
     ``--model <garbage>`` flag downstream:
 
       * empty model id (e.g. ``pi/``, ``pi//``)
+      * whitespace, newline, or carriage return anywhere in the id
+        (pi's --model pattern is a single argv token; the
+        ``PiCommandBuilder`` tokenization in
+        ``ralph/agents/invoke/_command_builders/__init__.py``
+        relies on this invariant to emit a clean ``--model <value>``
+        argv pair instead of a shlex-rejoined garbage token like
+        ``['--model', "'foo", "bar'"]``)
+      * more than one ``:`` separator (only the optional
+        ``:<thinking>`` suffix is allowed; multi-colon shapes like
+        ``pi/foo:bar:baz`` fall outside the documented
+        ``provider/id[:<thinking>]`` syntax)
       * empty provider segment when ``/`` is present (e.g. ``pi//x``)
       * empty model-name segment when ``/`` is present (e.g.
         ``pi/provider/``)
@@ -348,21 +359,17 @@ def _is_valid_pi_model_id(model_id: str) -> bool:
     A bare single-segment name with no ``/`` is accepted as a plain
     model id (e.g. ``pi/sonnet``, ``pi/claude-sonnet-4-20250514``).
     """
-    if not model_id:
+    if not model_id or any(ch.isspace() for ch in model_id):
         return False
 
-    if ":" in model_id:
-        base, _, thinking = model_id.partition(":")
-        if not base or not thinking:
-            return False
-    else:
-        base = model_id
-
-    if not base:
+    base, _, thinking = model_id.partition(":")
+    has_thinking = bool(thinking)
+    base_has_colon_split = ":" in model_id
+    if base_has_colon_split and (not base or not thinking):
         return False
-
+    if has_thinking and ":" in thinking:
+        return False
     if "/" not in base:
         return True
-
     provider, _, model_name = base.partition("/")
     return bool(provider and model_name)

@@ -149,6 +149,28 @@ def _normalize_opencode_model_flag(model_flag: str) -> list[str]:
     return parts
 
 
+def _tokenize_pi_model_flag(model_flag: str) -> list[str]:
+    """Tokenize a Pi ``--model`` flag into argv-safe tokens.
+
+    Pi (https://pi.dev/docs/latest/usage) documents ``--model <pattern>``
+    as a single-argv pattern.  The registry's
+    ``_is_valid_pi_model_id`` validator already rejects whitespace,
+    newlines, and multi-colon shapes so the value side of the flag is
+    always a single token, but the flag string is built as
+    ``"--model {shlex.quote(model_id)}"`` and may also be supplied by
+    callers via ``BuildCommandOptions.model_flag``.
+
+    ``shlex.split`` produces the canonical argv pair
+    ``['--model', <value>]`` for both registry-built and caller-supplied
+    flags without depending on the OpenCode-specific
+    ``_normalize_opencode_model_flag`` helper (which strips an
+    OpenCode-only ``opencode/`` prefix that pi.dev does not use).  This
+    is the Pi-safe path so malformed flags do not leak garbage like
+    ``['--model', "'foo", "bar'"]`` into downstream subprocess argv.
+    """
+    return shlex.split(model_flag)
+
+
 def _extend_claude_transport_flags(
     cmd: list[str],
     transport: AgentTransport,
@@ -286,6 +308,8 @@ class ConfigurableCommandBuilder:
         if not effective_model:
             return []
         if self.spec.model_flag_template is not None:
+            if self.spec.base_argv and self.spec.base_argv[0] == "pi":
+                return _tokenize_pi_model_flag(effective_model)
             if " " in effective_model or effective_model.startswith("-"):
                 return _normalize_opencode_model_flag(effective_model)
             formatted = self.spec.model_flag_template.format(effective_model)

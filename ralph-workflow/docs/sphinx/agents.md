@@ -12,7 +12,7 @@ Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocod
 
 > See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent's user-global skill-discovery root.
 
-Every supported agent has a manual smoke entry-point for live end-to-end verification against the real binary. Claude is verified with `python -m ralph smoke-interactive-claude` and AGY is verified with `python -m ralph smoke-interactive-agy`. Run the corresponding command on Linux or macOS to confirm the transport, MCP wiring, and tool invocation pipeline produce real output.
+Every supported agent has a documented end-to-end verification path. Claude and AGY each have an interactive parity smoke test (`python -m ralph smoke-interactive-claude` and `python -m ralph smoke-interactive-agy`); Codex, OpenCode, Nanocoder, and Pi each have a public-surface black-box pytest suite that drives the agent through `AgentRegistry.from_config` and the public command-builder surface without inventing a CLI subcommand. Run the corresponding command on Linux or macOS to confirm the transport, MCP wiring, and tool invocation pipeline produce real output.
 
 ### Google Anti Gravity (AGY)
 
