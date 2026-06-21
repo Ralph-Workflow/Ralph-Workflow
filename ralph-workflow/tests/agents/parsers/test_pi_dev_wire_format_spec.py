@@ -84,18 +84,22 @@ def _lines(*raw: str) -> Iterator[str]:
 
 
 _INVENTORY_TOP_LEVEL_HEADER = "Top-level events (AgentSessionEvent union)"
+_INVENTORY_STREAM_HEADER_PREFIX = "Stream header"
 _INVENTORY_FORWARD_COMPAT_PREFIX = "Forward-compat / extension events"
 
 
 def _extract_pi_inventory_top_level_section(
     inventory_text: str,
 ) -> dict[str, str]:
-    """Extract the Top-level events and Forward-compat sections
-    from a transient ``tmp/pi-dev-docs/inventory.md`` document.
+    """Extract the Top-level events, Stream header, and Forward-compat
+    sections from a transient ``tmp/pi-dev-docs/inventory.md`` document.
 
-    Returns a mapping with two keys:
+    Returns a mapping with three keys:
       - ``"top_level"``: text of the Top-level events section (between
         its ``###`` heading and the next ``###`` heading)
+      - ``"stream_header"``: text of the Stream header section (between
+        its ``###`` heading and the next ``###`` heading); empty string
+        if the section is absent
       - ``"forward_compat"``: text of the Forward-compat section
         (between its ``###`` heading and the next ``###`` heading);
         empty string if the section is absent.
@@ -104,7 +108,11 @@ def _extract_pi_inventory_top_level_section(
     intermediate prose so the inventory can grow notes between
     sections without breaking this guard.
     """
-    sections: dict[str, str] = {"top_level": "", "forward_compat": ""}
+    sections: dict[str, str] = {
+        "top_level": "",
+        "stream_header": "",
+        "forward_compat": "",
+    }
     lines = inventory_text.splitlines()
     section_ranges: list[tuple[str, int, int]] = []
     for index, line in enumerate(lines):
@@ -123,6 +131,8 @@ def _extract_pi_inventory_top_level_section(
         body = "\n".join(lines[start + 1 : end])
         if header == _INVENTORY_TOP_LEVEL_HEADER:
             sections["top_level"] = body
+        elif header.startswith(_INVENTORY_STREAM_HEADER_PREFIX):
+            sections["stream_header"] = body
         elif header.startswith(_INVENTORY_FORWARD_COMPAT_PREFIX):
             sections["forward_compat"] = body
     return sections
@@ -171,9 +181,16 @@ class TestPiDevWireFormatSpec:
         top-level event type from https://pi.dev/docs/latest/json.
 
         The current live published contract (re-fetched 2026-06-20
-        from https://pi.dev/docs/latest/json) enumerates 16 event
-        types. ``extension_error`` is accepted defensively by the
-        parser but is NOT in the current published contract, so it is
+        from https://pi.dev/docs/latest/json) enumerates 15
+        ``AgentSessionEvent`` union members (10 ``AgentEvent``
+        members + 5 direct members).  The ``session`` line is the
+        STREAM-LEVEL HEADER (per the docs: "The first line is the
+        session header") and is NOT a member of the union; it is
+        emitted as the first line of the stream by ``pi --mode json``
+        and the parser routes it through ``_handle_session``.
+
+        ``extension_error`` is accepted defensively by the parser but
+        is NOT in the current published contract, so it is
         deliberately excluded from this set and is exercised in
         :meth:`test_extension_error_accepted_as_forward_compat`.
 
@@ -185,7 +202,6 @@ class TestPiDevWireFormatSpec:
         never silently drifts from the live spec.
         """
         documented_top_level_events = {
-            "session",
             "agent_start",
             "agent_end",
             "turn_start",
@@ -208,15 +224,25 @@ class TestPiDevWireFormatSpec:
         missing = documented_top_level_events - actual_top_level_events
         assert not missing, (
             f"Committed pi.dev wire-format fixture is missing the "
-            f"documented top-level event types: {sorted(missing)}. "
-            f"Update the fixture in the same diff as the live docs "
-            f"(see tmp/pi-dev-docs/inventory.md)."
+            f"documented AgentSessionEvent union members: "
+            f"{sorted(missing)}. Update the fixture in the same diff "
+            f"as the live docs (see tmp/pi-dev-docs/inventory.md)."
+        )
+        # The session header line is required by the parser but is
+        # NOT a union member; it must still be present in the fixture
+        # so the parser's session-header path is exercised.
+        assert "session" in actual_top_level_events, (
+            "Committed pi.dev wire-format fixture is missing the "
+            "stream-level session header line; update the fixture to "
+            "include it as the first line."
         )
 
     def test_inventory_top_level_section_matches_canonical_set(self) -> None:
         """The transient ``tmp/pi-dev-docs/inventory.md`` MUST list
-        exactly the canonical 16 top-level events under its
-        ``Top-level events (AgentSessionEvent union)`` section.
+        exactly the canonical 15 ``AgentSessionEvent`` union members
+        under its ``Top-level events (AgentSessionEvent union)``
+        section, and ``session`` MUST live in a separate
+        ``Stream header`` section.
 
         The previous reconciliation only checked that the canonical
         16 events were *present* somewhere in the inventory, which
@@ -226,18 +252,25 @@ class TestPiDevWireFormatSpec:
         assertion.  This test reads the inventory's
         ``Top-level events (AgentSessionEvent union)`` section, parses
         the documented top-level event names out of it, and asserts
-        EXACT agreement with the canonical 16-event set.  The
+        EXACT agreement with the canonical 15-event union set.  The
         ``extension_error`` entry MUST live in a separate
         ``Forward-compat / extension events`` section that is excluded
         from this assertion (see
         :meth:`test_extension_error_accepted_as_forward_compat`).
 
+        Per the live docs (https://pi.dev/docs/latest/json):
+        ``AgentSessionEvent`` has exactly 15 members (10 ``AgentEvent``
+        members + 5 direct members).  ``session`` is the FIRST line
+        of the stream (per "The first line is the session header")
+        and is NOT a union member; it lives in a separate
+        ``Stream header`` section of the inventory.
+
         This guard fails LOUDLY if the inventory re-introduces
         ``extension_error`` (or any other forward-compat name) as a
-        documented top-level event.
+        documented top-level event, or if ``session`` is moved back
+        into the union's top-level section.
         """
         canonical_top_level_events = {
-            "session",
             "agent_start",
             "agent_end",
             "turn_start",
@@ -270,18 +303,21 @@ class TestPiDevWireFormatSpec:
         inventory_text = inventory_path.read_text(encoding="utf-8")
 
         # Extract the Top-level events (AgentSessionEvent union)
-        # section and the Forward-compat / extension events section.
+        # section, the Stream header section, and the
+        # Forward-compat / extension events section.
         sections = _extract_pi_inventory_top_level_section(inventory_text)
         top_section = sections["top_level"]
+        stream_section = sections["stream_header"]
         forward_section = sections["forward_compat"]
 
-        # Parse documented top-level event names from the
-        # Top-level events section.  Each entry is a markdown list
-        # bullet ``  - `event_name` — description`` (or
+        # Parse documented top-level event names from each section.
+        # Each entry is a markdown list bullet
+        # ``  - `event_name` \u2014 description`` (or
         # ``  - `event_name` description``); capture every
         # backticked name that lives ONLY in the top-level section
         # and NOT in the forward-compat section.
         top_level_names = _parse_backticked_event_names(top_section)
+        stream_header_names = _parse_backticked_event_names(stream_section)
         forward_compat_names = _parse_backticked_event_names(forward_section)
 
         # Sanity: ``extension_error`` MUST be in the forward-compat
@@ -294,9 +330,24 @@ class TestPiDevWireFormatSpec:
             f"{sorted(forward_compat_names)}."
         )
 
+        # Sanity: ``session`` MUST live in the Stream header section,
+        # NOT in the top-level union section (per the live docs).
+        assert "session" in stream_header_names, (
+            f"Expected `session` to be documented in the Stream "
+            f"header section of {inventory_path} (per the live docs "
+            f"'The first line is the session header'), got "
+            f"stream-header names {sorted(stream_header_names)}."
+        )
+        assert "session" not in top_level_names, (
+            f"`session` is the stream-level header line, NOT a member "
+            f"of the AgentSessionEvent union (per the live docs); it "
+            f"must NOT be listed in the Top-level events (AgentSessionEvent "
+            f"union) section of {inventory_path}."
+        )
+
         # The Top-level events section MUST be in EXACT agreement
-        # with the canonical 16-event set: no missing names and no
-        # undocumented names.
+        # with the canonical 15-event union set: no missing names
+        # and no undocumented names.
         missing = canonical_top_level_events - top_level_names
         assert not missing, (
             f"tmp/pi-dev-docs/inventory.md Top-level events section is "
@@ -308,7 +359,7 @@ class TestPiDevWireFormatSpec:
             f"tmp/pi-dev-docs/inventory.md Top-level events section "
             f"lists undocumented top-level event names: "
             f"{sorted(extras)}.  The current published "
-            f"AgentSessionEvent union enumerates exactly 16 events "
+            f"AgentSessionEvent union enumerates exactly 15 events "
             f"(re-fetched 2026-06-20 from "
             f"https://pi.dev/docs/latest/json); any extra name must "
             f"be moved into the Forward-compat / extension events "

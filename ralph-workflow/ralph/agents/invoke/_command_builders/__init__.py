@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 
 _MODELED_FLAG_PARTS = 2
+_PI_MODEL_FLAG_PARTS = 2
 _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 
@@ -174,22 +175,46 @@ def _tokenize_pi_model_flag(model_flag: str) -> list[str]:
     """Tokenize a Pi ``--model`` flag into argv-safe tokens.
 
     Pi (https://pi.dev/docs/latest/usage) documents ``--model <pattern>``
-    as a single-argv pattern.  The registry's
-    ``_is_valid_pi_model_id`` validator already rejects whitespace,
-    newlines, and multi-colon shapes so the value side of the flag is
-    always a single token, but the flag string is built as
-    ``"--model {shlex.quote(model_id)}"`` and may also be supplied by
-    callers via ``BuildCommandOptions.model_flag``.
+    as exactly one ``--model`` flag followed by one ``<pattern>`` value
+    (two argv tokens).  The registry's
+    ``_is_valid_pi_model_id`` validator rejects whitespace, newlines,
+    and multi-colon shapes so the value side of the flag is always a
+    single token, but the flag string may also be supplied by callers
+    via ``BuildCommandOptions.model_flag`` and must not be trusted.
 
-    ``shlex.split`` produces the canonical argv pair
-    ``['--model', <value>]`` for both registry-built and caller-supplied
-    flags without depending on the OpenCode-specific
-    ``_normalize_opencode_model_flag`` helper (which strips an
-    OpenCode-only ``opencode/`` prefix that pi.dev does not use).  This
-    is the Pi-safe path so malformed flags do not leak garbage like
-    ``['--model', "'foo", "bar'"]`` into downstream subprocess argv.
+    The pi.dev contract is strictly ``['--model', <pattern>]`` (two
+    tokens).  We therefore enforce three structural rules:
+
+      1. The flag must tokenize into exactly two argv tokens.
+      2. The first token must be the literal flag name ``--model``.
+      3. The second token must NOT itself start with ``-`` (so a
+         caller cannot smuggle a second flag in as the "value").
+
+    A malformed flag is rejected by raising
+    :class:`ValueError` rather than silently emitting an unsafe argv
+    shape.  This is a fail-closed posture: a hostile or malformed
+    ``--model`` string must never reach the spawned ``pi`` process
+    as extra argv tokens.
     """
-    return shlex.split(model_flag)
+    parts = shlex.split(model_flag)
+    if len(parts) != _PI_MODEL_FLAG_PARTS:
+        raise ValueError(
+            "pi --model flag must be exactly two argv tokens "
+            f"('--model <value>'); got {len(parts)} tokens from "
+            f"{model_flag!r}"
+        )
+    if parts[0] != "--model":
+        raise ValueError(
+            "pi model_flag must start with the literal '--model' flag "
+            f"name; got first token {parts[0]!r}"
+        )
+    if parts[1].startswith("-"):
+        raise ValueError(
+            "pi --model value must not itself start with '-' "
+            "(flag-injection guard); got "
+            f"value={parts[1]!r}"
+        )
+    return parts
 
 
 def _extend_claude_transport_flags(

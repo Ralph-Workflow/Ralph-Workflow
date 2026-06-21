@@ -568,6 +568,76 @@ class TestPiParserMessageUpdateTextDelta:
         assert text_lines[0].content == "A"
         assert text_lines[1].content == "B"
 
+    def test_interleaved_multi_index_text_streaming_flushes_each_block(
+        self,
+    ) -> None:
+        """``text_delta(0,'A') + text_delta(1,'B') + text_end(0) + text_end(1)``
+        must emit two separate ``text`` lines in order: ``A`` then ``B``.
+
+        Regression test for the analysis feedback: the parser used a
+        single message-wide text accumulator, so interleaved
+        ``text_delta`` events for ``contentIndex`` 0 and 1 merged
+        into a single buffer (the prior observed bad output was
+        ``[('text', 'AB')]``).  The fix keys the per-block
+        accumulator by ``contentIndex`` so each active block
+        accumulates and flushes independently.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 0,
+                        "delta": "A",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 1,
+                        "delta": "B",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_end",
+                        "contentIndex": 0,
+                        "content": "A",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_end",
+                        "contentIndex": 1,
+                        "content": "B",
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 2
+        assert text_lines[0].content == "A"
+        assert text_lines[1].content == "B"
+        # The prior observed bad output was the two characters merged
+        # into one ``AB`` line; assert that this never reoccurs.
+        assert not any(r.content == "AB" for r in results)
+
     def test_message_end_with_text_and_thinking_blocks_emits_each_block(
         self,
     ) -> None:
@@ -795,6 +865,43 @@ class TestPiParserThinkingDelta:
         assert len(tool_result_lines) == 1
         assert tool_result_lines[0].content == "ok"
 
+    def test_message_end_emits_toolresult_block_normalizes_structured_result(
+        self,
+    ) -> None:
+        """``message_end(toolResult, result={'content':[{'type':'text','text':'ok'}]})``
+        must emit ``tool_result`` with ``content=='ok'``, NOT ``str(dict)``.
+
+        Regression test for the analysis feedback: the parser used to
+        stringify the structured result payload via ``str(...)`` in
+        the ``toolResult`` block of ``message_end`` too, leaking
+        ``{'content': [...]}`` to downstream consumers.  The single
+        consistent extraction rule is shared with ``tool_execution_end``
+        so both paths normalize structured Pi result payloads into
+        user-visible text.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "toolResult",
+                            "toolCallId": "x",
+                            "result": {"content": [{"type": "text", "text": "ok"}]},
+                        }
+                    ],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        tool_result_lines = [r for r in results if r.type == "tool_result"]
+        assert len(tool_result_lines) == 1
+        assert tool_result_lines[0].content == "ok"
+        assert "{'content'" not in tool_result_lines[0].content
+        assert "{'type'" not in tool_result_lines[0].content
+
     def test_message_end_emits_toolresult_block_error(self) -> None:
         """``message_end(toolResult, isError=true)`` must emit ``type='error'``.
 
@@ -944,6 +1051,7 @@ class TestPiParserToolExecution:
         results = list(parser.parse(_lines(line)))
         tool_result_lines = [r for r in results if r.type == "tool_result"]
         assert len(tool_result_lines) == 1
+        assert tool_result_lines[0].content == "partial"
 
     def test_tool_execution_end_success_yields_tool_result(self) -> None:
         parser = PiParser()
@@ -959,6 +1067,63 @@ class TestPiParserToolExecution:
         results = list(parser.parse(_lines(line)))
         assert any(r.type == "tool_result" for r in results)
         assert not any(r.type == "error" for r in results)
+
+    def test_tool_execution_end_success_normalizes_structured_result_to_text(
+        self,
+    ) -> None:
+        """``tool_execution_end(result={'content':[{'type':'text','text':'ok'}]})``
+        must emit a ``tool_result`` line with ``content=='ok'``, NOT
+        ``str(result)`` which would leak ``{'content': [...]}``.
+
+        Regression test for the analysis feedback: the parser used to
+        stringify the structured result payload via ``str(...)``,
+        producing ``tool_result`` content like
+        ``{'content': [{'type': 'text', 'text': 'ok'}]}`` instead of
+        the user-visible ``ok``.  The fix uses one consistent
+        extraction rule that joins the ``text`` of every
+        ``content`` block of type ``text``.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "call_1",
+                "toolName": "bash",
+                "result": {"content": [{"type": "text", "text": "ok"}]},
+                "isError": False,
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        tool_result_lines = [r for r in results if r.type == "tool_result"]
+        assert len(tool_result_lines) == 1
+        assert tool_result_lines[0].content == "ok"
+        # The raw dict literal must NOT leak into the emitted line.
+        assert "{'content'" not in tool_result_lines[0].content
+        assert "{'type'" not in tool_result_lines[0].content
+
+    def test_tool_execution_end_error_normalizes_structured_result_to_text(
+        self,
+    ) -> None:
+        """``tool_execution_end(isError=True, result={'content':[{'type':'text','text':'fail'}]})``
+        must emit an ``error`` line with ``content=='fail'``, NOT
+        ``str(result)`` which would leak the dict literal.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "call_1",
+                "toolName": "bash",
+                "result": {"content": [{"type": "text", "text": "fail"}]},
+                "isError": True,
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        error_lines = [r for r in results if r.type == "error"]
+        assert len(error_lines) == 1
+        assert error_lines[0].content == "fail"
+        assert "{'content'" not in error_lines[0].content
+        assert "{'type'" not in error_lines[0].content
 
     def test_tool_execution_end_error_yields_error_line(self) -> None:
         """Single consistent isError=True -> type='error' rule."""
