@@ -92,6 +92,19 @@ Developers and teams who have **ambitious, well-specified work** that's too big 
 
 It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
 
+## Built with Ralph
+
+Ralph Workflow is the reference implementation of a pattern that now powers 25+ independent projects. Here are a few of them:
+
+| Project | Stars | Description |
+|---------|-------|-------------|
+| [umputun/ralphex](https://github.com/umputun/ralphex) (verify: gh) | 1,296 ⭐ | Multi-provider LLM loop across OpenAI, Anthropic, Ollama |
+| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) (verify: gh) | 254 ⭐ | Dynamic workflows with custom models, MCP, sub-agents |
+| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) (verify: gh) | 66 ⭐ | Runtime for loop engineering — practitioner cookbook |
+| [benikigai/nightshift](https://github.com/benikigai/nightshift) (verify: gh) | 14 ⭐ | Lights-out autonomous software work — ship specs, wake up to commits |
+
+[See all 27+ projects →](USERS.md) · [Add yours →](SHOWCASE.md)
+
 ## Quick start
 
 ```
