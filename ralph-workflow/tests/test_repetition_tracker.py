@@ -94,6 +94,34 @@ def test_real_progress_resets_consecutive_streak() -> None:
         assert not tracker.tripped()
 
 
+def test_real_progress_resets_tool_call_dimension() -> None:
+    """``note_progress`` must clear the tool-call dimension too.
+
+    Regression for a bug where genuine forward progress reset the error
+    dimension but left identical tool-call fingerprints intact, causing a
+    false-positive ``REPEATED_IDENTICAL_TOOL_CALL`` across a progress
+    boundary.
+    """
+    clock = FakeClock()
+    tracker = _tracker(clock, consecutive_threshold=3, window_count=None, window_seconds=None)
+    for _ in range(3):
+        tracker.mark_tool_call("Bash", {"command": "ls"})
+        clock.advance(1.0)
+    assert tracker.tripped()
+    assert tracker.tripped_tool_dimension()
+    tracker.note_progress()  # genuine forward progress must clear both dimensions
+    # One identical call after progress is not enough to trip again.
+    tracker.mark_tool_call("Bash", {"command": "ls"})
+    assert not tracker.tripped()
+    assert not tracker.tripped_tool_dimension()
+    # Rebuild the full consecutive streak to confirm the threshold still works.
+    for _ in range(2):
+        tracker.mark_tool_call("Bash", {"command": "ls"})
+        clock.advance(1.0)
+    assert tracker.tripped()
+    assert tracker.tripped_tool_dimension()
+
+
 def test_window_rule_trips_even_when_consecutive_streak_keeps_resetting() -> None:
     clock = FakeClock()
     # Disable the consecutive rule so only the window rule can trip.

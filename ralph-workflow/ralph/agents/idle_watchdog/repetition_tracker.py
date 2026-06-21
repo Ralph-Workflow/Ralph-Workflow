@@ -161,12 +161,9 @@ class RepetitionTracker:
         self._consecutive = 0
         self._last_fingerprint = None
         self._events.clear()
-        # Tool-call progress is not cleared here: the caller must
-        # explicitly note a real forward-progress event so a
-        # tool-call wedge is detected even when interleaved with
-        # cosmetic output.  Callers that want to share a single
-        # progress signal between the two dimensions can clear
-        # ``_tool_events`` separately via ``_reset_tool_progress``.
+        self._tool_consecutive = 0
+        self._last_tool_fingerprint = None
+        self._tool_events.clear()
 
     def tripped(self) -> bool:
         """Return True when either trip condition is currently satisfied.
