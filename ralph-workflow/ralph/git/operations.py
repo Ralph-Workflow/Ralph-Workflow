@@ -592,6 +592,17 @@ def _atomic_append_text(
     ``"existing-without-newline*.cache\\n"`` -- a malformed single-line
     rule rather than two separate rules.
 
+    Byte-preserving round-trip: the helper reads the existing file via
+    ``Path.read_bytes()`` and writes the staged file via
+    ``Path.write_bytes()``. This preserves CRLF (``\\r\\n``), BOM, and
+    any other byte-level content the caller wrote -- a text-mode round
+    trip via ``read_text``/``write_text`` would normalize CRLF to LF
+    on POSIX (universal-newlines mode) and silently corrupt
+    Windows-style or gitattributes-style content. The payload string
+    is encoded with the same ``encoding`` argument for the write so the
+    boundary insert (when needed) does not double-encode the existing
+    bytes.
+
     Read-failure policy: when ``path.exists()`` is True but the read
     raises ``OSError`` (permission denied, broken FS, transient I/O), the
     helper fails closed by re-raising the underlying ``OSError``. A
@@ -613,17 +624,17 @@ def _atomic_append_text(
         encoding: Text encoding for the staging write. Default ``utf-8``.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    existing = ""
+    existing = b""
     if path.exists():
-        existing = path.read_text(encoding=encoding)
-    separator = ""
-    if existing and not existing.endswith("\n"):
-        separator = "\n"
+        existing = path.read_bytes()
+    separator = b""
+    if existing and not existing.endswith(b"\n"):
+        separator = b"\n"
     _staging_hash = hashlib.sha256(payload.encode(encoding)).hexdigest()[:16]
     _staging_pid = os.getpid()
     staging = path.with_suffix(path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}")
     try:
-        staging.write_text(existing + separator + payload, encoding=encoding)
+        staging.write_bytes(existing + separator + payload.encode(encoding))
         staging.replace(path)
     except BaseException:
         with suppress(FileNotFoundError):

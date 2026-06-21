@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 import pytest
-from git import Repo
+from git import GitCommandError, Repo
 
 from ralph.git import commit_cleanup as cc_module
 from ralph.git import operations as ops
@@ -14,6 +15,7 @@ from ralph.git.commit_cleanup import (
     delete_file_from_repo,
     ensure_git_initialized,
 )
+from ralph.git.operations import get_head_sha
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -141,7 +143,7 @@ def test_atomic_append_text_fails_closed_on_unreadable_existing_file(
     """When the existing file cannot be read, the helper must NOT clobber it.
 
     Regression for the analysis decision ``how_to_fix`` item: the previous
-    implementation caught ``OSError`` from ``Path.read_text`` and silently
+    implementation caught ``OSError`` from ``Path.read_bytes`` and silently
     treated the file as empty, then published ``existing + payload`` via
     ``Path.replace()``. A transient read failure (permission denied,
     broken FS, transient I/O error) would therefore CLOBBER the original
@@ -157,14 +159,14 @@ def test_atomic_append_text_fails_closed_on_unreadable_existing_file(
     pre_bytes = target.read_bytes()
 
     fail_read = True
-    real_read_text = type(target).read_text
+    real_read_bytes = type(target).read_bytes
 
-    def fake_read_text(self: Path, *args: object, **kwargs: object) -> str:
+    def fake_read_bytes(self: Path) -> bytes:
         if self == target and fail_read:
             raise PermissionError("simulated read failure")
-        return real_read_text(self, *args, **kwargs)
+        return real_read_bytes(self)
 
-    monkeypatch.setattr(type(target), "read_text", fake_read_text)
+    monkeypatch.setattr(type(target), "read_bytes", fake_read_bytes)
 
     with pytest.raises(OSError):
         ops._atomic_append_text(target, "NEW\n", encoding="utf-8")
@@ -259,20 +261,20 @@ def test_atomic_append_text_cleans_sibling_on_exception(
         staging_seen.append(self)
         real_unlink(self)
 
-    def fake_write_text(self: Path, *args: object, **kwargs: object) -> int:
+    def fake_write_bytes(self: Path, data: bytes) -> int:
         # Raise immediately so the replace() call never runs; we then
         # verify the unlink() cleanup is attempted on the staging path.
-        del args, kwargs
+        del data
         raise OSError("simulated mid-write failure")
 
-    monkeypatch.setattr(type(target), "write_text", fake_write_text)
+    monkeypatch.setattr(type(target), "write_bytes", fake_write_bytes)
     monkeypatch.setattr(type(target), "unlink", spy_unlink)
 
     with pytest.raises(OSError, match="simulated mid-write failure"):
         ops._atomic_append_text(target, "extra\n", encoding="utf-8")
 
     assert staging_seen, (
-        "Helper must call staging.unlink() after a failed write_text"
+        "Helper must call staging.unlink() after a failed write_bytes"
     )
     assert target.read_text(encoding="utf-8") == "initial\n", (
         "Target file must NOT be modified when the publish step fails"
@@ -451,3 +453,305 @@ def test_ensure_git_initialized_is_noop_for_existing_repo(tmp_git_repo: Path) ->
         assert repo.active_branch.name in ("main", "master", "HEAD")
         # Commit should still exist
         assert repo.head.commit.hexsha
+
+
+# --- Phase 4 edge-case tests for delete_file_from_repo ---
+#
+# Each test pins one observable behavior of the cleanup helper. The names
+# follow the plan: test_<unit>_<behavior> so the test id matches the
+# failing-commit-phase symptoms the user reported.
+
+
+@pytest.mark.timeout_seconds(5)
+def test_delete_file_from_repo_handles_untracked_existing_file(tmp_git_repo: Path) -> None:
+    """Untracked existing file at a deletable path is removed end-to-end.
+
+    The helper must accept an existing-but-untracked file and remove it
+    without raising. The git index step is a no-op (no index entries),
+    but ``Path.unlink(missing_ok=True)`` must still remove the file from
+    the worktree. A prior implementation gated the unlink on the
+    ``tracked_in_index`` flag and silently skipped untracked files --
+    the hardening makes the unlink unconditional.
+    """
+    binary = tmp_git_repo / "untracked.exe"
+    binary.write_text("binary content")
+
+    assert binary.exists()
+    assert not binary.is_symlink()
+
+    delete_file_from_repo(tmp_git_repo, "untracked.exe")
+
+    assert not binary.exists(), (
+        "Untracked existing file MUST be removed by delete_file_from_repo"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_delete_file_from_repo_handles_dot_slash_prefixed_path(tmp_git_repo: Path) -> None:
+    """A ``./`` prefix on the relative path must be normalized to the bare path.
+
+    The cleanup helper accepts ``./binary.exe`` equivalently to
+    ``binary.exe`` -- the ``PurePath`` constructor treats ``./`` as a no-op
+    in the parts tuple, so the relative-to-repo check passes for both
+    shapes. This pins the helper's tolerance for the prefix an agent may
+    include when normalizing paths via os.path.relpath or similar.
+    """
+    binary = tmp_git_repo / "binary.exe"
+    binary.write_text("binary content")
+
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["binary.exe"])
+        repo.index.commit("track binary")
+    finally:
+        repo.close()
+
+    delete_file_from_repo(tmp_git_repo, "./binary.exe")
+
+    assert not binary.exists(), (
+        "File MUST be removed when the path uses a ``./`` prefix"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_delete_file_from_repo_rejects_symlinked_parent_dir(
+    tmp_git_repo: Path, tmp_path: Path
+) -> None:
+    """A path that traverses through a symlinked parent pointing outside is rejected.
+
+    The unresolved-path ``is_symlink()`` check guards against a symlink at
+    the literal path; the post-resolve ``relative_to`` guard catches a
+    path that resolves through a symlinked parent to a location outside
+    the repo root. With ``safe_alias`` pointing outside, calling
+    ``delete_file_from_repo(tmp_git_repo, "safe_alias/foo.txt")`` would
+    either resolve to ``<outside>/foo.txt`` (relative_to fails) or hit
+    the unresolved-path symlink check when ``safe_alias`` is itself a
+    symlink whose resolution escapes the repo.
+    """
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "foo.txt").write_text("outside content\n")
+
+    safe_alias = tmp_git_repo / "safe_alias"
+    safe_alias.symlink_to(outside)
+
+    assert safe_alias.is_symlink()
+    assert (safe_alias / "foo.txt").exists(), (
+        "Setup invariant: the symlinked parent must currently expose foo.txt"
+    )
+
+    with pytest.raises(ValueError):
+        delete_file_from_repo(tmp_git_repo, "safe_alias/foo.txt")
+
+    assert (outside / "foo.txt").exists(), (
+        "The outside file must NOT be deleted as a side effect"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_delete_file_from_repo_propagates_index_lock_error(tmp_git_repo: Path) -> None:
+    """An existing ``.git/index.lock`` causes git operations to fail and the error propagates.
+
+    The cleanup helper wraps the git index lookup in
+    ``with suppress(InvalidGitRepositoryError):`` -- that suppression is
+    intentionally narrow: it does NOT swallow ``GitCommandError``,
+    ``OSError``, or any other error class. A stale ``index.lock`` will
+    cause the underlying ``git rm -f --cached -- <path>`` (invoked via
+    the ``Repo`` index lookup) to fail with ``GitCommandError``
+    (``exit code 128`` and stderr ``Unable to create '.../index.lock':
+    File exists.``), and that failure must propagate to the caller so
+    the WARNING log surfaces the real cause instead of silently claiming
+    success.
+
+    The test pins the narrow exception contract: ``GitCommandError`` is
+    the specific class that surfaces. The production helper does NOT
+    swallow it via the ``InvalidGitRepositoryError`` suppression. The
+    plan originally specified ``OSError`` as the assertion target, but
+    GitPython wraps git-exit failures in ``GitCommandError`` (which is
+    NOT an ``OSError`` subclass on any supported Python version). The
+    narrower assertion is the right regression guard.
+    """
+    binary = tmp_git_repo / "binary.exe"
+    binary.write_text("binary content")
+
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["binary.exe"])
+        repo.index.commit("track binary")
+    finally:
+        repo.close()
+
+    # Simulate a concurrent git operation by writing the lock file.
+    (tmp_git_repo / ".git" / "index.lock").write_text("locked", encoding="utf-8")
+    assert (tmp_git_repo / ".git" / "index.lock").exists()
+
+    try:
+        with pytest.raises(GitCommandError) as excinfo:
+            delete_file_from_repo(tmp_git_repo, "binary.exe")
+        assert "index.lock" in str(excinfo.value) or "File exists" in str(excinfo.value), (
+            f"Stderr must surface the index-lock conflict, got: {excinfo.value!s}"
+        )
+    finally:
+        # Best-effort cleanup so tmp_git_repo can be reaped.
+        with suppress(FileNotFoundError):
+            (tmp_git_repo / ".git" / "index.lock").unlink()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_delete_file_from_repo_accepts_str_path_argument(tmp_git_repo: Path) -> None:
+    """Passing a ``str`` (not ``Path``) as ``repo_root`` is accepted without TypeError.
+
+    The helper signature is ``def delete_file_from_repo(repo_root: Path | str, ...)``
+    -- the first line normalizes via ``Path(repo_root).resolve()`` so a
+    string path is equivalent to a Path. This pins that public contract
+    so a future refactor that drops the ``Path()`` wrapper surfaces as a
+    TypeError regression.
+    """
+    binary = tmp_git_repo / "binary.exe"
+    binary.write_text("binary content")
+
+    repo = Repo(tmp_git_repo)
+    try:
+        repo.index.add(["binary.exe"])
+        repo.index.commit("track binary")
+    finally:
+        repo.close()
+
+    str_repo_root = str(tmp_git_repo)
+    assert isinstance(str_repo_root, str)
+
+    delete_file_from_repo(str_repo_root, "binary.exe")
+
+    assert not binary.exists(), (
+        "File MUST be removed when repo_root is passed as str"
+    )
+
+
+# --- Phase 8 edge-case tests for ensure_git_initialized ---
+#
+# Each test pins one observable behavior of the git-init helper. The names
+# follow the plan: test_ensure_git_initialized_<behavior> so the test id
+# maps directly to the contract pinned by the existing
+# ``test_ensure_git_initialized_*`` tests.
+
+
+@pytest.mark.timeout_seconds(5)
+def test_ensure_git_initialized_accepts_str_path_argument(tmp_path: Path) -> None:
+    """Passing a ``str`` (not ``Path``) as ``repo_root`` initializes a non-git directory.
+
+    The helper signature is ``def ensure_git_initialized(repo_root: Path | str) -> None``
+    -- the implementation passes the value through to ``Repo(repo_root, ...)``
+    which accepts both. This pins the public contract so a future refactor
+    that drops the union-arg support surfaces as a TypeError regression.
+    """
+    non_repo = tmp_path / "non_repo_str"
+    non_repo.mkdir()
+    assert not (non_repo / ".git").exists()
+
+    ensure_git_initialized(str(non_repo))
+
+    assert (non_repo / ".git").exists()
+    with Repo(non_repo) as repo:
+        assert repo.active_branch.name in ("main", "master", "HEAD")
+
+
+@pytest.mark.timeout_seconds(5)
+def test_ensure_git_initialized_does_not_clobber_existing_repo(tmp_git_repo: Path) -> None:
+    """Pre-existing repo: HEAD SHA is preserved across ``ensure_git_initialized``.
+
+    Pins the no-clobber contract: when ``.git`` already points at a
+    valid git repository, the helper must NOT re-initialize. The HEAD
+    SHA is the simplest regression anchor -- a fresh ``Repo.init``
+    would create a new ``.git/HEAD`` with no commits and the SHA check
+    would fail.
+    """
+    head_sha_before = get_head_sha(tmp_git_repo)
+    assert head_sha_before
+    head_commit_before = Repo(tmp_git_repo).head.commit.hexsha
+
+    ensure_git_initialized(tmp_git_repo)
+
+    head_sha_after = get_head_sha(tmp_git_repo)
+    assert head_sha_after == head_sha_before, (
+        f"HEAD SHA must be preserved across ensure_git_initialized, "
+        f"was {head_sha_before!r}, now {head_sha_after!r}"
+    )
+    assert Repo(tmp_git_repo).head.commit.hexsha == head_commit_before
+
+
+@pytest.mark.timeout_seconds(5)
+def test_ensure_git_initialized_handles_gitfile_layout_separate_git_dir(
+    tmp_path: Path,
+) -> None:
+    """A gitfile layout (worktree pointing at a separate git dir) is accepted.
+
+    The plan pins the separate-git-dir case so a worktree-style layout
+    (where ``.git`` is a file containing ``gitdir: <path>``) does NOT
+    crash the helper. ``Repo(repo_root)`` resolves the gitfile
+    transparently and ``search_parent_directories=False`` keeps the
+    helper scoped to the requested path.
+    """
+    # Build a separate-git-dir layout: a real git repo at
+    # ``separate_dir`` plus a worktree directory whose ``.git`` is a
+    # file pointing at ``separate_dir``.
+    separate_dir = tmp_path / "separate"
+    separate_dir.mkdir()
+    Repo.init(separate_dir)
+    assert (separate_dir / ".git").is_dir(), (
+        "Setup invariant: separate_dir/.git must be a real git directory"
+    )
+
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / ".git").write_text(f"gitdir: {separate_dir}/.git\n", encoding="utf-8")
+    assert (worktree / ".git").is_file(), (
+        "Setup invariant: worktree/.git must be a gitfile, not a directory"
+    )
+
+    # Must not raise.
+    ensure_git_initialized(worktree)
+
+    # The separate git dir is still valid.
+    with Repo(separate_dir) as repo:
+        assert repo.active_branch.name in ("main", "master", "HEAD")
+
+
+@pytest.mark.timeout_seconds(5)
+def test_ensure_git_initialized_raises_on_corrupt_git_dir(tmp_path: Path) -> None:
+    """Corrupt ``.git`` raises ``GitCommandError`` (file is not a directory or gitfile).
+
+    The helper wraps ``Repo(repo_root)`` in
+    ``with suppress(InvalidGitRepositoryError):`` and falls back to
+    ``Repo.init(repo_root)`` on the suppressed branch. With ``.git``
+    pointing at a regular file (NOT a directory, NOT a gitfile with
+    ``gitdir: ...``), the ``Repo(...)`` constructor sees a non-empty
+    file as the ``.git`` path and falls through to ``Repo.init(...)``
+    on the suppressed branch -- which then fails with
+    ``GitCommandError`` (``exit code 128`` and stderr
+    ``fatal: invalid gitfile format: <path>/.git``) because the
+    existing file is not parseable as a gitfile.
+
+    The test pins the narrow exception contract: ``GitCommandError`` is
+    the specific class that surfaces. The corrupt ``.git`` file is
+    preserved on disk (NOT silently overwritten by ``Repo.init`` --
+    ``init`` errors out before mutating the directory).
+    """
+    corrupt = tmp_path / "corrupt_repo"
+    corrupt.mkdir()
+    (corrupt / ".git").write_text("not a git directory, not a gitfile\n", encoding="utf-8")
+    assert (corrupt / ".git").is_file()
+
+    with pytest.raises(GitCommandError) as excinfo:
+        ensure_git_initialized(corrupt)
+    assert "invalid gitfile format" in str(excinfo.value), (
+        f"Stderr must surface the invalid-gitfile-format error, got: {excinfo.value!s}"
+    )
+    # The corrupt .git file must NOT have been silently re-initialized.
+    assert (corrupt / ".git").is_file(), (
+        "ensure_git_initialized must NOT silently re-init over a corrupt .git"
+    )
+    assert (corrupt / ".git").read_text(encoding="utf-8") == (
+        "not a git directory, not a gitfile\n"
+    ), (
+        "Corrupt .git file content must NOT have been modified by a silent re-init"
+    )

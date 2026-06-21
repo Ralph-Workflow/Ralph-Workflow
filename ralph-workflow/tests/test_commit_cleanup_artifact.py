@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
 from ralph.mcp.artifacts._commit_cleanup_action import CommitCleanupAction
 from ralph.mcp.artifacts._typed_artifact_validation_error import TypedArtifactValidationError
 from ralph.mcp.artifacts.typed_artifacts import normalize_commit_cleanup_content
@@ -224,3 +225,140 @@ def test_valid_paths_still_accepted(action: str, kwargs: dict[str, str]) -> None
         obj = CommitCleanupAction(action=action, pattern=kwargs["pattern"])
         assert obj.action == action
         assert obj.pattern == kwargs["pattern"]
+
+
+# --- Phase 6 edge-case tests for CommitCleanupAction artifact validator ---
+#
+# Each test pins one observable behavior of the Pydantic validators on
+# CommitCleanupAction. The names follow the plan: test_<unit>_<behavior>
+# so the test id maps directly to the action-validator contract.
+
+
+@pytest.mark.parametrize(
+    ("boundary_char", "expected_accepted"),
+    [
+        # space (0x20): just below the printable-ASCII range -- rejected
+        ("\x20", False),
+        # 0x21 (!): start of the printable-ASCII range -- accepted
+        ("\x21", True),
+        # 0x7e (~): end of the printable-ASCII range -- accepted
+        ("\x7e", True),
+        # 0x7f (DEL): just above the printable-ASCII range -- rejected
+        ("\x7f", False),
+        # 0x80: first non-ASCII byte -- rejected
+        ("\x80", False),
+        # 0xff: top of the non-ASCII range -- rejected
+        ("\xff", False),
+    ],
+    ids=[
+        "space-0x20",
+        "ascii-start-0x21",
+        "ascii-end-0x7e",
+        "del-0x7f",
+        "non-ascii-low-0x80",
+        "non-ascii-high-0xff",
+    ],
+)
+def test_commit_cleanup_action_rejects_printable_ascii_boundaries(
+    boundary_char: str, expected_accepted: bool
+) -> None:
+    """Boundary chars in the printable-ASCII regex are correctly accepted/rejected.
+
+    Pins the behavior of the ``^[\x21-\x7e]+$`` regex at its six
+    boundary positions: chars inside the range (0x21, 0x7e) are
+    accepted; chars just outside the range (0x20, 0x7f) and non-ASCII
+    chars (0x80, 0xff) are rejected. Both ``path`` and ``pattern`` are
+    subject to the same validator; the parametrize runs the assertion
+    for each char through both code paths.
+    """
+    for action_type, kwarg in (
+        ("delete_file", "path"),
+        ("add_to_gitignore", "pattern"),
+        ("add_to_git_exclude", "pattern"),
+    ):
+        kwargs: dict[str, str] = {"action": action_type, kwarg: boundary_char}
+        if expected_accepted:
+            # Printable-ASCII boundary IN the range -- must validate.
+            obj = CommitCleanupAction(**kwargs)
+            assert getattr(obj, kwarg) == boundary_char
+        else:
+            # Printable-ASCII boundary OUT of the range -- must reject.
+            with pytest.raises(ValidationError):
+                CommitCleanupAction(**kwargs)
+
+
+def test_commit_cleanup_action_model_validator_passes_when_both_path_and_pattern_set() -> None:
+    """The model_validator does not check that path/pattern are mutually exclusive.
+
+    For ``delete_file``, ``path`` is required; the model_validator does
+    NOT require ``pattern`` to be None. The extra ``pattern`` value is
+    silently kept on the model but never consulted by the cleanup
+    classifier (which only reads ``action.path`` for delete actions).
+    For ``add_to_gitignore`` and ``add_to_git_exclude``, ``pattern`` is
+    required; the model_validator does NOT require ``path`` to be None.
+    The extra ``path`` is silently kept on the model and ignored.
+    """
+    obj = CommitCleanupAction(action="delete_file", path="foo", pattern="bar")
+    assert obj.action == "delete_file"
+    assert obj.path == "foo"
+    assert obj.pattern == "bar"
+
+    obj2 = CommitCleanupAction(action="add_to_gitignore", path="extra", pattern="*.pyc")
+    assert obj2.action == "add_to_gitignore"
+    assert obj2.path == "extra"
+    assert obj2.pattern == "*.pyc"
+
+
+def test_commit_cleanup_reason_is_currently_unvalidated() -> None:
+    """The ``reason`` field on ``CommitCleanup`` has no field_validator.
+
+    Pins the current behavior: ``reason`` is a free-form ``str | None``
+    field on the ``CommitCleanup`` model, NOT a ``CommitCleanupAction``.
+    NUL bytes, CJK characters, control chars, and newlines are ALL
+    accepted as-is. A future tightening that adds a printable-ASCII
+    validator on ``reason`` should add a sibling test (NOT modify this
+    one) so the behavior change is explicit.
+    """
+    for raw in ("\x00nul-injection", "中文说明", "multi\nline\nreason", "\r\nwindows-newline"):
+        artifact = CommitCleanup(
+            analysis_complete=True, actions=[], reason=raw
+        )
+        assert artifact.reason == raw, (
+            f"reason={raw!r} must be accepted unchanged (no field_validator), "
+            f"got: {artifact.reason!r}"
+        )
+
+
+def test_commit_cleanup_action_accepts_none_path_and_pattern() -> None:
+    """``path`` and ``pattern`` accept ``None`` -- the field_validators short-circuit.
+
+    Pins the current behavior: when ``path`` is ``None`` (e.g. on an
+    ``add_to_gitignore`` action), the field_validator returns ``None``
+    unchanged without running the printable-ASCII check. Same for
+    ``pattern`` on a ``delete_file`` action. The model_validator is
+    what enforces the action-type-vs-required-field contract.
+    """
+    obj = CommitCleanupAction(action="delete_file", path="foo", pattern=None)
+    assert obj.path == "foo"
+    assert obj.pattern is None
+
+    obj2 = CommitCleanupAction(action="add_to_gitignore", path=None, pattern="*.pyc")
+    assert obj2.path is None
+    assert obj2.pattern == "*.pyc"
+
+
+def test_commit_cleanup_action_rejects_empty_string_path() -> None:
+    """Empty string fails the printable-ASCII regex (no one-or-more match).
+
+    Pins the current behavior: the regex is ``^[\x21-\x7e]+$`` -- the
+    ``+`` (one-or-more) qualifier means the empty string is rejected
+    by the field_validator. A ``delete_file`` action with ``path=""``
+    raises ``ValidationError`` from the field_validator before the
+    model_validator runs (and would also be rejected by the
+    model_validator, which requires ``path`` for ``delete_file``).
+    """
+    with pytest.raises(ValidationError):
+        CommitCleanupAction(action="delete_file", path="")
+    with pytest.raises(ValidationError):
+        CommitCleanupAction(action="add_to_gitignore", pattern="")
+

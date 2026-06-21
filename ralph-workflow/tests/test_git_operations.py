@@ -14,6 +14,7 @@ from git import Actor, GitCommandError, Repo
 from ralph.git.git_run_result import GitRunResult
 from ralph.git.operations import (
     GitOperationError,
+    _atomic_append_text,
     append_to_gitignore,
     create_commit,
     find_repo_root,
@@ -506,3 +507,167 @@ def test_push_without_remote(tmp_git_repo: Path) -> None:
 
     with pytest.raises(GitOperationError):
         push(tmp_git_repo, remote="no-such-remote", branch="test-branch")
+
+
+# --- Phase 5 edge-case tests for _atomic_append_text ---
+#
+# Each test pins one observable behavior of the atomic helper. The names
+# follow the plan: test_atomic_append_text_<behavior> so the test id maps
+# directly to the staging-filename contract pinned by the audit invariant.
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_empty_payload_is_noop(tmp_path: Path) -> None:
+    """Empty payload is a no-op: no exception, no staging file remains.
+
+    The helper must accept an empty payload and complete without raising
+    or leaving a dangling staging sibling. The boundary check
+    (``existing ends with \\n``) is also a no-op because the staging
+    write_text and Path.replace are both invoked, but the content is
+    identical to the existing file -- the helper should still clean up
+    the staging file via the BaseException-suppress block.
+    """
+    target = tmp_path / "empty_payload.txt"
+    target.write_text("initial\n", encoding="utf-8")
+    pre_bytes = target.read_bytes()
+
+    _atomic_append_text(target, "", encoding="utf-8")
+
+    assert target.read_bytes() == pre_bytes, (
+        "Empty payload must NOT modify the target file"
+    )
+    staging_siblings = [
+        p for p in target.parent.iterdir()
+        if p.name.startswith(target.name) and ".ralph-staging." in p.name
+    ]
+    assert not staging_siblings, (
+        f"Empty payload must NOT leave a staging sibling, found: "
+        f"{[str(s) for s in staging_siblings]}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_preserves_crlf_in_existing_content(tmp_path: Path) -> None:
+    """CRLF-terminated existing content is preserved byte-for-byte through the atomic round-trip.
+
+    Pins the byte-preserving contract: a target file containing
+    ``b"line-one\\r\\nline-two\\r\\n"`` followed by an append of
+    ``"line-three\\n"`` must publish
+    ``b"line-one\\r\\nline-two\\r\\nline-three\\n"`` -- every CRLF
+    in the existing content is preserved, the appended LF does NOT
+    get converted, and the boundary insert (if any) is byte-accurate.
+
+    The helper reads via ``Path.read_bytes()`` and writes via
+    ``Path.write_bytes()`` so the CRLF byte sequence ``\\r\\n`` is
+    passed through unchanged. A text-mode round trip via
+    ``read_text``/``write_text`` would normalize CRLF to LF on POSIX
+    (universal-newlines mode) and silently corrupt the source. A future
+    refactor that regresses to text mode surfaces here as a CRLF
+    byte-presence failure.
+    """
+    target = tmp_path / "crlf_existing.txt"
+    target.write_bytes(b"line-one\r\nline-two\r\n")
+
+    _atomic_append_text(target, "line-three\n", encoding="utf-8")
+
+    raw_bytes = target.read_bytes()
+    assert raw_bytes == b"line-one\r\nline-two\r\nline-three\n", (
+        f"CRLF-terminated existing content must be preserved byte-for-byte. "
+        f"Expected: b'line-one\\r\\nline-two\\r\\nline-three\\n', got: {raw_bytes!r}"
+    )
+    assert raw_bytes.count(b"\r\n") == 2, (
+        f"Both CRLF terminators must be present in the published bytes, "
+        f"got: {raw_bytes!r}"
+    )
+    raw_text = target.read_text(encoding="utf-8")
+    assert "line-one" in raw_text, "First line text must be preserved"
+    assert "line-two" in raw_text, "Second line text must be preserved"
+    assert "line-three" in raw_text, "Appended payload must be present in output"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_inserts_separator_when_existing_lacks_trailing_newline(
+    tmp_path: Path,
+) -> None:
+    """When the existing file lacks a trailing newline, the helper inserts one.
+
+    Pins the boundary normalization branch: a file containing
+    ``"existing-without-newline"`` followed by a payload of
+    ``"*.cache\\n"`` must publish ``"existing-without-newline\\n*.cache"``
+    so the two rules are separate lines. The helper's separator logic
+    is what the audit-invariant comment in
+    ``ralph/git/operations.py`` calls out.
+    """
+    target = tmp_path / "no_trailing_newline.txt"
+    target.write_text("existing-without-newline", encoding="utf-8")
+
+    _atomic_append_text(target, "*.cache\n", encoding="utf-8")
+
+    raw = target.read_text(encoding="utf-8")
+    assert "existing-without-newline\n*.cache" in raw, (
+        f"Boundary must contain a newline so the two rules are separate lines; "
+        f"got: {raw!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_propagates_oserror_when_target_is_directory(
+    tmp_path: Path,
+) -> None:
+    """When the target path is a directory, the underlying OSError must propagate.
+
+    The helper uses ``Path.read_text()`` to load existing content and
+    ``Path.write_text()`` to publish the staged file -- both fail with
+    ``OSError`` (specifically ``IsADirectoryError`` on POSIX, subclass of
+    ``OSError``) when the path resolves to a directory. The helper does
+    NOT swallow ``OSError``; the failure surfaces to the caller.
+    """
+    target = tmp_path / "im_a_directory"
+    target.mkdir()
+
+    assert target.is_dir()
+    with pytest.raises(OSError):
+        _atomic_append_text(target, "payload\n", encoding="utf-8")
+
+
+@pytest.mark.timeout_seconds(5)
+def test_atomic_append_text_replaces_target_symlink(tmp_path: Path) -> None:
+    """When the target path is a symlink, ``Path.replace`` REPLACES the symlink.
+
+    The helper stages the new content in a sibling file (under the
+    target's parent, NOT the symlink target's directory) and then
+    ``Path.replace(staging, target)`` -- on POSIX, ``Path.replace`` on
+    a symlink replaces the symlink itself (NOT the symlink target's
+    file). This is the documented pathlib behavior.
+
+    The test pins that the staging step uses the target's parent
+    directory (NOT the symlink resolution), and the replace step
+    replaces the symlink (NOT the symlink target's file).
+    """
+    real_dir = tmp_path / "real_target_dir"
+    real_dir.mkdir()
+    real_file = real_dir / "real.txt"
+    real_file.write_text("REAL content\n")
+
+    symlink_dir = tmp_path / "symlink_dir"
+    symlink_dir.symlink_to(real_dir)
+
+    target_via_symlink = symlink_dir / "via_symlink.txt"
+    target_via_symlink.symlink_to(real_file)
+    assert target_via_symlink.is_symlink()
+
+    _atomic_append_text(target_via_symlink, "appended\n", encoding="utf-8")
+
+    # The real file is NOT modified.
+    assert real_file.read_text(encoding="utf-8") == "REAL content\n", (
+        "Path.replace on a symlink must NOT follow the symlink and write to "
+        "the target's underlying file"
+    )
+    # The symlink itself may now be a regular file (replace replaced it).
+    assert not target_via_symlink.is_symlink(), (
+        "Path.replace must have replaced the symlink with a regular file"
+    )
+    assert target_via_symlink.read_text(encoding="utf-8") == "REAL content\nappended\n", (
+        "New regular file at the symlink's path must contain the published content"
+    )
+

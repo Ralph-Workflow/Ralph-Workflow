@@ -15,6 +15,7 @@ from ralph.phases import PhaseContext
 from ralph.phases.commit_cleanup import (
     _apply_cleanup_actions,
     _decide_cleanup_outcome,
+    build_cleanup_retry_hint,
     handle_commit_cleanup_phase,
 )
 from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect, PreparePromptEffect
@@ -2237,3 +2238,75 @@ def test_retry_hint_named_for_each_rejected_path(tmp_git_repo: Path) -> None:
     assert "Cleanup retry hint" in result[0].reason
     assert source_a.exists()
     assert source_b.exists()
+
+
+# --- Phase 7 edge-case tests for build_cleanup_retry_hint ---
+#
+# Each test pins one observable behavior of the structured retry-hint
+# builder. The names follow the plan: test_build_cleanup_retry_hint_<branch>
+# so the test id maps directly to the helper's branch coverage.
+
+
+@pytest.mark.timeout_seconds(5)
+def test_build_cleanup_retry_hint_empty_skipped_paths_returns_sentinel() -> None:
+    """Empty ``skipped_paths`` returns the sentinel message, not an empty string.
+
+    Pins the contract that ``build_cleanup_retry_hint`` ALWAYS returns a
+    non-empty string, even when there are no skipped paths. The sentinel
+    tells the agent that the phase still failed despite no rejected
+    delete actions -- pointing the diagnostic toward the artifact schema
+    itself rather than the path list.
+    """
+    hint = build_cleanup_retry_hint(skipped_paths=[], safe_applied_count=0)
+
+    assert isinstance(hint, str)
+    assert hint, "build_cleanup_retry_hint must NOT return an empty string"
+    assert "no delete actions were rejected" in hint, (
+        f"Sentinel must explicitly state that no delete actions were rejected; "
+        f"got: {hint!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_build_cleanup_retry_hint_with_skipped_paths_and_safe_count() -> None:
+    """Non-empty ``skipped_paths`` with a positive safe count renders both sections.
+
+    Pins the contract that:
+      1. The helper names each rejected path on its own line.
+      2. The safe-applied count appears in the form ``Safe actions applied: N``
+         when ``safe_applied_count > 0``.
+    """
+    hint = build_cleanup_retry_hint(
+        skipped_paths=["foo.py", "bar.py"], safe_applied_count=2
+    )
+
+    assert "foo.py" in hint, f"Path foo.py must be named in the hint; got: {hint!r}"
+    assert "bar.py" in hint, f"Path bar.py must be named in the hint; got: {hint!r}"
+    assert "Safe actions applied: 2" in hint, (
+        f"Safe count must appear in the form 'Safe actions applied: 2'; "
+        f"got: {hint!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_build_cleanup_retry_hint_with_skipped_paths_and_zero_safe_count() -> None:
+    """Non-empty ``skipped_paths`` with zero safe count renders the zero-summary branch.
+
+    Pins the contract that a zero ``safe_applied_count`` produces the
+    ``No safe actions were applied`` summary, NOT the ``Safe actions applied: 0``
+    form. The wording is intentionally distinct so the agent's self-correct
+    path can distinguish "nothing was applied" from "exactly zero was applied".
+    """
+    hint = build_cleanup_retry_hint(
+        skipped_paths=["baz.py"], safe_applied_count=0
+    )
+
+    assert "baz.py" in hint, f"Path baz.py must be named in the hint; got: {hint!r}"
+    assert "No safe actions were applied" in hint, (
+        f"Zero-safe-count summary must use the 'No safe actions were applied' "
+        f"wording; got: {hint!r}"
+    )
+    assert "Safe actions applied: 0" not in hint, (
+        f"Zero-safe-count summary must NOT use the 'Safe actions applied: N' "
+        f"form; got: {hint!r}"
+    )
