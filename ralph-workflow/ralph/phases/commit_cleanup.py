@@ -11,6 +11,18 @@ skipped. The phase only returns ``PhaseFailureEvent`` when EVERY delete
 action was rejected and no safe work was done; in that case the event
 carries a structured retry hint naming the rejected paths.
 
+The phase PRE-EMPTIVELY UNTRACKS tracked engine-internal files (via
+``untrack_engine_internal_files`` from ``ralph.git.commit_cleanup``)
+BEFORE loading the artifact. This is the safety net for the prior
+failure mode where tracked ``.agent/raw/opencode.log``,
+``.agent/tmp/mcp-server.log``, or root ``checkpoint.json`` would
+trigger a hard reject from the safety classifier when the agent
+submitted ``delete_file`` actions -- the rejection came because the
+file was tracked in HEAD and the safety check ran before the
+engine-internal fast-path exemption. The pre-emptive untrack removes
+those paths from the INDEX (not the working tree) so the agent's
+diff never includes them and the rejection cannot occur.
+
 The phase also auto-seeds the canonical ``.gitignore`` and
 ``.git/info/exclude`` patterns on every entry (via
 ``auto_seed_default_gitignore`` and ``auto_seed_default_git_exclude``
@@ -32,6 +44,7 @@ from ralph.git.commit_cleanup import (
     add_to_git_exclude,
     delete_file_from_repo,
     ensure_git_initialized,
+    untrack_engine_internal_files,
 )
 from ralph.git.operations import append_to_gitignore
 from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
@@ -681,6 +694,24 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
                 failure_category=FailureCategory.ARTIFACT_VALIDATION,
             )
         ]  # reason: defensive return -- audit pins structural placement
+
+    # Pre-emptive untrack of tracked engine-internal files. Runs BEFORE
+    # the artifact load so the agent's view of the diff no longer
+    # contains engine-internal paths -- even when the agent's
+    # ``delete_file`` action would otherwise hit a hard safety reject
+    # for a tracked engine file. The call is a plain
+    # ``untrack_engine_internal_files(...)`` (an ``ast.Name`` call) so
+    # ``audit_agent_internal_paths._check_pre_emptive_untrack_placement``
+    # can locate it via ``ast.Call`` inspection. Wrapped in
+    # ``with suppress(Exception):`` so a helper failure (broken git
+    # state, read-only filesystem, symlink escape) cannot fail the
+    # phase -- the helper already returns ``[]`` fail-closed for these
+    # cases.
+    with suppress(Exception):
+        untracked = untrack_engine_internal_files(repo_root, is_agent_internal_path)
+        logger.info(
+            "Pre-emptively untracked {} engine-internal file(s)", len(untracked)
+        )
 
     # Direct calls so audit_agent_internal_paths._check_auto_seed_placement
     # can locate the seed helpers via ast.Call inspection. Both helpers

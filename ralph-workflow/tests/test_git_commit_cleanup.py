@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,7 @@ from ralph.git.commit_cleanup import (
     add_to_git_exclude,
     delete_file_from_repo,
     ensure_git_initialized,
+    untrack_engine_internal_files,
 )
 from ralph.git.operations import get_head_sha
 
@@ -755,3 +757,249 @@ def test_ensure_git_initialized_raises_on_corrupt_git_dir(tmp_path: Path) -> Non
     ), (
         "Corrupt .git file content must NOT have been modified by a silent re-init"
     )
+
+
+# ---------------------------------------------------------------------------
+# Pre-emptive untrack helper tests (commit_cleanup phase safety net)
+# ---------------------------------------------------------------------------
+#
+# These tests pin the helper that the commit_cleanup phase calls BEFORE
+# the agent runs to remove tracked engine-internal files from the index.
+# Without this safety net, the agent's delete_file action for tracked
+# engine files is rejected ("Refusing to delete non-housekeeping file")
+# even when the file is in the canonical engine allowlist, because the
+# safety check happens AFTER the file was checked into HEAD.
+#
+# The helper takes an ``is_internal_path`` predicate as a positional
+# argument (NOT imported) so it stays decoupled from the leaf module
+# and has no circular-import risk. Tests pass a lambda that always
+# returns True (matches all engine-internal paths) to exercise the
+# full index walk, or a lambda that always returns False to pin the
+# non-engine preservation contract.
+
+
+def _track_and_commit(repo_root: Path, rel_path: str) -> None:
+    """Stage and commit ``rel_path`` against ``repo_root``.
+
+    Mirrors the helper used in ``tests/test_phases_commit_cleanup.py``
+    so the pre-emptive untrack tests can verify what is and is not
+    in ``git ls-files --cached`` after the helper runs.
+    """
+    repo = Repo(repo_root)
+    try:
+        repo.index.add([rel_path])
+        repo.index.commit(f"track {rel_path}")
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_untrack_engine_internal_files_removes_tracked_engine_files(
+    tmp_git_repo: Path,
+) -> None:
+    """Pre-emptive untrack: tracked engine files are removed from the index.
+
+    Pins the contract that ``untrack_engine_internal_files`` runs
+    ``git rm --cached`` (NOT ``git rm``) on every tracked path that
+    matches the predicate. The working-tree files MAY still exist
+    after the call -- only the INDEX entries are removed. The test
+    asserts the three originally-failing tracked paths
+    (``.agent/raw/opencode.log``, ``.agent/tmp/mcp-server.log``,
+    ``checkpoint.json``) are NO LONGER in ``git ls-files --cached``
+    AND are NO LONGER in ``Repo.index.entries``.
+    """
+    log_path = tmp_git_repo / ".agent" / "raw" / "opencode.log"
+    mcp_log_path = tmp_git_repo / ".agent" / "tmp" / "mcp-server.log"
+    checkpoint_path = tmp_git_repo / "checkpoint.json"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    mcp_log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("log content")
+    mcp_log_path.write_text("mcp log")
+    checkpoint_path.write_text('{"phase": "development"}')
+
+    _track_and_commit(tmp_git_repo, ".agent/raw/opencode.log")
+    _track_and_commit(tmp_git_repo, ".agent/tmp/mcp-server.log")
+    _track_and_commit(tmp_git_repo, "checkpoint.json")
+
+    # Use a predicate that mirrors the canonical ``is_agent_internal_path``
+    # allowlist: only engine-internal paths are untracked. A bare
+    # ``lambda p: True`` would also untrack ``README.md`` from the
+    # ``tmp_git_repo`` template fixture and obscure the contract this
+    # test pins.
+    def _engine_path(p: str) -> bool:
+        return p in {
+            ".agent/raw/opencode.log",
+            ".agent/tmp/mcp-server.log",
+            "checkpoint.json",
+        }
+
+    untracked = untrack_engine_internal_files(tmp_git_repo, _engine_path)
+
+    assert set(untracked) == {
+        ".agent/raw/opencode.log",
+        ".agent/tmp/mcp-server.log",
+        "checkpoint.json",
+    }, f"untrack must report every tracked engine path it removed, got: {untracked!r}"
+
+    repo = Repo(tmp_git_repo)
+    try:
+        cached = set(repo.git.ls_files("--cached").splitlines())
+        assert ".agent/raw/opencode.log" not in cached, (
+            "Tracked engine file MUST be removed from git ls-files --cached"
+        )
+        assert ".agent/tmp/mcp-server.log" not in cached, (
+            "Tracked engine file MUST be removed from git ls-files --cached"
+        )
+        assert "checkpoint.json" not in cached, (
+            "Tracked engine file MUST be removed from git ls-files --cached"
+        )
+        index_paths = {entry_path for entry_path, _stage in repo.index.entries}
+        assert ".agent/raw/opencode.log" not in index_paths
+        assert ".agent/tmp/mcp-server.log" not in index_paths
+        assert "checkpoint.json" not in index_paths
+    finally:
+        repo.close()
+
+    # Working-tree files MAY still exist -- the helper uses ``git rm --cached``,
+    # not ``git rm``. Pin that contract so a future refactor that swaps to
+    # ``git rm`` (which deletes the file from disk) surfaces as a regression.
+    assert log_path.exists(), "Working-tree file must remain after ``git rm --cached``"
+    assert mcp_log_path.exists(), "Working-tree file must remain after ``git rm --cached``"
+    assert checkpoint_path.exists(), "Working-tree file must remain after ``git rm --cached``"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_untrack_engine_internal_files_preserves_non_engine_files(
+    tmp_git_repo: Path,
+) -> None:
+    """Non-engine tracked files are NOT removed when the predicate rejects them.
+
+    Pins the safety boundary: only paths the predicate accepts are
+    untracked. A predicate that always returns False leaves the index
+    untouched -- the helper must NEVER widen the deletion surface on
+    its own. The test pre-stages ``src/main.go`` and
+    ``tests/test_foo.py`` and asserts both are STILL in
+    ``git ls-files --cached`` after the helper runs.
+    """
+    src_path = tmp_git_repo / "src" / "main.go"
+    src_path.parent.mkdir(parents=True, exist_ok=True)
+    src_path.write_text("package main\n")
+    test_path = tmp_git_repo / "tests" / "test_foo.py"
+    test_path.parent.mkdir(parents=True, exist_ok=True)
+    test_path.write_text("def test_foo():\n    pass\n")
+
+    _track_and_commit(tmp_git_repo, "src/main.go")
+    _track_and_commit(tmp_git_repo, "tests/test_foo.py")
+
+    untracked = untrack_engine_internal_files(tmp_git_repo, lambda _p: False)
+
+    assert untracked == [], (
+        f"Helper must not untrack anything when predicate rejects every path, "
+        f"got: {untracked!r}"
+    )
+
+    repo = Repo(tmp_git_repo)
+    try:
+        cached = set(repo.git.ls_files("--cached").splitlines())
+        assert "src/main.go" in cached, (
+            "Non-engine tracked file MUST remain in git ls-files --cached"
+        )
+        assert "tests/test_foo.py" in cached, (
+            "Non-engine tracked file MUST remain in git ls-files --cached"
+        )
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_untrack_engine_internal_files_rejects_symlinks(
+    tmp_git_repo: Path,
+) -> None:
+    """A symlink under ``.agent/`` is rejected before any ``git rm --cached``.
+
+    Pins the contract that the helper calls
+    ``Path(repo_root / path).is_symlink()`` BEFORE issuing
+    ``git rm --cached``. A symlink under ``.agent/`` could point
+    outside the repo (git follows symlinks); the helper must skip
+    the entry and log a WARNING, returning ``[]`` so the caller can
+    record the symlink as deliberately-preserved.
+    """
+    target = tmp_git_repo / ".agent" / "raw" / "evil_link"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(tmp_git_repo / "outside_target")
+
+    _track_and_commit(tmp_git_repo, ".agent/raw/evil_link")
+
+    repo = Repo(tmp_git_repo)
+    try:
+        assert ".agent/raw/evil_link" in {
+            entry_path for entry_path, _stage in repo.index.entries
+        }, "Setup invariant: symlink must be tracked before the untrack call"
+    finally:
+        repo.close()
+
+    def _engine_path(p: str) -> bool:
+        return p == ".agent/raw/evil_link"
+
+    untracked = untrack_engine_internal_files(tmp_git_repo, _engine_path)
+
+    assert untracked == [], (
+        f"Symlink must be skipped by the helper, got: {untracked!r}"
+    )
+
+    repo = Repo(tmp_git_repo)
+    try:
+        cached = set(repo.git.ls_files("--cached").splitlines())
+        assert ".agent/raw/evil_link" in cached, (
+            "Symlink MUST remain in git ls-files --cached after a rejected untrack"
+        )
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_untrack_engine_internal_files_handles_empty_index(
+    tmp_git_repo: Path,
+) -> None:
+    """Fresh repo with no commits: helper returns ``[]`` without raising.
+
+    Pins the empty-index edge case: ``tmp_git_repo`` has the initial
+    commit from the template fixture, so the test pre-removes that
+    commit by deleting HEAD and rebuilding the repo with no
+    checkpoints. The helper must complete without raising and return
+    an empty list -- a missing index entry must NOT crash the
+    pre-emptive untrack step.
+    """
+    # Rebuild the repo with NO commits so the index is empty.
+    shutil.rmtree(tmp_git_repo)
+    tmp_git_repo.mkdir()
+    Repo.init(tmp_git_repo)
+
+    untracked = untrack_engine_internal_files(tmp_git_repo, lambda _p: True)
+
+    assert untracked == [], (
+        f"Helper must return [] for an empty index, got: {untracked!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_untrack_engine_internal_files_handles_non_git_directory(tmp_path: Path) -> None:
+    """A non-git directory: helper returns ``[]`` without raising.
+
+    Pins the broken-git-state edge case: the helper wraps
+    ``Repo(repo_root)`` in a try/finally and suppresses construction
+    failures so a workspace whose root is NOT a git repo does not
+    stall the commit_cleanup phase. The caller (``handle_commit_cleanup_phase``)
+    also wraps the helper in try/except, so a fail-closed return of
+    ``[]`` is the canonical contract.
+    """
+    non_repo = tmp_path / "non_repo"
+    non_repo.mkdir()
+    assert not (non_repo / ".git").exists(), "Setup invariant: non_repo must not be a git repo"
+
+    untracked = untrack_engine_internal_files(non_repo, lambda _p: True)
+
+    assert untracked == [], (
+        f"Helper must return [] for a non-git directory, got: {untracked!r}"
+    )
+

@@ -220,6 +220,11 @@ _AUTO_SEED_GITEXCLUDE_HELPER: str = "auto_seed_default_git_exclude"
 _AUTO_SEED_PRIOR_ANCHOR: str = "ensure_git_initialized"
 _AUTO_SEED_LATER_ANCHOR: str = "_load_cleanup_artifact"
 
+# Helper whose placement the new pre-emptive-untrack audit pins. The
+# call shape MUST be a plain ``ast.Name`` call (not a module-qualified
+# ``ast.Attribute`` call) so ``_collect_call_sites`` records the line.
+_PRE_EMPTIVE_UNTRACK_HELPER: str = "untrack_engine_internal_files"
+
 
 def _check_auto_seed_placement() -> list[str]:
     """Verify both auto-seed helpers are called between the prior and later anchors.
@@ -303,6 +308,7 @@ class _CallSites:
         self.later_line: int | None = None
         self.gitignore_lines: list[int] = []
         self.gitexclude_lines: list[int] = []
+        self.pre_emptive_untrack_lines: list[int] = []
 
 
 def _collect_call_sites(target: ast.FunctionDef | ast.AsyncFunctionDef) -> _CallSites:
@@ -330,6 +336,8 @@ def _record_call_site(sites: _CallSites, name: str, lineno: int) -> None:
         sites.gitignore_lines.append(lineno)
     elif name == _AUTO_SEED_GITEXCLUDE_HELPER:
         sites.gitexclude_lines.append(lineno)
+    elif name == _PRE_EMPTIVE_UNTRACK_HELPER:
+        sites.pre_emptive_untrack_lines.append(lineno)
 
 
 def _anchor_or_seed_missing_violations(rel_path: str, sites: _CallSites) -> list[str]:
@@ -399,6 +407,90 @@ def _ordering_violations_for_call(
             f"{_AUTO_SEED_LATER_ANCHOR!r} anchor at line {sites.later_line} -- "
             "auto-seed must run BEFORE the artifact load"
         )
+    return problems
+
+
+def _check_pre_emptive_untrack_placement() -> list[str]:
+    """Verify the pre-emptive untrack call sits between the same two anchors.
+
+    Reuses the prior / later anchors from ``_check_auto_seed_placement``
+    (the call must run AFTER ``ensure_git_initialized`` and BEFORE
+    ``_load_cleanup_artifact``). The audit also asserts there is
+    EXACTLY ONE call to ``untrack_engine_internal_files`` in the
+    ``handle_commit_cleanup_phase`` body -- a duplicate call would
+    widen the index-walk surface area for no gain.
+
+    The check reuses ``_collect_call_sites`` so the call shape must be
+    a plain ``ast.Name`` call (``untrack_engine_internal_files(...)``),
+    NOT a module-qualified ``commit_cleanup_module.untrack_engine_internal_files(...)``
+    -- the latter would be silently skipped by ``_collect_call_sites``
+    and pass the audit, which is exactly the regression mode this
+    placement check exists to prevent.
+
+    Returns:
+        List of violation strings. Empty on success.
+    """
+    rel_path = "phases/commit_cleanup.py"
+    source = _read_or_synthesize_violation(rel_path)
+    if isinstance(source, list):
+        return source
+
+    tree = _parse_source_or_synthesize_violation(rel_path, source)
+    if isinstance(tree, list):
+        return tree
+
+    target = _find_target_function(tree)
+    if isinstance(target, list):
+        return target
+
+    sites = _collect_call_sites(target)
+    problems: list[str] = []
+
+    if sites.prior_line is None or sites.later_line is None:
+        problems.append(
+            f"{rel_path}: function {_AUTO_SEED_TARGET_FUNCTION!r} does not call "
+            f"both anchors ({_AUTO_SEED_PRIOR_ANCHOR!r} and {_AUTO_SEED_LATER_ANCHOR!r}) "
+            f"-- cannot anchor {_PRE_EMPTIVE_UNTRACK_HELPER!r} placement"
+        )
+        return problems
+
+    pre_emptive_lines = sites.pre_emptive_untrack_lines
+    if not pre_emptive_lines:
+        problems.append(
+            f"{rel_path}: {_AUTO_SEED_TARGET_FUNCTION!r} MUST call "
+            f"{_PRE_EMPTIVE_UNTRACK_HELPER!r} between "
+            f"{_AUTO_SEED_PRIOR_ANCHOR!r} (line {sites.prior_line}) and "
+            f"{_AUTO_SEED_LATER_ANCHOR!r} (line {sites.later_line}); no call found. "
+            "The pre-emptive untrack safety net runs BEFORE the artifact load so "
+            "tracked engine-internal files never enter the diff the agent sees."
+        )
+        return problems
+
+    if len(pre_emptive_lines) > 1:
+        problems.append(
+            f"{rel_path}: {_AUTO_SEED_TARGET_FUNCTION!r} MUST call "
+            f"{_PRE_EMPTIVE_UNTRACK_HELPER!r} EXACTLY ONCE; found calls at lines "
+            f"{pre_emptive_lines!r}. Duplicates widen the index-walk surface area "
+            "for no gain."
+        )
+
+    for lineno in pre_emptive_lines:
+        if lineno < sites.prior_line:
+            problems.append(
+                f"{rel_path}: {_PRE_EMPTIVE_UNTRACK_HELPER!r} call at line {lineno} "
+                f"is BEFORE the {_AUTO_SEED_PRIOR_ANCHOR!r} anchor at line "
+                f"{sites.prior_line} -- pre-emptive untrack must run AFTER "
+                "ensure_git_initialized"
+            )
+        if lineno > sites.later_line:
+            problems.append(
+                f"{rel_path}: {_PRE_EMPTIVE_UNTRACK_HELPER!r} call at line {lineno} "
+                f"is AFTER the {_AUTO_SEED_LATER_ANCHOR!r} anchor at line "
+                f"{sites.later_line} -- pre-emptive untrack must run BEFORE "
+                "the artifact load so the agent's diff no longer includes tracked "
+                "engine-internal files"
+            )
+
     return problems
 
 
@@ -684,13 +776,21 @@ def main(argv: list[str] | None = None) -> int:
     problems.extend(_behavioral_invariants())
     problems.extend(_check_fast_path_placement())
     problems.extend(_check_auto_seed_placement())
+    problems.extend(_check_pre_emptive_untrack_placement())
     problems.extend(_check_best_effort_invariants())
 
     literal_count = sum(len(i.present) + len(i.absent) for i in _INVARIANTS)
     behavioral_count = len(_BEHAVIORAL_ACCEPT_PATHS) + len(_BEHAVIORAL_REJECT_PATHS)
     placement_count = 1
     auto_seed_count = 1
-    total = literal_count + behavioral_count + placement_count + auto_seed_count
+    pre_emptive_untrack_count = 1
+    total = (
+        literal_count
+        + behavioral_count
+        + placement_count
+        + auto_seed_count
+        + pre_emptive_untrack_count
+    )
 
     if problems:
         print(f"AGENT-INTERNAL-PATHS AUDIT FAILED: {len(problems)} invariant violation(s)")
@@ -715,6 +815,9 @@ def main(argv: list[str] | None = None) -> int:
         "FIRST executable statement (AST placement), "
         "handle_commit_cleanup_phase auto-seeds canonical .gitignore + .git/info/exclude "
         "patterns between ensure_git_initialized and _load_cleanup_artifact (AST placement), "
+        "handle_commit_cleanup_phase pre-emptively untracks tracked engine-internal files "
+        "via untrack_engine_internal_files between ensure_git_initialized and "
+        "_load_cleanup_artifact (AST placement, EXACTLY ONCE), "
         "bootstrap.py defines _DEFAULT_GIT_EXCLUDE_PATTERNS + auto_seed_default_git_exclude "
         "+ root-anchored /checkpoint.json (NOT bare checkpoint.json), "
         "git/operations.py _atomic_append_text staging filename is content-derived "

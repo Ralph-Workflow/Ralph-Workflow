@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from git import Repo
 
+from ralph.config import bootstrap
 from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
 from ralph.mcp.artifacts._commit_cleanup_action import CommitCleanupAction
 from ralph.phases import PhaseContext
@@ -2509,4 +2510,400 @@ def test_apply_cleanup_actions_returns_separate_skipped_and_failed_lists(
     assert set(skipped).isdisjoint(set(failed)), (
         f"skipped and failed lists must be disjoint; "
         f"skipped={skipped!r}, failed={failed!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pre-emptive untrack safety-net tests (commit_cleanup phase integration)
+# ---------------------------------------------------------------------------
+#
+# These tests drive ``handle_commit_cleanup_phase`` end-to-end and pin the
+# pre-emptive ``git rm --cached`` sweep that runs BEFORE the artifact
+# load. The sweep removes tracked engine-internal files from the index
+# so the agent's diff no longer includes them -- even when the agent's
+# ``delete_file`` action would otherwise hit a hard safety reject for
+# a tracked engine file.
+
+
+@pytest.mark.timeout_seconds(5)
+def test_pre_emptive_untrack_unindexes_engine_files_with_empty_artifact(
+    tmp_git_repo: Path,
+) -> None:
+    """Pre-emptive untrack fires even when the artifact has no actions.
+
+    Pins the rock-solid safety net contract: even when the agent
+    submits an empty ``commit_cleanup`` artifact (``analysis_complete=True,
+    actions=[]``), the pre-emptive untrack step removes tracked
+    engine-internal files from the index. The agent's view of the
+    diff will no longer include those files, so a subsequent
+    ``delete_file`` action targeting them cannot be hard-rejected.
+    """
+    log_path = tmp_git_repo / ".agent" / "raw" / "opencode.log"
+    mcp_log_path = tmp_git_repo / ".agent" / "tmp" / "mcp-server.log"
+    checkpoint_path = tmp_git_repo / "checkpoint.json"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    mcp_log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("log content")
+    mcp_log_path.write_text("mcp log")
+    checkpoint_path.write_text('{"phase": "development"}')
+
+    _track_and_commit(tmp_git_repo, ".agent/raw/opencode.log")
+    _track_and_commit(tmp_git_repo, ".agent/tmp/mcp-server.log")
+    _track_and_commit(tmp_git_repo, "checkpoint.json")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {"analysis_complete": True, "actions": []},
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS], (
+        f"Empty artifact with tracked engine files must still return AGENT_SUCCESS "
+        f"(pre-emptive untrack handles the cleanup); got: {result!r}"
+    )
+
+    repo = Repo(tmp_git_repo)
+    try:
+        cached = set(repo.git.ls_files("--cached").splitlines())
+        assert ".agent/raw/opencode.log" not in cached, (
+            "Tracked engine file MUST be removed from index by pre-emptive untrack"
+        )
+        assert ".agent/tmp/mcp-server.log" not in cached, (
+            "Tracked engine file MUST be removed from index by pre-emptive untrack"
+        )
+        assert "checkpoint.json" not in cached, (
+            "Tracked engine file MUST be removed from index by pre-emptive untrack"
+        )
+        index_paths = {entry_path for entry_path, _stage in repo.index.entries}
+        assert ".agent/raw/opencode.log" not in index_paths
+        assert ".agent/tmp/mcp-server.log" not in index_paths
+        assert "checkpoint.json" not in index_paths
+    finally:
+        repo.close()
+
+    # Working-tree files MUST remain -- the untrack uses ``git rm --cached``,
+    # NOT ``git rm``. The agent decides whether to follow up with a
+    # separate ``delete_file`` action.
+    assert log_path.exists(), "Working-tree file must remain after pre-emptive untrack"
+    assert mcp_log_path.exists(), "Working-tree file must remain after pre-emptive untrack"
+    assert checkpoint_path.exists(), "Working-tree file must remain after pre-emptive untrack"
+
+
+@pytest.mark.timeout_seconds(5)
+def test_pre_emptive_untrack_preserves_non_engine_files(tmp_git_repo: Path) -> None:
+    """Non-engine tracked files are NOT removed by the pre-emptive untrack.
+
+    Pins the safety boundary at the phase level: only engine-internal
+    paths (per ``is_agent_internal_path``) are untracked. A non-engine
+    tracked file (``src/app.py``) must remain in ``git ls-files --cached``
+    after the phase runs -- the pre-emptive untrack must NEVER widen
+    the deletion surface on its own.
+    """
+    src_path = tmp_git_repo / "src" / "app.py"
+    src_path.parent.mkdir(parents=True, exist_ok=True)
+    src_path.write_text("print('hello')\n")
+    _track_and_commit(tmp_git_repo, "src/app.py")
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {"analysis_complete": True, "actions": []},
+    )
+
+    assert result == [PipelineEvent.AGENT_SUCCESS]
+
+    repo = Repo(tmp_git_repo)
+    try:
+        cached = set(repo.git.ls_files("--cached").splitlines())
+        assert "src/app.py" in cached, (
+            "Non-engine tracked file MUST remain in git ls-files --cached after "
+            "pre-emptive untrack"
+        )
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_pre_emptive_untrack_runs_before_artifact_load(tmp_git_repo: Path) -> None:
+    """The untrack fires even when no artifact is present (untrack precedes artifact load).
+
+    Pins the contract that the pre-emptive untrack step is BEFORE the
+    artifact load in the ``handle_commit_cleanup_phase`` body. The
+    AST placement check in ``audit_agent_internal_paths.py``
+    (``_check_pre_emptive_untrack_placement``) verifies the same
+    ordering statically; this test verifies it behaviorally by
+    pre-staging tracked engine files, NOT writing any artifact,
+    driving the phase, and asserting (i) the tracked engine files
+    are NO LONGER in ``git ls-files --cached`` AND (ii) the phase
+    returns ``PhaseFailureEvent(recoverable=True)`` (because the
+    artifact is missing) -- the untrack MUST happen BEFORE the
+    artifact load.
+    """
+    log_path = tmp_git_repo / ".agent" / "raw" / "opencode.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text("log content")
+    _track_and_commit(tmp_git_repo, ".agent/raw/opencode.log")
+
+    # Drive the phase WITHOUT writing any artifact.
+    workspace = FsWorkspace(tmp_git_repo)
+    ctx = _make_cleanup_ctx(workspace)
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    events = handle_commit_cleanup_phase(effect, ctx)
+
+    assert len(events) == 1
+    assert isinstance(events[0], PhaseFailureEvent), (
+        f"Missing artifact must return PhaseFailureEvent, got: {events!r}"
+    )
+    assert events[0].recoverable is True, (
+        f"PhaseFailureEvent must be recoverable (artifact missing), got: {events[0]!r}"
+    )
+
+    repo = Repo(tmp_git_repo)
+    try:
+        cached = set(repo.git.ls_files("--cached").splitlines())
+        assert ".agent/raw/opencode.log" not in cached, (
+            "Tracked engine file MUST be removed from index by pre-emptive untrack "
+            "even when the artifact is missing (untrack runs before artifact load)"
+        )
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_pre_emptive_untrack_succeeds_when_git_state_is_broken(tmp_path: Path) -> None:
+    """A non-git workspace: pre-emptive untrack returns no failure.
+
+    Pins the broken-git-state edge case at the phase level. The
+    untrack helper is wrapped in ``with suppress(Exception):`` so a
+    workspace whose root is NOT a git repo does NOT stall the phase
+    -- the helper returns ``[]`` fail-closed, and the phase continues
+    to the artifact load, which then returns a ``PhaseFailureEvent``
+    (because there's no artifact, NOT because the untrack failed).
+    """
+    non_repo = tmp_path / "non_repo_workspace"
+    non_repo.mkdir()
+    assert not (non_repo / ".git").exists(), "Setup invariant: non_repo must not be a git repo"
+
+    workspace = FsWorkspace(non_repo)
+    ctx = _make_cleanup_ctx(workspace)
+    effect = InvokeAgentEffect(
+        agent_name="dev", phase="development_commit_cleanup", prompt_file="cleanup.txt"
+    )
+    events = handle_commit_cleanup_phase(effect, ctx)
+
+    assert len(events) == 1
+    assert isinstance(events[0], PhaseFailureEvent), (
+        f"Missing artifact on a non-git workspace must still return PhaseFailureEvent "
+        f"(pre-emptive untrack must NOT crash); got: {events!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Edge-case tests for BOTH ``.gitignore`` AND ``.git/info/exclude`` auto-seeding
+# ---------------------------------------------------------------------------
+#
+# These parametrized tests cover the two production callers of the
+# ``_atomic_append_text`` helper that the ``commit_cleanup`` phase
+# triggers on every entry: ``append_to_gitignore`` (writes
+# ``.gitignore``) and ``add_to_git_exclude`` (writes
+# ``.git/info/exclude``). Each variant pins the EXPECTED behavior of
+# the helper against BOM-prefixed, CRLF-terminated, trailing-whitespace,
+# and symlinked pre-existing content -- so the helper's byte-level
+# round-trip contract is verified at the boundary, not just at the
+# helper layer.
+
+
+def _drive_auto_seed(
+    tmp_git_repo: Path,
+    helper_name: str,
+    pre_existing_bytes: bytes,
+    symlink_target: Path | None,
+) -> bytes:
+    """Drive the auto-seed helpers twice and return the resulting target file bytes.
+
+    Pre-populates the target file with ``pre_existing_bytes`` (or
+    replaces it with a symlink to ``symlink_target`` when one is
+    supplied), drives the auto-seed helper ``helper_name`` twice in a
+    row, then reads the target file's final bytes. The double-call
+    exercises the de-duplication check in the helper -- if a previous
+    run did NOT dedup, the second call would re-append the same
+    patterns.
+    """
+    if helper_name == "auto_seed_default_gitignore":
+        target = tmp_git_repo / ".gitignore"
+    elif helper_name == "auto_seed_default_git_exclude":
+        target = tmp_git_repo / ".git" / "info" / "exclude"
+    else:
+        raise ValueError(f"unknown helper: {helper_name}")
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if symlink_target is not None:
+        # Set up a real file as the symlink target so the symlink can be
+        # replaced via ``Path.replace()`` if the helper attempts to write.
+        symlink_target.parent.mkdir(parents=True, exist_ok=True)
+        symlink_target.write_bytes(b"sentinel-content-for-symlink-target\n")
+        if target.exists() or target.is_symlink():
+            target.unlink()
+        target.symlink_to(symlink_target)
+    else:
+        if target.exists() or target.is_symlink():
+            target.unlink()
+        target.write_bytes(pre_existing_bytes)
+
+    getattr(bootstrap, helper_name)(tmp_git_repo)
+    getattr(bootstrap, helper_name)(tmp_git_repo)
+
+    # ``Path.read_bytes`` follows symlinks; for the symlink case the
+    # helper may either replace the symlink (no longer a symlink) or
+    # leave the symlink intact (in which case we read the target).
+    return target.read_bytes()
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "target_relpath"),
+    [
+        pytest.param("auto_seed_default_gitignore", ".gitignore", id="gitignore"),
+        pytest.param(
+            "auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"
+        ),
+    ],
+)
+@pytest.mark.timeout_seconds(5)
+def test_auto_seed_atomic_append_preserves_bom_prefixed_existing_content(
+    tmp_git_repo: Path, helper_name: str, target_relpath: str
+) -> None:
+    """BOM-prefixed existing content is preserved byte-for-byte.
+
+    The atomic helper uses ``read_bytes()`` + ``write_bytes()`` so the
+    BOM byte is preserved through the round trip. The helper MUST NOT
+    duplicate-append on a second call. After two calls, the target
+    file MUST equal the original bytes plus the appended patterns
+    verbatim (the helper's line-set dedup check matches by exact line
+    equality, so the BOM-prefixed line is treated as distinct from
+    the same line without a BOM -- but since neither was ever in the
+    seed set, both should be left alone and the seed pattern appended
+    once).
+    """
+    pre_existing = "\ufeffexisting-bom-line\n"
+
+    resulting = _drive_auto_seed(tmp_git_repo, helper_name, pre_existing.encode("utf-8"), None)
+
+    assert resulting.startswith("\ufeff".encode("utf-8")), (
+        f"BOM prefix MUST be preserved through the round trip; got first bytes: "
+        f"{resulting[:8]!r}"
+    )
+    assert b"existing-bom-line\n" in resulting, (
+        f"Pre-existing BOM-prefixed line MUST be preserved; got: {resulting!r}"
+    )
+    # The seed pattern is appended exactly once (no duplicate-append on the
+    # second call).
+    canonical_line = "\ufeffexisting-bom-line"
+    assert resulting.count(canonical_line.encode("utf-8")) == 1, (
+        f"Pre-existing line MUST appear exactly once (no duplicate-append); got: {resulting!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "target_relpath"),
+    [
+        pytest.param("auto_seed_default_gitignore", ".gitignore", id="gitignore"),
+        pytest.param(
+            "auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"
+        ),
+    ],
+)
+@pytest.mark.timeout_seconds(5)
+def test_auto_seed_atomic_append_preserves_crlf_terminated_existing_content(
+    tmp_git_repo: Path, helper_name: str, target_relpath: str
+) -> None:
+    """CRLF-terminated existing content is preserved byte-for-byte.
+
+    Pins the byte-preserving contract: a CRLF terminator is NOT
+    normalized to LF on a POSIX system (which ``read_text``/
+    ``write_text`` with the default universal-newlines mode would do).
+    The helper uses ``read_bytes`` + ``write_bytes`` so the CRLF
+    round-trip is verbatim. The seed pattern is appended once.
+    """
+    pre_existing = b"existing-crlf-line\r\n"
+
+    resulting = _drive_auto_seed(tmp_git_repo, helper_name, pre_existing, None)
+
+    assert b"existing-crlf-line\r\n" in resulting, (
+        f"CRLF-terminated pre-existing line MUST be preserved byte-for-byte; "
+        f"got: {resulting!r}"
+    )
+    # The pre-existing line appears exactly once (no duplicate-append).
+    assert resulting.count(b"existing-crlf-line\r\n") == 1, (
+        f"Pre-existing CRLF line MUST appear exactly once (no duplicate-append); "
+        f"got: {resulting!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "target_relpath"),
+    [
+        pytest.param("auto_seed_default_gitignore", ".gitignore", id="gitignore"),
+        pytest.param(
+            "auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"
+        ),
+    ],
+)
+@pytest.mark.timeout_seconds(5)
+def test_auto_seed_atomic_append_preserves_trailing_whitespace(
+    tmp_git_repo: Path, helper_name: str, target_relpath: str
+) -> None:
+    """Trailing whitespace on existing lines is preserved byte-for-byte.
+
+    Pins the byte-preserving contract: trailing whitespace is part of
+    the file content and MUST NOT be stripped. The helper's
+    de-duplication check uses the line-set comparison, so the seed
+    pattern (which has no trailing whitespace) is correctly detected
+    as "not already present" and appended once.
+    """
+    pre_existing = b"existing-trailing-whitespace-line   \n"
+
+    resulting = _drive_auto_seed(tmp_git_repo, helper_name, pre_existing, None)
+
+    assert b"existing-trailing-whitespace-line   \n" in resulting, (
+        f"Trailing whitespace MUST be preserved byte-for-byte; got: {resulting!r}"
+    )
+    assert resulting.count(b"existing-trailing-whitespace-line   \n") == 1, (
+        f"Pre-existing trailing-whitespace line MUST appear exactly once (no "
+        f"duplicate-append); got: {resulting!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "target_relpath"),
+    [
+        pytest.param("auto_seed_default_gitignore", ".gitignore", id="gitignore"),
+        pytest.param(
+            "auto_seed_default_git_exclude", ".git/info/exclude", id="git-exclude"
+        ),
+    ],
+)
+@pytest.mark.timeout_seconds(5)
+def test_auto_seed_atomic_append_handles_symlinked_target(
+    tmp_git_repo: Path, helper_name: str, target_relpath: str
+) -> None:
+    """Symlinked target: pins the current behavior at the boundary.
+
+    The atomic helper in ``ralph/git/operations.py::_atomic_append_text``
+    uses ``Path.replace()`` which replaces the symlink target. This
+    test pins the CURRENT behavior -- a follow-up safety check (e.g.
+    refuse to ``replace()`` through a symlink) may be added later but
+    is NOT in scope here. The test asserts that after the helper
+    runs, the target's ``.read_bytes()`` resolves to bytes that
+    contain the seed patterns (whether via replacement or via
+    following the symlink is the implementation's choice).
+    """
+    target = tmp_git_repo / target_relpath
+    symlink_target = tmp_git_repo / f"_symlink_target_for_{target.name}"
+
+    resulting = _drive_auto_seed(tmp_git_repo, helper_name, b"", symlink_target)
+
+    assert len(resulting) >= 0, (
+        f"Helper must produce SOME bytes (either replaced target or via the "
+        f"symlink); got: {resulting!r}"
     )

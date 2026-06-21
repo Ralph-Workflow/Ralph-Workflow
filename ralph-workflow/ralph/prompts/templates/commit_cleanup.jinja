@@ -19,6 +19,8 @@ You are a commit cleanup agent. Your job is to analyze the pending diff and iden
 
 The cleanup phase is BEST-EFFORT: a single unsafe ``delete_file`` does not abort the phase. Safe actions (matching files, gitignore patterns, git exclude patterns) are still applied even when one or more delete actions are skipped. The phase only fails when EVERY delete action was rejected and no safe action was applied -- in that case the phase returns a ``PhaseFailureEvent`` with a structured retry hint naming the rejected paths so you can self-correct on retry.
 
+Note: the phase PRE-EMPTIVELY UNTRACKS tracked engine-internal files at startup (via ``untrack_engine_internal_files``) -- any path in the runtime-artifact allowlist (see RUNTIME ARTIFACT ALLOWLIST below) that is currently tracked in HEAD is removed from the index BEFORE the artifact loads. This means the diff you see in this prompt will already exclude those files. Focus your recommendations on non-engine cleanup: build artifacts, env files, lock files accidentally staged, and other genuinely-tracked-by-the-user paths that the safety net does not cover.
+
 ## RUNTIME ARTIFACT ALLOWLIST
 
 The following paths are Ralph Workflow runtime artifacts. They are unconditionally deletable from any commit, even when tracked in HEAD. Recommend them with ``delete_file`` without hesitation:
