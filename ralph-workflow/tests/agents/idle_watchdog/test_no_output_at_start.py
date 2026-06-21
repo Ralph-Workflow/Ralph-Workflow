@@ -215,3 +215,44 @@ def test_no_output_at_start_fires_after_waiting_ceiling_reached() -> None:
     assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG, (
         f"expected CHILDREN_PERSIST_TOO_LONG at ceiling, got {wd.last_fire_reason}"
     )
+
+
+def test_no_output_at_start_defers_within_dumb_kill_floor() -> None:
+    """NO_OUTPUT_AT_START defers (returns CONTINUE) when invocation_elapsed
+    is under the dumb-kill floor (``no_progress_quiet_minimum_invocation_seconds``).
+
+    The dumb-kill floor is the canonical bound that prevents the
+    watchdog from killing a recently-launched agent that has not yet
+    produced first-party activity evidence. The floor is enforced
+    BEFORE the ``classify_quiet`` short-circuit so the LOADING window
+    is safe regardless of classify_quiet's return value.
+    """
+    from ralph.agents.idle_watchdog import TimeoutPolicy
+
+    clock = FakeClock(start=0.0)
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=60.0,
+        no_output_at_start_seconds=30.0,
+        no_progress_quiet_seconds=None,
+        no_progress_quiet_minimum_invocation_seconds=120.0,
+        max_waiting_on_child_seconds=_MAX_WAITING_SECONDS,
+        suspect_waiting_on_child_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        activity_evidence_ttl_seconds=_ACTIVITY_TTL_SECONDS,
+        silent_subagent_seconds=None,
+    )
+    wd = IdleWatchdog(
+        policy,
+        clock,
+        process_monitor=_NoProcessMonitor(),
+    )
+    wd.record_invocation_start()
+    # Advance to 60s: past the 30s NO_OUTPUT_AT_START threshold but
+    # under the 120s dumb-kill floor. The watchdog MUST defer.
+    clock.advance(60.0)
+    verdict = wd.evaluate(classify_quiet=_active)
+    assert verdict == WatchdogVerdict.CONTINUE, (
+        f"NO_OUTPUT_AT_START MUST defer within the dumb-kill floor"
+        f" (invocation_elapsed=60s, floor=120s); got {verdict}"
+    )
+    assert wd.last_fire_reason is None

@@ -91,6 +91,11 @@ class _FakeCheckFireSelf:
     )
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
+    # Mirrors ``_ProcessLineReader._captured_session_id`` so the kill
+    # path can read the captured transport session id without walking
+    # the stdout pipe. Default None for tests that do not exercise the
+    # capture path.
+    _captured_session_id: str | None = None
 
 
 def _waiting_on_child() -> AgentExecutionState:

@@ -614,6 +614,22 @@ class RecoveryController:
                 agent_retry_intent=cleared_agent_retry_intent(),
             )
             self._write_session_reset_hint(phase, failure)
+        elif retry_in_session and failure.resumable_session_id:
+            # Populate ``last_agent_session_id`` from the watchdog's
+            # captured session id so the downstream ``_apply_chain_retry``
+            # consumer (which already does
+            # ``resume_agent_retry_intent(state.last_agent_session_id)``)
+            # emits a resume intent with the captured id instead of
+            # starting a fresh session. The branch is mutually exclusive
+            # with ``failure.reset_session`` above (a stale-session reset
+            # means the captured id is irrelevant and the chain retry
+            # uses ``cleared_agent_retry_intent()`` -- the pre-fix
+            # behavior). When ``retry_in_session`` is False the resume
+            # path is not taken anyway, so this branch must not populate
+            # ``last_agent_session_id`` for an unrelated retry.
+            new_state = new_state.copy_with(
+                last_agent_session_id=failure.resumable_session_id,
+            )
 
         if agent is not None and not is_agent_unavailable:
             self._registry = self._registry.debit(phase, agent, failure)

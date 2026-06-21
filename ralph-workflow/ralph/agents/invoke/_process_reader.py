@@ -318,6 +318,17 @@ class _ProcessLineReader:
             _agent_command_name(self._config),
         )
         self._last_activity_kind = "none"
+        # Captured transport-level session id from the most recent
+        # ``Session ID:`` / ``--resume`` / JSON-shaped session event on
+        # the subprocess stdout. Mirrors ``captured_session_id`` in
+        # ``_run_subprocess_and_read_lines`` but is stored at the
+        # reader level so ``_check_fire`` can read it at the moment of
+        # the watchdog fire WITHOUT re-walking the stdout pipe. The
+        # canonical seam is still ``extract_transport_session_id_from_line``
+        # called from ``_read_thread`` below; this field is the
+        # cache so the watchdog-kill path does not need to retain
+        # ``_lines_queue`` content for re-scanning.
+        self._captured_session_id: str | None = None
         self._unsubscribe = get_process_manager().register_listener(self._on_process_event)
 
     def _on_process_event(self, event: ProcessEvent) -> None:
@@ -505,6 +516,16 @@ class _ProcessLineReader:
                 with self._lines_lock:
                     self._lines_queue.append(line)
                     self._lines_event.set()
+                # Per-line session id capture mirrors the canonical
+                # extraction in ``_run_subprocess_and_read_lines``
+                # (``captured_session_id`` accumulator there) so the
+                # watchdog-kill -> resume path sees the same id at the
+                # reader level. The two captures are independent
+                # (reader vs. outer generator) but the extraction is
+                # idempotent so both end up with the same value.
+                session_id = extract_transport_session_id_from_line(line)
+                if session_id is not None:
+                    self._captured_session_id = session_id
         except Exception:
             pass
         finally:
@@ -545,13 +566,24 @@ class _ProcessLineReader:
             else self._policy.idle_timeout_seconds
         )
         assert timeout_val is not None
+        # The captured transport session id (mirrors
+        # ``captured_session_id`` in ``_run_subprocess_and_read_lines``
+        # but reads the reader-level cache so the value is available
+        # at fire time without re-scanning the stdout pipe).
+        captured_session_id = self._captured_session_id
+        # Real resume-safety from the canonical helper at
+        # ``_process_reader._is_resumable_fire_reason`` (NOT the
+        # hardcoded ``false`` that pre-fix this method logged).
+        resume_safe = _is_resumable_fire_reason(fire_reason)
         logger.warning(
             "idle watchdog firing reason={} idle_elapsed={}s cumulative_waiting={}s "
-            "last_activity_kind={} resume_safe=false",
+            "last_activity_kind={} resume_safe={} resumable_session_id={}",
             fire_reason,
             round(watchdog.idle_elapsed_seconds(self._clock.monotonic()), 1),
             round(watchdog.cumulative_waiting_on_child_seconds, 1),
             self._last_activity_kind,
+            resume_safe,
+            captured_session_id,
         )
         with self._lines_lock:
             pending = list(self._lines_queue)
@@ -575,6 +607,28 @@ class _ProcessLineReader:
             "evidence_summary": watchdog.last_evidence_summary(now).to_dict_list(),
         }
         merged_diag: dict[str, object] = dict(evidence_block)
+        # Surface the captured session id and the real resume-safety
+        # signal in the post-mortem diagnostic. The
+        # ``FailureClassifier.classify`` consults ``exc.__cause__``
+        # first (which already carries ``resumable_session_id`` on the
+        # ``IdleWatchdogKilledError``), but a future reader of the
+        # diagnostic that does not walk the exception chain (e.g. an
+        # on-call grep of the merged_diag payload) must see the
+        # captured id here as well.
+        merged_diag["resumable_session_id"] = captured_session_id
+        merged_diag["resume_safe"] = resume_safe
+        # The diagnostic_snapshot adds the full watchdog state at the
+        # moment of the fire for post-mortem reconstruction. It is
+        # optional because a watchdog mock without ``diagnostic_snapshot``
+        # must not crash the fire path.
+        snapshot_fn = getattr(watchdog, "diagnostic_snapshot", None)
+        if callable(snapshot_fn):
+            try:
+                snapshot = snapshot_fn(now=now)
+            except Exception:
+                snapshot = None
+            if snapshot is not None:
+                merged_diag["watchdog_snapshot"] = snapshot
         if hard_stop_diag is not None:
             for key, value in hard_stop_diag.items():
                 if key not in merged_diag:
@@ -621,6 +675,7 @@ class _ProcessLineReader:
             signal=15,  # SIGTERM
             evidence_summary=str(merged_diag),
             child_alive=_child_alive,
+            resumable_session_id=captured_session_id,
         )
         wrapper = _IdleStreamTimeoutError(
             timeout_val,

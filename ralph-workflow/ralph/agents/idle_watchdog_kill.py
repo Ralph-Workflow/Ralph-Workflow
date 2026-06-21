@@ -57,6 +57,7 @@ class IdleWatchdogKilledError(Exception):
         *,
         evidence_summary: str | None = None,
         child_alive: bool | None = None,
+        resumable_session_id: str | None = None,
     ) -> None:
         # The message may legitimately contain misleading tokens (e.g. the
         # word "timeout") to stress-test the classifier; the recovery decision
@@ -67,6 +68,15 @@ class IdleWatchdogKilledError(Exception):
         self.signal = signal
         self.evidence_summary = evidence_summary
         self.child_alive = child_alive
+        # The session id the killed agent was running under. Captured
+        # per-line by ``_run_subprocess_and_read_lines`` and surfaced
+        # here so the post-mortem evidence AND the failure classifier
+        # (via ``exc.__cause__``) can both see the captured id. The
+        # recovery controller reads this field and populates
+        # ``state.last_agent_session_id`` so the existing
+        # ``_apply_chain_retry`` resume path consumes it instead of
+        # starting a fresh session.
+        self.resumable_session_id = resumable_session_id
 
 
 __all__ = ["IdleWatchdogKilledError"]

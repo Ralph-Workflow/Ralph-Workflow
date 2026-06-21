@@ -131,6 +131,11 @@ class _FakeCheckFireSelf:
     )
     _last_activity_kind: str = "none"
     _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
+    # Mirrors ``_ProcessLineReader._captured_session_id`` so the kill
+    # path can read the captured transport session id without walking
+    # the stdout pipe. Default None for tests that do not exercise the
+    # capture path.
+    _captured_session_id: str | None = None
 
 
 class _NoOpStrategy:
@@ -169,11 +174,16 @@ def test_fire_no_output_at_start_yields_inactivity_error() -> None:
     def _classify_quiet() -> AgentExecutionState:
         return AgentExecutionState.ACTIVE
 
-    # Advance the clock past the no_output_at_start threshold.
-    clock.advance(31.0)
+    # Advance the clock past the no_output_at_start threshold AND
+    # past the dumb-kill floor (120 s default) so the floor guard in
+    # ``_evaluate_no_output_at_start`` does not defer the fire. The
+    # floor suppresses the short ceiling during the LOADING window;
+    # past the floor the 30 s short ceiling is the correct bound.
+    clock.advance(125.0)
     verdict = watchdog.evaluate(classify_quiet=_classify_quiet)
     assert verdict == WatchdogVerdict.FIRE, (
-        f"expected FIRE after no_output_at_start at 31s; got {verdict}"
+        f"expected FIRE after no_output_at_start past the dumb-kill"
+        f" floor (125s); got {verdict}"
     )
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
@@ -421,7 +431,10 @@ def test_no_output_at_start_fire_with_known_session_id_yields_resume_intent() ->
     )
     watchdog.record_invocation_start()
 
-    clock.advance(31.0)
+    # Advance past the no_output_at_start threshold AND past the
+    # dumb-kill floor (120 s default) so the floor guard in
+    # ``_evaluate_no_output_at_start`` does not defer the fire.
+    clock.advance(125.0)
     verdict = watchdog.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START

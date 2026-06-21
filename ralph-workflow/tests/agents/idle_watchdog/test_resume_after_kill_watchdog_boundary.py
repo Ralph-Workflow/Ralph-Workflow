@@ -36,6 +36,7 @@ _NON_RESUMABLE_REASON_VALUES: frozenset[str] = frozenset(
         WatchdogFireReason.PROCESS_EXIT_HANG.value,
         WatchdogFireReason.DESCENDANT_HANG.value,
         WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER.value,
+        WatchdogFireReason.STRICTLY_STUCK.value,
     }
 )
 

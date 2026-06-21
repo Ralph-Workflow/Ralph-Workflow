@@ -559,6 +559,12 @@ def _classify_unavailability_reason(
         # code because the wt-012 gate refinement defers the fire
         # when alive_by is not None).
         reason = None if child_alive is True else UnavailabilityReason.STALE_CHILD_QUIET
+    elif watchdog_reason == "strictly_stuck":
+        # Stuck-but-alive orthogonal ceiling. Distinct from
+        # STALE_CHILD_QUIET (which is for dead children); this branch
+        # is for a live child with no progress / heartbeat for the
+        # strictly-stuck ceiling.
+        reason = UnavailabilityReason.STRICTLY_STUCK
     elif watchdog_reason == "children_persist_too_long":
         reason = UnavailabilityReason.SUSPICIOUS_TIMEOUT_NO_OUTPUT
     elif (connectivity_state or "").casefold() == "online":
@@ -662,10 +668,26 @@ class FailureClassifier:
         # in the categorization pass above; here we only need the
         # direct cause for the ``child_alive`` field.
         child_alive: bool | None = None
+        resumable_session_id: str | None = None
         if exc_obj is not None:
             direct_cause = cast("BaseException | None", getattr(exc_obj, "__cause__", None))
             if isinstance(direct_cause, IdleWatchdogKilledError):
                 child_alive = direct_cause.child_alive
+                cause_session_id = getattr(direct_cause, "resumable_session_id", None)
+                if isinstance(cause_session_id, str) and cause_session_id:
+                    resumable_session_id = cause_session_id
+        # Also read the wrapped ``AgentInactivityTimeoutError.resumable_session_id``
+        # so the captured id reaches the classifier even when the
+        # ``__cause__`` walk above found no ``IdleWatchdogKilledError``
+        # (e.g. when the wrapper is re-raised without the typed cause).
+        # ``AgentInactivityTimeoutError.__init__`` lifts ``opts.resumable_session_id``
+        # into a top-level attribute on the exception instance so the
+        # classifier can read it without re-walking the construction
+        # arguments.
+        if resumable_session_id is None and exc_obj is not None:
+            exc_session_id = cast("object", getattr(exc_obj, "resumable_session_id", None))
+            if isinstance(exc_session_id, str) and exc_session_id:
+                resumable_session_id = exc_session_id
 
         # Unavailable-agent detection only applies when the failure is agent-side
         # AND connectivity is known healthy AND the failure is not a tool-registry
@@ -743,6 +765,7 @@ class FailureClassifier:
             is_unavailable=is_unavailable,
             watchdog_reason=watchdog_reason,
             unavailability_reason=unavailability_reason,
+            resumable_session_id=resumable_session_id,
         )
 
     def _is_tool_availability_failure(

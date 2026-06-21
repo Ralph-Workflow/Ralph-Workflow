@@ -64,6 +64,7 @@ _NON_RESUMABLE_REASONS: frozenset[WatchdogFireReason] = frozenset(
         WatchdogFireReason.SESSION_CEILING_EXCEEDED,
         WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
         WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER,
+        WatchdogFireReason.STRICTLY_STUCK,
     }
 )
 
@@ -96,8 +97,23 @@ def test_deferred_by_stuck_classifier_never_fires() -> None:
     a wait state. The smart-verdict gate defers the fire and sets
     ``last_fire_reason`` to ``DEFERRED_BY_STUCK_CLASSIFIER``, but the returned
     verdict is ``CONTINUE``, never ``FIRE``.
+
+    The dumb-kill floor (``no_progress_quiet_minimum_invocation_seconds``)
+    defaults to 120 s and now defers the fire before the gate, so the test
+    disables the floor to reach the gate path. The test still proves the
+    gate defers when the classifier returns ``DUPLICATE_KILL`` for a wait
+    state.
     """
-    watchdog, clock = _make_watchdog()
+    clock = FakeClock(start=0.0)
+    from ralph.agents.idle_watchdog import TimeoutPolicy as _TP
+    policy = _TP(
+        idle_timeout_seconds=60.0,
+        no_output_at_start_seconds=30.0,
+        no_progress_quiet_seconds=None,
+        no_progress_quiet_minimum_invocation_seconds=None,
+        activity_evidence_ttl_seconds=180.0,
+    )
+    watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor())
     watchdog.record_invocation_start()
     watchdog.set_is_waiting_state(True)
 

@@ -135,6 +135,7 @@ _EXPECTED_FIRE_REASONS: frozenset[str] = frozenset(
         WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL.value,
         WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG.value,
         WatchdogFireReason.NO_PROGRESS_QUIET.value,
+        WatchdogFireReason.STRICTLY_STUCK.value,
         WatchdogFireReason.SESSION_CEILING_EXCEEDED.value,
         WatchdogFireReason.PROCESS_EXIT_HANG.value,
         WatchdogFireReason.DESCENDANT_HANG.value,
@@ -556,6 +557,11 @@ class IdleWatchdog:
     _invocation_started_at: float | None = field(default=None, init=False)
     _waiting_on_child_started_at: float | None = field(default=None, init=False)
     _cumulative_waiting_on_child_seconds: float = field(default=0.0, init=False)
+    # STRICTLY_STUCK run counter. Set when the corroborator reports an
+    # alive_by in the strictly-stuck set so the next call can compute
+    # the elapsed run. Reset to None on transitions OUT of the strictly-
+    # stuck alive_by set so a brief liveness gap does not accumulate.
+    _strictly_stuck_run_started_at: float | None = field(default=None, init=False)
     _in_drain_window: bool = field(default=False, init=False)
     _drain_started_at: float | None = field(default=None, init=False)
     _last_fire_reason: WatchdogFireReason | None = field(default=None, init=False)
@@ -572,6 +578,18 @@ class IdleWatchdog:
     # would-be fire was deferred ("a subagent dispatched then went
     # silent for >180s").
     _last_deferred_kind: StuckKind | None = field(default=None, init=False)
+    # Per-(fire_reason, deferred_kind) log throttle map. The PROMPT log showed
+    # ~10 DEBUG records/sec at ``_gate_fire:949`` while a fire was deferred
+    # (SILENT_SUBAGENT or generic non-STUCK kind) -- per-tick log spam. The
+    # map keys on ``(fire_reason.value, deferred_kind.value)`` and stores the
+    # monotonic timestamp of the most recent emission so a subsequent call
+    # within ``watchdog_log_throttle_seconds`` is suppressed. Reset to empty
+    # in ``record_invocation_start`` so a new invocation starts with an empty
+    # throttle map; the throttle MUST survive long-lived WAITING runs but
+    # MUST NOT carry state across invocations.
+    _last_deferred_log_at: dict[tuple[str, str], float] = field(
+        default_factory=dict, init=False
+    )
     # Corroborator's alive_by signal at the moment of the most recent
     # NO_PROGRESS_QUIET fire. ``None`` when the watchdog has not fired
     # yet OR when the most recent fire was not NO_PROGRESS_QUIET
@@ -606,6 +624,13 @@ class IdleWatchdog:
     _last_mcp_tool_call_at: float | None = field(default=None, init=False)
     _subagent_progress_count: int = field(default=0, init=False)
     _last_subagent_progress_at: float | None = field(default=None, init=False)
+    # Throttle timestamp for the SUBAGENT_PROGRESS waiting-status emit
+    # in ``_handle_waiting_branch``. Separate from
+    # ``_last_subagent_progress_at`` (which is the channel-evidence
+    # timestamp): this field tracks the LAST EMIT TIME so the emit
+    # cadence is bounded by
+    # ``TimeoutPolicy.watchdog_subagent_progress_interval_seconds``.
+    _last_subagent_progress_emit_at: float | None = field(default=None, init=False)
     _subagent_output_count: int = field(default=0, init=False)
     _last_subagent_output_at: float | None = field(default=None, init=False)
     _workspace_event_count_internal: int = field(default=0, init=False)
@@ -684,6 +709,7 @@ class IdleWatchdog:
         self._drain_started_at = None
         self._last_fire_reason = None
         self._last_deferred_kind = None
+        self._last_deferred_log_at = {}
         self._last_waiting_status_at = None
         self._suspicion_announced_for_run = False
         self._last_tool_result_at = None
@@ -760,6 +786,70 @@ class IdleWatchdog:
         """
         return self._last_alive_by
 
+    def diagnostic_snapshot(self, now: float | None = None) -> dict[str, object]:
+        """Return a JSON-serializable dict of the watchdog's full state.
+
+        The snapshot is a PURE READ of watchdog state (no side effects).
+        The only clock touch is the injected ``self._clock.monotonic()``
+        when ``now`` is None; tests pass an explicit ``now`` to drive
+        the FakeClock deterministically without time travel.
+
+        Shape (forward-compatible; ``None`` when the field has never
+        been populated):
+
+        - ``last_fire_reason``: ``str | None`` (WatchdogFireReason.value)
+        - ``last_deferred_kind``: ``str | None`` (StuckKind.value)
+        - ``last_alive_by``: ``str | None`` (AliveBy.value)
+        - ``idle_elapsed_seconds``: ``float``
+        - ``invocation_elapsed_seconds``: ``float``
+        - ``cumulative_waiting_on_child_seconds``: ``float``
+        - ``last_subagent_progress_description``: ``str | None``
+        - ``live_subagent_count``: ``int`` (0 when no monitor)
+        - ``subagent_progress_count``: ``int``
+        - ``subagent_output_count``: ``int``
+        - ``mcp_tool_call_count``: ``int``
+        - ``workspace_event_count``: ``int``
+        - ``evidence_summary``: ``list[dict[str, object]]`` (per-channel)
+        - ``resumable_session_id``: ``str | None`` (None; populated
+          externally by the watchdog kill path that captures the
+          subprocess transport session id)
+        """
+        timestamp = now if now is not None else self._clock.monotonic()
+        live_subagent_count = (
+            self._process_monitor.live_subagent_count()
+            if self._process_monitor is not None
+            else 0
+        )
+        snapshot: dict[str, object] = {
+            "last_fire_reason": (
+                self._last_fire_reason.value
+                if self._last_fire_reason is not None
+                else None
+            ),
+            "last_deferred_kind": (
+                self._last_deferred_kind.value
+                if self._last_deferred_kind is not None
+                else None
+            ),
+            "last_alive_by": (
+                self._last_alive_by.value if self._last_alive_by is not None else None
+            ),
+            "idle_elapsed_seconds": round(self.idle_elapsed_seconds(timestamp), 1),
+            "invocation_elapsed_seconds": round(self.invocation_elapsed_seconds, 1),
+            "cumulative_waiting_on_child_seconds": round(
+                self._cumulative_waiting_on_child_seconds, 1
+            ),
+            "last_subagent_progress_description": self._last_subagent_progress_description,
+            "live_subagent_count": live_subagent_count,
+            "subagent_progress_count": self._subagent_progress_count,
+            "subagent_output_count": self._subagent_output_count,
+            "mcp_tool_call_count": self._mcp_tool_call_count,
+            "workspace_event_count": self._workspace_event_count_internal,
+            "evidence_summary": self.last_evidence_summary(timestamp).to_dict_list(),
+            "resumable_session_id": None,
+        }
+        return snapshot
+
     @property
     def cumulative_waiting_on_child_seconds(self) -> float:
         """Cumulative seconds spent in WAITING_ON_CHILD state across all runs."""
@@ -803,6 +893,11 @@ class IdleWatchdog:
         self._last_subagent_progress_description = None
         self._default_subagent_activity_listener = None
         self._last_deferred_kind = None
+        # Reset the per-key log throttle so a new invocation starts with an
+        # empty map. The throttle MUST survive long-lived WAITING runs but
+        # MUST NOT carry state across invocations (different run = different
+        # operator-relevant history).
+        self._last_deferred_log_at = {}
 
     def set_is_waiting_state(self, is_waiting_state: bool) -> None:
         """Update the pipeline's wait-state flag for the StuckClassifier gate.
@@ -985,21 +1080,59 @@ class IdleWatchdog:
         if kind == StuckKind.SILENT_SUBAGENT:
             self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
             self._last_deferred_kind = kind
-            self._log.debug(
-                "idle watchdog: silent subagent (deferred) reason={} idle_elapsed={}s",
-                fire_reason,
-                round(idle_elapsed, 1),
-            )
+            if self._maybe_log_deferred(fire_reason, kind, idle_elapsed, now):
+                self._log.debug(
+                    "idle watchdog: silent subagent (deferred) reason={} idle_elapsed={}s",
+                    fire_reason,
+                    round(idle_elapsed, 1),
+                )
             return WatchdogVerdict.CONTINUE
         self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
         self._last_deferred_kind = kind
-        self._log.debug(
-            "idle watchdog: deferred fire reason={} kind={} idle_elapsed={}s",
-            fire_reason,
-            kind,
-            round(idle_elapsed, 1),
-        )
+        if self._maybe_log_deferred(fire_reason, kind, idle_elapsed, now):
+            self._log.debug(
+                "idle watchdog: deferred fire reason={} kind={} idle_elapsed={}s",
+                fire_reason,
+                kind,
+                round(idle_elapsed, 1),
+            )
         return WatchdogVerdict.CONTINUE
+
+    def _maybe_log_deferred(
+        self,
+        fire_reason: WatchdogFireReason,
+        deferred_kind: StuckKind,
+        idle_elapsed: float,
+        now: float,
+    ) -> bool:
+        """Return True (and stamp the throttle map) when a deferred DEBUG
+        emission is allowed for this ``(fire_reason, deferred_kind)`` key.
+
+        The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949``
+        while a fire was deferred; per-tick DEBUG emission is log spam.
+        This helper consults ``self._last_deferred_log_at`` and the
+        configured ``watchdog_log_throttle_seconds`` to keep emissions
+        to at most one per ``(fire_reason, deferred_kind)`` key per
+        throttle window.
+
+        Returns True when:
+          - the key has never been logged (initial transition), OR
+          - ``now - last_logged_at >= watchdog_log_throttle_seconds``
+            (the throttle window has elapsed since the prior emission).
+
+        Returns False when ``now - last_logged_at < watchdog_log_throttle_seconds``
+        (the emission would be a duplicate).
+
+        The map is updated on every call that returns True so a
+        subsequent call within the throttle window returns False.
+        """
+        key = (fire_reason.value, deferred_kind.value)
+        last = self._last_deferred_log_at.get(key)
+        throttle = self._config.watchdog_log_throttle_seconds
+        if last is None or (now - last) >= throttle:
+            self._last_deferred_log_at[key] = now
+            return True
+        return False
 
     @property
     def invocation_elapsed_seconds(self) -> float:
@@ -1114,6 +1247,114 @@ class IdleWatchdog:
         )
         return WatchdogVerdict.FIRE
 
+    def _evaluate_strictly_stuck(
+        self,
+        now: float,
+        idle_elapsed: float,
+        corroboration: CorroborationSnapshot,
+    ) -> WatchdogVerdict | None:
+        """Evaluate the STRICTLY_STUCK orthogonal ceiling for stuck-but-alive jobs.
+
+        Fires ``WatchdogFireReason.STRICTLY_STUCK`` when ALL of the following
+        are true:
+
+        1. ``self._config.no_progress_quiet_strictly_stuck_seconds`` is not
+           None (the ceiling is enabled).
+        2. The corroborator reports ``alive_by`` in the strictly-stuck
+           set ``{OS_DESCENDANT_ONLY_STALE_PROGRESS, CPU_IDLE_WHILE_ALIVE,
+           LOG_STALE_WHILE_ALIVE}``.
+        3. The agent has been in this strictly-stuck alive_by state for at
+           least ``no_progress_quiet_strictly_stuck_seconds`` (tracked
+           via the ``_strictly_stuck_run_started_at`` field).
+        4. NO first-party channel is fresh (a productive agent in this
+           state would be emitting stdout / tool calls / workspace
+           events; the lack of any fresh channel means the agent is
+           genuinely silent).
+
+        The ceiling is ORTHOGONAL to ``NO_PROGRESS_QUIET`` (which
+        requires ``alive_by is None``) and to ``CHILDREN_PERSIST_TOO_LONG``
+        (which fires on the cumulative wall-clock). The new ceiling is
+        tuned for the stuck-but-alive case which is too lenient to be
+        caught by the standard 600s ``CHILDREN_PERSIST_TOO_LONG`` ceiling
+        but too noisy to be caught by ``NO_PROGRESS_QUIET`` (the agent
+        IS technically alive).
+
+        Returns ``WatchdogVerdict.FIRE`` when the conditions are met AND
+        the smart-verdict gate allows the fire (a fresh subagent
+        liveness signal in the corroborator at this very tick will
+        defer). Returns ``WatchdogVerdict.CONTINUE`` when the gate
+        defers. Returns ``None`` when the ceiling is not engaged.
+        """
+        if self._config.no_progress_quiet_strictly_stuck_seconds is None:
+            # Reset the run counter so a future enable starts fresh.
+            self._strictly_stuck_run_started_at = None
+            return None
+        _STRICTLY_STUCK_ALIVE_BY = (
+            AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            AliveBy.CPU_IDLE_WHILE_ALIVE,
+            AliveBy.LOG_STALE_WHILE_ALIVE,
+        )
+        if corroboration.alive_by not in _STRICTLY_STUCK_ALIVE_BY:
+            # Transition OUT of the strictly-stuck alive_by set: reset
+            # the run counter so a brief liveness gap does not accumulate
+            # across runs.
+            self._strictly_stuck_run_started_at = None
+            return None
+        if self._strictly_stuck_run_started_at is None:
+            self._strictly_stuck_run_started_at = now
+            return None
+        strictly_stuck_run_seconds = now - self._strictly_stuck_run_started_at
+        if strictly_stuck_run_seconds < self._config.no_progress_quiet_strictly_stuck_seconds:
+            return None
+        if self._channel_evidence_active(now):
+            # A first-party channel is fresh (mcp_tool, subagent_output,
+            # workspace) -- the agent is making forward progress on a
+            # non-stdout channel; defer.
+            return None
+        # Route through the gate so a fresh subagent_liveness signal
+        # in the corroborator can defer (defense-in-depth, mirrors the
+        # NO_OUTPUT_AT_START gate pattern at line 1252-1256).
+        gate_verdict = self._gate_fire(
+            WatchdogFireReason.STRICTLY_STUCK,
+            now=now,
+            idle_elapsed=idle_elapsed,
+            corroboration=corroboration,
+        )
+        if gate_verdict == WatchdogVerdict.CONTINUE:
+            return WatchdogVerdict.CONTINUE
+        self._last_fire_reason = WatchdogFireReason.STRICTLY_STUCK
+        diag: dict[str, object] = {
+            "alive_by": corroboration.alive_by.value
+            if corroboration.alive_by is not None
+            else None,
+            "strictly_stuck_run_seconds": round(strictly_stuck_run_seconds, 1),
+            "strictly_stuck_ceiling_seconds": (
+                self._config.no_progress_quiet_strictly_stuck_seconds
+            ),
+            "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),
+            "idle_elapsed": round(idle_elapsed, 1),
+        }
+        evidence_block, _ = self._build_evidence_summary_diag(now)
+        for ev_key, ev_val in evidence_block.items():
+            if ev_key not in diag:
+                diag[ev_key] = ev_val
+        self._emit(
+            WaitingStatusKind.HARD_STOP,
+            current_run_seconds=round(strictly_stuck_run_seconds, 1),
+            idle_elapsed=idle_elapsed,
+            ceiling_seconds=self._config.no_progress_quiet_strictly_stuck_seconds,
+            diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+        )
+        self._log.warning(
+            "idle watchdog: FIRE reason={} idle_elapsed={}s"
+            " strictly_stuck_run_seconds={}s alive_by={}",
+            WatchdogFireReason.STRICTLY_STUCK,
+            round(idle_elapsed, 1),
+            round(strictly_stuck_run_seconds, 1),
+            corroboration.alive_by,
+        )
+        return WatchdogVerdict.FIRE
+
     def _evaluate_no_output_at_start(  # noqa: PLR0911 - 3 early-exit guards + 2 deferral gates + final verdict path; each is a distinct condition
         self,
         now: float,
@@ -1169,6 +1410,24 @@ class IdleWatchdog:
             or self._has_meaningful_output
             or self._last_meaningful_output_at is None
             or (now - self._last_meaningful_output_at) < self._config.no_output_at_start_seconds
+        ):
+            return None
+        # Dumb-kill floor: defer the fire while the agent has been alive
+        # for less than ``no_progress_quiet_minimum_invocation_seconds``
+        # so a recently-launched agent in the LOADING window (loading
+        # prompt, dispatching a subagent, etc.) is not killed at the
+        # 30s short ceiling before any liveness signal has a chance
+        # to arrive. The floor MUST be consulted BEFORE the
+        # ``classify_quiet`` call so the load-strategy classification
+        # cost is not paid on the floor path. The
+        # ``no_progress_quiet_minimum_invocation_seconds`` default
+        # (120s) is the same bound already enforced for
+        # ``NO_PROGRESS_QUIET`` in ``_is_no_progress_quiet``, so the
+        # worst-case first-output latency is still bounded by 120s.
+        if (
+            self._config.no_progress_quiet_minimum_invocation_seconds is not None
+            and self.invocation_elapsed_seconds
+            < self._config.no_progress_quiet_minimum_invocation_seconds
         ):
             return None
         try:
@@ -2129,6 +2388,22 @@ class IdleWatchdog:
         if self._config.idle_timeout_seconds is None:
             return WatchdogVerdict.CONTINUE
 
+        # STRICTLY_STUCK orthogonal ceiling. Engages BEFORE the
+        # idle_timeout_seconds check so a stuck-but-alive job whose
+        # idle_timeout has already elapsed is caught by the strictly-
+        # stuck ceiling (which is tuned for that exact case) rather
+        # than by the generic NO_OUTPUT_DEADLINE path. The corroborator
+        # is consumed via the safe-normalize seam so a missing or
+        # misbehaving corroborator falls through to an empty snapshot
+        # (no alive_by) and the ceiling does not engage.
+        strictly_stuck_verdict = self._evaluate_strictly_stuck(
+            now,
+            idle_elapsed,
+            corroboration=self._safe_corroborate(),
+        )
+        if strictly_stuck_verdict is not None:
+            return strictly_stuck_verdict
+
         if (
             quiet_state == AgentExecutionState.WAITING_ON_CHILD
             and self._config.no_progress_quiet_seconds is not None
@@ -2513,6 +2788,61 @@ class IdleWatchdog:
                 ceiling_seconds=effective_ceiling,
                 diagnostic=cast("dict[str, str | int | float | bool | list[object]]", corr_diag_pr),
             )
+
+        # SUBAGENT_PROGRESS waiting-status event. Surfaces the
+        # most-recent subagent activity description AND the live
+        # subagent count from the process monitor in the waiting-
+        # status stream so operators see what the dispatched
+        # subagent is doing in real time. This REUSES the existing
+        # parser-layer ``ActivityEventKind.SUBAGENT_PROGRESS``
+        # surface (``self._last_subagent_progress_description``
+        # updated via ``record_subagent_work`` and the
+        # ``_process_monitor.live_subagent_count()`` process-tree
+        # signal) -- it does NOT introduce a new per-worker log
+        # poll. The emit is rate-limited by
+        # ``watchdog_subagent_progress_interval_seconds`` (30 s
+        # default, matching the existing PROGRESS cadence) so
+        # the new event does NOT introduce additional churn.
+        # The predicate is: emit only when EITHER a subagent
+        # observation has been recorded OR the process monitor
+        # reports a live subagent count > 0 -- both surfaces
+        # are agent-agnostic (no per-worker log discovery).
+        live_subagent_count = (
+            self._process_monitor.live_subagent_count()
+            if self._process_monitor is not None
+            else 0
+        )
+        if (
+            self._last_subagent_progress_description is not None
+            or live_subagent_count > 0
+        ):
+            if (
+                self._last_subagent_progress_emit_at is None
+                or (now - self._last_subagent_progress_emit_at)
+                >= self._config.watchdog_subagent_progress_interval_seconds
+            ):
+                self._last_subagent_progress_emit_at = now
+                subagent_diag: dict[str, object] = {
+                    "live_subagent_count": live_subagent_count,
+                    "subagent_progress_count": self._subagent_progress_count,
+                    "last_subagent_progress_at": self._last_subagent_progress_at,
+                }
+                if self._last_subagent_progress_description is not None:
+                    subagent_diag["subagent_activity"] = (
+                        _sanitize_subagent_description(
+                            self._last_subagent_progress_description
+                        )[:200]
+                    )
+                self._emit(
+                    WaitingStatusKind.SUBAGENT_PROGRESS,
+                    current_run_seconds=current_run_elapsed,
+                    idle_elapsed=idle_elapsed,
+                    ceiling_seconds=effective_ceiling,
+                    diagnostic=cast(
+                        "dict[str, str | int | float | bool | list[object]]",
+                        subagent_diag,
+                    ),
+                )
 
         return WatchdogVerdict.WAITING_ON_CHILD
 

@@ -268,6 +268,33 @@ NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS: float | None = 120.0
 # cumulative ceiling is reached.
 NO_OUTPUT_AT_START_SECONDS: float | None = 30.0
 
+#: Default per-(fire_reason, deferred_kind) log throttle for ``_gate_fire``.
+#: The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949`` while a
+#: fire was deferred (SILENT_SUBAGENT or generic non-STUCK kind); that per-tick
+#: emission is log spam. The throttle keeps emissions to at most one per
+#: ``(fire_reason, deferred_kind)`` key per ``WATCHDOG_LOG_THROTTLE_SECONDS``.
+#: The 30s default matches ``WAITING_STATUS_INTERVAL_SECONDS`` so the throttle
+#: and the structured status cadence are aligned.
+WATCHDOG_LOG_THROTTLE_SECONDS: float = 30.0
+
+#: Default STRICTLY_STUCK ceiling: orthogonal to ``no_progress_quiet_seconds``,
+#: this fires ``WatchdogFireReason.STRICTLY_STUCK`` when the corroborator reports
+#: a stuck-but-alive state (``alive_by`` in
+#: ``{OS_DESCENDANT_ONLY_STALE_PROGRESS, CPU_IDLE_WHILE_ALIVE,
+#: LOG_STALE_WHILE_ALIVE}``) AND no first-party channel is fresh for this many
+#: seconds. Default is ``None`` (disabled) so operators opt in by setting a
+#: concrete value; setting it shorter than the existing
+#: ``max_waiting_on_child_no_progress_seconds`` is the recommended pattern
+#: (e.g. 300 s vs the 600 s outer ceiling). Set to ``None`` to disable.
+NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS: float | None = None
+
+#: Default cadence for the SUBAGENT_PROGRESS waiting-status event. The
+#: watchdog emits a SUBAGENT_PROGRESS event at most once per this many seconds
+#: while WAITING_ON_CHILD deferral is active. The 30s default matches the
+#: existing PROGRESS cadence so the new event does not introduce additional
+#: churn.
+WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS: float = 30.0
+
 # ---------------------------------------------------------------------------
 # Child-liveness TTL defaults
 # ---------------------------------------------------------------------------

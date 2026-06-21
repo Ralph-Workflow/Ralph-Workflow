@@ -21,6 +21,7 @@ from ralph.timeout_defaults import (
     NO_OUTPUT_AT_START_SECONDS,
     NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS,
     NO_PROGRESS_QUIET_SECONDS,
+    NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS,
     OS_DESCENDANT_ONLY_CEILING_SECONDS,
     OS_DESCENDANT_ONLY_SUSPECT_SECONDS,
     PARENT_EXIT_GRACE_SECONDS,
@@ -35,6 +36,8 @@ from ralph.timeout_defaults import (
     SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
     WAITING_STATUS_INTERVAL_SECONDS,
+    WATCHDOG_LOG_THROTTLE_SECONDS,
+    WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS,
 )
 
 _VALID_WORKSPACE_CHANGE_WEIGHT_KEYS: frozenset[str] = frozenset(
@@ -246,6 +249,33 @@ class TimeoutPolicy:
     # the OS-descendant-only ceiling and falls back to the no-progress ceiling.
     # None disables the log-growth probe; the probe no-ops when the file is absent.
     log_growth_seconds: float | None = LOG_GROWTH_SECONDS
+    # STRICTLY_STUCK ceiling: orthogonal to ``no_progress_quiet_seconds``, the
+    # watchdog fires ``WatchdogFireReason.STRICTLY_STUCK`` when the corroborator
+    # reports a stuck-but-alive state (``alive_by`` in
+    # ``{OS_DESCENDANT_ONLY_STALE_PROGRESS, CPU_IDLE_WHILE_ALIVE,
+    # LOG_STALE_WHILE_ALIVE}``) AND no first-party channel is fresh for this
+    # many seconds. Set to None to disable. When set, the value MUST be > 0
+    # AND <= ``no_progress_quiet_seconds`` (the strictly-stuck ceiling is a
+    # SHORTER, ORTHOGONAL ceiling -- if it were equal or longer it would be
+    # redundant with the standard no-progress ceiling).
+    no_progress_quiet_strictly_stuck_seconds: float | None = (
+        NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS
+    )
+    # Per-(fire_reason, deferred_kind) log throttle in seconds for the
+    # ``_gate_fire`` DEBUG emissions. The PROMPT log showed ~10 DEBUG
+    # records/sec while a fire was deferred (SILENT_SUBAGENT or generic
+    # non-STUCK kind); that per-tick emission is log spam. The throttle
+    # keeps emissions to at most one per ``(fire_reason, deferred_kind)``
+    # key per ``watchdog_log_throttle_seconds``. Must be > 0.
+    watchdog_log_throttle_seconds: float = WATCHDOG_LOG_THROTTLE_SECONDS
+    # Cadence (seconds) for the SUBAGENT_PROGRESS waiting-status event.
+    # The watchdog emits a SUBAGENT_PROGRESS event at most once per this
+    # many seconds while WAITING_ON_CHILD deferral is active. The 30s
+    # default matches the existing PROGRESS cadence so the new event does
+    # not introduce additional churn. Must be > 0.
+    watchdog_subagent_progress_interval_seconds: float = (
+        WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS
+    )
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()
@@ -261,6 +291,9 @@ class TimeoutPolicy:
         self._validate_workspace_change_weights()
         self._validate_subagent_output_poll_interval()
         self._validate_os_descendant_only_fields()
+        self._validate_strictly_stuck_seconds()
+        self._validate_watchdog_log_throttle_seconds()
+        self._validate_watchdog_subagent_progress_interval_seconds()
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
@@ -487,3 +520,37 @@ class TimeoutPolicy:
             ):
                 msg = "os_descendant_only_suspect_seconds must be < max_waiting_on_child_seconds"
                 raise ValueError(msg)
+
+    def _validate_strictly_stuck_seconds(self) -> None:
+        if self.no_progress_quiet_strictly_stuck_seconds is None:
+            return
+        if self.no_progress_quiet_strictly_stuck_seconds <= 0:
+            msg = "no_progress_quiet_strictly_stuck_seconds must be positive when set"
+            raise ValueError(msg)
+        # The strictly-stuck ceiling must be SHORTER than the outer
+        # ``max_waiting_on_child_seconds`` ceiling or it is redundant
+        # with the standard ceiling. We compare against the outermost
+        # bound because the inner ``no_progress_quiet_seconds`` /
+        # ``max_waiting_on_child_no_progress_seconds`` pair are the
+        # dumb-kill floor's twin ceilings and tests routinely
+        # configure them with shorter values (e.g. 180 s) than the
+        # default strictly-stuck (300 s); the strictly-stuck ceiling
+        # is an ORTHOGONAL addition that fires before any of the
+        # outer cumulative ceilings, so the relevant upper bound is
+        # the outer ceiling itself.
+        if self.no_progress_quiet_strictly_stuck_seconds > self.max_waiting_on_child_seconds:
+            msg = (
+                "no_progress_quiet_strictly_stuck_seconds must be <="
+                " max_waiting_on_child_seconds"
+            )
+            raise ValueError(msg)
+
+    def _validate_watchdog_log_throttle_seconds(self) -> None:
+        if self.watchdog_log_throttle_seconds <= 0:
+            msg = "watchdog_log_throttle_seconds must be positive"
+            raise ValueError(msg)
+
+    def _validate_watchdog_subagent_progress_interval_seconds(self) -> None:
+        if self.watchdog_subagent_progress_interval_seconds <= 0:
+            msg = "watchdog_subagent_progress_interval_seconds must be positive"
+            raise ValueError(msg)

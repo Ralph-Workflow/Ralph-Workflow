@@ -39,6 +39,12 @@ class UnavailabilityReason(StrEnum):
     NO_OUTPUT_AFTER_ACTIVITY = "no_output_after_activity"
     SUSPICIOUS_TIMEOUT_NO_OUTPUT = "suspicious_timeout_no_output"
     STALE_CHILD_QUIET = "stale_child_quiet"
+    # Stuck-but-alive job: orthogonal to STALE_CHILD_QUIET (which is for
+    # dead children). Fires when the corroborator reports a live child
+    # with no recent progress / heartbeat for the
+    # ``no_progress_quiet_strictly_stuck_seconds`` ceiling. Same
+    # backoff policy as STALE_CHILD_QUIET (15 s base, 300 s max).
+    STRICTLY_STUCK = "strictly_stuck"
 
 
 @dataclass(frozen=True)
@@ -75,6 +81,10 @@ DEFAULT_UNAVAILABILITY_BACKOFF_POLICY: dict[UnavailabilityReason, ReasonBackoffP
         max_backoff_ms=60_000,
     ),
     UnavailabilityReason.STALE_CHILD_QUIET: ReasonBackoffPolicy(
+        base_backoff_ms=15_000,
+        max_backoff_ms=300_000,
+    ),
+    UnavailabilityReason.STRICTLY_STUCK: ReasonBackoffPolicy(
         base_backoff_ms=15_000,
         max_backoff_ms=300_000,
     ),
