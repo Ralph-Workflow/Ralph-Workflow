@@ -151,28 +151,48 @@ def patched_waiting_strategy(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_subprocess_reader_wires_resume_safe_on_children_persist_too_long(
+def test_subprocess_reader_wires_resume_safe_on_no_output_deadline(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    patched_waiting_strategy: None,
 ) -> None:
     """The subprocess reader MUST raise ``AgentInactivityTimeoutError`` with
-    ``session_resume_safe=True`` and ``resumable_session_id`` from the agent's
-    stream when the watchdog fires ``CHILDREN_PERSIST_TOO_LONG``.
+    ``session_resume_safe=True`` for a resumable fire reason
+    (``NO_OUTPUT_DEADLINE``) AND populate ``resumable_session_id`` from the
+    ``expected_session_id`` fallback path.
 
-    This is the root-cause fix for the restart-from-scratch wedge: pre-fix,
-    the subprocess reader raised with the default ``session_resume_safe=False``
-    and ``resumable_session_id=None``, so the recovery plan builder routed
-    the retry to fresh-style and the prompt constructor inlined the original
-    task body.
+    Updated for the AC-03 contract: ``NO_OUTPUT_DEADLINE`` is in the
+    resumable-reason set while ``CHILDREN_PERSIST_TOO_LONG`` is
+    NOT (a long cumulative child-wait can have side effects outside
+    the agent session, so the recovery must restart from a fresh
+    session).  This test pins the resumable path.
+
+    The session id is threaded via ``InvokeOptions.session_id`` (the
+    ``expected_session_id`` fallback path) rather than via a captured
+    stream line -- if we emitted a ``{"type":"session",...}`` line, the
+    OpenCode strategy would classify it as ``OUTPUT_LINE``, which
+    ``_record_line_activity`` routes to ``record_activity()`` and sets
+    ``_has_meaningful_output=True``, perturbing the NO_OUTPUT_DEADLINE
+    trigger timing.
     """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
 
-    proc = _FakeProcess(
-        stdout_lines=['{"type":"session","session_id":"sess-from-stream"}\n'],
+    class _ActiveStrategy(_WaitingStrategy):
+        def classify_quiet(
+            self,
+            handle: object,
+            liveness_probe: object,
+        ) -> AgentExecutionState:
+            return AgentExecutionState.ACTIVE
+
+    monkeypatch.setattr(
+        invoke_module,
+        "strategy_for_command",
+        lambda *args, **kwargs: _ActiveStrategy(),
     )
+
+    proc = _FakeProcess(stdout_lines=[])
 
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
@@ -181,7 +201,17 @@ def test_subprocess_reader_wires_resume_safe_on_children_persist_too_long(
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
-    opts = _make_invocation_options(tmp_path=tmp_path)
+    opts = InvokeOptions(
+        show_progress=False,
+        workspace_path=tmp_path,
+        idle_timeout_seconds=0.05,
+        max_waiting_on_child_seconds=10.0,
+        max_session_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        waiting_status_interval_seconds=100.0,
+        idle_poll_interval_seconds=0.01,
+        session_id="sess-expected",
+    )
 
     try:
         with pytest.raises(AgentInactivityTimeoutError) as exc_info:
@@ -200,24 +230,43 @@ def test_subprocess_reader_wires_resume_safe_on_children_persist_too_long(
         f"Expected session_resume_safe=True, got {exc_info.value.session_resume_safe}; "
         f"reason={exc_info.value.reason}"
     )
-    assert exc_info.value.resumable_session_id == "sess-from-stream", (
-        f"Expected resumable_session_id='sess-from-stream', "
+    assert exc_info.value.resumable_session_id == "sess-expected", (
+        f"Expected resumable_session_id='sess-expected' (expected-session-id fallback), "
         f"got {exc_info.value.resumable_session_id!r}"
     )
-    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
 
 
 def test_subprocess_reader_uses_expected_session_id_when_no_capture(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    patched_waiting_strategy: None,
 ) -> None:
     """When no session id is captured from the stream, the
     ``expected_session_id`` fallback (threaded from ``InvokeOptions.session_id``)
-    populates ``resumable_session_id``."""
+    populates ``resumable_session_id`` AND ``session_resume_safe=True`` for a
+    resumable fire reason (NO_OUTPUT_DEADLINE).
+
+    Updated for the AC-03 contract: the test now drives
+    NO_OUTPUT_DEADLINE (resumable) instead of CHILDREN_PERSIST_TOO_LONG
+    (NOT resumable per the new contract).
+    """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
+
+    class _ActiveStrategy(_WaitingStrategy):
+        def classify_quiet(
+            self,
+            handle: object,
+            liveness_probe: object,
+        ) -> AgentExecutionState:
+            return AgentExecutionState.ACTIVE
+
+    monkeypatch.setattr(
+        invoke_module,
+        "strategy_for_command",
+        lambda *args, **kwargs: _ActiveStrategy(),
+    )
 
     proc = _FakeProcess(stdout_lines=[])
 
@@ -228,7 +277,17 @@ def test_subprocess_reader_uses_expected_session_id_when_no_capture(
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
-    opts = _make_invocation_options(tmp_path=tmp_path, session_id="sess-expected")
+    opts = InvokeOptions(
+        show_progress=False,
+        workspace_path=tmp_path,
+        idle_timeout_seconds=0.05,
+        max_waiting_on_child_seconds=10.0,
+        max_session_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        waiting_status_interval_seconds=100.0,
+        idle_poll_interval_seconds=0.01,
+        session_id="sess-expected",
+    )
 
     try:
         with pytest.raises(AgentInactivityTimeoutError) as exc_info:
@@ -252,13 +311,32 @@ def test_subprocess_reader_uses_expected_session_id_when_no_capture(
 def test_subprocess_reader_captured_session_id_wins_over_expected(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    patched_waiting_strategy: None,
 ) -> None:
     """When both a captured session id and an ``expected_session_id`` are
-    available, the captured id wins (the rule mirrors the PTY runner)."""
+    available, the captured id wins (the rule mirrors the PTY runner).
+
+    Updated for the AC-03 contract: the test now drives
+    NO_OUTPUT_DEADLINE (resumable) instead of CHILDREN_PERSIST_TOO_LONG
+    (NOT resumable per the new contract) so the captured-id wins
+    assertion is paired with ``session_resume_safe=True``.
+    """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
+
+    class _ActiveStrategy(_WaitingStrategy):
+        def classify_quiet(
+            self,
+            handle: object,
+            liveness_probe: object,
+        ) -> AgentExecutionState:
+            return AgentExecutionState.ACTIVE
+
+    monkeypatch.setattr(
+        invoke_module,
+        "strategy_for_command",
+        lambda *args, **kwargs: _ActiveStrategy(),
+    )
 
     proc = _FakeProcess(
         stdout_lines=['{"type":"session","session_id":"sess-from-stream"}\n'],
@@ -271,7 +349,17 @@ def test_subprocess_reader_captured_session_id_wins_over_expected(
     monkeypatch.setattr(invoke_module, "_start_workspace_monitor", lambda *_a, **_k: None)
 
     clock = FakeClock()
-    opts = _make_invocation_options(tmp_path=tmp_path, session_id="sess-expected")
+    opts = InvokeOptions(
+        show_progress=False,
+        workspace_path=tmp_path,
+        idle_timeout_seconds=0.05,
+        max_waiting_on_child_seconds=10.0,
+        max_session_seconds=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        waiting_status_interval_seconds=100.0,
+        idle_poll_interval_seconds=0.01,
+        session_id="sess-expected",
+    )
 
     try:
         with pytest.raises(AgentInactivityTimeoutError) as exc_info:
@@ -298,7 +386,7 @@ def test_subprocess_reader_captured_session_id_wins_over_expected(
         (
             "children_persist",
             WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
-            True,
+            False,
             lambda tmp_path: InvokeOptions(
                 show_progress=False,
                 workspace_path=tmp_path,
@@ -339,14 +427,17 @@ def test_subprocess_reader_session_resume_safe_only_for_resume_eligible_reasons(
     ``WatchdogFireReason`` set. SESSION_CEILING_EXCEEDED is the hard wall —
     not resume-safe.
 
-    This test pins the 3-vs-1 split: the 3 resume-eligible reasons
-    (NO_OUTPUT_DEADLINE, STALLED_AFTER_TOOL_RESULT, CHILDREN_PERSIST_TOO_LONG)
-    are covered here via CHILDREN_PERSIST_TOO_LONG; the ineligible reason
-    (SESSION_CEILING_EXCEEDED) is covered directly. The remaining two
-    resume-eligible reasons are pinned by the post-tool-result and
-    no-output watchdog branches elsewhere in the integration suite
-    (test_invoke_timeout_integration.py), and the eligibility set logic
-    is a constant in ``_process_reader.py`` shared by all reasons.
+    This test pins the resumability split under the AC-03 contract:
+    ``CHILDREN_PERSIST_TOO_LONG`` is NOT resume-safe (a long cumulative
+    child-wait can have side effects outside the agent session), while
+    ``SESSION_CEILING_EXCEEDED`` is also NOT resume-safe (the hard wall).
+    The six resume-eligible reasons
+    (NO_OUTPUT_AT_START, NO_OUTPUT_DEADLINE, NO_PROGRESS_QUIET,
+    STALLED_AFTER_TOOL_RESULT, REPEATED_ERROR_LOOP,
+    REPEATED_IDENTICAL_TOOL_CALL) are pinned by the dedicated
+    ``test_runtime_session_resume_safe_mapping.py`` suite and by the
+    single-reason tests elsewhere in this file. The eligibility set
+    logic is a constant in ``_process_reader.py`` shared by all reasons.
     """
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     prompt_file = tmp_path / "PROMPT.md"

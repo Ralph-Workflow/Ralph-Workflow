@@ -62,6 +62,12 @@ def _make_policy(activity_ttl: float | None = 30.0) -> TimeoutPolicy:
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=activity_ttl,
         os_descendant_only_ceiling_seconds=None,
+        # Disable the SILENT_SUBAGENT diagnostic by default so this
+        # file exercises the activity-aware fire path (NO_OUTPUT_DEADLINE
+        # etc.) rather than the SILENT_SUBAGENT classifier branch.
+        # Tests that explicitly exercise SILENT_SUBAGENT are in
+        # ``tests/agents/idle_watchdog/test_silent_subagent_runtime.py``.
+        silent_subagent_seconds=None,
     )
 
 

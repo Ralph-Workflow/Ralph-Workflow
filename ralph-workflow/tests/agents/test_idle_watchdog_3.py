@@ -67,6 +67,7 @@ def _make_watchdog(
     start: float = 0.0,
     suspect: float | None = None,
     no_progress_ceiling: float | None = None,
+    silent_subagent_seconds: float | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     kwargs: dict[str, Any] = {
         "idle_timeout_seconds": idle_timeout,
@@ -76,6 +77,12 @@ def _make_watchdog(
         "suspect_waiting_on_child_seconds": suspect,
         "max_waiting_on_child_no_progress_seconds": no_progress_ceiling,
         "os_descendant_only_ceiling_seconds": None,
+        # Disable the SILENT_SUBAGENT diagnostic by default so this
+        # file exercises the activity-aware fire path (NO_OUTPUT_DEADLINE
+        # etc.) rather than the SILENT_SUBAGENT classifier branch.
+        # Tests that explicitly exercise SILENT_SUBAGENT are in
+        # ``tests/agents/idle_watchdog/test_silent_subagent_runtime.py``.
+        "silent_subagent_seconds": silent_subagent_seconds,
     }
     if activity_ttl is not None:
         kwargs["activity_evidence_ttl_seconds"] = activity_ttl

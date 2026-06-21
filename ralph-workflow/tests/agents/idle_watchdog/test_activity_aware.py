@@ -48,6 +48,7 @@ def _make_policy(
     max_waiting: float = _MAX_WAITING,
     max_session: float | None = None,
     activity_ttl: float | None = _ACTIVITY_TTL,
+    silent_subagent_seconds: float | None = None,
 ) -> TimeoutPolicy:
     kwargs: dict[str, object] = {
         "idle_timeout_seconds": idle_timeout,
@@ -58,6 +59,12 @@ def _make_policy(
         "max_waiting_on_child_no_progress_seconds": None,
         "activity_evidence_ttl_seconds": activity_ttl,
         "os_descendant_only_ceiling_seconds": None,
+        # Disable the SILENT_SUBAGENT diagnostic by default so this
+        # file exercises the activity-aware fire path (NO_OUTPUT_DEADLINE
+        # etc.) rather than the SILENT_SUBAGENT classifier branch.
+        # Tests that explicitly exercise SILENT_SUBAGENT are in
+        # ``tests/agents/idle_watchdog/test_silent_subagent_runtime.py``.
+        "silent_subagent_seconds": silent_subagent_seconds,
     }
     return TimeoutPolicy(**kwargs)
 

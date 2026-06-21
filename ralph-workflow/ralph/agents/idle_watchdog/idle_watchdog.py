@@ -551,6 +551,19 @@ class IdleWatchdog:
     _in_drain_window: bool = field(default=False, init=False)
     _drain_started_at: float | None = field(default=None, init=False)
     _last_fire_reason: WatchdogFireReason | None = field(default=None, init=False)
+    # The ``StuckKind`` the gate used to defer the most recent
+    # would-be fire.  ``None`` when the watchdog has not deferred a
+    # fire yet OR when the most recent fire actually fired (the
+    # kind is only set when ``_gate_fire`` returns CONTINUE).  The
+    # field is the runtime surface for the SILENT_SUBAGENT
+    # diagnostic described in AC-05: the watchdog's
+    # ``last_fire_reason`` property collapses every non-FIRE
+    # deferral to ``DEFERRED_BY_STUCK_CLASSIFIER``, but
+    # ``last_deferred_kind`` retains the precise kind (e.g.
+    # ``StuckKind.SILENT_SUBAGENT``) so an operator can see WHY a
+    # would-be fire was deferred ("a subagent dispatched then went
+    # silent for >180s").
+    _last_deferred_kind: StuckKind | None = field(default=None, init=False)
     # Corroborator's alive_by signal at the moment of the most recent
     # NO_PROGRESS_QUIET fire. ``None`` when the watchdog has not fired
     # yet OR when the most recent fire was not NO_PROGRESS_QUIET
@@ -662,6 +675,7 @@ class IdleWatchdog:
         self._in_drain_window = False
         self._drain_started_at = None
         self._last_fire_reason = None
+        self._last_deferred_kind = None
         self._last_waiting_status_at = None
         self._suspicion_announced_for_run = False
         self._last_tool_result_at = None
@@ -702,6 +716,26 @@ class IdleWatchdog:
         return self._last_fire_reason
 
     @property
+    def last_deferred_kind(self) -> StuckKind | None:
+        """The ``StuckKind`` that deferred the most recent would-be fire.
+
+        ``None`` when the watchdog has not deferred a fire yet OR
+        when the most recent fire actually FIREd (the gate only sets
+        this when it returns ``WatchdogVerdict.CONTINUE`` to defer).
+
+        The diagnostic surface for the SILENT_SUBAGENT label
+        described in AC-05: ``last_fire_reason`` collapses every
+        non-FIRE deferral to ``WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER``,
+        but ``last_deferred_kind`` retains the precise
+        ``StuckKind`` (e.g. ``StuckKind.SILENT_SUBAGENT``) so an
+        operator can see WHY a would-be fire was deferred ("a
+        subagent dispatched then went silent for >180s").  See
+        ``tests/agents/idle_watchdog/test_silent_subagent_runtime.py``
+        for the runtime-facing contract test.
+        """
+        return self._last_deferred_kind
+
+    @property
     def last_alive_by(self) -> AliveBy | None:
         """The corroborator's ``alive_by`` signal at the most recent fire.
 
@@ -729,6 +763,7 @@ class IdleWatchdog:
         self._last_meaningful_output_at = now
         self._has_meaningful_output = False
         self._last_subagent_progress_description = None
+        self._last_deferred_kind = None
 
     def set_is_waiting_state(self, is_waiting_state: bool) -> None:
         """Update the pipeline's wait-state flag for the StuckClassifier gate.
@@ -847,6 +882,7 @@ class IdleWatchdog:
             evidence_summary=summary,
             classify_quiet=_noop_classify_quiet,
             activity_evidence_ttl_seconds=self._config.activity_evidence_ttl_seconds,
+            silent_subagent_seconds=self._config.silent_subagent_seconds,
             corroboration=corroboration,
         )
 
@@ -899,7 +935,25 @@ class IdleWatchdog:
         )
         if kind == StuckKind.STUCK:
             return WatchdogVerdict.FIRE
+        # Diagnostic-only kind (SILENT_SUBAGENT) gets its OWN
+        # ``_last_fire_reason`` label so operators can see WHY a
+        # would-be fire was deferred ("a subagent dispatched then went
+        # silent for >180s").  Without this branch, every non-STUCK
+        # deferral collapses to ``DEFERRED_BY_STUCK_CLASSIFIER`` and
+        # the SILENT_SUBAGENT diagnostic is invisible at the
+        # ``last_fire_reason`` surface.  See AC-05 + analysis
+        # feedback for the runtime contract.
+        if kind == StuckKind.SILENT_SUBAGENT:
+            self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+            self._last_deferred_kind = kind
+            self._log.debug(
+                "idle watchdog: silent subagent (deferred) reason={} idle_elapsed={}s",
+                fire_reason,
+                round(idle_elapsed, 1),
+            )
+            return WatchdogVerdict.CONTINUE
         self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+        self._last_deferred_kind = kind
         self._log.debug(
             "idle watchdog: deferred fire reason={} kind={} idle_elapsed={}s",
             fire_reason,
@@ -1196,6 +1250,40 @@ class IdleWatchdog:
         excluded from the NO_OUTPUT_AT_START baseline.
         """
         self._reset_idle_baseline()
+
+    def record_tool_call_activity(
+        self,
+        tool_name: str,
+        tool_args: object,
+    ) -> None:
+        """Record a tool-call observation for the tool-call circuit breaker.
+
+        New seam added to feed :meth:`RepetitionTracker.mark_tool_call`
+        from real production call sites so an agent wedged in an
+        identical-tool-call retry loop (the same ``Bash`` command with
+        the same arguments re-issued N times without producing forward
+        progress) trips
+        :data:`WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL`.
+
+        Deliberately does NOT reset the idle baseline: identical
+        tool-call wedges must still let the idle deadline advance
+        (so a silent-after-wedge agent is also caught) while the
+        tool-call rule catches the fast retry storm well before
+        the idle timeout.  The cumulative WAITING_ON_CHILD run is
+        still flushed for bookkeeping parity.
+
+        Args:
+            tool_name: The tool name (e.g. ``"Bash"``).  Empty / None
+                tool names are coerced to ``"unknown"`` inside the
+                tracker so the fingerprint is always well-formed.
+            tool_args: The tool arguments (any JSON-serializable
+                structure).  ``None`` is treated as an empty dict
+                inside the tracker.  ``sort_keys=True`` ensures
+                dict-key ordering does not affect the fingerprint.
+        """
+        now = self._clock.monotonic()
+        self._accumulate_waiting_run(now)
+        self._repetition_tracker.mark_tool_call(tool_name, tool_args)
 
     def record_error_activity(self, message: str) -> None:
         """Record an error/repeat line for the repeated-error circuit breaker.

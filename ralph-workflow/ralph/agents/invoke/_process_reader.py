@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import shlex
 import subprocess
@@ -98,11 +99,142 @@ def _agent_command_name(config: AgentConfig) -> str:
     return shlex.split(config.cmd)[0]
 
 
+# Canonical resumable-fire-reason set for the watchdog-kill -> resume
+# flow.  This set is the single source of truth consulted by BOTH
+# line readers (subprocess ``_process_reader.py`` AND PTY
+# ``_pty_runner.py``) so the recovery controller's
+# ``recovery_action_for_failure_reason`` returns ``'resume'`` for the
+# same in-set reasons end-to-end.  ``CHILDREN_PERSIST_TOO_LONG`` is
+# deliberately EXCLUDED: a long cumulative child-wait is not safe to
+# resume (the child may have side effects outside the agent session),
+# so the recovery must restart from a fresh session.  Any new
+# ``WatchdogFireReason`` member that should resume MUST be added here
+# AND in ``tests/agents/idle_watchdog/test_resume_after_kill_contract.py``.
+_RESUMABLE_FIRE_REASONS: frozenset[WatchdogFireReason] = frozenset(
+    {
+        WatchdogFireReason.NO_OUTPUT_AT_START,
+        WatchdogFireReason.NO_OUTPUT_DEADLINE,
+        WatchdogFireReason.NO_PROGRESS_QUIET,
+        WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
+        WatchdogFireReason.REPEATED_ERROR_LOOP,
+        WatchdogFireReason.REPEATED_IDENTICAL_TOOL_CALL,
+    }
+)
+
+
+def _is_resumable_fire_reason(reason: WatchdogFireReason) -> bool:
+    """Return True when the watchdog fire reason is safe to resume.
+
+    Mirrors the contract pinned in
+    ``tests/agents/idle_watchdog/test_resume_after_kill_contract.py``:
+    only the six production reasons plus
+    ``REPEATED_IDENTICAL_TOOL_CALL`` are resumable; everything else
+    (``PROCESS_EXIT_HANG``, ``DESCENDANT_HANG``,
+    ``SESSION_CEILING_EXCEEDED``, ``CHILDREN_PERSIST_TOO_LONG``,
+    ``DEFERRED_BY_STUCK_CLASSIFIER``) must restart from a fresh
+    session.
+    """
+    return reason in _RESUMABLE_FIRE_REASONS
+
+
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     env = os.environ.copy()
     if extra_env:
         env.update(extra_env)
     return env
+
+
+def _extract_tool_call_from_activity_signal(
+    raw: str,
+) -> tuple[str, dict[str, object]] | None:
+    """Best-effort extract ``(tool_name, tool_args)`` from a TOOL_USE raw line.
+
+    The helper walks a few known envelope shapes so the tool-call
+    circuit breaker (:meth:`RepetitionTracker.mark_tool_call`) sees a
+    stable fingerprint per (tool_name, tool_args) pair regardless of
+    transport.  Returns ``None`` when the line is not recognisably a
+    tool-use line OR the structure is not understood so the watchdog
+    can skip the observation rather than fingerprint a meaningless
+    blob.
+
+    Recognised envelope shapes:
+
+    * ``{"type": "tool_use", "name": "...", "input": {...}}``
+    * ``{"type": "tool_use", "tool_name": "...", "arguments": {...}}``
+    * ``{"type": "stream_event", "event": {"type": "content_block_start",
+      "content_block": {"type": "tool_use", "name": "...", "input": {...}}}}``
+      (Claude content_block_start wrapped in stream_event)
+    * ``{"event": "tool_use", "tool_name": "...", "arguments": {...}}``
+    * ``{"tool": "<name>", "input": {...}}`` (raw provider shorthand)
+
+    The ``tool_name`` is the literal string after trimming; an empty /
+    missing name falls back to ``"unknown"`` so the fingerprint is
+    always well-formed.  The ``tool_args`` is the dict of input
+    arguments extracted from the envelope; ``None`` is treated as an
+    empty dict inside the tracker.
+    """
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    try:
+        parsed = cast("object", json.loads(stripped, strict=False))
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    obj = cast("dict[str, object]", parsed)
+
+    # Unwrap stream_event envelopes (Claude wraps tool_use inside
+    # stream_event -> content_block_start -> content_block).
+    if obj.get("type") == "stream_event" or "event" in obj:
+        event = obj.get("event")
+        if isinstance(event, dict):
+            inner_obj = cast("dict[str, object]", event)
+            content_block = inner_obj.get("content_block")
+            if isinstance(content_block, dict):
+                inner_obj = cast("dict[str, object]", content_block)
+            return _extract_tool_call_from_dict(inner_obj)
+
+    return _extract_tool_call_from_dict(obj)
+
+
+def _extract_tool_call_from_dict(
+    obj: dict[str, object],
+) -> tuple[str, dict[str, object]] | None:
+    """Extract ``(tool_name, tool_args)`` from a recognised tool-use dict.
+
+    Internal helper for :func:`_extract_tool_call_from_activity_signal`.
+    Returns ``None`` when the dict does not look like a tool-use.
+    """
+    type_field = obj.get("type")
+    event_field = obj.get("event")
+    is_tool_use = (
+        type_field in {"tool_use", "assistant_tool_use", "mcp_tool_call"}
+        or event_field in {"tool_use", "mcp_tool_call"}
+        or "tool_name" in obj
+    )
+    if not is_tool_use:
+        return None
+
+    tool_name_raw = obj.get("name") or obj.get("tool_name") or obj.get("tool")
+    if tool_name_raw is None:
+        # Recognised tool-use envelope without a name field: fall back
+        # to ``"unknown"`` so the fingerprint is always well-formed
+        # and the breaker still observes the tool_use event.
+        tool_name = "unknown"
+    elif not isinstance(tool_name_raw, str):
+        return None
+    else:
+        tool_name = tool_name_raw.strip() or "unknown"
+
+    args_field = obj.get("input")
+    if not isinstance(args_field, dict):
+        args_field = obj.get("arguments")
+    if not isinstance(args_field, dict):
+        args_field = obj.get("args")
+    if not isinstance(args_field, dict):
+        args_field = {}
+    return tool_name, cast("dict[str, object]", args_field)
 
 
 class _ProcessLineReader:
@@ -456,6 +588,9 @@ class _ProcessLineReader:
         ERROR_LINE and repeated PROGRESS_REPORT lines feed the repeated-error
         circuit breaker without resetting the idle baseline; LIFECYCLE frames
         reset idle only; everything else is genuine forward progress.
+        TOOL_USE activity also feeds the tool-call circuit breaker so an
+        agent wedged in an identical-tool-call retry loop trips
+        REPEATED_IDENTICAL_TOOL_CALL.
         """
         activity_signal = self._strategy.classify_activity_line(queued_line)
         if activity_signal is None:
@@ -472,6 +607,18 @@ class _ProcessLineReader:
         elif activity_signal.kind == AgentActivityKind.LIFECYCLE:
             watchdog.record_lifecycle_activity()
         else:
+            if activity_signal.kind == AgentActivityKind.TOOL_USE:
+                # NEW BEHAVIOR: feed the tool-call circuit breaker so
+                # the watchdog can fire REPEATED_IDENTICAL_TOOL_CALL
+                # when an agent re-issues the same (tool_name,
+                # tool_args) combination.  The extraction is
+                # best-effort -- non-JSON or unknown envelopes are
+                # silently skipped so the breaker sees only stable
+                # (name, args) fingerprints.
+                tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
+                if tool_call is not None:
+                    tool_name, tool_args = tool_call
+                    watchdog.record_tool_call_activity(tool_name, tool_args)
             watchdog.record_activity()
 
     def _run_drain_window(
@@ -670,12 +817,7 @@ def _run_subprocess_and_read_lines(
                     WatchdogFireReason.PROCESS_EXIT_HANG,
                 )
         except _IdleStreamTimeoutError as exc:
-            session_resume_safe = exc.reason in {
-                WatchdogFireReason.NO_OUTPUT_AT_START,
-                WatchdogFireReason.NO_OUTPUT_DEADLINE,
-                WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
-                WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
-            }
+            session_resume_safe = _is_resumable_fire_reason(exc.reason)
             raise AgentInactivityTimeoutError(
                 _agent_command_name(ctx.config),
                 exc.timeout_seconds,

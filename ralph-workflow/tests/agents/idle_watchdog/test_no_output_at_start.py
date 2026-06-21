@@ -76,6 +76,7 @@ def _make_policy(
     *,
     no_output_at_start: float = _NO_OUTPUT_AT_START_SECONDS,
     activity_ttl: float = _ACTIVITY_TTL_SECONDS,
+    silent_subagent_seconds: float | None = None,
 ) -> TimeoutPolicy:
     return TimeoutPolicy(
         idle_timeout_seconds=60.0,
@@ -85,6 +86,13 @@ def _make_policy(
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=activity_ttl,
+        # Disable the SILENT_SUBAGENT diagnostic in this test file so
+        # the assertions exercise the TTL-bounded deferral gate for
+        # ``_channel_evidence_active`` rather than the SILENT_SUBAGENT
+        # classifier branch.  The SILENT_SUBAGENT path is covered in
+        # ``tests/agents/idle_watchdog/test_silent_subagent_runtime.py``
+        # with its own runtime contract tests.
+        silent_subagent_seconds=silent_subagent_seconds,
     )
 
 
@@ -93,11 +101,15 @@ def _make_watchdog(
     start: float = 0.0,
     process_monitor: ProcessMonitor | None = None,
     activity_ttl: float = _ACTIVITY_TTL_SECONDS,
+    silent_subagent_seconds: float | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     clock = FakeClock(start=start)
     return (
         IdleWatchdog(
-            _make_policy(activity_ttl=activity_ttl),
+            _make_policy(
+                activity_ttl=activity_ttl,
+                silent_subagent_seconds=silent_subagent_seconds,
+            ),
             clock,
             process_monitor=process_monitor or _NoProcessMonitor(),
         ),

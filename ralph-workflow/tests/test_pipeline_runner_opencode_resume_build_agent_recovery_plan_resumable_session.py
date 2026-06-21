@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Literal
 import pytest
 
 from ralph.agents import invoke as invoke_module
+from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
@@ -363,6 +364,13 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
         ``resumable_session_id=None``; the recovery plan builder would
         then return ``recovery_action='fresh'`` and ``session_id=None``,
         defeating resume and producing the restart-from-scratch wedge.
+
+        Updated for the AC-03 contract: drives a resumable reason
+        (``NO_OUTPUT_DEADLINE`` via an ``_ActiveStrategy``) instead of
+        ``CHILDREN_PERSIST_TOO_LONG`` (NOT resumable per the new
+        contract).  The session id is captured from the agent's
+        stdout stream so the test exercises the captured-id path
+        rather than the expected-id fallback.
         """
         config = AgentConfig(cmd="opencode", output_flag="--json-stream")
         prompt_file = tmp_path / "PROMPT.md"
@@ -422,10 +430,24 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
 
         proc = _FakeProcess()
 
+        class _ActiveStrategy(_WaitingStrategy):
+            """Active classifier so NO_OUTPUT_DEADLINE fires (the
+            resumable path).  Mirrors the pattern used by
+            ``tests/test_subprocess_reader_resume_safe.py`` for
+            the same reason.
+            """
+
+            def classify_quiet(
+                self,
+                handle: object,
+                liveness_probe: object,
+            ) -> AgentExecutionState:
+                return AgentExecutionState.ACTIVE
+
         monkeypatch.setattr(
             invoke_module,
             "strategy_for_command",
-            lambda *args, **kwargs: _WaitingStrategy(),
+            lambda *args, **kwargs: _ActiveStrategy(),
         )
         monkeypatch.setattr(
             "ralph.agents.invoke.subprocess.Popen",
@@ -438,7 +460,8 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
             show_progress=False,
             workspace_path=tmp_path,
             idle_timeout_seconds=0.05,
-            max_waiting_on_child_seconds=0.1,
+            max_waiting_on_child_seconds=10.0,
+            max_session_seconds=None,
             max_waiting_on_child_no_progress_seconds=None,
             waiting_status_interval_seconds=100.0,
             idle_poll_interval_seconds=0.01,
@@ -459,7 +482,7 @@ class TestBuildAgentRecoveryPlanCarriesRecoveryAction:
 
         assert exc_info.value.session_resume_safe is True
         assert exc_info.value.resumable_session_id == "sess-from-subprocess"
-        assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+        assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
 
         effect = _make_effect(agent_name="opencode")
         plan = build_agent_recovery_plan(

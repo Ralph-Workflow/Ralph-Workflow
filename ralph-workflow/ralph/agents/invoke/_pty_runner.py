@@ -24,6 +24,7 @@ from ralph.agents.invoke._errors import (
 from ralph.agents.invoke._process_reader import (
     _MAX_PARSED_OUTPUT_LINES,
     _agent_command_name,
+    _is_resumable_fire_reason,
     _subprocess_env,
 )
 from ralph.agents.invoke._pty_extras import _PtyExtras
@@ -130,12 +131,7 @@ def run_pty_and_read_lines(
                     WatchdogFireReason.PROCESS_EXIT_HANG,
                 )
         except _IdleStreamTimeoutError as exc:
-            session_resume_safe = exc.reason in {
-                WatchdogFireReason.NO_OUTPUT_AT_START,
-                WatchdogFireReason.NO_OUTPUT_DEADLINE,
-                WatchdogFireReason.STALLED_AFTER_TOOL_RESULT,
-                WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
-            }
+            session_resume_safe = _is_resumable_fire_reason(exc.reason)
             raise AgentInactivityTimeoutError(
                 _agent_command_name(ctx.config),
                 exc.timeout_seconds,

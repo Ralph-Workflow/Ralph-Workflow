@@ -34,6 +34,7 @@ from ralph.agents.invoke._errors import (
 from ralph.agents.invoke._process_reader import (
     _NON_MEANINGFUL_ACTIVITY_KINDS,
     _TERMINAL_PROCESS_STATUSES,
+    _extract_tool_call_from_activity_signal,
 )
 from ralph.agents.invoke._pty_extras import _PtyExtras
 from ralph.agents.invoke._pty_helpers import (
@@ -749,6 +750,23 @@ class PtyLineReader:
                     self._awaiting_post_tool_result_progress = False
                     raw = activity_signal.raw.strip()
                     self._last_tool_use_name = raw.split(":", 1)[-1].strip() if ":" in raw else raw
+                    # NEW BEHAVIOR: feed the tool-call circuit
+                    # breaker so the watchdog can fire
+                    # REPEATED_IDENTICAL_TOOL_CALL when an agent
+                    # re-issues the same (tool_name, tool_args)
+                    # combination.  Without this call the
+                    # tracker dimension is unreachable in real
+                    # runs and the watchdog cannot detect a
+                    # tool-call wedge -- exactly the gap the
+                    # analysis feedback surfaced.  We swallow
+                    # extraction errors (non-JSON raw line) so
+                    # the breaker is fed only when we have a
+                    # stable (name, args) fingerprint to
+                    # contribute.
+                    tool_call = _extract_tool_call_from_activity_signal(activity_signal.raw)
+                    if tool_call is not None:
+                        tool_name, tool_args = tool_call
+                        watchdog.record_tool_call_activity(tool_name, tool_args)
                 elif activity_signal.kind == AgentActivityKind.TOOL_RESULT:
                     self._awaiting_post_tool_result_progress = True
                     self._last_tool_result_at = self._clock.monotonic()
