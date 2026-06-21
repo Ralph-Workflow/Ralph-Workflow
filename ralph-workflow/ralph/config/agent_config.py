@@ -60,6 +60,7 @@ class AgentConfig(RalphBaseModel):
             JsonParserType.CLAUDE: AgentTransport.CLAUDE,
             JsonParserType.CODEX: AgentTransport.CODEX,
             JsonParserType.OPENCODE: AgentTransport.OPENCODE,
+            JsonParserType.PI: AgentTransport.PI,
         }
         command_to_transport = {
             "claude": AgentTransport.CLAUDE_INTERACTIVE,
@@ -67,6 +68,7 @@ class AgentConfig(RalphBaseModel):
             "opencode": AgentTransport.OPENCODE,
             "nanocoder": AgentTransport.NANOCODER,
             "agy": AgentTransport.AGY,
+            "pi": AgentTransport.PI,
         }
         command_name = self.cmd.split()[0] if self.cmd else ""
         inferred_transport = parser_to_transport.get(

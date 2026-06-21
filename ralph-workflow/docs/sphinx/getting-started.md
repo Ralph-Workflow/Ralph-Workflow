@@ -46,6 +46,18 @@ The point of the first run is to see whether the default loop improves the repo 
 
 After the first successful `ralph --init`, the bundled skill bundle is also auto-symlinked from `~/.claude/skills/` into the Codex (`~/.codex/skills/`), OpenCode (`~/.config/opencode/skills/`), and Google Anti Gravity (`~/.gemini/antigravity-cli/skills/`) skill roots so all four supported agents pick up the same baseline skills without extra setup. The bundled `.gitignore` template now also covers common Python, Node, editor, and OS artifacts (`__pycache__/`, `node_modules/`, `.idea/`, `.DS_Store`, and so on) so a fresh repo is batteries-included from the first commit. Pi.dev is wired as a transport but has no documented skill-discovery system per <https://pi.dev/docs/latest/usage>, so no Pi user-global install target is created and no `.pi/skills/` directory is written.
 
+Install Pi.dev before referencing it in `ralph-workflow.toml`. Either:
+
+```bash
+# Option A — official install script (https://pi.dev/install.sh):
+curl -fsSL https://pi.dev/install.sh | sh
+
+# Option B — npm package (https://www.npmjs.com/package/@earendil-works/pi-coding-agent):
+npm install -g @earendil-works/pi-coding-agent
+```
+
+After install, run `pi --version` to confirm the binary is on `PATH` before referencing the agent in `ralph-workflow.toml`.
+
 **Note:** A normal `ralph` run (without `--init`) also auto-seeds the project-scope skills and the batteries-included `.gitignore` when missing, so the explicit first-run `ralph --init` step is no longer required for either artifact. Use `ralph --force-init-skills` to repair a conflict or overwrite the project-scope skills.
 
 Outdated **user-global** skills are NOT auto-repaired on a normal `ralph` run; the run surfaces a `ralph --force-init-skills` hint instead. Run that flag to apply the update.

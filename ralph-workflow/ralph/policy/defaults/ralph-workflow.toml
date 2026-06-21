@@ -176,6 +176,21 @@ subagent_capability = true
 # session_flag = "--resume {}"
 # can_commit = false
 
+# [agents.pi]
+# Pi.dev minimal coding-agent harness (https://pi.dev/). Install via either:
+#   npm install -g @earendil-works/pi-coding-agent     # https://www.npmjs.com/package/@earendil-works/pi-coding-agent
+#   curl -fsSL https://pi.dev/install.sh | sh           # https://pi.dev/ (official install script)
+# Pi streams NDJSON events on stdout per https://pi.dev/docs/latest/json
+# and intentionally has no built-in MCP per https://pi.dev/docs/latest/usage
+# so the runtime resolver fails closed when MCP wiring is requested.
+# cmd = "pi"
+# output_flag = "--mode json"
+# yolo_flag = "--approve"
+# json_parser = "pi"
+# session_flag = "--session {}"
+# can_commit = true
+# display_name = "Pi"
+
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
 # The active defaults below are the recommended starting point. They showcase
