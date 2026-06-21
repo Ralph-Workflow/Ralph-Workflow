@@ -175,30 +175,40 @@ def _classify_opencode_child_signal(line: str) -> AgentActivitySignal | None:
 #
 # The OpenCode strategy uses the specialised ``_classify_opencode_child_signal``
 # above (which understands the OpenCode wire format). For every other
-# transport (Claude, Codex, Generic, Agy, Nanocoder) we run a BROAD
-# classifier that recognises the union of child-scope event names
-# AND bare transport-level event names the plan contract requires:
+# transport (Claude, Codex, Generic, Agy, Nanocoder) we run a STRICT
+# classifier that recognises ONLY event names that explicitly carry a
+# child- or subagent-scope marker. Bare provider-level event names
+# (``progress``, ``tool_call``, ``task_progress``, ``heartbeat``,
+# ``alive``) are NOT classified -- these are generic provider wire
+# frames that appear in parent-level stdout and do NOT prove that a
+# subagent is active. Treating bare frames as child activity was a
+# false-positive deferral: a parent agent that emitted any
+# ``{"type":"heartbeat"}`` frame during its own startup would be
+# marked as alive, masking the short NO_OUTPUT_AT_START kill and the
+# StuckClassifier path. The pre-fix behaviour was reproduced by
+# forwarding both raw ``{"type":"heartbeat"}`` and
+# ``{"type":"tool_call"}`` lines into the subagent sink in a
+# ``uv run python`` probe (see
+# ``tests/agents/execution_state/test_generic_child_signal.py``
+# for the regression tests that pin the no-false-positive
+# contract).
+#
+# The STRICT classifier recognises ONLY:
 #
 #   * child-scoped event names (``child_progress``, ``subagent_progress``,
 #     ``child_heartbeat``, ``subagent_heartbeat``, ``child_alive``,
 #     ``subagent_alive``) -> CHILD_PROGRESS / CHILD_HEARTBEAT.
 #   * the ``child_`` / ``subagent_`` prefix family -> CHILD_PROGRESS.
-#   * bare transport-level ``progress``, ``tool_call``, ``task_progress``
-#     event names -> CHILD_PROGRESS (per the plan contract for AC-08).
-#   * bare transport-level ``heartbeat`` / ``alive`` event names
-#     -> CHILD_HEARTBEAT (per the plan contract for AC-08).
 #
-# The classifier is BROAD per PLAN step 8 acceptance criteria. Each
-# of these bare markers refreshes ``record_subagent_work`` on the
-# watchdog so cross-transport subagent visibility works for ALL
-# supported agents. The classifier still returns None for unrelated
-# stdout, empty/whitespace lines, and terminal child events (the
-# latter do not invoke the sink, same contract as OpenCode).
-#
-# Plain-text markers (``[child]``, ``[subagent]``, ``subagent: ``,
-# ``child: ``, ``subagent progress``, ``child progress``) classify
+# Plain-text markers (``[child]``, ``[subagent]``,
+# ``subagent progress``, ``child progress``) classify
 # as CHILD_PROGRESS; ``subagent heartbeat`` / ``child heartbeat``
-# classify as CHILD_HEARTBEAT.
+# classify as CHILD_HEARTBEAT. The plain-text marker set is
+# intentionally narrow: only markers at the START of the line with
+# optional leading whitespace are recognised, so an arbitrary prose
+# line like ``User wrote a YAML snippet: subagent: worker`` does NOT
+# classify as child activity. Bare ``subagent: `` / ``child: ``
+# substring matches are NOT classified (no leading marker).
 #
 # Terminal signals (``child_complete``, ``child_failed``,
 # ``child_terminal``, ``subagent_complete``, ``subagent_failed``,
@@ -209,9 +219,6 @@ _GENERIC_CHILD_PROGRESS_KIND: frozenset[str] = frozenset(
     {
         "child_progress",
         "subagent_progress",
-        "progress",
-        "tool_call",
-        "task_progress",
     }
 )
 _GENERIC_CHILD_HEARTBEAT_KIND: frozenset[str] = frozenset(
@@ -220,8 +227,6 @@ _GENERIC_CHILD_HEARTBEAT_KIND: frozenset[str] = frozenset(
         "subagent_heartbeat",
         "child_alive",
         "subagent_alive",
-        "heartbeat",
-        "alive",
     }
 )
 _GENERIC_CHILD_TERMINAL_KIND: frozenset[str] = frozenset(
@@ -347,21 +352,32 @@ def _classify_generic_child_signal_from_json(
     Terminal events return ``None`` (terminal signals do not invoke
     the sink).
 
-    Per the plan contract, the classifier recognises:
+    Per the analysis-feedback fix, the classifier recognises ONLY
+    explicit child- or subagent-scoped event names:
 
-    * values in :data:`_GENERIC_CHILD_PROGRESS_KIND` (``child_progress``,
-      ``subagent_progress``, ``progress``, ``tool_call``,
-      ``task_progress``) -> CHILD_PROGRESS.
-    * values in :data:`_GENERIC_CHILD_HEARTBEAT_KIND` (``child_heartbeat``,
-      ``subagent_heartbeat``, ``child_alive``, ``subagent_alive``,
-      ``heartbeat``, ``alive``) -> CHILD_HEARTBEAT.
+    * values in :data:`_GENERIC_CHILD_PROGRESS_KIND`
+      (``child_progress``, ``subagent_progress``) -> CHILD_PROGRESS.
+    * values in :data:`_GENERIC_CHILD_HEARTBEAT_KIND`
+      (``child_heartbeat``, ``subagent_heartbeat``, ``child_alive``,
+      ``subagent_alive``) -> CHILD_HEARTBEAT.
     * any value starting with the ``child_`` / ``subagent_`` prefix
-      (e.g. ``subagent_progress``, ``child_progress_phase1``,
-      ``subagent_heartbeat_extra``) -> CHILD_PROGRESS (covers future
-      child-scoped events the explicit set does not enumerate; the
-      prefix match defaults to CHILD_PROGRESS for unknown events
-      because that is the safer interpretation -- a child agent is
-      producing output).
+      (e.g. ``subagent_progress_phase1``, ``child_progress_phase1``,
+      ``subagent_heartbeat_extra``) -> CHILD_PROGRESS. The prefix
+      match defaults to CHILD_PROGRESS because that is the safer
+      interpretation -- an unknown child-scoped event name still
+      means a child agent is producing output.
+
+    Bare provider-level event names (``progress``, ``tool_call``,
+    ``task_progress``, ``heartbeat``, ``alive``) are NOT classified
+    -- they are generic provider wire frames (Gemini ``tool_call``
+    in ``tests/test_parsers_1.py``, Generic ``heartbeat`` in
+    ``tests/test_parsers_1.py``, Codex ``heartbeat`` in
+    ``tests/test_parsers_1.py``) that appear in parent-level stdout
+    and do NOT prove that a subagent is active. Pre-fix, the
+    classifier forwarded these bare frames into the subagent sink
+    via ``BaseExecutionStrategy.observe_line`` and refreshed
+    ``record_subagent_work`` for genuine parent-level traffic,
+    masking the short NO_OUTPUT_AT_START kill.
     """
     event_kind = _extract_event_kind_from_json(line)
     if event_kind is None:

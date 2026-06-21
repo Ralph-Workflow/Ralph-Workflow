@@ -839,3 +839,122 @@ def test_record_subagent_work_description_handles_malformed_inner_quote_after_pr
         f"malformed-JSON 'tail' must NOT leak, got: {stored!r}"
     )
     assert "<redacted>" in stored
+
+
+# ---------------------------------------------------------------------------
+# (vi) ``args`` key redaction regression (analysis feedback)
+# ---------------------------------------------------------------------------
+#
+# The pre-fix ``_SENSITIVE_JSON_KEYS`` set listed only ``arguments``.
+# Tool-call payloads using the JSON-RPC / OpenAI-style ``args`` key
+# (e.g. ``{"name":"bash","args":{"command":"rm -rf /","token":"abc"}}``)
+# were NOT redacted: the ``args`` value walked recursively and
+# ``command`` / ``token`` fields leaked into operator-visible
+# ``subagent_activity`` and waiting-status output. The fix adds
+# ``args`` to the set so the ENTIRE value is replaced with
+# ``<redacted>`` (full-value replacement rule; no recursive walk).
+
+
+def test_record_subagent_work_description_redacts_args_payload() -> None:
+    """A description containing ``"args": "<secret>"`` has the
+    ``args`` value replaced with ``<redacted>``.
+
+    This is the analysis-feedback reproducer for the missing
+    ``args`` entry in ``_SENSITIVE_JSON_KEYS``. The
+    ``tool_call`` line ``{"type":"tool_call","args":{<payload>}}``
+    previously leaked the nested payload via the recursive
+    ``_redact_json_values`` walk because the ``args`` key was
+    not in the sensitive set.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"type":"tool_call","name":"bash","args":{"command":"rm -rf /","token":"abc"}}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    # The payload contents MUST NOT leak.
+    assert "rm -rf /" not in stored, (
+        f"nested 'command' value 'rm -rf /' must NOT leak, got: {stored!r}"
+    )
+    assert "abc" not in stored, (
+        f"nested 'token' value 'abc' must NOT leak, got: {stored!r}"
+    )
+    assert "command" not in stored, (
+        f"nested 'command' KEY must NOT leak, got: {stored!r}"
+    )
+    assert "token" not in stored, (
+        f"nested 'token' KEY must NOT leak, got: {stored!r}"
+    )
+    # The non-sensitive 'type' and 'name' fields are preserved so
+    # the operator still sees WHICH tool was invoked.
+    assert "tool_call" in stored, (
+        f"non-sensitive 'type' value 'tool_call' should survive, got: {stored!r}"
+    )
+    assert "bash" in stored, (
+        f"non-sensitive 'name' value 'bash' should survive, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_scalar_args_value() -> None:
+    """A scalar ``args`` value is redacted (not just nested objects).
+
+    The analysis-feedback fix must also redact ``"args": "scalar"``
+    (a scalar value, not a nested object). Pre-fix the scalar
+    value walked recursively and was preserved as-is.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"name":"bash","args":"secret_payload_value"}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "secret_payload_value" not in stored, (
+        f"scalar 'args' value 'secret_payload_value' must NOT leak,"
+        f" got: {stored!r}"
+    )
+    assert "bash" in stored, (
+        f"non-sensitive 'name' value 'bash' should survive, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_list_args_value() -> None:
+    """A LIST ``args`` value is redacted in full (no element leak)."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"args": ["rm -rf /", "secret"]}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "rm -rf /" not in stored
+    assert "secret" not in stored
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_tool_call_line_with_nested_args() -> None:
+    """The exact ``type=tool_call`` analysis-feedback reproducer line.
+
+    The pre-fix ``_sanitize_subagent_description`` left the
+    ``args`` payload intact because the ``args`` key was not in
+    ``_SENSITIVE_JSON_KEYS``. This test pins the no-leak contract
+    for the exact line shape used in the analysis-feedback probe:
+    ``{"type":"tool_call","args":{"command":"echo secret","token":"abc123"}}``.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description=(
+            '{"type":"tool_call","name":"bash",'
+            '"args":{"command":"echo secret","token":"abc123"}}'
+        )
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "echo secret" not in stored, (
+        f"nested 'command' value 'echo secret' MUST NOT leak,"
+        f" got: {stored!r}"
+    )
+    assert "abc123" not in stored, (
+        f"nested 'token' value 'abc123' MUST NOT leak,"
+        f" got: {stored!r}"
+    )
+    # The non-sensitive 'type' and 'name' fields are preserved.
+    assert "tool_call" in stored
+    assert "bash" in stored
+    assert "<redacted>" in stored

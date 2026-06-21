@@ -252,8 +252,19 @@ _SENSITIVE_MARKER_FALLBACK_RE = re.compile(
 # JSON keys whose value is treated as sensitive in raw provider
 # lines. Used by ``_redact_json_values`` to walk a parsed JSON
 # structure and replace matching values with ``<redacted>``.
+#
+# The set MUST include ``args`` (alongside ``arguments``) so that
+# tool-call payloads using the JSON-RPC / OpenAI-style ``args`` key
+# (e.g. ``{"name":"bash","args":{"command":"rm -rf /","token":"abc"}}``)
+# have the ENTIRE value replaced with ``<redacted>``. Pre-fix the
+# set listed only ``arguments``; ``args`` payloads leaked tool
+# arguments (command, secret tokens) into operator-visible
+# ``subagent_activity`` and waiting-status output. The full-value
+# replacement rule (no recursive walk) ensures non-sensitive sibling
+# fields cannot leak either -- a sensitive key whose value is a
+# nested object or list is fully redacted.
 _SENSITIVE_JSON_KEYS: frozenset[str] = frozenset(
-    {"arguments", "file_path", "input", "prompt", "content"}
+    {"arguments", "args", "file_path", "input", "prompt", "content"}
 )
 
 
@@ -413,6 +424,63 @@ def _redact_json_fragments(text: str) -> str:
         out.append(ch)
         i += 1
     return "".join(out)
+
+
+# Fresh AliveBy states -- the only states that should defer the short
+# NO_OUTPUT_AT_START kill. Every other AliveBy value (including None)
+# describes either a stale signal or no signal at all.
+#
+# The set is consumed by ``_alive_by_is_fresh`` which is consulted from
+# ``_evaluate_no_output_at_start``. Pre-fix the deferral gate was
+# ``corroboration.alive_by is not None`` which deferred on every
+# AliveBy value including stale states -- a wedged startup that
+# reported ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (or one of the other
+# stale states) would defer the short kill and never reach
+# ``_gate_fire`` / StuckClassifier. The fresh-evidence subset is
+# ``FRESH_PROGRESS`` and ``FRESH_HEARTBEAT_ONLY`` -- both describe a
+# child that has produced a recent progress / heartbeat signal.
+#
+# The stale states that DO NOT defer:
+#   * ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` -- the agent has a process
+#     tree descendant but no recent progress or heartbeat. This is
+#     the classic wedged-startup signal: the orchestrator is
+#     blocked on an unrelated long-lived process (e.g. an MCP server,
+#     a Playwright browser) but the AGENT itself is not producing
+#     output. The watchdog MUST still fire NO_OUTPUT_AT_START so the
+#     agent is killed and the parent process is not stuck forever.
+#   * ``CPU_IDLE_WHILE_ALIVE`` -- the descendant process is alive but
+#     has not used CPU recently. Same wedged-startup pattern.
+#   * ``LOG_STALE_WHILE_ALIVE`` -- the descendant's log output is
+#     stale. Same wedged-startup pattern.
+#   * ``STALE_LABEL_ONLY`` -- the child has no fresh heartbeat or
+#     progress and is past the stale_label_ttl grace window. The
+#     label is the only evidence left, and it is stale.
+_FRESH_ALIVE_BY_STATES: frozenset[AliveBy] = frozenset(
+    {AliveBy.FRESH_PROGRESS, AliveBy.FRESH_HEARTBEAT_ONLY}
+)
+
+
+def _alive_by_is_fresh(alive_by: AliveBy | None) -> bool:
+    """Return True when ``alive_by`` describes a TRULY live child agent.
+
+    The fresh states are ``FRESH_PROGRESS`` and ``FRESH_HEARTBEAT_ONLY``
+    -- both describe a child that has produced a recent
+    progress / heartbeat signal. Every other ``AliveBy`` value
+    (including ``None``) is NOT fresh: the corroborator either
+    reported a stale signal or no signal at all.
+
+    The watchdog consults this helper from
+    ``_evaluate_no_output_at_start`` so the live-corroboration
+    deferral gate only suppresses ``NO_OUTPUT_AT_START`` for
+    FRESH evidence. Stale evidence falls through to ``_gate_fire``
+    and the StuckClassifier so a wedged startup that reports
+    ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (or one of the other
+    stale states) is still killed by the short-fire path.
+    See ``TestNoOutputAtStartStaleAliveByDoesNotDefer`` in
+    ``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``
+    for the regression test that pins this contract.
+    """
+    return alive_by in _FRESH_ALIVE_BY_STATES
 
 
 @dataclass
@@ -1002,18 +1070,34 @@ class IdleWatchdog:
             return None
         if self._channel_evidence_active(now):
             return None
-        # Defer when the LIVE corroborator reports a live child agent.
-        # We MUST call ``_safe_corroborate()`` here, NOT read
+        # Defer when the LIVE corroborator reports a FRESH live-child
+        # signal. We MUST call ``_safe_corroborate()`` here, NOT read
         # ``self._last_alive_by``: that field is only populated post-fire
         # by ``NO_PROGRESS_QUIET`` (line 620) so it carries stale state
         # from a prior fire and is never useful as a pre-fire deferral
         # signal for ``NO_OUTPUT_AT_START``. The LIVE call returns the
         # fresh snapshot from the corroborator at the moment of this
-        # evaluation. See ``TestNoOutputAtStartLiveCorroborationDefer``
-        # in ``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``
-        # for the contract that pins this behavior.
+        # evaluation.
+        #
+        # Stale alive_by values (``OS_DESCENDANT_ONLY_STALE_PROGRESS``,
+        # ``CPU_IDLE_WHILE_ALIVE``, ``LOG_STALE_WHILE_ALIVE``,
+        # ``STALE_LABEL_ONLY``) DO NOT defer: they describe a child
+        # that has stopped producing fresh evidence (process tree
+        # presence only, no progress / no heartbeat, or log-truncated
+        # state) and the NO_OUTPUT_AT_START short kill MUST still
+        # apply. The earlier ``is not None`` check was a false-positive
+        # deferral gate: a wedged startup where the corroborator
+        # reports an OS-descendant-only stale progress state would
+        # suppress the short kill and never reach ``_gate_fire`` /
+        # StuckClassifier. The fix is to gate the deferral on the
+        # fresh-evidence subset of ``AliveBy`` and let stale values
+        # fall through to ``_gate_fire`` so the StuckClassifier sees
+        # the live snapshot. See
+        # ``TestNoOutputAtStartStaleAliveByDoesNotDefer`` in
+        # ``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``
+        # for the regression test that pins this behavior.
         corroboration = self._safe_corroborate()
-        if corroboration.alive_by is not None:
+        if _alive_by_is_fresh(corroboration.alive_by):
             return None
         # Defer when we have already accumulated ``WAITING_ON_CHILD`` time
         # this run; an agent that survived a full waiting run has

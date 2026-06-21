@@ -155,12 +155,13 @@ class TestNoOutputAtStartLiveCorroborationDefer:
     def test_defers_no_output_at_start_when_live_corroborator_reports_alive_by(self) -> None:
         """Live corroborator alive_by signal defers NO_OUTPUT_AT_START.
 
-        The corroborator returns ``alive_by=OS_DESCENDANT`` (a live-child
-        signal). The watchdog must defer NO_OUTPUT_AT_START because the
-        LIVE corroborator confirms a live child agent. The prove-the-call
-        assertion verifies that the corroborator was invoked LIVE during
-        evaluate() (not via the stale ``self._last_alive_by`` field which
-        is only populated post-fire by NO_PROGRESS_QUIET).
+        The corroborator returns ``alive_by=FRESH_PROGRESS`` (a fresh
+        live-child signal). The watchdog must defer NO_OUTPUT_AT_START
+        because the LIVE corroborator confirms a live child agent. The
+        prove-the-call assertion verifies that the corroborator was
+        invoked LIVE during evaluate() (not via the stale
+        ``self._last_alive_by`` field which is only populated
+        post-fire by NO_PROGRESS_QUIET).
 
         Idle_timeout_seconds=300 (well past no_output_at_start_seconds=60)
         so the watchdog does NOT fire NO_OUTPUT_DEADLINE either -- the
@@ -180,7 +181,7 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         def _live_corroborator() -> CorroborationSnapshot:
             call_count[0] += 1
             return CorroborationSnapshot(
-                alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+                alive_by=AliveBy.FRESH_PROGRESS,
                 scoped_child_active=True,
                 oldest_child_seconds=5.0,
             )
@@ -193,7 +194,7 @@ class TestNoOutputAtStartLiveCorroborationDefer:
         verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
         assert verdict == WatchdogVerdict.CONTINUE, (
-            f"expected CONTINUE (live corroborator reports alive_by=OS_DESCENDANT),"
+            f"expected CONTINUE (live corroborator reports alive_by=FRESH_PROGRESS),"
             f" got {verdict}"
         )
         assert watchdog.last_fire_reason is None, (
@@ -206,6 +207,151 @@ class TestNoOutputAtStartLiveCorroborationDefer:
             f"expected the live corroborator to be invoked at least once"
             f" during evaluate(), got {call_count[0]} invocations"
         )
+
+    def test_stale_alive_by_does_not_defer_no_output_at_start(self) -> None:
+        """Stale ``AliveBy`` states do NOT defer NO_OUTPUT_AT_START.
+
+        The watchdog must distinguish FRESH corroboration evidence
+        (``FRESH_PROGRESS``, ``FRESH_HEARTBEAT_ONLY`` -- a child that
+        has produced recent progress / heartbeat signal) from STALE
+        evidence (``OS_DESCENDANT_ONLY_STALE_PROGRESS``,
+        ``CPU_IDLE_WHILE_ALIVE``, ``LOG_STALE_WHILE_ALIVE``,
+        ``STALE_LABEL_ONLY`` -- a child that has stopped producing
+        fresh evidence). Only fresh states defer the short
+        NO_OUTPUT_AT_START kill; stale evidence falls through to
+        ``_gate_fire`` so the StuckClassifier sees the live snapshot
+        and the short kill still applies.
+
+        Pre-fix, the deferral gate was ``corroboration.alive_by is
+        not None``, which deferred on every AliveBy value including
+        stale states. A wedged startup that reported
+        ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` would defer the short
+        kill and never reach ``_gate_fire`` / StuckClassifier. The
+        post-fix gate is ``_alive_by_is_fresh(...)`` which returns
+        True ONLY for ``FRESH_PROGRESS`` and ``FRESH_HEARTBEAT_ONLY``.
+        """
+        config = TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            no_output_at_start_seconds=60.0,
+            max_waiting_on_child_seconds=1800.0,
+            max_waiting_on_child_no_progress_seconds=600.0,
+        )
+        clock = FakeClock(start=0.0)
+
+        def _stale_corroborator() -> CorroborationSnapshot:
+            return CorroborationSnapshot(
+                alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+                scoped_child_active=True,
+                oldest_child_seconds=5.0,
+            )
+
+        watchdog = IdleWatchdog(config, clock, corroborator=_stale_corroborator)
+        watchdog.record_invocation_start()
+
+        # Advance past the short NO_OUTPUT_AT_START threshold (60s).
+        clock.advance(61.0)
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+
+        # Stale AliveBy MUST NOT defer -- the short kill fires.
+        assert verdict == WatchdogVerdict.FIRE, (
+            f"expected FIRE (stale AliveBy MUST NOT defer"
+            f" NO_OUTPUT_AT_START), got verdict={verdict}"
+        )
+        assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START, (
+            f"expected last_fire_reason == NO_OUTPUT_AT_START,"
+            f" got {watchdog.last_fire_reason}"
+        )
+
+    def test_cpu_idle_while_alive_does_not_defer_no_output_at_start(self) -> None:
+        """Stale ``AliveBy.CPU_IDLE_WHILE_ALIVE`` does NOT defer NO_OUTPUT_AT_START.
+
+        Mirrors ``test_stale_alive_by_does_not_defer_no_output_at_start``
+        for a different stale AliveBy value. The wedged-startup pattern
+        applies: the descendant process is alive in the OS process
+        tree but has not used CPU recently -- the process is hung
+        and NO_OUTPUT_AT_START MUST still fire.
+        """
+        config = TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            no_output_at_start_seconds=60.0,
+            max_waiting_on_child_seconds=1800.0,
+            max_waiting_on_child_no_progress_seconds=600.0,
+        )
+        clock = FakeClock(start=0.0)
+
+        def _cpu_idle_corroborator() -> CorroborationSnapshot:
+            return CorroborationSnapshot(
+                alive_by=AliveBy.CPU_IDLE_WHILE_ALIVE,
+                scoped_child_active=True,
+                oldest_child_seconds=5.0,
+            )
+
+        watchdog = IdleWatchdog(config, clock, corroborator=_cpu_idle_corroborator)
+        watchdog.record_invocation_start()
+        clock.advance(61.0)
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+
+        assert verdict == WatchdogVerdict.FIRE, (
+            f"expected FIRE (stale AliveBy.CPU_IDLE_WHILE_ALIVE MUST NOT defer),"
+            f" got verdict={verdict}"
+        )
+        assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
+
+    def test_log_stale_while_alive_does_not_defer_no_output_at_start(self) -> None:
+        """Stale ``AliveBy.LOG_STALE_WHILE_ALIVE`` does NOT defer NO_OUTPUT_AT_START."""
+        config = TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            no_output_at_start_seconds=60.0,
+            max_waiting_on_child_seconds=1800.0,
+            max_waiting_on_child_no_progress_seconds=600.0,
+        )
+        clock = FakeClock(start=0.0)
+
+        def _log_stale_corroborator() -> CorroborationSnapshot:
+            return CorroborationSnapshot(
+                alive_by=AliveBy.LOG_STALE_WHILE_ALIVE,
+                scoped_child_active=True,
+                oldest_child_seconds=5.0,
+            )
+
+        watchdog = IdleWatchdog(config, clock, corroborator=_log_stale_corroborator)
+        watchdog.record_invocation_start()
+        clock.advance(61.0)
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+
+        assert verdict == WatchdogVerdict.FIRE, (
+            f"expected FIRE (stale AliveBy.LOG_STALE_WHILE_ALIVE MUST NOT defer),"
+            f" got verdict={verdict}"
+        )
+        assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
+
+    def test_stale_label_only_does_not_defer_no_output_at_start(self) -> None:
+        """Stale ``AliveBy.STALE_LABEL_ONLY`` does NOT defer NO_OUTPUT_AT_START."""
+        config = TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            no_output_at_start_seconds=60.0,
+            max_waiting_on_child_seconds=1800.0,
+            max_waiting_on_child_no_progress_seconds=600.0,
+        )
+        clock = FakeClock(start=0.0)
+
+        def _stale_label_corroborator() -> CorroborationSnapshot:
+            return CorroborationSnapshot(
+                alive_by=AliveBy.STALE_LABEL_ONLY,
+                scoped_child_active=True,
+                oldest_child_seconds=5.0,
+            )
+
+        watchdog = IdleWatchdog(config, clock, corroborator=_stale_label_corroborator)
+        watchdog.record_invocation_start()
+        clock.advance(61.0)
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+
+        assert verdict == WatchdogVerdict.FIRE, (
+            f"expected FIRE (stale AliveBy.STALE_LABEL_ONLY MUST NOT defer),"
+            f" got verdict={verdict}"
+        )
+        assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
     def test_defers_no_output_at_start_when_cumulative_waiting_on_child_positive(
         self,

@@ -107,86 +107,94 @@ class TestClassifyGenericChildSignal:
         assert signal is not None
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
-    def test_classify_generic_child_signal_classifies_bare_progress_event(self) -> None:
-        """A bare ``event="progress"`` JSON line IS classified as
-        CHILD_PROGRESS per PLAN AC-08.
+    def test_classify_generic_child_signal_does_not_classify_bare_progress_event(self) -> None:
+        """A bare ``event="progress"`` JSON line is NOT classified as child activity.
 
-        The cross-transport classifier recognises bare transport-level
-        ``progress`` events as child activity so cross-transport
-        subagent visibility works for ALL supported agents (Codex,
-        Generic, Agy, Nanocoder) that emit bare ``progress`` frames
-        without the ``child_`` / ``subagent_`` prefix.
+        The analysis-feedback fix: bare provider-level ``progress``
+        events are generic provider wire frames (they appear in
+        parent-level stdout from Codex / Generic / Agy / Nanocoder
+        transports) and do NOT prove a subagent is active. The
+        generic classifier recognises ONLY events with explicit
+        child- or subagent-scope (``child_progress``,
+        ``subagent_progress``, or any ``child_`` / ``subagent_``
+        prefix). A bare ``{"event":"progress"}`` line is treated as
+        ordinary parent-level output.
         """
         signal = _classify_generic_child_signal(
             '{"event":"progress","data":"thinking"}'
         )
-        assert signal is not None, (
-            f"bare progress event MUST classify as CHILD_PROGRESS"
-            f" per PLAN AC-08, got {signal!r}"
+        assert signal is None, (
+            f"bare progress event MUST NOT classify as child activity"
+            f" per analysis-feedback fix, got {signal!r}"
         )
-        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
-    def test_classify_generic_child_signal_classifies_bare_tool_call_event(self) -> None:
-        """A bare ``type="tool_call"`` JSON line IS classified as
-        CHILD_PROGRESS per PLAN AC-08.
+    def test_classify_generic_child_signal_does_not_classify_bare_tool_call_event(self) -> None:
+        """A bare ``type="tool_call"`` JSON line is NOT classified as child activity.
 
-        The cross-transport classifier recognises bare transport-level
-        ``tool_call`` events as child activity so cross-transport
-        subagent visibility works for transports that emit bare
-        ``tool_call`` frames.
+        The analysis-feedback fix: bare ``{"type":"tool_call"}`` frames
+        are Gemini / Generic provider wire events (see
+        ``tests/test_parsers_1.py::test_gemini_parser_tool_call_emitted_separately``
+        and ``tests/test_parsers_1.py::test_generic_*``), NOT child
+        activity. Treating bare ``tool_call`` as child activity was
+        the false-positive deferral that masked the short
+        NO_OUTPUT_AT_START kill -- the watchdog would refresh
+        ``record_subagent_work`` for any ``tool_call`` emitted by the
+        parent agent and never fire the short kill.
         """
         signal = _classify_generic_child_signal(
             '{"type":"tool_call","name":"bash","args":{"cmd":"ls"}}'
         )
-        assert signal is not None, (
-            f"bare tool_call event MUST classify as CHILD_PROGRESS"
-            f" per PLAN AC-08, got {signal!r}"
+        assert signal is None, (
+            f"bare tool_call event MUST NOT classify as child activity"
+            f" per analysis-feedback fix, got {signal!r}"
         )
-        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
-    def test_classify_generic_child_signal_classifies_bare_heartbeat_event(self) -> None:
-        """A bare ``type="heartbeat"`` JSON line IS classified as
-        CHILD_HEARTBEAT per PLAN AC-08.
+    def test_classify_generic_child_signal_does_not_classify_bare_heartbeat_event(self) -> None:
+        """A bare ``type="heartbeat"`` JSON line is NOT classified as child activity.
 
-        The cross-transport classifier recognises bare transport-level
-        ``heartbeat`` events as child activity so cross-transport
-        subagent visibility works for transports that emit bare
-        ``heartbeat`` frames.
+        The analysis-feedback fix: bare ``{"type":"heartbeat"}`` frames
+        are Generic / Codex provider wire events (see
+        ``tests/test_parsers_1.py::test_generic_heartbeat_type_is_suppressed``
+        and ``tests/test_parsers_1.py::test_codex_heartbeat_is_suppressed``),
+        NOT child activity. Treating bare ``heartbeat`` as child
+        activity was the false-positive deferral that masked the
+        short NO_OUTPUT_AT_START kill.
         """
         signal = _classify_generic_child_signal(
             '{"type":"heartbeat","ts":1234567890}'
         )
-        assert signal is not None, (
-            f"bare heartbeat event MUST classify as CHILD_HEARTBEAT"
-            f" per PLAN AC-08, got {signal!r}"
+        assert signal is None, (
+            f"bare heartbeat event MUST NOT classify as child activity"
+            f" per analysis-feedback fix, got {signal!r}"
         )
-        assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
 
-    def test_classify_generic_child_signal_classifies_bare_alive_event(self) -> None:
-        """A bare ``event="alive"`` JSON line IS classified as
-        CHILD_HEARTBEAT per PLAN AC-08.
+    def test_classify_generic_child_signal_does_not_classify_bare_alive_event(self) -> None:
+        """A bare ``event="alive"`` JSON line is NOT classified as child activity.
+
+        The analysis-feedback fix: bare ``{"event":"alive"}`` frames
+        are generic provider wire events, NOT child activity.
         """
         signal = _classify_generic_child_signal(
             '{"event":"alive","ts":1234567890}'
         )
-        assert signal is not None, (
-            f"bare alive event MUST classify as CHILD_HEARTBEAT"
-            f" per PLAN AC-08, got {signal!r}"
+        assert signal is None, (
+            f"bare alive event MUST NOT classify as child activity"
+            f" per analysis-feedback fix, got {signal!r}"
         )
-        assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
 
-    def test_classify_generic_child_signal_classifies_task_progress_event(self) -> None:
-        """A bare ``event="task_progress"`` JSON line IS classified as
-        CHILD_PROGRESS per PLAN AC-08.
+    def test_classify_generic_child_signal_does_not_classify_task_progress_event(self) -> None:
+        """A bare ``event="task_progress"`` JSON line is NOT classified as child activity.
+
+        The analysis-feedback fix: bare ``task_progress`` is a generic
+        provider event, NOT child activity.
         """
         signal = _classify_generic_child_signal(
             '{"event":"task_progress","data":"thinking"}'
         )
-        assert signal is not None, (
-            f"bare task_progress event MUST classify as CHILD_PROGRESS"
-            f" per PLAN AC-08, got {signal!r}"
+        assert signal is None, (
+            f"bare task_progress event MUST NOT classify as child activity"
+            f" per analysis-feedback fix, got {signal!r}"
         )
-        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
     def test_classify_generic_child_signal_matches_subagent_scoped_prefix(self) -> None:
         """A ``type="subagent_progress_anything"`` JSON line IS
@@ -543,6 +551,77 @@ class TestBaseExecutionStrategyObserveLineWiring:
             f" got {len(subagent_sink_spy)} invocations"
         )
 
+    def test_base_execution_strategy_observe_line_does_not_invoke_sink_on_bare_heartbeat(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A bare ``{"type":"heartbeat"}`` line does NOT invoke the subagent sink.
+
+        The analysis-feedback fix: bare ``heartbeat`` is a generic
+        provider wire event, NOT child activity. Pre-fix, the base
+        observe_line forwarded bare heartbeats into the subagent sink
+        via ``_classify_generic_child_signal`` because
+        ``_GENERIC_CHILD_HEARTBEAT_KIND`` contained ``heartbeat``.
+        """
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line('{"type":"heartbeat","ts":1234567890}')
+
+        assert len(subagent_sink_spy) == 0, (
+            f"expected zero sink invocations for bare heartbeat line"
+            f" per analysis-feedback fix, got {len(subagent_sink_spy)}"
+        )
+
+    def test_base_execution_strategy_observe_line_does_not_invoke_sink_on_bare_tool_call(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A bare ``{"type":"tool_call"}`` line does NOT invoke the subagent sink.
+
+        The analysis-feedback fix: bare ``tool_call`` is a generic
+        provider wire event (Gemini / Generic), NOT child activity.
+        """
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line('{"type":"tool_call","name":"bash","args":{"cmd":"ls"}}')
+
+        assert len(subagent_sink_spy) == 0, (
+            f"expected zero sink invocations for bare tool_call line"
+            f" per analysis-feedback fix, got {len(subagent_sink_spy)}"
+        )
+
+    def test_base_execution_strategy_observe_line_does_not_invoke_sink_on_bare_alive(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A bare ``{"event":"alive"}`` line does NOT invoke the subagent sink."""
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line('{"event":"alive","ts":1234567890}')
+
+        assert len(subagent_sink_spy) == 0, (
+            f"expected zero sink invocations for bare alive line"
+            f" per analysis-feedback fix, got {len(subagent_sink_spy)}"
+        )
+
+    def test_base_execution_strategy_observe_line_does_not_invoke_sink_on_bare_progress(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A bare ``{"event":"progress"}`` line does NOT invoke the subagent sink."""
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line('{"event":"progress","data":"thinking"}')
+
+        assert len(subagent_sink_spy) == 0, (
+            f"expected zero sink invocations for bare progress line"
+            f" per analysis-feedback fix, got {len(subagent_sink_spy)}"
+        )
+
+    def test_base_execution_strategy_observe_line_does_not_invoke_sink_on_bare_task_progress(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A bare ``{"event":"task_progress"}`` line does NOT invoke the subagent sink."""
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line('{"event":"task_progress","data":"thinking"}')
+
+        assert len(subagent_sink_spy) == 0, (
+            f"expected zero sink invocations for bare task_progress line"
+            f" per analysis-feedback fix, got {len(subagent_sink_spy)}"
+        )
+
     def test_base_execution_strategy_observe_line_invoke_sink_on_heartbeat(
         self, subagent_sink_spy: list[str]
     ) -> None:
@@ -715,24 +794,23 @@ class TestStrategyInheritanceUsesBaseChildSignalPath:
             f" child_progress line, got {len(subagent_sink_spy)} invocations"
         )
 
-    def test_codex_strategy_factory_invokes_sink_on_bare_event_name(
+    def test_codex_strategy_factory_does_not_invoke_sink_on_bare_event_name(
         self, subagent_sink_spy: list[str]
     ) -> None:
-        """``strategy_for_transport(AgentTransport.CODEX)`` DOES
-        classify bare Codex ``event=progress`` as a child signal per
-        PLAN AC-08.
+        """``strategy_for_transport(AgentTransport.CODEX)`` does NOT
+        classify bare Codex ``event=progress`` as a child signal.
 
-        Codex emits bare ``{"event":"progress",...}`` frames without
-        the ``child_`` / ``subagent_`` prefix. The cross-transport
-        classifier recognises bare ``progress`` as CHILD_PROGRESS
-        so the watchdog sees Codex subagent activity in real time.
+        The analysis-feedback fix: bare ``{"event":"progress",...}``
+        frames are generic provider wire events, NOT child activity.
+        Treating them as child activity was a false-positive deferral
+        that masked the short NO_OUTPUT_AT_START kill.
         """
         strategy = strategy_for_transport(AgentTransport.CODEX)
         strategy.observe_line('{"event":"progress","data":"thinking"}')
 
-        assert len(subagent_sink_spy) == 1, (
-            f"bare Codex event=progress MUST invoke the sink"
-            f" per PLAN AC-08 (cross-transport subagent visibility),"
+        assert len(subagent_sink_spy) == 0, (
+            f"bare Codex event=progress MUST NOT invoke the sink"
+            f" per analysis-feedback fix (no-false-positive deferral),"
             f" got {len(subagent_sink_spy)} invocations"
         )
 
@@ -751,35 +829,40 @@ class TestStrategyInheritanceUsesBaseChildSignalPath:
             f" event=child_progress line, got {len(subagent_sink_spy)} invocations"
         )
 
-    def test_codex_strategy_factory_invokes_sink_on_bare_heartbeat(
+    def test_codex_strategy_factory_does_not_invoke_sink_on_bare_heartbeat(
         self, subagent_sink_spy: list[str]
     ) -> None:
-        """``strategy_for_transport(AgentTransport.CODEX)`` DOES
-        classify bare ``type=heartbeat`` as CHILD_HEARTBEAT per
-        PLAN AC-08.
+        """``strategy_for_transport(AgentTransport.CODEX)`` does NOT
+        classify bare ``type=heartbeat`` as child activity.
+
+        The analysis-feedback fix: bare ``{"type":"heartbeat"}`` is a
+        generic provider wire event, NOT child activity.
         """
         strategy = strategy_for_transport(AgentTransport.CODEX)
         strategy.observe_line('{"type":"heartbeat","ts":1234567890}')
 
-        assert len(subagent_sink_spy) == 1, (
-            f"bare Codex type=heartbeat MUST invoke the sink"
-            f" per PLAN AC-08 (cross-transport subagent visibility),"
+        assert len(subagent_sink_spy) == 0, (
+            f"bare Codex type=heartbeat MUST NOT invoke the sink"
+            f" per analysis-feedback fix (no-false-positive deferral),"
             f" got {len(subagent_sink_spy)} invocations"
         )
 
-    def test_codex_strategy_factory_invokes_sink_on_bare_tool_call(
+    def test_codex_strategy_factory_does_not_invoke_sink_on_bare_tool_call(
         self, subagent_sink_spy: list[str]
     ) -> None:
-        """``strategy_for_transport(AgentTransport.CODEX)`` DOES
-        classify bare ``type=tool_call`` as CHILD_PROGRESS per
-        PLAN AC-08.
+        """``strategy_for_transport(AgentTransport.CODEX)`` does NOT
+        classify bare ``type=tool_call`` as child activity.
+
+        The analysis-feedback fix: bare ``{"type":"tool_call"}`` is a
+        generic provider wire event (Gemini / Generic), NOT child
+        activity.
         """
         strategy = strategy_for_transport(AgentTransport.CODEX)
         strategy.observe_line('{"type":"tool_call","name":"bash"}')
 
-        assert len(subagent_sink_spy) == 1, (
-            f"bare Codex type=tool_call MUST invoke the sink"
-            f" per PLAN AC-08 (cross-transport subagent visibility),"
+        assert len(subagent_sink_spy) == 0, (
+            f"bare Codex type=tool_call MUST NOT invoke the sink"
+            f" per analysis-feedback fix (no-false-positive deferral),"
             f" got {len(subagent_sink_spy)} invocations"
         )
 
