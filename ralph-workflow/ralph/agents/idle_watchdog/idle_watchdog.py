@@ -81,6 +81,7 @@ the full contract.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
@@ -151,6 +152,90 @@ if _actual != _EXPECTED_FIRE_REASONS:
         " logic so the fire decision is consistent with the new enum set."
     )
     raise RuntimeError(msg)
+
+
+_SUBAGENT_DESCRIPTION_MAX = 200
+
+
+# Control characters that must NEVER reach operator-visible waiting-status
+# text: newline/CR (would split a single line into many in the UI),
+# backspace / form-feed / vertical tab (corrupt rendering), DEL,
+# ANSI CSI introducer (ESC [ ... letter), and C0 control codes. The
+# pattern also strips raw escape characters and the OSC introducer.
+# Tab (\x09) is also stripped because raw provider lines frequently
+# contain literal tabs from indented JSON or quoted multiline strings
+# that would otherwise render as unpredictable spacing in the UI.
+_CONTROL_CHARS_RE = re.compile(
+    r"[\x00-\x1f\x7f]|\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07]*\x07"
+)
+
+
+# Marker prefixes that almost always precede sensitive payload (a tool
+# argument, a file path under a sensitive root, a prompt fragment the
+# model is repeating verbatim). Stripping the value after these markers
+# means the operator still sees WHICH category of subagent activity
+# happened (tool, file read, prompt echo) without leaking the content.
+#
+# Patterns chosen to match provider-specific output frames whose value
+# is potentially sensitive:
+#   * ``"arguments": "<value>"`` -- JSON-encoded tool arguments (value up to next quote)
+#   * ``"file_path": "<path>"`` -- Gemini/Claude file-path field (path up to next quote)
+#   * ``"input": "<value>"`` -- Gemini input envelope (value up to next quote)
+#   * ``"prompt": "<value>"`` -- echoed prompt fragment (value up to next quote)
+#   * ``"content": "<value>"`` -- content fragment (value up to next quote)
+#   * ``/etc/<path>``, ``/proc/<path>``, ``/sys/<path>`` -- sensitive roots + content
+#   * ``/root/<path>``, ``~/.ssh/<path>`` -- private homes + content
+#   * ``Authorization: Bearer <token>`` -- bearer token leakage (rest of line redacted)
+#   * ``-----BEGIN ... PRIVATE KEY-----`` -- PEM private key fragments (rest of line redacted)
+#
+# The JSON-quoted variants consume the value up to the next unescaped
+# ``"`` so a secret like ``"arguments": "secret"`` is fully redacted;
+# the bare-path variants consume the rest of the line so ``/etc/passwd``
+# becomes ``<redacted>``.
+_SENSITIVE_MARKER_RE = re.compile(
+    r"""
+    "(?:arguments|file_path|input|prompt|content)"\s*:\s*"[^"\n]*"
+    |
+    (?:/etc/|/proc/|/sys/|/root/|~/\.ssh/)[^\s\x1b\n]*
+    |
+    Authorization\s*:\s*Bearer[^\n]*
+    |
+    -----BEGIN\s+[A-Z ]*PRIVATE\s+KEY-----[^\n]*
+    """,
+    re.VERBOSE,
+)
+
+
+def _sanitize_subagent_description(line: str) -> str:
+    """Return a safe operator-visible summary of a subagent observation.
+
+    The watchdog receives raw provider lines via
+    ``IdleWatchdog.record_subagent_work(description=line)`` from the
+    subprocess and PTY readers. The raw line can contain tool
+    arguments, file paths, prompt fragments, ANSI escapes, or
+    control characters that must NOT be echoed verbatim into the
+    waiting-status UI / log / breadcrumbs (operators may be on a
+    shared terminal or sharing log output with non-engineers).
+
+    Sanitization is intentionally conservative -- it strips
+    anything that looks sensitive and truncates the result -- so a
+    leaked payload never reaches operator-visible text. The
+    truncated prefix still gives the operator a useful hint
+    ("agent invoked a tool", "agent read a file under /etc",
+    "agent echoed a prompt fragment") without echoing the
+    payload itself.
+
+    Returns an empty string when the sanitized text is empty or
+    only whitespace.
+    """
+    if not line:
+        return ""
+    cleaned = _CONTROL_CHARS_RE.sub("", line)
+    cleaned = _SENSITIVE_MARKER_RE.sub("<redacted>", cleaned)
+    cleaned = cleaned.strip()
+    if len(cleaned) > _SUBAGENT_DESCRIPTION_MAX:
+        cleaned = cleaned[:_SUBAGENT_DESCRIPTION_MAX]
+    return cleaned
 
 
 @dataclass
@@ -918,15 +1003,15 @@ class IdleWatchdog:
                 activity being recorded (e.g. the raw line that triggered
                 the activity sink). Truncated to 200 chars and surfaced
                 via the ``subagent_activity`` field on subsequent
-                ``WaitingStatusEvent``s so operators can see the most
-                recent subagent signal at the moment of any event.
+                ``WaitingStatusEvent`` instances so operators can see the
+                most recent subagent signal at the moment of any event.
         """
         timestamp = now if now is not None else self._clock.monotonic()
         self._subagent_progress_count += 1
         self._last_subagent_progress_at = timestamp
         if description is not None:
-            stripped = description.strip()[:200]
-            self._last_subagent_progress_description = stripped or None
+            sanitized = _sanitize_subagent_description(description)
+            self._last_subagent_progress_description = sanitized
 
     def record_subagent_output(self, line_count: int = 1, now: float | None = None) -> None:
         """Record fresh subagent output as first-party evidence.

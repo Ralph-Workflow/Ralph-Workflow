@@ -411,3 +411,103 @@ def test_subagent_activity_truncates_to_80_chars(tmp_path: Path) -> None:
     # The truncated part should be 80 chars of x followed by '...'
     assert "subagent=" in line
     assert line.endswith("...")
+
+
+def test_entered_event_does_not_include_subagent_activity(tmp_path: Path) -> None:
+    """ENTERED is a transition marker: it MUST NOT include the
+    ``subagent=`` suffix even when ``subagent_activity`` is set.
+
+    Locks down the plan-compliance contract that ``subagent_activity``
+    is appended ONLY for PROGRESS / SUSPECTED_FROZEN / HARD_STOP,
+    and that ENTERED stays on its prior contract (operator-visible
+    breadcrumbs are stable across the implementation).
+    """
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.ENTERED,
+                subagent_activity="thinking about edge cases",
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "started waiting" in line
+    assert "subagent=" not in line
+    assert "thinking about edge cases" not in line
+
+
+def test_exited_event_does_not_include_subagent_activity(tmp_path: Path) -> None:
+    """EXITED is a transition marker: it MUST NOT include the
+    ``subagent=`` suffix even when ``subagent_activity`` is set.
+
+    The EXITED event is a one-shot publication: the field is cleared
+    after the snapshot is enqueued. This test verifies BOTH that the
+    ``subagent=`` suffix is NOT appended, AND that the field is
+    cleared (so the next snapshot does not carry the stale value).
+    """
+    sub = _make_subscriber(tmp_path)
+    state = PipelineState(
+        phase="development",
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
+    )
+    sub.notify(state)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.ENTERED,
+                subagent_activity="scout exploring",
+            )
+        )
+    )
+    # Drain ENTERED snapshots so we can inspect only EXITED output.
+    while not sub.queue.empty():
+        sub.queue.get_nowait()
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.EXITED,
+                subagent_activity="scout exploring",
+            )
+        )
+    )
+    # Field is cleared after EXITED publication.
+    assert _last_line(sub) is None
+    published = []
+    while not sub.queue.empty():
+        published.append(sub.queue.get_nowait())
+    # No published snapshot from EXITED carries a ``subagent=`` suffix.
+    for s in published:
+        if s.waiting_status_line is not None:
+            assert "subagent=" not in s.waiting_status_line, (
+                f"EXITED snapshot must not include subagent= suffix: {s.waiting_status_line!r}"
+            )
+            assert "scout exploring" not in s.waiting_status_line
+
+
+def test_progress_event_with_sanitized_subagent_activity_renders_cleanly(tmp_path: Path) -> None:
+    """A PROGRESS event whose ``subagent_activity`` contains control
+    characters or sensitive markers is rendered WITHOUT those markers.
+
+    The sanitization happens upstream in
+    ``IdleWatchdog.record_subagent_work(description=...)`` so the
+    subscriber receives already-clean text; this test pins the
+    end-to-end contract that no control character or sensitive
+    payload reaches operator-visible waiting-status output.
+    """
+    sub = _make_subscriber(tmp_path)
+    sanitized = "tool reading /etc/<redacted> then output"
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.PROGRESS,
+                subagent_activity=sanitized,
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert f"subagent={sanitized}" in line
+    # The sanitized form does not contain raw sensitive markers.
+    assert "/etc/passwd" not in line

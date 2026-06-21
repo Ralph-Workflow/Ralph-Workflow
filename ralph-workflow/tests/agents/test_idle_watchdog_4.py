@@ -239,3 +239,124 @@ def test_record_workspace_event_source_weight_advances_channel() -> None:
     assert workspace_summary.channel_name == ChannelName.WORKSPACE
     assert workspace_summary.last_at == now
     assert workspace_summary.can_defer is True
+
+
+# ---------------------------------------------------------------------------
+# (s) Subagent description sanitization (security: control-char + payload scrub)
+# ---------------------------------------------------------------------------
+
+
+def test_record_subagent_work_description_strips_control_characters() -> None:
+    """``record_subagent_work`` strips control characters from ``description``.
+
+    Newlines, CRs, tabs, and other C0 control codes from a raw provider
+    line must NOT survive into the operator-visible
+    ``subagent_activity`` field. A leaked newline would split a single
+    waiting-status line into many rows in the UI.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="hello\nworld\rmore\tchars\x00\x01")
+    assert "\n" not in (wd._last_subagent_progress_description or "")
+    assert "\r" not in (wd._last_subagent_progress_description or "")
+    assert "\t" not in (wd._last_subagent_progress_description or "")
+    assert "\x00" not in (wd._last_subagent_progress_description or "")
+    assert "\x01" not in (wd._last_subagent_progress_description or "")
+    assert wd._last_subagent_progress_description == "helloworldmorechars"
+
+
+def test_record_subagent_work_description_strips_ansi_escapes() -> None:
+    """ANSI CSI / OSC sequences are stripped from the description.
+
+    A raw provider line like ``"\\x1b[31mred\\x1b[0m text"`` must lose
+    the ESC bytes so the terminal does not interpret the colour code
+    inside operator-visible waiting-status output.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="\x1b[31mhello\x1b[0m world")
+    stored = wd._last_subagent_progress_description
+    assert stored is not None
+    assert "\x1b" not in stored
+    # The text content survives; only the escape introducer is removed.
+    assert "hello" in stored
+    assert "world" in stored
+
+
+def test_record_subagent_work_description_redacts_tool_arguments() -> None:
+    """A description that contains ``"arguments": "<secret>"`` has the value redacted."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='tool {"arguments": "secret_payload_value"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "secret_payload_value" not in stored
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_sensitive_paths() -> None:
+    """A description mentioning sensitive roots (/etc, /proc, /sys, /root, ~/.ssh)
+    has the sensitive marker replaced with ``<redacted>`` so the path does
+    not leak verbatim into operator-visible text."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="reading /etc/passwd then /proc/self/maps")
+    stored = wd._last_subagent_progress_description or ""
+    assert "/etc/" not in stored
+    assert "/proc/" not in stored
+    assert stored.count("<redacted>") >= 2
+
+
+def test_record_subagent_work_description_redacts_bearer_token() -> None:
+    """A description containing ``Authorization: Bearer <token>`` has the
+    bearer prefix redacted (the marker reveals the leak category without
+    echoing the token)."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="hdr: Authorization: Bearer abc123token")
+    stored = wd._last_subagent_progress_description or ""
+    assert "Bearer" not in stored
+
+
+def test_record_subagent_work_description_redacts_private_key_marker() -> None:
+    """A description containing a PEM ``-----BEGIN ... PRIVATE KEY-----``
+    marker is redacted to prevent private-key fragments leaking into logs."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="key fragment -----BEGIN RSA PRIVATE KEY----- data")
+    stored = wd._last_subagent_progress_description or ""
+    assert "PRIVATE KEY" not in stored
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_truncates_to_200_chars() -> None:
+    """A description longer than 200 chars after sanitization is truncated."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="a" * 500)
+    stored = wd._last_subagent_progress_description or ""
+    assert len(stored) == 200
+
+
+def test_record_subagent_work_description_only_whitespace_stores_empty() -> None:
+    """A description that is purely whitespace (after sanitization) stores
+    an empty string so the subscriber does not render ``subagent=``."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="   \n\n  \t\t  ")
+    stored = wd._last_subagent_progress_description
+    assert stored == ""
+
+
+def test_record_subagent_work_description_none_leaves_field_none() -> None:
+    """``record_subagent_work(description=None)`` does NOT update the
+    stored description (preserves the prior value). This is the
+    legacy behavior used by tests that exercise the channel
+    timestamp without supplying a description."""
+    wd, _clock = _make_watchdog()
+    prior = wd._last_subagent_progress_description
+    wd.record_subagent_work(description=None)
+    assert wd._last_subagent_progress_description == prior
+
+
+def test_record_subagent_work_description_does_not_mutate_last_activity() -> None:
+    """``record_subagent_work(description=...)`` does NOT touch the
+    stdout baseline ``_last_activity``. The description update is a
+    presentation-layer concern; it must not perturb the idle deadline."""
+    wd, _clock = _make_watchdog()
+    wd.record_activity()
+    _clock.advance(1.0)
+    baseline = wd._last_activity
+    wd.record_subagent_work(description="anything goes here")
+    assert wd._last_activity == baseline

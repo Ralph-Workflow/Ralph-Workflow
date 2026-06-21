@@ -89,11 +89,10 @@ def _format_waiting_status_line(event: object) -> str:
     run = f"{cast_event.current_run_seconds:.0f}"
     subagent_part = _format_subagent_activity_suffix(cast_event.subagent_activity)
     if cast_event.kind == waiting_kind_cls.ENTERED:
-        base = (
+        return (
             f"Background child work started waiting"
             f" (cumulative={cum}s, ceiling={ceil}s)"
         )
-        return base + subagent_part
     if cast_event.kind == waiting_kind_cls.PROGRESS:
         delta = cast_event.diagnostic.get("workspace_event_delta")
         alive_by = cast_event.diagnostic.get("alive_by")
@@ -114,8 +113,7 @@ def _format_waiting_status_line(event: object) -> str:
         )
         return base + subagent_part
     if cast_event.kind == waiting_kind_cls.EXITED:
-        base = f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
-        return base + subagent_part
+        return f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
     scoped = cast_event.diagnostic.get("scoped_child_active", "?")
     oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
     oldest_part = (
@@ -142,8 +140,9 @@ def _format_subagent_activity_suffix(text: str | None) -> str:
     append the result unconditionally without producing empty parens.
 
     Used by ``_format_waiting_status_line`` for the PROGRESS,
-    SUSPECTED_FROZEN, HARD_STOP, and ENTERED event kinds (EXITED is a
-    transition marker and is excluded by design).
+    SUSPECTED_FROZEN, and HARD_STOP event kinds. ENTERED and EXITED are
+    transition markers and are excluded by design so their lines
+    remain stable across operator-visible breadcrumbs and tests.
     """
     if not text or not text.strip():
         return ""

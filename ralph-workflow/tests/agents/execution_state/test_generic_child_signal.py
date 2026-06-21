@@ -92,15 +92,62 @@ class TestClassifyGenericChildSignal:
         assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
 
     def test_classify_generic_child_signal_matches_codex_json_event(self) -> None:
-        """Codex-style JSON ``{"event":"progress","data":"thinking"}``
-        is classified as CHILD_PROGRESS.
+        """Codex-style JSON with a child-scoped event name
+        ``{"event":"child_progress","data":"thinking"}`` is classified
+        as CHILD_PROGRESS. Bare ``event="progress"`` (a generic
+        lifecycle event in ``_event_classification.LIFECYCLE_EVENT_TYPES``)
+        is NOT classified because it does not identify child/subagent
+        scope -- the analysis-feedback guard against false-positive
+        subagent activity from non-OpenCode transports.
         """
-
         signal = _classify_generic_child_signal(
-            '{"event":"progress","data":"thinking"}'
+            '{"event":"child_progress","data":"thinking"}'
         )
         assert signal is not None
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+
+    def test_classify_generic_child_signal_returns_none_for_bare_progress_event(
+        self,
+    ) -> None:
+        """A bare ``event="progress"`` JSON line is a generic lifecycle
+        event and is NOT classified as CHILD_PROGRESS. The cross-transport
+        classifier only recognises event names that explicitly identify
+        child/subagent scope (e.g. ``child_progress``,
+        ``subagent_progress``).
+        """
+        signal = _classify_generic_child_signal(
+            '{"event":"progress","data":"thinking"}'
+        )
+        assert signal is None
+
+    def test_classify_generic_child_signal_returns_none_for_bare_tool_call_event(
+        self,
+    ) -> None:
+        """A bare ``type="tool_call"`` JSON line is an ordinary Gemini
+        tool use (per ``ralph/agents/parsers/gemini.py``) and is NOT
+        classified as CHILD_PROGRESS. OpenCode's special-cased
+        ``tool_call`` recognition in ``_OPENCODE_CHILD_KIND`` is
+        transport-specific; the generic classifier must NOT inherit
+        that mapping or it would create false-positive subagent
+        evidence on every Gemini tool call.
+        """
+        signal = _classify_generic_child_signal(
+            '{"type":"tool_call","name":"bash","args":{"cmd":"ls"}}'
+        )
+        assert signal is None
+
+    def test_classify_generic_child_signal_returns_none_for_bare_heartbeat_event(
+        self,
+    ) -> None:
+        """A bare ``type="heartbeat"`` JSON line is a generic lifecycle
+        event (per ``_event_classification.LIFECYCLE_EVENT_TYPES``) and
+        is NOT classified as CHILD_HEARTBEAT. Only event names that
+        explicitly identify child/subagent scope are recognised.
+        """
+        signal = _classify_generic_child_signal(
+            '{"type":"heartbeat","ts":1234567890}'
+        )
+        assert signal is None
 
     def test_classify_generic_child_signal_returns_none_for_unrelated_line(self) -> None:
         """Regular stdout without markers returns None."""
