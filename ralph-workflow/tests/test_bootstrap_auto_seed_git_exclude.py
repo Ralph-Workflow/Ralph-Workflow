@@ -10,14 +10,19 @@ pointing at the real gitdir. All tests use ``tmp_path`` for I/O.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from git import Repo
 
+from ralph.config import bootstrap as bs_module
 from ralph.config.bootstrap import (
     _DEFAULT_GIT_EXCLUDE_PATTERNS,
     _resolve_git_exclude_path,
     auto_seed_default_git_exclude,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_auto_seed_default_git_exclude_creates_exclude_when_missing(tmp_path: Path) -> None:
@@ -186,6 +191,39 @@ def test_auto_seed_default_git_exclude_is_idempotent_in_worktree(tmp_path: Path)
     assert first == list(_DEFAULT_GIT_EXCLUDE_PATTERNS)
     second = auto_seed_default_git_exclude(worktree)
     assert second == [], f"Second call must be a no-op in a worktree, got {second!r}"
+
+
+def test_auto_seed_default_git_exclude_uses_atomic_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``auto_seed_default_git_exclude`` must publish via the atomic helper.
+
+    Regression: the previous implementation used a non-atomic
+    ``open('a')`` write that could truncate or corrupt the exclude file
+    on SIGKILL. The hardening routes the new payload through the
+    sibling-staging atomic helper.
+    """
+    repo_root = tmp_path / "fake_repo"
+    repo_root.mkdir()
+    captured: list[tuple[Path, str]] = []
+    real_atomic = bs_module._atomic_append_text
+
+    def spy_atomic(path: Path, payload: str, *, encoding: str = "utf-8") -> None:
+        captured.append((path, payload))
+        return real_atomic(path, payload, encoding=encoding)
+
+    monkeypatch.setattr(bs_module, "_atomic_append_text", spy_atomic)
+
+    auto_seed_default_git_exclude(repo_root)
+
+    assert captured, (
+        "auto_seed_default_git_exclude must route through _atomic_append_text"
+    )
+    exclude_path = repo_root / ".git" / "info" / "exclude"
+    assert any(p == exclude_path for p, _ in captured), (
+        f"Atomic helper must be called with the exclude file path; "
+        f"observed paths: {[p for p, _ in captured]!r}"
+    )
 
 
 def _make_main_repo_and_worktree(tmp_path: Path) -> Path:

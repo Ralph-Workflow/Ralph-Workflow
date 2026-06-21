@@ -23,6 +23,9 @@ class CommitCleanupAlwaysLoopbackInvoker(MockAgentInvoker):
         return super().invoke(agent_name, phase)
 
     def commit_event_for(self, phase: str) -> PipelineEvent:
-        if phase == "development_commit_cleanup":
+        if phase in {
+            "development_commit_cleanup",
+            "development_final_commit_cleanup",
+        }:
             return PipelineEvent.PHASE_LOOPBACK
         return super().commit_event_for(phase)

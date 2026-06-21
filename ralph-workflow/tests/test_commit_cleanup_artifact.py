@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
+from ralph.mcp.artifacts._commit_cleanup_action import CommitCleanupAction
 from ralph.mcp.artifacts._typed_artifact_validation_error import TypedArtifactValidationError
 from ralph.mcp.artifacts.typed_artifacts import normalize_commit_cleanup_content
 
@@ -144,3 +146,81 @@ def test_reason_is_optional() -> None:
         }
     )
     assert result["reason"] == "All cleanup complete"
+
+
+def test_delete_file_path_rejects_newline() -> None:
+    """A newline in ``path`` must be rejected at Pydantic validation time.
+
+    Newlines in a path are the canonical newline-injection vector: a
+    multiline ``path`` could plant additional ``.gitignore`` or
+    ``.git/info/exclude`` rules. The hardening rejects control characters
+    via the Field pattern check.
+    """
+    with pytest.raises(ValidationError):
+        CommitCleanupAction(action="delete_file", path="foo\nbar")
+
+
+def test_add_to_gitignore_pattern_rejects_tab() -> None:
+    """A tab character in ``pattern`` must be rejected at Pydantic validation time."""
+    with pytest.raises(ValidationError):
+        CommitCleanupAction(action="add_to_gitignore", pattern="*.py\t")
+
+
+def test_add_to_gitignore_pattern_rejects_null_byte() -> None:
+    """A null byte in ``pattern`` must be rejected at Pydantic validation time."""
+    with pytest.raises(ValidationError):
+        CommitCleanupAction(action="add_to_gitignore", pattern="*.\x00py")
+
+
+def test_delete_file_path_rejects_comment_injection() -> None:
+    """A ``#``-prefixed ``path`` must be rejected.
+
+    A ``#`` prefix would silently disable a real ``.gitignore`` or
+    ``.git/info/exclude`` rule (both files treat ``#`` lines as comments).
+    The hardening rejects ``#``-prefixed values via the validator so a
+    malformed artifact cannot silently break the exclude list.
+    """
+    with pytest.raises(ValidationError):
+        CommitCleanupAction(action="delete_file", path="#comment-injection")
+
+
+def test_add_to_gitignore_pattern_rejects_comment_prefix() -> None:
+    """A ``#``-prefixed ``pattern`` must be rejected at Pydantic validation time."""
+    with pytest.raises(ValidationError):
+        CommitCleanupAction(action="add_to_gitignore", pattern="#*.pyc")
+
+
+def test_delete_file_path_rejects_whitespace_only() -> None:
+    """A whitespace-only ``path`` must be rejected at Pydantic validation time.
+
+    Whitespace-only values would otherwise be silently dropped by the
+    classifier (``_classify_action`` skips them with a DEBUG log entry).
+    The hardening rejects them at Pydantic validation time so the agent
+    gets a clear schema error instead of a silent-drop ambiguity.
+    """
+    with pytest.raises(ValidationError):
+        CommitCleanupAction(action="delete_file", path="   ")
+
+
+@pytest.mark.parametrize(
+    "action, kwargs",
+    [
+        ("delete_file", {"path": ".agent/raw/opencode.log"}),
+        ("delete_file", {"path": "checkpoint.json"}),
+        ("delete_file", {"path": "tmp/scratch.txt"}),
+        ("add_to_gitignore", {"pattern": "*.pyc"}),
+        ("add_to_gitignore", {"pattern": ".agent/"}),
+        ("add_to_git_exclude", {"pattern": ".env.local"}),
+        ("add_to_git_exclude", {"pattern": "/checkpoint.json"}),
+    ],
+)
+def test_valid_paths_still_accepted(action: str, kwargs: dict[str, str]) -> None:
+    """Normal, non-malicious paths must still validate after the tightening."""
+    if action == "delete_file":
+        obj = CommitCleanupAction(action=action, path=kwargs["path"])
+        assert obj.action == action
+        assert obj.path == kwargs["path"]
+    else:
+        obj = CommitCleanupAction(action=action, pattern=kwargs["pattern"])
+        assert obj.action == action
+        assert obj.pattern == kwargs["pattern"]

@@ -629,6 +629,7 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
         return []
 
     phase_name = effect.phase
+    workspace_resolution_error: BaseException | None = None
     try:
         repo_root_str = ctx.workspace.absolute_path(".")
         repo_root = Path(repo_root_str)
@@ -636,8 +637,18 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
         # can locate the prior anchor via ast.Call inspection.
         ensure_git_initialized(repo_root_str)
     except Exception as exc:
-        logger.warning("Failed to ensure git initialized: {}", exc)
-        repo_root = Path.cwd()
+        workspace_resolution_error = exc
+
+    if workspace_resolution_error is not None:
+        return [
+            PhaseFailureEvent(
+                phase=phase_name,
+                reason=f"Failed to resolve workspace root: {workspace_resolution_error}",
+                recoverable=True,
+                retry_in_session=True,
+                failure_category=FailureCategory.ARTIFACT_VALIDATION,
+            )
+        ]  # reason: defensive return -- audit pins structural placement
 
     # Direct calls so audit_agent_internal_paths._check_auto_seed_placement
     # can locate the seed helpers via ast.Call inspection. Both helpers

@@ -12,6 +12,8 @@ from pathlib import Path, PurePath
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
 
+from ralph.git.operations import _atomic_append_text
+
 
 def ensure_git_initialized(repo_root: Path | str) -> None:
     """Ensure the directory is a git repository, initializing if necessary.
@@ -41,17 +43,18 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
     path = PurePath(relative_path)
     if path.is_absolute() or any(part == ".." for part in path.parts):
         raise ValueError(f"Refusing to delete path outside repository root: {relative_path!r}")
-    target = (repo_root_path / path).resolve(strict=False)
+    unresolved = (repo_root_path / path)
+    if unresolved.is_symlink():
+        raise ValueError(
+            f"Refusing to delete symlink path during commit cleanup: {relative_path!r}"
+        )
+    target = unresolved.resolve(strict=False)
     try:
         target.relative_to(repo_root_path)
     except ValueError as exc:
         raise ValueError(
             f"Refusing to delete path outside repository root: {relative_path!r}"
         ) from exc
-    if target.is_symlink():
-        raise ValueError(
-            f"Refusing to delete symlink path during commit cleanup: {relative_path!r}"
-        )
     if not target.exists():
         logger.debug("File {} does not exist, nothing to delete", relative_path)
         return
@@ -67,9 +70,8 @@ def delete_file_from_repo(repo_root: Path | str, relative_path: str) -> None:
         finally:
             repo.close()
 
-    with suppress(OSError):
-        target.unlink(missing_ok=True)
-        logger.debug("Deleted file {}", relative_path)
+    target.unlink(missing_ok=True)
+    logger.debug("Deleted file {}", relative_path)
 
 
 def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
@@ -90,10 +92,8 @@ def add_to_git_exclude(repo_root: Path | str, patterns: list[str]) -> None:
 
         new_patterns = [p for p in patterns if p not in existing]
         if new_patterns:
-            with exclude_path.open("a", encoding="utf-8") as f:
-                if new_patterns[0]:
-                    f.write("\n")
-                f.write("\n".join(new_patterns))
+            payload = "\n".join(new_patterns) + "\n"
+            _atomic_append_text(exclude_path, payload)
             logger.debug("Added {} patterns to .git/info/exclude", len(new_patterns))
     finally:
         repo.close()

@@ -10,10 +10,14 @@ from __future__ import annotations
 import hashlib
 from typing import TYPE_CHECKING
 
+from ralph.config import bootstrap as bs_module
 from ralph.config.bootstrap import (
     _DEFAULT_GITIGNORE_PATTERNS,
     auto_seed_default_gitignore,
 )
+
+if TYPE_CHECKING:
+    import pytest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,6 +70,36 @@ def test_auto_seed_preserves_user_patterns(tmp_path: Path) -> None:
     )
     for pattern in _DEFAULT_GITIGNORE_PATTERNS:
         assert pattern in content_lines, f"Missing default pattern: {pattern!r}"
+
+
+def test_auto_seed_default_gitignore_uses_atomic_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``auto_seed_default_gitignore`` must publish via the atomic helper.
+
+    The atomic helper ensures SIGKILL mid-write leaves the target
+    ``.gitignore`` intact (writes are staged to a sibling file, then
+    ``Path.replace()``d into place). Regression: the previous
+    implementation used a non-atomic ``open('a')`` write that could
+    truncate or corrupt the file on a concurrent reader or signal.
+    """
+    captured: list[tuple[Path, str]] = []
+    real_atomic = bs_module._atomic_append_text
+
+    def spy_atomic(path: Path, payload: str, *, encoding: str = "utf-8") -> None:
+        captured.append((path, payload))
+        return real_atomic(path, payload, encoding=encoding)
+
+    monkeypatch.setattr(bs_module, "_atomic_append_text", spy_atomic)
+
+    auto_seed_default_gitignore(tmp_path)
+
+    assert captured, "auto_seed_default_gitignore must route through _atomic_append_text"
+    gitignore_path = tmp_path / ".gitignore"
+    assert any(p == gitignore_path for p, _ in captured), (
+        f"Atomic helper must be called with the .gitignore path; "
+        f"observed paths: {[p for p, _ in captured]!r}"
+    )
 
 
 def test_auto_seed_covers_common_project_structures(tmp_path: Path) -> None:

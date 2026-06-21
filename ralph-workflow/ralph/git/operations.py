@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -563,8 +564,45 @@ def append_to_gitignore(repo_root: Path | str, patterns: list[str]) -> None:
 
     new_patterns = [p for p in patterns if p not in existing]
     if new_patterns:
-        with gitignore_path.open("a", encoding="utf-8") as f:
-            if new_patterns[0]:
-                f.write("\n")
-            f.write("\n".join(new_patterns))
+        payload = ("\n".join(new_patterns)) + "\n"
+        _atomic_append_text(gitignore_path, payload)
         logger.debug("Appended {} patterns to .gitignore", len(new_patterns))
+
+
+def _atomic_append_text(
+    path: Path,
+    payload: str,
+    *,
+    encoding: str = "utf-8",
+) -> None:
+    """Append ``payload`` to ``path`` atomically via sibling-staging + ``Path.replace``.
+
+    Mirrors the pattern from ``ralph/mcp/transport/agy.py:99-127`` so a
+    SIGKILL mid-write leaves the target file intact -- the new content is
+    staged in a sibling file (with an ``id(payload)``-derived suffix for
+    TOCTOU safety), then ``Path.replace()``-published atomically.
+
+    If the staging write or replace fails, the staging file is removed
+    before re-raising so the helper never leaves a dangling sibling.
+
+    Args:
+        path: Target file path. Parent directory must already exist (or
+            be creatable via ``path.parent.mkdir(parents=True, exist_ok=True)``).
+        payload: Text to append. The caller is responsible for any
+            leading separator (newline, etc.).
+        encoding: Text encoding for the staging write. Default ``utf-8``.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = ""
+    try:
+        existing = path.read_text(encoding=encoding)
+    except OSError:
+        existing = ""
+    staging = path.with_suffix(path.suffix + f".ralph-staging.{id(payload)}")
+    try:
+        staging.write_text(existing + payload, encoding=encoding)
+        staging.replace(path)
+    except BaseException:
+        with suppress(FileNotFoundError):
+            staging.unlink()
+        raise

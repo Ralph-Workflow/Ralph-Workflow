@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from git import InvalidGitRepositoryError, NoSuchPathError, Repo
 
 from ralph.config.loader import load_toml
-from ralph.git.operations import append_to_gitignore
+from ralph.git.operations import _atomic_append_text, append_to_gitignore
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -552,13 +552,8 @@ def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
     missing = [p for p in _DEFAULT_GIT_EXCLUDE_PATTERNS if p not in existing]
     if missing:
         exclude_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = "\n".join(missing)
-        if file_existed:
-            with exclude_path.open("a", encoding="utf-8") as f:
-                f.write("\n")
-                f.write(payload)
-        else:
-            exclude_path.write_text(payload, encoding="utf-8")
+        payload = "\n".join(missing) + "\n"
+        _atomic_append_text(exclude_path, payload)
     return list(missing)
 
 
@@ -594,7 +589,9 @@ def auto_seed_default_gitignore(repo_root: Path) -> list[str]:
             existing = set()
     missing = [p for p in _DEFAULT_GITIGNORE_PATTERNS if p not in existing]
     if missing:
-        append_to_gitignore(repo_root, missing)
+        gitignore_path = repo_root / ".gitignore"
+        payload = "\n".join(missing) + "\n"
+        _atomic_append_text(gitignore_path, payload)
     return list(missing)
 
 
