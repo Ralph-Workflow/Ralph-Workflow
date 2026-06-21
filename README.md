@@ -185,6 +185,14 @@ These are **unedited terminal captures** from a real run — not mock-ups.
 | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
 | [Full Docs](https://ralphworkflow.com/docs) | Quickstart, configuration, user stories, and more |
 
+## Community
+
+Questions, ideas, or something not working? Open an issue — the Codeberg tracker is the project's public forum.
+
+- **[Ask a question](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=question)** — anything from "will this work for my stack?" to feature ideas
+- **[PMF survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey)** (60 seconds) — the one signal we get since Ralph collects zero telemetry
+- **[See who's building with Ralph](USERS.md)** — 27+ projects and 15+ adopters
+
 ## Engineering-practice requirements
 
 Ralph Workflow depends on good software engineering practices — it does not replace them. You need:
