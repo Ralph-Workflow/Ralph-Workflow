@@ -225,7 +225,7 @@ development_analysis = "analysis"
 development_commit = "commit"
 ```
 
-`agy` (Google Anti Gravity) and `nanocoder` are also valid agent names in any chain alongside `claude`, `codex`, and `opencode`.
+`agy` (Google Anti Gravity), `nanocoder`, and `pi` (pi.dev) are also valid agent names in any chain alongside `claude`, `codex`, and `opencode`.
 
 In practice:
 
@@ -241,7 +241,7 @@ Multiple drains can point at the same chain. That lets you change agent policy w
 development = ["agy", "codex", "claude/sonnet"]
 ```
 
-Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"** — valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, and `agy`.
+Use this when your main question is **"which coding agent should Ralph Workflow try first during implementation?"** — valid agent names include `claude`, `codex`, `opencode`, `nanocoder`, `agy`, and `pi`.
 
 Nanocoder also supports provider/model routing through the same direct-agent syntax used for OpenCode. For example, `nanocoder/ollama/llama3.1` resolves to a built-in Nanocoder invocation with `--provider ollama --model llama3.1`.
 
@@ -366,6 +366,7 @@ The default value depends on the resolved transport (see `ralph/config/agent_con
 | `opencode` | `None` — agent decides at runtime |
 | `nanocoder` | `None` — agent decides at runtime |
 | `agy` | `None` — agent decides at runtime |
+| `pi` | `None` — agent decides at runtime |
 | `generic` | `None` — agent decides at runtime |
 
 The override precedence is the same as every other Ralph Workflow setting: **CLI flags > project-local `.agent/ralph-workflow.toml` > user-global `~/.config/ralph-workflow.toml` > bundled defaults** (see the precedence list at the top of this page). Set the switch explicitly when you want to override the transport-inferred default — for example, to force a Claude Code run to be sequential without changing every other Claude setting:

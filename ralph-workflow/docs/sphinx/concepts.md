@@ -37,7 +37,7 @@ Common phases include planning, development, review, fix, commit, and completion
 
 An **agent** is an external AI coding tool Ralph Workflow runs for a phase.
 
-Examples include Claude Code, Codex, OpenCode, and Google Anti Gravity-based setups. Ralph Workflow does not lock you into one provider.
+Examples include Claude Code, Codex, OpenCode, Pi.dev, and Google Anti Gravity-based setups. Ralph Workflow does not lock you into one provider.
 
 ## Agent chain
 
