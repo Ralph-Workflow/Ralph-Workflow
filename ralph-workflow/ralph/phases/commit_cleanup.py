@@ -294,21 +294,27 @@ def _is_safe_to_delete(repo_root: Path, path: str) -> bool:
     protected.
 
     The check order matters:
-    1. The agent-internal fast path (FIRST) -- Ralph runtime artifacts
-       under ``.agent/`` plus root-level ``checkpoint.json`` are
-       unconditionally deletable, even when tracked in HEAD.
+    1. The agent-internal fast path (FIRST statement in the function body)
+       -- Ralph runtime artifacts under ``.agent/`` plus root-level
+       ``checkpoint.json`` are unconditionally deletable, even when
+       tracked in HEAD. The fast path must execute BEFORE any other
+       work (``Path(path)``, ``path.lower()``, ``suffix``) so that the
+       engine-owned allowlist cannot be silently bypassed by a future
+       refactor that adds a new check above it. This is also the
+       guarantee that ``audit_agent_internal_paths`` pins via AST
+       placement inspection (see
+       ``ralph/testing/audit_agent_internal_paths.py``).
     2. Protected basenames win over suffix-based rules (so ``LICENSE.txt``
        is protected even though ``.txt`` is a generated-text suffix).
     3. Housekeeping basenames win over the unsafe-extension fall-through
        (so ``coverage.xml`` is deletable even though ``.xml`` is in
        ``_UNSAFE_EXTENSIONS``).
     """
+    if is_agent_internal_path(path):
+        return True
     candidate = Path(path)
     path_lower = path.lower()
     suffix = candidate.suffix.lower()
-
-    if is_agent_internal_path(path):
-        return True
     if _is_protected_path(repo_root, candidate, path_lower):
         return False
     return _is_deletable_housekeeping(repo_root, candidate, suffix)

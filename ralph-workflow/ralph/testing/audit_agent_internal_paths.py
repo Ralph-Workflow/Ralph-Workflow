@@ -44,6 +44,17 @@ Enforces non-vacuous invariants across:
    directories, paths outside ``.agent/``). All accepts must return
    True, all rejects must return False.
 
+5. **AST PLACEMENT** -- parse ``ralph/phases/commit_cleanup.py`` with the
+   ``ast`` module and verify that the FIRST executable statement inside
+   ``_is_safe_to_delete`` is the ``is_agent_internal_path(path)`` check.
+   This is the stronger guarantee the audit pins: a future refactor
+   could easily move the predicate call back behind ``Path(path)`` /
+   ``path.lower()`` / ``suffix`` setup statements and silently
+   re-introduce the original bug -- the literal-string check alone
+   would still pass because the call would still be present in the
+   function body. The AST check is independent of the literal-string
+   check and catches the placement drift directly.
+
 Usage:
     python -m ralph.testing.audit_agent_internal_paths
 
@@ -52,6 +63,7 @@ Exit 0 = clean, 1 = at least one invariant violated.
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import sys
 from pathlib import Path
@@ -94,6 +106,100 @@ class Invariant:
             if needle in content
         ]
         return [*missing, *forbidden]
+
+
+# Target function whose fast-path placement the audit pins.
+_FAST_PATH_TARGET_FUNCTION: str = "_is_safe_to_delete"
+
+# Expected first executable statement in ``_is_safe_to_delete``. The
+# predicate call must be the very first statement in the function body --
+# any statement ahead of it (e.g. ``candidate = Path(path)``,
+# ``path_lower = path.lower()``, ``suffix = candidate.suffix.lower()``)
+# is a violation because it bypasses the engine-owned allowlist for
+# paths whose shape trips one of those earlier checks first.
+_FAST_PATH_TARGET_SOURCE: str = "is_agent_internal_path(path)"
+
+
+def _check_fast_path_placement() -> list[str]:
+    """Verify the agent-internal fast path is the FIRST statement in ``_is_safe_to_delete``.
+
+    Uses Python's ``ast`` module to parse ``ralph/phases/commit_cleanup.py``
+    and locate the function body. Walks the body in source order and
+    returns a violation if the FIRST executable statement is NOT the
+    ``is_agent_internal_path(path)`` check.
+
+    This is the stronger guarantee the audit must pin: a future refactor
+    could easily move the predicate call back behind ``Path(path)`` /
+    ``path.lower()`` / ``suffix`` setup statements and silently re-introduce
+    the original bug -- the literal-string check alone would still pass
+    because the call would still be present in the function body.
+
+    Docstrings and ``pass`` statements are skipped; ``Expr`` nodes that are
+    plain string literals (e.g. ``"..."`` or ``'...'``) are treated as
+    docstrings and skipped per the Python language spec.
+
+    Returns:
+        List of violation strings. Empty on success.
+    """
+    problems: list[str] = []
+    rel_path = "phases/commit_cleanup.py"
+    try:
+        source = _read(rel_path)
+    except FileNotFoundError:
+        return [f"{rel_path}: file not found"]
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return [f"{rel_path}: syntax error during AST parse: {exc}"]
+
+    target: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == (
+            _FAST_PATH_TARGET_FUNCTION
+        ):
+            target = node
+            break
+
+    if target is None:
+        return [f"{rel_path}: function {_FAST_PATH_TARGET_FUNCTION!r} not found"]
+
+    body = target.body
+    if not body:
+        return [
+            f"{rel_path}: function {_FAST_PATH_TARGET_FUNCTION!r} has empty body -- "
+            "fast-path placement cannot be verified"
+        ]
+
+    # Skip docstring statements per CPython convention (PEP 257 / ast.get_docstring).
+    docstring_node = ast.get_docstring(target, clean=True)
+    body_to_check = list(body)
+    if docstring_node is not None and body_to_check:
+        first = body_to_check[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+        ):
+            body_to_check = body_to_check[1:]
+
+    if not body_to_check:
+        return [
+            f"{rel_path}: function {_FAST_PATH_TARGET_FUNCTION!r} body is empty after "
+            "skipping the docstring -- fast-path placement cannot be verified"
+        ]
+
+    first_stmt = body_to_check[0]
+    found = ast.unparse(first_stmt)
+    if _FAST_PATH_TARGET_SOURCE not in found:
+        problems.append(
+            f"{rel_path}: function {_FAST_PATH_TARGET_FUNCTION!r} first executable "
+            f"statement is {found!r}, expected to contain {_FAST_PATH_TARGET_SOURCE!r} "
+            "(agent-internal fast path must run BEFORE Path(path)/path.lower()/suffix "
+            "setup so it cannot be silently bypassed)"
+        )
+
+    return problems
 
 
 # Accept set: every canonical Ralph runtime artifact.
@@ -306,10 +412,12 @@ def main(argv: list[str] | None = None) -> int:
     for invariant in _INVARIANTS:
         problems.extend(invariant.violations())
     problems.extend(_behavioral_invariants())
+    problems.extend(_check_fast_path_placement())
 
     literal_count = sum(len(i.present) + len(i.absent) for i in _INVARIANTS)
     behavioral_count = len(_BEHAVIORAL_ACCEPT_PATHS) + len(_BEHAVIORAL_REJECT_PATHS)
-    total = literal_count + behavioral_count
+    placement_count = 1
+    total = literal_count + behavioral_count + placement_count
 
     if problems:
         print(f"AGENT-INTERNAL-PATHS AUDIT FAILED: {len(problems)} invariant violation(s)")
@@ -319,9 +427,9 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(
             "The Ralph runtime-artifact allowlist has drifted between the leaf module "
-            "(_agent_internal_paths.py), the commit_cleanup fast-path, and the bootstrap "
-            "gitignore/exclude seed. Re-read the rework plan in PLAN.md and restore the "
-            "missing/forbidden literals."
+            "(_agent_internal_paths.py), the commit_cleanup fast-path (literal + AST placement), "
+            "and the bootstrap gitignore/exclude seed. Re-read the rework plan in PLAN.md and "
+            "restore the missing/forbidden literals and the first-statement placement."
         )
         return 1
 
@@ -330,6 +438,8 @@ def main(argv: list[str] | None = None) -> int:
         "_agent_internal_paths.py exports the canonical frozensets + completion_seen_*.json "
         "glob + is_agent_internal_path predicate, "
         "commit_cleanup.py imports and invokes is_agent_internal_path as the fast-path, "
+        "_is_safe_to_delete places is_agent_internal_path(path) as the "
+        "FIRST executable statement (AST placement), "
         "bootstrap.py defines _DEFAULT_GIT_EXCLUDE_PATTERNS + auto_seed_default_git_exclude "
         "+ root-anchored /checkpoint.json (NOT bare checkpoint.json), "
         f"behavioral check accepts all {len(_BEHAVIORAL_ACCEPT_PATHS)} canonical paths "
