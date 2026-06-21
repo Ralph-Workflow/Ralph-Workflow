@@ -24,6 +24,27 @@ OUT OF SCOPE
 - Gemini CLI bare: no skill system. (The shipped ``agy`` entry covers
   Google's Antigravity CLI which IS a different product.)
 
+PI EXCLUSION (pi.dev)
+=====================
+The ``pi`` built-in agent is deliberately absent from
+``AGENT_SKILL_ROOTS`` and from the project-sibling skill roots above.
+The pi.dev documentation does NOT document a user-global skill
+discovery root analogous to ``~/.claude/skills/``,
+``~/.codex/skills/``, or ``~/.config/opencode/skills/``; the only
+documented skill loader is the per-invocation ``--skill <path>``
+flag, which is a transient argv shape rather than a persistent
+discovery root. Sources verified at audit time:
+``https://pi.dev/docs/latest/usage`` and
+``https://pi.dev/docs/latest/json`` (see
+``ralph-workflow/.agent/pi-research-notes.md`` and
+``ralph-workflow/.agent/tmp/pi_drift_audit.md`` for the
+audit-of-record). Adding a pi entry to this registry requires a
+live-verified upstream source URL documenting the user-global root;
+none exists today. The two skills-paths research tests
+(``tests/test_skills_agent_paths_research.py`` and
+``tests/test_skills_project_paths_research.py``) pin this
+no-pi-in-registry contract.
+
 MAINTENANCE
 ===========
 Each ``AgentSkillRoot`` entry carries a ``last_verified_iso`` field in
