@@ -450,6 +450,156 @@ def _check_best_effort_invariants() -> list[str]:
     return problems
 
 
+# Target function whose ``staging = ...`` assignment the audit pins.
+_STAGING_FILENAME_TARGET_FUNCTION: str = "_atomic_append_text"
+
+# The exact local-name the staging file is bound to in ``_atomic_append_text``.
+# Used by ``_check_staging_filename_uniqueness`` to find the executable
+# assignment and inspect its RHS for a per-call uniqueness source. A
+# regression that renames the local would surface as a missing-assignment
+# violation -- the audit forces the rename to be intentional.
+_STAGING_FILENAME_TARGET_VAR: str = "staging"
+
+# Per-call uniqueness sources that satisfy the staging-filename contract.
+# The RHS of ``staging = ...`` MUST reference at least one of these so two
+# same-process invocations with identical payload produce distinct staging
+# paths. ``os.getpid()`` and ``hashlib.sha256(...).hexdigest()[:N]`` alone
+# are NOT sufficient -- both are invariant across same-process,
+# same-payload calls. ``uuid4`` (and friends) are required.
+_STAGING_FILENAME_PER_CALL_NONCES: tuple[str, ...] = (
+    "uuid4",
+    "tempfile",
+)
+
+
+def _check_staging_filename_uniqueness() -> list[str]:
+    """Verify ``_atomic_append_text`` uses a per-call nonce in its staging filename.
+
+    Inspects the AST of ``ralph/git/operations.py::_atomic_append_text`` and
+    locates the ``staging = ...`` assignment. The RHS of that assignment and
+    every preceding local-assignment statement are unparsed and required to
+    contain at least one of the documented per-call uniqueness sources
+    (``uuid4`` or ``tempfile``).
+
+    This is the stronger guarantee the audit must pin: the literal-string
+    check on ``hashlib.sha256(...)`` and ``os.getpid()`` can be satisfied
+    by docstring or comment text, leaving the executable assignment free
+    to regress without the audit noticing. The AST check inspects the
+    actual ``ast.Assign`` RHS -- a regression to a non-unique staging
+    filename surfaces here as a missing-nonce violation.
+
+    Per-call uniqueness is required because two same-process invocations
+    of ``_atomic_append_text`` against the same target with identical
+    payload would otherwise reuse the same staging sibling and either
+    truncate a concurrent invoker's half-written content or hit
+    ``FileExistsError`` on rename.
+
+    Returns:
+        List of violation strings. Empty on success.
+    """
+    rel_path = "git/operations.py"
+    parsed = _parse_target_file(rel_path)
+    if isinstance(parsed, list):
+        return parsed
+
+    target = _find_function_def(parsed, _STAGING_FILENAME_TARGET_FUNCTION)
+    if isinstance(target, list):
+        return target
+
+    staging_assign = _find_named_assignment(target, _STAGING_FILENAME_TARGET_VAR)
+    if staging_assign is None:
+        return [
+            f"{rel_path}: function {_STAGING_FILENAME_TARGET_FUNCTION!r} does not assign "
+            f"to local {_STAGING_FILENAME_TARGET_VAR!r} -- the atomic publish staging sibling "
+            "must be derived via a named local so the audit can pin its construction"
+        ]
+
+    has_nonce = _contains_nonce(staging_assign) or _preceding_assignments_contain_nonce(
+        target, staging_assign
+    )
+    if has_nonce:
+        return []
+
+    return [
+        f"{rel_path}: function {_STAGING_FILENAME_TARGET_FUNCTION!r} "
+        f"{_STAGING_FILENAME_TARGET_VAR!r} assignment (line {staging_assign.lineno}) "
+        "and every preceding local-assignment statement in the function body "
+        f"do NOT reference a per-call uniqueness source (one of "
+        f"{list(_STAGING_FILENAME_PER_CALL_NONCES)!r}). Two same-process "
+        "invocations with identical payload would reuse the same staging "
+        "sibling and either truncate a concurrent invoker's half-written "
+        "content or hit FileExistsError on rename. The os.getpid() + "
+        "sha256(payload) suffix is NOT sufficient -- both are invariant "
+        "across same-process calls."
+    ]
+
+
+def _parse_target_file(rel_path: str) -> ast.AST | list[str]:
+    """Read and AST-parse ``rel_path``; return ``[violation]`` on failure."""
+    try:
+        source = _read(rel_path)
+    except FileNotFoundError:
+        return [f"{rel_path}: file not found"]
+    try:
+        return ast.parse(source)
+    except SyntaxError as exc:
+        return [f"{rel_path}: syntax error during AST parse: {exc}"]
+
+
+def _find_function_def(
+    tree: ast.AST,
+    function_name: str,
+) -> ast.FunctionDef | ast.AsyncFunctionDef | list[str]:
+    """Locate ``function_name`` in the parsed ``tree``; return ``[violation]`` if missing."""
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == (
+            function_name
+        ):
+            return node
+    return [
+        f"git/operations.py: function {function_name!r} not found -- "
+        "staging-filename uniqueness cannot be verified"
+    ]
+
+
+def _find_named_assignment(
+    target: ast.FunctionDef | ast.AsyncFunctionDef,
+    var_name: str,
+) -> ast.Assign | None:
+    """Find an ``ast.Assign`` inside ``target`` whose target is ``var_name``."""
+    for stmt in ast.walk(target):
+        if not isinstance(stmt, ast.Assign):
+            continue
+        for tgt in stmt.targets:
+            if isinstance(tgt, ast.Name) and tgt.id == var_name:
+                return stmt
+    return None
+
+
+def _contains_nonce(stmt: ast.Assign) -> bool:
+    """Return True if the RHS of ``stmt`` references a per-call uniqueness source."""
+    return any(
+        nonce in ast.unparse(stmt.value)
+        for nonce in _STAGING_FILENAME_PER_CALL_NONCES
+    )
+
+
+def _preceding_assignments_contain_nonce(
+    target: ast.FunctionDef | ast.AsyncFunctionDef,
+    anchor: ast.Assign,
+) -> bool:
+    """Return True if any ``ast.Assign`` before ``anchor`` references a per-call nonce."""
+    assert anchor.lineno is not None
+    for stmt in ast.walk(target):
+        if not isinstance(stmt, ast.Assign):
+            continue
+        if stmt.lineno is None or stmt.lineno > anchor.lineno:
+            continue
+        if _contains_nonce(stmt):
+            return True
+    return False
+
+
 # Accept set: every canonical Ralph runtime artifact.
 _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     # Top-level basenames under .agent/ (14 total per AGENT_INTERNAL_TOP_LEVEL_BASENAMES).
@@ -685,18 +835,21 @@ def main(argv: list[str] | None = None) -> int:
     problems.extend(_check_fast_path_placement())
     problems.extend(_check_auto_seed_placement())
     problems.extend(_check_best_effort_invariants())
+    problems.extend(_check_staging_filename_uniqueness())
 
     literal_count = sum(len(i.present) + len(i.absent) for i in _INVARIANTS)
     behavioral_count = len(_BEHAVIORAL_ACCEPT_PATHS) + len(_BEHAVIORAL_REJECT_PATHS)
     placement_count = 1
     auto_seed_count = 1
     best_effort_count = 2
+    staging_count = 1
     total = (
         literal_count
         + behavioral_count
         + placement_count
         + auto_seed_count
         + best_effort_count
+        + staging_count
     )
 
     if problems:
@@ -727,7 +880,9 @@ def main(argv: list[str] | None = None) -> int:
         "bootstrap.py defines _DEFAULT_GIT_EXCLUDE_PATTERNS + auto_seed_default_git_exclude "
         "+ root-anchored /checkpoint.json (NOT bare checkpoint.json), "
         "git/operations.py _atomic_append_text staging filename is content-derived "
-        "(sha256(payload).hexdigest()[:16] + os.getpid()), NOT id(payload)-derived, "
+        "(sha256(payload).hexdigest()[:16] + os.getpid()) AND uses a per-call nonce "
+        "(uuid4 or tempfile) in the executable staging assignment (AST), "
+        "NOT id(payload)-derived, "
         f"behavioral check accepts all {len(_BEHAVIORAL_ACCEPT_PATHS)} canonical paths "
         f"and rejects all {len(_BEHAVIORAL_REJECT_PATHS)} negative paths."
     )

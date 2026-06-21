@@ -10,6 +10,7 @@ import hashlib
 import os
 import re
 import time
+import uuid
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -582,8 +583,8 @@ def _atomic_append_text(
     Mirrors the pattern from ``ralph/mcp/transport/agy.py:99-127`` so a
     SIGKILL mid-write leaves the target file intact -- the new content is
     staged in a sibling file (with a sha256(payload)-derived hash plus
-    os.getpid() suffix for TOCTOU safety), then ``Path.replace()``-published
-    atomically.
+    os.getpid() suffix plus a per-call ``uuid.uuid4().hex[:16]`` nonce for
+    TOCTOU safety), then ``Path.replace()``-published atomically.
 
     Boundary normalization: when ``path`` exists and its content does NOT
     end with ``\\n``, the helper inserts a single ``\\n`` separator before
@@ -632,7 +633,10 @@ def _atomic_append_text(
         separator = b"\n"
     _staging_hash = hashlib.sha256(payload.encode(encoding)).hexdigest()[:16]
     _staging_pid = os.getpid()
-    staging = path.with_suffix(path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}")
+    _staging_nonce = uuid.uuid4().hex[:16]
+    staging = path.with_suffix(
+        path.suffix + f".ralph-staging.{_staging_pid}.{_staging_hash}.{_staging_nonce}"
+    )
     try:
         staging.write_bytes(existing + separator + payload.encode(encoding))
         staging.replace(path)
