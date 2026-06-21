@@ -9,6 +9,8 @@ Ralph Workflow is a free, open-source Loop Engineering framework that runs the c
 ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)  
 [![Built with Ralph Loop](assets/built-with-ralph-loop.svg)](https://github.com/Ralph-Workflow/Ralph-Workflow)
 
+🌐 **[ralphworkflow.com](https://ralphworkflow.com)** — full site with comparison guides, first-run walkthrough, blog, and social card.
+
 *The original Loop Engineering toolkit · 13,230+ lifetime PyPI downloads · 4,911 last 30 days · 92 last 24h (pepy.tech, 2026-06-21).*
 
 > **Built something with Ralph?** See the [Showcase](SHOWCASE.md) — add a credit line to your README and you're on the page (60-second task). Also see the [Ecosystem Map](ECOSYSTEM.md) — projects using Ralph discovered through code-level search.
