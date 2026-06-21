@@ -312,6 +312,57 @@ def test_record_subagent_work_description_redacts_bearer_token() -> None:
     assert "Bearer" not in stored
 
 
+def test_record_subagent_work_description_redacts_lowercase_bearer_token() -> None:
+    """A description containing ``authorization: bearer <token>`` (all lowercase)
+    has the bearer prefix redacted. This is the analysis-feedback reproducer:
+    a case-sensitive regex previously missed lowercase authorization headers
+    and let ``SECRET123`` leak into the operator-visible
+    ``subagent_activity`` field on ``WaitingStatusEvent``.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="hdr: authorization: bearer SECRET123")
+    stored = wd._last_subagent_progress_description or ""
+    assert "SECRET123" not in stored, (
+        f"lowercase bearer token 'SECRET123' must NOT leak, got: {stored!r}"
+    )
+    assert "bearer" not in stored, (
+        f"lowercase 'bearer' marker must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_uppercase_bearer_token() -> None:
+    """A description containing ``AUTHORIZATION: BEARER <token>`` (all uppercase)
+    has the bearer prefix redacted. Mirrors the lowercase regression test to
+    pin both ends of the case-insensitive contract.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="hdr: AUTHORIZATION: BEARER UPPERSECRET")
+    stored = wd._last_subagent_progress_description or ""
+    assert "UPPERSECRET" not in stored, (
+        f"uppercase bearer token 'UPPERSECRET' must NOT leak, got: {stored!r}"
+    )
+    assert "BEARER" not in stored, (
+        f"uppercase 'BEARER' marker must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_mixed_case_bearer_token() -> None:
+    """A description containing ``AuThOrIzAtIoN: BeArEr <token>`` (mixed case)
+    has the bearer prefix redacted. Locks down the case-insensitive contract
+    for arbitrary mixed-case header variants.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description="hdr: AuThOrIzAtIoN: BeArEr MiXeDcAsE")
+    stored = wd._last_subagent_progress_description or ""
+    assert "MiXeDcAsE" not in stored, (
+        f"mixed-case bearer token 'MiXeDcAsE' must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+
 def test_record_subagent_work_description_redacts_private_key_marker() -> None:
     """A description containing a PEM ``-----BEGIN ... PRIVATE KEY-----``
     marker is redacted to prevent private-key fragments leaking into logs."""

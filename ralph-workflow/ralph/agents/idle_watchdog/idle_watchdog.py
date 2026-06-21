@@ -186,7 +186,13 @@ _CONTROL_CHARS_RE = re.compile(
 #   * ``"content": "<value>"`` -- content fragment
 #   * ``/etc/<path>``, ``/proc/<path>``, ``/sys/<path>`` -- sensitive roots + content
 #   * ``/root/<path>``, ``~/.ssh/<path>`` -- private homes + content
-#   * ``Authorization: Bearer <token>`` -- bearer token leakage (rest of line redacted)
+#   * ``Authorization: Bearer <token>`` (case-insensitive) -- bearer token leakage
+#     (rest of line redacted). The ``(?i:authorization)`` / ``(?i:bearer)``
+#     inline flags cover ``authorization: bearer``, ``Authorization: Bearer``,
+#     ``AUTHORIZATION: BEARER``, ``authorization:BEARER``, and any mixed-case
+#     variant; case-sensitive regexes previously missed lowercase
+#     ``authorization: bearer SECRET123`` and let the token leak into the
+#     operator-visible subagent_activity field.
 #   * ``-----BEGIN ... PRIVATE KEY-----`` -- PEM private key fragments (rest of line redacted)
 #
 # The JSON-quoted variants use ``"(?:[^"\\\n]|\\.)*"`` so the entire
@@ -209,7 +215,7 @@ _SENSITIVE_PATH_TOKEN_RE = re.compile(
     r"""
     (?:/etc/|/proc/|/sys/|/root/|~/\.ssh/)[^\s\x1b\n]*
     |
-    Authorization\s*:\s*Bearer[^\n]*
+    (?i:authorization)\s*:\s*(?i:bearer)[^\n]*
     |
     -----BEGIN\s+[A-Z ]*PRIVATE\s+KEY-----[^\n]*
     """,
@@ -1562,14 +1568,41 @@ class IdleWatchdog:
             self._entry_corroboration = None
 
     def _safe_corroborate(self) -> CorroborationSnapshot:
-        """Call the corroborator safely, returning an empty snapshot on None or error."""
+        """Call the corroborator safely, returning an empty snapshot on None or error.
+
+        Fail-closed invariant: when the corroborator returns ``None``
+        (or any non-``CorroborationSnapshot`` value), normalize to an
+        empty ``CorroborationSnapshot`` so callers can safely read
+        ``corroboration.alive_by`` without a ``NoneType`` crash. An
+        empty snapshot is equivalent to "no live evidence", which is
+        the conservative no-defer signal. Callers such as
+        ``_evaluate_no_output_at_start`` read ``corroboration.alive_by``
+        directly, so a ``None`` return would otherwise raise
+        ``AttributeError`` mid-evaluation and break the watchdog
+        decision path instead of failing closed.
+        """
         if self._corroborator is None:
             return CorroborationSnapshot()
         try:
-            return self._corroborator()
+            # Cast to ``object`` so mypy doesn't narrow ``snapshot`` to
+            # ``CorroborationSnapshot`` and reject the defensive
+            # ``isinstance`` check below as unreachable. At runtime the
+            # corroborator IS typed as ``Callable[[], CorroborationSnapshot]``
+            # but the fail-closed invariant requires the isinstance
+            # check to remain reachable so a misbehaving corroborator
+            # (e.g. one that returns ``None``) is normalized to an empty
+            # snapshot instead of crashing downstream callers.
+            snapshot = cast("object", self._corroborator())
         except Exception:
             self._log.debug("idle watchdog: corroborator raised (suppressed)")
             return CorroborationSnapshot()
+        if not isinstance(snapshot, CorroborationSnapshot):
+            self._log.debug(
+                "idle watchdog: corroborator returned non-CorroborationSnapshot"
+                " (suppressed; treating as empty snapshot)"
+            )
+            return CorroborationSnapshot()
+        return snapshot
 
     def _build_corroboration_diag(
         self,

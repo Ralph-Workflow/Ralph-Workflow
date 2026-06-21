@@ -332,3 +332,121 @@ class TestNoOutputAtStartLiveCorroborationDefer:
             f"expected last_fire_reason == NO_OUTPUT_AT_START, got"
             f" {watchdog.last_fire_reason}"
         )
+
+
+class TestSafeCorroborateFailsClosed:
+    """Regression: ``_safe_corroborate`` MUST normalize a ``None`` (or any
+    non-``CorroborationSnapshot``) return to an empty
+    ``CorroborationSnapshot`` so callers like ``_evaluate_no_output_at_start``
+    can safely read ``corroboration.alive_by`` without an ``AttributeError``.
+
+    Pre-fix, ``_safe_corroborate`` returned ``self._corroborator()``
+    directly. When the corroborator returned ``None``, callers that read
+    ``corroboration.alive_by`` crashed mid-evaluation instead of
+    failing closed to a no-defer signal. The watchdog is supposed to
+    fail closed (empty snapshot = "no live evidence" = conservative
+    no-defer), so the empty-snapshot normalization is the correct
+    fail-closed behavior.
+
+    These tests cover three contract paths:
+      1. ``corroborator=lambda: None`` returns ``None`` -> watchdog
+         evaluation continues safely and fires NO_OUTPUT_AT_START
+         (empty corroboration means no live evidence -> no defer).
+      2. ``corroborator=lambda: "not a snapshot"`` returns a non-snapshot
+         value -> normalized to empty, watchdog continues safely.
+      3. ``_safe_corroborate`` directly returns a
+         ``CorroborationSnapshot`` even when the corroborator returns
+         ``None`` (unit-level assertion of the normalization).
+    """
+
+    def test_safe_corroborate_normalizes_none_return_to_empty_snapshot(self) -> None:
+        """A corroborator returning ``None`` is normalized to an empty
+        ``CorroborationSnapshot`` so callers never see a ``None`` snapshot.
+        """
+        config = TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            no_output_at_start_seconds=60.0,
+            max_waiting_on_child_seconds=1800.0,
+            max_waiting_on_child_no_progress_seconds=600.0,
+        )
+        clock = FakeClock(start=0.0)
+
+        # Corroborator that returns None (the bug case).
+        watchdog = IdleWatchdog(config, clock, corroborator=lambda: None)
+        watchdog.record_invocation_start()
+
+        snapshot = watchdog._safe_corroborate()
+        assert snapshot is not None, (
+            "_safe_corroborate MUST normalize None to an empty snapshot"
+        )
+        assert isinstance(snapshot, CorroborationSnapshot)
+        assert snapshot.alive_by is None
+        # scoped_child_active is None by default (Optional[bool]); the
+        # important property is "no live evidence" which both None and
+        # False satisfy. Falsy check pins the conservative no-defer
+        # signal without coupling to the default representation.
+        assert not snapshot.scoped_child_active
+
+    def test_safe_corroborate_normalizes_non_snapshot_return_to_empty_snapshot(
+        self,
+    ) -> None:
+        """A corroborator returning any non-``CorroborationSnapshot`` value
+        (e.g. a plain string, dict, int) is normalized to an empty snapshot.
+        """
+        config = TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            no_output_at_start_seconds=60.0,
+            max_waiting_on_child_seconds=1800.0,
+            max_waiting_on_child_no_progress_seconds=600.0,
+        )
+        clock = FakeClock(start=0.0)
+
+        for bogus_value in ("not a snapshot", 42, {"alive_by": "OS_DESCENDANT"}, []):
+            watchdog = IdleWatchdog(
+                config, clock, corroborator=lambda value=bogus_value: value
+            )
+            snapshot = watchdog._safe_corroborate()
+            assert isinstance(snapshot, CorroborationSnapshot), (
+                f"non-snapshot return {bogus_value!r} MUST normalize to empty"
+                f" CorroborationSnapshot, got {snapshot!r}"
+            )
+            assert snapshot.alive_by is None
+            assert not snapshot.scoped_child_active
+
+    def test_watchdog_evaluate_continues_safely_when_corroborator_returns_none(
+        self,
+    ) -> None:
+        """Watchdog evaluation does NOT crash when the corroborator returns
+        ``None``. With no live evidence and no prior waiting run, the
+        watchdog fires NO_OUTPUT_AT_START (the no-false-positive contract
+        is preserved because empty corroboration = "no live evidence" =
+        conservative no-defer).
+        """
+        config = TimeoutPolicy(
+            idle_timeout_seconds=300.0,
+            no_output_at_start_seconds=60.0,
+            max_waiting_on_child_seconds=1800.0,
+            max_waiting_on_child_no_progress_seconds=600.0,
+        )
+        clock = FakeClock(start=0.0)
+
+        watchdog = IdleWatchdog(config, clock, corroborator=lambda: None)
+        watchdog.record_invocation_start()
+
+        # Drive past no_output_at_start_seconds with no activity. With
+        # idle_timeout_seconds=300 the watchdog reaches the
+        # _evaluate_no_output_at_start path (no idle_elapsed early-out).
+        # Pre-fix this raised AttributeError because corroboration was None
+        # and _evaluate_no_output_at_start read corroboration.alive_by.
+        clock.advance(61.0)
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+
+        # No live evidence + no prior waiting run => NO_OUTPUT_AT_START fires.
+        assert verdict == WatchdogVerdict.FIRE, (
+            f"expected FIRE (no live evidence, no prior waiting run),"
+            f" got verdict={verdict}"
+        )
+        assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START, (
+            f"expected last_fire_reason == NO_OUTPUT_AT_START, got"
+            f" {watchdog.last_fire_reason}"
+        )
