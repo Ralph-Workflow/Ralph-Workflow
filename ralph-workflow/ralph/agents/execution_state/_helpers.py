@@ -301,16 +301,25 @@ def _classify_generic_child_signal(line: str) -> AgentActivitySignal | None:
     The classifier recognises three families of markers so
     Claude / Codex / Generic / Agy / Nanocoder transports (which
     emit child-scope markers under their own format) still feed the
-    watchdog's per-channel evidence surface per PLAN step 8:
+    watchdog's per-channel evidence surface per PLAN step 8. The
+    classifier is intentionally STRICT: only explicit child- or
+    subagent-scoped event names classify. Bare provider-level
+    event names (``progress``, ``tool_call``, ``task_progress``,
+    ``heartbeat``, ``alive``) are NOT classified -- they appear
+    in parent-level stdout and do NOT prove that a subagent is
+    active. See :func:`_classify_generic_child_signal_from_json`
+    for the full false-positive contract.
 
     1. JSON envelopes whose ``type`` / ``event`` value is in
        :data:`_GENERIC_CHILD_PROGRESS_KIND` (e.g. ``child_progress``,
-       ``subagent_progress``, ``progress``, ``tool_call``,
-       ``task_progress``) -> CHILD_PROGRESS.
+       ``subagent_progress``) -> CHILD_PROGRESS. Bare
+       ``progress`` / ``tool_call`` / ``task_progress`` events are
+       NOT classified (no child scoping).
     2. JSON envelopes whose ``type`` / ``event`` value is in
        :data:`_GENERIC_CHILD_HEARTBEAT_KIND` (e.g. ``child_heartbeat``,
-       ``subagent_heartbeat``, ``child_alive``, ``subagent_alive``,
-       ``heartbeat``, ``alive``) -> CHILD_HEARTBEAT.
+       ``subagent_heartbeat``, ``child_alive``, ``subagent_alive``)
+       -> CHILD_HEARTBEAT. Bare ``heartbeat`` / ``alive`` events are
+       NOT classified (no child scoping).
     3. Any ``type`` / ``event`` value starting with the ``child_`` /
        ``subagent_`` prefix (e.g. ``subagent_progress_phase1``,
        ``child_progress_phase1``) -> CHILD_PROGRESS.
@@ -318,6 +327,10 @@ def _classify_generic_child_signal(line: str) -> AgentActivitySignal | None:
        optional leading whitespace) ``[child]``, ``[subagent]``,
        ``subagent progress``, ``child progress`` -> CHILD_PROGRESS;
        ``subagent heartbeat`` / ``child heartbeat`` -> CHILD_HEARTBEAT.
+       Bare ``progress`` / ``task progress`` / ``heartbeat`` /
+       ``alive`` plain-text lines (without the ``subagent`` /
+       ``child`` qualifier) are NOT classified (no explicit
+       child scoping).
 
     Terminal events (``child_complete``, ``child_failed``,
     ``child_terminal``, ``child_cancelled``, ``subagent_complete``,
