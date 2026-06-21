@@ -62,6 +62,7 @@ _ICON_BY_KIND: dict[ActivityEventKind, str] = {
     ActivityEventKind.LIFECYCLE: "◆",
     ActivityEventKind.HEARTBEAT: "·",
     ActivityEventKind.PROGRESS: "⏵",
+    ActivityEventKind.SUBAGENT_PROGRESS: "⏵",
     ActivityEventKind.UNKNOWN: "?",
 }
 

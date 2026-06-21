@@ -603,3 +603,68 @@ def test_silent_subagent_does_not_change_when_waiting() -> None:
     )
     # LOADING wins (branch 5) over SILENT_SUBAGENT (branch 7).
     assert kind == StuckKind.LOADING
+
+
+def test_no_silent_subagent_when_subagent_liveness_alive_by_is_not_none() -> None:
+    """A non-None ``alive_by`` on the subagent_liveness channel MUST
+    prevent SILENT_SUBAGENT.
+
+    AC-05 requires the SILENT_SUBAGENT branch to depend on
+    ``alive_by is None``. When the corroborator still reports a live
+    child (even with stale progress), the diagnostic must not fire.
+    With no first-party or fresh side-channel activity, the verdict
+    falls through to STUCK.
+    """
+    summary = _multi_summary(
+        subagent_output_at=_NOW - 1000.0,
+        subagent_liveness_at=_NOW - 1000.0,
+        alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+    )
+    inputs = cast(
+        "ClassifyStuckInputs",
+        {
+            "is_waiting_state": False,
+            "connectivity_state": "online",
+            "evidence_summary": summary,
+            "classify_quiet": _ClassifyQuietStub(
+                state=AgentExecutionState.ACTIVE,
+            ),
+            "activity_evidence_ttl_seconds": _TTL_SECONDS,
+        },
+    )
+    kind = classify_stuck(
+        **inputs,
+        silent_subagent_seconds=180.0,
+    )
+    assert kind == StuckKind.STUCK, (
+        f"non-None alive_by must prevent SILENT_SUBAGENT; got {kind}"
+    )
+
+
+def test_no_silent_subagent_when_only_liveness_alive_by_not_none() -> None:
+    """Even with no subagent_output evidence, a stale subagent_liveness
+    channel that carries a non-None ``alive_by`` MUST NOT be labeled
+    SILENT_SUBAGENT.
+    """
+    summary = _multi_summary(
+        subagent_output_at=None,
+        subagent_liveness_at=_NOW - 1000.0,
+        alive_by=AliveBy.FRESH_PROGRESS,
+    )
+    inputs = cast(
+        "ClassifyStuckInputs",
+        {
+            "is_waiting_state": False,
+            "connectivity_state": "online",
+            "evidence_summary": summary,
+            "classify_quiet": _ClassifyQuietStub(
+                state=AgentExecutionState.ACTIVE,
+            ),
+            "activity_evidence_ttl_seconds": _TTL_SECONDS,
+        },
+    )
+    kind = classify_stuck(
+        **inputs,
+        silent_subagent_seconds=180.0,
+    )
+    assert kind == StuckKind.STUCK

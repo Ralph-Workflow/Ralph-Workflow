@@ -137,6 +137,41 @@ def _is_resumable_fire_reason(reason: WatchdogFireReason) -> bool:
     return reason in _RESUMABLE_FIRE_REASONS
 
 
+def _convert_idle_stream_timeout_to_agent_error(
+    agent_name: str,
+    exc: _IdleStreamTimeoutError,
+    parsed_output: tuple[str, ...] | list[str],
+    *,
+    explicit_completion_seen: bool = False,
+    captured_session_id: str | None = None,
+    expected_session_id: str | None = None,
+) -> AgentInactivityTimeoutError:
+    """Convert an in-stream ``_IdleStreamTimeoutError`` into ``AgentInactivityTimeoutError``.
+
+    This is the canonical invocation-layer seam that the line readers
+    use when the idle watchdog fires (or post-exit detects a hang). The
+    wrapper exception carries the watchdog fire reason; this helper
+    threads the session-resume metadata (``session_resume_safe`` and
+    ``resumable_session_id``) that the recovery controller consults
+    when deciding whether to resume the prior agent session.
+    """
+    session_resume_safe = _is_resumable_fire_reason(exc.reason)
+    return AgentInactivityTimeoutError(
+        agent_name,
+        exc.timeout_seconds,
+        _bounded_output_lines(
+            tuple(parsed_output),
+            explicit_completion_seen=explicit_completion_seen,
+        ),
+        InactivityTimeoutOpts(
+            reason=exc.reason,
+            session_resume_safe=session_resume_safe,
+            resumable_session_id=captured_session_id or expected_session_id,
+            diagnostic=exc.diagnostic,
+        ),
+    )
+
+
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     env = os.environ.copy()
     if extra_env:
@@ -817,20 +852,13 @@ def _run_subprocess_and_read_lines(
                     WatchdogFireReason.PROCESS_EXIT_HANG,
                 )
         except _IdleStreamTimeoutError as exc:
-            session_resume_safe = _is_resumable_fire_reason(exc.reason)
-            raise AgentInactivityTimeoutError(
+            raise _convert_idle_stream_timeout_to_agent_error(
                 _agent_command_name(ctx.config),
-                exc.timeout_seconds,
-                _bounded_output_lines(
-                    tuple(parsed_output),
-                    explicit_completion_seen=explicit_completion_seen,
-                ),
-                InactivityTimeoutOpts(
-                    reason=exc.reason,
-                    session_resume_safe=session_resume_safe,
-                    resumable_session_id=captured_session_id or reader_ctx.expected_session_id,
-                    diagnostic=exc.diagnostic,
-                ),
+                exc,
+                tuple(parsed_output),
+                explicit_completion_seen=explicit_completion_seen,
+                captured_session_id=captured_session_id,
+                expected_session_id=reader_ctx.expected_session_id,
             ) from exc
 
         _check_process_result(

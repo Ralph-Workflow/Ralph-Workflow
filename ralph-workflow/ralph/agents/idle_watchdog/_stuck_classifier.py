@@ -228,9 +228,17 @@ def _silent_subagent_path(
 
     Specifically: at least one subagent channel (SUBAGENT_OUTPUT or
     SUBAGENT_LIVENESS) has ``counter >= 1`` AND ``last_at`` is older
-    than ``silent_subagent_seconds``.  This is the SILENT_SUBAGENT
-    diagnostic: a subagent was dispatched, made progress at least
-    once, then went silent for >silent_subagent_seconds.
+    than ``silent_subagent_seconds`` AND ``alive_by`` is ``None``.
+    This is the SILENT_SUBAGENT diagnostic: a subagent was
+    dispatched, made progress at least once, then went silent for
+    >silent_subagent_seconds with no live-child signal from the
+    corroborator.
+
+    A non-``None`` ``alive_by`` on the ``subagent_liveness`` channel
+    means the corroborator still considers the child alive (even if
+    progress is stale). That case is handled by the higher-priority
+    LOADING branch when the signal is fresh, or falls through to
+    STUCK when it is stale; it must NOT be labeled SILENT_SUBAGENT.
 
     The function is a pure deterministic helper used only by
     :func:`classify_stuck` and only when ``silent_subagent_seconds > 0``.
@@ -240,6 +248,25 @@ def _silent_subagent_path(
     """
     if silent_subagent_seconds <= 0:
         return False
+
+    # AC-05: SILENT_SUBAGENT requires alive_by is None. If the
+    # corroborator reports a live child on the subagent_liveness
+    # channel (alive_by != None), the subagent is still considered
+    # alive even when its progress signal is stale. That case is
+    # handled by the higher-priority LOADING branch when fresh, or
+    # falls through to STUCK when stale; it must NOT be labeled
+    # SILENT_SUBAGENT regardless of stale subagent_output evidence.
+    for channel in summary.channels:
+        name = (
+            channel.channel_name.value
+            if hasattr(channel.channel_name, "value")
+            else str(channel.channel_name)
+        )
+        if name != "subagent_liveness":
+            continue
+        if (channel.counter or 0) >= 1 and channel.alive_by is not None:
+            return False
+
     has_subagent_evidence = False
     any_subagent_stale = False
     for channel in summary.channels:

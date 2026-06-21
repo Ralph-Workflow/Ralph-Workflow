@@ -108,7 +108,8 @@ def test_subagent_progress_event_emitted_for_tool_use(tmp_path: Path) -> None:
         "stream_parsed_agent_activity MUST surface a SUBAGENT_PROGRESS"
         f" event for a tool_use line; captured={captured}"
     )
-    # The summary must mention the sanitized tool name (tool_use:Bash).
-    assert any("Bash" in summary for _, _, summary in progress_events), (
-        f"SUBAGENT_PROGRESS event summary MUST carry the sanitized tool name; captured={captured}"
+    # The summary must be the exact sanitized parser-layer summary.
+    assert any(summary == "tool_use:Bash" for _, _, summary in progress_events), (
+        "SUBAGENT_PROGRESS event summary MUST be the exact sanitized"
+        f" 'tool_use:Bash' summary; captured={captured}"
     )

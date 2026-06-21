@@ -18,7 +18,9 @@ sleep, no real network; the 60s combined budget is preserved.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
@@ -39,7 +41,12 @@ from ralph.agents.invoke import (
 from ralph.agents.invoke._agent_inactivity_timeout_error import (
     AgentInactivityTimeoutError,
 )
+from ralph.agents.invoke._errors import _IdleStreamTimeoutError
 from ralph.agents.invoke._inactivity_timeout_opts import InactivityTimeoutOpts
+from ralph.agents.invoke._process_reader import (
+    _convert_idle_stream_timeout_to_agent_error,
+    _ProcessLineReader,
+)
 from ralph.agents.invoke._session_resume import (
     recovery_action_for_failure_reason,
     resolve_resume_session_id,
@@ -49,6 +56,9 @@ from ralph.agents.timeout_clock import FakeClock
 from ralph.pipeline.agent_retry_intent import (
     agent_retry_intent_for_failure,
 )
+
+if TYPE_CHECKING:
+    from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
 
 _RESUMABLE_REASONS: frozenset[str] = frozenset(
     {
@@ -84,16 +94,59 @@ class _NoProcessMonitor:
         return {}
 
 
-def test_fire_no_output_at_start_yields_inactivity_error() -> None:
-    """Build an IdleWatchdog, force NO_OUTPUT_AT_START to fire, and
-    assert the watchdog's fire path raises ``IdleWatchdogKilledError``
-    with reason='no_output_at_start' and ``child_alive`` set
-    correctly.
+class _FakeManagedProcess:
+    """Fake process handle for exercising ``_ProcessLineReader._check_fire``.
 
-    Uses FakeClock so the wall-clock advance is deterministic; the
-    watchdog fires ``NO_OUTPUT_AT_START`` at ``no_output_at_start_seconds``
-    when no output, no tool call, no file change, and no subagent
-    output has been observed.
+    ``_check_fire`` calls ``terminate`` and reads ``pid``; we keep
+    ``pid`` as ``None`` so no real process tree teardown runs in the
+    test, and we record whether ``terminate`` was invoked.
+    """
+
+    def __init__(self) -> None:
+        self.pid: int | None = None
+        self.terminate_calls: list[float] = []
+
+    def terminate(self, *, grace_period_s: float = 0.5) -> None:
+        self.terminate_calls.append(grace_period_s)
+
+
+@dataclass
+class _FakeCheckFireSelf:
+    """Minimal fake reader self for calling ``_ProcessLineReader._check_fire``.
+
+    The method needs the policy, clock, lines queue, last hard-stop
+    slot, and a fake handle.  Everything else is ignored.
+    """
+
+    _policy: TimeoutPolicy
+    _clock: FakeClock
+    _lines_lock: threading.Lock = field(default_factory=threading.Lock)
+    _lines_queue: list[str] = field(default_factory=list)
+    _last_hard_stop: list[WaitingStatusEvent | None] = field(
+        default_factory=lambda: [None]
+    )
+    _last_activity_kind: str = "none"
+    _handle: _FakeManagedProcess = field(default_factory=_FakeManagedProcess)
+
+
+class _NoOpStrategy:
+    """Stub execution strategy for the fake reader self."""
+
+    def observe_line(self, _line: str) -> None:
+        pass
+
+
+def test_fire_no_output_at_start_yields_inactivity_error() -> None:
+    """Build an IdleWatchdog, force NO_OUTPUT_AT_START to fire, drive the
+    real ``_ProcessLineReader._check_fire`` path, and then exercise the
+    canonical invocation-layer seam
+    (``_convert_idle_stream_timeout_to_agent_error``) that converts the
+    watchdog fire into an ``AgentInactivityTimeoutError``.
+
+    Asserts the typed ``IdleWatchdogKilledError`` is attached as
+    ``__cause__`` on the wrapper, and that the recovered
+    ``AgentInactivityTimeoutError`` carries the fire reason,
+    ``session_resume_safe=True``, and the expected session id.
     """
     policy = TimeoutPolicy(
         idle_timeout_seconds=60.0,
@@ -120,17 +173,41 @@ def test_fire_no_output_at_start_yields_inactivity_error() -> None:
     )
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
-    # Build the typed IdleWatchdogKilledError using the fire reason.
-    fired_reason = watchdog.last_fire_reason
-    assert fired_reason is not None
-    typed_exc = IdleWatchdogKilledError(
-        reason=fired_reason.value,
-        signal=15,
-        child_alive=None,
+    # Drive the real line-reader fire path with a fake reader self.
+    fake_self = _FakeCheckFireSelf(_policy=policy, _clock=clock)
+    result = _ProcessLineReader._check_fire(
+        fake_self, watchdog, WatchdogVerdict.FIRE
     )
-    assert typed_exc.reason == WatchdogFireReason.NO_OUTPUT_AT_START.value
-    assert typed_exc.signal == 15
-    assert typed_exc.child_alive is None
+    assert result is not None, (
+        "_check_fire must return a wrapper when the verdict is FIRE"
+    )
+    pending_lines, wrapper = result
+    assert isinstance(wrapper, _IdleStreamTimeoutError)
+    assert wrapper.reason == WatchdogFireReason.NO_OUTPUT_AT_START
+
+    # The typed IdleWatchdogKilledError is the __cause__ of the wrapper.
+    assert isinstance(wrapper.__cause__, IdleWatchdogKilledError)
+    assert wrapper.__cause__.reason == WatchdogFireReason.NO_OUTPUT_AT_START.value
+    assert wrapper.__cause__.child_alive is False
+
+    # Now exercise the canonical conversion seam.
+    expected_session_id = "prior-session-abc"
+    timeout_exc = _convert_idle_stream_timeout_to_agent_error(
+        agent_name="test-agent",
+        exc=wrapper,
+        parsed_output=tuple(pending_lines),
+        explicit_completion_seen=False,
+        captured_session_id=None,
+        expected_session_id=expected_session_id,
+    )
+    assert isinstance(timeout_exc, AgentInactivityTimeoutError)
+    assert timeout_exc.reason == WatchdogFireReason.NO_OUTPUT_AT_START
+    assert timeout_exc.session_resume_safe is True, (
+        "NO_OUTPUT_AT_START must be resume-safe"
+    )
+    assert timeout_exc.resumable_session_id == expected_session_id, (
+        "the conversion seam MUST thread the expected session id"
+    )
 
 
 # ---------------------------------------------------------------------------
