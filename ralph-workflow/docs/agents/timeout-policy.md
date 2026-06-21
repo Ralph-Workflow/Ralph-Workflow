@@ -361,14 +361,35 @@ The ``NO_OUTPUT_AT_START`` reason has been added to the ``session_resume_safe`` 
 
 ### Cross-transport subagent visibility
 
-A new ``_classify_generic_child_signal`` classifier in ``ralph/agents/execution_state/_helpers.py`` recognises permissive child-signal markers across transports:
-
-- JSON envelopes whose ``type`` / ``event`` key is in ``{child_progress, progress, tool_call, task_progress}`` -> ``CHILD_PROGRESS``.
-- JSON envelopes whose ``type`` / ``event`` key is in ``{child_heartbeat, heartbeat, child_alive, alive}`` -> ``CHILD_HEARTBEAT``.
-- Plain-text markers (``[child]``, ``[subagent]``, ``subagent: ``, ``child: ``, ``subagent progress``, ``child progress``, ``task progress``) -> ``CHILD_PROGRESS``.
+A new ``_classify_generic_child_signal`` classifier in ``ralph/agents/execution_state/_helpers.py`` recognises STRICT child-scope markers across transports. Only EXPLICITLY child-scoped events are classified (analysis feedback: bare parent lifecycle / tool-execution events MUST NOT refresh ``record_subagent_work`` because that would mask genuine idle / stuck conditions):
+- JSON envelopes whose ``type`` / ``event`` key is in ``{child_progress, subagent_progress}`` -> ``CHILD_PROGRESS``.
+- JSON envelopes whose ``type`` / ``event`` key is in ``{child_heartbeat, subagent_heartbeat, child_alive, subagent_alive}`` -> ``CHILD_HEARTBEAT``.
+- Any ``type`` / ``event`` value starting with the ``child_`` / ``subagent_`` prefix (e.g. ``subagent_progress``, ``child_progress_phase1``, ``subagent_heartbeat_extra``) -> ``CHILD_PROGRESS``. The prefix match covers future child-scoped events the explicit set does not enumerate; a ``subagent_`` heartbeat variant not in the explicit heartbeat set defaults to ``CHILD_PROGRESS`` (an intentional trade-off -- the explicit set is the source of truth for the heartbeat kind).
+- Plain-text markers (case-insensitive ``in`` substring test) ``[child]``, ``[subagent]``, ``subagent: ``, ``child: ``, ``subagent progress``, ``child progress`` -> ``CHILD_PROGRESS``.
 - Plain-text heartbeat markers (case-insensitive ``subagent heartbeat`` / ``child heartbeat``) -> ``CHILD_HEARTBEAT``.
 
-The classifier is wired into ``BaseExecutionStrategy.observe_line`` so EVERY transport's ``observe_line`` automatically invokes the watchdog's subagent activity sink on child signals (no per-transport classifier needed). The OpenCode strategy continues to override ``observe_line`` entirely (it owns the specialised OpenCode wire format); the base implementation is only invoked for strategies that do NOT override ``observe_line`` (Claude, Codex, Generic, Agy, Nanocoder), so there is NO double-invocation. See ``tests/agents/execution_state/test_generic_child_signal.py``.
+Bare parent lifecycle / tool-execution events are INTENTIONALLY NOT classified:
+
+- ``progress`` (parent lifecycle event per ``ralph.agents.parsers._event_classification.LIFECYCLE_EVENT_TYPES``)
+- ``tool_call`` (parent-level tool execution per ``ralph.agents.parsers.gemini``)
+- ``heartbeat`` (parent lifecycle event)
+- ``alive`` (parent-level keep-alive)
+- ``task_progress`` (not child-scoped)
+
+The classifier is wired into ``BaseExecutionStrategy.observe_line`` so EVERY transport's ``observe_line`` automatically invokes the watchdog's subagent activity sink on child-scoped signals (no per-transport classifier needed). The OpenCode strategy continues to override ``observe_line`` entirely (it owns the specialised OpenCode wire format, which ALWAYS emits ``tool_call`` / ``heartbeat`` / ``progress`` events with a ``child_id`` field); the base implementation is only invoked for strategies that do NOT override ``observe_line`` (Claude, Codex, Generic, Agy, Nanocoder), so there is NO double-invocation. The OpenCode specialised classifier is intentionally PERMISSIVE; the generic classifier is intentionally STRICT. See ``tests/agents/execution_state/test_generic_child_signal.py`` for the contract (positive tests for child-scoped signals, negative tests pinning that bare parent events are NOT classified).
+
+### Subagent-payload redaction: nested object/list values
+
+The ``_sanitize_subagent_description`` helper in ``ralph/agents/idle_watchdog/idle_watchdog.py`` walks a parsed JSON structure and redacts sensitive key values (``arguments``, ``file_path``, ``input``, ``prompt``, ``content``) so the operator-visible ``subagent_activity`` field never leaks tool arguments, file paths, prompt fragments, or content payloads.
+
+The ``_redact_json_values`` walker (analysis-feedback fix): when a key is sensitive, the ENTIRE value is replaced with the literal string ``<redacted>`` regardless of whether that value is a scalar, an object, or a list. The pre-fix walker only redacted SCALAR values, so a nested object under a sensitive key (e.g. ``{"arguments": {"command": "rm -rf /", "token": "abc"}}``) would recursively walk into the object and only redact the ``token`` field -- the ``command`` value leaked into operator-visible output. The fix redacts the whole value in one shot so nested siblings are not exposed:
+
+- A nested OBJECT under a sensitive key is replaced with ``"<redacted>"`` (one redaction token, not a per-field walk).
+- A nested LIST under a sensitive key is replaced with ``"<redacted>"`` (the list and all its elements are discarded).
+- A nested array of objects under a sensitive key is replaced with ``"<redacted>"``.
+- Non-sensitive sibling keys (``name``, ``tool``, ``phase``) are preserved so the operator still sees WHICH tool was invoked, only the sensitive payload is redacted.
+
+The redaction runs as the first pass of the multi-pass sanitizer: well-formed JSON is parsed, walked, re-serialised, and the result is a structurally valid JSON object with sensitive values replaced by ``"<redacted>"``. The fallback regex passes (``_SENSITIVE_MARKER_FALLBACK_RE``, ``_SENSITIVE_PATH_TOKEN_RE``) remain in place as a safety net for malformed JSON lines and bearer-token / private-key marker leaks. See ``tests/agents/test_idle_watchdog_4.py`` section (u) for the regression tests covering nested objects, nested lists, nested objects under ``input`` / ``prompt`` / ``file_path``, and the analysis-feedback reproducer case.
 
 ### Stuck-job intelligence across fire paths
 

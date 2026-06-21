@@ -98,13 +98,8 @@ class TestClassifyGenericChildSignal:
     def test_classify_generic_child_signal_matches_codex_json_event(self) -> None:
         """Codex-style JSON with a child-scoped event name
         ``{"event":"child_progress","data":"thinking"}`` is classified
-        as CHILD_PROGRESS. PLAN AC-08 also requires bare Codex
-        ``event="progress"`` (a generic lifecycle event in
-        ``_event_classification.LIFECYCLE_EVENT_TYPES``) to be
-        classified as CHILD_PROGRESS so Claude / Codex / Generic /
-        Agy / Nanocoder transports (which emit bare event names
-        without the ``child_`` / ``subagent_`` prefix) feed the
-        watchdog's per-channel evidence surface.
+        as CHILD_PROGRESS (the explicit child-scoped event name
+        carries the child scope).
         """
         signal = _classify_generic_child_signal(
             '{"event":"child_progress","data":"thinking"}'
@@ -112,77 +107,106 @@ class TestClassifyGenericChildSignal:
         assert signal is not None
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
 
-    def test_classify_generic_child_signal_matches_bare_progress_event(self) -> None:
-        """A bare ``event="progress"`` JSON line is classified as
-        CHILD_PROGRESS per PLAN AC-08's cross-transport contract.
+    def test_classify_generic_child_signal_returns_none_for_bare_progress_event(self) -> None:
+        """A bare ``event="progress"`` JSON line is NOT classified as
+        child activity.
 
-        The cross-transport classifier recognises bare progress event
-        names so Claude / Codex / Generic / Agy / Nanocoder transports
-        (which emit bare ``event=progress`` without the ``child_`` /
-        ``subagent_`` prefix) feed the watchdog's per-channel
-        evidence surface. This is the OPEN-half of the
-        permission contract; terminal / unrelated lines are still
-        filtered out by the explicit None branches.
+        The cross-transport classifier is intentionally STRICT:
+        ``progress`` is a parent-level event name (used by
+        ``ralph.agents.parsers._event_classification`` as a generic
+        lifecycle event) and must not refresh
+        ``record_subagent_work`` for parent events. Classifying
+        bare ``progress`` as child activity would mask genuine
+        idle / stuck conditions.
         """
         signal = _classify_generic_child_signal(
             '{"event":"progress","data":"thinking"}'
         )
-        assert signal is not None
-        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+        assert signal is None
 
-    def test_classify_generic_child_signal_matches_bare_tool_call_event(self) -> None:
-        """A bare ``type="tool_call"`` JSON line is classified as
-        CHILD_PROGRESS per PLAN AC-08's cross-transport contract.
+    def test_classify_generic_child_signal_returns_none_for_bare_tool_call_event(self) -> None:
+        """A bare ``type="tool_call"`` JSON line is NOT classified as
+        child activity.
 
-        The cross-transport classifier recognises bare ``tool_call``
-        event names so non-OpenCode transports (which emit bare
-        ``type=tool_call`` without the ``child_`` / ``subagent_``
-        prefix) also feed the watchdog's per-channel evidence
-        surface. OpenCode's specialised classifier retains its own
-        ``tool_call`` recognition in ``_OPENCODE_CHILD_KIND``; the
-        generic classifier adds cross-transport coverage so the
-        watchdog sees child / subagent activity from any transport.
+        ``tool_call`` is a parent-level event name (used by
+        ``ralph.agents.parsers.gemini`` for ordinary top-level tool
+        execution). The OpenCode specialised classifier retains
+        recognition of ``tool_call`` because the OpenCode wire
+        format only emits ``tool_call`` events WITH a ``child_id``
+        field, but the generic classifier must NOT classify bare
+        ``tool_call`` events from non-OpenCode transports as child
+        activity.
         """
         signal = _classify_generic_child_signal(
             '{"type":"tool_call","name":"bash","args":{"cmd":"ls"}}'
         )
-        assert signal is not None
-        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+        assert signal is None
 
-    def test_classify_generic_child_signal_matches_bare_heartbeat_event(self) -> None:
-        """A bare ``type="heartbeat"`` JSON line is classified as
-        CHILD_HEARTBEAT per PLAN AC-08's cross-transport contract.
+    def test_classify_generic_child_signal_returns_none_for_bare_heartbeat_event(self) -> None:
+        """A bare ``type="heartbeat"`` JSON line is NOT classified as
+        child activity.
 
-        The cross-transport classifier recognises bare ``heartbeat``
-        event names so non-OpenCode transports (which emit bare
-        ``type=heartbeat`` without the ``child_`` / ``subagent_``
-        prefix) also feed the watchdog's per-channel evidence
-        surface. The heartbeat set is distinct from the progress
-        set so the watchdog can tell a real progress signal from
-        a keep-alive heartbeat.
+        ``heartbeat`` is a parent-level lifecycle event per
+        ``ralph.agents.parsers._event_classification.LIFECYCLE_EVENT_TYPES``.
+        Classifying it as child activity would refresh
+        ``record_subagent_work`` for parent keep-alive signals
+        and mask genuine idle / stuck conditions.
         """
         signal = _classify_generic_child_signal(
             '{"type":"heartbeat","ts":1234567890}'
         )
-        assert signal is not None
-        assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
+        assert signal is None
 
-    def test_classify_generic_child_signal_matches_bare_alive_event(self) -> None:
-        """A bare ``event="alive"`` JSON line is classified as
-        CHILD_HEARTBEAT per PLAN AC-08's cross-transport contract.
+    def test_classify_generic_child_signal_returns_none_for_bare_alive_event(self) -> None:
+        """A bare ``event="alive"`` JSON line is NOT classified as
+        child activity.
         """
         signal = _classify_generic_child_signal(
             '{"event":"alive","ts":1234567890}'
         )
-        assert signal is not None
-        assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
+        assert signal is None
 
-    def test_classify_generic_child_signal_matches_task_progress_event(self) -> None:
-        """A bare ``event="task_progress"`` JSON line is classified as
-        CHILD_PROGRESS per PLAN AC-08's cross-transport contract.
+    def test_classify_generic_child_signal_returns_none_for_task_progress_event(self) -> None:
+        """A bare ``event="task_progress"`` JSON line is NOT
+        classified as child activity (no child scoping).
         """
         signal = _classify_generic_child_signal(
             '{"event":"task_progress","data":"thinking"}'
+        )
+        assert signal is None
+
+    def test_classify_generic_child_signal_matches_subagent_scoped_prefix(self) -> None:
+        """A ``type="subagent_progress_anything"`` JSON line IS
+        classified as CHILD_PROGRESS because the ``subagent_``
+        prefix is the explicit child-scope signal.
+        """
+        signal = _classify_generic_child_signal(
+            '{"type":"subagent_progress_phase1","data":"thinking"}'
+        )
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+
+    def test_classify_generic_child_signal_matches_child_scoped_prefix(self) -> None:
+        """A ``type="child_progress_anything"`` JSON line IS
+        classified as CHILD_PROGRESS because the ``child_``
+        prefix is the explicit child-scope signal.
+        """
+        signal = _classify_generic_child_signal(
+            '{"type":"child_progress_phase1","data":"thinking"}'
+        )
+        assert signal is not None
+        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+
+    def test_classify_generic_child_signal_matches_subagent_heartbeat_prefix(self) -> None:
+        """A ``type="subagent_heartbeat_extra"`` JSON line IS
+        classified as CHILD_PROGRESS because the ``subagent_``
+        prefix is the explicit child-scope signal (the
+        ``child_`` / ``subagent_`` prefix family defaults to
+        CHILD_PROGRESS unless the value is in the explicit
+        heartbeat set).
+        """
+        signal = _classify_generic_child_signal(
+            '{"type":"subagent_heartbeat_extra","data":"thinking"}'
         )
         assert signal is not None
         assert signal.kind == AgentActivityKind.CHILD_PROGRESS
@@ -418,23 +442,72 @@ class TestStrategyInheritanceUsesBaseChildSignalPath:
             f" child_progress line, got {len(subagent_sink_spy)} invocations"
         )
 
-    def test_codex_strategy_factory_uses_bare_event_name(
+    def test_codex_strategy_factory_does_not_invoke_sink_on_bare_event_name(
         self, subagent_sink_spy: list[str]
     ) -> None:
-        """``strategy_for_transport(AgentTransport.CODEX)`` recognises bare
-        Codex ``event=progress`` as a child signal (PLAN AC-08).
+        """``strategy_for_transport(AgentTransport.CODEX)`` does NOT
+        classify bare Codex ``event=progress`` as a child signal.
 
         Codex emits bare ``{"event":"progress",...}`` frames without
         the ``child_`` / ``subagent_`` prefix. The cross-transport
-        classifier recognises these as CHILD_PROGRESS so the
-        watchdog sees Codex subagent activity.
+        classifier is intentionally STRICT: ``progress`` is a
+        parent-level event name (used by the existing parsers as a
+        generic lifecycle event) and MUST NOT refresh
+        ``record_subagent_work`` for parent events. Classifying
+        bare ``event=progress`` as child activity would mask
+        genuine idle / stuck conditions in the Codex transport.
         """
         strategy = strategy_for_transport(AgentTransport.CODEX)
         strategy.observe_line('{"event":"progress","data":"thinking"}')
 
+        assert len(subagent_sink_spy) == 0, (
+            f"bare Codex event=progress MUST NOT invoke the sink"
+            f" (no child scoping), got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_codex_strategy_factory_invokes_sink_on_child_scoped_event(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """``strategy_for_transport(AgentTransport.CODEX)`` DOES classify
+        a child-scoped ``event=child_progress`` as CHILD_PROGRESS so
+        the watchdog sees Codex subagent activity.
+        """
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        strategy.observe_line('{"event":"child_progress","data":"thinking"}')
+
         assert len(subagent_sink_spy) == 1, (
-            f"expected exactly one sink invocation for Codex strategy on"
-            f" bare event=progress line, got {len(subagent_sink_spy)} invocations"
+            f"Codex strategy MUST invoke the sink for child-scoped"
+            f" event=child_progress line, got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_codex_strategy_factory_does_not_invoke_sink_on_bare_heartbeat(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """``strategy_for_transport(AgentTransport.CODEX)`` does NOT
+        classify bare ``type=heartbeat`` as a child signal.
+        ``heartbeat`` is a parent-level lifecycle event.
+        """
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        strategy.observe_line('{"type":"heartbeat","ts":1234567890}')
+
+        assert len(subagent_sink_spy) == 0, (
+            f"bare Codex type=heartbeat MUST NOT invoke the sink"
+            f" (no child scoping), got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_codex_strategy_factory_does_not_invoke_sink_on_bare_tool_call(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """``strategy_for_transport(AgentTransport.CODEX)`` does NOT
+        classify bare ``type=tool_call`` as a child signal.
+        ``tool_call`` is a parent-level tool-execution event.
+        """
+        strategy = strategy_for_transport(AgentTransport.CODEX)
+        strategy.observe_line('{"type":"tool_call","name":"bash"}')
+
+        assert len(subagent_sink_spy) == 0, (
+            f"bare Codex type=tool_call MUST NOT invoke the sink"
+            f" (no child scoping), got {len(subagent_sink_spy)} invocations"
         )
 
     def test_nanocoder_strategy_factory_returns_base_observer(

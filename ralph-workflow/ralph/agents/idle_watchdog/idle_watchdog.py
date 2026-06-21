@@ -252,13 +252,25 @@ _SENSITIVE_JSON_KEYS: frozenset[str] = frozenset(
 
 
 def _redact_json_values(obj: object) -> object:
-    """Walk a parsed JSON structure and redact sensitive key values."""
+    """Walk a parsed JSON structure and redact sensitive key values.
+
+    When a key is sensitive (``arguments``, ``file_path``, ``input``,
+    ``prompt``, ``content``) the ENTIRE value is replaced with the
+    literal string ``<redacted>`` regardless of whether that value
+    is a scalar, an object, or a list. This is the analysis-feedback
+    fix: a sensitive key whose value is a nested object or list
+    (e.g. ``{"arguments": {"command": "rm -rf /", "token": "abc"}}``)
+    must NOT have its value walked recursively -- a recursive walk
+    would still leak the non-sensitive sibling fields (``command`` in
+    the example) into operator-visible waiting-status output.
+
+    The replacement is a JSON-valid string so the surrounding JSON
+    structure remains well-formed after redaction.
+    """
     if isinstance(obj, dict):
         result: dict[str, object] = {}
         for key, value in obj.items():
-            if key in _SENSITIVE_JSON_KEYS and isinstance(
-                value, (str, int, float, bool)
-            ):
+            if key in _SENSITIVE_JSON_KEYS:
                 result[key] = "<redacted>"
             else:
                 result[key] = _redact_json_values(value)

@@ -517,3 +517,145 @@ def test_record_subagent_work_description_reproducer_no_leaked_suffix() -> None:
     # The output must be a safe operator-visible summary (no JSON
     # structural characters that could be exploited).
     assert "{" not in stored or "<redacted>" in stored
+
+
+# ---------------------------------------------------------------------------
+# (u) Nested sensitive-payload redaction (analysis-feedback: object/list
+# under sensitive keys must be redacted in full, not walked recursively)
+# ---------------------------------------------------------------------------
+
+
+def test_record_subagent_work_description_redacts_nested_object_arguments() -> None:
+    """Nested OBJECT under ``arguments`` is redacted in full.
+
+    The pre-fix ``_redact_json_values`` only redacted scalar values
+    under sensitive keys. A nested object like
+    ``{"arguments": {"command": "rm -rf /", "token": "abc"}}`` was
+    walked recursively -- only the ``token`` field was redacted,
+    and the ``command`` field leaked into operator-visible output.
+
+    The fix: when a key is sensitive, the ENTIRE value is replaced
+    with ``<redacted>`` regardless of whether that value is a
+    scalar, an object, or a list. The surrounding JSON structure
+    remains well-formed.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"arguments": {"command": "rm -rf /", "token": "abc"}}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "rm -rf /" not in stored, (
+        f"nested 'command' value must NOT leak, got: {stored!r}"
+    )
+    assert "token" not in stored, (
+        f"nested 'token' key must NOT leak, got: {stored!r}"
+    )
+    assert "abc" not in stored, (
+        f"nested 'abc' value must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_nested_list_arguments() -> None:
+    """Nested LIST under ``arguments`` is redacted in full.
+
+    A list value like ``["rm -rf /", "secret"]`` under a
+    sensitive key must NOT have any of its elements leak into
+    operator-visible output.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"arguments": ["rm -rf /", "secret"]}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "rm -rf /" not in stored
+    assert "secret" not in stored
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_nested_object_input() -> None:
+    """Nested OBJECT under ``input`` is redacted in full."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"input": {"echo": "hello", "user": "admin"}}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "hello" not in stored
+    assert "admin" not in stored
+    assert "echo" not in stored
+    assert "user" not in stored
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_nested_array_content() -> None:
+    """Nested ARRAY under ``content`` is redacted in full."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"content": [{"text": "secret message"}]}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "secret message" not in stored
+    assert "text" not in stored
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_nested_prompt() -> None:
+    """Nested OBJECT under ``prompt`` is redacted in full."""
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"prompt": {"role": "system", "content": "do the thing"}}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "do the thing" not in stored
+    assert "role" not in stored
+    assert "system" not in stored
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_nested_file_path() -> None:
+    """Nested OBJECT under ``file_path`` is redacted in full.
+
+    The pre-fix walker would have leaked the ``name`` field of a
+    nested object under ``file_path``. The fix redacts the whole
+    value in one shot.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"file_path": {"path": "/etc/passwd", "name": "shadow"}}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "/etc/passwd" not in stored
+    assert "shadow" not in stored
+    assert "name" not in stored
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_reproducer_nested_token() -> None:
+    """Reproducer for the analysis-feedback nested-token case.
+
+    The exact nested payload from the analysis feedback
+    (``arguments`` holding a ``command`` and ``token`` pair under
+    a nested object structure) must produce sanitized output that
+    does NOT contain the forbidden ``command`` text or the
+    ``token`` value.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='{"name": "tool", "arguments": {"command": "echo secret", "token": "abc123"}}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "echo secret" not in stored, (
+        f"nested 'command' value 'echo secret' must NOT leak, got: {stored!r}"
+    )
+    assert "abc123" not in stored, (
+        f"nested 'token' value 'abc123' must NOT leak, got: {stored!r}"
+    )
+    assert "secret" not in stored, (
+        f"nested 'secret' value must NOT leak, got: {stored!r}"
+    )
+    # The non-sensitive key 'name' is preserved so the operator
+    # still sees WHICH tool was invoked.
+    assert "tool" in stored, (
+        f"non-sensitive 'name' key should survive, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
