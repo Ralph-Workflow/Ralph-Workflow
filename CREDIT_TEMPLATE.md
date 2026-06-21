@@ -1,36 +1,27 @@
-# Credit Ralph Workflow
+# Credit Template
 
-If your project is built with or uses Ralph Workflow, add this badge to your README:
+If Ralph Workflow helped ship real software for you, adding this badge to your README takes 30 seconds and creates a discoverable backlink. It also qualifies your project for listing in [USERS.md](USERS.md) and the [Ecosystem Map](ECOSYSTEM.md).
 
-## Shield badge
+## The Badge
 
 ```markdown
-[![Built with Ralph Workflow](https://img.shields.io/badge/Built%20with-Ralph%20Workflow-3b82f6)](https://ralphworkflow.com)
+[![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 ```
 
 Renders as:
 
-[![Built with Ralph Workflow](https://img.shields.io/badge/Built%20with-Ralph%20Workflow-3b82f6)](https://ralphworkflow.com)
+[![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 
-## Text credit (for docs / footers / CLI output)
+## What this means
 
-```
-Built with Ralph Workflow — the Loop Engineering toolkit for autonomous coding agents
-https://ralphworkflow.com
-```
+The badge signals that you're using the Ralph Loop pattern — plan → build → verify, iterated by an AI coding agent until tests pass. It links back to the Ralph Workflow reference implementation, helping others discover the pattern and the toolkit.
 
-## Alternative badge: "Powered by Ralph"
+## After you add it
 
-```markdown
-[![Powered by Ralph](https://img.shields.io/badge/Powered%20by-Ralph-f59e0b)](https://ralphworkflow.com)
-```
+1. Your project becomes discoverable via [GitHub code search](https://github.com/search?q=built-with-ralph-loop&type=code) for `built-with-ralph-loop`
+2. Add yourself to [USERS.md](USERS.md) via an [issue or PR](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues) to be listed on the official community page
+3. Check out the [Ecosystem Map](ECOSYSTEM.md) to see what others are building
 
-## Why credit?
+---
 
-- **Ecosystem visibility.** Each credit creates a discoverable backlink to the Ralph Workflow project, helping your project contribute to a growing network of autonomous coding tools.
-- **Protocol positioning.** A shared badge signals that Ralph Workflow is infrastructure — like "Built with React" or "Runs on Kubernetes" — not a competing product. Your project is the value; Ralph is the engine.
-- **Zero cost, zero obligation.** The badge is a markdown link. No API keys, no analytics, no tracking. Add it once and forget it.
-
-## Projects already in the ecosystem
-
-See [USERS.md](USERS.md) for the full list of projects using Ralph Workflow.
+*The Ralph Loop pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph). Ralph Workflow is the reference implementation.*
