@@ -27,6 +27,31 @@ every originally-failing tracked file is deleted from disk, AND the
 canonical ``.gitignore`` / ``.git/info/exclude`` patterns were
 auto-seeded. Per-test timeout is capped at 15s (well under the 60s
 combined budget enforced by ``ralph/verify.py``).
+
+Two e2e tests live here:
+
+1. ``test_pipeline_cleanup_to_commit_end_to_end`` -- the canonical
+   proof. Pre-stages the three originally-failing tracked paths AND a
+   SEPARATE innocent symlink (PA-005 distinct paths). Submits a
+   cleanup artifact deleting the three originally-failing paths but
+   NOT the symlink. Asserts the pipeline reaches ``complete``,
+   observes ``Repo.head.log`` directly (NOT ``repo.iter_commits``)
+   to prove a new commit was actually created, and asserts the
+   untouched innocent symlink is preserved.
+
+2. ``test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end``
+   -- the PA-005 BLACK-BOX proof that the ``delete_file_from_repo``
+   hardening is actually exercised by the full pipeline. Submits a
+   cleanup artifact that ALSO actively targets the innocent symlink
+   and asserts the pipeline surfaces the rejection (the symlink
+   survives both as a symlink AND as a target), the originally-
+   failing tracked files are STILL cleaned up in the same run, and
+   the pipeline still terminates at ``complete`` (the best-effort
+   ``_apply_safe_deletes`` try/except absorbs the rejection as a
+   WARNING). This is the active-symlink-delete proof that the
+   ``test_pipeline_cleanup_to_commit_end_to_end`` test does not
+   cover (which only verifies passive preservation of an
+   untouched symlink).
 """
 
 from __future__ import annotations
@@ -222,7 +247,7 @@ def test_pipeline_cleanup_to_commit_end_to_end(
     repo_root = Path(engine_internal_workspace_with_symlink.root)
     policy_bundle = _default_policy_bundle()
 
-    initial_commit_count = _git_commit_count(repo_root)
+    initial_reflog_shas = _head_log_unique_shas(repo_root)
 
     for rel_path in ORIGINALLY_FAILING_PATHS:
         assert (repo_root / rel_path).exists(), (
@@ -369,11 +394,14 @@ def test_pipeline_cleanup_to_commit_end_to_end(
             f"Expected {fragment!r} in auto-seeded .git/info/exclude, got:\n{exclude_text}"
         )
 
-    final_commit_count = _git_commit_count(repo_root)
-    assert final_commit_count > initial_commit_count, (
-        f"Real git commit was NOT created: pre-run count={initial_commit_count}, "
-        f"post-run count={final_commit_count}. The execute_commit_effect call "
-        "must actually stage and commit changes via real git."
+    final_reflog_shas = _head_log_unique_shas(repo_root)
+    new_reflog_shas = final_reflog_shas - initial_reflog_shas
+    assert new_reflog_shas, (
+        f"Repo.head.log shows NO new commit was created: pre-run SHAs="
+        f"{sorted(initial_reflog_shas)}, post-run SHAs={sorted(final_reflog_shas)}. "
+        "The execute_commit_effect call must actually stage and commit "
+        "changes via real git so the cleanup -> commit transition is "
+        "observed by the reflog."
     )
 
     new_commit_tree_paths = _newest_commit_tree_paths(repo_root)
@@ -387,6 +415,191 @@ def test_pipeline_cleanup_to_commit_end_to_end(
     assert getattr(final_state, "phase", None) == "complete", (
         f"Pipeline must terminate at 'complete', got {getattr(final_state, 'phase', None)!r}. "
         "Entering 'failed_terminal' would mean a PhaseFailureEvent was emitted."
+    )
+
+
+def test_pipeline_cleanup_to_commit_rejects_symlink_delete_end_to_end(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    memory_workspace: MemoryWorkspace,
+    engine_internal_workspace_with_symlink: FsWorkspace,
+) -> None:
+    """End-to-end proof: cleanup -> commit surfaces symlink-delete rejection.
+
+    Regression for the PA-005 gap: prior e2e proof only verified that an
+    untouched innocent symlink stayed intact (passive preservation).
+    This test actively submits a ``delete_file`` cleanup action
+    targeting the distinct-path innocent symlink and asserts the
+    end-to-end pipeline surfaces the rejection (the symlink survives
+    both as a symlink AND as a target), the originally-failing tracked
+    files are STILL cleaned up in the same run, and the pipeline
+    terminates at ``complete`` (NOT ``failed_terminal``).
+
+    This is the BLACK-BOX proof that ``delete_file_from_repo``'s
+    symlink check (the new hardening wired into the full pipeline
+    through ``_apply_safe_deletes``'s try/except Exception which logs
+    the rejection at WARNING) is actually exercised by the
+    cleanup -> commit transition.
+    """
+    repo_root = Path(engine_internal_workspace_with_symlink.root)
+    policy_bundle = _default_policy_bundle()
+
+    initial_reflog_shas = _head_log_unique_shas(repo_root)
+
+    for rel_path in ORIGINALLY_FAILING_PATHS:
+        assert (repo_root / rel_path).exists(), (
+            f"Pre-condition failed: {rel_path!r} must exist before cleanup runs"
+        )
+    assert (repo_root / INNOCENT_SYMLINK).is_symlink(), (
+        f"Pre-condition failed: {INNOCENT_SYMLINK!r} must be a symlink "
+        "before cleanup runs"
+    )
+
+    _write_commit_cleanup_artifact(
+        engine_internal_workspace_with_symlink,
+        {
+            "analysis_complete": True,
+            "actions": [
+                {"action": "delete_file", "path": path} for path in ORIGINALLY_FAILING_PATHS
+            ]
+            + [
+                {"action": "delete_file", "path": INNOCENT_SYMLINK},
+            ],
+        },
+    )
+    _write_commit_message_artifacts(
+        repo_root,
+        "fix(commit): cleanup rejects symlink deletes end-to-end",
+    )
+
+    invoker = CommitCleanupAlwaysLoopbackInvoker(memory_workspace)
+    saved_states: list[object] = []
+
+    def fake_execute_effect(
+        effect: Effect,
+        _config: UnifiedConfig,
+        _workspace_scope: WorkspaceScope,
+    ) -> PipelineEvent:
+        if isinstance(effect, InvokeAgentEffect):
+            invoker.invoke(effect.agent_name, effect.phase)
+            return PipelineEvent.AGENT_SUCCESS
+        if isinstance(effect, CommitEffect):
+            return runner.execute_commit_effect(
+                effect,
+                create_commit,
+                stage_all,
+                repo_root,
+            )
+        if isinstance(effect, EarlySkipCommitEffect):
+            return PipelineEvent.COMMIT_SKIPPED
+        msg = f"Unexpected effect type: {type(effect)!r}"
+        raise AssertionError(msg)
+
+    cleanup_phases = {
+        "development_commit_cleanup",
+        "development_final_commit_cleanup",
+    }
+
+    def fake_phase_event_after_agent_run(
+        *,
+        effect: InvokeAgentEffect,
+        config: UnifiedConfig,
+        policy_bundle: PolicyBundle,
+        workspace: FsWorkspace,
+        **_kwargs: object,
+    ) -> PipelineEvent:
+        if effect.phase in cleanup_phases or effect.phase in (
+            "development_commit",
+            "development_final_commit",
+        ):
+            ctx = PhaseContext.model_construct(
+                workspace=workspace,
+                registry=AgentRegistry.from_config(config),
+                chain_manager=ChainManager(policy_bundle.agents),
+                pipeline_policy=policy_bundle.pipeline,
+                agents_policy=policy_bundle.agents,
+                artifacts_policy=policy_bundle.artifacts,
+                config=config,
+            )
+            events = handle_phase(effect, ctx)
+            return events[0] if events else PipelineEvent.AGENT_SUCCESS
+        commit_event_for = cast(
+            "Callable[[str], PipelineEvent] | None",
+            getattr(invoker, "commit_event_for", None),
+        )
+        if commit_event_for is not None:
+            return commit_event_for(effect.phase)
+        return PipelineEvent.AGENT_SUCCESS
+
+    def capture_saved_state(state: object, *_args: object, **_kwargs: object) -> None:
+        saved_states.append(state)
+
+    monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(repo_root))
+    monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
+    _stub_prompt_materialization(monkeypatch)
+    monkeypatch.setattr(runner, "execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "phase_event_after_agent_run", fake_phase_event_after_agent_run)
+    monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
+    _install_runner_display_context(monkeypatch)
+
+    result = runner.run(
+        _config(),
+        verbosity=Verbosity.QUIET,
+        counter_overrides={"iteration": 1},
+    )
+
+    assert result == 0, (
+        f"Pipeline did not exit cleanly (rc={result}); the symlink delete "
+        "rejection must NOT break the cleanup -> commit transition."
+    )
+
+    assert invoker.count_for("development_commit_cleanup") >= 1, (
+        "CommitCleanupAlwaysLoopbackInvoker must have been invoked for "
+        "development_commit_cleanup at least once."
+    )
+
+    for rel_path in ORIGINALLY_FAILING_PATHS:
+        assert not (repo_root / rel_path).exists(), (
+            f"{rel_path!r} should have been deleted by the cleanup phase "
+            "during the pipeline run"
+        )
+
+    innocent_link = repo_root / INNOCENT_SYMLINK
+    assert innocent_link.is_symlink(), (
+        "Pipeline must surface the symlink-delete rejection: the innocent "
+        "symlink MUST still be a symlink (NOT deleted-as-symlink, NOT "
+        "deleted-as-target)."
+    )
+    assert innocent_link.resolve() == (repo_root / INNOCENT_SYMLINK_TARGET).resolve(), (
+        "The innocent symlink MUST still point to its original target "
+        "after the pipeline rejects the symlink delete attempt."
+    )
+    assert (repo_root / INNOCENT_SYMLINK_TARGET).exists(), (
+        "The symlink's target file MUST NOT be deleted as a side effect "
+        "of the symlink-delete rejection."
+    )
+
+    final_reflog_shas = _head_log_unique_shas(repo_root)
+    new_reflog_shas = final_reflog_shas - initial_reflog_shas
+    assert new_reflog_shas, (
+        f"Repo.head.log shows NO new commit was created: pre-run SHAs="
+        f"{sorted(initial_reflog_shas)}, post-run SHAs={sorted(final_reflog_shas)}. "
+        "The execute_commit_effect call must still create a real commit "
+        "even when one delete_file action surfaces a symlink rejection."
+    )
+
+    new_commit_tree_paths = _newest_commit_tree_paths(repo_root)
+    for rel_path in ORIGINALLY_FAILING_PATHS:
+        assert rel_path not in new_commit_tree_paths, (
+            f"Deleted tracked file {rel_path!r} must NOT appear in the new "
+            f"commit's tree; got paths: {sorted(new_commit_tree_paths)}"
+        )
+
+    final_state = saved_states[-1]
+    assert getattr(final_state, "phase", None) == "complete", (
+        f"Pipeline must terminate at 'complete', got {getattr(final_state, 'phase', None)!r}. "
+        "A symlink-delete rejection must NOT cause failed_terminal; the "
+        "best-effort _apply_safe_deletes try/except absorbs it as a WARNING."
     )
 
 
@@ -412,10 +625,24 @@ def _newest_commit_tree_paths(repo_root: Path) -> set[str]:
         repo.close()
 
 
-def _git_commit_count(repo_root: Path) -> int:
-    """Return the number of commits in ``repo_root``'s git log."""
+def _head_log_unique_shas(repo_root: Path) -> set[str]:
+    """Return the set of unique SHAs recorded in ``Repo.head.log()``.
+
+    Uses ``Repo.head.log()`` (NOT ``repo.iter_commits('HEAD')``) per
+    plan step 17 / AC-07: ``Repo.head.log`` is the reflog-level view
+    that captures EVERY change to HEAD (commits, branch switches,
+    resets). Deduplicating ``newhexsha`` across the reflog gives the
+    set of unique SHAs HEAD has ever pointed to in this session, which
+    is the strongest possible black-box signal that the
+    cleanup -> commit transition actually created a real commit
+    (a new SHA appears in the post-run reflog that was not present in
+    the pre-run reflog).
+
+    Returns:
+        The set of unique commit SHAs observed in the reflog.
+    """
     repo = Repo(repo_root)
     try:
-        return sum(1 for _ in repo.iter_commits("HEAD"))
+        return {entry.newhexsha for entry in repo.head.log()}
     finally:
         repo.close()

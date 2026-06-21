@@ -21,6 +21,16 @@ Mirrors the canonical pattern from
 This test exercises the ``development_final_commit_cleanup`` handler
 which has no other dedicated test in the suite. Per-test timeout is
 capped at 15s.
+
+After the pipeline terminates:
+* Every originally-failing tracked file is deleted from disk.
+* ``.gitignore`` and ``.git/info/exclude`` were auto-seeded.
+* The pipeline terminated at ``complete`` (NOT ``failed_terminal``).
+* A real git commit was created (observed via ``Repo.head.log`` --
+  NOT ``repo.iter_commits`` -- per plan step 18 / AC-08, with a new
+  SHA appearing in the post-run reflog that was not present in the
+  pre-run reflog, and the new commit's tree does NOT contain the
+  deleted tracked files).
 """
 
 from __future__ import annotations
@@ -207,7 +217,7 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
     repo_root = Path(engine_internal_workspace.root)
     policy_bundle = _default_policy_bundle()
 
-    initial_commit_count = _git_commit_count(repo_root)
+    initial_reflog_shas = _head_log_unique_shas(repo_root)
 
     for rel_path in ORIGINALLY_FAILING_PATHS:
         assert (repo_root / rel_path).exists(), (
@@ -343,11 +353,14 @@ def test_pipeline_final_cleanup_to_final_commit_end_to_end(
             f"Expected {fragment!r} in auto-seeded .git/info/exclude, got:\n{exclude_text}"
         )
 
-    final_commit_count = _git_commit_count(repo_root)
-    assert final_commit_count > initial_commit_count, (
-        f"Real git commit was NOT created: pre-run count={initial_commit_count}, "
-        f"post-run count={final_commit_count}. The execute_commit_effect call "
-        "must actually stage and commit changes via real git."
+    final_reflog_shas = _head_log_unique_shas(repo_root)
+    new_reflog_shas = final_reflog_shas - initial_reflog_shas
+    assert new_reflog_shas, (
+        f"Repo.head.log shows NO new commit was created: pre-run SHAs="
+        f"{sorted(initial_reflog_shas)}, post-run SHAs={sorted(final_reflog_shas)}. "
+        "The execute_commit_effect call must actually stage and commit "
+        "changes via real git so the final-cleanup -> final-commit "
+        "transition is observed by the reflog."
     )
 
     new_commit_tree_paths = _newest_commit_tree_paths(repo_root)
@@ -378,10 +391,24 @@ def _newest_commit_tree_paths(repo_root: Path) -> set[str]:
         repo.close()
 
 
-def _git_commit_count(repo_root: Path) -> int:
-    """Return the number of commits in ``repo_root``'s git log."""
+def _head_log_unique_shas(repo_root: Path) -> set[str]:
+    """Return the set of unique SHAs recorded in ``Repo.head.log()``.
+
+    Uses ``Repo.head.log()`` (NOT ``repo.iter_commits('HEAD')``) per
+    plan step 18 / AC-08: ``Repo.head.log`` is the reflog-level view
+    that captures EVERY change to HEAD (commits, branch switches,
+    resets). Deduplicating ``newhexsha`` across the reflog gives the
+    set of unique SHAs HEAD has ever pointed to in this session, which
+    is the strongest possible black-box signal that the
+    final-cleanup -> final-commit transition actually created a real
+    commit (a new SHA appears in the post-run reflog that was not
+    present in the pre-run reflog).
+
+    Returns:
+        The set of unique commit SHAs observed in the reflog.
+    """
     repo = Repo(repo_root)
     try:
-        return sum(1 for _ in repo.iter_commits("HEAD"))
+        return {entry.newhexsha for entry in repo.head.log()}
     finally:
         repo.close()
