@@ -1,0 +1,27 @@
+{"type":"session","version":3,"id":"00000000-0000-0000-0000-000000000001","timestamp":"2026-06-20T00:00:00Z","cwd":"/tmp/work"}
+{"type":"agent_start"}
+{"type":"turn_start"}
+{"type":"message_start","message":{"role":"assistant","content":[]}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"text_start","contentIndex":0,"partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"Hello ","partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"text_delta","contentIndex":0,"delta":"world","partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"text_end","contentIndex":0,"content":"Hello world","partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"thinking_start","contentIndex":1,"partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"thinking_delta","contentIndex":1,"delta":"reasoning","partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"thinking_end","contentIndex":1,"content":"reasoning","partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"toolcall_start","contentIndex":2,"partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"toolcall_delta","contentIndex":2,"delta":"{\"command\":","partial":{}}}
+{"type":"message_update","message":{"role":"assistant","content":[]},"assistantMessageEvent":{"type":"toolcall_end","contentIndex":2,"toolCall":{"id":"call_1","name":"bash","arguments":{"command":"ls"}}}}
+{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"Hello world"},{"type":"thinking","thinking":"reasoning"},{"type":"toolCall","id":"call_1","name":"bash","arguments":{"command":"ls"}},{"type":"toolResult","toolCallId":"call_1","result":"ok"}]}}
+{"type":"tool_execution_start","toolCallId":"call_1","toolName":"bash","args":{"command":"ls"}}
+{"type":"tool_execution_update","toolCallId":"call_1","toolName":"bash","args":{"command":"ls"},"partialResult":{"content":[{"type":"text","text":"partial"}]}}
+{"type":"tool_execution_end","toolCallId":"call_1","toolName":"bash","result":{"content":[{"type":"text","text":"ok"}]},"isError":false}
+{"type":"tool_execution_end","toolCallId":"call_2","toolName":"bash","result":{"content":[{"type":"text","text":"fail"}]},"isError":true}
+{"type":"queue_update","steering":[],"followUp":[]}
+{"type":"compaction_start","reason":"manual"}
+{"type":"compaction_end","reason":"manual","result":null,"aborted":false,"willRetry":false}
+{"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":1000,"errorMessage":"transient"}
+{"type":"auto_retry_end","success":true,"attempt":1}
+{"type":"extension_error","extensionPath":"/path/to/extension.ts","event":"tool_call","error":"boom-extension"}
+{"type":"turn_end","message":{"role":"assistant","content":[]},"toolResults":[]}
+{"type":"agent_end","messages":[]}

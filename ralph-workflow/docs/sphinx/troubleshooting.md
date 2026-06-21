@@ -38,6 +38,7 @@ fails when it tries to invoke an agent.
 - **opencode**: see <https://opencode.ai>
 - **Nanocoder**: see <https://docs.nanocollective.org/nanocoder/docs>
 - **Google Anti Gravity (agy)**: see <https://github.com/google-antigravity/antigravity-cli>
+- **Pi.dev (pi)**: see <https://pi.dev/docs/latest/usage>
 
 Verify after installation:
 
@@ -97,6 +98,26 @@ RALPH_AGY_BINARY=tests/_support/mock_agy.sh python -m ralph smoke-interactive-ag
 ```
 
 This should report file=yes, artifact=yes, and no upstream-quota break.
+
+## Pi.dev transport end-to-end smoke
+
+**Symptom:** You want to verify that the Pi (pi.dev) transport is wired correctly, that the documented `AgentSessionEvent` NDJSON format parses without error, and that `pi --mode json <prompt>` produces the expected argv.
+
+**Fix:** Two pytest suites cover the public surface end-to-end without touching the network or a real `pi` binary:
+
+```bash
+# Drive the public surface (AgentRegistry -> catalog.get('pi') -> build_command)
+uv run pytest tests/agents/test_pi_dev_blackbox.py -q
+
+# Pin the documented AgentSessionEvent vocabulary against the committed fixture
+uv run pytest tests/agents/parsers/test_pi_dev_wire_format_spec.py -q
+```
+
+Both tests are pure-Python (no `time.sleep`, no real subprocess, no network), so they pass deterministically under the 60 s combined test budget enforced by `make verify`. The wire-format spec test loads the committed fixture at `tests/agents/parsers/fixtures/pi_dev_documented_events.json` (NOT the transient `tmp/pi-dev-docs/inventory.md`), so a clean-checkout run does not depend on transient state.
+
+The argv assertion in the black-box test ends with the actual prompt TEXT loaded from a `tmp_path` fixture (e.g. `hello world`) per the public contract in `ralph-workflow/ralph/agents/invoke/_command_builders/__init__.py:_load_prompt_text` with `positional_prompt=True`. Do NOT assert the literal `'PROMPT.md'` - that is the prompt file PATH, not the file CONTENT that the positional argv element carries.
+
+For the live `pi` binary end-to-end path, see <https://pi.dev/docs/latest/usage> for the documented `--mode json` invocation and the documented `--approve` (`-a`) project-trust override. Note that pi.dev has no documented CLI MCP wiring path (the "Pi keeps the core small" design philosophy explicitly omits built-in MCP), so `PiRuntimeResolver` correctly raises `UnsupportedMcpTransportError` on any `MCP_ENDPOINT` environment variable; this is the documented safety guarantee, not a regression.
 
 ## MCP servers fail to start
 

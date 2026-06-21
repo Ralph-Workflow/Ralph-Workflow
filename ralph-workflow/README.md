@@ -36,16 +36,16 @@ This also auto-symlinks the bundled skill bundle into the supported agent roots 
 
 ## Supported agents
 
-Ralph Workflow ships with first-class support for six coding-agent CLIs. Each agent has a parity smoke test that exercises the full end-to-end pipeline (file writes, tool activity, artifact submission, parser-classified output) and a canonical `ralph smoke-interactive-<agent>` command you can run before your first real task.
+Ralph Workflow ships with first-class support for seven coding-agent CLIs. Each agent has a documented end-to-end verification path: an interactive parity smoke test for Claude and AGY, and a public-surface black-box pytest suite for Codex, OpenCode, Nanocoder, and Pi.
 
 | Agent | Description | Verification command |
 |---|---|---|
 | **Claude Code** | Anthropic's CLI for Claude. The canonical reference agent. | `ralph smoke-interactive-claude` |
-| **Codex** | OpenAI's Codex CLI. | `ralph smoke-interactive-codex` |
-| **OpenCode** | Open-source terminal coding agent. | `ralph smoke-interactive-opencode` |
-| **Nanocoder** | Local-only TUI coding agent. | `ralph smoke-interactive-nanocoder` |
+| **Codex** | OpenAI's Codex CLI. | (public-surface black-box pytest) |
+| **OpenCode** | Open-source terminal coding agent. | (public-surface black-box pytest) |
+| **Nanocoder** | Local-only TUI coding agent. | (public-surface black-box pytest) |
 | **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`, v1.0.9+). Runs in a PTY with a bounded drain so buffered stdout is captured end-to-end, and the AGY parser classifies live output into `text:` / `thinking:` / `tool_use:` events for the smoke report. | `ralph smoke-interactive-agy` |
-| **Pi** | Minimal coding agent. | `ralph smoke-interactive-pi` |
+| **Pi** | Minimal coding agent. Headless mode is `pi --mode json <prompt>` and emits the documented `AgentSessionEvent` NDJSON stream per <https://pi.dev/docs/latest/json>. | `uv run pytest tests/agents/test_pi_dev_blackbox.py -q` |
 
 The canonical end-to-end AGY verification (mock-backed, always green) is:
 

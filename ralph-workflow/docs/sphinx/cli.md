@@ -36,7 +36,7 @@ See [Policy Explanation](policy-explanation.md) for the deeper inspection view.
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP, pipeline, and artifact files. Automatically install the bundled skill bundle into `~/.claude/skills/` and symlink it into the documented supported-agents sibling roots (currently Codex `~/.codex/skills/`, OpenCode `~/.config/opencode/skills/`, AGY `~/.gemini/antigravity-cli/skills/`; OpenCode's documented `~/.claude/skills/` fallback is covered by the Claude install). Adds a batteries-included `.gitignore` covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns. Idempotent — re-running on an initialized project re-checks skills (printing the full capability summary table) and refreshes missing gitignore entries. |
+| `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP, pipeline, and artifact files. Automatically install the bundled skill bundle into `~/.claude/skills/` and symlink it into the documented supported-agents sibling roots (currently Codex `~/.codex/skills/`, OpenCode `~/.config/opencode/skills/`, AGY `~/.gemini/antigravity-cli/skills/`; OpenCode's documented `~/.claude/skills/` fallback is covered by the Claude install; Pi has no documented skill-discovery system per <https://pi.dev/docs/latest/usage> so no user-global install target is created). Adds a batteries-included `.gitignore` covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns. Idempotent — re-running on an initialized project re-checks skills (printing the full capability summary table) and refreshes missing gitignore entries. |
 | `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the main Ralph Workflow config set |
 | `--regenerate-config` | | `False` | Rewrite config files from bundled defaults and keep backups as `<name>.bak` |
 
@@ -45,7 +45,8 @@ See [Policy Explanation](policy-explanation.md) for the deeper inspection view.
 1. **Scaffolds `PROMPT.md`** at the project root using the starter template (the `<!-- ralph:starter-prompt: ... -->` sentinel marks it for validation).
 2. **Installs local configs** under `.agent/` (`mcp.toml`, `pipeline.toml`, `artifacts.toml`) plus the user-global set under `~/.config/` (`ralph-workflow.toml` and the policy files).
 3. **Installs skills + symlinks siblings** by materializing the bundled skill bundle at `~/.claude/skills/` and symlinking it into the documented supported-agents sibling roots (Codex, OpenCode, AGY).
-4. **Seeds batteries-included `.gitignore`** with patterns for Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS files. Re-runs add any new patterns that have been added to the default set since the last init.
+4. **Wires Pi as a transport without a skill-fan-out target** — pi.dev is wired as a transport (so the `pi` BuiltinAgentSpec, `pi/<model>` resolver, and `PiCommandBuilder` are all available end-to-end) but pi.dev has no documented skill-discovery system per <https://pi.dev/docs/latest/usage>, so no Pi user-global install target is created and no `.pi/skills/` directory is written. Skills loaded on the pi side use the per-invocation `--skill <path>` flag.
+5. **Seeds batteries-included `.gitignore`** with patterns for Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS files. Re-runs add any new patterns that have been added to the default set since the last init.
 
 ## Quick mode
 
