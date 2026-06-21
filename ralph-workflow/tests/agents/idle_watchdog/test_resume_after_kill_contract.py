@@ -60,6 +60,10 @@ from ralph.pipeline.agent_retry_intent import (
 if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
 
+def _active() -> AgentExecutionState:
+    return AgentExecutionState.ACTIVE
+
+
 _RESUMABLE_REASONS: frozenset[str] = frozenset(
     {
         WatchdogFireReason.NO_OUTPUT_AT_START.value,
@@ -383,3 +387,84 @@ def test_idle_watchdog_killed_error_aliases_match() -> None:
         " both ralph.agents.idle_watchdog.idle_watchdog and"
         " ralph.agents.idle_watchdog_kill"
     )
+
+
+# ---------------------------------------------------------------------------
+# (g) Prompt-scenario regression: NO_OUTPUT_AT_START fire with a known
+#     prior session id threads all the way to a resume AgentRetryIntent.
+# ---------------------------------------------------------------------------
+
+
+def test_no_output_at_start_fire_with_known_session_id_yields_resume_intent() -> None:
+    """Drive the exact prompt end-to-end: NO_OUTPUT_AT_START fires, the
+    line reader wraps the kill in ``AgentInactivityTimeoutError`` with
+    ``session_resume_safe=True`` and ``resumable_session_id`` set, the
+    recovery controller maps the failure to ``resume``, and the retry
+    builder emits an ``AgentRetryIntent(action='resume')`` with the same
+    session id.
+
+    ``classify_quiet`` returns ``ACTIVE`` here so the new WAITING_ON_CHILD
+    deferral gate does not suppress the fire; the test intentionally
+    verifies the resume chain rather than the deferral gate.
+    """
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=60.0,
+        no_output_at_start_seconds=30.0,
+        no_progress_quiet_seconds=None,
+        activity_evidence_ttl_seconds=180.0,
+    )
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(
+        policy,
+        clock,
+        process_monitor=_NoProcessMonitor(),
+    )
+    watchdog.record_invocation_start()
+
+    clock.advance(31.0)
+    verdict = watchdog.evaluate(classify_quiet=_active)
+    assert verdict == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
+
+    fake_self = _FakeCheckFireSelf(_policy=policy, _clock=clock)
+    result = _ProcessLineReader._check_fire(fake_self, watchdog, WatchdogVerdict.FIRE)
+    assert result is not None
+    pending_lines, wrapper = result
+    assert isinstance(wrapper, _IdleStreamTimeoutError)
+    assert wrapper.reason == WatchdogFireReason.NO_OUTPUT_AT_START
+    assert isinstance(wrapper.__cause__, IdleWatchdogKilledError)
+
+    expected_session_id = "prior-sid-abc123"
+    timeout_exc = _convert_idle_stream_timeout_to_agent_error(
+        agent_name="test-agent",
+        exc=wrapper,
+        parsed_output=tuple(pending_lines),
+        explicit_completion_seen=False,
+        captured_session_id=None,
+        expected_session_id=expected_session_id,
+    )
+    assert isinstance(timeout_exc, AgentInactivityTimeoutError)
+    assert timeout_exc.reason == WatchdogFireReason.NO_OUTPUT_AT_START
+    assert timeout_exc.session_resume_safe is True
+    assert timeout_exc.resumable_session_id == expected_session_id
+
+    action = recovery_action_for_failure_reason(
+        "AgentInactivityTimeoutError",
+        has_prior_session=True,
+    )
+    assert action == "resume"
+
+    sid = resolve_resume_session_id(
+        has_prior_session=True,
+        prior_session_id=expected_session_id,
+        recovery_action=action,
+    )
+    assert sid == expected_session_id
+
+    intent = agent_retry_intent_for_failure(
+        failure_reason="AgentInactivityTimeoutError",
+        session_id=expected_session_id,
+        reset_tool_registry=False,
+    )
+    assert intent.action == "resume"
+    assert intent.session_id == expected_session_id

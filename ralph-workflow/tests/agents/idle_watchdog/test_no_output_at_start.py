@@ -52,6 +52,10 @@ def _active() -> AgentExecutionState:
     return AgentExecutionState.ACTIVE
 
 
+def _waiting_on_child() -> AgentExecutionState:
+    return AgentExecutionState.WAITING_ON_CHILD
+
+
 @dataclass
 class _NoProcessMonitor(ProcessMonitor):
     """Fake process monitor: no live subagents, no captures."""
@@ -161,3 +165,53 @@ def test_does_not_defer_after_evidence_ttl_expired() -> None:
         f"NO_OUTPUT_AT_START MUST fire after the activity TTL expires; got {verdict}"
     )
     assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
+
+
+def test_no_output_at_start_defers_on_first_waiting_on_child_entry() -> None:
+    """NO_OUTPUT_AT_START defers on the FIRST WAITING_ON_CHILD entry.
+
+    This is the exact prompt scenario: a subagent is dispatched at
+    invocation start, the agent transitions to WAITING_ON_CHILD, and the
+    watchdog polls at 30s.  The cumulative waiting-on-child time is still
+    0.0 on the first entry, so the old cumulative gate could not defer;
+    the new classify_quiet WAITING_ON_CHILD early-exit must defer instead.
+    """
+    wd, clock = _make_watchdog()
+    wd.record_invocation_start()
+
+    clock.advance(31.0)
+    verdict = wd.evaluate(classify_quiet=_waiting_on_child)
+    assert verdict == WatchdogVerdict.CONTINUE, (
+        f"NO_OUTPUT_AT_START MUST defer on first WAITING_ON_CHILD entry; got {verdict}"
+    )
+    assert wd.last_fire_reason is None
+
+
+def test_no_output_at_start_fires_after_waiting_ceiling_reached() -> None:
+    """After the WAITING_ON_CHILD cumulative ceiling is reached, the
+    watchdog fires CHILDREN_PERSIST_TOO_LONG -- NOT NO_OUTPUT_AT_START.
+
+    The WAITING_ON_CHILD early-exit in _evaluate_no_output_at_start only
+    defers the 30s short kill; the 600s cumulative ceiling inside
+    _handle_waiting_branch remains the upper bound for live-child stalls.
+    """
+    wd, clock = _make_watchdog()
+    wd.record_invocation_start()
+
+    # Enter WAITING_ON_CHILD and advance past the 600s ceiling.
+    # We deliberately provide no channel evidence and no corroborator so
+    # the only deferral path is the new WAITING_ON_CHILD early-exit; once
+    # the cumulative ceiling is reached, CHILDREN_PERSIST_TOO_LONG fires.
+    # First cross the idle_timeout so _evaluate_final_verdict enters the
+    # WAITING_ON_CHILD branch and starts the waiting run; then advance the
+    # remainder of the 600s ceiling.
+    clock.advance(61.0)
+    wd.evaluate(classify_quiet=_waiting_on_child)
+    clock.advance(_MAX_WAITING_SECONDS)
+    verdict = wd.evaluate(classify_quiet=_waiting_on_child)
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"expected FIRE after waiting ceiling reached; got {verdict}"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG, (
+        f"expected CHILDREN_PERSIST_TOO_LONG at ceiling, got {wd.last_fire_reason}"
+    )

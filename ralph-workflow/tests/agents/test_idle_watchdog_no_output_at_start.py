@@ -129,7 +129,14 @@ class TestNoOutputAtStart:
         assert verdict == WatchdogVerdict.FIRE
         assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
-    def test_fires_in_waiting_on_child_state(self) -> None:
+    def test_defers_in_waiting_on_child_state(self) -> None:
+        """When the execution strategy reports WAITING_ON_CHILD, the 30s/60s
+        NO_OUTPUT_AT_START short kill is deferred so a legitimately-starting
+        agent that just dispatched a subagent is not killed.
+
+        The cumulative CHILDREN_PERSIST_TOO_LONG ceiling (default 1800s in
+        this test's config) remains the upper bound for live-child stalls.
+        """
         watchdog, clock = _make_watchdog(
             idle_timeout=300.0,
             no_output_at_start_seconds=60.0,
@@ -139,8 +146,8 @@ class TestNoOutputAtStart:
         clock.advance(61)
         verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
 
-        assert verdict == WatchdogVerdict.FIRE
-        assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
+        assert verdict == WatchdogVerdict.CONTINUE
+        assert watchdog.last_fire_reason is None
 
     def test_does_not_fire_in_active_state_with_recorded_activity(self) -> None:
         watchdog, clock = _make_watchdog(

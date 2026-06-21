@@ -55,10 +55,13 @@ class TestNoOutputAtStartLifecycleBypass:
         # Advance the clock past the 30.0s threshold since start
         clock.advance(26.0)
 
-        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
+        verdict = watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
 
-        # On the buggy implementation, this assertion will fail because
-        # verdict is WatchdogVerdict.WAITING_ON_CHILD, not WatchdogVerdict.FIRE.
+        # Lifecycle activity must NOT count as meaningful output, so
+        # NO_OUTPUT_AT_START still fires at the threshold when the agent
+        # is ACTIVE.  (When the execution strategy reports WAITING_ON_CHILD,
+        # the separate WAITING_ON_CHILD early-exit defers instead -- see
+        # tests/agents/idle_watchdog/test_no_output_at_start.py.)
         assert verdict == WatchdogVerdict.FIRE
         assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 

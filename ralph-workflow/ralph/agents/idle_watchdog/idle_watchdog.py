@@ -1089,9 +1089,18 @@ class IdleWatchdog:
         inside WAITING_ON_CHILD deferral when the agent HAS produced output at
         some point but is now stuck with stale-progress evidence.
 
-        Defers (returns ``None``) before the gate when EITHER of the following
+        Defers (returns ``None``) before the gate when ANY of the following
         live signals is present:
 
+        - ``classify_quiet()`` returns ``AgentExecutionState.WAITING_ON_CHILD``
+          -- the execution strategy has already classified the run as
+          waiting on a live child.  This early-exit prevents the prompt
+          false-positive where a subagent dispatched at invocation start
+          caused ``NO_OUTPUT_AT_START`` to fire at 30s before the
+          WAITING_ON_CHILD deferral path (``_handle_waiting_branch``)
+          could consult its 600s cumulative ceiling.  The cumulative
+          ``CHILDREN_PERSIST_TOO_LONG`` ceiling remains the correct upper
+          bound for live-child stalls.
         - ``self._safe_corroborate()`` returns a ``CorroborationSnapshot``
           whose ``alive_by`` is a FRESH corroboration state -- the
           corroborator (process tree / OS descendant scan / heartbeat)
@@ -1123,7 +1132,12 @@ class IdleWatchdog:
             or (now - self._last_meaningful_output_at) < self._config.no_output_at_start_seconds
         ):
             return None
-        quiet_state = classify_quiet()
+        try:
+            quiet_state = classify_quiet()
+        except Exception:
+            quiet_state = AgentExecutionState.ACTIVE
+        if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
+            return None
         if quiet_state not in {
             AgentExecutionState.ACTIVE,
             AgentExecutionState.WAITING_ON_CHILD,

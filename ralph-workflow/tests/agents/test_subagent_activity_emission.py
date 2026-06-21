@@ -43,6 +43,8 @@ from ralph.agents.parsers import (
     get_parser,
 )
 from ralph.agents.parsers.agy import AgyParser
+from ralph.mcp.server._activity_sink import reset_subagent_sink, set_subagent_sink
+from ralph.pipeline.activity_stream import stream_parsed_agent_activity
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -414,4 +416,163 @@ def test_claude_interactive_tool_result_does_not_leak_content() -> None:
     parser.emit_subagent_activity(tool_result_line, sink)
     assert captured == ["tool_result:Bash"], (
         f"expected 'tool_result:Bash', got {captured}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (6) Per-transport stream_parsed_agent_activity wiring: every supported
+#     parser feeds the subagent sink through the contextvar pipeline.
+# ---------------------------------------------------------------------------
+
+_TRANSPORT_SAMPLES: list[tuple[str, str, list[str], str]] = [
+    (
+        "claude",
+        "claude/sonnet",
+        [
+            json.dumps(
+                {
+                    "type": "content_block_start",
+                    "content_block": {
+                        "type": "tool_use",
+                        "name": "Bash",
+                        "input": {"command": "ls"},
+                    },
+                }
+            )
+        ],
+        "tool_use:",
+    ),
+    (
+        "opencode",
+        "opencode/test",
+        [json.dumps({"type": "tool_use", "part": {"tool": "Bash"}})],
+        "tool_use:",
+    ),
+    (
+        "codex",
+        "codex/test",
+        [
+            json.dumps(
+                {
+                    "type": "item.started",
+                    "item": {"type": "mcp_tool_call", "tool": "Bash"},
+                }
+            )
+        ],
+        "tool_use:",
+    ),
+    (
+        "gemini",
+        "gemini/test",
+        [json.dumps({"type": "tool_call", "name": "Bash"})],
+        "tool_use:",
+    ),
+    (
+        "pi",
+        "pi/test",
+        [
+            json.dumps(
+                {
+                    "type": "tool_execution_start",
+                    "toolCallId": "call_1",
+                    "toolName": "bash",
+                    "args": {"command": "ls -la"},
+                }
+            )
+        ],
+        "tool_use:",
+    ),
+    (
+        "agy",
+        "agy/test",
+        ["hello from agy subagent"],
+        "text:",
+    ),
+    (
+        "generic",
+        "generic/test",
+        ["[plain] tool: Bash"],
+        "tool_use:",
+    ),
+    (
+        "claude_interactive",
+        "claude_interactive/test",
+        [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [{"type": "tool_use", "name": "Bash"}]
+                    },
+                }
+            )
+        ],
+        "tool_use:",
+    ),
+]
+
+
+def test_stream_parsed_agent_activity_invokes_subagent_sink_per_transport() -> None:
+    """Each supported transport forwards a sanitized subagent summary to
+    the watchdog sink through ``stream_parsed_agent_activity``.
+
+    The sink is bound via the ``set_subagent_sink`` contextvar; the
+    activity stream's internal ``invoke_subagent_sink`` call must reach
+    the per-run watchdog's ``record_subagent_work`` surface for every
+    parser (Claude, OpenCode, Codex, Gemini, Pi, Agy, Generic,
+    ClaudeInteractive).
+    """
+    for parser_type, agent_name, lines, expected_prefix in _TRANSPORT_SAMPLES:
+        captured: list[str] = []
+
+        def _capture(line: str, _buf: list[str] = captured) -> None:
+            _buf.append(line)
+
+        token = set_subagent_sink(_capture)
+        try:
+            stream_parsed_agent_activity(
+                lines,
+                parser_type=parser_type,
+                agent_name=agent_name,
+                display=None,
+            )
+        finally:
+            reset_subagent_sink(token)
+
+        matching = [line for line in captured if line.startswith(expected_prefix)]
+        assert len(matching) >= 1, (
+            f"{parser_type}: expected at least one subagent sink summary"
+            f" starting with {expected_prefix!r}; captured={captured}"
+        )
+
+
+def test_stream_parsed_agent_activity_redacts_authorization_bearer() -> None:
+    """A subagent summary containing ``Authorization: Bearer SECRET`` is
+    sanitized before it reaches the watchdog sink.
+
+    The parser-layer sanitizer (``_sanitize_parser_subagent_summary``)
+    must strip bearer tokens from operator-visible summaries so the
+    subagent_activity channel never leaks credentials.
+    """
+    captured: list[str] = []
+
+    def _capture(line: str) -> None:
+        captured.append(line)
+
+    token = set_subagent_sink(_capture)
+    try:
+        stream_parsed_agent_activity(
+            [json.dumps({"type": "text", "content": "Authorization: Bearer SECRET"})],
+            parser_type="generic",
+            agent_name="generic/test",
+            display=None,
+        )
+    finally:
+        reset_subagent_sink(token)
+
+    assert len(captured) >= 1, f"expected a sanitized summary; captured={captured}"
+    for line in captured:
+        assert "SECRET" not in line, f"bearer token leaked into subagent summary: {line!r}"
+    assert any("<redacted>" in line for line in captured), (
+        f"expected <redacted> placeholder in sanitized summary; captured={captured}"
     )
