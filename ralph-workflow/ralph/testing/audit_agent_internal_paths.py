@@ -690,14 +690,7 @@ def main(argv: list[str] | None = None) -> int:
     behavioral_count = len(_BEHAVIORAL_ACCEPT_PATHS) + len(_BEHAVIORAL_REJECT_PATHS)
     placement_count = 1
     auto_seed_count = 1
-    best_effort_count = 2
-    total = (
-        literal_count
-        + behavioral_count
-        + placement_count
-        + auto_seed_count
-        + best_effort_count
-    )
+    total = literal_count + behavioral_count + placement_count + auto_seed_count
 
     if problems:
         print(f"AGENT-INTERNAL-PATHS AUDIT FAILED: {len(problems)} invariant violation(s)")
@@ -722,8 +715,6 @@ def main(argv: list[str] | None = None) -> int:
         "FIRST executable statement (AST placement), "
         "handle_commit_cleanup_phase auto-seeds canonical .gitignore + .git/info/exclude "
         "patterns between ensure_git_initialized and _load_cleanup_artifact (AST placement), "
-        "cleanup is best-effort (no 'Refusing to delete non-housekeeping' hard fail) AND "
-        "exposes a build_cleanup_retry_hint helper for structured PhaseFailureEvent reasons, "
         "bootstrap.py defines _DEFAULT_GIT_EXCLUDE_PATTERNS + auto_seed_default_git_exclude "
         "+ root-anchored /checkpoint.json (NOT bare checkpoint.json), "
         "git/operations.py _atomic_append_text staging filename is content-derived "
