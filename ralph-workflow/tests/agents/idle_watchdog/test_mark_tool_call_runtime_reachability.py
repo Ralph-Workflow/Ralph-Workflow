@@ -138,6 +138,42 @@ def test_extract_tool_call_returns_unknown_for_missing_name() -> None:
     assert tool_args == {"foo": "bar"}
 
 
+def test_extract_tool_call_from_claude_prefixed_plain_text() -> None:
+    """A plain-text ``claude tool: <name>`` line classified as TOOL_USE
+    by ClaudeExecutionStrategy MUST yield a stable fingerprint.
+
+    Plain-text tool-use lines carry no arguments, so the helper
+    returns an empty ``args`` dict.  Without this path the
+    repetition breaker cannot fire on repeated identical plain-text
+    tool invocations.
+    """
+    result = _extract_tool_call_from_activity_signal("claude tool: Bash")
+    assert result is not None
+    tool_name, tool_args = result
+    assert tool_name == "Bash"
+    assert tool_args == {}
+
+
+def test_extract_tool_call_from_plain_tool_prefix() -> None:
+    """A plain-text ``[plain] tool: <name>`` line MUST also yield a
+    stable fingerprint when it reaches the helper.
+
+    This mirrors the GenericParser convention so the tool-call
+    circuit breaker stays reachable for any transport that surfaces
+    plain-text tool-use markers.
+    """
+    result = _extract_tool_call_from_activity_signal("[plain] tool: Read")
+    assert result is not None
+    tool_name, tool_args = result
+    assert tool_name == "Read"
+    assert tool_args == {}
+
+
+def test_extract_tool_call_returns_none_for_plain_text_without_tool_marker() -> None:
+    """A non-tool plain-text line MUST NOT produce a fingerprint."""
+    assert _extract_tool_call_from_activity_signal("random log line") is None
+
+
 # ---------------------------------------------------------------------------
 # (2) Production seam: a parsed tool-use line observed by the line
 #     readers MUST feed the watchdog's tool-call circuit breaker.
@@ -403,6 +439,36 @@ def test_process_line_reader_routes_repeated_tool_use_to_breaker() -> None:
     assert len(fingerprints) == 1, (
         f"Expected identical fingerprints for repeated identical tool calls;"
         f" got {fingerprints}"
+    )
+
+
+def test_process_line_reader_routes_plain_text_tool_use_to_breaker() -> None:
+    """A plain-text ``claude tool: <name>`` TOOL_USE line on the
+    subprocess reader MUST feed the tool-call circuit breaker.
+
+    This is the analysis-feedback reachability gap: the helper only
+    understood JSON envelopes, so repeated identical plain-text
+    tool-use markers (classified as TOOL_USE elsewhere) were silently
+    ignored and ``REPEATED_IDENTICAL_TOOL_CALL`` could not fire.
+    """
+    strategy = _ToolUseStrategy("claude tool: Bash")
+    reader_like = SimpleNamespace(
+        _strategy=strategy,
+        _last_activity_kind="",
+        _last_activity_meaningful=[False],
+    )
+    bound_method = MethodType(_ProcessLineReader._record_line_activity, reader_like)
+    watchdog = _RecordingWatchdog()
+
+    for _ in range(3):
+        bound_method(watchdog, "claude tool: Bash")
+
+    assert len(watchdog.tool_call_observations) == 3, (
+        f"Expected 3 plain-text tool-call observations; got"
+        f" {watchdog.tool_call_observations}"
+    )
+    assert all(name == "Bash" and args == {} for name, args in watchdog.tool_call_observations), (
+        f"Expected (Bash, {{}}) fingerprints; got {watchdog.tool_call_observations}"
     )
 
 

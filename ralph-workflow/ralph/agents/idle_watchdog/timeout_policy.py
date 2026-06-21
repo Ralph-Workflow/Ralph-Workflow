@@ -30,6 +30,7 @@ from ralph.timeout_defaults import (
     REPEATED_ERROR_CONSECUTIVE_THRESHOLD,
     REPEATED_ERROR_WINDOW_COUNT,
     REPEATED_ERROR_WINDOW_SECONDS,
+    SILENT_SUBAGENT_SECONDS,
     SUBAGENT_OUTPUT_CAPTURE_ENABLED,
     SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
@@ -200,11 +201,12 @@ class TimeoutPolicy:
     # side-channel activity is fresh AND classify_quiet is ACTIVE.  The
     # SILENT_SUBAGENT kind is a post-mortem label parallel to
     # DEFERRED_BY_STUCK_CLASSIFIER; it tells operators "a subagent was
-    # dispatched but went silent for >180s".  The default of 180.0s
-    # matches the activity_evidence_ttl_seconds default so the diagnostic
-    # surfaces once the deferral gate expires.  Set to None to disable
-    # the diagnostic.  When set, must be > 0.
-    silent_subagent_seconds: float | None = 180.0
+    # dispatched but went silent for >180s".  The default of 180.0s is
+    # deliberately looser than ``activity_evidence_ttl_seconds`` (30.0s)
+    # so the diagnostic surfaces once the short-term deferral gate has
+    # expired but before the 600s no-progress ceiling.  Set to None to
+    # disable the diagnostic.  When set, must be > 0.
+    silent_subagent_seconds: float | None = SILENT_SUBAGENT_SECONDS
     # Per-kind workspace file-change weights. Each value is BINARY:
     # weight==0.0 means the change is dropped (does not defer the
     # NO_OUTPUT_DEADLINE verdict); weight==1.0 means the change

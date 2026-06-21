@@ -448,6 +448,26 @@ def test_record_subagent_work_description_redacts_malformed_inner_quote() -> Non
     assert "<redacted>" in stored
 
 
+def test_record_subagent_work_description_redacts_malformed_args_inner_quote() -> None:
+    """A malformed JSON ``args`` value is fully redacted.
+
+    The analysis feedback confirmed that ``args`` was missing from the
+    fallback regex, so ``{"args":"secret"tail"}`` leaked the suffix.
+    This test pins the fix: the fallback regex MUST treat ``args`` the
+    same as ``arguments`` and redact the entire malformed value.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='{"args":"secret"tail"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "tail" not in stored, (
+        f"malformed-JSON args suffix 'tail' must be redacted, got: {stored!r}"
+    )
+    assert "secret" not in stored, (
+        f"malformed-JSON args prefix 'secret' must be redacted, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
 def test_record_subagent_work_description_redacts_escaped_prompt_content() -> None:
     """An escaped-quote ``prompt`` / ``content`` value is fully redacted.
 

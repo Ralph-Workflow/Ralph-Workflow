@@ -201,16 +201,32 @@ def _extract_tool_call_from_activity_signal(
       (Claude content_block_start wrapped in stream_event)
     * ``{"event": "tool_use", "tool_name": "...", "arguments": {...}}``
     * ``{"tool": "<name>", "input": {...}}`` (raw provider shorthand)
+    * ``claude tool: <name>`` (plain-text marker from Claude execution strategy)
+    * ``[plain] tool: <name>`` (plain-text marker from GenericParser convention)
 
     The ``tool_name`` is the literal string after trimming; an empty /
     missing name falls back to ``"unknown"`` so the fingerprint is
     always well-formed.  The ``tool_args`` is the dict of input
     arguments extracted from the envelope; ``None`` is treated as an
-    empty dict inside the tracker.
+    empty dict inside the tracker.  Plain-text markers carry no
+    arguments, so the fingerprint is ``(name, {})``.
     """
     stripped = raw.strip()
     if not stripped:
         return None
+
+    # Plain-text tool markers (e.g. Claude's "claude tool: Bash" or
+    # GenericParser's "[plain] tool: Read") are classified as
+    # ``TOOL_USE`` activity elsewhere in the codebase but do not
+    # contain JSON arguments.  Extract the tool name so the
+    # repetition breaker can still fire on repeated identical
+    # plain-text tool invocations.
+    lower = stripped.lower()
+    for prefix in ("claude tool:", "[plain] tool:"):
+        if lower.startswith(prefix):
+            tool_name = stripped[len(prefix) :].strip()
+            return (tool_name or "unknown"), {}
+
     try:
         parsed = cast("object", json.loads(stripped, strict=False))
     except (json.JSONDecodeError, ValueError):

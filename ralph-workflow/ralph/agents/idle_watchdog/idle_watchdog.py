@@ -73,10 +73,10 @@ before returning ``WatchdogVerdict.FIRE``. A fire is deferred
     in ``self._classify_quiet_provider`` so the gate can consult it
     on every ``_classify_stuck_now`` call).
 
-The classifier is a deterministic 6-kind enum (THINKING, LOADING,
-WAITING_ON_CONNECTIVITY, TRANSITIONING, STUCK, DUPLICATE_KILL) and
-is a pure function of its inputs. See ``_stuck_classifier.py`` for
-the full contract.
+The classifier is a deterministic 7-kind enum (THINKING, LOADING,
+WAITING_ON_CONNECTIVITY, TRANSITIONING, STUCK, DUPLICATE_KILL,
+SILENT_SUBAGENT) and is a pure function of its inputs.
+See ``_stuck_classifier.py`` for the full contract.
 """
 
 from __future__ import annotations
@@ -240,7 +240,7 @@ _SENSITIVE_PATH_TOKEN_RE = re.compile(
 # does not consume JSON structural characters.
 _SENSITIVE_MARKER_FALLBACK_RE = re.compile(
     r"""
-    "(?:arguments|file_path|input|prompt|content)"\s*:\s*"
+    "(?:arguments|args|file_path|input|prompt|content)"\s*:\s*"
     .*?
     (?=[,\}\]\n]|$)
     """,

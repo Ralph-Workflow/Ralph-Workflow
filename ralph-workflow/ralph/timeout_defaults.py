@@ -50,6 +50,15 @@ POST_TOOL_RESULT_PROGRESSION_SECONDS: float | None = 120.0
 #: legacy stdout-only NO_OUTPUT_DEADLINE behavior.
 AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS: float = 30.0
 
+#: Default staleness threshold for the SILENT_SUBAGENT diagnostic.
+#: The StuckClassifier returns ``StuckKind.SILENT_SUBAGENT`` when a
+#: subagent channel has evidence (count >= 1) but the most recent
+#: signal is older than this threshold. The default of 180.0s is
+#: deliberately looser than ``AGENT_IDLE_ACTIVITY_EVIDENCE_TTL_SECONDS``
+#: (30.0s) so the diagnostic surfaces after the short-term deferral
+#: gate has expired but before the 600s no-progress ceiling.
+SILENT_SUBAGENT_SECONDS: float | None = 180.0
+
 #: Default per-kind workspace file-change weights. Each value is
 #: BINARY: weight==0.0 means the change is dropped (does not defer
 #: the NO_OUTPUT_DEADLINE verdict); weight==1.0 means the change

@@ -77,7 +77,7 @@ _SENSITIVE_PATH_TOKEN_RE: re.Pattern[str] = re.compile(
 # ``_SENSITIVE_MARKER_FALLBACK_RE``).
 _SENSITIVE_MARKER_FALLBACK_RE: re.Pattern[str] = re.compile(
     r"""
-    "(?:arguments|file_path|input|prompt|content)"\s*:\s*"
+    "(?:arguments|args|file_path|input|prompt|content)"\s*:\s*"
     .*?
     (?=[,\}\]\n]|$)
     """,

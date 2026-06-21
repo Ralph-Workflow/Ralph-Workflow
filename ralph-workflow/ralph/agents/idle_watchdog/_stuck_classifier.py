@@ -6,7 +6,7 @@ watchdog's evaluate() hook calls it before every non-absolute fire; the gate
 returns CONTINUE for any non-STUCK kind so a productive session that does
 not look productive is not killed.
 
-Six kinds are exposed:
+Seven kinds are exposed:
 
 * THINKING — at least one first-party channel (mcp_tool or subagent_output)
   is fresher than ``activity_evidence_ttl_seconds``. The agent is actively

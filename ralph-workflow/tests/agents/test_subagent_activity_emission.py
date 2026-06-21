@@ -288,6 +288,35 @@ def test_tool_use_sanitizes_sensitive_marker_in_tool_name() -> None:
     assert "abc" not in captured[0]
 
 
+def test_text_line_sanitizes_malformed_args_payload() -> None:
+    """A text line containing malformed JSON with an ``args`` value MUST
+    have the entire value redacted.
+
+    This is the analysis-feedback regression: the parser-layer
+    fallback regex previously only listed ``arguments`` and left
+    ``args`` payloads (e.g. ``text:{"args":"secret"tail"}``) visible.
+    """
+    parser = get_parser("claude")
+    captured, sink = _sink()
+    parser.emit_subagent_activity(
+        AgentOutputLine(
+            type="text",
+            content='{"args":"secret"tail"}',
+            raw="",
+            metadata={},
+        ),
+        sink,
+    )
+    assert len(captured) == 1
+    assert "secret" not in captured[0], (
+        f"malformed args value must be redacted, got: {captured[0]!r}"
+    )
+    assert "tail" not in captured[0], (
+        f"malformed args suffix must be redacted, got: {captured[0]!r}"
+    )
+    assert "<redacted>" in captured[0]
+
+
 # ---------------------------------------------------------------------------
 # (4) A buggy sink (raises) MUST NOT propagate the exception. The hook is
 #     called from inside stream_parsed_agent_activity which is itself a
