@@ -200,14 +200,17 @@ class TestCheckProcessResultWaitsForLiveChildren:
         # Time: 0.0 → 0.1 → deadline at 0.1 (after two 0.05s polls)
         # First call (t=0.0): WAITING_ON_CHILD, wait
         # Second call (t=0.1): still WAITING_ON_CHILD, deadline hit → RESUMABLE_CONTINUE
+        # Time advances 0.05s per monotonic call; deadline is 0.1s. The loop
+        # polls, waits (with a clamped wait when the remaining deadline is
+        # smaller than the poll interval), and then rechecks the deadline.
         monotonic_vals = iter([0.0, 0.05, 0.1, 0.15])
         poll_count = [0]
 
         def _fake_event_wait(self: object, timeout: object = None) -> object:
-            if timeout is not None and timeout == _DESCENDANT_WAIT_POLL_SECONDS:
+            # Count every wait issued by the loop; tolerate clamped final waits.
+            if timeout is not None and timeout > 0:
                 poll_count[0] += 1
-                return None
-            return threading.Event.wait(self, timeout)
+            return None
 
         with (
             patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),

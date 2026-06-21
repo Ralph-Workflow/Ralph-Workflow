@@ -77,10 +77,15 @@ class WatchLoopBase:
         if result:
             return result
 
-        while self.clock.monotonic() < deadline:
+        while True:
+            now = self.clock.monotonic()
+            if now >= deadline:
+                break
             if on_tick is not None:
                 on_tick(result)
-            self.clock.wait_for_event(self._event, poll_interval_s)
+            remaining = deadline - now
+            wait_for = poll_interval_s if remaining >= poll_interval_s else remaining
+            self.clock.wait_for_event(self._event, wait_for)
             result = predicate()
             if result:
                 return result

@@ -238,9 +238,13 @@ _SENSITIVE_PATH_TOKEN_RE = re.compile(
 # positive-lookahead ``(?=["\\,\}\]\n]|$)`` ensures the match
 # stops at the FIRST boundary character so the redacted text
 # does not consume JSON structural characters.
+#
+# ``(?i)`` makes the key names case-insensitive so mixed-case
+# provider keys such as ``Prompt`` / ``Arguments`` / ``Input`` /
+# ``Content`` are redacted exactly like their lowercase variants.
 _SENSITIVE_MARKER_FALLBACK_RE = re.compile(
     r"""
-    "(?:arguments|args|file_path|input|prompt|content)"\s*:\s*"
+    "(?i:arguments|args|file_path|input|prompt|content)"\s*:\s*"
     .*?
     (?=[,\}\]\n]|$)
     """,
@@ -262,6 +266,10 @@ _SENSITIVE_MARKER_FALLBACK_RE = re.compile(
 # replacement rule (no recursive walk) ensures non-sensitive sibling
 # fields cannot leak either -- a sensitive key whose value is a
 # nested object or list is fully redacted.
+#
+# Key lookup is case-insensitive so mixed-case provider keys such as
+# ``Prompt`` / ``Arguments`` / ``Input`` / ``Content`` are redacted
+# exactly like their lowercase variants.
 _SENSITIVE_JSON_KEYS: frozenset[str] = frozenset(
     {"arguments", "args", "file_path", "input", "prompt", "content"}
 )
@@ -286,7 +294,7 @@ def _redact_json_values(obj: object) -> object:
     if isinstance(obj, dict):
         result: dict[str, object] = {}
         for key, value in obj.items():
-            if key in _SENSITIVE_JSON_KEYS:
+            if isinstance(key, str) and key.lower() in _SENSITIVE_JSON_KEYS:
                 result[key] = "<redacted>"
             else:
                 result[key] = _redact_json_values(value)

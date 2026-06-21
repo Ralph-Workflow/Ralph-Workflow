@@ -576,3 +576,120 @@ def test_stream_parsed_agent_activity_redacts_authorization_bearer() -> None:
     assert any("<redacted>" in line for line in captured), (
         f"expected <redacted> placeholder in sanitized summary; captured={captured}"
     )
+
+
+# ---------------------------------------------------------------------------
+# (7) Mixed-case sensitive-key redaction (analysis-feedback: parser layer
+#     must redact ``Prompt`` / ``Arguments`` / ``Input`` / ``Content``
+#     exactly like lowercase variants).
+# ---------------------------------------------------------------------------
+
+
+def test_text_line_sanitizes_mixed_case_prompt_key() -> None:
+    """A text line containing ``\"Prompt\": \"<secret>\"`` redacts the value."""
+    parser = get_parser("claude")
+    captured, sink = _sink()
+    parser.emit_subagent_activity(
+        AgentOutputLine(
+            type="text",
+            content='{"Prompt": "SECRET-upper"}',
+            raw="",
+            metadata={},
+        ),
+        sink,
+    )
+    assert len(captured) == 1
+    assert "SECRET-upper" not in captured[0], (
+        f"mixed-case 'Prompt' value must be redacted, got: {captured[0]!r}"
+    )
+    assert "<redacted>" in captured[0]
+
+
+def test_text_line_sanitizes_mixed_case_arguments_object() -> None:
+    """A text line containing ``\"Arguments\": {...}`` redacts the whole object."""
+    parser = get_parser("claude")
+    captured, sink = _sink()
+    parser.emit_subagent_activity(
+        AgentOutputLine(
+            type="text",
+            content='{"Arguments": {"token": "SECRET-mixed"}}',
+            raw="",
+            metadata={},
+        ),
+        sink,
+    )
+    assert len(captured) == 1
+    assert "SECRET-mixed" not in captured[0], (
+        f"mixed-case 'Arguments' value must be redacted, got: {captured[0]!r}"
+    )
+    assert "token" not in captured[0], (
+        f"nested sibling 'token' must NOT leak, got: {captured[0]!r}"
+    )
+    assert "<redacted>" in captured[0]
+
+
+def test_text_line_sanitizes_mixed_case_input_key() -> None:
+    """A text line containing ``\"Input\": \"<secret>\"`` redacts the value."""
+    parser = get_parser("claude")
+    captured, sink = _sink()
+    parser.emit_subagent_activity(
+        AgentOutputLine(
+            type="text",
+            content='{"Input": "SECRET-input"}',
+            raw="",
+            metadata={},
+        ),
+        sink,
+    )
+    assert len(captured) == 1
+    assert "SECRET-input" not in captured[0], (
+        f"mixed-case 'Input' value must be redacted, got: {captured[0]!r}"
+    )
+    assert "<redacted>" in captured[0]
+
+
+def test_text_line_sanitizes_mixed_case_content_key() -> None:
+    """A text line containing ``\"Content\": \"<secret>\"`` redacts the value."""
+    parser = get_parser("claude")
+    captured, sink = _sink()
+    parser.emit_subagent_activity(
+        AgentOutputLine(
+            type="text",
+            content='{"Content": "SECRET-content"}',
+            raw="",
+            metadata={},
+        ),
+        sink,
+    )
+    assert len(captured) == 1
+    assert "SECRET-content" not in captured[0], (
+        f"mixed-case 'Content' value must be redacted, got: {captured[0]!r}"
+    )
+    assert "<redacted>" in captured[0]
+
+
+def test_text_line_sanitizes_malformed_mixed_case_arguments() -> None:
+    """A malformed JSON value under ``\"Arguments\"`` is fully redacted.
+
+    The fallback regex is case-insensitive, so mixed-case markers in
+    malformed JSON are caught exactly like lowercase markers.
+    """
+    parser = get_parser("claude")
+    captured, sink = _sink()
+    parser.emit_subagent_activity(
+        AgentOutputLine(
+            type="text",
+            content='{"Arguments": "secret"tail"}',
+            raw="",
+            metadata={},
+        ),
+        sink,
+    )
+    assert len(captured) == 1
+    assert "secret" not in captured[0], (
+        f"malformed mixed-case 'Arguments' prefix must be redacted, got: {captured[0]!r}"
+    )
+    assert "tail" not in captured[0], (
+        f"malformed mixed-case 'Arguments' suffix must be redacted, got: {captured[0]!r}"
+    )
+    assert "<redacted>" in captured[0]

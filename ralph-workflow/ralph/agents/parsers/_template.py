@@ -56,7 +56,10 @@ _CONTROL_CHARS_RE: re.Pattern[str] = re.compile(
 )
 
 # JSON keys whose value is sensitive (mirrors
-# ``_SENSITIVE_JSON_KEYS`` in idle_watchdog.py).
+# ``_SENSITIVE_JSON_KEYS`` in idle_watchdog.py).  Lookup is
+# case-insensitive so mixed-case provider keys such as ``Prompt`` /
+# ``Arguments`` / ``Input`` / ``Content`` are redacted like their
+# lowercase variants.
 _SENSITIVE_JSON_KEYS: frozenset[str] = frozenset(
     {"arguments", "args", "file_path", "input", "prompt", "content"}
 )
@@ -74,10 +77,12 @@ _SENSITIVE_PATH_TOKEN_RE: re.Pattern[str] = re.compile(
 )
 
 # Fallback pattern for malformed JSON values (mirrors
-# ``_SENSITIVE_MARKER_FALLBACK_RE``).
+# ``_SENSITIVE_MARKER_FALLBACK_RE``).  ``(?i)`` makes the key names
+# case-insensitive so mixed-case provider keys are redacted like
+# their lowercase variants.
 _SENSITIVE_MARKER_FALLBACK_RE: re.Pattern[str] = re.compile(
     r"""
-    "(?:arguments|args|file_path|input|prompt|content)"\s*:\s*"
+    "(?i:arguments|args|file_path|input|prompt|content)"\s*:\s*"
     .*?
     (?=[,\}\]\n]|$)
     """,
@@ -97,7 +102,7 @@ def _redact_json_values(obj: object) -> object:
     if isinstance(obj, dict):
         result: dict[str, object] = {}
         for key, value in obj.items():
-            if key in _SENSITIVE_JSON_KEYS:
+            if isinstance(key, str) and key.lower() in _SENSITIVE_JSON_KEYS:
                 result[key] = "<redacted>"
             else:
                 result[key] = _redact_json_values(value)
@@ -107,15 +112,68 @@ def _redact_json_values(obj: object) -> object:
     return obj
 
 
+_JSON_DECODER = json.JSONDecoder(strict=False)
+
+
+def _decode_json_at(text: str, pos: int) -> tuple[object, int]:
+    """Parse a JSON object/array starting at ``pos`` and return ``(value, end_offset)``.
+
+    On parse failure, returns ``(None, -1)`` so the caller can fall
+    through to character-level emission. Mirrors the watchdog's
+    ``_decode_json_at`` helper so the parser-layer and watchdog-layer
+    JSON fragment scanners behave identically.
+    """
+    try:
+        decoded = cast("tuple[object, int]", _JSON_DECODER.raw_decode(text, pos))
+    except (json.JSONDecodeError, ValueError):
+        return None, -1
+    value, end = decoded
+    return value, end
+
+
+def _redact_json_fragments(text: str) -> str:
+    """Walk ``text`` and redact every JSON object/array it contains.
+
+    Mirrors the watchdog's ``_redact_json_fragments`` helper: scan for
+    ``{`` / ``[`` bytes, try to parse a JSON fragment at each position,
+    and use ``_redact_json_values`` to replace sensitive key values with
+    ``<redacted>``. This catches embedded JSON fragments after free-form
+    text and nested objects/lists under mixed-case sensitive keys.
+    """
+    if not text:
+        return text
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch in {"{", "["}:
+            parsed, end = _decode_json_at(text, i)
+            if parsed is not None and isinstance(parsed, (dict, list)) and end > i:
+                try:
+                    redacted_obj = _redact_json_values(parsed)
+                    redacted_text = json.dumps(redacted_obj, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    out.append(text[i])
+                    i += 1
+                    continue
+                out.append(redacted_text)
+                i = end
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _sanitize_parser_subagent_summary(line: str) -> str:
     """Sanitize a one-line subagent summary for operator-visible output.
 
     Mirrors the watchdog's ``_sanitize_subagent_description`` rules:
-    strips control characters, redacts sensitive JSON fragments,
-    redacts sensitive path roots, redacts bearer tokens, and caps
-    the result at ``_MAX_SUMMARY_LENGTH`` so the operator-visible
-    subagent_activity field never echoes raw tool arguments / file
-    paths / bearer tokens.
+    strips control characters, redacts sensitive JSON fragments
+    (well-formed, malformed, and embedded), redacts sensitive path
+    roots, redacts bearer tokens, and caps the result at
+    ``_MAX_SUMMARY_LENGTH`` so the operator-visible subagent_activity
+    field never echoes raw tool arguments / file paths / bearer tokens.
 
     Returns the sanitized string (which may be empty when the input
     was empty or only whitespace).
@@ -123,6 +181,7 @@ def _sanitize_parser_subagent_summary(line: str) -> str:
     if not line:
         return ""
     cleaned = _CONTROL_CHARS_RE.sub("", line)
+    cleaned = _redact_json_fragments(cleaned)
     cleaned = _SENSITIVE_MARKER_FALLBACK_RE.sub("<redacted>", cleaned)
     cleaned = _SENSITIVE_PATH_TOKEN_RE.sub("<redacted>", cleaned)
     cleaned = cleaned.strip()
