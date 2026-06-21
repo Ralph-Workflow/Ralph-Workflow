@@ -55,7 +55,42 @@ from typing import Iterable, Optional
 # ═══════════════════════════════════════════════════════════════════════════
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CACHE_PATH = REPO_ROOT / ".git" / "fabrication-cache.json"
+
+
+def _resolve_git_dir() -> Path:
+    """Locate the real git directory, handling worktree mode.
+
+    In a regular repo, ``<worktree>/.git`` is a directory; the cache sits
+    alongside ``HEAD``/``refs``/etc. In a linked worktree, ``<worktree>/.git``
+    is a *file* containing ``gitdir: <main>/.git/worktrees/<name>``. Writing
+    ``<worktree>/.git/fabrication-cache.json`` then fails because ``.git`` is
+    not a directory. Resolve the actual git dir via the file or via
+    ``git rev-parse --git-dir`` so the cache is written in a writable
+    directory in both modes.
+    """
+    fs_git = REPO_ROOT / ".git"
+    if fs_git.is_dir():
+        return fs_git
+    if fs_git.is_file():
+        for line in fs_git.read_text().splitlines():
+            if line.startswith("gitdir:"):
+                return Path(line.split(":", 1)[1].strip())
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=str(REPO_ROOT),
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        candidate = Path(out)
+        if not candidate.is_absolute():
+            candidate = (REPO_ROOT / candidate).resolve()
+        return candidate
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return fs_git
+
+
+CACHE_PATH = _resolve_git_dir() / "fabrication-cache.json"
 
 # Default: scan the entire repo. No whitelist, no carve-outs.
 DEFAULT_ROOTS: tuple[Path, ...] = (Path("."),)
