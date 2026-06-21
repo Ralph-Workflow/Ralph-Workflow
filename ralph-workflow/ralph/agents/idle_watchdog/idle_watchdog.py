@@ -699,6 +699,7 @@ class IdleWatchdog:
         # the event (transition, suspicion, fire). Reset to ``None`` in
         # ``record_invocation_start`` and updated by ``record_subagent_work``.
         self._last_subagent_progress_description: str | None = None
+        self._default_subagent_activity_listener: WaitingStatusListener | None = None
         self._subagent_output_count = 0
         self._last_subagent_output_at = None
         self._subagent_output_captures = {}
@@ -764,6 +765,35 @@ class IdleWatchdog:
         """Cumulative seconds spent in WAITING_ON_CHILD state across all runs."""
         return self._cumulative_waiting_on_child_seconds
 
+    @property
+    def last_subagent_progress_description(self) -> str | None:
+        """The most recent subagent progress description.
+
+        Set by ``record_subagent_work`` and reset to ``None`` by
+        ``record_invocation_start``. Surfaced publicly so operators and
+        tooling can see what the subagent was doing at any moment without
+        needing to supply a full ``WaitingStatusListener``.
+        """
+        return self._last_subagent_progress_description
+
+    def register_default_subagent_activity_listener(
+        self,
+        listener: WaitingStatusListener | None,
+    ) -> None:
+        """Register a listener that receives every subagent activity event.
+
+        The listener is invoked from ``_emit`` for every ``WaitingStatusEvent``
+        whose ``subagent_activity`` field is non-None. This gives a cheap,
+        real-time view of what the subagent is doing (e.g. the last child
+        progress line) without requiring callers to implement a full
+        ``WaitingStatusListener``.
+
+        The listener is reset to ``None`` on ``record_invocation_start`` so
+        state does not leak across invocations. Listener exceptions are
+        caught and logged at DEBUG; they never propagate.
+        """
+        self._default_subagent_activity_listener = listener
+
     def record_invocation_start(self) -> None:
         """Record the start of the invocation."""
         now = self._clock.monotonic()
@@ -771,6 +801,7 @@ class IdleWatchdog:
         self._last_meaningful_output_at = now
         self._has_meaningful_output = False
         self._last_subagent_progress_description = None
+        self._default_subagent_activity_listener = None
         self._last_deferred_kind = None
 
     def set_is_waiting_state(self, is_waiting_state: bool) -> None:
@@ -1949,11 +1980,18 @@ class IdleWatchdog:
         suspect_threshold_seconds: float | None = None,
         diagnostic: dict[str, str | int | float | bool | list[object]] | None = None,
     ) -> None:
-        """Build and dispatch a WaitingStatusEvent to the listener.
+        """Build and dispatch a WaitingStatusEvent to listeners.
+
+        The configured ``WaitingStatusListener`` always receives the event.
+        Additionally, any ``subagent_activity`` payload is forwarded to the
+        default subagent-activity listener so callers can observe real-time
+        subagent progress without implementing a full status listener.
 
         Never propagates listener exceptions; logs at DEBUG if one is raised.
         """
-        if self._listener is None:
+        main_listener = self._listener
+        subagent_listener = self._default_subagent_activity_listener
+        if main_listener is None and subagent_listener is None:
             return
         candidate_total = self._cumulative_waiting_on_child_seconds + current_run_seconds
         _suspect = (
@@ -1975,10 +2013,24 @@ class IdleWatchdog:
             diagnostic=dict(diagnostic) if diagnostic else {},
             subagent_activity=self._last_subagent_progress_description,
         )
-        try:
-            self._listener(event)
-        except Exception:
-            self._log.debug("idle watchdog: listener raised (suppressed)")
+        if main_listener is not None:
+            try:
+                main_listener(event)
+            except Exception:
+                self._log.debug("idle watchdog: listener raised (suppressed)")
+        if event.subagent_activity is not None:
+            if subagent_listener is not None:
+                try:
+                    subagent_listener(event)
+                except Exception:
+                    self._log.debug(
+                        "idle watchdog: default subagent activity listener raised (suppressed)"
+                    )
+            else:
+                self._log.info(
+                    "idle watchdog: subagent activity: {}",
+                    event.subagent_activity,
+                )
 
     def evaluate(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distinct verdict path
         self,
