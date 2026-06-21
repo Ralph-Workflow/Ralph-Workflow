@@ -14,7 +14,10 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 Parallel plan execution is now **delegated to the executing AI agent's native
 sub-agent / task tooling** (Claude Code sub-agents, OpenCode task tool, Codex
-sub-agents, AGY task tooling, etc.). The bundled `pipeline.toml` ships with
+sub-agents, AGY task tooling, etc.). Pi.dev is wired as a transport but has
+no documented sub-agent / task tooling per the public pi.dev design
+philosophy, so `work_units` and `parallel_plan` run sequentially in
+`unit_id` order for the `pi` transport. The bundled `pipeline.toml` ships with
 `dispatch_mode = "agent_subagents"` on the development phase, so the executing
 agent is the actor that dispatches its own sub-agents and produces the matching
 `plan_items_proven` evidence. **Ralph-managed fan-out is dormant in this build**:
@@ -52,8 +55,13 @@ For capable agents, the agent's native sub-agent / task capability is enabled
 by default via `[agents.<name>] subagent_capability = true` in
 `ralph-workflow.toml` (see the [Configuration Reference](configuration.md)
 table for the per-agent default). Agents without usable sub-agent capability
-(e.g. `nanocoder`) execute the same plan sequentially in `unit_id` order — no
-correctness loss.
+(e.g. `nanocoder` and `pi`) execute the same plan sequentially in `unit_id`
+order — no correctness loss. Pi.dev is wired as a transport but has no
+documented sub-agent / task tooling per the public pi.dev design philosophy
+("Pi keeps the core small ... It intentionally does not include built-in MCP,
+sub-agents, permission popups, plan mode, to-dos, or background bash"), so
+`work_units` and `parallel_plan` run sequentially in `unit_id` order for the
+`pi` transport.
 
 The planning prompt (`planning.jinja`) carries the new
 `## Agent-Driven Parallel Execution` block that tells the planner to write

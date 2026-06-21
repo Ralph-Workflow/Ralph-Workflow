@@ -19,7 +19,24 @@ TypeScript union at https://pi.dev/docs/latest/json:
   - queue: ``queue_update``
   - compaction: ``compaction_start``, ``compaction_end``
   - auto-retry: ``auto_retry_start``, ``auto_retry_end``
-  - extension: ``extension_error``
+
+The current published AgentSessionEvent union enumerates EXACTLY these
+15 union members (10 ``AgentEvent`` members + 5 direct members;
+re-fetched 2026-06-20 from https://pi.dev/docs/latest/json; mirrored
+in ``tmp/pi-dev-docs/inventory.md``).  The ``session`` line emitted
+as the FIRST line of the stream (per the docs: "The first line is
+the session header") is a stream-level header, NOT a member of the
+union.  Anything outside the 15-member union plus the stream-level
+``session`` header is forward-compat, not part of the documented
+contract.
+
+Forward-compat only (NOT in the current published union):
+
+  - ``extension_error`` — defensively accepted so a legacy or future
+    pi.dev build that emits it does not break the parser; routed to
+    ``type='error'``.  Deliberately excluded from the committed
+    fixture and from the wire-format spec assertion so the live-doc
+    contract stays aligned with the published pi.dev docs.
 
 The ``message_update`` events carry an ``assistantMessageEvent`` with
 its own sub-type union:
@@ -61,8 +78,94 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
 
-_TEXT_ACCUMULATOR_KEY = "text"
-_THINKING_ACCUMULATOR_KEY = "thinking"
+_TEXT_KIND = "text"
+_THINKING_KIND = "thinking"
+
+_TEXT_ACCUMULATOR_PREFIX = "text:"
+_THINKING_ACCUMULATOR_PREFIX = "thinking:"
+
+# Sentinel used when a text_end / thinking_end event arrives without a
+# numeric ``contentIndex`` field.  In that case we cannot track the
+# terminal snapshot per-block (the streaming event did not tell us
+# which block it closed), so the per-block accumulator is keyed by
+# this sentinel and a separate "saw terminal" guard applies per block
+# just like for any other contentIndex.  Real pi.dev output always
+# carries an integer ``contentIndex`` (per the fixture and the live
+# docs), so this branch is a defensive fallback only.
+_LEGACY_UNINDEXED_CONTENT_INDEX = -1
+
+
+def _content_index_of(sub: dict[str, object]) -> int:
+    """Return the integer ``contentIndex`` of a streaming sub-event.
+
+    The pi.dev ``AssistantMessageEvent`` events (``text_start`` /
+    ``text_delta`` / ``text_end`` / ``thinking_start`` /
+    ``thinking_delta`` / ``thinking_end`` / ``toolcall_start`` /
+    ``toolcall_delta`` / ``toolcall_end``) all carry an integer
+    ``contentIndex`` field per the documented wire format.  Real
+    pi.dev output always carries an integer; if a malformed or
+    forward-compat event omits it, we fall back to the
+    :data:`_LEGACY_UNINDEXED_CONTENT_INDEX` sentinel so the
+    per-block tracking still treats it as its own block.
+    """
+    raw = sub.get("contentIndex")
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return raw
+    return _LEGACY_UNINDEXED_CONTENT_INDEX
+
+
+def _accumulator_key(kind: str, content_index: int) -> str:
+    """Compose the per-block accumulator key for a streaming sub-event.
+
+    The key is ``{kind}:{contentIndex}`` so each active text or
+    thinking content block accumulates independently, even when
+    multiple blocks stream interleaved ``text_delta`` events for the
+    same message.  Returns the literal ``"text"`` or ``"thinking"``
+    kind string; callers may pass ``_TEXT_KIND`` or ``_THINKING_KIND``.
+    """
+    return f"{kind}:{content_index}"
+
+
+def _extract_tool_result_text(result: object) -> str:
+    """Normalize a Pi tool result payload into user-visible text.
+
+    Pi's documented ``tool_execution_end.result`` and
+    ``message_end.content[].toolResult.result`` payloads carry a
+    typed content-array shape::
+
+        {"content": [{"type": "text", "text": "..."}, ...]}
+
+    The parser MUST emit the user-visible ``text`` rather than the
+    raw ``str(result)`` (which would produce ``"{'content': [...]}"``
+    and leak the dict literal to downstream consumers).  The single
+    extraction rule is shared by the success path
+    (``tool_execution_end`` with ``isError=false``, and the
+    ``toolResult`` block from ``message_end``) and the error path
+    (``tool_execution_end`` with ``isError=true``, and the
+    ``toolResult`` block with ``isError=true``).
+
+    Returns the joined ``text`` of every content block of type
+    ``text`` (in order), or an empty string when the payload has no
+    user-visible text.  For backwards compatibility with callers
+    that already pass a plain string (or empty) ``result``, the
+    input is returned unchanged.
+    """
+    if isinstance(result, str):
+        return result
+    if not isinstance(result, dict):
+        return str(result) if result else ""
+    content = result.get("content")
+    if not isinstance(content, list):
+        return str(result)
+    parts: list[str] = []
+    for block in content:
+        if isinstance(block, dict):
+            block_dict = cast("dict[str, object]", block)
+            if block_dict.get("type") == "text":
+                text = block_dict.get("text", "")
+                if isinstance(text, str):
+                    parts.append(text)
+    return "".join(parts)
 
 
 _PI_PASSTHROUGH_TOP_LEVEL_EVENTS: frozenset[str] = frozenset(
@@ -169,6 +272,17 @@ class _PiDispatch:
         obj: dict[str, object],
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
+        # ``message_end`` carries the authoritative terminal snapshot for
+        # any in-flight streaming content.  Discard any pending
+        # streaming accumulators WITHOUT flushing them, because the
+        # blocks in ``message_end.message.content`` are the canonical
+        # final text/thinking; flushing on iterator exhaustion would
+        # double-emit (once from the ``message_end`` block, once from
+        # the leftover streaming buffer).  The per-index saw_*_by_index
+        # sets already suppress any double-emission from the streaming
+        # ``*_end`` events.
+        for key in list(self._owner._accumulators.keys()):
+            self._owner._accumulators.pop(key, None)
         yield from self._emit_message_content(obj, stripped)
         self._owner.reset_emission_flags()
 
@@ -210,9 +324,10 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         partial = obj.get("partialResult", "")
+        content = partial if isinstance(partial, str) else _extract_tool_result_text(partial)
         yield AgentOutputLine(
             type="tool_result",
-            content=partial if isinstance(partial, str) else str(partial),
+            content=content,
             raw=stripped,
             metadata=obj,
         )
@@ -223,19 +338,19 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         is_error = obj.get("isError", False)
+        result = obj.get("result", "")
+        extracted = _extract_tool_result_text(result)
         if is_error:
-            result = obj.get("result", "")
             yield AgentOutputLine(
                 type="error",
-                content=str(result) if result else "tool execution failed",
+                content=extracted if extracted else "tool execution failed",
                 raw=stripped,
                 metadata=obj,
             )
             return
-        result = obj.get("result", "")
         yield AgentOutputLine(
             type="tool_result",
-            content=str(result) if result else "",
+            content=extracted,
             raw=stripped,
             metadata=obj,
         )
@@ -256,10 +371,13 @@ class _PiDispatch:
         delta = str(sub.get("delta", ""))
         if not delta:
             return
-        if self._owner.saw_text_end:
+        content_index = _content_index_of(sub)
+        if content_index in self._owner.saw_text_end_by_index:
             return
-        acc = self._get_text_accumulator()
-        yield from acc.accumulate(delta, stripped, kind="text", keep_current_when_empty=True)
+        acc = self._get_text_accumulator(content_index)
+        yield from acc.accumulate(
+            delta, stripped, kind=_TEXT_KIND, keep_current_when_empty=True
+        )
 
     def _handle_text_end(
         self,
@@ -267,14 +385,18 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         content = str(sub.get("content", ""))
-        self._owner.saw_text_end = True
+        content_index = _content_index_of(sub)
+        self._owner.saw_text_end_by_index.add(content_index)
+        acc_key = _accumulator_key(_TEXT_KIND, content_index)
         if content:
-            self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
-            yield AgentOutputLine(type="text", content=content, raw=stripped, metadata=sub)
+            self._owner._accumulators.pop(acc_key, None)
+            yield AgentOutputLine(
+                type=_TEXT_KIND, content=content, raw=stripped, metadata=sub
+            )
             return
-        acc = self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
+        acc = self._owner._accumulators.pop(acc_key, None)
         if acc is not None:
-            yield from acc.flush(kind="text")
+            yield from acc.flush(kind=_TEXT_KIND)
 
     def _handle_thinking_delta(
         self,
@@ -284,13 +406,14 @@ class _PiDispatch:
         delta = str(sub.get("delta", ""))
         if not delta:
             return
-        if self._owner.saw_thinking_end:
+        content_index = _content_index_of(sub)
+        if content_index in self._owner.saw_thinking_end_by_index:
             return
-        acc = self._get_thinking_accumulator()
+        acc = self._get_thinking_accumulator(content_index)
         yield from acc.accumulate(
             delta,
             stripped,
-            kind="thinking",
+            kind=_THINKING_KIND,
             keep_current_when_empty=True,
         )
 
@@ -300,19 +423,21 @@ class _PiDispatch:
         stripped: str,
     ) -> Iterator[AgentOutputLine]:
         content = str(sub.get("content", ""))
-        self._owner.saw_thinking_end = True
+        content_index = _content_index_of(sub)
+        self._owner.saw_thinking_end_by_index.add(content_index)
+        acc_key = _accumulator_key(_THINKING_KIND, content_index)
         if content.strip():
-            self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
+            self._owner._accumulators.pop(acc_key, None)
             yield AgentOutputLine(
-                type="thinking",
+                type=_THINKING_KIND,
                 content=content,
                 raw=stripped,
                 metadata=sub,
             )
             return
-        acc = self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
+        acc = self._owner._accumulators.pop(acc_key, None)
         if acc is not None:
-            yield from acc.flush(kind="thinking", require_strip=True)
+            yield from acc.flush(kind=_THINKING_KIND, require_strip=True)
 
     def _handle_toolcall_start(
         self,
@@ -375,18 +500,28 @@ class _PiDispatch:
         content = message_dict.get("content")
         if not isinstance(content, list):
             return
-        for block in content:
+        content_list = cast("list[object]", content)
+        for block_index, block in enumerate(content_list):
             if not isinstance(block, dict):
                 continue
             block_dict = cast("dict[str, object]", block)
             block_type = str(block_dict.get("type", ""))
-            if block_type == "text" and not self._owner.saw_text_end:
-                self._owner._accumulators.pop(_TEXT_ACCUMULATOR_KEY, None)
-                self._owner.saw_text_end = True
+            if (
+                block_type == _TEXT_KIND
+                and block_index not in self._owner.saw_text_end_by_index
+            ):
+                acc_key = _accumulator_key(_TEXT_KIND, block_index)
+                self._owner._accumulators.pop(acc_key, None)
+                self._owner.saw_text_end_by_index.add(block_index)
                 yield from self._handle_text_block(block_dict, stripped)
-            elif block_type == "thinking" and not self._owner.saw_thinking_end:
-                self._owner._accumulators.pop(_THINKING_ACCUMULATOR_KEY, None)
-                self._owner.saw_thinking_end = True
+            elif (
+                block_type == _THINKING_KIND
+                and block_index
+                not in self._owner.saw_thinking_end_by_index
+            ):
+                acc_key = _accumulator_key(_THINKING_KIND, block_index)
+                self._owner._accumulators.pop(acc_key, None)
+                self._owner.saw_thinking_end_by_index.add(block_index)
                 yield from self._handle_thinking_block(block_dict, stripped)
             elif block_type == "toolCall":
                 yield from self._handle_toolcall_block(block_dict, stripped)
@@ -436,32 +571,35 @@ class _PiDispatch:
     ) -> Iterator[AgentOutputLine]:
         is_error = block_dict.get("isError", False)
         result = block_dict.get("result", "")
+        extracted = _extract_tool_result_text(result)
         if is_error:
             yield AgentOutputLine(
                 type="error",
-                content=str(result) if result else "tool result error",
+                content=extracted if extracted else "tool result error",
                 raw=stripped,
                 metadata=block_dict,
             )
             return
         yield AgentOutputLine(
             type="tool_result",
-            content=str(result) if result else "",
+            content=extracted,
             raw=stripped,
             metadata=block_dict,
         )
 
-    def _get_text_accumulator(self) -> TextAccumulator:
+    def _get_text_accumulator(self, content_index: int) -> TextAccumulator:
         accumulators = self._owner._accumulators
-        if _TEXT_ACCUMULATOR_KEY not in accumulators:
-            accumulators[_TEXT_ACCUMULATOR_KEY] = TextAccumulator()
-        return accumulators[_TEXT_ACCUMULATOR_KEY]
+        key = _accumulator_key(_TEXT_KIND, content_index)
+        if key not in accumulators:
+            accumulators[key] = TextAccumulator()
+        return accumulators[key]
 
-    def _get_thinking_accumulator(self) -> TextAccumulator:
+    def _get_thinking_accumulator(self, content_index: int) -> TextAccumulator:
         accumulators = self._owner._accumulators
-        if _THINKING_ACCUMULATOR_KEY not in accumulators:
-            accumulators[_THINKING_ACCUMULATOR_KEY] = TextAccumulator()
-        return accumulators[_THINKING_ACCUMULATOR_KEY]
+        key = _accumulator_key(_THINKING_KIND, content_index)
+        if key not in accumulators:
+            accumulators[key] = TextAccumulator()
+        return accumulators[key]
 
 
 class PiParser(NdjsonParserBase):
@@ -471,9 +609,9 @@ class PiParser(NdjsonParserBase):
     The terminal snapshot (``text_end`` content or the ``message_end``
     message.content text block) is the authoritative final text; the
     parser tracks whether the terminal snapshot has already been
-    emitted for a given content block to avoid duplicate emissions
-    when streaming deltas, ``text_end``, and the ``message_end``
-    snapshot all reference the same content.
+    emitted for a given content block (keyed by ``contentIndex``)
+    to avoid duplicate emissions when streaming deltas, ``text_end``,
+    and the ``message_end`` snapshot all reference the same content.
 
     Flushing happens on:
 
@@ -491,12 +629,15 @@ class PiParser(NdjsonParserBase):
     ``isError=false`` (or absent) maps to ``type='tool_result'``.
 
     The ``message_end`` content array is walked for text, thinking,
-    and toolCall blocks.  Text and thinking blocks honor the
-    terminal-snapshot rule: if the corresponding ``*_end`` snapshot
-    was already emitted, the ``message_end`` block is skipped.  The
-    toolCall block is ALWAYS emitted (per the plan) so downstream
-    consumers see the same logical tool call in the same place they
-    see text and thinking content from ``message_end``.
+    toolCall, and toolResult blocks.  Text and thinking blocks honor
+    the per-block terminal-snapshot rule: if the corresponding
+    ``*_end`` snapshot was already emitted for a given
+    ``contentIndex``, the ``message_end`` block at that block index
+    is skipped.  Other text/thinking blocks (whose ``contentIndex``
+    has NOT had a terminal snapshot yet) are emitted.  The toolCall
+    block is ALWAYS emitted (per the plan) so downstream consumers
+    see the same logical tool call in the same place they see text
+    and thinking content from ``message_end``.
 
     Inherits from :class:`NdjsonParserBase` which owns the 6 shared
     NDJSON behaviors.  The subclass ``_dispatch_json_object`` delegates
@@ -508,19 +649,23 @@ class PiParser(NdjsonParserBase):
     def __init__(self) -> None:
         super().__init__()
         self._accumulators: dict[str, TextAccumulator] = {}
-        self.saw_text_end: bool = False
-        self.saw_thinking_end: bool = False
+        self.saw_text_end_by_index: set[int] = set()
+        self.saw_thinking_end_by_index: set[int] = set()
         self._dispatcher = _PiDispatch(self)
 
     def reset_emission_flags(self) -> None:
-        """Clear per-message ``saw_*_end`` flags.
+        """Clear per-message terminal-snapshot tracking.
 
         Called after a stop event (``agent_end`` / ``turn_end`` /
         ``done``) or after ``message_end`` so the next message can
-        emit its own terminal snapshots.
+        emit its own terminal snapshots.  The set is keyed by the
+        ``contentIndex`` of the streaming ``*_end`` event so the
+        next ``message_end`` can distinguish blocks that were
+        already terminalised (skip) from blocks that still need
+        to be emitted (emit).
         """
-        self.saw_text_end = False
-        self.saw_thinking_end = False
+        self.saw_text_end_by_index = set()
+        self.saw_thinking_end_by_index = set()
 
     def _handle_lifecycle_event(
         self,
@@ -554,7 +699,7 @@ class PiParser(NdjsonParserBase):
             acc = self._accumulators.pop(key, None)
             if acc is None:
                 continue
-            if key == _THINKING_ACCUMULATOR_KEY:
-                yield from acc.flush(kind="thinking", require_strip=True)
-            else:
-                yield from acc.flush(kind="text")
+            if key.startswith(_THINKING_ACCUMULATOR_PREFIX):
+                yield from acc.flush(kind=_THINKING_KIND, require_strip=True)
+            elif key.startswith(_TEXT_ACCUMULATOR_PREFIX):
+                yield from acc.flush(kind=_TEXT_KIND)

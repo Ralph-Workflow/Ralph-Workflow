@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 
 _MODELED_FLAG_PARTS = 2
+_PI_MODEL_FLAG_PARTS = 2
 _HEADLESS_CLAUDE_PRINT_FLAGS = frozenset({"-p", "--print"})
 
 
@@ -138,6 +139,27 @@ def _split_optional_flag(flag: str | None) -> list[str]:
     return shlex.split(flag)
 
 
+def _format_session_flag(
+    session_flag: str | None,
+    session_id: str | None,
+) -> list[str]:
+    """Format a session_flag template with ``session_id`` as exactly one argv value.
+
+    Plain ``str.format(session_id).split()`` would tokenize a session id
+    that contains spaces or flag-like text into multiple argv elements,
+    letting a hostile or malformed session id inject extra flags (e.g.
+    ``session_id='abc --model injected'`` would emit
+    ``['--session', 'abc', '--model', 'injected']`` and silently shadow
+    downstream flags).  ``shlex.quote`` only adds shell quotes when the
+    value contains characters that would otherwise be split, so
+    well-formed ids like ``'sess-1'`` are emitted unchanged.
+    """
+    if not session_flag or not session_id:
+        return []
+    formatted = session_flag.format(shlex.quote(session_id))
+    return shlex.split(formatted)
+
+
 def _command_already_enables_print_mode(cmd: list[str]) -> bool:
     return any(part in _HEADLESS_CLAUDE_PRINT_FLAGS for part in cmd)
 
@@ -146,6 +168,52 @@ def _normalize_opencode_model_flag(model_flag: str) -> list[str]:
     parts = model_flag.split()
     if len(parts) == _MODELED_FLAG_PARTS and parts[0] in {"-m", "--model"}:
         return [parts[0], parts[1].removeprefix("opencode/")]
+    return parts
+
+
+def _tokenize_pi_model_flag(model_flag: str) -> list[str]:
+    """Tokenize a Pi ``--model`` flag into argv-safe tokens.
+
+    Pi (https://pi.dev/docs/latest/usage) documents ``--model <pattern>``
+    as exactly one ``--model`` flag followed by one ``<pattern>`` value
+    (two argv tokens).  The registry's
+    ``_is_valid_pi_model_id`` validator rejects whitespace, newlines,
+    and multi-colon shapes so the value side of the flag is always a
+    single token, but the flag string may also be supplied by callers
+    via ``BuildCommandOptions.model_flag`` and must not be trusted.
+
+    The pi.dev contract is strictly ``['--model', <pattern>]`` (two
+    tokens).  We therefore enforce three structural rules:
+
+      1. The flag must tokenize into exactly two argv tokens.
+      2. The first token must be the literal flag name ``--model``.
+      3. The second token must NOT itself start with ``-`` (so a
+         caller cannot smuggle a second flag in as the "value").
+
+    A malformed flag is rejected by raising
+    :class:`ValueError` rather than silently emitting an unsafe argv
+    shape.  This is a fail-closed posture: a hostile or malformed
+    ``--model`` string must never reach the spawned ``pi`` process
+    as extra argv tokens.
+    """
+    parts = shlex.split(model_flag)
+    if len(parts) != _PI_MODEL_FLAG_PARTS:
+        raise ValueError(
+            "pi --model flag must be exactly two argv tokens "
+            f"('--model <value>'); got {len(parts)} tokens from "
+            f"{model_flag!r}"
+        )
+    if parts[0] != "--model":
+        raise ValueError(
+            "pi model_flag must start with the literal '--model' flag "
+            f"name; got first token {parts[0]!r}"
+        )
+    if parts[1].startswith("-"):
+        raise ValueError(
+            "pi --model value must not itself start with '-' "
+            "(flag-injection guard); got "
+            f"value={parts[1]!r}"
+        )
     return parts
 
 
@@ -268,11 +336,9 @@ class ConfigurableCommandBuilder:
         if "agy" in self.spec.base_argv[0]:
             if yolo is not None:
                 flags.extend(_split_optional_flag(yolo))
-            if config.session_flag and options.session_id:
-                flags.extend(config.session_flag.format(options.session_id).split())
+            flags.extend(_format_session_flag(config.session_flag, options.session_id))
         else:
-            if config.session_flag and options.session_id:
-                flags.extend(config.session_flag.format(options.session_id).split())
+            flags.extend(_format_session_flag(config.session_flag, options.session_id))
             if yolo is not None:
                 flags.extend(_split_optional_flag(yolo))
         return flags
@@ -286,6 +352,8 @@ class ConfigurableCommandBuilder:
         if not effective_model:
             return []
         if self.spec.model_flag_template is not None:
+            if self.spec.base_argv and self.spec.base_argv[0] == "pi":
+                return _tokenize_pi_model_flag(effective_model)
             if " " in effective_model or effective_model.startswith("-"):
                 return _normalize_opencode_model_flag(effective_model)
             formatted = self.spec.model_flag_template.format(effective_model)
@@ -409,7 +477,7 @@ class ClaudeInteractiveCommandBuilder:
         if options.verbose and config.verbose_flag:
             cmd.append(config.verbose_flag)
         if config.session_flag and options.session_id:
-            cmd.extend(config.session_flag.format(options.session_id).split())
+            cmd.extend(_format_session_flag(config.session_flag, options.session_id))
         if options.settings_json is not None:
             cmd.extend(["--settings", options.settings_json])
         if options.system_prompt_file:
@@ -494,7 +562,7 @@ class DefaultCommandBuilder:
             cmd.append(config.streaming_flag)
 
         if config.session_flag and options.session_id:
-            cmd.extend(config.session_flag.format(options.session_id).split())
+            cmd.extend(_format_session_flag(config.session_flag, options.session_id))
 
         cmd.extend(_split_optional_flag(config.yolo_flag))
 

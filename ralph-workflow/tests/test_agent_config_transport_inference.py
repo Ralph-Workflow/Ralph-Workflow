@@ -54,3 +54,27 @@ def test_nanocoder_cmd_infers_nanocoder_transport() -> None:
     config = AgentConfig(cmd="nanocoder", json_parser=JsonParserType.GENERIC)
 
     assert config.transport == AgentTransport.NANOCODER
+
+
+def test_pi_cmd_infers_pi_transport() -> None:
+    """AgentConfig(cmd='pi', json_parser=JsonParserType.PI) must infer AgentTransport.PI.
+
+    Regression guard for the gap surfaced by planning analysis: pi was missing
+    from both parser_to_transport and command_to_transport maps in
+    ralph-workflow/ralph/config/agent_config.py, so the template-style
+    AgentConfig(cmd='pi', json_parser=JsonParserType.PI) resolved to
+    AgentTransport.GENERIC instead of AgentTransport.PI.
+    """
+    config = AgentConfig(cmd="pi", json_parser=JsonParserType.PI)
+
+    assert config.transport == AgentTransport.PI
+
+
+def test_pi_cmd_with_generic_parser_infers_pi_transport() -> None:
+    """Regression guard: cmd='pi' with the generic parser must still infer AgentTransport.PI
+    via the command_to_transport map (mirrors test_nanocoder_cmd_infers_nanocoder_transport
+    which uses JsonParserType.GENERIC to bypass parser_to_transport).
+    """
+    config = AgentConfig(cmd="pi", json_parser=JsonParserType.GENERIC)
+
+    assert config.transport == AgentTransport.PI

@@ -169,3 +169,95 @@ class TestAgentCatalog:
             get_parser("remove-me")
         fallback = strategy_for_command("remove-me-cmd", AgentTransport.CODEX)
         assert isinstance(fallback, GenericExecutionStrategy)
+
+
+class TestReplaceBuiltin:
+    """``AgentCatalog.replace_builtin`` is the entry point used by
+    :meth:`AgentRegistry.register` to install a configured
+    ``[agents.<name>]`` override on top of a built-in.
+    """
+
+    def test_replace_builtin_swaps_entries_and_by_command(self) -> None:
+        """``replace_builtin`` must update both ``_entries`` and ``_by_command``."""
+        catalog = AgentCatalog()
+        original = _make_support("pi", transport=AgentTransport.PI, cmd="pi")
+        original = AgentSupport(
+            name="pi",
+            spec=AgentSpec(name="pi", transport=AgentTransport.PI),
+            parser_factory=_FakeParser,
+            strategy_factory=_FakeStrategy,
+            config=AgentConfig(cmd="pi", transport=AgentTransport.PI),
+            is_builtin=True,
+        )
+        catalog.add(original)
+        assert catalog.get("pi") is original
+        assert catalog.get("pi")  # by cmd too
+
+        new_support = AgentSupport(
+            name="pi",
+            spec=AgentSpec(name="pi-custom", transport=AgentTransport.PI),
+            parser_factory=_FakeParser,
+            strategy_factory=_FakeStrategy,
+            config=AgentConfig(cmd="pi-custom", transport=AgentTransport.PI),
+            is_builtin=True,
+        )
+        catalog.replace_builtin("pi", new_support)
+
+        # ``_entries['pi']`` must point at the override.
+        found = catalog.get("pi")
+        assert found is new_support
+        assert found.config.cmd == "pi-custom"
+        # ``_by_command`` must point at the override under the new cmd.
+        assert catalog.get("pi-custom") is new_support
+
+    def test_replace_builtin_rejects_non_builtin_replacement(self) -> None:
+        catalog = AgentCatalog()
+        original = AgentSupport(
+            name="pi",
+            spec=AgentSpec(name="pi", transport=AgentTransport.PI),
+            parser_factory=_FakeParser,
+            strategy_factory=_FakeStrategy,
+            config=AgentConfig(cmd="pi", transport=AgentTransport.PI),
+            is_builtin=True,
+        )
+        catalog.add(original)
+
+        not_builtin = AgentSupport(
+            name="pi",
+            spec=AgentSpec(name="pi-custom", transport=AgentTransport.PI),
+            parser_factory=_FakeParser,
+            strategy_factory=_FakeStrategy,
+            config=AgentConfig(cmd="pi-custom", transport=AgentTransport.PI),
+            is_builtin=False,
+        )
+        with pytest.raises(ValueError, match="is_builtin"):
+            catalog.replace_builtin("pi", not_builtin)
+
+    def test_replace_builtin_rejects_non_existing_entry(self) -> None:
+        catalog = AgentCatalog()
+        replacement = AgentSupport(
+            name="nonexistent",
+            spec=AgentSpec(name="x", transport=AgentTransport.GENERIC),
+            parser_factory=_FakeParser,
+            strategy_factory=_FakeStrategy,
+            config=AgentConfig(cmd="x", transport=AgentTransport.GENERIC),
+            is_builtin=True,
+        )
+        with pytest.raises(ValueError, match="non-existent"):
+            catalog.replace_builtin("nonexistent", replacement)
+
+    def test_replace_builtin_rejects_non_builtin_existing_entry(self) -> None:
+        catalog = AgentCatalog()
+        # Add a non-built-in registration and try to replace it.
+        non_builtin = _make_support("custom-agent", transport=AgentTransport.GENERIC)
+        catalog.add(non_builtin)
+        replacement = AgentSupport(
+            name="custom-agent",
+            spec=AgentSpec(name="custom-agent", transport=AgentTransport.GENERIC),
+            parser_factory=_FakeParser,
+            strategy_factory=_FakeStrategy,
+            config=AgentConfig(cmd="custom-agent", transport=AgentTransport.GENERIC),
+            is_builtin=True,
+        )
+        with pytest.raises(ValueError, match="non-built-in"):
+            catalog.replace_builtin("custom-agent", replacement)

@@ -432,6 +432,244 @@ class TestPiParserMessageUpdateTextDelta:
         assert len(text_lines) == 1
         assert text_lines[0].content == "Hello"
 
+    def test_message_end_with_two_text_blocks_emits_both(self) -> None:
+        """``message_end([text, text])`` must emit BOTH text blocks.
+
+        Regression test for the analysis feedback: the parser used a
+        single message-wide ``saw_text_end`` boolean, so once the
+        first text block in a multi-block ``message_end`` payload
+        was emitted the guard flipped to True and the second block
+        was silently dropped.  The fix keys terminal-snapshot
+        tracking by ``contentIndex`` so each block is tracked
+        independently.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "First"},
+                        {"type": "text", "text": "Second"},
+                    ],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 2
+        assert text_lines[0].content == "First"
+        assert text_lines[1].content == "Second"
+
+    def test_message_end_with_three_text_blocks_emits_all_three(self) -> None:
+        """``message_end([text, text, text])`` must emit all three text blocks.
+
+        Regression test for the analysis feedback: extending the
+        per-index tracking to three blocks confirms the set-based
+        guard scales linearly with the number of content blocks in
+        a single ``message_end`` payload.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Alpha"},
+                        {"type": "text", "text": "Beta"},
+                        {"type": "text", "text": "Gamma"},
+                    ],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 3
+        assert [r.content for r in text_lines] == ["Alpha", "Beta", "Gamma"]
+
+    def test_streaming_two_text_blocks_then_message_end_emits_each_once(
+        self,
+    ) -> None:
+        """``text_delta(A) + text_end(A) + text_delta(B) + text_end(B) +
+        message_end([text:A, text:B])`` must emit A and B exactly once.
+
+        Regression test for the analysis feedback: with per-index
+        tracking, the streaming ``text_end(contentIndex=0)`` adds 0
+        to ``saw_text_end_by_index`` and ``text_end(contentIndex=1)``
+        adds 1; the subsequent ``message_end`` payload has both
+        blocks already closed by streaming, so the snapshot at each
+        block index is suppressed and only the streaming emissions
+        survive.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 0,
+                        "delta": "A",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_end",
+                        "contentIndex": 0,
+                        "content": "A",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 1,
+                        "delta": "B",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_end",
+                        "contentIndex": 1,
+                        "content": "B",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_end",
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": "A"},
+                            {"type": "text", "text": "B"},
+                        ],
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 2
+        assert text_lines[0].content == "A"
+        assert text_lines[1].content == "B"
+
+    def test_interleaved_multi_index_text_streaming_flushes_each_block(
+        self,
+    ) -> None:
+        """``text_delta(0,'A') + text_delta(1,'B') + text_end(0) + text_end(1)``
+        must emit two separate ``text`` lines in order: ``A`` then ``B``.
+
+        Regression test for the analysis feedback: the parser used a
+        single message-wide text accumulator, so interleaved
+        ``text_delta`` events for ``contentIndex`` 0 and 1 merged
+        into a single buffer (the prior observed bad output was
+        ``[('text', 'AB')]``).  The fix keys the per-block
+        accumulator by ``contentIndex`` so each active block
+        accumulates and flushes independently.
+        """
+        parser = PiParser()
+        lines = [
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 0,
+                        "delta": "A",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_delta",
+                        "contentIndex": 1,
+                        "delta": "B",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_end",
+                        "contentIndex": 0,
+                        "content": "A",
+                    },
+                }
+            ),
+            _line(
+                {
+                    "type": "message_update",
+                    "message": {"role": "assistant"},
+                    "assistantMessageEvent": {
+                        "type": "text_end",
+                        "contentIndex": 1,
+                        "content": "B",
+                    },
+                }
+            ),
+        ]
+        results = list(parser.parse(_lines(*lines)))
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(text_lines) == 2
+        assert text_lines[0].content == "A"
+        assert text_lines[1].content == "B"
+        # The prior observed bad output was the two characters merged
+        # into one ``AB`` line; assert that this never reoccurs.
+        assert not any(r.content == "AB" for r in results)
+
+    def test_message_end_with_text_and_thinking_blocks_emits_each_block(
+        self,
+    ) -> None:
+        """``message_end([thinking, text])`` must emit both blocks.
+
+        Regression test for the analysis feedback: the prior
+        message-wide boolean guards would have allowed at most one
+        thinking block and at most one text block per message.
+        With per-index tracking, every block in the content array
+        is tracked independently and all blocks are emitted.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "Reasoning"},
+                        {"type": "text", "text": "Answer"},
+                    ],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        thinking_lines = [r for r in results if r.type == "thinking"]
+        text_lines = [r for r in results if r.type == "text"]
+        assert len(thinking_lines) == 1
+        assert thinking_lines[0].content == "Reasoning"
+        assert len(text_lines) == 1
+        assert text_lines[0].content == "Answer"
+
 
 class TestPiParserThinkingDelta:
     """thinking_delta streams accumulate separately from text."""
@@ -565,6 +803,36 @@ class TestPiParserThinkingDelta:
         assert len(thinking_lines) == 1
         assert thinking_lines[0].content == "reasoning"
 
+    def test_message_end_with_two_thinking_blocks_emits_both(self) -> None:
+        """``message_end([thinking, thinking])`` must emit BOTH thinking blocks.
+
+        Regression test for the analysis feedback: the parser used
+        a single message-wide ``saw_thinking_end`` boolean, so once
+        the first thinking block in a multi-block ``message_end``
+        payload was emitted the guard flipped to True and the second
+        block was silently dropped.  The fix keys terminal-snapshot
+        tracking by ``contentIndex`` so each block is tracked
+        independently.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "Plan A"},
+                        {"type": "thinking", "thinking": "Plan B"},
+                    ],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        thinking_lines = [r for r in results if r.type == "thinking"]
+        assert len(thinking_lines) == 2
+        assert thinking_lines[0].content == "Plan A"
+        assert thinking_lines[1].content == "Plan B"
+
     def test_message_end_emits_toolresult_block(self) -> None:
         """``message_end(toolResult)`` must emit a ``tool_result`` line.
 
@@ -594,6 +862,43 @@ class TestPiParserThinkingDelta:
         tool_result_lines = [r for r in results if r.type == "tool_result"]
         assert len(tool_result_lines) == 1
         assert tool_result_lines[0].content == "ok"
+
+    def test_message_end_emits_toolresult_block_normalizes_structured_result(
+        self,
+    ) -> None:
+        """``message_end(toolResult, result={'content':[{'type':'text','text':'ok'}]})``
+        must emit ``tool_result`` with ``content=='ok'``, NOT ``str(dict)``.
+
+        Regression test for the analysis feedback: the parser used to
+        stringify the structured result payload via ``str(...)`` in
+        the ``toolResult`` block of ``message_end`` too, leaking
+        ``{'content': [...]}`` to downstream consumers.  The single
+        consistent extraction rule is shared with ``tool_execution_end``
+        so both paths normalize structured Pi result payloads into
+        user-visible text.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "toolResult",
+                            "toolCallId": "x",
+                            "result": {"content": [{"type": "text", "text": "ok"}]},
+                        }
+                    ],
+                },
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        tool_result_lines = [r for r in results if r.type == "tool_result"]
+        assert len(tool_result_lines) == 1
+        assert tool_result_lines[0].content == "ok"
+        assert "{'content'" not in tool_result_lines[0].content
+        assert "{'type'" not in tool_result_lines[0].content
 
     def test_message_end_emits_toolresult_block_error(self) -> None:
         """``message_end(toolResult, isError=true)`` must emit ``type='error'``.
@@ -742,6 +1047,7 @@ class TestPiParserToolExecution:
         results = list(parser.parse(_lines(line)))
         tool_result_lines = [r for r in results if r.type == "tool_result"]
         assert len(tool_result_lines) == 1
+        assert tool_result_lines[0].content == "partial"
 
     def test_tool_execution_end_success_yields_tool_result(self) -> None:
         parser = PiParser()
@@ -757,6 +1063,63 @@ class TestPiParserToolExecution:
         results = list(parser.parse(_lines(line)))
         assert any(r.type == "tool_result" for r in results)
         assert not any(r.type == "error" for r in results)
+
+    def test_tool_execution_end_success_normalizes_structured_result_to_text(
+        self,
+    ) -> None:
+        """``tool_execution_end(result={'content':[{'type':'text','text':'ok'}]})``
+        must emit a ``tool_result`` line with ``content=='ok'``, NOT
+        ``str(result)`` which would leak ``{'content': [...]}``.
+
+        Regression test for the analysis feedback: the parser used to
+        stringify the structured result payload via ``str(...)``,
+        producing ``tool_result`` content like
+        ``{'content': [{'type': 'text', 'text': 'ok'}]}`` instead of
+        the user-visible ``ok``.  The fix uses one consistent
+        extraction rule that joins the ``text`` of every
+        ``content`` block of type ``text``.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "call_1",
+                "toolName": "bash",
+                "result": {"content": [{"type": "text", "text": "ok"}]},
+                "isError": False,
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        tool_result_lines = [r for r in results if r.type == "tool_result"]
+        assert len(tool_result_lines) == 1
+        assert tool_result_lines[0].content == "ok"
+        # The raw dict literal must NOT leak into the emitted line.
+        assert "{'content'" not in tool_result_lines[0].content
+        assert "{'type'" not in tool_result_lines[0].content
+
+    def test_tool_execution_end_error_normalizes_structured_result_to_text(
+        self,
+    ) -> None:
+        """``tool_execution_end(isError=True, result={'content':[{'type':'text','text':'fail'}]})``
+        must emit an ``error`` line with ``content=='fail'``, NOT
+        ``str(result)`` which would leak the dict literal.
+        """
+        parser = PiParser()
+        line = _line(
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "call_1",
+                "toolName": "bash",
+                "result": {"content": [{"type": "text", "text": "fail"}]},
+                "isError": True,
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        error_lines = [r for r in results if r.type == "error"]
+        assert len(error_lines) == 1
+        assert error_lines[0].content == "fail"
+        assert "{'content'" not in error_lines[0].content
+        assert "{'type'" not in error_lines[0].content
 
     def test_tool_execution_end_error_yields_error_line(self) -> None:
         """Single consistent isError=True -> type='error' rule."""

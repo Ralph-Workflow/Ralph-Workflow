@@ -92,6 +92,21 @@ Why this is a good first fit:
 
 Verify the install end-to-end with `python -m ralph smoke-interactive-agy`. The run uses `agy/Claude Sonnet 4.6 (Thinking)` by default and honors AGY's 5m `--print-timeout`; allow up to 6 minutes for the live run. AGY v1.0.8 accepts only the human-readable display names returned by `agy models` (e.g. `Claude Sonnet 4.6 (Thinking)`); lowercased or slashed slugs such as `agy/gemini-3.5-flash-low` are not recognized. See `tmp/agy-source-of-truth.txt` for the current measured wire format. If the smoke exits non-zero with `AGY --print returned empty stdout: ...`, the upstream `agy` binary returned no stdout; check `~/.gemini/antigravity-cli/cli.log` for an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
 
+### Start with Pi if...
+
+- `pi` already works on your machine (see <https://pi.dev> for install and auth)
+- you want a documented headless mode that mirrors the pi.dev `AgentSessionEvent` NDJSON format per <https://pi.dev/docs/latest/json>
+- you want multi-provider flexibility via the documented `pi/<provider>/<model>` shorthand
+- you do not need an MCP wiring path on the agent side - pi.dev has no documented CLI MCP flag, so `pi` is wired as a transport but not as an MCP-capable agent
+
+Why this is a good first fit:
+
+- thin, single-binary agent with a strict headless mode
+- the NDJSON wire format is fully documented and pinned by the wire-format spec test at `tests/agents/parsers/test_pi_dev_wire_format_spec.py`
+- the public-surface black-box test at `tests/agents/test_pi_dev_blackbox.py` exercises the full `AgentRegistry` -> `catalog` -> `build_command` path so docs and runtime cannot drift
+
+Verify Ralph Workflow's pi integration and wire-format contract with `uv run pytest tests/agents/test_pi_dev_blackbox.py -q` (registry -> catalog -> parser -> build_command chain) and `uv run pytest tests/agents/parsers/test_pi_dev_wire_format_spec.py -q` (documented event vocabulary pinned to the committed fixture). Both tests are black-box and intentionally avoid a real pi install, subprocess, or network call; they verify Ralph Workflow's parser and CLI-flag wiring against the documented pi.dev wire format, not the install/auth state of the local pi binary. For local install and auth validation, follow the official pi.dev setup at <https://pi.dev/docs/latest/usage>; for the wire-format spec see <https://pi.dev/docs/latest/json>.
+
 ## Best first-run rule
 
 Pick the path with the **least setup friction**.
@@ -106,7 +121,7 @@ If two agents are equally ready, prefer the one you would be happiest reviewing 
 
 ## What matters more than the agent choice
 
-For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, Nanocoder, or Google Anti Gravity:
+For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, Nanocoder, Google Anti Gravity, or Pi:
 
 - choosing a **small real backlog task**
 - writing a **clear one-paragraph spec** in `PROMPT.md`

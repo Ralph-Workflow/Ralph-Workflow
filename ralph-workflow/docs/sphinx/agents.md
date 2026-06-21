@@ -8,11 +8,11 @@ Ralph Workflow can supervise multiple coding agents, but the contract stays the 
 
 ## Supported agents
 
-Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocoder**, and **Google Anti Gravity** as orchestration targets. Each runs under the same unattended workflow contract described on this page. For help choosing, see [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
+Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocoder**, **Google Anti Gravity**, and **Pi** as orchestration targets. Each runs under the same unattended workflow contract described on this page. For help choosing, see [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 
-> See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent's user-global skill-discovery root.
+> See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent that has a documented user-global skill-discovery root. Pi has no documented skill-discovery system per <https://pi.dev/docs/latest/usage>, so it is intentionally absent from that registry.
 
-Every supported agent has a manual smoke entry-point for live end-to-end verification against the real binary. Claude is verified with `python -m ralph smoke-interactive-claude` and AGY is verified with `python -m ralph smoke-interactive-agy`. Run the corresponding command on Linux or macOS to confirm the transport, MCP wiring, and tool invocation pipeline produce real output.
+Every supported agent has a documented verification path that targets its own contract. Claude and AGY each have an interactive parity smoke test (`python -m ralph smoke-interactive-claude` and `python -m ralph smoke-interactive-agy`) that exercises a live (or mocked live) subprocess and is the supported path for proving real end-to-end output without an account. Codex, OpenCode, Nanocoder, and Pi each have a public-surface black-box pytest suite that drives the agent through `AgentRegistry.from_config`, the catalog, and the public command-builder surface without spawning a real CLI subprocess. These black-box suites verify Ralph Workflow's public registry / catalog / parser / command-builder surface for the agent, plus the committed wire-format fixture (for Pi, the documented `AgentSessionEvent` vocabulary in `tests/agents/parsers/fixtures/pi_dev_documented_events.json`); they do **not** claim live MCP wiring or real Pi-agent output, because Pi has no documented CLI MCP wiring path per <https://pi.dev/docs/latest/usage> (PiRuntimeResolver raises `UnsupportedMcpTransportError` on any `MCP_ENDPOINT`).
 
 ### Google Anti Gravity (AGY)
 
