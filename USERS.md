@@ -1,219 +1,77 @@
-# Who's Using Ralph Workflow?
+# Who's Using Ralph Loop?
 
-> These people and projects are using Ralph Workflow — discovered through code-level search,
-> issue trackers, and public references. Ralph Workflow is an execution harness (you clone or
-> template it), not a library (you `pip install` it), so the standard "who depends on us"
-> metric is systematically blind. A team can run Ralph Workflow nightly on real production
-> code without ever declaring it as a dependency — because Ralph is the runner, not the
-> library.
->
-> This page exists because adoption is invisible to `pip install` counts. Every entry below
-> was verified through source artifacts, issues, or public discussion. If your project should
-> be here, open a PR or issue.
+The Ralph Loop pattern — plan → build → verify, iterated by an AI coding agent until tests pass — is used by a growing ecosystem of practitioners, tool builders, and enterprises. This page tracks the community: pattern implementations, tool integrations, and early adopters.
+
+> **Using Ralph Loop or Ralph Workflow?** Add yourself by [opening an issue](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues) or submitting a PR. Grab the [Built with Ralph Loop](assets/built-with-ralph-loop.svg) badge for your README.
 
 ---
 
-## Production & active development users
+## Pattern Implementations
 
-### David Gowrie @ Grafana Labs — [dgowrie/claude-workflows](https://github.com/dgowrie/claude-workflows/issues/52)
-Runs Ralph Workflow against a real Grafana PRD with 10 sub-issues. Filed a rigorous 6-gap
-environment HALT analysis documenting production constraints. Uses `ralph.sh --autonomous`.
-*(discovered 2026-06-17 via issue #52)*
-`verify: repo-exists, issue-#52-exists`
+These independent projects implement the Ralph Loop architecture in their own tools and frameworks. They validate the pattern independently of the Ralph Workflow reference implementation.
 
-### YalDan — [YalDan/kodezart](https://github.com/YalDan/kodezart)
-Built kodezart, a production AI code orchestration service that consumes Ralph's loop engine
-at engineering depth: 1,037-line ralph_workflow.py import, 265-line ralph_loop.py. Filed 3
-convergence bugs (#32 `_fix_code_node` single-shot, #25 AC-design pattern thrash, #19
-unsatisfiable criteria). Deepest technical integration discovered so far.
-*(discovered 2026-06-17 via source-level dependency)*
-`verify: repo-exists (2026-06-20), 265-line ralph_loop.py confirmed`
+| Project | Stars | Description |
+|---------|-------|-------------|
+| [umputun/ralphex](https://github.com/umputun/ralphex) | 1,296 ⭐ | Multi-provider LLM loop with plan-build-verify cycle | (verify: gh)
+| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) | 254 ⭐ | Dynamic workflows with Pi extensions, custom models, MCP, sub-agents, review gates | (verify: gh)
+| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) | 66 ⭐ | Runtime for loop engineering — practitioner cookbook with Claude Code patterns | (verify: gh)
+| [gregorydickson/pickle-rick-claude](https://github.com/gregorydickson/pickle-rick-claude) | 26 ⭐ | Ralph-inspired Claude Code runner with twist characterization | (verify: gh)
+| [benikigai/nightshift](https://github.com/benikigai/nightshift) | 14 ⭐ | Lights-out autonomous software work — ship specs overnight | (verify: gh)
+| [Gens-ai/autopilot](https://github.com/Gens-ai/autopilot) | 14 ⭐ | Standalone Ralph agent with structured loop execution | (verify: gh)
+| [tao3k/xiuxian-artisan-workshop](https://github.com/tao3k/xiuxian-artisan-workshop) | 14 ⭐ | Game design bridge between human intent and machine execution | (verify: gh)
+| [basfenix/SelfSteeringRalph](https://github.com/basfenix/SelfSteeringRalph) | 11 ⭐ | Self-steering variant with autonomous goal decomposition | (verify: gh)
+| [Apra-Labs/agentic-ai-workshop](https://github.com/Apra-Labs/agentic-ai-workshop) | 8 ⭐ | Educational Ralph Loop workshop with hands-on exercises | (verify: gh)
+| [v1truv1us/ai-eng-system](https://github.com/v1truv1us/ai-eng-system) | 7 ⭐ | `/ralph-workflow` command integrating into AI engineering system | (verify: gh)
+| [jamesaphoenix/tx](https://github.com/jamesaphoenix/tx) | 4 ⭐ | Headless agent infrastructure with memory + tasks + orchestration | (verify: gh)
+| [KLIEBHAN/ralph-loop](https://github.com/KLIEBHAN/ralph-loop) | 3 ⭐ | Lightweight single-binary Ralph implementation | (verify: gh)
+| [coji831/agentic-devops-solar-ralph](https://github.com/coji831/agentic-devops-solar-ralph) | 2 ⭐ | SOLAR Agentic DevOps integration with operator guides | (verify: gh)
+| [agent-frontier/wgm](https://github.com/agent-frontier/wgm) | 1 ⭐ | Rough request → working software pipeline | (verify: gh)
+| [skurekjakub/ralph-orchestrator](https://github.com/skurekjakub/ralph-orchestrator) | 1 ⭐ | Orchestrator with detailed workflow diagrams | (verify: gh)
+| [DavisSylvester/ollama-dev-agent](https://github.com/DavisSylvester/ollama-dev-agent) | — | First local LLM adoption — runs on Ollama | (verify: gh)
+| [dr-gareth-roberts/chief-wiggum-loop](https://github.com/dr-gareth-roberts/chief-wiggum-loop) | — | Enterprise security-hardened loop with sandboxing + stuck classifier | (verify: gh)
+| [pbean/bmad-automator](https://github.com/pbean/bmad-automator) | — | BMAD enterprise agile integration | (verify: gh)
+| [mikefreno/ralpi](https://github.com/mikefreno/ralpi) | — | Raspberry Pi Ralph agent extension | (verify: gh)
+| [pro-vi/loopgen](https://github.com/pro-vi/loopgen) | — | Prompt compiler with Ralph Loop architecture | (verify: gh)
+| [inshalazmat/AI_Business_Employee](https://github.com/inshalazmat/AI_Business_Employee) | — | AI employee powered by Ralph Loop pattern | (verify: gh)
+| [sjhorn/ralph](https://github.com/sjhorn/ralph) | — | Go wrapper implementing a Ralph Wiggum loop | (verify: gh)
+| [3mdistal/ralph](https://github.com/3mdistal/ralph) | — | Community fork — OpenCode orchestrator | (verify: gh)
+| [suredream/ralphlow](https://github.com/suredream/ralphlow) | — | Workflow lock file system with structured architecture | (verify: gh)
+| [Was85/ralph-rlm-agent-framework](https://github.com/Was85/ralph-rlm-agent-framework) | — | Agent framework with ralph-workflow instructions | (verify: gh)
+| [dscherm/comfyprompts](https://github.com/dscherm/comfyprompts) | — | Mini-ralphs with delegation matrix | (verify: gh)
+| [Delqhi-Projects/ZOE-Solar-Accounting-OCR](https://github.com/Delqhi-Projects/ZOE-Solar-Accounting-OCR) | — | Ralph/Lisa pipeline executor for accounting OCR | (verify: gh)
 
-### Mat Warger — [mwarger/ralph-crispies](https://github.com/mwarger/ralph-crispies)
-Building the 4th-generation Ralph descendant (Forge → Super-Ralph → Crispies lineage). Now
-adding Promptfoo Workflow Evals (testing/evaluation infrastructure) + Flue backend integration
-on top of the Ralph loop pattern. Two active PRDs labeled ready-for-agent.
-*(discovered 2026-06-17 via issues #1, #10)*
-`verify: repo-exists (2026-06-20)`
+## Early Adopters
 
-### qte77 — [ralph-loop-cc-tdd-wt-vibe-kanban-template](https://github.com/qte77/ralph-loop-cc-tdd-wt-vibe-kanban-template)
-Language-agnostic Ralph Loop template with plugin scaffold architecture. Designing
-self-evolving offspring repos (ralph-engineering, ralph-research). 107 repos, 10 followers.
-*(discovered 2026-06-18 via issue #32)*
-`verify: repo-exists (2026-06-20)`
+These practitioners installed, starred, forked, or watched the Ralph Workflow project. They're the people who found it useful enough to engage — our warmest signal for what the ICP actually looks like.
 
-### heinschulie — [heinschulie/babylon](https://github.com/heinschulie/babylon)
-Ralph v6 pipeline validation with a 5-step pipeline: consult → TDD → refactor → review →
-verify. Active discussion thread with 12 comments documenting real Ralph pipeline usage.
-*(discovered 2026-06-17 via issue #158)*
-`verify: repo-exists (2026-06-20)`
+| User | Platform | Signal | Profile |
+|------|----------|--------|---------|
+| pierodibello | Codeberg | ⭐ Star + 👁 Watch | Multi-signal adopter |
+| RoxanneA | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
+| TusharKarsan | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
+| awoehrl | GitHub | 👁 Watch | Data/analytics engineer |
+| swstegall | GitHub | ⭐ Star | JPMorganChase enterprise dev |
+| labumbu | GitHub | ⭐ Star | AI tool explorer |
+| andrei_legram | Codeberg | ⭐ Star | — |
+| bort | Codeberg | ⭐ Star | — |
+| brianr | Codeberg | ⭐ Star | — |
+| calebjasik | Codeberg | ⭐ Star | — |
+| christiankopac | Codeberg | ⭐ Star | — |
+| gbrennon | Codeberg | ⭐ Star | — |
+| marconae | Codeberg | ⭐ Star | — |
+| OemerAgcaer | Codeberg | ⭐ Star | — |
+| vit | Codeberg | ⭐ Star | — |
 
-### oneplusn-dev — Chinese AI developer community article
-Published an article on Loop Engineering (2026-06-17) explicitly crediting Ralph Workflow as
-the original implementer of the loop engineering pattern. First known non-English-language
-ecosystem reference.
-*(discovered 2026-06-17 via public article)*
-`verify: article exists and names Ralph Workflow (2026-06-20)`
+## The Community Hub
 
----
+[**awesome-ralph**](https://github.com/snwfdhmp/awesome-ralph) (904 ⭐, 69 forks) is the community-maintained directory of Ralph Loop implementations, workshops, skill packs, and academic references. Start there to understand the full scope of the ecosystem.
 
-## More builders — discovered 2026-06-19
+## Want to be listed?
 
-### rickvian — [rickvian/ralph-workflow](https://github.com/rickvian/ralph-workflow)
-Active fork/branch with 4 open feature issues (devcontainer templates, setup wizard,
-version tracking scaffolds, and a `ralph-version` file proposal). Building on Ralph
-Workflow as a base with new developer-experience features.
-*(discovered 2026-06-19 via gh search code — 4 open enhancement issues)*
-`verify: repo-exists (2026-06-20)`
-
-### Algorand Developer Relations — [algorand-devrel/algorand-agent-skills](https://github.com/algorand-devrel/algorand-agent-skills)
-Official Algorand blockchain developer relations team maintains a Ralph Workflow
-plan template (`ralph/plan.md`) as part of their agent skills toolkit. First known
-blockchain-ecosystem adoption.
-*(discovered 2026-06-19 via gh search code)*
-`verify: repo-exists, ralph/plan.md present (2026-06-20)`
-
-### bastani-inc — [bastani-inc/atomic](https://github.com/bastani-inc/atomic)
-Atomic CLI (enterprise AI coding tool) references Ralph Workflow extensively in their
-RFC for workflow SDK inline mode — cites Ralph's context clearing, task list lifecycle,
-and orchestration state as design inputs. Enterprise-level pattern adoption.
-*(discovered 2026-06-19 via gh search code — RFC document with multiple Ralph references)*
-`verify: repo-exists (2026-06-20)`
-
----
-
-## Plugin & tool integrations — discovered 2026-06-20
-
-### BLEN Inc — [blencorp/lisa](https://github.com/blencorp/lisa)
-**"Lisa plans. Ralph does."** — Professional engineering team (BLEN Inc) built an
-interactive specification interview workflow for Claude Code that conducts in-depth
-feature interviews and generates comprehensive specs designed to feed directly into
-Ralph Workflow. Exports PRDs in Ralph-compatible format (JSON with `branchName`,
-`-progress.txt` marker file). Cross-provider CLI (Claude Code, OpenCode, Cursor,
-Codex, Copilot).
-*(discovered 2026-06-20 via gh search repos — explicit Ralph integration + Ralph-format output)*
-`verify: repo-exists (2026-06-21). npm @blen/lisa does NOT exist (npm registry 404 as of 2026-06-21).`
-
-### Alexey Krol — [greatakela/framework-router](https://github.com/greatakela/framework-router)
-Claude Code plugin that installs and routes a combined GSD + gstack + Superpowers
-workflow into any project — **plus optional Ralph autonomous-build loop.** Ships
-`/enable-ralph A|B` command that switches on autonomous build once spec + roadmap
-are locked. Ralph included as payload (no install needed).
-*(discovered 2026-06-20 via gh search repos — `/enable-ralph` command, Ralph payload)*
-`verify: repo-exists (2026-06-20)`
-
-### gmickel — [gmickel/flow-next](https://github.com/gmickel/flow-next)
-Spec-driven AI workflow plugin (Claude Code, OpenAI Codex, Factory Droid) with
-zero-dep task tracking, worker subagents, **Ralph autonomous mode**, and cross-model
-reviews. Includes spoken command `/flow-next:ralph-init` and a Ralph TUI dashboard.
-*(discovered 2026-06-20 via gh search repos — Ralph autonomous mode, TUI, `/flow-next:ralph-init`)*
-`verify: repo-exists (2026-06-20)`
-
-### Cemini (multi-wiki research network) — [cemini23/cemini-claude-code-CCC](https://github.com/cemini23/cemini-claude-code-CCC)
-Public meta-wiki (part of Cemini's 8-wiki federation) documenting agent orchestration
-in Cursor and Claude Code — explicitly names Ralph as one of the canonical patterns
-alongside `/goal` and OpenSpec. Publicly accessible methodology documentation with
-YouTube channel (@Cemini23) and newsletter (Outlier Weekly).
-*(discovered 2026-06-20 via gh search repos — /goal·Ralph·OpenSpec patterns)*
-`verify: repo-exists (2026-06-20)`
-
-### Jason Salomon-Rinnert — [aslomon/effectum](https://github.com/aslomon/effectum)
-**"Describe what you want. Get production-ready code."** — The most comprehensive
-Ralph-adjacent product discovered to date. Full autonomous development framework FOR
-Claude Code with PRD Workshop, 10 workflow commands, 8 quality gates, and overnight
-Ralph Loop builds. Permanent alias `/ralph-loop` → `effect:dev:run` in production.
-446 tests, 32 primary commands, 25 agent specializations, 43+ skills. npm package
-`@aslomon/effectum`. Explicitly credits Ralph Workflow as its core loop engine.
-This is the deepest integration signal found — a production framework with Ralph
-as a named permanent command alias.
-*(discovered 2026-06-20 via gh search repos — 2★, `/ralph-loop` alias, 446 tests)*
-`verify: repo-exists, npm-@aslomon/effectum-exists v0.18.3 (2026-06-21)`
-
-### Gens AI — [Gens-ai/autopilot](https://github.com/Gens-ai/autopilot)
-**"Autonomous TDD workflow for Claude Code using Ralph Loop."** — Production product
-with 14★ and 4 forks. Built-in loop mechanism credited to the Ralph Wiggum technique.
-No external plugins required — the Ralph Loop pattern is baked into the core workflow.
-*(discovered 2026-06-20 via gh search repos — 14★, 4 forks, built-in Ralph loop)*
-`verify: repo-exists (2026-06-20)`
-
-## More builders — discovered 2026-06-20
-
-### AutoMedica Labs — [auto-medica-labs/ralph-template](https://github.com/auto-medica-labs/ralph-template)
-**"An automatic Ralph workflow for autonomous software development tasks using the
-OpenCode CLI tool."** — First healthcare/health-tech domain adoption discovered.
-5★, actively maintained (last updated May 2026). Uses OpenCode as the agent runtime
-rather than Claude Code — confirms Ralph's vendor-neutral value proposition.
-*(discovered 2026-06-20 via gh search repos — 5★, OpenCode, health-tech domain)*
-`verify: repo-exists (2026-06-20)`
-
-### Ariceb — [ariccb/helixir-ralph-workflow](https://github.com/ariccb/helixir-ralph-workflow)
-**"Coordinated ralph workflow integrating flow-next task management with gstack
-quality gates."** — Demonstrates Ralph as a composition layer in a multi-tool
-orchestration stack: flow-next (task management) + gstack (quality gates) + Ralph
-(autonomous execution loop). Evidence that Ralph is being used as a protocol
-component in larger agent orchestration architectures.
-*(discovered 2026-06-20 via gh search repos — multi-tool orchestration pattern)*
-`verify: repo-exists (2026-06-20)`
-
-### Davis Sylvester — [DavisSylvester/ollama-dev-agent](https://github.com/DavisSylvester/ollama-dev-agent)
-**"Autonomous local code-generation agent powered by Ollama — Worker→Lint→Reviewer
-Ralph loop with self-healing retries."** — First local-LLM Ralph adoption discovered.
-Runs the Ralph Loop pattern with Ollama (no cloud API dependency). This validates
-Ralph's core claim: the tool works with ANY agent, including fully local ones.
-Created today (Jun 20). A positioning proof point for the "vendor-neutral" claim.
-*(discovered 2026-06-20 via gh search repos — local Ollama + Ralph, self-healing)*
-`verify: repo-exists (2026-06-20)`
-
-### benikigai — [benikigai/nightshift](https://github.com/benikigai/nightshift)
-**"Controlled agent harness for lights-out software work: persistent Ralph Loops,
-evaluator backpressure, guardrails, metrics, and git audit trails."** — 14★, 5 forks.
-Production-grade system explicitly designed for unattended overnight use. Includes
-evaluator backpressure (prevents runaway loops), guardrails, and full audit trails.
-This is the exact use case Ralph Workflow was built for — confirmed in production.
-*(discovered 2026-06-20 via gh search repos — 14★, 5 forks, lights-out production)*
-`verify: repo-exists (2026-06-20)`
-
-### Gregory Dickson — [gregorydickson/pickle-rick-claude](https://github.com/gregorydickson/pickle-rick-claude)
-**"Pickle Rick for Claude Code — autonomous PRD-driven coding loops + relentless
-code review. Ralph Loop toolkit."** — 26★, 5 forks. The highest-starred
-Ralph-adjacent project discovered in the ecosystem (exceeding even Gens-ai/autopilot
-at 14★). Built as a complete autonomous coding toolkit with Ralph Loop as its engine.
-Created Feb 2026, actively maintained.
-*(discovered 2026-06-20 via gh search repos — 26★, 5 forks, PRD-driven, Claude Code)*
-`verify: repo-exists (2026-06-20)`
-
-### Dr. Gareth Roberts — [dr-gareth-roberts/chief-wiggum-loop](https://github.com/dr-gareth-roberts/chief-wiggum-loop)
-**"Hardened, sandbox-safe variation on Anthropic's Ralph Loop for Claude Code:
-stuck classifier, worktree sandboxing, /wiggum-doctor preflight, /wiggum-resume,
-project-only lessons DB."** — The most technically deep Ralph variation discovered.
-Enterprise-grade features: stuck-loop detection + classification, git-worktree
-sandboxing for safe experimentation, preflight system health checks, and a per-project
-learning database. Demonstrates the hardening path for production adoption.
-*(discovered 2026-06-20 via gh search repos — security-hardened, sandbox-safe)*
-`verify: repo-exists (2026-06-20)`
-
-## Pattern adopters — projects implementing the Ralph loop pattern
-
-These projects independently converged on the same pattern (markdown-plan + progress.json +
-sentinel-based termination) — confirming the loop engineering pattern is a real architectural
-discovery, not a single-project coincidence.
-
-- **[Martingale42 / obra/superpowers#1725](https://github.com/obra/superpowers/issues/1725)** — Resumable multi-agent execution pipeline with `progress.json` + wake-up file. Verbatim converged on the Ralph pattern. *(2026-06-10)*
-  `verify: issue exists, references Ralph pattern (2026-06-21)`
-- **[marconae/speq-skill](https://github.com/marconae/speq-skill)** — Spec-driven skill for Claude Code. Adjacent/complementary lane. *(2026-06-09)*
-  `verify: repo-exists (2026-06-21)`
-- **[xpepper/pr-review-agent-skill](https://github.com/xpepper/pr-review-agent-skill)** — Ralph-wiggum-loop — same pattern. *(2026-06-10)*
-  `verify: repo-exists (2026-06-21)`
-- **[endario/unattended-loop](https://github.com/endario/unattended-loop)** — Parallel implementation of the unattended loop pattern. *(2026-06-10)*
-  `verify: repo-exists (2026-06-21)`
+1. **Build something** with the Ralph Loop pattern or Ralph Workflow
+2. **Add the badge** to your README: `[![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)`
+3. **Open an issue** on [Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues) or submit a PR
 
 ---
 
-## Are you using Ralph Workflow?
-
-If you're running Ralph Workflow, building on it, or have implemented the loop engineering
-pattern — we'd love to hear about it. File an issue on the repo or open a PR to add your
-project here. It takes 60 seconds and helps everyone understand what this tool can do.
-
-→ [Codeberg: RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
-→ [GitHub mirror: Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow)
+*Attribution: The Ralph Loop pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph). Ralph Workflow is an independent reference implementation — not the pattern's originator.*
