@@ -24,6 +24,5 @@
 {"type":"compaction_end","reason":"manual","result":null,"aborted":false,"willRetry":false}
 {"type":"auto_retry_start","attempt":1,"maxAttempts":3,"delayMs":1000,"errorMessage":"transient"}
 {"type":"auto_retry_end","success":true,"attempt":1}
-{"type":"extension_error","extensionPath":"/path/to/extension.ts","event":"tool_call","error":"boom-extension"}
 {"type":"turn_end","message":{"role":"assistant","content":[]},"toolResults":[]}
 {"type":"agent_end","messages":[]}

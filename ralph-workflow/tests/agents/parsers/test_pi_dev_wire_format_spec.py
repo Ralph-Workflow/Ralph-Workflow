@@ -5,6 +5,18 @@ Pi (https://pi.dev) is a terminal coding agent whose headless
 ``AgentSessionEvent``.  The event vocabulary is the documented
 TypeScript union at https://pi.dev/docs/latest/json.
 
+The current published contract (re-fetched at execution time from
+the live pi.dev docs) enumerates exactly 16 top-level event types.
+The parser additionally accepts ``extension_error`` defensively as a
+forward-compat extension, but ``extension_error`` is NOT in the
+current published contract, so it is NOT listed in the
+``documented_top_level_events`` set asserted by
+:meth:`TestPiDevWireFormatSpec.test_fixture_covers_every_documented_top_level_event`
+and is NOT present in the committed fixture.  The parser's
+``extension_error`` defensive handling is exercised in
+:meth:`TestPiDevWireFormatSpec.test_extension_error_accepted_as_forward_compat`
+and in :class:`TestPiParserExtensionError` in ``test_pi_parser.py``.
+
 This test loads the committed fixture at
 ``tests/agents/parsers/fixtures/pi_dev_documented_events.json`` (NOT
 the transient ``tmp/pi-dev-docs/inventory.md``) and asserts:
@@ -22,7 +34,10 @@ the transient ``tmp/pi-dev-docs/inventory.md``) and asserts:
       ``tool_execution_end`` with ``isError=true`` must produce a
       ``type='error'`` line (NOT ``type='tool_result'``);
   (e) the documented stop events (agent_end, turn_end) each produce
-      a ``type='stop'`` line.
+      a ``type='stop'`` line;
+  (f) ``extension_error`` events are accepted by the parser as a
+      forward-compat extension (NOT a documented event) and yield a
+      ``type='error'`` line.
 
 The committed fixture is the canonical source of truth between
 Ralph Workflow and the live pi.dev wire format.  When the live docs
@@ -88,6 +103,13 @@ class TestPiDevWireFormatSpec:
         """The fixture must contain one NDJSON line per documented
         top-level event type from https://pi.dev/docs/latest/json.
 
+        The current live published contract (re-fetched 2026-06-20
+        from https://pi.dev/docs/latest/json) enumerates 16 event
+        types. ``extension_error`` is accepted defensively by the
+        parser but is NOT in the current published contract, so it is
+        deliberately excluded from this set and is exercised in
+        :meth:`test_extension_error_accepted_as_forward_compat`.
+
         This is the canonical machine-readable contract between Ralph
         Workflow and the live pi.dev wire format.  When the live docs
         change in a future revision, the executor MUST update both
@@ -112,7 +134,6 @@ class TestPiDevWireFormatSpec:
             "compaction_end",
             "auto_retry_start",
             "auto_retry_end",
-            "extension_error",
         }
 
         objects = _load_fixture_objects()
@@ -288,6 +309,51 @@ class TestPiDevWireFormatSpec:
                 f"PiParser must NOT yield any AgentOutputLine for the "
                 f"silent top-level event {event_type!r}, got {results!r}"
             )
+
+    def test_extension_error_accepted_as_forward_compat(self) -> None:
+        """``extension_error`` events MUST be accepted defensively by
+        the parser and yield a single ``type='error'`` line.
+
+        ``extension_error`` is NOT in the current published pi.dev
+        ``AgentSessionEvent`` union (re-fetched 2026-06-20 from
+        https://pi.dev/docs/latest/json; the union enumerates 16
+        events and ``extension_error`` is absent). The parser
+        nevertheless keeps a defensive handler at
+        ``ralph-workflow/ralph/agents/parsers/pi.py:_handle_extension_error``
+        so that any legacy or forward pi.dev build that emits
+        ``extension_error`` does not break the parser. This test
+        pins that defensive contract: feeding ``extension_error``
+        into ``PiParser().parse()`` must NOT raise and must yield a
+        ``type='error'`` line whose ``content`` carries the
+        ``error`` field. The event is intentionally excluded from
+        the documented set in
+        :meth:`test_fixture_covers_every_documented_top_level_event`
+        and from the committed fixture so the live-doc contract
+        test and the wire-format fixture stay aligned with the
+        currently published pi.dev docs.
+        """
+        parser = PiParser()
+        line = json.dumps(
+            {
+                "type": "extension_error",
+                "extensionPath": "/path/to/extension.ts",
+                "event": "tool_call",
+                "error": "boom-extension",
+            }
+        )
+        results = list(parser.parse(_lines(line)))
+        assert len(results) == 1, (
+            f"PiParser must yield exactly one AgentOutputLine for the "
+            f"forward-compat extension_error event, got {results!r}"
+        )
+        assert results[0].type == "error", (
+            f"PiParser must yield type='error' for the forward-compat "
+            f"extension_error event, got {results[0]!r}"
+        )
+        assert results[0].content == "boom-extension", (
+            f"PiParser must propagate the extension_error.error field as "
+            f"the AgentOutputLine.content, got {results[0].content!r}"
+        )
 
     def test_silent_sub_events_emit_no_output(self) -> None:
         """The documented silent AssistantMessageEvent sub-events
