@@ -50,6 +50,7 @@ spec.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -80,6 +81,72 @@ def _load_fixture_objects() -> list[dict[str, object]]:
 
 def _lines(*raw: str) -> Iterator[str]:
     return iter(raw)
+
+
+_INVENTORY_TOP_LEVEL_HEADER = "Top-level events (AgentSessionEvent union)"
+_INVENTORY_FORWARD_COMPAT_PREFIX = "Forward-compat / extension events"
+
+
+def _extract_pi_inventory_top_level_section(
+    inventory_text: str,
+) -> dict[str, str]:
+    """Extract the Top-level events and Forward-compat sections
+    from a transient ``tmp/pi-dev-docs/inventory.md`` document.
+
+    Returns a mapping with two keys:
+      - ``"top_level"``: text of the Top-level events section (between
+        its ``###`` heading and the next ``###`` heading)
+      - ``"forward_compat"``: text of the Forward-compat section
+        (between its ``###`` heading and the next ``###`` heading);
+        empty string if the section is absent.
+
+    The helper is deliberately tolerant of additional whitespace and
+    intermediate prose so the inventory can grow notes between
+    sections without breaking this guard.
+    """
+    sections: dict[str, str] = {"top_level": "", "forward_compat": ""}
+    lines = inventory_text.splitlines()
+    section_ranges: list[tuple[str, int, int]] = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("### "):
+            header_text = stripped[4:].strip()
+            section_ranges.append((header_text, index, -1))
+    # Close each section at the next `### ` heading or EOF.
+    for idx, (header, start, _) in enumerate(section_ranges):
+        end = len(lines)
+        for later_idx in range(idx + 1, len(section_ranges)):
+            _, later_start, _ = section_ranges[later_idx]
+            if later_start > start:
+                end = later_start
+                break
+        body = "\n".join(lines[start + 1 : end])
+        if header == _INVENTORY_TOP_LEVEL_HEADER:
+            sections["top_level"] = body
+        elif header.startswith(_INVENTORY_FORWARD_COMPAT_PREFIX):
+            sections["forward_compat"] = body
+    return sections
+
+
+def _parse_backticked_event_names(section_text: str) -> set[str]:
+    """Parse every backticked ``event_name`` token out of a markdown
+    LIST SECTION.  Only captures names that appear in markdown
+    bullet-list items (``- `name` \u2014 description`` or
+    ``- `name` description``); prose paragraphs that mention an
+    event name in backticks (e.g. explanatory text or examples) are
+    deliberately ignored so the canonical 16-event contract stays
+    aligned with the published pi.dev docs.
+
+    Returns the deduplicated set of backticked tokens that look like
+    plausible event names (lowercase letters, digits, underscores).
+    """
+    names: set[str] = set()
+    bullet_pattern = re.compile(r"^\s*-\s+`([a-z][a-z0-9_]*)`")
+    for line in section_text.splitlines():
+        match = bullet_pattern.match(line)
+        if match is not None:
+            names.add(match.group(1))
+    return names
 
 
 class TestPiDevWireFormatSpec:
@@ -144,6 +211,108 @@ class TestPiDevWireFormatSpec:
             f"documented top-level event types: {sorted(missing)}. "
             f"Update the fixture in the same diff as the live docs "
             f"(see tmp/pi-dev-docs/inventory.md)."
+        )
+
+    def test_inventory_top_level_section_matches_canonical_set(self) -> None:
+        """The transient ``tmp/pi-dev-docs/inventory.md`` MUST list
+        exactly the canonical 16 top-level events under its
+        ``Top-level events (AgentSessionEvent union)`` section.
+
+        The previous reconciliation only checked that the canonical
+        16 events were *present* somewhere in the inventory, which
+        allowed the inventory to silently drift by adding extra
+        documented top-level events (e.g. ``extension_error``) without
+        updating the canonical fixture or the wire-format spec
+        assertion.  This test reads the inventory's
+        ``Top-level events (AgentSessionEvent union)`` section, parses
+        the documented top-level event names out of it, and asserts
+        EXACT agreement with the canonical 16-event set.  The
+        ``extension_error`` entry MUST live in a separate
+        ``Forward-compat / extension events`` section that is excluded
+        from this assertion (see
+        :meth:`test_extension_error_accepted_as_forward_compat`).
+
+        This guard fails LOUDLY if the inventory re-introduces
+        ``extension_error`` (or any other forward-compat name) as a
+        documented top-level event.
+        """
+        canonical_top_level_events = {
+            "session",
+            "agent_start",
+            "agent_end",
+            "turn_start",
+            "turn_end",
+            "message_start",
+            "message_update",
+            "message_end",
+            "tool_execution_start",
+            "tool_execution_update",
+            "tool_execution_end",
+            "queue_update",
+            "compaction_start",
+            "compaction_end",
+            "auto_retry_start",
+            "auto_retry_end",
+        }
+
+        # The transient inventory lives at the REPO ROOT (not under
+        # ralph-workflow/).  Resolve from this test file's location.
+        repo_root = Path(__file__).resolve()
+        for parent in repo_root.parents:
+            if (parent / "tmp").is_dir():
+                repo_root = parent
+                break
+        inventory_path = repo_root / "tmp" / "pi-dev-docs" / "inventory.md"
+        if not inventory_path.exists():
+            # Inventory is transient and may not be present in a
+            # fresh checkout; skip rather than fail in that case.
+            return
+        inventory_text = inventory_path.read_text(encoding="utf-8")
+
+        # Extract the Top-level events (AgentSessionEvent union)
+        # section and the Forward-compat / extension events section.
+        sections = _extract_pi_inventory_top_level_section(inventory_text)
+        top_section = sections["top_level"]
+        forward_section = sections["forward_compat"]
+
+        # Parse documented top-level event names from the
+        # Top-level events section.  Each entry is a markdown list
+        # bullet ``  - `event_name` — description`` (or
+        # ``  - `event_name` description``); capture every
+        # backticked name that lives ONLY in the top-level section
+        # and NOT in the forward-compat section.
+        top_level_names = _parse_backticked_event_names(top_section)
+        forward_compat_names = _parse_backticked_event_names(forward_section)
+
+        # Sanity: ``extension_error`` MUST be in the forward-compat
+        # section (defensive contract from
+        # :meth:`test_extension_error_accepted_as_forward_compat`).
+        assert "extension_error" in forward_compat_names, (
+            f"Expected `extension_error` to be documented in the "
+            f"Forward-compat / extension events section of "
+            f"{inventory_path}, got forward-compat names "
+            f"{sorted(forward_compat_names)}."
+        )
+
+        # The Top-level events section MUST be in EXACT agreement
+        # with the canonical 16-event set: no missing names and no
+        # undocumented names.
+        missing = canonical_top_level_events - top_level_names
+        assert not missing, (
+            f"tmp/pi-dev-docs/inventory.md Top-level events section is "
+            f"missing the canonical documented events: "
+            f"{sorted(missing)}.  Update the inventory to include them."
+        )
+        extras = top_level_names - canonical_top_level_events
+        assert not extras, (
+            f"tmp/pi-dev-docs/inventory.md Top-level events section "
+            f"lists undocumented top-level event names: "
+            f"{sorted(extras)}.  The current published "
+            f"AgentSessionEvent union enumerates exactly 16 events "
+            f"(re-fetched 2026-06-20 from "
+            f"https://pi.dev/docs/latest/json); any extra name must "
+            f"be moved into the Forward-compat / extension events "
+            f"section instead."
         )
 
     def test_fixture_covers_documented_sub_event_types(self) -> None:
