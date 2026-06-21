@@ -50,14 +50,30 @@ Each action object must have:
 
 The following paths are Ralph Workflow runtime artifacts. They are unconditionally deletable from any commit, even when tracked in HEAD:
 
-- Any path under `.agent/raw/`, `.agent/tmp/`, `.agent/artifacts/`, `.agent/workers/`, `.agent/receipts/`, `.agent/prompt_history/`, `.agent/artifact-formats/`
 - Specific basenames at the `.agent/` top level: `.agent/CURRENT_PROMPT.md`, `.agent/PLAN.md`, `.agent/ISSUES.md`, `.agent/DEVELOPMENT_RESULT.md`, `.agent/FIX_RESULT.md`, `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`, `.agent/PLANNING_ANALYSIS_DECISION.md`, `.agent/REVIEW_ANALYSIS_DECISION.md`, `.agent/checkpoint.json`, `.agent/rebase_checkpoint.json`, `.agent/rebase_checkpoint.json.bak`, `.agent/rebase.lock`, `.agent/start_commit`, `.agent/mcp.toml`
 - Completion sentinels: any `.agent/completion_seen_*.json` (the filename glob is `completion_seen_*.json`, NOT `completion_sentinel_*.json`)
 - Root-level: bare `checkpoint.json` at the repo root
+- Files inside engine-internal directories ONLY when their extension matches the engine-written file types for that directory:
+  - `.agent/raw/` — `.log` files only (e.g. `.agent/raw/opencode.log`)
+  - `.agent/tmp/` — `.log`, `.md`, `.json` files (e.g. `.agent/tmp/mcp-server.log`, `.agent/tmp/<safe_id>.md`)
+  - `.agent/artifacts/` — `.json` files (e.g. `.agent/artifacts/commit_cleanup.json`)
+  - `.agent/receipts/<run-id>/` — `.json` files (e.g. `.agent/receipts/run-1/commit_cleanup.json`)
+  - `.agent/prompt_history/` — `.json` files (e.g. `.agent/prompt_history/abc.json`)
+  - `.agent/artifact-formats/` — `.md` files (e.g. `.agent/artifact-formats/commit_message.md`)
+  - `.agent/workers/<unit>/...` — `.log`, `.md`, `.json` files at any depth (e.g. `.agent/workers/unit-a/tmp/checkpoint.json`)
 
 ## Security boundary
 
-For source-code files under `.agent/` that are NOT in the list above (e.g. `.agent/test.py`, `.agent/CHANGELOG.md`, `.agent/utils.py`, `.agent/scripts/build.sh`, `.agent/notes/foo.txt`, `.agent/data/seed.json`), DO NOT delete them — they are user-authored content even if they happen to live under `.agent/`. The same applies to source-code files anywhere else in the repo.
+The directory allowlist above is RESTRICTED by file extension. Files under the listed directories with a different extension are user-authored content and MUST NOT be deleted, even when tracked in HEAD. Examples that MUST be rejected:
+
+- `.agent/raw/script.py`, `.agent/raw/main.go`, `.agent/raw/notes.md` — only `.log` is deletable in `raw/`
+- `.agent/tmp/config.yaml`, `.agent/tmp/main.py` — only `.log`, `.md`, `.json` are deletable in `tmp/`
+- `.agent/artifacts/notes.md` — only `.json` is deletable in `artifacts/`
+- `.agent/receipts/run-1/note.md` — only `.json` is deletable in `receipts/`
+- `.agent/artifact-formats/data.json` — only `.md` is deletable in `artifact-formats/`
+- `.agent/workers/unit-a/src/main.py`, `.agent/workers/unit-a/src/foo.go` — only `.log`, `.md`, `.json` are deletable in `workers/`
+
+For source-code files at the `.agent/` top level that are NOT in the basenames list (e.g. `.agent/test.py`, `.agent/CHANGELOG.md`, `.agent/utils.py`, `.agent/scripts/build.sh`), and for arbitrary subdirectories under `.agent/` (e.g. `.agent/notes/foo.txt`, `.agent/data/seed.json`), DO NOT delete them — they are user-authored content even if they happen to live under `.agent/`. The same applies to source-code files anywhere else in the repo.
 
 ## Dumb-proof checklist
 

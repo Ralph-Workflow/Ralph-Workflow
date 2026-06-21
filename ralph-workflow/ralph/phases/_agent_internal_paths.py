@@ -64,7 +64,14 @@ AGENT_INTERNAL_TOP_LEVEL_BASENAMES: frozenset[str] = frozenset(
     }
 )
 
-# Directory segments under ``.agent/`` whose contents are engine-owned.
+# Directory segments under ``.agent/`` whose contents are engine-owned
+# WHEN combined with the per-directory file extension rules below. The
+# directory name alone is NOT sufficient -- the file inside must also
+# match the per-directory extension allowlist. This is the security
+# boundary: a blanket ``.agent/<dir>/`` prefix match would silently
+# delete user-authored tracked files placed inside any of these dirs
+# (e.g. ``.agent/raw/script.py`` or ``.agent/workers/<unit>/src/main.py``).
+#
 # Derived from ``_GENERATED_AGENT_STATE_DIRS`` (4 entries:
 # ``artifacts``, ``tmp``, ``prompt_history``, ``workers``) +
 # ``RECEIPT_DIR_RELPATH_FMT`` (``receipts``) + log-growth probe
@@ -98,6 +105,35 @@ AGENT_INTERNAL_ROOT_BASENAMES: frozenset[str] = frozenset(
 # identifier ``completion_sentinel_*`` which never appears on disk.
 _AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB: str = "completion_seen_*.json"
 
+# Per-directory engine-internal file extension allowlist. A file under
+# an engine-internal directory is deletable ONLY when its extension is
+# in this map for the directory. Files with extensions NOT in the map
+# are user-authored content and MUST remain rejected, even when tracked
+# in HEAD.
+#
+# Rationale per directory:
+# * ``raw`` -- the log-growth probe writes ``<safe_id>.log`` files only;
+#   any other extension is user-authored content (e.g. ``script.py``).
+# * ``tmp`` -- MCP server logs (``*.log``), prompt payloads (``*.md``),
+#   and small JSON scratch (``*.json``); no source code lives here.
+# * ``artifacts`` -- artifact submissions are always ``*.json``.
+# * ``receipts`` -- completion receipts are always ``*.json``.
+# * ``prompt_history`` -- prompt-payload snapshots are always ``*.json``.
+# * ``artifact-formats`` -- materialized format docs are always ``*.md``.
+# * ``workers`` -- per-worker engine-managed tree: prompt payloads
+#   (``*.md``), agent logs (``*.log``), and per-worker artifacts
+#   (``*.json``). Source files under ``workers/`` are user-authored and
+#   MUST be rejected.
+_AGENT_INTERNAL_DIR_FILE_EXTENSIONS: dict[str, frozenset[str]] = {
+    "raw": frozenset({".log"}),
+    "tmp": frozenset({".log", ".md", ".json"}),
+    "artifacts": frozenset({".json"}),
+    "receipts": frozenset({".json"}),
+    "prompt_history": frozenset({".json"}),
+    "artifact-formats": frozenset({".md"}),
+    "workers": frozenset({".log", ".md", ".json"}),
+}
+
 # Path-segment count constants for the ``is_agent_internal_path`` predicate.
 # These are intentionally named so the predicate's branches read as
 # ``len(parts) == _SEGMENT_COUNT_TWO`` rather than ``len(parts) == 2``.
@@ -110,20 +146,28 @@ def is_agent_internal_path(path: str) -> bool:
 
     The check is segment-aware -- it does NOT do a path-prefix match on
     ``.agent/``, so user-authored tracked files under ``.agent/`` (e.g.
-    ``.agent/test.py``) are correctly rejected.
+    ``.agent/test.py``) are correctly rejected. For files inside an
+    engine-internal directory (``AGENT_INTERNAL_DIR_GLOBS``), the file's
+    extension MUST also match the per-directory allowlist
+    (``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``); arbitrary file types
+    under engine-internal directories (e.g. ``.agent/raw/script.py``)
+    are NOT deletable.
 
     A path is agent-internal when:
 
     1. It is a single-segment path and the basename is in
        ``AGENT_INTERNAL_ROOT_BASENAMES`` (e.g. ``checkpoint.json``), OR
     2. The first segment is ``.agent`` AND the second segment is in
-       ``AGENT_INTERNAL_DIR_GLOBS`` (e.g. ``.agent/raw/x.log``), OR
-    3. The first segment is ``.agent`` AND the second segment is in
        ``AGENT_INTERNAL_TOP_LEVEL_BASENAMES`` (e.g. ``.agent/PLAN.md``),
        OR
-    4. The first segment is ``.agent`` AND the basename matches
+    3. The first segment is ``.agent`` AND the basename matches
        ``_AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB``
-       (e.g. ``.agent/completion_seen_run-1.json``).
+       (e.g. ``.agent/completion_seen_run-1.json``), OR
+    4. The first segment is ``.agent`` AND the second segment is in
+       ``AGENT_INTERNAL_DIR_GLOBS`` AND the file's extension is in the
+       per-directory allowlist for that directory (e.g.
+       ``.agent/raw/opencode.log`` is accepted; ``.agent/raw/script.py``
+       is rejected).
 
     Args:
         path: Repository-relative POSIX path (forward slashes).
@@ -149,21 +193,45 @@ def is_agent_internal_path(path: str) -> bool:
     if parts[0] != ".agent":
         return False
 
-    # Beyond ``.agent/``, the second segment (case 2), the second segment
-    # being a top-level basename (case 3), or the basename matching the
-    # completion-sentinel glob (case 4) all qualify.
-    if len(parts) == _SEGMENT_COUNT_TWO:
-        second = parts[1]
-        return (
-            second in AGENT_INTERNAL_DIR_GLOBS
-            or second in AGENT_INTERNAL_TOP_LEVEL_BASENAMES
-            or fnmatch.fnmatchcase(name, _AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB)
-        )
+    # Case 2 (top-level basename under .agent/) and Case 3 (completion
+    # sentinel filename glob) only apply when the path has exactly two
+    # segments. They short-circuit before the engine-internal directory
+    # check below.
+    second = parts[1]
+    two_segment_match = len(parts) == _SEGMENT_COUNT_TWO and (
+        second in AGENT_INTERNAL_TOP_LEVEL_BASENAMES
+        or fnmatch.fnmatchcase(name, _AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB)
+    )
+    if two_segment_match:
+        return True
 
-    # Three or more segments under ``.agent/``: the second segment must
-    # be in the directory globs. We deliberately do NOT inspect deeper
-    # segments so user-authored source files inside ``.agent/raw/`` are
-    # not silently accepted -- the ``raw`` directory is a Ralph-internal
-    # scratch area but the agent never writes source code there, so this
-    # widens only what Ralph itself writes.
-    return parts[1] in AGENT_INTERNAL_DIR_GLOBS
+    # Case 4: engine-internal directory (second segment) with a
+    # per-directory file extension match. Applies to both
+    # ``.agent/<dir>/<file>`` and ``.agent/<dir>/<sub>/...`` shapes.
+    # The per-directory extension match is the security boundary that
+    # prevents blanket dir-prefix matches from deleting user-authored
+    # tracked files.
+    return _is_engine_file_in_dir(candidate, second)
+
+
+def _is_engine_file_in_dir(candidate: Path, dir_segment: str) -> bool:
+    """Return True when ``candidate`` is an engine-owned file inside ``dir_segment``.
+
+    Combines the directory membership check (``dir_segment`` in
+    ``AGENT_INTERNAL_DIR_GLOBS``) with the per-directory file extension
+    check (``candidate.suffix`` in the per-dir allowlist). The basename
+    of a no-extension file is rejected because every engine-written file
+    in those directories has a known extension (``.log``, ``.md``,
+    ``.json``); bare names like ``checkpoint`` or ``README`` are
+    user-authored content.
+    """
+    if dir_segment not in AGENT_INTERNAL_DIR_GLOBS:
+        return False
+    allowed_extensions = _AGENT_INTERNAL_DIR_FILE_EXTENSIONS.get(dir_segment)
+    if allowed_extensions is None:
+        # Defensive: every entry in AGENT_INTERNAL_DIR_GLOBS must have a
+        # per-dir extension allowlist. If a future contributor adds a
+        # dir without one, fail closed (reject the path) rather than
+        # silently widening the deletion surface.
+        return False
+    return candidate.suffix.lower() in allowed_extensions

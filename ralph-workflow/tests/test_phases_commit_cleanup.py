@@ -1654,3 +1654,64 @@ def test_delete_tracked_random_json_in_agent_root_rejected(tmp_git_repo: Path) -
     assert len(result) == 1
     assert isinstance(result[0], PhaseFailureEvent)
     assert target.exists()
+
+
+# --- SECURITY-REGRESSION tests for tightened directory-extension rules ---
+#
+# These pin the security boundary for files inside engine-internal
+# directories (``.agent/raw/``, ``.agent/tmp/``, ``.agent/workers/``,
+# ``.agent/receipts/``, ``.agent/artifacts/``, ``.agent/prompt_history/``,
+# ``.agent/artifact-formats/``). A file is deletable inside one of these
+# directories ONLY when its extension matches the per-directory
+# allowlist (``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``). Files with other
+# extensions are user-authored content and MUST be rejected even when
+# tracked in HEAD.
+
+
+@pytest.mark.parametrize(
+    "rel_path",
+    [
+        # .agent/raw/ only accepts .log files
+        ".agent/raw/script.py",
+        ".agent/raw/main.go",
+        ".agent/raw/notes.md",
+        # .agent/tmp/ only accepts .log, .md, .json
+        ".agent/tmp/config.yaml",
+        ".agent/tmp/main.py",
+        # .agent/artifacts/ only accepts .json
+        ".agent/artifacts/notes.md",
+        # .agent/receipts/ only accepts .json
+        ".agent/receipts/run-1/note.md",
+        # .agent/prompt_history/ only accepts .json
+        ".agent/prompt_history/notes.md",
+        # .agent/artifact-formats/ only accepts .md
+        ".agent/artifact-formats/data.json",
+        # .agent/workers/ only accepts .log, .md, .json (recursive)
+        ".agent/workers/unit-a/src/main.py",
+        ".agent/workers/unit-a/src/foo.go",
+        ".agent/workers/unit-a/sub/dir/foo.rs",
+    ],
+)
+def test_delete_tracked_source_files_inside_engine_dirs_rejected(
+    tmp_git_repo: Path, rel_path: str
+) -> None:
+    """Tracked source files inside engine-internal directories MUST stay rejected.
+
+    Regression for the security gap where any path whose second segment
+    was in ``AGENT_INTERNAL_DIR_GLOBS`` returned True. The tightened
+    rule restricts deletion to files whose extensions match the
+    per-directory allowlist.
+    """
+    target = tmp_git_repo / rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("user content")
+    _track_and_commit(tmp_git_repo, rel_path)
+
+    result = _invoke_cleanup(
+        FsWorkspace(tmp_git_repo),
+        {"analysis_complete": False, "actions": [{"action": "delete_file", "path": rel_path}]},
+    )
+
+    assert len(result) == 1
+    assert isinstance(result[0], PhaseFailureEvent)
+    assert target.exists()

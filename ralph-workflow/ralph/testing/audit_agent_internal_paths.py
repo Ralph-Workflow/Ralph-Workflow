@@ -15,6 +15,12 @@ Enforces non-vacuous invariants across:
    literal (NOT ``completion_sentinel_*.json``), and the
    ``is_agent_internal_path`` predicate.
 
+   The audit ALSO asserts that the per-directory file extension allowlist
+   (``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``) is present -- this is the
+   tightened boundary that prevents blanket ``.agent/<dir>/`` prefix
+   matches from silently deleting user-authored tracked files like
+   ``.agent/raw/script.py`` or ``.agent/workers/<unit>/src/main.py``.
+
 2. **LITERAL-STRING** -- ``ralph/phases/commit_cleanup.py`` MUST import
    ``is_agent_internal_path`` from the leaf module AND call it as the
    FIRST statement in ``_is_safe_to_delete`` (the fast-path exemption).
@@ -25,12 +31,18 @@ Enforces non-vacuous invariants across:
    ``/checkpoint.json`` in ``_DEFAULT_GITIGNORE_PATTERNS`` (NOT bare
    ``checkpoint.json`` which would silently match every subdirectory).
 
+   The audit ALSO asserts that ``_resolve_git_exclude_path`` exists --
+   this is the worktree-aware gitdir resolver required for git worktrees
+   and separate-git-dir layouts where ``repo_root/.git`` is a file
+   pointing at the real gitdir.
+
 4. **BEHAVIORAL** -- import ``is_agent_internal_path`` and exercise it
    against a representative accept set (canonical basenames + dir-segment
-   paths + completion-sentinel glob + root-level checkpoint.json) and a
-   reject set (user-authored tracked files under ``.agent/`` + paths
-   outside ``.agent/``). All accepts must return True, all rejects must
-   return False.
+   paths with dir-appropriate extensions + completion-sentinel glob +
+   root-level checkpoint.json) and a reject set (user-authored tracked
+   files under ``.agent/``, source files inside engine-internal
+   directories, paths outside ``.agent/``). All accepts must return
+   True, all rejects must return False.
 
 Usage:
     python -m ralph.testing.audit_agent_internal_paths
@@ -101,7 +113,8 @@ _BEHAVIORAL_ACCEPT_PATHS: tuple[str, ...] = (
     ".agent/rebase.lock",
     ".agent/start_commit",
     ".agent/mcp.toml",
-    # Dir-segment paths (7 canonical dirs).
+    # Dir-segment paths (7 canonical dirs, each with a dir-appropriate
+    # extension per ``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``).
     ".agent/raw/opencode.log",
     ".agent/tmp/mcp-server.log",
     ".agent/artifacts/x.json",
@@ -125,6 +138,18 @@ _BEHAVIORAL_REJECT_PATHS: tuple[str, ...] = (
     ".agent/scripts/build.sh",
     ".agent/lib/foo.py",
     ".agent/notes/foo.txt",
+    # Source files INSIDE engine-internal directories -- the security
+    # boundary that was widened when the predicate allowed any file
+    # under ``.agent/raw/``, ``.agent/tmp/``, ``.agent/workers/``,
+    # ``.agent/receipts/``, ``.agent/artifacts/``,
+    # ``.agent/prompt_history/``, ``.agent/artifact-formats/``. The
+    # per-directory extension allowlist
+    # (``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``) restricts deletion to
+    # engine-written file types only.
+    ".agent/raw/script.py",
+    ".agent/workers/unit-a/src/main.py",
+    ".agent/receipts/run-1/note.md",
+    ".agent/tmp/config.yaml",
     # Source files outside .agent/ -- never agent-internal.
     "app/controllers/foo.rb",
     # .bak variant of root basename (NOT engine-owned).
@@ -214,6 +239,10 @@ _INVARIANTS: tuple[Invariant, ...] = (
             "_AGENT_INTERNAL_COMPLETION_SENTINEL_GLOB",
             "completion_seen_*.json",
             "def is_agent_internal_path",
+            # Per-directory file extension allowlist -- the tightened
+            # boundary that restricts engine-internal dir-prefix matches
+            # to engine-written file types only.
+            "_AGENT_INTERNAL_DIR_FILE_EXTENSIONS",
         ),
         absent=(
             # The Python abstraction identifier as a literal Python
@@ -239,6 +268,10 @@ _INVARIANTS: tuple[Invariant, ...] = (
         present=(
             "_DEFAULT_GIT_EXCLUDE_PATTERNS",
             "auto_seed_default_git_exclude",
+            # Worktree-aware gitdir resolver -- required for git worktrees
+            # and separate-git-dir layouts where ``repo_root/.git`` is a
+            # gitfile, not a directory.
+            "_resolve_git_exclude_path",
             '"/checkpoint.json"',
         ),
         absent=(

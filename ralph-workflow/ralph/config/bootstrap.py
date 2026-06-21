@@ -29,6 +29,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
+from git import InvalidGitRepositoryError, NoSuchPathError, Repo
+
 from ralph.config.loader import load_toml
 from ralph.git.operations import append_to_gitignore
 
@@ -476,25 +478,58 @@ def _ensure_default_git_exclude(repo_root: Path) -> None:
         return
 
 
+def _resolve_git_exclude_path(repo_root: Path) -> Path | None:
+    """Return the resolved path to ``info/exclude`` for ``repo_root``.
+
+    Works for normal repositories AND git worktrees / separate-git-dir
+    layouts. In a worktree the top-level ``.git`` is a *file* containing
+    ``gitdir: <real-gitdir>``; the real ``info/exclude`` lives in
+    ``<real-gitdir>/info/exclude``, NOT in ``repo_root/.git/info/exclude``.
+    Resolving via GitPython's ``Repo.git_dir`` works for both layouts.
+
+    Returns ``None`` when ``repo_root`` is not a git repository. In that
+    case the caller falls back to the simple ``repo_root/.git/info/exclude``
+    path so the helper still seeds the file when invoked in a project
+    that has not yet been ``git init``-ed (Ralph creates the project-local
+    config set on every invocation).
+    """
+    try:
+        repo = Repo(repo_root, search_parent_directories=False)
+    except (InvalidGitRepositoryError, NoSuchPathError):
+        return None
+    try:
+        git_dir = Path(repo.git_dir)
+    finally:
+        repo.close()
+    return git_dir / "info" / "exclude"
+
+
 def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
     """Auto-seed ``.git/info/exclude`` on a normal ``ralph`` run.
 
     Mirrors ``auto_seed_default_gitignore`` but for the per-user
     ``.git/info/exclude`` file. Reads the existing file (if any), computes
     the patterns from ``_DEFAULT_GIT_EXCLUDE_PATTERNS`` that are not
-    already present, appends them via ``add_to_git_exclude``, and returns
-    the list of patterns that were actually appended.
+    already present, appends the missing patterns to the resolved
+    exclude file, and returns the list of patterns that were actually
+    appended.
+
+    The git directory is resolved via ``Repo(repo_root).git_dir`` so the
+    helper works for normal repositories, git worktrees, and
+    separate-git-dir layouts. In a worktree the top-level ``.git`` is a
+    gitfile pointing at the real gitdir; blindly using
+    ``repo_root / '.git' / 'info' / 'exclude'`` would call ``mkdir`` on a
+    file and fail with ``NotADirectoryError``. Falls back to the
+    repo-root layout only when ``repo_root`` is not a git repository.
 
     Idempotent: a second call with the same ``repo_root`` returns ``[]``
     when every default pattern is already present. Does NOT clobber
     user-added entries.
 
-    Tolerates a missing ``.git/`` directory: the helper writes
-    ``.git/info/exclude`` directly into the filesystem (treating
-    ``repo_root`` as the canonical working-tree root), creating the parent
-    dirs as needed. This matches the pattern used by
-    ``add_to_git_exclude`` for non-git invocations and lets the helper be
-    called from Ralph invocations that have not yet initialized git.
+    Tolerates a missing git dir: when ``repo_root`` is not a git
+    repository (e.g. first-run bootstrap before ``git init``), the helper
+    writes ``.git/info/exclude`` directly into the filesystem, creating
+    the parent dirs as needed.
 
     Args:
         repo_root: Path to the repository (or project) root.
@@ -503,8 +538,10 @@ def auto_seed_default_git_exclude(repo_root: Path) -> list[str]:
         List of patterns that were appended on this call. Empty when the
         existing file already covered every default pattern.
     """
-    git_dir = repo_root / ".git"
-    exclude_path = git_dir / "info" / "exclude"
+    exclude_path = _resolve_git_exclude_path(repo_root)
+    if exclude_path is None:
+        # Non-git working tree -- seed the conventional repo_root/.git/info/exclude.
+        exclude_path = repo_root / ".git" / "info" / "exclude"
     existing: set[str] = set()
     file_existed = exclude_path.exists()
     if file_existed:

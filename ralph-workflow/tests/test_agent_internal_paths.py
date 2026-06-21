@@ -65,9 +65,23 @@ def test_accepts_canonical_root_basename() -> None:
 
 
 def test_accepts_all_canonical_dir_segment_paths() -> None:
-    """Any path under a canonical ``.agent/<dir>/`` directory is accepted."""
+    """Canonical ``.agent/<dir>/<file>`` paths are accepted when extension matches."""
+    # Per-directory extension allowlist mirrors the engine-written file types
+    # for each directory. The engine never writes a ``.json`` payload under
+    # ``.agent/raw/`` (logs only) or under ``.agent/artifact-formats/`` (markdown only),
+    # so the test uses the appropriate extension for each directory.
+    _dir_payload_extension: dict[str, str] = {
+        "raw": ".log",
+        "tmp": ".json",
+        "artifacts": ".json",
+        "workers": ".json",
+        "receipts": ".json",
+        "prompt_history": ".json",
+        "artifact-formats": ".md",
+    }
     for directory in AGENT_INTERNAL_DIR_GLOBS:
-        rel = f".agent/{directory}/payload.json"
+        ext = _dir_payload_extension[directory]
+        rel = f".agent/{directory}/payload{ext}"
         assert is_agent_internal_path(rel) is True, (
             f"Expected dir-segment path {rel!r} to be accepted (dir={directory!r})"
         )
@@ -116,6 +130,80 @@ def test_rejects_source_files_under_agent_dir() -> None:
     for rel in negative_paths:
         assert is_agent_internal_path(rel) is False, (
             f"User-authored path under .agent/ {rel!r} must NOT be agent-internal"
+        )
+
+
+def test_rejects_source_files_inside_engine_internal_dirs() -> None:
+    """Source-code files inside engine-internal directories are REJECTED.
+
+    Regression for the security gap where the predicate previously
+    returned True for any path whose second segment was in
+    ``AGENT_INTERNAL_DIR_GLOBS``, regardless of file extension. That
+    blanket dir-prefix match would silently allow deletion of
+    user-authored tracked files placed inside engine-internal dirs
+    like ``.agent/raw/script.py`` or
+    ``.agent/workers/<unit>/src/main.py``.
+
+    The tightened rule: a file inside an engine-internal directory is
+    deletable ONLY when its extension is in the per-directory
+    allowlist (``_AGENT_INTERNAL_DIR_FILE_EXTENSIONS``).
+    """
+    negative_paths = (
+        # .agent/raw/ only accepts .log files
+        ".agent/raw/script.py",
+        ".agent/raw/main.go",
+        ".agent/raw/notes.md",
+        # .agent/tmp/ only accepts .log, .md, .json
+        ".agent/tmp/config.yaml",
+        ".agent/tmp/main.py",
+        # .agent/artifacts/ only accepts .json
+        ".agent/artifacts/notes.md",
+        # .agent/receipts/ only accepts .json
+        ".agent/receipts/run-1/note.md",
+        # .agent/prompt_history/ only accepts .json
+        ".agent/prompt_history/notes.md",
+        # .agent/artifact-formats/ only accepts .md
+        ".agent/artifact-formats/data.json",
+        # .agent/workers/ only accepts .log, .md, .json (recursive)
+        ".agent/workers/unit-a/src/main.py",
+        ".agent/workers/unit-a/src/foo.go",
+        ".agent/workers/unit-a/sub/foo.rs",
+    )
+    for rel in negative_paths:
+        assert is_agent_internal_path(rel) is False, (
+            f"User-authored file inside engine-internal dir {rel!r} "
+            "must NOT be agent-internal"
+        )
+
+
+def test_accepts_engine_extensions_inside_engine_internal_dirs() -> None:
+    """Engine-owned file extensions inside engine-internal directories are ACCEPTED.
+
+    Pairs with ``test_rejects_source_files_inside_engine_internal_dirs``.
+    The per-directory allowlist covers ``.log``, ``.md``, ``.json``
+    (where appropriate) at any depth inside the engine-internal dir.
+    """
+    positive_paths = (
+        ".agent/raw/opencode.log",
+        ".agent/raw/another.log",
+        ".agent/tmp/mcp-server.log",
+        ".agent/tmp/scratch.json",
+        ".agent/tmp/prompt.md",
+        ".agent/artifacts/commit_cleanup.json",
+        ".agent/artifacts/x.json",
+        ".agent/receipts/run-1/commit_cleanup.json",
+        ".agent/receipts/run-2/smoke.json",
+        ".agent/prompt_history/abc.json",
+        ".agent/artifact-formats/commit_message.md",
+        ".agent/workers/unit-a/output.log",
+        ".agent/workers/unit-a/prompt.md",
+        ".agent/workers/unit-a/artifacts/x.json",
+        ".agent/workers/unit-a/tmp/checkpoint.json",
+        ".agent/workers/unit-a/sub/dir/data.json",
+    )
+    for rel in positive_paths:
+        assert is_agent_internal_path(rel) is True, (
+            f"Engine-owned file {rel!r} must be accepted"
         )
 
 
