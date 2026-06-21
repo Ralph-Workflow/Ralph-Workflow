@@ -12,6 +12,7 @@ from ralph.agents.execution_state._factory import _STRATEGY_DISPATCH
 from ralph.agents.parsers import _CUSTOM_COMMAND_REGISTRY, _PARSER_REGISTRY
 from ralph.agents.parsers._template import ParserTemplateBase
 from ralph.agents.parsers.agent_output_line import AgentOutputLine
+from ralph.agents.parsers.claude import ClaudeParser
 from ralph.agents.parsers.pi import PiParser
 from ralph.agents.registration import register_agent_support
 from ralph.agents.registry import AgentRegistry
@@ -355,4 +356,66 @@ def test_configured_pi_override_propagates_to_dynamic_alias() -> None:
     assert (
         catalog_alias.config.model_flag
         == "--model anthropic/claude-sonnet-4-20250514"
+    )
+
+
+def test_ccs_dynamic_alias_resolves_on_both_registry_and_catalog() -> None:
+    """A ``ccs/<alias>`` dynamic alias must resolve on both surfaces.
+
+    Regression test for the D92 follow-up where ``ccs/<alias>``
+    synthesized ``AgentConfig.cmd`` is a multi-word string (e.g.
+    ``"ccs mm"``) that is NOT registered as a built-in command key.
+    The previous implementation looked up the base support by
+    ``config.cmd.lower()`` in ``catalog._by_command``, which only
+    stores single-token built-in commands; the synthesized multi-word
+    cmd was missing from the lookup, so ``registry.catalog.get(...)``
+    returned ``None`` while ``registry.get(...)`` returned the
+    synthesized config.  The public catalog surface must stay in
+    lockstep with the registry surface for every documented dynamic
+    alias, including ``ccs/<alias>``.
+
+    Both ``registry.get('ccs/<alias>')`` and
+    ``registry.catalog.get('ccs/<alias>')`` must return a synthesized
+    support whose ``config.cmd`` carries the multi-word synthesized
+    command, ``config.transport`` is the alias's underlying transport
+    (here ``claude``), and the parser/strategy factories are the
+    built-in's factories for that transport.
+    """
+    config = UnifiedConfig(
+        ccs_aliases={"mm": "ccs mm"},
+    )
+    registry = AgentRegistry.from_config(config)
+
+    direct = registry.get("ccs/mm")
+    assert direct is not None, "registry.get('ccs/mm') must resolve the alias"
+    assert direct.cmd == "ccs mm", (
+        f"registry.get('ccs/mm').cmd must carry the multi-word "
+        f"synthesized command, got {direct.cmd!r}"
+    )
+    assert direct.transport == AgentTransport.CLAUDE, (
+        f"ccs/<alias> aliases must resolve to claude transport, "
+        f"got {direct.transport!r}"
+    )
+
+    catalog_support = registry.catalog.get("ccs/mm")
+    assert catalog_support is not None, (
+        "registry.catalog.get('ccs/mm') must resolve the alias; "
+        "without this fix the catalog returns None for multi-word "
+        "synthesized cmd values that are absent from _by_command"
+    )
+    assert catalog_support.config.cmd == "ccs mm", (
+        f"registry.catalog.get('ccs/mm').config.cmd must be the "
+        f"synthesized multi-word command, got {catalog_support.config.cmd!r}"
+    )
+    assert catalog_support.config.transport == AgentTransport.CLAUDE, (
+        f"registry.catalog.get('ccs/mm').config.transport must be "
+        f"claude, got {catalog_support.config.transport!r}"
+    )
+    assert catalog_support.spec.transport == AgentTransport.CLAUDE, (
+        f"registry.catalog.get('ccs/mm').spec.transport must be claude, "
+        f"got {catalog_support.spec.transport!r}"
+    )
+    assert catalog_support.parser_factory is ClaudeParser, (
+        f"ccs/<alias> must inherit the claude built-in's parser factory "
+        f"(ClaudeParser), got {catalog_support.parser_factory!r}"
     )

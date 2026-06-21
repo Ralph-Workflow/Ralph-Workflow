@@ -526,8 +526,22 @@ def _resolve_dynamic_support(
     resolution end-to-end.  Falls back to the built-in when the alias
     base name has no catalog entry (e.g. for ``ccs/<alias>``).
 
+    The base built-in is identified by ``config.transport`` (a unique
+    property of each built-in) rather than by ``config.cmd`` lookup in
+    ``catalog._by_command``.  The cmd-based lookup is unreliable for
+    dynamic aliases whose synthesized ``AgentConfig.cmd`` is a multi-word
+    string (e.g. ``"ccs mm"`` for ``ccs/mm``) that is NOT registered as
+    a built-in command key (built-ins only register their canonical
+    single-token command).  Each built-in has a unique transport, so
+    iterating ``catalog._entries.values()`` and matching on transport
+    finds the right base support regardless of whether the synthesized
+    cmd is a single token, a multi-word shell command, or an absolute
+    path.  Falls back to the ``_by_command`` lookup only when no
+    transport-matched entry exists (defensive — should not happen for
+    a documented alias backed by a built-in transport).
+
     Returns ``None`` when the alias does not match any documented pattern or when
-    the resolved ``AgentConfig.cmd`` is not backed by a registered built-in (which
+    the resolved ``AgentConfig`` is not backed by a registered built-in (which
     would indicate a resolver bug rather than a caller error).
     """
     from ralph.agents.registry import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->registry cycle
@@ -551,8 +565,13 @@ def _resolve_dynamic_support(
     if config is None:
         return None
 
-    cmd_lower = config.cmd.lower()
-    base = catalog._by_command.get(cmd_lower)
+    base: AgentSupport | None = None
+    for entry in catalog._entries.values():
+        if entry.spec.transport == config.transport:
+            base = entry
+            break
+    if base is None:
+        base = catalog._by_command.get(config.cmd.lower())
     if base is None:
         return None
 
