@@ -659,3 +659,132 @@ def test_record_subagent_work_description_reproducer_nested_token() -> None:
         f"non-sensitive 'name' key should survive, got: {stored!r}"
     )
     assert "<redacted>" in stored
+
+
+# ---------------------------------------------------------------------------
+# (v) Embedded/malformed JSON redaction regression (analysis feedback)
+# ---------------------------------------------------------------------------
+
+
+def test_record_subagent_work_description_redacts_embedded_json_after_prefix() -> None:
+    """A JSON fragment embedded AFTER free-form text is redacted in full.
+
+    Analysis-feedback reproducer: lines from raw provider output
+    frequently mix free-form text with one or more embedded JSON
+    fragments (``prefix {"prompt": "hello, world"}``). The previous
+    sanitizer only inspected lines starting with ``{`` or ``[``,
+    so the fragment after ``prefix `` was missed. The pre-fix
+    fallback regex stopped at the first comma and left
+    ``, world"}`` visible in operator output.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(description='prefix {"prompt": "hello, world"}')
+    stored = wd._last_subagent_progress_description or ""
+    assert "world" not in stored, (
+        f"comma-bearing value 'world' must NOT leak, got: {stored!r}"
+    )
+    assert "hello" not in stored, (
+        f"comma-bearing value prefix 'hello' must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored, (
+        f"<redacted> marker must appear, got: {stored!r}"
+    )
+
+
+def test_record_subagent_work_description_redacts_embedded_json_with_comma() -> None:
+    """A JSON fragment with an embedded comma is redacted in full.
+
+    Analysis-feedback reproducer: ``prefix {"arguments": "abc,def", "x":1}``
+    previously left ``,def"`` visible because the fallback regex
+    stopped at the first comma.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='prefix {"arguments": "abc,def", "x":1}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "abc" not in stored, (
+        f"comma-bearing value 'abc' must NOT leak, got: {stored!r}"
+    )
+    assert "def" not in stored, (
+        f"comma-bearing value 'def' must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_embedded_nested_object() -> None:
+    r"""A nested-object JSON fragment embedded after free-form text is redacted.
+
+    Analysis-feedback reproducer:
+    ``prefix {"name": "tool", "arguments": {"command": "echo secret", "token": "abc123"}}``
+    was completely UN-redacted by the previous sanitizer because the
+    line did not START with ``{`` (the JSON parse path was skipped)
+    and the fallback regex's `.*?` non-greedy with positive-lookahead
+    ``[,\}\]\n]`` consumed only a partial value.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description=(
+            'prefix {"name": "tool", "arguments":'
+            ' {"command": "echo secret", "token": "abc123"}}'
+        )
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "echo secret" not in stored, (
+        f"nested 'command' value 'echo secret' must NOT leak,"
+        f" got: {stored!r}"
+    )
+    assert "abc123" not in stored, (
+        f"nested 'token' value 'abc123' must NOT leak, got: {stored!r}"
+    )
+    assert "secret" not in stored, (
+        f"nested 'secret' value must NOT leak, got: {stored!r}"
+    )
+    # The non-sensitive key 'name' is preserved so the operator
+    # still sees WHICH tool was invoked.
+    assert "tool" in stored, (
+        f"non-sensitive 'name' key should survive, got: {stored!r}"
+    )
+    assert "<redacted>" in stored
+
+
+def test_record_subagent_work_description_redacts_multiple_embedded_fragments() -> None:
+    """Multiple JSON fragments on a single line are ALL redacted.
+
+    Verifies the scanner finds and walks every ``{...}`` it can
+    parse rather than only the first one.
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description=(
+            'prefix {"arguments": "first"} middle {"arguments": "second"}'
+        )
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "first" not in stored, (
+        f"first fragment 'first' must NOT leak, got: {stored!r}"
+    )
+    assert "second" not in stored, (
+        f"second fragment 'second' must NOT leak, got: {stored!r}"
+    )
+    assert stored.count("<redacted>") == 2, (
+        f"both fragments must be redacted, got: {stored!r}"
+    )
+
+
+def test_record_subagent_work_description_handles_malformed_inner_quote_after_prefix() -> None:
+    """Malformed JSON with unescaped inner quote embedded after a
+    prefix is fully redacted (fallback regex handles it).
+    """
+    wd, _clock = _make_watchdog()
+    wd.record_subagent_work(
+        description='prefix {"arguments": "secret"tail"}'
+    )
+    stored = wd._last_subagent_progress_description or ""
+    assert "secret" not in stored, (
+        f"malformed-JSON 'secret' must NOT leak, got: {stored!r}"
+    )
+    assert "tail" not in stored, (
+        f"malformed-JSON 'tail' must NOT leak, got: {stored!r}"
+    )
+    assert "<redacted>" in stored

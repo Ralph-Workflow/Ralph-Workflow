@@ -220,18 +220,37 @@ _GENERIC_CHILD_HEARTBEAT_KIND: frozenset[str] = frozenset(
     }
 )
 _GENERIC_CHILD_TERMINAL_KIND: frozenset[str] = frozenset(
-    {"child_complete", "child_failed", "child_terminal", "subagent_complete"}
+    {
+        "child_complete",
+        "child_failed",
+        "child_terminal",
+        "child_cancelled",
+        "subagent_complete",
+        "subagent_failed",
+        "subagent_cancelled",
+        "subagent_terminal",
+    }
 )
 _GENERIC_CHILD_SCOPE_PREFIXES: tuple[str, ...] = ("child_", "subagent_")
-_GENERIC_PROGRESS_MARKERS: tuple[str, ...] = (
-    "[child]",
-    "[subagent]",
-    "subagent progress",
-    "child progress",
-    "subagent: ",
-    "child: ",
+# Plain-text child-status markers. These are anchored at the START of
+# the line (with optional leading whitespace) so an arbitrary prose
+# line like ``User wrote a YAML snippet: subagent: worker`` does NOT
+# classify as child activity. The analysis feedback that prompted the
+# tightening was: the previous marker set contained bare ``subagent: ``
+# and ``child: `` tokens and matched ordinary prose that happened to
+# contain those substrings anywhere in the line -- a false positive
+# that refreshed ``record_subagent_work`` for parent-level output and
+# masked genuine idle / stuck conditions.
+_GENERIC_PROGRESS_MARKERS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^\s*\[child\]", re.IGNORECASE),
+    re.compile(r"^\s*\[subagent\]", re.IGNORECASE),
+    re.compile(r"^\s*subagent progress\b", re.IGNORECASE),
+    re.compile(r"^\s*child progress\b", re.IGNORECASE),
 )
-_GENERIC_HEARTBEAT_MARKERS: tuple[str, ...] = ("subagent heartbeat", "child heartbeat")
+_GENERIC_HEARTBEAT_MARKERS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^\s*subagent heartbeat\b", re.IGNORECASE),
+    re.compile(r"^\s*child heartbeat\b", re.IGNORECASE),
+)
 
 
 def _extract_event_kind_from_json(line: str) -> str | None:
@@ -362,21 +381,25 @@ def _classify_generic_child_signal_from_text(
 ) -> AgentActivitySignal | None:
     """Classify a plain-text line by its child-scope marker tokens.
 
-    Heartbeat markers take precedence over progress markers; the
-    classifier matches on a case-insensitive ``in`` substring test.
+    Heartbeat markers take precedence over progress markers. The
+    classifier matches the marker patterns (anchored at the start
+    of the line with optional leading whitespace) so an arbitrary
+    prose line that happens to mention ``subagent: `` or
+    ``child: `` mid-sentence does NOT classify as child activity.
+
     The marker set is intentionally narrow: only ``[child]``,
     ``[subagent]``, ``subagent progress``, ``child progress``,
-    ``subagent: ``, ``child: ``, ``subagent heartbeat``, and
-    ``child heartbeat`` are recognised. Bare ``progress`` /
-    ``task progress`` / ``heartbeat`` / ``alive`` plain-text lines
-    are NOT classified (no explicit child scoping).
+    ``subagent heartbeat``, and ``child heartbeat`` (each at line
+    start with optional whitespace) are recognised. Bare
+    ``progress`` / ``task progress`` / ``heartbeat`` / ``alive``
+    plain-text lines are NOT classified (no explicit child
+    scoping).
     """
-    lowered = line.lower()
-    for marker in _GENERIC_HEARTBEAT_MARKERS:
-        if marker in lowered:
+    for pattern in _GENERIC_HEARTBEAT_MARKERS:
+        if pattern.match(line):
             return AgentActivitySignal(AgentActivityKind.CHILD_HEARTBEAT, raw=line)
-    for marker in _GENERIC_PROGRESS_MARKERS:
-        if marker in lowered:
+    for pattern in _GENERIC_PROGRESS_MARKERS:
+        if pattern.match(line):
             return AgentActivitySignal(AgentActivityKind.CHILD_PROGRESS, raw=line)
     return None
 

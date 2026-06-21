@@ -236,6 +236,266 @@ class TestClassifyGenericChildSignal:
 
 
 # ---------------------------------------------------------------------------
+# Analysis-feedback regression tests.
+#
+# The pre-fix classifier had two correctness gaps that are pinned here:
+#
+# 1. _classify_generic_child_signal_from_json treated ANY
+#    ``type``/``event`` value starting with ``child_`` / ``subagent_``
+#    as CHILD_PROGRESS, except for a tiny terminal allowlist. So
+#    ``{"type":"subagent_failed"}`` and
+#    ``{"event":"subagent_cancelled"}`` were forwarded by
+#    ``BaseExecutionStrategy.observe_line`` into the subagent sink and
+#    refreshed ``record_subagent_work`` for genuine terminal/error
+#    events, masking idle / stuck conditions.
+#
+# 2. _classify_generic_child_signal_from_text used bare substring
+#    markers ``subagent: `` and ``child: ``, so ordinary prose like
+#    ``User wrote a YAML snippet: subagent: worker`` or
+#    ``Documentation says child: value`` classified as
+#    CHILD_PROGRESS, again refreshing ``record_subagent_work`` for
+#    parent-level output and masking idle / stuck conditions.
+#
+# These tests pin the no-false-positive contract.
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyGenericChildSignalAnalysisFeedbackRegressions:
+    """Analysis-feedback regression tests for terminal events and prose lines."""
+
+    def test_subagent_failed_json_returns_none(self) -> None:
+        """``type="subagent_failed"`` is a terminal event and must return None.
+
+        Pre-fix, the generic classifier treated every ``subagent_`` /
+        ``child_``-prefixed event as CHILD_PROGRESS except for a tiny
+        allowlist, so ``subagent_failed`` was incorrectly forwarded
+        into the subagent sink and refreshed ``record_subagent_work``
+        for a failure event.
+        """
+
+        signal = _classify_generic_child_signal(
+            '{"type":"subagent_failed","child_id":"abc"}'
+        )
+        assert signal is None, (
+            f"subagent_failed MUST classify to None (terminal event,"
+            f" not progress), got {signal!r}"
+        )
+
+    def test_subagent_cancelled_json_returns_none(self) -> None:
+        """``event="subagent_cancelled"`` is a terminal event and must return None.
+
+        Pre-fix, the generic classifier treated every ``subagent_`` /
+        ``child_``-prefixed event as CHILD_PROGRESS except for a tiny
+        allowlist, so ``subagent_cancelled`` was incorrectly forwarded
+        into the subagent sink.
+        """
+
+        signal = _classify_generic_child_signal(
+            '{"event":"subagent_cancelled","child_id":"abc"}'
+        )
+        assert signal is None, (
+            f"subagent_cancelled MUST classify to None (terminal event,"
+            f" not progress), got {signal!r}"
+        )
+
+    def test_subagent_terminal_json_returns_none(self) -> None:
+        """``type="subagent_terminal"`` is a terminal event and must return None."""
+
+        signal = _classify_generic_child_signal(
+            '{"type":"subagent_terminal","child_id":"abc"}'
+        )
+        assert signal is None, (
+            f"subagent_terminal MUST classify to None (terminal event),"
+            f" got {signal!r}"
+        )
+
+    def test_child_failed_json_returns_none(self) -> None:
+        """``event="child_failed"`` is a terminal event and must return None."""
+
+        signal = _classify_generic_child_signal(
+            '{"event":"child_failed","child_id":"abc"}'
+        )
+        assert signal is None, (
+            f"child_failed MUST classify to None (terminal event),"
+            f" got {signal!r}"
+        )
+
+    def test_child_cancelled_json_returns_none(self) -> None:
+        """``type="child_cancelled"`` is a terminal event and must return None."""
+
+        signal = _classify_generic_child_signal(
+            '{"type":"child_cancelled","child_id":"abc"}'
+        )
+        assert signal is None, (
+            f"child_cancelled MUST classify to None (terminal event),"
+            f" got {signal!r}"
+        )
+
+    def test_yaml_prose_line_returns_none(self) -> None:
+        """Ordinary prose containing ``subagent: `` as a substring must NOT classify.
+
+        Pre-fix, the text classifier matched the bare substring
+        ``subagent: `` anywhere in the line, so a YAML schema
+        description like ``User wrote a YAML snippet: subagent: worker``
+        classified as CHILD_PROGRESS and refreshed
+        ``record_subagent_work`` for unrelated parent-level output.
+        """
+
+        signal = _classify_generic_child_signal(
+            "User wrote a YAML snippet: subagent: worker"
+        )
+        assert signal is None, (
+            f"YAML prose line MUST classify to None (no leading"
+            f" child-status marker), got {signal!r}"
+        )
+
+    def test_documentation_prose_line_returns_none(self) -> None:
+        """Ordinary prose containing ``child: `` as a substring must NOT classify.
+
+        Pre-fix, the text classifier matched the bare substring
+        ``child: `` anywhere in the line, so a documentation sentence
+        like ``Documentation says child: value`` classified as
+        CHILD_PROGRESS.
+        """
+
+        signal = _classify_generic_child_signal(
+            "Documentation says child: value"
+        )
+        assert signal is None, (
+            f"Documentation prose line MUST classify to None (no leading"
+            f" child-status marker), got {signal!r}"
+        )
+
+    def test_subagent_colon_after_phrase_returns_none(self) -> None:
+        """Phrase-like prose like ``about the subagent: overview`` must NOT classify."""
+
+        signal = _classify_generic_child_signal(
+            "Let me talk about the subagent: overview of work"
+        )
+        assert signal is None, (
+            f"Phrase-like prose MUST classify to None (no leading"
+            f" child-status marker), got {signal!r}"
+        )
+
+    def test_explicit_child_marker_still_classifies(self) -> None:
+        """The explicit child marker ``[child] do something`` STILL classifies.
+
+        Pin: the marker tightening for prose lines must NOT regress
+        the intended classification of explicit child-status lines.
+        """
+
+        signal = _classify_generic_child_signal("[child] do something")
+        assert signal is not None, (
+            "Explicit child marker MUST still classify as CHILD_PROGRESS"
+        )
+        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+
+    def test_subagent_progress_json_still_classifies(self) -> None:
+        """The intended ``subagent_progress`` JSON event STILL classifies.
+
+        Pin: the terminal-event tightening for JSON must NOT regress
+        the intended classification of an explicit child-scoped
+        progress event.
+        """
+
+        signal = _classify_generic_child_signal(
+            '{"type":"subagent_progress","data":"thinking"}'
+        )
+        assert signal is not None, (
+            "Explicit subagent_progress JSON MUST still classify as"
+            " CHILD_PROGRESS"
+        )
+        assert signal.kind == AgentActivityKind.CHILD_PROGRESS
+
+    def test_subagent_heartbeat_json_still_classifies(self) -> None:
+        """The intended ``subagent_heartbeat`` JSON event STILL classifies
+        as CHILD_HEARTBEAT.
+        """
+
+        signal = _classify_generic_child_signal(
+            '{"type":"subagent_heartbeat","ts":1234567890}'
+        )
+        assert signal is not None, (
+            "Explicit subagent_heartbeat JSON MUST still classify"
+        )
+        assert signal.kind == AgentActivityKind.CHILD_HEARTBEAT
+
+
+class TestObserveLineDoesNotInvokeSinkForTerminalOrProse:
+    """End-to-end ``BaseExecutionStrategy.observe_line`` regressions for
+    terminal events and prose lines.
+
+    These tests verify the wiring in ``BaseExecutionStrategy.observe_line``
+    does NOT invoke the subagent sink for the prose / terminal cases
+    that would otherwise refresh ``record_subagent_work`` for parent-level
+    output.
+    """
+
+    def test_observe_line_does_not_invoke_sink_for_subagent_failed(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A terminal ``subagent_failed`` JSON line must NOT invoke the sink."""
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line('{"type":"subagent_failed","child_id":"abc"}')
+
+        assert len(subagent_sink_spy) == 0, (
+            f"terminal subagent_failed MUST NOT invoke the sink,"
+            f" got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_observe_line_does_not_invoke_sink_for_subagent_cancelled(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A terminal ``subagent_cancelled`` JSON line must NOT invoke the sink."""
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line(
+            '{"event":"subagent_cancelled","child_id":"abc"}'
+        )
+
+        assert len(subagent_sink_spy) == 0, (
+            f"terminal subagent_cancelled MUST NOT invoke the sink,"
+            f" got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_observe_line_does_not_invoke_sink_for_yaml_prose(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A YAML-prose line containing ``subagent: `` must NOT invoke the sink."""
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line("User wrote a YAML snippet: subagent: worker")
+
+        assert len(subagent_sink_spy) == 0, (
+            f"YAML prose MUST NOT invoke the sink (no leading"
+            f" child-status marker), got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_observe_line_does_not_invoke_sink_for_documentation_prose(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """A documentation-prose line containing ``child: `` must NOT invoke the sink."""
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line("Documentation says child: value")
+
+        assert len(subagent_sink_spy) == 0, (
+            f"Documentation prose MUST NOT invoke the sink (no leading"
+            f" child-status marker), got {len(subagent_sink_spy)} invocations"
+        )
+
+    def test_observe_line_still_invokes_sink_for_explicit_child_marker(
+        self, subagent_sink_spy: list[str]
+    ) -> None:
+        """Pin: explicit child marker MUST still invoke the sink."""
+
+        strategy = BaseExecutionStrategy()
+        strategy.observe_line("[child] do something")
+
+        assert len(subagent_sink_spy) == 1, (
+            f"Explicit child marker MUST still invoke the sink,"
+            f" got {len(subagent_sink_spy)} invocations"
+        )
+
+
+# ---------------------------------------------------------------------------
 # BaseExecutionStrategy.observe_line wiring tests
 # ---------------------------------------------------------------------------
 

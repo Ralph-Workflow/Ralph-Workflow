@@ -330,26 +330,83 @@ def _sanitize_subagent_description(line: str) -> str:
     if not line:
         return ""
     cleaned = _CONTROL_CHARS_RE.sub("", line)
-    stripped_for_json = cleaned.strip()
-    if stripped_for_json.startswith(("{", "[")):
-        parsed_obj: object = None
-        try:
-            parsed_obj = cast("object", json.loads(stripped_for_json, strict=False))
-        except (json.JSONDecodeError, ValueError):
-            parsed_obj = None
-        if parsed_obj is not None:
-            try:
-                redacted_obj = _redact_json_values(parsed_obj)
-                redacted_text: str = json.dumps(redacted_obj, ensure_ascii=False)
-                cleaned = redacted_text
-            except (TypeError, ValueError):
-                pass
+    cleaned = _redact_json_fragments(cleaned)
     cleaned = _SENSITIVE_MARKER_FALLBACK_RE.sub("<redacted>", cleaned)
     cleaned = _SENSITIVE_PATH_TOKEN_RE.sub("<redacted>", cleaned)
     cleaned = cleaned.strip()
     if len(cleaned) > _SUBAGENT_DESCRIPTION_MAX:
         cleaned = cleaned[:_SUBAGENT_DESCRIPTION_MAX]
     return cleaned
+
+
+_JSON_DECODER = json.JSONDecoder(strict=False)
+
+
+def _decode_json_at(text: str, pos: int) -> tuple[object, int]:
+    """Parse a JSON object/array starting at ``pos`` and return ``(value, end_offset)``.
+
+    On parse failure, returns ``(None, -1)`` so the caller can fall
+    through to character-level emission. The wrapper exists to
+    give mypy a typed return value -- ``json.JSONDecoder.raw_decode``
+    is annotated ``tuple[Any, int]`` in the standard library, and
+    bare use would require a per-call ``cast``.
+    """
+    try:
+        decoded = cast("tuple[object, int]", _JSON_DECODER.raw_decode(text, pos))
+    except (json.JSONDecodeError, ValueError):
+        return None, -1
+    value, end = decoded
+    return value, end
+
+
+def _redact_json_fragments(text: str) -> str:
+    """Walk ``text`` and redact every JSON object/array it contains.
+
+    Lines reaching the watchdog from raw provider output frequently
+    mix free-form text with one or more embedded JSON fragments
+    (``prefix {"a":1} middle {"arguments": {"token":"abc"}} suffix``).
+    A scanner that only inspects lines starting with ``{`` / ``[``
+    misses fragments embedded after a textual prefix, and a regex
+    fallback that stops at the first comma or brace leaks the
+    remainder of a comma-bearing or nested-object value.
+
+    The robust fix is to scan the line and try to parse a JSON
+    object or array starting at every ``{`` / ``[`` byte. On a
+    successful parse the structural walker (``_redact_json_values``)
+    replaces the entire value for every sensitive key with
+    ``<redacted>`` so nested objects / lists are redacted in full
+    -- the surrounding JSON structure stays well-formed. On a parse
+    failure the scanner moves past the byte and tries again at the
+    next ``{`` / ``[``.
+
+    This is the analysis-feedback fix for the comma-bearing
+    ``prefix {"prompt": "hello, world"}`` case and the
+    prefix-prefixed nested-object case
+    ``prefix {"name": "tool", "arguments": {...}}``.
+    """
+    if not text:
+        return text
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch in {"{", "["}:
+            parsed, end = _decode_json_at(text, i)
+            if parsed is not None and isinstance(parsed, (dict, list)) and end > i:
+                try:
+                    redacted_obj = _redact_json_values(parsed)
+                    redacted_text = json.dumps(redacted_obj, ensure_ascii=False)
+                except (TypeError, ValueError):
+                    out.append(text[i])
+                    i += 1
+                    continue
+                out.append(redacted_text)
+                i = end
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
 
 @dataclass
