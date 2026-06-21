@@ -576,51 +576,6 @@ def _apply_safe_deletes(repo_root: Path, safe_delete_files: list[str]) -> None:
             )
 
 
-def _auto_seed_canonical_git_files(repo_root: Path) -> None:
-    """Auto-seed canonical Ralph patterns into ``.gitignore`` and ``.git/info/exclude``.
-
-    Both seed calls are wrapped in ``try/except Exception`` so a seeding
-    failure (e.g. read-only filesystem, malformed gitdir, missing
-    bootstrap helpers) does NOT fail the cleanup phase -- per the user
-    requirement the phase must be ROCK SOLID.
-
-    Each call is logged at DEBUG level with the count of patterns
-    actually appended on this invocation. Idempotent -- a second call
-    with the same ``repo_root`` returns an empty list and is a no-op.
-
-    The bootstrap helpers are imported lazily inside this function to
-    avoid a circular import between ``ralph.config.bootstrap`` and
-    ``ralph.policy.loader`` (which transitively imports
-    ``ralph.phases.commit_cleanup`` at policy load time). The helpers
-    are stdlib-only at the leaf and have no upstream effect on the
-    phase semantics.
-
-    NOTE: ``handle_commit_cleanup_phase`` ALSO calls these helpers
-    inline so the audit AST placement check can find them by name at
-    the top-level function body. This wrapper remains for any external
-    callers that want to trigger the seed without running the phase.
-    """
-    try:
-        from ralph.config.bootstrap import auto_seed_default_gitignore  # noqa: PLC0415
-
-        appended = auto_seed_default_gitignore(repo_root)
-        logger.debug(
-            "Auto-seeded {} canonical gitignore pattern(s) on cleanup entry", len(appended)
-        )
-    except Exception as exc:
-        logger.warning("auto_seed_default_gitignore failed (continuing): {}", exc)
-
-    try:
-        from ralph.config.bootstrap import auto_seed_default_git_exclude  # noqa: PLC0415
-
-        appended = auto_seed_default_git_exclude(repo_root)
-        logger.debug(
-            "Auto-seeded {} canonical git-exclude pattern(s) on cleanup entry", len(appended)
-        )
-    except Exception as exc:
-        logger.warning("auto_seed_default_git_exclude failed (continuing): {}", exc)
-
-
 def _load_cleanup_artifact(
     ctx: PhaseContext,
     phase_name: str,
@@ -720,61 +675,6 @@ def handle_commit_cleanup_phase(effect: Effect, ctx: PhaseContext) -> list[Event
         return _cleanup_failed_event(phase_name, exc)
 
     return _decide_cleanup_outcome(phase_name, cleanup, skipped_delete_paths)
-
-
-def _ensure_git_and_resolve_repo_root(ctx: PhaseContext) -> Path:
-    """Ensure git is initialized in the workspace and return the resolved repo root.
-
-    Returns the workspace root path even if ``ensure_git_initialized``
-    raises -- callers still need the path for subsequent operations.
-    Kept as a helper for external callers; the phase function calls
-    ``ensure_git_initialized`` directly so the audit can locate the
-    call via ast.Call inspection.
-    """
-    try:
-        repo_root_str = ctx.workspace.absolute_path(".")
-        repo_root = Path(repo_root_str)
-        ensure_git_initialized(repo_root_str)
-        return repo_root
-    except Exception as exc:
-        logger.warning("Failed to ensure git initialized: {}", exc)
-        return Path.cwd()
-
-
-def _seed_canonical_git_files_on_entry(repo_root: Path) -> None:
-    """Auto-seed canonical Ralph patterns into ``.gitignore`` and ``.git/info/exclude``.
-
-    Both seed calls are wrapped in ``try/except Exception`` so a seeding
-    failure (e.g. read-only filesystem, malformed gitdir, missing
-    bootstrap helpers) does NOT fail the cleanup phase -- per the user
-    requirement the phase must be ROCK SOLID.
-
-    The helpers are imported lazily to avoid a circular import through
-    ``ralph.config -> ralph.policy -> ralph.phases``. Idempotent -- a
-    second call with the same ``repo_root`` returns an empty list and is
-    a no-op. Kept as a helper for external callers; the phase function
-    inlines the calls so the audit can locate them via ast.Call inspection.
-    """
-    try:
-        from ralph.config.bootstrap import auto_seed_default_gitignore  # noqa: PLC0415
-
-        _gitignore_appended = auto_seed_default_gitignore(repo_root)
-        logger.debug(
-            "Auto-seeded {} canonical gitignore pattern(s) on cleanup entry",
-            len(_gitignore_appended),
-        )
-    except Exception as exc:
-        logger.warning("auto_seed_default_gitignore failed (continuing): {}", exc)
-    try:
-        from ralph.config.bootstrap import auto_seed_default_git_exclude  # noqa: PLC0415
-
-        _gitexclude_appended = auto_seed_default_git_exclude(repo_root)
-        logger.debug(
-            "Auto-seeded {} canonical git-exclude pattern(s) on cleanup entry",
-            len(_gitexclude_appended),
-        )
-    except Exception as exc:
-        logger.warning("auto_seed_default_git_exclude failed (continuing): {}", exc)
 
 
 def _missing_artifact_failure(phase_name: str) -> list[Event]:
