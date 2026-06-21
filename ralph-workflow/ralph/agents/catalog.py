@@ -39,12 +39,12 @@ from ralph.agents.parsers.gemini import GeminiParser
 from ralph.agents.parsers.generic import GenericParser
 from ralph.agents.parsers.opencode import OpenCodeParser
 from ralph.agents.parsers.pi import PiParser
+from ralph.agents.support import AgentSupport
 from ralph.config.enums import AgentTransport
 
 if TYPE_CHECKING:
     from ralph.agents.execution_state._base import BaseExecutionStrategy
     from ralph.agents.parsers.base import AgentParser
-    from ralph.agents.support import AgentSupport
 
 __all__ = [
     "AgentCatalog",
@@ -315,12 +315,24 @@ class AgentCatalog:
                 self._state.strategies.pop(support.spec.transport, None)
 
     def get(self, name_or_command: str) -> "AgentSupport | None":
-        """Look up by agent name first, then by command."""
+        """Look up by agent name first, then by command, then via dynamic alias resolver.
+
+        Dynamic aliases (``pi/<model>``, ``opencode/<model>``, ``nanocoder/<provider>/<model>``,
+        ``agy/<model>``, ``claude-headless/<model>``, ``claude/<model>``, ``ccs/<alias>``) are
+        resolved by ``ralph.agents.registry._resolve_dynamic_agent`` so the public catalog
+        surface stays in lockstep with :meth:`AgentRegistry.get`.  The synthesized support
+        inherits the base built-in's parser factory, strategy factory, and spec, and overrides
+        the ``AgentConfig`` with the resolver's per-alias model-flag / cmd / session-flag
+        overrides.
+        """
         key = name_or_command.lower()
         support = self._entries.get(key)
         if support is not None:
             return support
-        return self._by_command.get(key)
+        support = self._by_command.get(key)
+        if support is not None:
+            return support
+        return _resolve_dynamic_support(self, name_or_command)
 
     def get_parser(self, name_or_command: str) -> "AgentParser":
         """Return a fresh parser instance for the given name or command."""
@@ -428,3 +440,46 @@ def default_catalog() -> AgentCatalog:
 def _reset_default_catalog(catalog: AgentCatalog) -> None:
     _catalog_holder.clear()
     _catalog_holder.append(catalog)
+
+
+def _resolve_dynamic_support(
+    catalog: AgentCatalog, name_or_command: str
+) -> "AgentSupport | None":
+    """Resolve a documented dynamic alias to a synthesized :class:`AgentSupport`.
+
+    Delegates to ``ralph.agents.registry._resolve_dynamic_agent`` (lazy import to
+    break the ``catalog -> builtin -> registry -> catalog`` import cycle) and, on
+    success, clones the underlying built-in :class:`AgentSupport` with the resolver's
+    ``AgentConfig`` overrides applied.  The synthesized support inherits the base
+    built-in's parser factory, strategy factory, and spec so ``catalog.get_parser``,
+    ``catalog.get_strategy``, and ``build_command`` continue to work end-to-end.
+
+    Returns ``None`` when the alias does not match any documented pattern or when
+    the resolved ``AgentConfig.cmd`` is not backed by a registered built-in (which
+    would indicate a resolver bug rather than a caller error).
+    """
+    from ralph.agents.registry import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->registry cycle
+        _resolve_dynamic_agent,
+    )
+    from ralph.config.ccs_config import (  # noqa: PLC0415  # reason: same lazy-import rationale
+        CcsConfig,
+    )
+
+    config = _resolve_dynamic_agent(name_or_command, CcsConfig())
+    if config is None:
+        return None
+
+    cmd_lower = config.cmd.lower()
+    base = catalog._by_command.get(cmd_lower)
+    if base is None:
+        return None
+
+    return AgentSupport(
+        name=name_or_command.lower(),
+        spec=base.spec,
+        parser_factory=base.parser_factory,
+        strategy_factory=base.strategy_factory,
+        config=config,
+        is_builtin=base.is_builtin,
+        no_default_session_flag=base.no_default_session_flag,
+    )

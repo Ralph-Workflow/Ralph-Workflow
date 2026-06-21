@@ -217,19 +217,35 @@ class TestPiDevBlackboxPublicSurface:
     def test_pi_model_shorthand_resolves_with_documented_model_flag(
         self, tmp_path: Path
     ) -> None:
-        """``pi/anthropic/claude-sonnet-4-20250514`` must resolve to a
-        support with ``--model anthropic/claude-sonnet-4-20250514`` set,
-        per the documented ``provider/id`` model id pattern in
-        https://pi.dev/docs/latest/usage.
+        """``pi/anthropic/claude-sonnet-4-20250514`` must resolve through
+        ``catalog.get`` to a support with
+        ``--model anthropic/claude-sonnet-4-20250514`` set, per the
+        documented ``provider/id`` model id pattern in
+        https://pi.dev/docs/latest/usage.  This exercises the same public
+        surface (``AgentCatalog.get`` -> dynamic alias resolver) that
+        ``AgentRegistry.get`` uses internally so docs and runtime cannot
+        drift.
         """
         registry = AgentRegistry.from_config(UnifiedConfig())
 
-        config = registry.get("pi/anthropic/claude-sonnet-4-20250514")
-        assert config is not None, (
-            "pi/anthropic/claude-sonnet-4-20250514 must resolve to a config "
-            "via the pi/<model> dynamic alias"
+        support = registry.catalog.get("pi/anthropic/claude-sonnet-4-20250514")
+        assert support is not None, (
+            "registry.catalog.get('pi/anthropic/claude-sonnet-4-20250514') "
+            "must resolve to an AgentSupport via the pi/<model> dynamic "
+            "alias, matching the registry.get() public contract"
+        )
+        # The synthesized support must keep the pi built-in's parser and
+        # strategy factories (PiParser + GenericExecutionStrategy).
+        assert support.parser_factory is PiParser, (
+            f"pi/<model> support parser_factory must be PiParser, "
+            f"got {support.parser_factory!r}"
+        )
+        assert support.strategy_factory is GenericExecutionStrategy, (
+            f"pi/<model> support strategy_factory must be "
+            f"GenericExecutionStrategy, got {support.strategy_factory!r}"
         )
         # The model flag must preserve the full provider/id suffix.
+        config = support.config
         assert config.model_flag is not None, "pi/<model> must set model_flag"
         assert "anthropic/claude-sonnet-4-20250514" in config.model_flag, (
             f"pi/<model> model_flag must contain the full provider/id suffix, "

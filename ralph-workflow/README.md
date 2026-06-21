@@ -36,7 +36,7 @@ This also auto-symlinks the bundled skill bundle into the supported agent roots 
 
 ## Supported agents
 
-Ralph Workflow ships with first-class support for seven coding-agent CLIs. Each agent has a documented end-to-end verification path: an interactive parity smoke test for Claude and AGY, and a public-surface black-box pytest suite for Codex, OpenCode, Nanocoder, and Pi.
+Ralph Workflow ships with first-class support for six user-facing agent CLIs: Claude Code (with both interactive and headless transports), Codex, OpenCode, Nanocoder, Google Anti Gravity, and Pi. Each agent has a documented end-to-end verification path: an interactive parity smoke test for Claude and AGY, and a public-surface black-box pytest suite for Codex, OpenCode, Nanocoder, and Pi.
 
 | Agent | Description | Verification command |
 |---|---|---|

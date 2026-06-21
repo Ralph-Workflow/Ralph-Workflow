@@ -121,7 +121,7 @@ If two agents are equally ready, prefer the one you would be happiest reviewing 
 
 ## What matters more than the agent choice
 
-For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, Nanocoder, or Google Anti Gravity:
+For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, Nanocoder, Google Anti Gravity, or Pi:
 
 - choosing a **small real backlog task**
 - writing a **clear one-paragraph spec** in `PROMPT.md`

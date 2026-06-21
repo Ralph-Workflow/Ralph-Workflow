@@ -10,7 +10,7 @@ Ralph Workflow can supervise multiple coding agents, but the contract stays the 
 
 Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocoder**, **Google Anti Gravity**, and **Pi** as orchestration targets. Each runs under the same unattended workflow contract described on this page. For help choosing, see [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
 
-> See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent's user-global skill-discovery root.
+> See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent that has a documented user-global skill-discovery root. Pi has no documented skill-discovery system per <https://pi.dev/docs/latest/usage>, so it is intentionally absent from that registry.
 
 Every supported agent has a documented end-to-end verification path. Claude and AGY each have an interactive parity smoke test (`python -m ralph smoke-interactive-claude` and `python -m ralph smoke-interactive-agy`); Codex, OpenCode, Nanocoder, and Pi each have a public-surface black-box pytest suite that drives the agent through `AgentRegistry.from_config` and the public command-builder surface without inventing a CLI subcommand. Run the corresponding command on Linux or macOS to confirm the transport, MCP wiring, and tool invocation pipeline produce real output.
 
