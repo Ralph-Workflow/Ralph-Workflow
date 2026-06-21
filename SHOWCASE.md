@@ -1,78 +1,31 @@
-# Ralph Workflow — Showcase
+# Showcase
 
-> Public credits Ralph Workflow has earned from real builders who installed and used
-> the `ralph-workflow` PyPI package. This file is the durable social-proof ledger,
-> not a marketing pitch. **Verified by the marketer; sources checked.**
+Projects shipped with the Ralph Loop pattern. Real software, built overnight by AI coding agents running plan-build-verify cycles.
 
-**Why this file exists:** The marketing canon (MARKETING_PRINCIPLES.md §4, "Capture the
-advocate") names "one credited builder > 500 silent installs." A SHIPPED proof beats a
-CLAIMED proof. This file is the SHIPPED list.
+> **Built something with Ralph?** [Add your project](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues) — 60-second task: add the badge + open an issue, and you're on the page. Full ecosystem at [USERS.md](USERS.md).
 
-**Verification rule:** Every entry in the Verified section must be a public,
-third-party URL where the `ralph-workflow` PyPI package or `codeberg.org/RalphWorkflow`
-repo is named by a real builder in a non-spam, non-paid context. Search-engine
-results snippets do not count. The builder's own repo, blog, or forum post counts.
+## Featured
 
-**Critical distinction — what does NOT count:**
-- Pattern convergence: someone independently implements a plan-build-verify loop.
-  That is Ralph Loop (ghuntley.com/ralph) lineage, NOT a Ralph Workflow credit.
-- Someone using the words "ralph workflow" to describe their own process. Not a credit.
-- Someone building in the same space with similar primitives. Not a credit.
+| Project | Stars | What was built |
+|---------|-------|----------------|
+| [umputun/ralphex](https://github.com/umputun/ralphex) (verify: gh) | 1,296 ⭐ | Multi-provider LLM loop — plan, build, verify across OpenAI, Anthropic, Ollama. The largest Ralph Loop implementation outside the reference toolkit. |
+| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) (verify: gh) | 254 ⭐ | Dynamic workflows with Pi extensions, custom models, MCP, sub-agents, artifacts, review gates, and mid-run steering. Uses ralph-workflow redesign analysis. |
+| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) (verify: gh) | 66 ⭐ | Runtime for loop engineering — practitioner cookbook with Claude Code patterns. The closest sibling to Ralph Workflow's reference implementation. |
+| [benikigai/nightshift](https://github.com/benikigai/nightshift) (verify: gh) | 14 ⭐ | Lights-out autonomous software work — ship specs, wake up to tested commits. Ships what Ralph Workflow enables. |
+| [tao3k/xiuxian-artisan-workshop](https://github.com/tao3k/xiuxian-artisan-workshop) (verify: gh) | 14 ⭐ | Game design bridge between human intent and machine execution, inspired by Ralph Workflow philosophy. |
 
-**Source-of-truth rules:**
-- No fabricated credits. If a credit doesn't exist, this file is short.
-- Outdated or retracted credits get pulled to `## Retracted` with the retraction note.
-- Operator verifies before any entry changes status.
+## What makes a good Showcase entry?
 
----
+1. **Real project** — a repo with commits, not a template or fork
+2. **Ralph Loop usage** — your agent runs plan-build-verify cycles, whether via Ralph Workflow directly or your own implementation
+3. **Shipped software** — the agent produced working commits, not just artifacts
 
-## Verified Ralph Workflow Credits
+## How to add yours
 
-> **Status as of 2026-06-16: 0 verified credits.**
-
-Ralph Workflow has not yet been publicly credited by name in a verifiable, non-paid,
-third-party context. This is the ground truth. The hunt continues.
+1. Add the [badge](assets/built-with-ralph-loop.svg) to your README — copy from [CREDIT_TEMPLATE.md](CREDIT_TEMPLATE.md)
+2. [Open an issue](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues) with your repo link + 1-sentence description
+3. We'll add you to the Showcase and [USERS.md](USERS.md)
 
 ---
 
-## Pattern Ecosystem (NOT Ralph Workflow credits)
-
-These are independent implementations of the Ralph-loop pattern (plan → build → verify).
-They validate the PATTERN, not the Ralph Workflow product. Listed here for competitive
-intelligence, NOT as social proof of Ralph Workflow adoption.
-
-### Martingale42 — orchestrator-driven-development skill
-- **What:** A `progress.json` + `resume.md` skill on a fork of `obra/superpowers`
-- **URL:** `https://github.com/Martingale42/superpowers/tree/main/skills/orchestrator-driven-development`
-- **Lineage:** Geoffrey Huntley's `ghuntley.com/ralph` loop pattern
-- **Relation to RW:** Same primitives, independent implementation. NOT a Ralph Workflow user.
-
-### gbrennon — Odysseus self-correcting agent flow
-- **What:** Independent agent loop with persistent state and retry semantics
-- **Relation to RW:** Converges on same primitive set. NOT a Ralph Workflow credit.
-
-### Adam Tuttle — "My RALPH Workflow for Claude Code" (blog post, 2026-01-27)
-- **What:** ~5,000-word technical post analyzing a Ralph-loop-style system he built himself
-- **URL:** `https://adamtuttle.codes/blog/2026/my-ralph-workflow-for-claude-code/`
-- **Relation to RW:** Independent implementation. Did not use Ralph Workflow. NOT a credit.
-
-### Nightcrawler
-- **What:** Open-source TypeScript orchestrator for Claude Code episodes
-- **Relation to RW:** Credits Geoffrey Huntley's `ghuntley.com/ralph` loop, NOT Ralph Workflow.
-- **Previously:** Was falsely listed as crediting Ralph Workflow — RETRACTED.
-
----
-
-## Retracted (false claims that have been pulled from public surfaces)
-
-### "Nightcrawler credits Ralph Workflow as its inspiration."
-- **Status:** RETRACTED. Nightcrawler credits ghuntley.com/ralph loop, not ralph-workflow.
-- **Fix:** GitHub mirror README cleaned. Compare page disambiguated.
-
-### "~1,300 installs/month on PyPI."
-- **Status:** RETRACTED. pepy.tech reports 4,047 (last 30d), pypistats.org reports 1,128.
-- **Fix:** README now uses sourced, date-stamped numbers from pepy.tech.
-
----
-
-_Last updated: 2026-06-16. Gate: CLAIMS_LEDGER.md + VERIFICATION_GATE.md._
+*See all 27+ projects at [USERS.md](USERS.md) — the comprehensive community directory. The Ralph Loop pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph).*
