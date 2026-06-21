@@ -11,8 +11,7 @@
 
 set -euo pipefail
 
-HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo '.')"
 
 # Only run if there are staged markdown files
 STAGED_MD=$(git diff --cached --name-only --diff-filter=ACM | grep '\.md$' || true)
@@ -22,8 +21,10 @@ fi
 
 GUARD="$REPO_ROOT/scripts/fabrication_guard.py"
 if [ ! -f "$GUARD" ]; then
-    echo "⚠  fabrication_guard.py not found — skipping check."
-    exit 0
+    echo "🔴 FABRICATION GUARD MISSING — $GUARD not found."
+    echo "   This is a safety-critical failure. The guard must exist before any commit."
+    echo "   Restore scripts/fabrication_guard.py and try again."
+    exit 1
 fi
 
 echo "▸ Fabrication guard (Level 1) — checking staged files..."
