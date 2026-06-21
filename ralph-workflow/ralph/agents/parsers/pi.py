@@ -21,10 +21,14 @@ TypeScript union at https://pi.dev/docs/latest/json:
   - auto-retry: ``auto_retry_start``, ``auto_retry_end``
 
 The current published AgentSessionEvent union enumerates EXACTLY these
-16 top-level event types (re-fetched 2026-06-20 from
-https://pi.dev/docs/latest/json; mirrored in
-``tmp/pi-dev-docs/inventory.md``).  Anything outside this list is
-forward-compat, not part of the documented contract.
+15 union members (10 ``AgentEvent`` members + 5 direct members;
+re-fetched 2026-06-20 from https://pi.dev/docs/latest/json; mirrored
+in ``tmp/pi-dev-docs/inventory.md``).  The ``session`` line emitted
+as the FIRST line of the stream (per the docs: "The first line is
+the session header") is a stream-level header, NOT a member of the
+union.  Anything outside the 15-member union plus the stream-level
+``session`` header is forward-compat, not part of the documented
+contract.
 
 Forward-compat only (NOT in the current published union):
 

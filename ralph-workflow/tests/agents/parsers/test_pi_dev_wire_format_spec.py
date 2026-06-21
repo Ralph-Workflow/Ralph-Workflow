@@ -6,11 +6,14 @@ Pi (https://pi.dev) is a terminal coding agent whose headless
 TypeScript union at https://pi.dev/docs/latest/json.
 
 The current published contract (re-fetched at execution time from
-the live pi.dev docs) enumerates exactly 16 top-level event types.
-The parser additionally accepts ``extension_error`` defensively as a
-forward-compat extension, but ``extension_error`` is NOT in the
-current published contract, so it is NOT listed in the
-``documented_top_level_events`` set asserted by
+the live pi.dev docs) enumerates exactly 15
+``AgentSessionEvent`` union members (10 ``AgentEvent`` members + 5
+direct members) and a separate stream-level ``session`` header line
+emitted as the FIRST line of the stream (per the docs: "The first
+line is the session header").  The parser additionally accepts
+``extension_error`` defensively as a forward-compat extension, but
+``extension_error`` is NOT in the current published union, so it is
+NOT listed in the ``documented_top_level_events`` set asserted by
 :meth:`TestPiDevWireFormatSpec.test_fixture_covers_every_documented_top_level_event`
 and is NOT present in the committed fixture.  The parser's
 ``extension_error`` defensive handling is exercised in
@@ -144,8 +147,8 @@ def _parse_backticked_event_names(section_text: str) -> set[str]:
     bullet-list items (``- `name` \u2014 description`` or
     ``- `name` description``); prose paragraphs that mention an
     event name in backticks (e.g. explanatory text or examples) are
-    deliberately ignored so the canonical 16-event contract stays
-    aligned with the published pi.dev docs.
+    deliberately ignored so the canonical 15-member union contract
+    stays aligned with the published pi.dev docs.
 
     Returns the deduplicated set of backticked tokens that look like
     plausible event names (lowercase letters, digits, underscores).
@@ -245,11 +248,12 @@ class TestPiDevWireFormatSpec:
         ``Stream header`` section.
 
         The previous reconciliation only checked that the canonical
-        16 events were *present* somewhere in the inventory, which
-        allowed the inventory to silently drift by adding extra
-        documented top-level events (e.g. ``extension_error``) without
-        updating the canonical fixture or the wire-format spec
-        assertion.  This test reads the inventory's
+        union members plus the stream-level ``session`` header were
+        *present* somewhere in the inventory, which allowed the
+        inventory to silently drift by adding extra documented
+        top-level events (e.g. ``extension_error``) without updating
+        the canonical fixture or the wire-format spec assertion.
+        This test reads the inventory's
         ``Top-level events (AgentSessionEvent union)`` section, parses
         the documented top-level event names out of it, and asserts
         EXACT agreement with the canonical 15-event union set.  The
@@ -536,8 +540,10 @@ class TestPiDevWireFormatSpec:
 
         ``extension_error`` is NOT in the current published pi.dev
         ``AgentSessionEvent`` union (re-fetched 2026-06-20 from
-        https://pi.dev/docs/latest/json; the union enumerates 16
-        events and ``extension_error`` is absent). The parser
+        https://pi.dev/docs/latest/json; the union enumerates 15
+        ``AgentSessionEvent`` union members — 10 ``AgentEvent``
+        members + 5 direct members — and ``extension_error`` is
+        absent). The parser
         nevertheless keeps a defensive handler at
         ``ralph-workflow/ralph/agents/parsers/pi.py:_handle_extension_error``
         so that any legacy or forward pi.dev build that emits
