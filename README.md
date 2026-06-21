@@ -9,6 +9,8 @@ Ralph Workflow is a free, open-source Loop Engineering framework that runs the c
 ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)  
 [![Built with Ralph Loop](assets/built-with-ralph-loop.svg)](https://github.com/Ralph-Workflow/Ralph-Workflow)
 
+🌐 **[ralphworkflow.com](https://ralphworkflow.com)** — full site with comparison guides, first-run walkthrough, blog, and social card.
+
 *The original Loop Engineering toolkit · 13,230+ lifetime PyPI downloads · 4,911 last 30 days · 92 last 24h (pepy.tech, 2026-06-21).*
 
 > **Built something with Ralph?** See the [Showcase](SHOWCASE.md) — add a credit line to your README and you're on the page (60-second task). Also see the [Ecosystem Map](ECOSYSTEM.md) — projects using Ralph discovered through code-level search.
@@ -92,6 +94,19 @@ Developers and teams who have **ambitious, well-specified work** that's too big 
 
 It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
 
+## Built with Ralph
+
+Ralph Workflow is the reference implementation of a pattern that now powers 25+ independent projects. Here are a few of them:
+
+| Project | Stars | Description |
+|---------|-------|-------------|
+| [umputun/ralphex](https://github.com/umputun/ralphex) (verify: gh) | 1,296 ⭐ | Multi-provider LLM loop across OpenAI, Anthropic, Ollama |
+| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) (verify: gh) | 254 ⭐ | Dynamic workflows with custom models, MCP, sub-agents |
+| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) (verify: gh) | 66 ⭐ | Runtime for loop engineering — practitioner cookbook |
+| [benikigai/nightshift](https://github.com/benikigai/nightshift) (verify: gh) | 14 ⭐ | Lights-out autonomous software work — ship specs, wake up to commits |
+
+[See all 27+ projects →](USERS.md) · [Add yours →](SHOWCASE.md)
+
 ## Quick start
 
 ```
@@ -169,6 +184,14 @@ These are **unedited terminal captures** from a real run — not mock-ups.
 |---|---|
 | [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
 | [Full Docs](https://ralphworkflow.com/docs) | Quickstart, configuration, user stories, and more |
+
+## Community
+
+Questions, ideas, or something not working? Open an issue — the Codeberg tracker is the project's public forum.
+
+- **[Ask a question](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=question)** — anything from "will this work for my stack?" to feature ideas
+- **[PMF survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey)** (60 seconds) — the one signal we get since Ralph collects zero telemetry
+- **[See who's building with Ralph](USERS.md)** — 27+ projects and 15+ adopters
 
 ## Engineering-practice requirements
 
