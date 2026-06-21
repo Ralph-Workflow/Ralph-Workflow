@@ -44,6 +44,7 @@ DEFAULT_PATHS: tuple[Path, ...] = (
     Path("README.md"),
     Path("ralph-workflow/README.md"),
     Path("SHOWCASE.md"),
+    Path("USERS.md"),
 )
 
 # Banned patterns. Each entry is (name, regex, severity, why).
@@ -95,20 +96,11 @@ BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str], str, str], ...] = (
         # that are not paired with a (source, date) annotation.
         #
         # Tight on purpose. We only fire when a count is *clearly* an
-        # install/star/download/user number in a marketing context:
-        #   - has a star glyph attached ("9.3K★", "12★")
-        #   - has a time period ("1,300/month", "100/week")
-        #   - has the explicit marketing noun with no intervening period
-        #     ("1,300 installs", not "1. install" or "7371 tests")
-        # Bare counts in docs, lists, test logs, prose must NOT trigger.
+        # install/star/download/user number in a marketing context.
         re.compile(
             r"(?:"
-            # Star: "9.3K★" or "★12" (Unicode star U+2605 only — bare `*` is
-            # markdown emphasis and would false-positive on "7443 *and").
             r"(?:\u2605\s*)?\b\d[\d,]*\.?\d*\s*[kKmM]?\s*\u2605\b"
-            # Time period: "1,300/month", "100/week"
             r"|\b\d[\d,]+(?:\.\d+)?\s*/\s*(?:month|mo|week|wk|day)\b"
-            # Marketing noun: "1,300 installs", "12 stars" (no period between)
             r"|\b\d[\d,]+(?:\.\d+)?\s+(?:installs?|downloads?|stars?|MAU|DAU)\b"
             r")"
         ),
@@ -116,6 +108,20 @@ BANNED_PATTERNS: tuple[tuple[str, re.Pattern[str], str, str], ...] = (
         "Installer / star / download / user count must be paired with a "
         "(source, date) annotation, or be a shields.io badge image, or be "
         "inside a `verify:` block. Bare numbers rot into lies.",
+    ),
+    (
+        "users-md-npm-package-claim",
+        # Catches: "npm package `@org/pkg`" — npm claims in public-facing
+        # markdown about external integrations. Fabricated npm packages were
+        # the D91 failure mode that produced john-ezra/open-ralph (58a1d25e9).
+        re.compile(
+            r"npm\s+package\s+`@[\w\-]+/[\w\-]+`",
+        ),
+        "soft",
+        "npm package claim in a public-facing markdown file must have a "
+        "`verify:` annotation on the same line or within 7 lines confirming "
+        "the package exists. Fabricated npm packages were the cause of the "
+        "john-ezra/open-ralph fabrication (commit 58a1d25e9, 2026-06-21).",
     ),
 )
 
@@ -149,7 +155,7 @@ def _is_evidence_annotated(file_text: str, line_no: int) -> bool:
     lo = max(0, line_no - 7)
     hi = min(len(lines), line_no + 6)
     window = "\n".join(lines[lo:hi])
-    return bool(re.search(r"^\s*verify:\s*\S", window, re.MULTILINE))
+    return bool(re.search(r"verify:\s*\S", window))
 
 
 def _is_documenting_section(file_text: str, line_no: int) -> bool:
