@@ -278,14 +278,14 @@ class TimeoutPolicy:
     # never fire and the operator's intent would be silently
     # defeated). When ``None``, the heartbeat-only ceiling is disabled
     # and the watchdog falls back to the cumulative
-    # ``CHILDREN_PERSIST_TOO_LONG`` ceiling. The 120s default equals
+    # ``CHILDREN_PERSIST_TOO_LONG`` ceiling. The 240s default equals
     # ``no_progress_quiet_seconds`` so the heartbeat-only branch fires
     # AT the dumb-kill ceiling in the default configuration; operators
     # can RAISE ``no_progress_quiet_seconds`` to give heartbeat-only
     # subagents more headroom, or LOWER
     # ``no_progress_quiet_heartbeat_ceiling_seconds`` to fire the
     # heartbeat branch EARLIER (must remain <= ``no_progress_quiet_seconds``
-    # per the cross-field validator). The 120s default still tolerates
+    # per the cross-field validator). The 240s default still tolerates
     # long-running legitimate work that emits heartbeats but no first-party
     # progress (e.g. multi-step exploration, dispatching subagents).
     no_progress_quiet_heartbeat_ceiling_seconds: float | None = (

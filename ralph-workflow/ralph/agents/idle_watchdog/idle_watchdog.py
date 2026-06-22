@@ -1392,8 +1392,25 @@ class IdleWatchdog:
         ceiling shorter than ``no_progress_quiet_seconds`` can fire
         early (the whole point of the operator knob). The dumb-kill
         branch is evaluated SECOND.
+
+        Note: ``no_progress_quiet_seconds=None`` does NOT disable the
+        heartbeat-only branch. The two ceilings are ORTHOGONAL; a
+        ``None`` dumb-kill ceiling only disables the dumb-kill path,
+        not the heartbeat-only path. The heartbeat-only path is the
+        only stuck-job detector when the operator opts out of the
+        dumb-kill ceiling (e.g. trusting heartbeats for long-running
+        sessions but still wanting a heartbeat-only trip after N
+        seconds). The early return at the top of this function only
+        short-circuits when BOTH ceilings are disabled.
         """
-        if self._config.no_progress_quiet_seconds is None:
+        # Short-circuit only when BOTH ceilings are disabled. A None
+        # ``no_progress_quiet_seconds`` (dumb-kill disabled) does NOT
+        # block the heartbeat-only ceiling; the heartbeat-only branch
+        # is consulted first.
+        if (
+            self._config.no_progress_quiet_seconds is None
+            and self._config.no_progress_quiet_heartbeat_ceiling_seconds is None
+        ):
             return None
 
         # Heartbeat-only ceiling (orthogonal, shorter ceiling).
@@ -1469,6 +1486,8 @@ class IdleWatchdog:
         # Dumb-kill ceiling (standard NO_PROGRESS_QUIET path). Only
         # engaged when the heartbeat-only branch did NOT trip and the
         # invocation has been alive for at least the dumb-kill ceiling.
+        if self._config.no_progress_quiet_seconds is None:
+            return None
         if self.invocation_elapsed_seconds < self._config.no_progress_quiet_seconds:
             return None
         if idle_elapsed < self._config.no_progress_quiet_seconds:
@@ -2769,7 +2788,10 @@ class IdleWatchdog:
 
         if (
             quiet_state == AgentExecutionState.WAITING_ON_CHILD
-            and self._config.no_progress_quiet_seconds is not None
+            and (
+                self._config.no_progress_quiet_seconds is not None
+                or self._config.no_progress_quiet_heartbeat_ceiling_seconds is not None
+            )
         ):
             no_progress_verdict = self._evaluate_no_progress_quiet(now, idle_elapsed)
             if no_progress_verdict is not None:

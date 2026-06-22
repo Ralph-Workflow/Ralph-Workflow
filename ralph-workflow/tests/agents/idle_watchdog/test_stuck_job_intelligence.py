@@ -78,8 +78,17 @@ def _make_policy(
     no_output_at_start: float | None = 30.0,
     no_progress_quiet_seconds: float | None = None,
     no_progress_quiet_minimum_invocation_seconds: float | None = None,
+    no_progress_quiet_heartbeat_ceiling_seconds: float | None = None,
     no_progress_ceiling: float | None = None,
 ) -> TimeoutPolicy:
+    # Default heartbeat ceiling to no_progress_quiet_seconds so the
+    # cross-field validator (heartbeat_ceiling <= no_progress_quiet_seconds)
+    # accepts the test fixture.
+    if (
+        no_progress_quiet_heartbeat_ceiling_seconds is None
+        and no_progress_quiet_seconds is not None
+    ):
+        no_progress_quiet_heartbeat_ceiling_seconds = no_progress_quiet_seconds
     return TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         drain_window_seconds=drain_window,
@@ -92,6 +101,9 @@ def _make_policy(
         no_output_at_start_seconds=no_output_at_start,
         no_progress_quiet_seconds=no_progress_quiet_seconds,
         no_progress_quiet_minimum_invocation_seconds=(no_progress_quiet_minimum_invocation_seconds),
+        no_progress_quiet_heartbeat_ceiling_seconds=(
+            no_progress_quiet_heartbeat_ceiling_seconds
+        ),
         post_tool_result_progression_seconds=None,
         repeated_error_window_count=5,
         repeated_error_window_seconds=60.0,

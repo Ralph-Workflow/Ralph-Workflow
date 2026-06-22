@@ -85,6 +85,7 @@ def test_constructor_accepts_floor_equal_to_ceiling() -> None:
         idle_timeout_seconds=300.0,
         no_progress_quiet_seconds=120.0,
         no_progress_quiet_minimum_invocation_seconds=120.0,
+        no_progress_quiet_heartbeat_ceiling_seconds=120.0,
     )
     assert policy.no_progress_quiet_minimum_invocation_seconds == 120.0
     assert policy.no_progress_quiet_seconds == 120.0
@@ -115,9 +116,9 @@ def test_constructor_accepts_floor_with_none_ceiling() -> None:
 
 
 def test_default_no_progress_quiet_heartbeat_ceiling_seconds_matches_constant() -> None:
-    """Default value matches the package-level constant (120.0s).
+    """Default value matches the package-level constant (240.0s).
 
-    The default equals ``NO_PROGRESS_QUIET_SECONDS`` (120s) so the
+    The default equals ``NO_PROGRESS_QUIET_SECONDS`` (240s) so the
     heartbeat-only branch fires AT the dumb-kill ceiling (the
     degenerate equal case permitted by the cross-field validator).
     Operators can RAISE the ceiling to give heartbeat-only subagents
@@ -125,7 +126,7 @@ def test_default_no_progress_quiet_heartbeat_ceiling_seconds_matches_constant() 
     when both are set.
     """
     policy = TimeoutPolicy(idle_timeout_seconds=300.0)
-    assert policy.no_progress_quiet_heartbeat_ceiling_seconds == 120.0
+    assert policy.no_progress_quiet_heartbeat_ceiling_seconds == 240.0
 
 
 def test_constructor_accepts_none_as_disabled_heartbeat_ceiling() -> None:

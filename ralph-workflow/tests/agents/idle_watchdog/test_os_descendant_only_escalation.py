@@ -37,9 +37,18 @@ def _make_watchdog(
     start: float = 0.0,
     status_interval: float = 30.0,
     corroborator: WaitingCorroborator | None = None,
+    no_progress_quiet_seconds: float | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     if max_waiting is None:
         max_waiting = max(1800.0, idle_timeout) if idle_timeout is not None else 1800.0
+    # Default ``no_progress_quiet_seconds`` to ``no_progress_ceiling`` so
+    # the no_progress_quiet_seconds <= max_waiting_on_child_no_progress_seconds
+    # cross-field validator passes regardless of caller-supplied
+    # ``no_progress_ceiling``.
+    if no_progress_quiet_seconds is None:
+        no_progress_quiet_seconds = (
+            no_progress_ceiling if no_progress_ceiling is not None else 240.0
+        )
     config = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         drain_window_seconds=0.0,
@@ -51,6 +60,8 @@ def _make_watchdog(
         os_descendant_only_suspect_seconds=os_descendant_only_suspect,
         cpu_idle_seconds=cpu_idle_seconds,
         log_growth_seconds=log_growth_seconds,
+        no_progress_quiet_seconds=no_progress_quiet_seconds,
+        no_progress_quiet_heartbeat_ceiling_seconds=no_progress_quiet_seconds,
     )
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock, corroborator=corroborator), clock

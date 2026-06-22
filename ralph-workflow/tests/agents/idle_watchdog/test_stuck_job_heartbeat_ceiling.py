@@ -6,7 +6,7 @@ full cumulative ``CHILDREN_PERSIST_TOO_LONG`` ceiling (default 600s) without
 being killed, even though they emit heartbeats but no real work.
 
 The fix: a dedicated heartbeat-only ceiling in
-``TimeoutPolicy.no_progress_quiet_heartbeat_ceiling_seconds`` (default 120s;
+``TimeoutPolicy.no_progress_quiet_heartbeat_ceiling_seconds`` (default 240s;
 must be <= ``no_progress_quiet_seconds`` per the cross-field validator)
 that fires ``NO_PROGRESS_QUIET`` when the corroborator reports
 ``AliveBy.FRESH_HEARTBEAT_ONLY`` AND ``invocation_elapsed_seconds`` >=
@@ -313,3 +313,52 @@ def test_heartbeat_only_ceiling_respects_dumb_kill_floor() -> None:
         f"Heartbeat-only ceiling MUST NOT fire before the dumb-kill"
         f" floor elapses; got {verdict}"
     )
+
+
+def test_heartbeat_only_trip_when_no_progress_quiet_seconds_disabled() -> None:
+    """Heartbeat-only branch fires even when ``no_progress_quiet_seconds=None``.
+
+    REGRESSION TEST for the analysis feedback runtime bug. The
+    heartbeat-only ceiling is ORTHOGONAL to the dumb-kill ceiling;
+    a ``None`` ``no_progress_quiet_seconds`` (operator disables the
+    dumb-kill trip) MUST NOT also disable the heartbeat-only trip.
+
+    Pre-fix: ``_evaluate_no_progress_quiet`` short-circuited when
+    ``no_progress_quiet_seconds`` was ``None`` AND ``evaluate()``
+    skipped calling ``_evaluate_no_progress_quiet`` when
+    ``no_progress_quiet_seconds`` was ``None``. The combination
+    meant a heartbeat-only subagent would run indefinitely even
+    with a configured heartbeat ceiling.
+
+    Post-fix: ``evaluate()`` calls ``_evaluate_no_progress_quiet``
+    when EITHER ceiling is configured, and
+    ``_evaluate_no_progress_quiet`` only short-circuits when BOTH
+    ceilings are ``None``.
+
+    Setup: heartbeat_ceiling = 10s, no_progress_quiet_seconds = None
+    (dumb-kill disabled), alive_by=FRESH_HEARTBEAT_ONLY, advance by
+    11s -> FIRE with reason NO_PROGRESS_QUIET. Pre-fix this returned
+    ``verdict=continue, reason=None`` (the heartbeat branch never
+    fired). Post-fix it returns ``verdict=FIRE, reason=NO_PROGRESS_QUIET``.
+    """
+    wd, clock = _make_watchdog(
+        heartbeat_ceiling_seconds=10.0,
+        no_progress_quiet_seconds=None,
+        no_progress_quiet_minimum_invocation_seconds=None,
+        alive_by=AliveBy.FRESH_HEARTBEAT_ONLY,
+    )
+    wd.record_invocation_start()
+    clock.advance(11.0)
+    verdict = wd.evaluate(classify_quiet=_waiting)
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"Heartbeat-only branch MUST fire when "
+        f"no_progress_quiet_seconds=None AND "
+        f"no_progress_quiet_heartbeat_ceiling_seconds=10.0 AND "
+        f"invocation_elapsed=11s with alive_by=FRESH_HEARTBEAT_ONLY;"
+        f" got {verdict}"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.NO_PROGRESS_QUIET, (
+        f"expected WatchdogFireReason.NO_PROGRESS_QUIET;"
+        f" got {wd.last_fire_reason}"
+    )
+

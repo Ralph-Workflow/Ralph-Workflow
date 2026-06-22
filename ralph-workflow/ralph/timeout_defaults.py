@@ -247,7 +247,7 @@ LOG_GROWTH_SECONDS: float | None = 30.0
 #: Default fast no-progress ceiling: shorter WAITING ceiling when child is alive but
 #: not making forward progress (heartbeat-only, stale-label, or OS-descendant-only)
 #: and stdout has been idle. None disables it.
-NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
+NO_PROGRESS_QUIET_SECONDS: float | None = 240.0
 
 #: Default heartbeat-only ceiling: fires ``NO_PROGRESS_QUIET`` when a
 #: heartbeat-only subagent (``AliveBy.FRESH_HEARTBEAT_ONLY`` -- alive per
@@ -257,7 +257,7 @@ NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
 #: AND ``STRICTLY_STUCK`` (which requires a stale alive_by) and only
 #: trip the cumulative 600s ``CHILDREN_PERSIST_TOO_LONG`` ceiling --
 #: too late for a heartbeat-only subagent that emits heartbeats but no
-#: real work. The default equals ``NO_PROGRESS_QUIET_SECONDS`` (120s)
+#: real work. The default equals ``NO_PROGRESS_QUIET_SECONDS`` (240s)
 #: so the heartbeat-only branch fires AT the dumb-kill ceiling (the
 #: degenerate equal case permitted by the cross-field validator).
 #: Operators can RAISE the ceiling to give heartbeat-only subagents
@@ -266,7 +266,7 @@ NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
 #: when both are set. Must be > 0 when set. When ``None``, the
 #: heartbeat-only ceiling is disabled and the watchdog falls back to
 #: the cumulative ``CHILDREN_PERSIST_TOO_LONG`` ceiling.
-NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS: float | None = 120.0
+NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS: float | None = 240.0
 
 #: Default dumb-kill floor: NO_PROGRESS_QUIET cannot fire within the first N seconds
 #: of an agent run. This prevents the watchdog from killing a recently-launched

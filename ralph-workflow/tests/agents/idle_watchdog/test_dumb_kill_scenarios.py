@@ -663,6 +663,7 @@ def _make_policy_with_floor(
     os_descendant_only_ceiling: float | None = 300.0,
     no_progress_quiet_seconds: float | None = 120.0,
     no_progress_quiet_minimum_invocation_seconds: float | None = 120.0,
+    no_progress_quiet_heartbeat_ceiling_seconds: float | None = None,
 ) -> TimeoutPolicy:
     """Build a TimeoutPolicy with the dumb-kill floor enabled.
 
@@ -670,7 +671,16 @@ def _make_policy_with_floor(
     ``no_progress_quiet_minimum_invocation_seconds`` knob so the
     floor is active in tests that exercise the dumb-kill
     protection.
+
+    The ``no_progress_quiet_heartbeat_ceiling_seconds`` defaults to
+    ``no_progress_quiet_seconds`` when not specified so the
+    cross-field validator accepts the test fixture (the heartbeat
+    ceiling MUST be <= the dumb-kill ceiling). Callers that want
+    to test the heartbeat-only branch in isolation can pass an
+    explicit value.
     """
+    if no_progress_quiet_heartbeat_ceiling_seconds is None:
+        no_progress_quiet_heartbeat_ceiling_seconds = no_progress_quiet_seconds
     kwargs: dict[str, object] = {
         "idle_timeout_seconds": idle_timeout,
         "drain_window_seconds": drain_window,
@@ -684,6 +694,9 @@ def _make_policy_with_floor(
         "no_progress_quiet_seconds": no_progress_quiet_seconds,
         "no_progress_quiet_minimum_invocation_seconds": (
             no_progress_quiet_minimum_invocation_seconds
+        ),
+        "no_progress_quiet_heartbeat_ceiling_seconds": (
+            no_progress_quiet_heartbeat_ceiling_seconds
         ),
         "post_tool_result_progression_seconds": None,
         "repeated_error_window_count": 5,
