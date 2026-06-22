@@ -55,12 +55,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from ralph.agents.execution_state import strategy_for_transport
+from ralph.agents.execution_state import AgentExecutionState, strategy_for_transport
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
     WaitingStatusEvent,
-    WaitingStatusKind,
 )
 from ralph.agents.invoke._monitor_factory import _discovery_strategy_for_config
 from ralph.agents.timeout_clock import FakeClock
@@ -335,8 +334,16 @@ def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
             f" progress from line observer; got"
             f" {watchdog.last_subagent_progress_description!r}"
         )
-        assert watchdog._subagent_progress_count >= 1
-        assert watchdog._last_subagent_progress_at is not None
+        # The subagent_progress_count is surfaced via the public
+        # diagnostic_snapshot() rather than via the private
+        # ``_subagent_progress_count`` field. Use the public API so the
+        # test stays black-box.
+        snapshot = watchdog.diagnostic_snapshot(now=0.0)
+        assert snapshot["subagent_progress_count"] >= 1, (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report subagent_progress_count >= 1 after a real"
+            f" progress line; got {snapshot['subagent_progress_count']}"
+        )
     finally:
         _reset_sink_tokens(tokens)
 
@@ -366,7 +373,12 @@ def test_transport_strategy_surfaces_real_heartbeat_extraction(
             f"transport={transport!r}: watchdog did not capture real extracted"
             f" heartbeat; got {watchdog.last_subagent_progress_description!r}"
         )
-        assert watchdog._subagent_progress_count >= 1
+        snapshot = watchdog.diagnostic_snapshot(now=0.0)
+        assert snapshot["subagent_progress_count"] >= 1, (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report subagent_progress_count >= 1 after a real"
+            f" heartbeat line; got {snapshot['subagent_progress_count']}"
+        )
     finally:
         _reset_sink_tokens(tokens)
 
@@ -396,7 +408,12 @@ def test_transport_strategy_surfaces_real_json_extraction(
             f" JSON child signal; got"
             f" {watchdog.last_subagent_progress_description!r}"
         )
-        assert watchdog._subagent_progress_count >= 1
+        snapshot = watchdog.diagnostic_snapshot(now=0.0)
+        assert snapshot["subagent_progress_count"] >= 1, (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report subagent_progress_count >= 1 after a real"
+            f" JSON child signal; got {snapshot['subagent_progress_count']}"
+        )
     finally:
         _reset_sink_tokens(tokens)
 
@@ -410,11 +427,14 @@ def test_transport_strategy_surfaces_real_extraction_to_listener(
     Black-box contract: build the canonical execution strategy for the
     transport, wire the watchdog's ``record_subagent_work`` into the
     cross-transport subagent sink, register a default subagent activity
-    listener, observe a child signal line, emit a WAITING entered event,
-    and assert the listener receives the real extracted description via
-    the ``subagent_activity`` field of the waiting status event. This
-    is the cross-transport surface that operators rely on to see what
-    every supported agent's subagents are doing in real time.
+    listener, observe a child signal line, drive the watchdog through
+    ``evaluate()`` so it transitions into the WAITING_ON_CHILD branch
+    and emits an ENTERED waiting-status event, and assert the listener
+    receives the real extracted description via the ``subagent_activity``
+    field of the waiting status event.
+
+    This is the cross-transport surface that operators rely on to see
+    what every supported agent's subagents are doing in real time.
     """
     watchdog = _make_watchdog()
     tokens = _bind_subagent_sink_to_watchdog(watchdog)
@@ -432,16 +452,26 @@ def test_transport_strategy_surfaces_real_extraction_to_listener(
 
         assert watchdog.last_subagent_progress_description == _REAL_PROGRESS_LINE
 
-        watchdog._emit(
-            WaitingStatusKind.ENTERED,
-            current_run_seconds=0.0,
-            idle_elapsed=0.0,
-            ceiling_seconds=60.0,
+        # Drive the watchdog through ``evaluate()`` with a
+        # WAITING_ON_CHILD ``classify_quiet`` so the watchdog
+        # transitions into the waiting branch and emits the ENTERED
+        # status event naturally. The threshold is configured so a
+        # single ``evaluate()`` call advances past idle and into the
+        # waiting branch on the first poll.
+        clock = watchdog._clock
+        clock.advance(61.0)
+        def _waiting() -> AgentExecutionState:
+            return AgentExecutionState.WAITING_ON_CHILD
+        watchdog.evaluate(classify_quiet=_waiting)
+        assert captured, (
+            f"transport={transport!r}: watchdog MUST emit a waiting"
+            f" status event with subagent_activity after evaluate()"
+            f" transitions into WAITING_ON_CHILD"
         )
-        assert len(captured) == 1
-        assert captured[0].subagent_activity == _REAL_PROGRESS_LINE, (
-            f"transport={transport!r}: listener did not receive real extracted"
-            f" progress; got {captured[0].subagent_activity!r}"
+        latest = captured[-1]
+        assert latest.subagent_activity == _REAL_PROGRESS_LINE, (
+            f"transport={transport!r}: listener did not receive real"
+            f" extracted progress; got {latest.subagent_activity!r}"
         )
     finally:
         _reset_sink_tokens(tokens)
@@ -458,30 +488,45 @@ def test_cross_transport_subagent_activity_sink_is_wired(
 ) -> None:
     """Every transport surfaces subagent activity through the cross-transport sink.
 
-    The contract: regardless of the transport, the sink accepts a
+    Black-box contract: regardless of the transport, the sink accepts a
     description and ``last_subagent_progress_description`` returns it;
-    an entered waiting status event forwards the description to a
-    registered listener; and ``record_invocation_start`` clears the
-    description so a new invocation starts with a clean slate.
+    a waiting-status event driven by ``evaluate()`` forwards the
+    description to a registered listener; and
+    ``record_invocation_start`` clears the description so a new
+    invocation starts with a clean slate.
     """
     del transport
     watchdog = _make_watchdog()
-    captured: list[str] = []
+    captured: list[tuple[str, str]] = []
 
     def _listener(event: WaitingStatusEvent) -> None:
-        captured.append(event.subagent_activity or "")
+        captured.append((event.kind.value, event.subagent_activity or ""))
 
     watchdog.record_invocation_start()
     watchdog.register_default_subagent_activity_listener(_listener)
 
     watchdog.record_subagent_work(description="first")
-    watchdog._emit(
-        WaitingStatusKind.ENTERED,
-        current_run_seconds=0.0,
-        idle_elapsed=0.0,
-        ceiling_seconds=60.0,
+    # Drive the watchdog into the WAITING_ON_CHILD branch so the
+    # ENTERED event is emitted through the public evaluate() path.
+    watchdog._clock.advance(61.0)
+    def _waiting() -> AgentExecutionState:
+        return AgentExecutionState.WAITING_ON_CHILD
+    watchdog.evaluate(classify_quiet=_waiting)
+    # The watchdog may emit multiple status events (ENTERED +
+    # SUBAGENT_PROGRESS) on the same evaluate() call; the
+    # black-box contract is "every event carries the recorded
+    # description", not "exactly one event".
+    assert captured, (
+        "watchdog.evaluate MUST emit at least one waiting-status event"
+        " carrying the recorded subagent description; got no events"
     )
-    assert captured == ["first"]
+    assert all(
+        description == "first"
+        for _kind, description in captured
+    ), (
+        "Every waiting-status event forwarded to the listener MUST"
+        " carry the recorded subagent description; got: {captured}"
+    )
 
     watchdog.record_invocation_start()
     assert watchdog.last_subagent_progress_description is None

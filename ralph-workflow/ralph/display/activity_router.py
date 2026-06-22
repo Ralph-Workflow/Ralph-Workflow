@@ -30,19 +30,25 @@ def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
     """Populate ``PARSERS`` on first use to break the parsers/display cycle."""
     from ralph.agents.parsers import (
         AgyParser,
+        ClaudeInteractiveParser,
         ClaudeParser,
         CodexParser,
         GeminiParser,
         GenericParser,
         OpenCodeParser,
+        PiParser,
     )
 
     return {
         ActivityProvider.AGY: AgyParser,
         ActivityProvider.CLAUDE: ClaudeParser,
+        ActivityProvider.CLAUDE_INTERACTIVE: cast(
+            "type[AgentParser]", ClaudeInteractiveParser
+        ),
         ActivityProvider.OPENCODE: OpenCodeParser,
         ActivityProvider.CODEX: CodexParser,
         ActivityProvider.GEMINI: GeminiParser,
+        ActivityProvider.PI: cast("type[AgentParser]", PiParser),
         ActivityProvider.GENERIC: cast("type[AgentParser]", GenericParser),
     }
 
@@ -62,16 +68,24 @@ def detect_provider_from_command(command: list[str]) -> ActivityProvider:
     """Infer the ``ActivityProvider`` from the agent command executable name."""
     if not command:
         return ActivityProvider.GENERIC
-    argv0 = command[0]
+    argv0 = command[0].lower() if command[0] else ""
 
-    # Map substrings to providers (checked in order)
+    # Map substrings to providers (checked in order). The ``pi``
+    # substring is checked BEFORE ``opencode`` is irrelevant because
+    # ``opencode`` is a substring of nothing containing ``pi``, but we
+    # still order ``claude_interactive`` before ``claude`` so an
+    # explicit ``*-claude-interactive`` wrapper binary is routed to
+    # ``CLAUDE_INTERACTIVE`` rather than ``CLAUDE``.
     substrings_to_provider: list[tuple[str, ActivityProvider]] = [
+        ("claude_interactive", ActivityProvider.CLAUDE_INTERACTIVE),
+        ("claude-interactive", ActivityProvider.CLAUDE_INTERACTIVE),
         ("agy", ActivityProvider.AGY),
         ("claude", ActivityProvider.CLAUDE),
         ("opencode", ActivityProvider.OPENCODE),
         ("codex", ActivityProvider.CODEX),
         ("aider", ActivityProvider.CODEX),
         ("gemini", ActivityProvider.GEMINI),
+        ("pi", ActivityProvider.PI),
     ]
 
     for substring, provider in substrings_to_provider:

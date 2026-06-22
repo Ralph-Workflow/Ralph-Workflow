@@ -16,12 +16,17 @@ from ralph.display.activity_router import ActivityRouter, detect_provider_from_c
 from ralph.display.line_sanitizer import sanitize_display_line
 from ralph.display.raw_overflow import DEFAULT_MAX_OVERFLOW_FILE_BYTES, RawOverflowLog
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
+from ralph.mcp.server._activity_sink import (
+    reset_subagent_sink,
+    set_subagent_sink,
+)
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.process.manager import ProcessManager, SpawnOptions, get_process_manager
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+    from contextvars import Token
 
     from ralph.display.activity_model import ActivityProvider
     from ralph.interrupt.asyncio_bridge import SignalBridge
@@ -63,6 +68,7 @@ class SubprocessAgentExecutor:
         extra_env: Mapping[str, str] | None = None,
         activity_router: ActivityRouter | None = None,
         raw_overflow_root: Path | None = None,
+        subagent_sink: Callable[[str], None] | None = None,
         _pm: ProcessManager | None = None,
     ) -> None:
         self._command = tuple(command)
@@ -71,6 +77,17 @@ class SubprocessAgentExecutor:
         self._extra_env = extra_env
         self.activity_router = activity_router
         self._raw_overflow_root = raw_overflow_root
+        # Optional watchdog-style subagent activity sink. The
+        # ``ActivityRouter.push_raw_line`` path calls
+        # ``invoke_subagent_sink(summary)`` from the
+        # ``_activity_sink`` contextvar, so the executor registers
+        # the supplied sink into that contextvar at run() time and
+        # resets it on exit. This way the production
+        # ``SubprocessAgentExecutor -> ActivityRouter`` path keeps
+        # the watchdog's ``record_subagent_work`` channel fresh
+        # without relying on tests to install the sink manually.
+        self._subagent_sink = subagent_sink
+        self._subagent_sink_token: Token[Callable[[str], None] | None] | None = None
         self._raw_logs: dict[str, RawOverflowLog] = {}
         self._pm = _pm
 
@@ -95,6 +112,13 @@ class SubprocessAgentExecutor:
         start_time = time.monotonic()
         last_line: str = ""
         activity_provider: ActivityProvider = detect_provider_from_command(list(self._command))
+        # Register the watchdog-style subagent sink so the
+        # ``ActivityRouter.push_raw_line -> invoke_subagent_sink``
+        # path actually reaches a sink. The token is captured so the
+        # finally block can reset the contextvar even when the
+        # executor is cancelled mid-drain.
+        if self._subagent_sink is not None:
+            self._subagent_sink_token = set_subagent_sink(self._subagent_sink)
 
         env = {**os.environ, **self._extra_env} if self._extra_env else None
         pm = self._pm if self._pm is not None else get_process_manager()
@@ -152,6 +176,10 @@ class SubprocessAgentExecutor:
                 await handle.terminate(grace_period_s=0)
                 raise
         finally:
+            if self._subagent_sink_token is not None:
+                with contextlib.suppress(Exception):
+                    reset_subagent_sink(self._subagent_sink_token)
+                self._subagent_sink_token = None
             if handle is not None and handle.record.status not in _TERMINAL_STATUSES:
                 with contextlib.suppress(Exception):
                     await handle.terminate(grace_period_s=0)

@@ -708,7 +708,21 @@ class FailureClassifier:
         # backoff). The ``child_alive=True`` case falls through the
         # conditional and ``is_unavailable=False`` (Rule 1: same-agent
         # retry, defense-in-depth).
-        is_unavailable = (
+        #
+        # Resumable watchdog kill carve-out: when the watchdog reason is
+        # ``no_output_at_start`` AND a captured ``resumable_session_id``
+        # is present, the failure is a SESSION-LOCAL timeout (the agent
+        # just failed to produce output within the deadline) rather than
+        # an infrastructure-level outage. The PROMPT explicitly requires
+        # the killed session to be resumed in place instead of starting
+        # a fresh session, so a captured session id forces
+        # ``is_unavailable=False`` and the recovery controller's Rule 1
+        # (same-agent retry) path emits a resume intent with the
+        # captured id. Without the carve-out, the controller would mark
+        # the agent unavailable, fall over to the next chain agent, and
+        # clear ``last_agent_session_id`` -- silently dropping the
+        # captured id and starting a fresh session.
+        base_unavailable = (
             category == FailureCategory.AGENT
             and (connectivity_state or "").casefold() == "online"
             and not reset_tool_registry
@@ -734,6 +748,12 @@ class FailureClassifier:
                 )
             )
         )
+        resumable_kill = (
+            base_unavailable
+            and watchdog_reason == "no_output_at_start"
+            and bool(resumable_session_id)
+        )
+        is_unavailable = base_unavailable and not resumable_kill
 
         unavailability_reason: UnavailabilityReason | None = None
         if is_unavailable:

@@ -311,6 +311,45 @@ def test_opencode_registry_discovery_filters_stale_records() -> None:
 
 
 
+def test_opencode_registry_discovery_spawn_only_emits_no_progress_line() -> None:
+    """Spawn-only registration (no progress yet) MUST NOT emit a progress line.
+
+    Regression for the watchdog analysis-feedback finding: pre-fix,
+    ``register_child`` initialized ``last_known_phase='spawned'`` so the
+    discovery strategy's first poll emitted ``[subagent] progress:
+    phase=spawned`` even though the child had not produced any real
+    progress evidence (last_progress_at is still ``None``). That
+    fabricated forward progress and could defer a no-output watchdog
+    fire without any real progress / heartbeat evidence.
+
+    Contract: a child that has been registered but has not yet
+    recorded a progress or heartbeat event yields ZERO lines on the
+    first ``read_lines`` call (the ``spawn`` transition is a
+    registration event, not a progress event). The first
+    progress / heartbeat emission happens only AFTER a real
+    ``record_progress(...)`` or ``record_heartbeat(...)`` call.
+    """
+    registry = _make_registry()
+    registry.register_child("child-A", "agent:test-scope:", pid=111)
+
+    capture = RegistryBackedSubagentOutputCapture(
+        registry, "child-A", "agent:test-scope:"
+    )
+    lines = capture.read_lines(worker_id="child-A")
+    assert lines == [], (
+        "Spawn-only registration MUST NOT emit a progress line;"
+        f" got {lines!r}. A child registered without a subsequent"
+        " record_progress()/record_heartbeat() has NO forward"
+        " progress evidence to surface."
+    )
+
+    # After a real progress event the contract reverts to normal:
+    # subsequent ``read_lines`` calls yield the recorded progress.
+    registry.record_progress("child-A", phase="phase-1")
+    next_lines = capture.read_lines(worker_id="child-A")
+    assert any("phase-1" in line for line in next_lines), next_lines
+
+
 def test_opencode_registry_discovery_only_relevant_transport_gets_strategy() -> None:
     """Document the per-transport discovery strategy contract.
 

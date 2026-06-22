@@ -897,11 +897,29 @@ class RecoveryController:
                 current_index=next_available_index,
                 retries=0,
             )
+            # Defense-in-depth: a resumable watchdog kill carries a
+            # captured session id, and the PROMPT requires the killed
+            # session to be resumed in place rather than starting a
+            # fresh session. The classifier now routes resumable
+            # ``no_output_at_start`` kills to ``is_unavailable=False``
+            # so the same-agent retry path is taken in the common
+            # case; the fallover branch here also preserves the
+            # captured session id so a defensive miss (e.g. a chain
+            # of length 1 that always falls over) does not silently
+            # drop the captured id and start a fresh session.
+            preserve_session_id = (
+                failure.watchdog_reason == "no_output_at_start"
+                and bool(failure.resumable_session_id)
+            )
             new_state = (
                 state.with_phase_chain(phase, new_chain)
                 .copy_with(
                     last_retry_delay_ms=0,
-                    last_agent_session_id=None,
+                    last_agent_session_id=(
+                        failure.resumable_session_id
+                        if preserve_session_id
+                        else None
+                    ),
                     agent_retry_intent=cleared_agent_retry_intent(),
                 )
                 .with_fallover_record(fallover_record)

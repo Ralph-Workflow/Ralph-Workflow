@@ -70,7 +70,12 @@ from ralph.mcp.server._activity_sink import (
     set_active_sink,
     set_subagent_sink,
 )
-from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
+from ralph.process.child_liveness import (
+    AliveBy,
+    ChildLivenessRegistry,
+    ChildLivenessSubagentPidSource,
+    classify_child_snapshot,
+)
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedPtyProcess,
@@ -844,15 +849,36 @@ class PtyLineReader:
             prefix = ""
         return registry, prefix or ""
 
+    def _build_subagent_pid_source(self) -> ChildLivenessSubagentPidSource | None:
+        """Build a PID source from the strategy's child-liveness registry, if any.
+
+        Mirrors ``_process_reader._build_subagent_pid_source``: the
+        OpenCode strategy ingests structured child lifecycle events
+        (carried on the agent's own PTY stream) into a
+        ``ChildLivenessRegistry`` whose records include the child PID.
+        Returning those PIDs as a ``SubagentPidSource`` lets
+        ``DefaultProcessMonitor`` classify real spawned subagents as
+        ``SPAWNED_SUBAGENT`` instead of guessing from the command
+        line. Without this wiring the PTY/OpenCode path undercounts
+        active child agents and the watchdog would make decisions
+        from incomplete process classification.
+        """
+        registry, prefix = self._strategy_registry_and_prefix()
+        if registry is None:
+            return None
+        return ChildLivenessSubagentPidSource(registry, prefix)
+
     def read_lines(self) -> Iterator[str]:
         reader = self._start_thread(self._read_thread)
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
+        subagent_pid_source = self._build_subagent_pid_source()
         registry, scope_prefix = self._strategy_registry_and_prefix()
         process_monitor = _make_process_monitor(
             self._handle,
             self._config,
             self._policy,
+            subagent_pid_source,
             registry=registry,
             scope_prefix=scope_prefix,
         )

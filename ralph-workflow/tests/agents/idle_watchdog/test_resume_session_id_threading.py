@@ -66,18 +66,28 @@ def _make_pipeline_state(
     *,
     chain_agents: tuple[str, ...] = ("agent-a",),
     retries: int = 0,
+    connectivity_state: str | None = "online",
 ) -> PipelineState:
     """Construct a minimal ``PipelineState`` with a chain for the phase.
 
     Returns a state with ``phase='development'``, an AgentChainState
     that has ``chain_agents`` and ``current_index=0``, and
     ``last_agent_session_id=None`` (the empty pre-fire state).
+
+    The default ``connectivity_state='online'`` matches the runtime
+    invariant: the failure classifier's unavailability branch is only
+    taken when connectivity is known healthy. Tests that drive a
+    non-online state (e.g. offline / unknown) pass
+    ``connectivity_state='unknown'`` to opt out of the
+    unavailability branch.
     """
     chain = AgentChainState(agents=list(chain_agents), current_index=0, retries=retries)
     state = PipelineState(
         phase="development",
         phase_chains={"development": chain},
     )
+    if connectivity_state is not None:
+        state = state.copy_with(last_connectivity_state=connectivity_state)
     return state
 
 
@@ -252,3 +262,118 @@ def test_pipeline_state_copy_with_accepts_last_agent_session_id() -> None:
     state = _make_pipeline_state()
     updated = state.copy_with(last_agent_session_id="sid-1")
     assert updated.last_agent_session_id == "sid-1"
+
+
+def test_multi_agent_chain_resume_keeps_current_agent() -> None:
+    """Multi-agent chain: a resumable NO_OUTPUT_AT_START kill MUST retry
+    the SAME agent (the one that timed out) instead of falling over to
+    the next chain agent.
+
+    The PROMPT requires the killed session to be resumed in place. With
+    a multi-agent chain (agent-a, agent-b), the recovery controller
+    used to mark agent-a as unavailable on a NO_OUTPUT_AT_START kill
+    and fall over to agent-b -- starting a fresh session on a
+    different agent. The fix carves out a resumable
+    NO_OUTPUT_AT_START kill (one with a captured session id) so the
+    classifier reports ``is_unavailable=False`` and the controller's
+    same-agent retry path emits a resume intent with the captured id.
+    """
+    captured_session_id = "sess-abc123"
+    wrapper = AgentInactivityTimeoutError(
+        agent_name="test-agent",
+        timeout_seconds=30.0,
+        opts=InactivityTimeoutOpts(
+            reason=WatchdogFireReason.NO_OUTPUT_AT_START,
+            session_resume_safe=True,
+            resumable_session_id=captured_session_id,
+        ),
+    )
+    # Two-agent chain: agent-a is the timed-out one; agent-b is the
+    # fallover target. Pre-fix the controller fell over to agent-b
+    # and started a fresh session; post-fix it stays on agent-a and
+    # emits a resume intent.
+    state = _make_pipeline_state(chain_agents=("agent-a", "agent-b"))
+    controller = RecoveryController()
+
+    new_state, _effects, _evt = controller.handle(
+        state,
+        wrapper,
+        FailureContext(
+            phase="development",
+            agent="agent-a",
+            retry_in_session=True,
+        ),
+    )
+
+    # The chain pointer must still be on agent-a (no fallover).
+    chain = new_state.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 0, (
+        f"Multi-agent chain current_index MUST stay on agent-a (0) for a"
+        f" resumable kill; got {chain.current_index}"
+    )
+    # The chain must NOT have advanced to agent-b.
+    assert chain.agents[chain.current_index] == "agent-a", (
+        f"Multi-agent chain MUST stay on the timed-out agent for a"
+        f" resumable kill; got {chain.agents[chain.current_index]!r}"
+    )
+    # The retry intent MUST be a resume intent with the captured id.
+    intent = new_state.agent_retry_intent
+    assert intent.action == "resume", (
+        f"agent_retry_intent.action MUST be 'resume' for a resumable kill"
+        f" in a multi-agent chain; got {intent.action!r}"
+    )
+    assert intent.session_id == captured_session_id, (
+        f"agent_retry_intent.session_id MUST thread the captured id even"
+        f" in a multi-agent chain; got {intent.session_id!r}"
+    )
+    # last_agent_session_id MUST be set so the resume intent is honored
+    # by downstream consumers.
+    assert new_state.last_agent_session_id == captured_session_id, (
+        f"state.last_agent_session_id MUST be set from the watchdog's"
+        f" captured id; got {new_state.last_agent_session_id!r}"
+    )
+
+
+def test_multi_agent_chain_non_resumable_kill_does_fallover() -> None:
+    """Multi-agent chain: a NON-resumable NO_OUTPUT_AT_START kill (no
+    captured session id) MUST still fall over to the next chain agent.
+
+    This is the symmetric pin: the resume carve-out must NOT regress
+    the legitimate fallover path. A NO_OUTPUT_AT_START kill without a
+    captured session id is the legacy "out of credits" case where the
+    agent is truly unavailable and the chain MUST advance.
+    """
+    wrapper = AgentInactivityTimeoutError(
+        agent_name="test-agent",
+        timeout_seconds=30.0,
+        opts=InactivityTimeoutOpts(
+            reason=WatchdogFireReason.NO_OUTPUT_AT_START,
+            session_resume_safe=False,
+            resumable_session_id=None,
+        ),
+    )
+    state = _make_pipeline_state(chain_agents=("agent-a", "agent-b"))
+    controller = RecoveryController()
+
+    new_state, _effects, _evt = controller.handle(
+        state,
+        wrapper,
+        FailureContext(
+            phase="development",
+            agent="agent-a",
+            retry_in_session=True,
+        ),
+    )
+
+    # The chain pointer MUST advance to agent-b.
+    chain = new_state.chain_for_phase("development")
+    assert chain is not None
+    assert chain.current_index == 1, (
+        f"Non-resumable NO_OUTPUT_AT_START MUST fall over to agent-b in a"
+        f" multi-agent chain; got current_index={chain.current_index}"
+    )
+    assert chain.agents[chain.current_index] == "agent-b", (
+        f"Non-resumable NO_OUTPUT_AT_START MUST fall over to agent-b;"
+        f" got {chain.agents[chain.current_index]!r}"
+    )

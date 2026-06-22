@@ -154,9 +154,32 @@ class RegistryBackedSubagentOutputCapture:
 
         lines: list[str] = []
 
+        # A spawn-only registration (no progress event yet) MUST NOT emit
+        # a ``[subagent] progress: phase=spawned`` line. The pre-fix
+        # code emitted one because ``register_child`` initializes
+        # ``last_known_phase='spawned'`` (so the phase ``!=`` check fired
+        # on the first poll) even though ``last_progress_at`` was still
+        # ``None`` -- a child that exists but has not produced any
+        # progress evidence yet. That fabricated forward progress and
+        # could defer a no-output watchdog fire without any real
+        # progress or heartbeat evidence.
+        #
+        # Contract: emit a progress line ONLY when the registry has
+        # actually recorded a progress event (last_progress_at is not
+        # None). A pure phase change without an advancing
+        # ``last_progress_at`` is treated as a registration transition
+        # (spawn), not as forward progress, and is suppressed here.
+        # Subsequent ``record_progress(...)`` calls advance
+        # ``last_progress_at`` and trigger a normal progress emission.
         if (
-            record.last_progress_at != self._last_progress_at
-            or record.last_known_phase != self._last_progress_phase
+            record.last_progress_at is not None
+            and (
+                record.last_progress_at != self._last_progress_at
+                or (
+                    record.last_known_phase != self._last_progress_phase
+                    and record.last_progress_at != self._last_progress_at
+                )
+            )
         ):
             phase = record.last_known_phase or "progress"
             lines.append(f"[subagent] progress: phase={phase}")

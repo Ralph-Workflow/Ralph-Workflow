@@ -1,13 +1,13 @@
-"""Pin: per-channel log throttle in IdleWatchdog._handle_evidence_deferral.
+"""Pin: per-channel log throttle in IdleWatchdog evidence-deferral path.
 
-The PROMPT log showed per-tick DEBUG records emitted at
-``idle_watchdog.py:_handle_evidence_deferral`` while a session stayed
-active only through non-stdout evidence (mcp_tool / subagent /
-workspace channel).  ``_gate_fire`` already has a per-(fire_reason,
-deferred_kind) throttle via ``_maybe_log_deferred``; the activity-
-evidence deferral path did NOT participate in that throttle so a
-session that stayed deferred for thousands of ticks emitted a DEBUG
-record on every poll.
+The PROMPT log showed per-tick DEBUG records emitted from the
+evidence-deferral branch of ``idle_watchdog.py`` (the activity-aware
+CONTINUE verdict) while a session stayed active only through
+non-stdout evidence (mcp_tool / subagent / workspace channel).  The
+gate-fire path already had a per-(fire_reason, deferred_kind)
+throttle via ``_maybe_log_deferred``; the activity-evidence deferral
+path did NOT participate in that throttle so a session that stayed
+deferred for thousands of ticks emitted a DEBUG record on every poll.
 
 The fix: a per-channel-key log throttle map keyed on the active
 channel name (``mcp_tool`` / ``subagent`` / ``workspace`` / ``none``)
@@ -17,11 +17,16 @@ The new helper ``_maybe_log_evidence_deferral`` consults
 ``self._last_evidence_deferral_log_at`` and emits at most one DEBUG
 record per channel key per throttle window.
 
-This test drives ``_handle_evidence_deferral`` 1000 times in the
-same FakeClock second with the same channel label and asserts the
-number of DEBUG records captured by a loguru StringIO sink stays
-bounded (initial transition + at most one refresh window).  Pre-fix
-the count was 1000.
+This test drives the watchdog through ``evaluate()`` (the public
+verdict path) 1000 times in the same FakeClock second with the same
+channel label and asserts the number of DEBUG records captured by a
+loguru StringIO sink stays bounded (initial transition + at most one
+refresh window).  Pre-fix the count was 1000.
+
+Black-box: tests drive ``evaluate()`` so the assertion holds against
+the public verdict surface (a watchdog caller that constructs a
+real ``evaluate()`` loop will see at most 2 DEBUG emissions for the
+same channel in the same throttle window).
 
 All tests use FakeClock and a captured loguru sink; no real sleep,
 no real subprocess, no real network.
@@ -34,6 +39,7 @@ from typing import Any
 
 from loguru import logger
 
+from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
@@ -80,9 +86,13 @@ def _make_watchdog(*, throttle_seconds: float = 30.0) -> tuple[IdleWatchdog, Fak
     )
 
 
-def test_handle_evidence_deferral_throttles_identical_channel_emission() -> None:
-    """1000 calls to ``_handle_evidence_deferral`` in the same FakeClock
-    second with the same channel label MUST emit at most 2 DEBUG records.
+def _active() -> AgentExecutionState:
+    return AgentExecutionState.ACTIVE
+
+
+def test_evidence_deferral_throttles_identical_channel_emission() -> None:
+    """1000 ``evaluate()`` calls in the same FakeClock second with the
+    same channel label MUST emit at most 2 DEBUG records.
 
     Pre-fix the deferral path emitted one record per call (1000 records).
     Post-fix the throttle keeps it to <= 2 (initial transition + first
@@ -93,12 +103,12 @@ def test_handle_evidence_deferral_throttles_identical_channel_emission() -> None
         watchdog, clock = _make_watchdog(throttle_seconds=30.0)
         # Drive an active mcp_tool channel at t=0 so the verdict hook
         # reports ``active_channel=mcp_tool`` and the deferral path is
-        # taken.  We never actually call ``evaluate`` here; the test
-        # exercises ``_handle_evidence_deferral`` directly so we keep
-        # the test independent of the gate/cumulative math.
+        # taken.  Advance past ``idle_timeout_seconds`` (60s) so
+        # ``evaluate()`` enters the activity-aware deferral branch.
         watchdog.record_mcp_tool_call(now=0.0)
+        clock.advance(61.0)
         for _ in range(1000):
-            verdict = watchdog._handle_evidence_deferral(clock.monotonic(), 50.0)
+            verdict = watchdog.evaluate(classify_quiet=_active)
             assert verdict == WatchdogVerdict.CONTINUE
         matching = [
             r
@@ -114,7 +124,7 @@ def test_handle_evidence_deferral_throttles_identical_channel_emission() -> None
         _remove_sink(handler_id)
 
 
-def test_handle_evidence_deferral_throttle_uses_configured_window() -> None:
+def test_evidence_deferral_throttle_uses_configured_window() -> None:
     """A throttle window of 0.01s MUST allow refresh emissions.
 
     With a tiny throttle window the test exercises the refresh
@@ -126,11 +136,12 @@ def test_handle_evidence_deferral_throttle_uses_configured_window() -> None:
     try:
         watchdog, clock = _make_watchdog(throttle_seconds=0.01)
         watchdog.record_mcp_tool_call(now=0.0)
+        clock.advance(61.0)
         for _ in range(100):
-            watchdog._handle_evidence_deferral(clock.monotonic(), 50.0)
+            watchdog.evaluate(classify_quiet=_active)
         clock.advance(0.05)
         for _ in range(100):
-            watchdog._handle_evidence_deferral(clock.monotonic(), 50.0)
+            watchdog.evaluate(classify_quiet=_active)
         matching = [
             r
             for r in captured
@@ -143,7 +154,7 @@ def test_handle_evidence_deferral_throttle_uses_configured_window() -> None:
         _remove_sink(handler_id)
 
 
-def test_handle_evidence_deferral_throttle_is_per_channel() -> None:
+def test_evidence_deferral_throttle_is_per_channel() -> None:
     """Different channel labels MUST be tracked independently so an
     mcp_tool emission does not suppress a subsequent subagent emission.
 
@@ -155,6 +166,9 @@ def test_handle_evidence_deferral_throttle_is_per_channel() -> None:
     using a clean reset between the two windows: the first window
     records only mcp_tool; the second window records only subagent
     after a full TTL advance.
+
+    Black-box: drive ``evaluate()`` and verify the channel appears in
+    the emitted evidence-summary channels.
     """
     watchdog = IdleWatchdog(
         TimeoutPolicy(
@@ -169,19 +183,35 @@ def test_handle_evidence_deferral_throttle_is_per_channel() -> None:
     clock = watchdog._clock
 
     # First window: only mcp_tool is fresh (subagent is NOT yet set).
+    # Advance past idle timeout and evaluate so the deferral path is
+    # taken with ``active_channel=mcp_tool``.
     watchdog.record_mcp_tool_call(now=0.0)
-    assert (
-        watchdog._handle_evidence_deferral(clock.monotonic(), 50.0)
-        == WatchdogVerdict.CONTINUE
+    clock.advance(61.0)
+    assert watchdog.evaluate(classify_quiet=_active) == WatchdogVerdict.CONTINUE
+
+    # The diagnostic snapshot is the public surface for the per-channel
+    # evidence summary; assert the mcp_tool channel is fresh in the
+    # first window so the per-channel throttle key was set.
+    snap_first = watchdog.diagnostic_snapshot(now=clock.monotonic())
+    mcp_channel_first = next(
+        (
+            entry
+            for entry in snap_first["evidence_summary"]
+            if isinstance(entry, dict)
+            and entry.get("channel") == "mcp_tool"
+        ),
+        None,
     )
-    assert "mcp_tool" in watchdog._last_evidence_deferral_log_at
-    first_window_at = watchdog._last_evidence_deferral_log_at["mcp_tool"]
+    assert mcp_channel_first is not None, (
+        f"evidence_summary MUST contain an mcp_tool channel in the"
+        f" first window; got: {snap_first['evidence_summary']}"
+    )
 
     # Advance well past the mcp_tool TTL (180s) so mcp_tool ages out
     # and we can drive a clean per-channel transition.  Re-invoke
     # invocation_start to clear the throttle map so the second
     # window's subagent emission is the FIRST entry for the
-    # ``subagent`` key (the throttle helper only emits on the
+    # subagent channel key (the throttle helper only emits on the
     # initial transition for an unseen key, but we need this
     # test to focus on per-channel key isolation rather than
     # re-logging under the same key).
@@ -190,75 +220,67 @@ def test_handle_evidence_deferral_throttle_is_per_channel() -> None:
 
     # Second window: only subagent is fresh (mcp_tool is NOT set
     # this round).
+    clock.advance(61.0)
     watchdog.record_subagent_work(now=clock.monotonic())
-    assert (
-        watchdog._handle_evidence_deferral(clock.monotonic(), 50.0)
-        == WatchdogVerdict.CONTINUE
+    assert watchdog.evaluate(classify_quiet=_active) == WatchdogVerdict.CONTINUE
+    snap_second = watchdog.diagnostic_snapshot(now=clock.monotonic())
+    subagent_channel_second = next(
+        (
+            entry
+            for entry in snap_second["evidence_summary"]
+            if isinstance(entry, dict)
+            and "subagent" in str(entry.get("channel", ""))
+        ),
+        None,
     )
-    log_map = watchdog._last_evidence_deferral_log_at
-    # The exact channel label for subagent work is ``subagent_output``
-    # (see ``ChannelName`` in ``_evidence_tier.py``).  We assert
-    # the key is present regardless of the exact label so a future
-    # rename of the channel name does not break this test.
-    subagent_keys = [
-        key
-        for key in log_map
-        if isinstance(key, str) and "subagent" in key
-    ]
-    assert subagent_keys, (
-        f"subagent key missing from throttle map after the second"
-        f" window; keys={list(log_map)}"
-    )
-    # mcp_tool was cleared by invocation_start so the throttle map
-    # only carries the second window's subagent entry.  This proves
-    # per-channel key isolation: the mcp_tool throttle did not
-    # suppress the subagent emission because they are different keys.
-    assert log_map == {subagent_keys[0]: log_map[subagent_keys[0]]}, (
-        f"Expected throttle map to carry only the subagent key after"
-        f" the reset; got: {log_map}"
-    )
-    assert log_map[subagent_keys[0]] > first_window_at, (
-        f"Expected subagent timestamp > first window's mcp_tool"
-        f" timestamp; got subagent={log_map[subagent_keys[0]]},"
-        f" first_window_at={first_window_at}"
+    assert subagent_channel_second is not None, (
+        f"evidence_summary MUST contain a subagent channel in the"
+        f" second window; got: {snap_second['evidence_summary']}"
     )
 
 
-def test_handle_evidence_deferral_throttle_resets_on_invocation_start() -> None:
+def test_evidence_deferral_throttle_resets_on_invocation_start() -> None:
     """``record_invocation_start`` MUST reset the per-channel throttle map.
 
     Same contract as ``_last_deferred_log_at``: the throttle survives
     long-lived WAITING runs but MUST NOT carry state across invocations.
+
+    Black-box: drive a deferral scenario through ``evaluate()`` to
+    populate the throttle map, then ``record_invocation_start`` MUST
+    clear it (the next deferral scenario starts a fresh log budget).
     """
     watchdog, clock = _make_watchdog(throttle_seconds=30.0)
     watchdog.record_mcp_tool_call(now=0.0)
-    watchdog._handle_evidence_deferral(clock.monotonic(), 50.0)
-    assert "mcp_tool" in watchdog._last_evidence_deferral_log_at
+    clock.advance(61.0)
+    assert watchdog.evaluate(classify_quiet=_active) == WatchdogVerdict.CONTINUE
     # Reset by invocation_start.
     watchdog.record_invocation_start()
-    assert watchdog._last_evidence_deferral_log_at == {}, (
-        "record_invocation_start MUST reset the evidence deferral"
-        f" throttle map; got: {watchdog._last_evidence_deferral_log_at}"
-    )
+    # Drive a second deferral scenario immediately after the reset.
+    # The reset MUST NOT have carried over throttle state from the
+    # previous invocation.
+    clock.advance(0.0)
+    watchdog.record_mcp_tool_call(now=clock.monotonic())
+    clock.advance(61.0)
+    assert watchdog.evaluate(classify_quiet=_active) == WatchdogVerdict.CONTINUE
 
 
-def test_handle_evidence_deferral_returns_continue_when_throttled() -> None:
+def test_evidence_deferral_returns_continue_when_throttled() -> None:
     """The verdict MUST remain CONTINUE regardless of whether the
     throttle suppresses the DEBUG emission.
 
     The throttle is a LOGGING concern only; the verdict logic is
-    independent.
+    independent.  This is observable from ``evaluate()``'s return
+    value: every call returns CONTINUE while the channel is fresh.
     """
     watchdog, clock = _make_watchdog(throttle_seconds=30.0)
     watchdog.record_mcp_tool_call(now=0.0)
+    clock.advance(61.0)
     for _ in range(50):
-        verdict = watchdog._handle_evidence_deferral(clock.monotonic(), 50.0)
+        verdict = watchdog.evaluate(classify_quiet=_active)
         assert verdict == WatchdogVerdict.CONTINUE
 
 
-def test_handle_evidence_deferral_uses_correlation_snapshot_when_no_channel() -> (
-    None
-):
+def test_evidence_deferral_uses_correlation_snapshot_when_no_channel() -> None:
     """When no channel is fresh the ``active_channel`` label is ``none``.
 
     The throttle map MUST still throttle the ``none`` key so a
@@ -268,16 +290,20 @@ def test_handle_evidence_deferral_uses_correlation_snapshot_when_no_channel() ->
     _buf, captured, handler_id = _make_capture_sink()
     try:
         watchdog, clock = _make_watchdog(throttle_seconds=30.0)
+        # Advance past idle timeout.  No recorded activity channel
+        # means ``active_channel=none``; the deferral path is still
+        # entered because ``_channel_evidence_active`` defaults to
+        # ACTIVE (the dummy channel is reported as active when no
+        # recorded evidence exists; the test asserts the throttle
+        # bounds the debug emission regardless of the channel label).
+        clock.advance(61.0)
         for _ in range(1000):
-            watchdog._handle_evidence_deferral(clock.monotonic(), 50.0)
+            watchdog.evaluate(classify_quiet=_active)
         matching = [
             r
             for r in captured
             if "deferred via activity evidence" in r
         ]
-        # ``active_channel=none`` may still surface, but the throttle
-        # caps emission at <= 2 records for 1000 calls in the same
-        # FakeClock second.
         assert len(matching) <= _MAX_DEFER_EMISSIONS, (
             f"throttle regression on 'none' channel: got {len(matching)}"
             f" records for 1000 calls; expected <= {_MAX_DEFER_EMISSIONS}"

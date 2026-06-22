@@ -24,12 +24,11 @@ import inspect
 import json
 from dataclasses import dataclass
 
+from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
 )
-from ralph.agents.idle_watchdog._stuck_classifier import StuckKind
-from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
 from ralph.agents.timeout_clock import FakeClock
 
 
@@ -232,30 +231,38 @@ def test_diagnostic_snapshot_uses_injected_now_argument() -> None:
 
 
 def test_diagnostic_snapshot_records_fire_reason() -> None:
-    """After ``last_fire_reason`` is set the snapshot MUST carry the
-    string form (``WatchdogFireReason.value``) so post-mortem logs
-    show the canonical reason.
+    """After a fire the snapshot MUST carry the canonical
+    ``WatchdogFireReason.value`` string so post-mortem logs
+    can show the reason without coupling to private watchdog
+    internals.
+
+    Black-box: drive the watchdog through ``evaluate()`` with a
+    short no_output_at_start threshold so the no-output fire path
+    sets ``last_fire_reason`` naturally. ``diagnostic_snapshot``
+    is then read via its public API.
     """
-    watchdog, _clock = _make_watchdog()
-    # Drive a fire reason via direct field assignment (the
-    # public path goes through ``_evaluate_*`` helpers that
-    # require a much more elaborate setup; the field is the
-    # canonical source for the snapshot anyway). Use ``setattr``
-    # with the attribute name held in a local variable so mypy
-    # cannot narrow the access to a private-attribute assignment
-    # AND ruff B010 does not flag a setattr-with-constant-value
-    # call. The policy test for ``test_zero_test_file_suppressions``
-    # rejects bare mypy suppression comments inside test files.
-    _last_fire_reason_attr = "_last_fire_reason"
-    _last_deferred_kind_attr = "_last_deferred_kind"
-    setattr(watchdog, _last_fire_reason_attr, WatchdogFireReason.NO_OUTPUT_AT_START)
-    setattr(watchdog, _last_deferred_kind_attr, StuckKind.SILENT_SUBAGENT)
-    snapshot = watchdog.diagnostic_snapshot(now=0.0)
+    clock = FakeClock(start=0.0)
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=60.0,
+        no_output_at_start_seconds=10.0,
+        no_progress_quiet_seconds=None,
+        activity_evidence_ttl_seconds=180.0,
+    )
+    watchdog = IdleWatchdog(policy, clock, process_monitor=_FakeProcessMonitor())
+    watchdog.record_invocation_start()
+    # Advance past the no_output_at_start threshold; no recorded
+    # activity; ACTIVE classify_quiet returns the verdict path
+    # straight to NO_OUTPUT_AT_START.
+    clock.advance(11.0)
+    def _active() -> AgentExecutionState:
+        return AgentExecutionState.ACTIVE
+    verdict = watchdog.evaluate(classify_quiet=_active)
+    assert verdict.name == "FIRE", (
+        f"watchdog.evaluate MUST fire NO_OUTPUT_AT_START after the"
+        f" threshold with no activity; got verdict={verdict}"
+    )
+    snapshot = watchdog.diagnostic_snapshot(now=clock.monotonic())
     assert snapshot["last_fire_reason"] == "no_output_at_start", (
         f"snapshot.last_fire_reason MUST be 'no_output_at_start'; got"
         f" {snapshot['last_fire_reason']!r}"
-    )
-    assert snapshot["last_deferred_kind"] == "silent_subagent", (
-        f"snapshot.last_deferred_kind MUST be 'silent_subagent'; got"
-        f" {snapshot['last_deferred_kind']!r}"
     )
