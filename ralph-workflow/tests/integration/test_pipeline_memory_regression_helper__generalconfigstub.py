@@ -22,7 +22,7 @@ class _GeneralConfigStub:
     agent_idle_no_progress_waiting_on_child_seconds: float = 600.0
     agent_no_progress_quiet_seconds: float | None = 120.0
     agent_no_progress_quiet_minimum_invocation_seconds: float | None = 120.0
-    agent_no_progress_quiet_heartbeat_ceiling_seconds: float | None = 240.0
+    agent_no_progress_quiet_heartbeat_ceiling_seconds: float | None = 120.0
     agent_idle_activity_evidence_ttl_seconds: float | None = 30.0
     agent_post_tool_result_progression_seconds: float | None = 120.0
     agent_repeated_error_consecutive_threshold: int | None = 5

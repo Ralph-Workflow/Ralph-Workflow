@@ -1288,18 +1288,6 @@ class IdleWatchdog:
         """
         if self._config.no_progress_quiet_seconds is None:
             return False
-        if self.invocation_elapsed_seconds < self._config.no_progress_quiet_seconds:
-            return False
-        # Dumb-kill floor: defer the fire while the agent has been alive
-        # for less than the configured floor. The floor must be checked
-        # BEFORE the channel-evidence check so a recently-launched agent
-        # with all channels stale still gets the floor protection.
-        if (
-            self._config.no_progress_quiet_minimum_invocation_seconds is not None
-            and self.invocation_elapsed_seconds
-            < self._config.no_progress_quiet_minimum_invocation_seconds
-        ):
-            return False
         # Heartbeat-only ceiling: a heartbeat-only subagent
         # (``AliveBy.FRESH_HEARTBEAT_ONLY`` -- alive per the corroborator
         # but no first-party progress) bypasses BOTH NO_PROGRESS_QUIET
@@ -1310,14 +1298,21 @@ class IdleWatchdog:
         # 600s). Without this branch a heartbeat-only subagent that
         # emits heartbeats but no real work runs for the full
         # cumulative ceiling -- too late. The dedicated heartbeat-only
-        # ceiling (default 240s) trips NO_PROGRESS_QUIET when the
-        # agent has been alive for at least
-        # ``no_progress_quiet_heartbeat_ceiling_seconds``. This
-        # branch MUST be checked BEFORE the ``alive_by is not None``
-        # short-circuit below so the heartbeat-only ceiling is
-        # consulted before the wt-012 gate refinement suppresses the
-        # evaluator. ``None`` disables the heartbeat-only ceiling
-        # (operators can opt out via ``[general]`` config).
+        # ceiling (default 120s; must be <= ``no_progress_quiet_seconds``
+        # per the cross-field validator) trips NO_PROGRESS_QUIET when
+        # the agent has been alive for at least
+        # ``no_progress_quiet_heartbeat_ceiling_seconds``. This branch
+        # MUST be checked BEFORE the ``invocation_elapsed_seconds <
+        # no_progress_quiet_seconds`` short-circuit below so a heartbeat
+        # ceiling shorter than ``no_progress_quiet_seconds`` can fire
+        # EARLY (the whole point of the operator knob). It MUST also be
+        # checked BEFORE the ``alive_by is not None`` short-circuit so
+        # the heartbeat-only ceiling is consulted before the wt-012
+        # gate refinement suppresses the evaluator. ``None`` disables
+        # the heartbeat-only ceiling (operators can opt out via
+        # ``[general]`` config). The dumb-kill floor
+        # (``no_progress_quiet_minimum_invocation_seconds``) still
+        # protects recently-launched agents from premature fires.
         if (
             corroboration.alive_by == AliveBy.FRESH_HEARTBEAT_ONLY
             and self._config.no_progress_quiet_heartbeat_ceiling_seconds is not None
@@ -1337,6 +1332,18 @@ class IdleWatchdog:
             # defer indefinitely until the cumulative
             # ``CHILDREN_PERSIST_TOO_LONG`` ceiling (default 600s).
             return True
+        if self.invocation_elapsed_seconds < self._config.no_progress_quiet_seconds:
+            return False
+        # Dumb-kill floor: defer the fire while the agent has been alive
+        # for less than the configured floor. The floor must be checked
+        # BEFORE the channel-evidence check so a recently-launched agent
+        # with all channels stale still gets the floor protection.
+        if (
+            self._config.no_progress_quiet_minimum_invocation_seconds is not None
+            and self.invocation_elapsed_seconds
+            < self._config.no_progress_quiet_minimum_invocation_seconds
+        ):
+            return False
         # Defer the fire when the corroborator confirms ANY alive_by signal —
         # the child is alive (per AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
         # CPU_IDLE_WHILE_ALIVE, LOG_STALE_WHILE_ALIVE, FRESH_HEARTBEAT_ONLY, or
@@ -1354,18 +1361,119 @@ class IdleWatchdog:
             return False
         return not self._channel_evidence_active(now)
 
-    def _evaluate_no_progress_quiet(
+    def _evaluate_no_progress_quiet(  # noqa: PLR0911, PLR0912 - heartbeat-only + dumb-kill branches are independent fire paths
         self, now: float, idle_elapsed: float
     ) -> WatchdogVerdict | None:
-        """Evaluate if the watchdog should fire due to lack of progress."""
+        """Evaluate if the watchdog should fire due to lack of progress.
+
+        Two independent triggers consult the NO_PROGRESS_QUIET reason:
+
+        1. The dumb-kill ceiling (``no_progress_quiet_seconds``): fires
+           when the agent has been alive for at least the dumb-kill
+           ceiling AND no first-party activity has been observed AND
+           the corroborator reports no live-child signal
+           (``alive_by is None``). The dumb-kill floor
+           (``no_progress_quiet_minimum_invocation_seconds``) protects
+           recently-launched agents.
+
+        2. The heartbeat-only ceiling
+           (``no_progress_quiet_heartbeat_ceiling_seconds``): fires
+           when the corroborator reports ``AliveBy.FRESH_HEARTBEAT_ONLY``
+           AND ``invocation_elapsed_seconds`` >= the heartbeat ceiling
+           AND the dumb-kill floor has elapsed. This is an ORTHOGONAL,
+           SHORTER ceiling that catches a heartbeat-only subagent
+           (alive per the corroborator but no first-party progress)
+           BEFORE the cumulative ``CHILDREN_PERSIST_TOO_LONG`` ceiling
+           (default 600s). The heartbeat-only ceiling fires the same
+           ``NO_PROGRESS_QUIET`` reason to avoid widening
+           ``WatchdogFireReason``.
+
+        The heartbeat-only branch is evaluated FIRST so a heartbeat
+        ceiling shorter than ``no_progress_quiet_seconds`` can fire
+        early (the whole point of the operator knob). The dumb-kill
+        branch is evaluated SECOND.
+        """
         if self._config.no_progress_quiet_seconds is None:
             return None
+
+        # Heartbeat-only ceiling (orthogonal, shorter ceiling).
+        # Evaluated BEFORE the ``invocation_elapsed_seconds <
+        # no_progress_quiet_seconds`` early-return so a heartbeat
+        # ceiling shorter than the dumb-kill ceiling fires EARLY. The
+        # corroborator snapshot is reused for the dumb-kill branch
+        # below via ``_safe_corroborate`` cache when called inside
+        # ``evaluate()`` (the tick-scoped cache). When called outside
+        # ``evaluate()`` the cache is empty and the corroborator is
+        # invoked directly; the second invocation is cheap because the
+        # correlator is a callable that returns a snapshot.
+        corroboration = self._safe_corroborate()
+        if (
+            corroboration.alive_by == AliveBy.FRESH_HEARTBEAT_ONLY
+            and self._config.no_progress_quiet_heartbeat_ceiling_seconds is not None
+            and self.invocation_elapsed_seconds
+            >= self._config.no_progress_quiet_heartbeat_ceiling_seconds
+            and (
+                self._config.no_progress_quiet_minimum_invocation_seconds is None
+                or self.invocation_elapsed_seconds
+                >= self._config.no_progress_quiet_minimum_invocation_seconds
+            )
+        ):
+            # Heartbeat-only branch fires the NO_PROGRESS_QUIET reason.
+            # We deliberately reuse the gate path so a deferred
+            # heartbeat-only fire still routes through the
+            # StuckClassifier (e.g. operator override, smart-verdict
+            # deferral). The diagnostic block tags the ceiling as
+            # ``heartbeat_only`` so the operator can distinguish this
+            # fire from a dumb-kill fire in the structured event.
+            gate_verdict = self._gate_fire(
+                WatchdogFireReason.NO_PROGRESS_QUIET,
+                now=now,
+                idle_elapsed=idle_elapsed,
+            )
+            if gate_verdict == WatchdogVerdict.CONTINUE:
+                return WatchdogVerdict.CONTINUE
+            self._last_fire_reason = WatchdogFireReason.NO_PROGRESS_QUIET
+            self._last_alive_by = corroboration.alive_by
+            diag: dict[str, object] = {
+                "cumulative": round(self._cumulative_waiting_on_child_seconds, 1),
+                "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),
+                "idle_elapsed": round(idle_elapsed, 1),
+                "ceiling": self._config.no_progress_quiet_heartbeat_ceiling_seconds,
+                "effective_ceiling": "heartbeat_only",
+            }
+            corr_diag = self._build_corroboration_diag(corroboration)
+            for key, val in corr_diag.items():
+                if key not in diag:
+                    diag[key] = val
+            evidence_block, _ = self._build_evidence_summary_diag(now)
+            for ev_key, ev_val in evidence_block.items():
+                if ev_key not in diag:
+                    diag[ev_key] = ev_val
+            self._emit(
+                WaitingStatusKind.HARD_STOP,
+                current_run_seconds=round(self.invocation_elapsed_seconds, 1),
+                idle_elapsed=idle_elapsed,
+                ceiling_seconds=self._config.no_progress_quiet_heartbeat_ceiling_seconds,
+                diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag),
+            )
+            self._log.warning(
+                "idle watchdog: FIRE reason={} effective_ceiling=heartbeat_only"
+                " idle_elapsed={}s invocation_elapsed={}s heartbeat_ceiling={}s",
+                WatchdogFireReason.NO_PROGRESS_QUIET,
+                round(idle_elapsed, 1),
+                round(self.invocation_elapsed_seconds, 1),
+                self._config.no_progress_quiet_heartbeat_ceiling_seconds,
+            )
+            return WatchdogVerdict.FIRE
+
+        # Dumb-kill ceiling (standard NO_PROGRESS_QUIET path). Only
+        # engaged when the heartbeat-only branch did NOT trip and the
+        # invocation has been alive for at least the dumb-kill ceiling.
         if self.invocation_elapsed_seconds < self._config.no_progress_quiet_seconds:
             return None
         if idle_elapsed < self._config.no_progress_quiet_seconds:
             return None
 
-        corroboration = self._safe_corroborate()
         if not self._is_no_progress_quiet(now, corroboration):
             return None
 
@@ -1387,7 +1495,7 @@ class IdleWatchdog:
         # corroboration.alive_by is None, child_alive will be False
         # (truly dead child -> Rule 2: exponential backoff).
         self._last_alive_by = corroboration.alive_by
-        diag: dict[str, object] = {
+        diag = {
             "cumulative": round(self._cumulative_waiting_on_child_seconds, 1),
             "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),
             "idle_elapsed": round(idle_elapsed, 1),
