@@ -296,6 +296,20 @@ NO_OUTPUT_AT_START_SECONDS: float | None = 30.0
 #: and the structured status cadence are aligned.
 WATCHDOG_LOG_THROTTLE_SECONDS: float = 30.0
 
+#: Default stuck-job sub-ceiling. The watchdog fires ``CHILDREN_PERSIST_TOO_LONG``
+#: when the cumulative ``WAITING_ON_CHILD`` time exceeds the standard cumulative
+#: ceiling (``max_waiting_on_child_seconds``, default 1800s) AND corroboration
+#: shows the child is alive-but-not-progressing (``alive_by`` in the stale set).
+#: The PROMPT trace showed cumulative waiting time climbing to 2365s without the
+#: gate firing because ``classify_stuck`` never returned STUCK while the
+#: corroborator reported an OS_DESCENDANT_ONLY_STALE_PROGRESS (or any stale
+#: alive_by). The stuck-job sub-ceiling is a SHORTER, ORTHOGONAL ceiling that
+#: fires well before the full cumulative ceiling when the child is alive but
+#: not producing fresh evidence. The 600s default is half the cumulative ceiling
+#: and matches the typical "I would have noticed if the agent was alive" run
+#: budget. Set to None to disable the sub-ceiling (legacy behavior).
+STUCK_JOB_SUB_CEILING_SECONDS: float = 600.0
+
 #: Default STRICTLY_STUCK ceiling: orthogonal to ``no_progress_quiet_seconds``,
 #: this fires ``WatchdogFireReason.STRICTLY_STUCK`` when the corroborator reports
 #: a stuck-but-alive state (``alive_by`` in

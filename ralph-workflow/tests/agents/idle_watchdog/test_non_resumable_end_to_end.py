@@ -115,6 +115,14 @@ def _make_watchdog_for_waiting_fire() -> tuple[IdleWatchdog, FakeClock]:
         no_progress_quiet_seconds=None,
         activity_evidence_ttl_seconds=180.0,
         max_waiting_on_child_seconds=15.0,
+        # Disable the stuck-job sub-ceiling: this test file uses a
+        # small cumulative ceiling (15s) for fast in-memory cycles.
+        # The sub-ceiling default (600s) would fail the
+        # ``<= max_waiting_on_child_seconds`` validator. The tests
+        # in this file exercise the standard CHILDREN_PERSIST_TOO_LONG
+        # path; the dedicated sub-ceiling tests live in
+        # ``tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py``.
+        stuck_job_sub_ceiling_seconds=None,
         suspect_waiting_on_child_seconds=5.0,
         max_waiting_on_child_no_progress_seconds=None,
         os_descendant_only_ceiling_seconds=None,

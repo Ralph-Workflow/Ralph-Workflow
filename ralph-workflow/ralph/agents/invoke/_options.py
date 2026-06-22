@@ -10,6 +10,7 @@ from loguru import logger
 from ralph.agents.idle_watchdog import TimeoutPolicy, WaitingStatusListener
 from ralph.agents.invoke._invoke_options import _INVOKE_OPTS_UNSET
 from ralph.agents.invoke._types import InvokeOptions
+from ralph.timeout_defaults import STUCK_JOB_SUB_CEILING_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -267,6 +268,21 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
         cpu_idle_seconds=_get_os_descendant_field(opts.cpu_idle_seconds, _base.cpu_idle_seconds),
         log_growth_seconds=_get_os_descendant_field(
             opts.log_growth_seconds, _base.log_growth_seconds
+        ),
+        # The stuck-job sub-ceiling must satisfy the
+        # ``<= max_waiting_on_child_seconds`` validator. Disable the
+        # sub-ceiling when the effective ceiling is too small to fit
+        # the default sub-ceiling value (e.g. tests with a small
+        # ``max_waiting_on_child_seconds``). Production callers with
+        # a normal ``max_waiting_on_child_seconds`` (1800s default)
+        # get the 600s sub-ceiling default.
+        stuck_job_sub_ceiling_seconds=(
+            STUCK_JOB_SUB_CEILING_SECONDS
+            if (
+                _effective_max is not None
+                and _effective_max >= STUCK_JOB_SUB_CEILING_SECONDS
+            )
+            else None
         ),
     )
 

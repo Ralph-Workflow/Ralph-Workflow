@@ -580,3 +580,143 @@ async def test_subprocess_executor_emits_subagent_progress_via_router(
         "SubprocessAgentExecutor -> ActivityRouter MUST also surface"
         f" the canonical TOOL_USE event; events={events}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Provider-parameterised SUBAGENT_PROGRESS coverage
+# ---------------------------------------------------------------------------
+# The prompt's "ALL supported agents" requirement means that every
+# ``ActivityProvider`` value MUST route a tool_use line through the
+# shared ``ParserTemplateBase.emit_subagent_activity`` hook so the
+# watchdog's per-task subagent sink sees per-tool evidence and the
+# operator-visible transcript shows a ``SUBAGENT_PROGRESS`` event.
+#
+# The test parametrizes over the 8 supported providers
+# (CLAUDE / CLAUDE_INTERACTIVE / CODEX / OPENCODE / GEMINI / PI /
+# AGY / GENERIC) and drives ONE representative tool_use line per
+# provider through ``ActivityRouter.push_raw_line``. Each case MUST
+# produce at least one ``SUBAGENT_PROGRESS`` event whose content
+# starts with ``tool_use:``. If a provider's parser does not route
+# through ``emit_subagent_activity``, this test fails with a clear
+# per-provider assertion message identifying the regression.
+
+
+# Per-provider representative tool_use lines. Each line is a
+# transport-shape that the canonical parser for the provider
+# recognizes as a tool_use. The shape mirrors the JSON envelope each
+# transport emits on stdout. ClaudeInteractiveParser uses the
+# interactive-transcript convention ``claude tool: <NAME>``
+# (NOT NDJSON). GenericParser uses the plain-text convention
+# ``[plain] tool: <NAME>`` for non-JSON tool lines.
+_PROVIDER_TOOL_USE_LINES: dict[ActivityProvider, str] = {
+    ActivityProvider.CLAUDE: json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "name": "Bash",
+                "input": {"command": "ls"},
+            },
+        }
+    ),
+    ActivityProvider.CLAUDE_INTERACTIVE: "claude tool: Read\n",
+    ActivityProvider.CODEX: json.dumps(
+        {
+            "type": "tool_use",
+            "name": "exec",
+            "call_id": "call_1",
+            "arguments": {"cmd": "pwd"},
+        }
+    ),
+    ActivityProvider.OPENCODE: json.dumps(
+        {
+            "type": "tool_use",
+            "name": "bash",
+            "input": {"command": "echo hi"},
+        }
+    ),
+    ActivityProvider.GEMINI: json.dumps(
+        {
+            "type": "tool_use",
+            "name": "run_command",
+            "args": {"command": "uptime"},
+        }
+    ),
+    ActivityProvider.PI: json.dumps(
+        {
+            "type": "tool_use",
+            "name": "edit",
+            "input": {"path": "x.txt", "old": "a", "new": "b"},
+        }
+    ),
+    ActivityProvider.AGY: json.dumps(
+        {
+            "type": "tool_use",
+            "name": "shell",
+            "input": {"cmd": "date"},
+        }
+    ),
+    ActivityProvider.GENERIC: "[plain] tool: bash\n",
+}
+
+
+@pytest.mark.parametrize(
+    "provider",
+    list(_PROVIDER_TOOL_USE_LINES.keys()),
+    ids=lambda p: p.value,
+)
+def test_subagent_progress_event_for_every_provider(provider: ActivityProvider) -> None:
+    """Every ActivityProvider MUST emit SUBAGENT_PROGRESS on a tool_use line.
+
+    The prompt's "ALL supported agents" requirement means the
+    operator-visible transcript shows a ``SUBAGENT_PROGRESS`` event
+    for tool_use lines across every provider whose parser routes
+    through ``ParserTemplateBase.emit_subagent_activity`` (the
+    shared hook at ``ralph/agents/parsers/_template.py:225``).
+
+    For each provider:
+      * Drive the provider-specific representative tool_use line
+        through ``ActivityRouter.push_raw_line``.
+      * Assert at least one ``SUBAGENT_PROGRESS`` event lands on the
+        ``on_event`` callback.
+      * Assert the event content starts with ``tool_use:`` (the
+        sanitized prefix used by the shared hook).
+
+    If a provider's parser does NOT route through
+    ``emit_subagent_activity``, this test fails with a clear
+    per-provider assertion message identifying the regression --
+    the executor can see exactly which provider's plumbing is
+    broken and which parser file needs the hook added.
+    """
+    events: list[tuple[str, ActivityEventKind, str | None, str | None]] = []
+
+    def _on_event(
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        raw_ref: str | None,
+        metadata: dict[str, object],
+    ) -> None:
+        events.append((unit_id, kind, content, raw_ref))
+
+    router = ActivityRouter(on_event=_on_event)
+    raw_line = _PROVIDER_TOOL_USE_LINES[provider]
+    router.push_raw_line("u", raw_line, provider=provider)
+
+    progress_events = [
+        e for e in events if e[1] is ActivityEventKind.SUBAGENT_PROGRESS
+    ]
+    assert progress_events, (
+        f"provider={provider.value!r} MUST emit SUBAGENT_PROGRESS on a"
+        f" tool_use line (the parser for this provider must route"
+        f" through ParserTemplateBase.emit_subagent_activity)."
+        f" events={events}; raw_line={raw_line!r}"
+    )
+    tool_use_progress = [
+        e for e in progress_events if (e[2] or "").startswith("tool_use:")
+    ]
+    assert tool_use_progress, (
+        f"provider={provider.value!r} SUBAGENT_PROGRESS events MUST"
+        f" carry a 'tool_use:' prefix in content (sanitized summary"
+        f" from the shared hook). progress_events={progress_events}"
+    )

@@ -855,6 +855,19 @@ class FailureClassifier:
         type_name = type(exc).__name__
         if type_name == "AgentInactivityTimeoutError":
             return FailureCategory.AGENT, True, False
+        # OpenCodeResumableExitError is a subclass of AgentInvocationError
+        # raised when an agent session exits without completion evidence
+        # (no artifact, no declare_complete). It MUST be classified as
+        # AGENT so the recovery controller's resume path is engaged and
+        # the next attempt continues the prior session instead of
+        # starting fresh. The mapping is checked BEFORE
+        # AgentInvocationError because the more specific name should
+        # win over the broader class branch. This kills the prompt's
+        # "Ambiguous failure classification ... OpenCodeResumableExitError
+        # [flagged_for_review=true]" warning -- the classifier no
+        # longer falls through to AMBIGUOUS for this exit signature.
+        if type_name == "OpenCodeResumableExitError":
+            return FailureCategory.AGENT, True, False
         if type_name == "AgentInvocationError":
             return self._classify_agent_invocation_error(
                 raw_message,

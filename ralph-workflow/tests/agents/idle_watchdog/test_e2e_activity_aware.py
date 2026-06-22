@@ -58,6 +58,14 @@ def _make_policy(activity_ttl: float | None = 30.0) -> TimeoutPolicy:
         idle_timeout_seconds=_IDE_TIMEOUT,
         drain_window_seconds=_DRAIN,
         max_waiting_on_child_seconds=_MAX_WAITING,
+        # Disable the stuck-job sub-ceiling: this test file uses a
+        # small cumulative ceiling (_MAX_WAITING) for fast in-memory
+        # cycles. The sub-ceiling default (600s) would fail the
+        # ``<= max_waiting_on_child_seconds`` validator. The tests
+        # in this file do not exercise the sub-ceiling path; the
+        # dedicated tests live in
+        # ``tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py``.
+        stuck_job_sub_ceiling_seconds=None,
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=activity_ttl,

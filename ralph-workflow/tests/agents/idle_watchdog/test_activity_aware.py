@@ -59,6 +59,11 @@ def _make_policy(
         "max_waiting_on_child_no_progress_seconds": None,
         "activity_evidence_ttl_seconds": activity_ttl,
         "os_descendant_only_ceiling_seconds": None,
+        # Disable the stuck-job sub-ceiling so this test file can use
+        # a small ``max_waiting_on_child_seconds`` (10s) for fast
+        # in-memory waiting-branch cycles without tripping the new
+        # sub-ceiling default (600s).
+        "stuck_job_sub_ceiling_seconds": None,
         # Disable the SILENT_SUBAGENT diagnostic by default so this
         # file exercises the activity-aware fire path (NO_OUTPUT_DEADLINE
         # etc.) rather than the SILENT_SUBAGENT classifier branch.

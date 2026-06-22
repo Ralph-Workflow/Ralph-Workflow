@@ -30,15 +30,19 @@ import io
 import pytest
 from loguru import logger
 
+from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
+    WaitingStatusEvent,
+    WaitingStatusKind,
     WatchdogFireReason,
     WatchdogVerdict,
 )
 from ralph.agents.idle_watchdog._stuck_classifier import StuckKind
 from ralph.agents.idle_watchdog.idle_watchdog import CorroborationSnapshot
 from ralph.agents.timeout_clock import FakeClock
+from ralph.process.child_liveness import AliveBy
 
 
 @pytest.fixture
@@ -183,11 +187,22 @@ def test_gate_fire_throttle_uses_configured_window(
 
 
 def test_gate_fire_throttle_is_per_key() -> None:
-    """Different (fire_reason, deferred_kind) pairs MUST be tracked
-    independently so a SILENT_SUBAGENT emission does not suppress a
-    LOADING or WAITING_ON_CHILD emission for the same fire_reason.
+    """The COARSE single-key throttle caps emissions at most one DEBUG
+    record per ``watchdog_log_throttle_seconds`` per ``fire_reason``
+    regardless of how the ``deferred_kind`` cycles.
 
-    Verifies the throttle key is the tuple, not the fire_reason alone.
+    Verifies the COARSE throttle is keyed on ``fire_reason.value``
+    alone, NOT the tuple. The per-tuple key is consulted ONLY when
+    the coarse throttle permits a log emission.
+
+    The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949``
+    even after the per-(fire_reason, deferred_kind) throttle was
+    added, because the deferred_kind cycles (SILENT_SUBAGENT ->
+    LOADING -> SILENT_SUBAGENT) and the per-tuple throttle key
+    CHANGED on each cycle so the per-tuple throttle MISSED. The
+    coarse single-key throttle solves this by keying on
+    ``fire_reason.value`` alone, capping emissions to one DEBUG
+    record per throttle window per fire_reason.
     """
     watchdog, clock = _make_watchdog(throttle_seconds=30.0)
     call_log: list[StuckKind] = []
@@ -232,19 +247,160 @@ def test_gate_fire_throttle_is_per_key() -> None:
         )
         == WatchdogVerdict.CONTINUE
     )
-    # Both transitions MUST have logged because the throttle key
-    # is the tuple (fire_reason, deferred_kind). The helper
-    # ``_maybe_log_deferred`` consults the per-key timestamp map
-    # and emits when the key has never been logged. Since both keys
-    # are unseen, both transitions emit.
-    assert hasattr(watchdog, "_last_deferred_log_at"), (
-        "IdleWatchdog MUST expose _last_deferred_log_at for per-key"
-        " log throttling"
+    # Both transitions MUST route through the coarse throttle (the
+    # kind label is preserved on ``_last_deferred_kind`` so
+    # operators can still see WHICH kind was deferred; the throttle
+    # is on the LOG emission, not on the kind tracking).
+    assert hasattr(watchdog, "_last_any_deferred_log_at"), (
+        "IdleWatchdog MUST expose _last_any_deferred_log_at for the"
+        " coarse single-key throttle"
     )
-    log_map = watchdog._last_deferred_log_at
-    assert (fire_reason.value, StuckKind.SILENT_SUBAGENT.value) in log_map, (
-        f"SILENT_SUBAGENT key missing from throttle map; keys={list(log_map)}"
+    coarse_map = watchdog._last_any_deferred_log_at
+    assert fire_reason.value in coarse_map, (
+        f"fire_reason key missing from coarse throttle map;"
+        f" keys={list(coarse_map)}"
     )
-    assert (fire_reason.value, StuckKind.LOADING.value) in log_map, (
-        f"LOADING key missing from throttle map; keys={list(log_map)}"
+    # The CURRENT kind label is preserved on the watchdog's
+    # ``_last_deferred_kind`` field -- the operator can still see
+    # which kind was deferred even when the coarse throttle
+    # suppressed the log emission.
+    assert watchdog._last_deferred_kind == StuckKind.LOADING, (
+        f"expected _last_deferred_kind=LOADING (the most recent);"
+        f" got {watchdog._last_deferred_kind!r}"
     )
+
+
+def test_coarse_single_key_throttle_caps_emissions_across_kind_cycles(
+    captured_debug_records: tuple[io.StringIO, list[str]],
+) -> None:
+    """1000 calls cycling SILENT_SUBAGENT <-> LOADING MUST emit at most 2 DEBUG records.
+
+    The PROMPT log spam regression: drive ``_gate_fire`` 1000 times
+    cycling between SILENT_SUBAGENT and LOADING (the typical
+    deferred_kind cycle during a long-lived waiting run) inside a
+    single throttle window; assert the captured DEBUG records is at
+    most 2 (one initial transition + one refresh). Pre-fix the count
+    is ~500 because the per-tuple throttle key changes every call.
+    Post-fix the coarse throttle caps emissions to <= 2.
+    """
+    _buf, records = captured_debug_records
+    watchdog, clock = _make_watchdog(throttle_seconds=30.0)
+    call_log: list[StuckKind] = []
+
+    def _stuck_now(
+        *,
+        now: float,
+        idle_elapsed: float,
+        corroboration: CorroborationSnapshot | None = None,
+    ) -> StuckKind:
+        # Cycle SILENT_SUBAGENT <-> LOADING on every call so the
+        # per-tuple throttle key changes every time.
+        kind = call_log[0] if call_log else StuckKind.SILENT_SUBAGENT
+        return kind
+
+    _classify_attr = "_classify_stuck_now"
+    setattr(watchdog, _classify_attr, _stuck_now)
+    fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+    kinds = [StuckKind.SILENT_SUBAGENT, StuckKind.LOADING]
+    for i in range(1000):
+        call_log = [kinds[i % 2]]
+        watchdog._gate_fire(
+            fire_reason,
+            now=clock.monotonic(),
+            idle_elapsed=300.0,
+            corroboration=CorroborationSnapshot(),
+        )
+
+    matching = [
+        r
+        for r in records
+        if (
+            ("silent subagent" in r or "deferred fire" in r)
+            and "CHILDREN_PERSIST_TOO_LONG" in r
+        )
+    ]
+    assert len(matching) <= 2, (
+        f"coarse single-key throttle MUST cap emissions across"
+        f" kind-cycles; got {len(matching)} records for 1000 calls"
+        f" in the same throttle window. Records: {matching[:3]}"
+    )
+
+
+def test_scoped_child_active_appears_in_hard_stop_diag() -> None:
+    """Every HARD_STOP fire's diag dict MUST contain ``scoped_child_active``.
+
+    The PROMPT log showed ``scoped_child_active=?`` at the 3 consumer
+    sites (subscriber.py:114, _idle_stream_timeout_error.py:30,
+    _agent_inactivity_timeout_error.py:30). The root cause was the
+    producer site only setting the key when ``scoped_child_active``
+    was non-None in the corroborator snapshot; the
+    ``_build_corroboration_diag`` helper skipped the assignment
+    when the value was ``None`` and the consumer sites fell through
+    to the ``?`` fallback.
+
+    The fix: ``_build_corroboration_diag`` ALWAYS sets
+    ``scoped_child_active`` (defaulting to False when None) so the
+    3 consumer sites always see a concrete boolean.
+    """
+    # Capture emitted WaitingStatusEvents so we can inspect the
+    # diag dict from the HARD_STOP emission.
+    emitted: list[WaitingStatusEvent] = []
+
+    def _capture(event: WaitingStatusEvent) -> None:
+        emitted.append(event)
+
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=60.0,
+        no_output_at_start_seconds=30.0,
+        no_progress_quiet_seconds=None,
+        watchdog_log_throttle_seconds=30.0,
+        activity_evidence_ttl_seconds=180.0,
+        stuck_job_sub_ceiling_seconds=600.0,
+        max_waiting_on_child_seconds=1800.0,
+        max_waiting_on_child_no_progress_seconds=1800.0,
+    )
+    clock = FakeClock(start=0.0)
+    # Use a stale alive_by + scoped_child_active=True so the
+    # stuck_job_sub_ceiling will trip at 600s. The corroborator
+    # returns scoped_child_active=True, but the diagnostic
+    # MUST also include the value (after the fix).
+    watchdog = IdleWatchdog(
+        policy,
+        clock,
+        listener=_capture,
+        corroborator=lambda: CorroborationSnapshot(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            scoped_child_active=True,
+            oldest_child_seconds=200.0,
+        ),
+    )
+
+    watchdog.record_invocation_start()
+    clock.advance(201.0)
+    watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
+    clock.advance(600.0)
+    watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
+
+    # The HARD_STOP path (CHILDREN_PERSIST_TOO_LONG via the
+    # _handle_waiting_branch path) MUST have emitted with a diag
+    # dict that contains ``scoped_child_active`` (NOT the
+    # ``?`` fallback).
+    hard_stop_events = [
+        e for e in emitted if e.kind == WaitingStatusKind.HARD_STOP
+    ]
+    assert hard_stop_events, (
+        f"expected at least one HARD_STOP emission; got kinds="
+        f"{[e.kind for e in emitted]}"
+    )
+    for event in hard_stop_events:
+        diag = event.diagnostic or {}
+        assert "scoped_child_active" in diag, (
+            f"HARD_STOP diag dict MUST contain scoped_child_active key"
+            f" (no '?' fallback); got diag={diag!r}"
+        )
+        assert isinstance(diag["scoped_child_active"], bool), (
+            f"scoped_child_active MUST be a concrete boolean"
+            f" (True or False), not None; got"
+            f" {diag['scoped_child_active']!r}"
+        )

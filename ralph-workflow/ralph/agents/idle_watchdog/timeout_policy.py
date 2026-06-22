@@ -307,6 +307,25 @@ class TimeoutPolicy:
         WATCHDOG_SUBAGENT_PROGRESS_INTERVAL_SECONDS
     )
 
+    # Stuck-job sub-ceiling. When set, the watchdog fires
+    # ``CHILDREN_PERSIST_TOO_LONG`` when the cumulative ``WAITING_ON_CHILD``
+    # time exceeds this value AND the corroborator reports a STALE alive_by
+    # (``OS_DESCENDANT_ONLY_STALE_PROGRESS`` / ``CPU_IDLE_WHILE_ALIVE`` /
+    # ``LOG_STALE_WHILE_ALIVE`` / ``STALE_LABEL_ONLY``). This is a SHORTER,
+    # ORTHOGONAL ceiling that kills a "stuck-but-alive" job well before the
+    # full ``max_waiting_on_child_seconds`` cumulative ceiling fires. Pre-fix,
+    # the gate could climb to 2365s without firing because ``classify_stuck``
+    # never returned STUCK while the corroborator reported a stale alive_by
+    # (the OS-descendant / CPU-idle / log-stale overrides short-circuited the
+    # no-progress ceiling via ``max_waiting_on_child_no_progress_seconds``
+    # which is itself wider than this sub-ceiling). The 600s default is half
+    # the cumulative ceiling and tolerates the typical "I would have noticed
+    # if the agent was alive" run budget. When None, the sub-ceiling is
+    # disabled and the legacy ``max_waiting_on_child_no_progress_seconds``
+    # behavior is preserved. Must be > 0 and <= ``max_waiting_on_child_seconds``
+    # when set.
+    stuck_job_sub_ceiling_seconds: float | None = None
+
     def __post_init__(self) -> None:
         self._validate_idle_fields()
         self._validate_session_and_poll_fields()
@@ -325,6 +344,7 @@ class TimeoutPolicy:
         self._validate_no_progress_quiet_heartbeat_ceiling_seconds()
         self._validate_watchdog_log_throttle_seconds()
         self._validate_watchdog_subagent_progress_interval_seconds()
+        self._validate_stuck_job_sub_ceiling_seconds()
 
     def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
@@ -609,4 +629,25 @@ class TimeoutPolicy:
     def _validate_watchdog_subagent_progress_interval_seconds(self) -> None:
         if self.watchdog_subagent_progress_interval_seconds <= 0:
             msg = "watchdog_subagent_progress_interval_seconds must be positive"
+            raise ValueError(msg)
+
+    def _validate_stuck_job_sub_ceiling_seconds(self) -> None:
+        """Validate the stuck-job sub-ceiling for ``CHILDREN_PERSIST_TOO_LONG``.
+
+        When set, the sub-ceiling MUST be > 0 (zero or negative is
+        rejected) AND <= ``max_waiting_on_child_seconds`` (the sub-ceiling
+        is a SHORTER, ORTHOGONAL ceiling; if it were equal or longer it
+        would be redundant with the cumulative ceiling). When None, the
+        sub-ceiling is disabled and the legacy behavior is preserved.
+        """
+        if self.stuck_job_sub_ceiling_seconds is None:
+            return
+        if self.stuck_job_sub_ceiling_seconds <= 0:
+            msg = "stuck_job_sub_ceiling_seconds must be positive when set"
+            raise ValueError(msg)
+        if self.stuck_job_sub_ceiling_seconds > self.max_waiting_on_child_seconds:
+            msg = (
+                "stuck_job_sub_ceiling_seconds must be <="
+                " max_waiting_on_child_seconds"
+            )
             raise ValueError(msg)

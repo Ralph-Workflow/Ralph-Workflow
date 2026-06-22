@@ -590,6 +590,25 @@ class IdleWatchdog:
     _last_deferred_log_at: dict[tuple[str, str], float] = field(
         default_factory=dict, init=False
     )
+    # Coarse single-key log throttle map for ``_gate_fire``. The PROMPT log
+    # showed that ``_last_deferred_log_at`` (keyed on the tuple
+    # ``(fire_reason, deferred_kind)``) cycles to a fresh key when the
+    # ``deferred_kind`` transitions (e.g. SILENT_SUBAGENT -> LOADING ->
+    # SILENT_SUBAGENT) which causes the per-tuple throttle to MISS and
+    # re-emit a DEBUG record on every transition. This coarse map is keyed
+    # on ``fire_reason.value`` ALONE and caps emissions to one DEBUG
+    # record per ``watchdog_log_throttle_seconds`` per fire_reason,
+    # regardless of how the deferred_kind cycles. The fine-grained
+    # per-tuple throttle is still consulted FIRST so the kind label is
+    # preserved in the throttle map; the coarse throttle ONLY suppresses
+    # the duplicate emission when the per-tuple key has already been
+    # logged within the throttle window. Reset to empty in
+    # ``record_invocation_start`` so a new invocation starts with an
+    # empty map (the coarse throttle must NOT carry state across
+    # invocations).
+    _last_any_deferred_log_at: dict[str, float] = field(
+        default_factory=dict, init=False
+    )
     # Per-channel log throttle map for ``_handle_evidence_deferral``.
     # Mirrors ``_last_deferred_log_at`` (which throttles ``_gate_fire``
     # DEBUG spam) but keys on the active channel name (mcp_tool /
@@ -750,6 +769,7 @@ class IdleWatchdog:
         self._last_fire_reason = None
         self._last_deferred_kind = None
         self._last_deferred_log_at = {}
+        self._last_any_deferred_log_at = {}
         self._last_evidence_deferral_log_at = {}
         self._last_waiting_status_at = None
         self._suspicion_announced_for_run = False
@@ -1214,7 +1234,19 @@ class IdleWatchdog:
         if kind == StuckKind.SILENT_SUBAGENT:
             self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
             self._last_deferred_kind = kind
-            if self._maybe_log_deferred(fire_reason, kind, idle_elapsed, now):
+            # Coarse single-key throttle: caps emissions to one DEBUG
+            # record per ``watchdog_log_throttle_seconds`` per fire_reason
+            # regardless of how the deferred_kind cycles (SILENT_SUBAGENT
+            # -> LOADING -> SILENT_SUBAGENT was the prompt's spam loop).
+            # The per-tuple throttle (``_maybe_log_deferred``) is
+            # consulted FIRST so the kind label is preserved in the
+            # ``_last_deferred_log_at`` map; the coarse throttle ONLY
+            # suppresses the duplicate emission when the per-tuple key
+            # has already been logged within the throttle window.
+            coarse_allowed = self._maybe_log_any_deferred(fire_reason, now)
+            if coarse_allowed and self._maybe_log_deferred(
+                fire_reason, kind, idle_elapsed, now
+            ):
                 self._log.debug(
                     "idle watchdog: silent subagent (deferred) reason={} idle_elapsed={}s",
                     fire_reason,
@@ -1223,7 +1255,10 @@ class IdleWatchdog:
             return WatchdogVerdict.CONTINUE
         self._last_fire_reason = WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
         self._last_deferred_kind = kind
-        if self._maybe_log_deferred(fire_reason, kind, idle_elapsed, now):
+        coarse_allowed = self._maybe_log_any_deferred(fire_reason, now)
+        if coarse_allowed and self._maybe_log_deferred(
+            fire_reason, kind, idle_elapsed, now
+        ):
             self._log.debug(
                 "idle watchdog: deferred fire reason={} kind={} idle_elapsed={}s",
                 fire_reason,
@@ -1265,6 +1300,48 @@ class IdleWatchdog:
         throttle = self._config.watchdog_log_throttle_seconds
         if last is None or (now - last) >= throttle:
             self._last_deferred_log_at[key] = now
+            return True
+        return False
+
+    def _maybe_log_any_deferred(
+        self,
+        fire_reason: WatchdogFireReason,
+        now: float,
+    ) -> bool:
+        """Coarse single-key throttle for ``_gate_fire`` deferred emissions.
+
+        The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949``
+        even AFTER the per-(fire_reason, deferred_kind) throttle
+        (``_maybe_log_deferred``) was added, because the ``deferred_kind``
+        cycles (e.g. SILENT_SUBAGENT -> LOADING -> SILENT_SUBAGENT) and
+        the per-tuple throttle key changes between cycles -- the
+        per-tuple throttle MISSES the duplicate because the key is
+        new, but the duplicate emission IS still a duplicate from
+        the operator's perspective.
+
+        This helper is the COARSE single-key throttle: it caps
+        emissions to AT MOST one DEBUG record per
+        ``watchdog_log_throttle_seconds`` per ``fire_reason.value``
+        REGARDLESS of how the ``deferred_kind`` cycles. The per-tuple
+        throttle is consulted FIRST (by ``_gate_fire``) so the kind
+        label is preserved in ``_last_deferred_log_at``; this helper
+        only suppresses the duplicate emission when the per-tuple key
+        has already been logged within the throttle window.
+
+        Returns True when:
+          - the fire_reason key has never been logged, OR
+          - ``now - last_logged_at >= watchdog_log_throttle_seconds``.
+
+        Returns False when ``now - last_logged_at < throttle`` -- the
+        emission would be a duplicate of the most recent DEBUG
+        record for this fire_reason.
+
+        The map is updated on every call that returns True.
+        """
+        last = self._last_any_deferred_log_at.get(fire_reason.value)
+        throttle = self._config.watchdog_log_throttle_seconds
+        if last is None or (now - last) >= throttle:
+            self._last_any_deferred_log_at[fire_reason.value] = now
             return True
         return False
 
@@ -1633,6 +1710,13 @@ class IdleWatchdog:
             ),
             "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),
             "idle_elapsed": round(idle_elapsed, 1),
+            # Populate ``scoped_child_active`` so the 3 consumer
+            # sites never fall through to the ``?`` fallback.
+            "scoped_child_active": (
+                corroboration.scoped_child_active
+                if corroboration.scoped_child_active is not None
+                else False
+            ),
         }
         evidence_block, _ = self._build_evidence_summary_diag(now)
         for ev_key, ev_val in evidence_block.items():
@@ -1795,6 +1879,17 @@ class IdleWatchdog:
             "invocation_elapsed": round(self.invocation_elapsed_seconds, 1),
             "no_output_at_start_seconds": self._config.no_output_at_start_seconds,
             "last_activity_equals_started_at": True,
+            # Populate ``scoped_child_active`` from the live corroboration
+            # snapshot so the 3 consumer sites (subscriber.py:114,
+            # _idle_stream_timeout_error.py:30,
+            # _agent_inactivity_timeout_error.py:30) never fall through
+            # to the ``?`` fallback. Default False when the
+            # corroborator has no scoped child active.
+            "scoped_child_active": (
+                corroboration.scoped_child_active
+                if corroboration.scoped_child_active is not None
+                else False
+            ),
         }
         evidence_block, _ = self._build_evidence_summary_diag(now)
         for ev_key, ev_val in evidence_block.items():
@@ -2451,8 +2546,21 @@ class IdleWatchdog:
             )
         if current.oldest_child_seconds is not None:
             diag["oldest_child_seconds"] = current.oldest_child_seconds
-        if current.scoped_child_active is not None:
-            diag["scoped_child_active"] = current.scoped_child_active
+        # ALWAYS populate ``scoped_child_active`` (defaulting to False
+        # when the corroboration snapshot returns None). The PROMPT
+        # log showed the consumer sites (subscriber.py:114,
+        # _idle_stream_timeout_error.py:30,
+        # _agent_inactivity_timeout_error.py:30) falling through to
+        # the ``?`` fallback when the diag dict lacked the key --
+        # operators saw ``scoped_child_active=?`` instead of
+        # ``scoped_child_active=True/False``. Defaulting to False
+        # means the diagnostic is always concrete; a True value still
+        # requires the corroborator to report it.
+        diag["scoped_child_active"] = (
+            current.scoped_child_active
+            if current.scoped_child_active is not None
+            else False
+        )
         if current.scoped_child_count is not None:
             diag["scoped_child_count"] = current.scoped_child_count
         if (
@@ -2974,6 +3082,28 @@ class IdleWatchdog:
         ]
     )
 
+    # Stuck-but-alive ``AliveBy`` values for the ``stuck_job_sub_ceiling_seconds``
+    # sub-ceiling. This is a STRICT subset of ``_NON_PROGRESS_ALIVE_BY_VALUES``
+    # that EXCLUDES ``FRESH_HEARTBEAT_ONLY``: a productive heartbeat-only
+    # child is alive and may legitimately continue for the cumulative
+    # ``max_waiting_on_child_seconds`` ceiling (the ``no_progress_quiet_heartbeat_ceiling_seconds``
+    # knob is the dedicated detector for that case). The sub-ceiling is
+    # EXCLUSIVELY the stuck-but-alive detector: a child whose process tree
+    # entry or log file exists but is producing no progress, no heartbeat,
+    # and no CPU activity. The four stuck values map to the prompt's
+    # "2365s false negative" failure mode: the cumulative waiting time
+    # climbed past the 600s no-progress ceiling because ``classify_stuck``
+    # never returned STUCK while the corroborator reported one of these
+    # stale alive_by values.
+    _STUCK_ALIVE_BY_VALUES: frozenset[AliveBy] = frozenset(
+        {
+            AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            AliveBy.CPU_IDLE_WHILE_ALIVE,
+            AliveBy.LOG_STALE_WHILE_ALIVE,
+            AliveBy.STALE_LABEL_ONLY,
+        }
+    )
+
     def _effective_waiting_ceiling(
         self,
         corroboration: CorroborationSnapshot,
@@ -3043,7 +3173,7 @@ class IdleWatchdog:
             return eff, "os_descendant_only"
         return self._config.suspect_waiting_on_child_seconds, "standard"
 
-    def _handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + gate path
+    def _handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated reasons + gate path + stuck_job_sub_ceiling
         self,
         now: float,
         classify_quiet: Callable[[], AgentExecutionState],
@@ -3115,6 +3245,79 @@ class IdleWatchdog:
         effective_suspect, suspect_reason = self._compute_effective_suspect(
             alive_by, candidate_total
         )
+
+        # Stuck-job sub-ceiling (CHILDREN_PERSIST_TOO_LONG). When the
+        # cumulative waiting time has exceeded the configured sub-ceiling
+        # AND the corroborator reports a STALE alive_by (the child is
+        # alive in the OS but is not producing fresh progress / heartbeat
+        # evidence), the watchdog MUST fire CHILDREN_PERSIST_TOO_LONG.
+        # This is the analysis-feedback contract for the 2365s false
+        # negative: a stuck-but-alive subagent could push cumulative time
+        # well past the standard 600s ``max_waiting_on_child_no_progress_seconds``
+        # ceiling without ``classify_stuck`` ever returning STUCK because
+        # the corroborator was reporting ``OS_DESCENDANT_ONLY_STALE_PROGRESS``
+        # (or any stale alive_by value). The sub-ceiling short-circuits
+        # the longer wait so the orchestrator is freed well before the
+        # cumulative 1800s ceiling. The branch is checked BEFORE the
+        # ``candidate_total >= effective_ceiling`` block so a stuck job
+        # (sub-ceiling shorter than the standard ceiling) trips the
+        # sub-ceiling first. The branch is gated on the corroborator's
+        # stale alive_by so a productive live child (FRESH_PROGRESS /
+        # FRESH_HEARTBEAT_ONLY) is NOT killed by the sub-ceiling; only
+        # the stuck-but-alive pattern trips.
+        if (
+            self._config.stuck_job_sub_ceiling_seconds is not None
+            and current_corr.scoped_child_active
+            and current_corr.alive_by in self._STUCK_ALIVE_BY_VALUES
+            and candidate_total >= self._config.stuck_job_sub_ceiling_seconds
+        ):
+            gate_verdict = self._gate_fire(
+                WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+                now=now,
+                idle_elapsed=idle_elapsed,
+                corroboration=current_corr,
+            )
+            if gate_verdict == WatchdogVerdict.CONTINUE:
+                return WatchdogVerdict.CONTINUE
+            self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+            corr_diag_sj = self._build_corroboration_diag(current_corr)
+            corr_diag_sj["evidence"] = self._build_evidence_string(corr_diag_sj)
+            _ceiling_lbl_sj = self._effective_ceiling_label(current_corr, effective_ceiling)
+            diag_sj: dict[str, object] = {
+                "cumulative": round(candidate_total, 1),
+                "run_elapsed": round(current_run_elapsed, 1),
+                "idle_elapsed": round(idle_elapsed, 1),
+                "effective_ceiling": effective_ceiling,
+                "effective_ceiling_label": _ceiling_lbl_sj,
+                "stuck_job_sub_ceiling_seconds": self._config.stuck_job_sub_ceiling_seconds,
+            }
+            if effective_suspect is not None:
+                diag_sj["suspect_threshold"] = effective_suspect
+            for key, value in corr_diag_sj.items():
+                if key not in diag_sj:
+                    diag_sj[key] = value
+            evidence_block_sj, _freshest_age_sj = self._build_evidence_summary_diag(now)
+            for ev_key, ev_value in evidence_block_sj.items():
+                if ev_key not in diag_sj:
+                    diag_sj[ev_key] = ev_value
+            self._emit(
+                WaitingStatusKind.HARD_STOP,
+                current_run_seconds=current_run_elapsed,
+                idle_elapsed=idle_elapsed,
+                ceiling_seconds=self._config.stuck_job_sub_ceiling_seconds,
+                suspect_threshold_seconds=effective_suspect,
+                diagnostic=cast("dict[str, str | int | float | bool | list[object]]", diag_sj),
+            )
+            self._log.warning(
+                "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s"
+                " stuck_job_sub_ceiling={}s alive_by={}",
+                WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
+                round(idle_elapsed, 1),
+                round(candidate_total, 1),
+                self._config.stuck_job_sub_ceiling_seconds,
+                alive_by,
+            )
+            return WatchdogVerdict.FIRE
 
         if candidate_total >= effective_ceiling:
             gate_verdict = self._gate_fire(
