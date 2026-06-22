@@ -1300,6 +1300,43 @@ class IdleWatchdog:
             < self._config.no_progress_quiet_minimum_invocation_seconds
         ):
             return False
+        # Heartbeat-only ceiling: a heartbeat-only subagent
+        # (``AliveBy.FRESH_HEARTBEAT_ONLY`` -- alive per the corroborator
+        # but no first-party progress) bypasses BOTH NO_PROGRESS_QUIET
+        # (because ``alive_by is not None``) AND STRICTLY_STUCK
+        # (because ``alive_by`` is FRESH so it is not in the strictly-stuck
+        # stale set) so the watchdog would defer indefinitely until the
+        # cumulative ``CHILDREN_PERSIST_TOO_LONG`` ceiling (default
+        # 600s). Without this branch a heartbeat-only subagent that
+        # emits heartbeats but no real work runs for the full
+        # cumulative ceiling -- too late. The dedicated heartbeat-only
+        # ceiling (default 240s) trips NO_PROGRESS_QUIET when the
+        # agent has been alive for at least
+        # ``no_progress_quiet_heartbeat_ceiling_seconds``. This
+        # branch MUST be checked BEFORE the ``alive_by is not None``
+        # short-circuit below so the heartbeat-only ceiling is
+        # consulted before the wt-012 gate refinement suppresses the
+        # evaluator. ``None`` disables the heartbeat-only ceiling
+        # (operators can opt out via ``[general]`` config).
+        if (
+            corroboration.alive_by == AliveBy.FRESH_HEARTBEAT_ONLY
+            and self._config.no_progress_quiet_heartbeat_ceiling_seconds is not None
+            and self.invocation_elapsed_seconds
+            >= self._config.no_progress_quiet_heartbeat_ceiling_seconds
+            and (
+                self._config.no_progress_quiet_minimum_invocation_seconds is None
+                or self.invocation_elapsed_seconds
+                >= self._config.no_progress_quiet_minimum_invocation_seconds
+            )
+        ):
+            # Heartbeat-only branch tripped: a heartbeat-only subagent
+            # (``AliveBy.FRESH_HEARTBEAT_ONLY`` -- alive per the
+            # corroborator but no first-party progress) has been alive
+            # past the heartbeat-only ceiling AND the dumb-kill floor
+            # has elapsed. Without this branch the watchdog would
+            # defer indefinitely until the cumulative
+            # ``CHILDREN_PERSIST_TOO_LONG`` ceiling (default 600s).
+            return True
         # Defer the fire when the corroborator confirms ANY alive_by signal —
         # the child is alive (per AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
         # CPU_IDLE_WHILE_ALIVE, LOG_STALE_WHILE_ALIVE, FRESH_HEARTBEAT_ONLY, or

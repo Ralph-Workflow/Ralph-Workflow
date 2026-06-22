@@ -13,7 +13,11 @@ from ralph.agents.idle_watchdog import PostExitVerdict, PostExitWatchdog, Timeou
 from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityTimeoutError
 from ralph.agents.invoke._direct_mcp_recovery import summarize_retry_failure_evidence
 from ralph.agents.invoke._errors import AgentInvocationError, OpenCodeResumableExitError
-from ralph.agents.invoke._session import _bounded_output_lines, extract_transport_session_id
+from ralph.agents.invoke._session import (
+    _bounded_output_lines,
+    extract_transport_session_id,
+    extract_transport_session_id_with_visible_tui,
+)
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.mcp.protocol.env import MCP_RUN_ID_ENV
 from ralph.pipeline.retryable_failure import retryable_agent_failure_reason
@@ -302,6 +306,25 @@ def _check_process_result(
 
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             session_id = opts.captured_session_id or extract_transport_session_id(bounded_output)
+            if session_id is None and bounded_output:
+                # PTY fallback: the bounded_output window may have closed
+                # BEFORE the live captured_session_id was read on the live
+                # stream, and the legacy extractor returns None for lines
+                # that contain ANSI escape codes (the visible-TUI pattern).
+                # Iterate the bounded lines and consult the per-line
+                # PTY-aware extractor so a session id carried in a TUI
+                # banner / status line (e.g. ``\x1b[32mClaude session
+                # ready. Session ID: abc123\x1b[0m``) is recovered. The
+                # legacy extractor handles plain text + JSON envelopes;
+                # the per-line PTY extractor handles ANSI-wrapped text.
+                # Use the first non-None result and stop searching. Do
+                # NOT widen the OpenCodeResumableExitError signature; the
+                # ``session_id`` parameter accepts ``str-or-None``.
+                for line in bounded_output:
+                    candidate = extract_transport_session_id_with_visible_tui(line)
+                    if candidate is not None:
+                        session_id = candidate
+                        break
             raise OpenCodeResumableExitError(agent_name, session_id=session_id)
     elif (
         opts is not None

@@ -78,6 +78,7 @@ def build_invoke_options_from_config(
         max_waiting_on_child_no_progress_seconds=general_config.agent_idle_no_progress_waiting_on_child_seconds,
         no_progress_quiet_seconds=general_config.agent_no_progress_quiet_seconds,
         no_progress_quiet_minimum_invocation_seconds=general_config.agent_no_progress_quiet_minimum_invocation_seconds,
+        no_progress_quiet_heartbeat_ceiling_seconds=general_config.agent_no_progress_quiet_heartbeat_ceiling_seconds,
         post_tool_result_progression_seconds=general_config.agent_post_tool_result_progression_seconds,
         repeated_error_consecutive_threshold=general_config.agent_repeated_error_consecutive_threshold,
         repeated_error_window_count=general_config.agent_repeated_error_window_count,
@@ -216,6 +217,10 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.no_progress_quiet_minimum_invocation_seconds
             if opts.no_progress_quiet_minimum_invocation_seconds is not None
             else _base.no_progress_quiet_minimum_invocation_seconds
+        ),
+        no_progress_quiet_heartbeat_ceiling_seconds=_get_os_descendant_field(
+            opts.no_progress_quiet_heartbeat_ceiling_seconds,
+            _base.no_progress_quiet_heartbeat_ceiling_seconds,
         ),
         repeated_error_consecutive_threshold=(
             opts.repeated_error_consecutive_threshold

@@ -19,6 +19,7 @@ from ralph.timeout_defaults import (
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
     NO_OUTPUT_AT_START_SECONDS,
+    NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS,
     NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS,
     NO_PROGRESS_QUIET_SECONDS,
     NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS,
@@ -261,6 +262,25 @@ class TimeoutPolicy:
     no_progress_quiet_strictly_stuck_seconds: float | None = (
         NO_PROGRESS_QUIET_STRICTLY_STUCK_SECONDS
     )
+    # Heartbeat-only ceiling: fires ``NO_PROGRESS_QUIET`` when a
+    # heartbeat-only subagent (``AliveBy.FRESH_HEARTBEAT_ONLY`` -- alive
+    # per the corroborator but no first-party progress) has been alive for
+    # this many seconds. Without this ceiling, a heartbeat-only subagent
+    # would bypass ``NO_PROGRESS_QUIET`` (which requires ``alive_by is
+    # None``) AND ``STRICTLY_STUCK`` (which requires a stale alive_by) and
+    # only trip the cumulative 600s ``CHILDREN_PERSIST_TOO_LONG`` ceiling
+    # -- too late for a heartbeat-only subagent that emits heartbeats but
+    # no real work. Must be > 0 when set and <=
+    # ``no_progress_quiet_seconds`` when both are set (the heartbeat-only
+    # ceiling fires BEFORE the dumb-kill ``NO_PROGRESS_QUIET`` ceiling).
+    # When ``None``, the heartbeat-only ceiling is disabled and the
+    # watchdog falls back to the cumulative
+    # ``CHILDREN_PERSIST_TOO_LONG`` ceiling. The 240s default tolerates
+    # long-running legitimate work that emits heartbeats but no first-party
+    # progress (e.g. multi-step exploration, dispatching subagents).
+    no_progress_quiet_heartbeat_ceiling_seconds: float | None = (
+        NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS
+    )
     # Per-(fire_reason, deferred_kind) log throttle in seconds for the
     # ``_gate_fire`` DEBUG emissions. The PROMPT log showed ~10 DEBUG
     # records/sec while a fire was deferred (SILENT_SUBAGENT or generic
@@ -292,6 +312,7 @@ class TimeoutPolicy:
         self._validate_subagent_output_poll_interval()
         self._validate_os_descendant_only_fields()
         self._validate_strictly_stuck_seconds()
+        self._validate_no_progress_quiet_heartbeat_ceiling_seconds()
         self._validate_watchdog_log_throttle_seconds()
         self._validate_watchdog_subagent_progress_interval_seconds()
 
@@ -543,6 +564,13 @@ class TimeoutPolicy:
                 "no_progress_quiet_strictly_stuck_seconds must be <="
                 " max_waiting_on_child_seconds"
             )
+            raise ValueError(msg)
+
+    def _validate_no_progress_quiet_heartbeat_ceiling_seconds(self) -> None:
+        if self.no_progress_quiet_heartbeat_ceiling_seconds is None:
+            return
+        if self.no_progress_quiet_heartbeat_ceiling_seconds <= 0:
+            msg = "no_progress_quiet_heartbeat_ceiling_seconds must be positive when set"
             raise ValueError(msg)
 
     def _validate_watchdog_log_throttle_seconds(self) -> None:

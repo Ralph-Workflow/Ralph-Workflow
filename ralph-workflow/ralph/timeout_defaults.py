@@ -249,6 +249,24 @@ LOG_GROWTH_SECONDS: float | None = 30.0
 #: and stdout has been idle. None disables it.
 NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
 
+#: Default heartbeat-only ceiling: fires ``NO_PROGRESS_QUIET`` when a
+#: heartbeat-only subagent (``AliveBy.FRESH_HEARTBEAT_ONLY`` -- alive per
+#: the corroborator but no first-party progress) has been alive for this
+#: many seconds. Without this ceiling, a heartbeat-only subagent would
+#: bypass ``NO_PROGRESS_QUIET`` (which requires ``alive_by is None``)
+#: AND ``STRICTLY_STUCK`` (which requires a stale alive_by) and only
+#: trip the cumulative 600s ``CHILDREN_PERSIST_TOO_LONG`` ceiling --
+#: too late for a heartbeat-only subagent that emits heartbeats but no
+#: real work. The 240s default is conservative (matches the
+#: ``NO_PROGRESS_QUIET_SECONDS`` default of 120s scaled by 2) so
+#: long-running legitimate work that emits heartbeats is not killed.
+#: Must be > 0 when set and <= ``NO_PROGRESS_QUIET_SECONDS`` when both
+#: are set (the heartbeat-only ceiling fires BEFORE the dumb-kill
+#: ``NO_PROGRESS_QUIET`` ceiling). When ``None``, the heartbeat-only
+#: ceiling is disabled and the watchdog falls back to the cumulative
+#: ``CHILDREN_PERSIST_TOO_LONG`` ceiling.
+NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS: float | None = 240.0
+
 #: Default dumb-kill floor: NO_PROGRESS_QUIET cannot fire within the first N seconds
 #: of an agent run. This prevents the watchdog from killing a recently-launched
 #: agent that is doing real thinking work (planning, exploration, dispatching

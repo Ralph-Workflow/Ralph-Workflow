@@ -24,6 +24,7 @@ from ralph.timeout_defaults import (
     MAX_SESSION_SECONDS,
     MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
     MAX_WAITING_ON_CHILD_SECONDS,
+    NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS,
     NO_PROGRESS_QUIET_MINIMUM_INVOCATION_SECONDS,
     NO_PROGRESS_QUIET_SECONDS,
     OS_DESCENDANT_ONLY_CEILING_SECONDS,
@@ -268,6 +269,23 @@ class GeneralConfig(RalphBaseModel):
             " recommended). SESSION_CEILING_EXCEEDED is unaffected (operator-set"
             " hard cap). The default of 120.0s matches the"
             " OS_DESCENDANT_ONLY_CEILING default."
+        ),
+    )
+    agent_no_progress_quiet_heartbeat_ceiling_seconds: float | None = Field(
+        default=NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS,
+        gt=0.0,
+        description=(
+            "Heartbeat-only ceiling: fires NO_PROGRESS_QUIET when a"
+            " heartbeat-only subagent (AliveBy.FRESH_HEARTBEAT_ONLY -- alive"
+            " per the corroborator but no first-party progress) has been alive"
+            " for this many seconds. Without this ceiling, a heartbeat-only"
+            " subagent would bypass NO_PROGRESS_QUIET (which requires alive_by"
+            " is None) AND STRICTLY_STUCK (which requires a stale alive_by) and"
+            " only trip the cumulative 600s CHILDREN_PERSIST_TOO_LONG ceiling"
+            " -- too late for a heartbeat-only subagent that emits heartbeats"
+            " but no real work. Must be > 0 when set. When None, the"
+            " heartbeat-only ceiling is disabled and the watchdog falls back to"
+            " the cumulative CHILDREN_PERSIST_TOO_LONG ceiling."
         ),
     )
     agent_child_progress_ttl_seconds: float = Field(
