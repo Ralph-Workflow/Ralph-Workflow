@@ -178,6 +178,8 @@ def test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling(
         "declare_complete",
     ):
         assert tool in rendered, f"missing {tool} in rendered {template_name}"
+    assert "write_file" not in rendered
+    assert ".agent/tmp/" not in rendered
 
     # The SESSION CAPABILITIES block must list the key capabilities.
     for cap in ("process.exec_bounded", "workspace.read", "git.diff_read", "artifact.submit"):

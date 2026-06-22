@@ -29,6 +29,7 @@ from ralph.mcp.artifacts.plan import (
 from ralph.mcp.tools.names import (
     DECLARE_COMPLETE_TOOL,
     SUBMIT_ARTIFACT_TOOL,
+    WRITE_FILE_TOOL,
     claude_tool_name,
     claude_tool_name_prefix,
     opencode_tool_name,
@@ -578,6 +579,7 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
             "base_prompt": base_prompt,
             "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{SUBMIT_ARTIFACT_TOOL}`",
             "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
+            "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
         },
         context.partials,
     )

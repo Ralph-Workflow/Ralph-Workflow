@@ -73,6 +73,13 @@ def test_submit_artifact_description_references_pydantic_and_byte_cap() -> None:
     assert "4 MB" in desc, f"SUBMIT_ARTIFACT description missing '4 MB': {desc[:200]}"
 
 
+def test_submit_artifact_description_plan_example_is_full_raw_plan_payload() -> None:
+    descs = _descs()
+    desc = descs["ralph_submit_artifact"]
+    assert "skills_mcp" in desc
+    assert "verification_strategy" in desc
+
+
 def test_read_only_tool_descriptions_mark_themselves_as_noop_or_draft() -> None:
     """GET_PLAN_DRAFT and DISCARD_PLAN_DRAFT descriptions each contain 'noop' or
     'draft' so a cheaper model can identify them as read-only/noop tools

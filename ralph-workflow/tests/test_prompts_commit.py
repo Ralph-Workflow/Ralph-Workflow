@@ -98,8 +98,7 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "current pending work" in prompt
     assert "current worktree vs the last commit" in prompt
     assert "Do not analyze anything" in prompt
-    assert "Immediately call `ralph_submit_artifact`" in prompt
-    assert 'artifact_type="commit_message"' in prompt
+    assert "call `ralph_submit_artifact` when it is available" in prompt
     assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
     assert (
         '{"type":"commit","subject":"type(scope): description",'
@@ -108,7 +107,9 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "json string" in prompt.lower()
     assert '{"type":"skip","reason":"Reason why no commit is needed"}' in prompt
     assert "internal_ignore, not_task_related, sensitive, deferred" in prompt
-    assert "The only tool you may call" in prompt
+    assert "The only state-changing tools you may call" in prompt
+    assert "declare_complete" in prompt
+    assert "write_file" in prompt
     assert "Do not call bash" in prompt
     # Architectural fix (2026-06-14): the unavailable-tool fallback
     # guidance lives in the SHARED artifact submission macro (step 6),

@@ -735,6 +735,23 @@ def test_planning_templates_require_developer_executable_plans_not_meta_plans() 
     assert "PLAN_PATH" not in planning_edit
 
 
+def test_planning_fallback_requires_skills_mcp_in_required_shapes() -> None:
+    planning_fallback = (TEMPLATES_ROOT / "planning_fallback.jinja").read_text(encoding="utf-8")
+
+    assert "skills_mcp" in planning_fallback
+    assert "stage `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`" in planning_fallback
+    assert "If you rely on `design.planning_profile`" in planning_fallback
+
+
+def test_planning_analysis_uses_canonical_plan_tool_names_in_remediation_flow() -> None:
+    planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
+
+    assert "ralph_get_plan_draft" in planning_analysis
+    assert "ralph_submit_plan_section" in planning_analysis
+    assert "ralph_finalize_plan" in planning_analysis
+    assert "`get_plan_draft` / `submit_plan_section`" not in planning_analysis
+
+
 _MIN_WORKER_PROMPT_LEN = 50
 
 _WORKER_TEMPLATE_BANNED_PHRASES = (

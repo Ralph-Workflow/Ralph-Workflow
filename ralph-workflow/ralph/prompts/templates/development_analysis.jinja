@@ -209,7 +209,7 @@ Return a JSON object.
 - The analysis found major incompleteness or an otherwise unusable result; stronger remediation may be needed, including possible redo or starting over from the work phase:
   `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
 
-{{ render_artifact_submission('development_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
+{{ render_artifact_submission('development_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 ---
 

@@ -11,8 +11,8 @@ last_updated: 2026-06-12
 - **`depends_on` cycle detector.** `PlanArtifact._validate_depends_on_acyclic` (a new `@model_validator(mode='after')`) runs BEFORE the existing AC<->step cross-reference scan and rejects cyclic `steps[*].depends_on` graphs (e.g. step 1 -> 2 -> 3 -> 1) with the stable message `plan step depends_on cycle detected at step N`. Diamond-shaped DAGs (a node with multiple parents) are accepted. The pattern mirrors `ralph.pipeline.work_units._validate_acyclic` at `ralph/pipeline/work_units.py:158`.
 - **Pure-return size guard.** `check_plan_size(content, *, limits=PlanSizeLimits.DEFAULT)` is a PURE helper that NEVER raises. It returns the FIRST violation as a `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) or `None`. The caller (`normalize_plan_artifact_content` in `_validation.py`) is the single point that raises `PlanArtifactValidationError` when the helper returns a non-`None` error. The 4 MB hard byte cap runs FIRST so a runaway payload is rejected in < 100 ms before Pydantic ever touches it.
 - **Typed `EvidenceRef`** for `PlanStep.expected_evidence`. Each entry is a `{kind, ref, note?}` object with `kind` in `{file, command_output, test_name}`. A string-coercion before-validator accepts bare strings (treated as `kind='file'`) so legacy fixtures keep working.
-- **Top-level `PlanConstraints`** section. Optional `must_not_break` / `must_keep_working` lists (each 1-200 chars, deduped case-insensitively) plus `performance_budget` and `security_posture` strings (1-200 chars). Submitted via `ralph_submit_plan_section` with `section="constraints"` in `mode="replace"`. Rendered as `## Project Constraints` between `## Critical Files` and `## Risks and Mitigations`.
-- **Typed `VerificationStep.timeout_seconds` and `cwd`.** `timeout_seconds: int | None` with `gt=0, le=3600`; `cwd: str | None` with `max_length=200`. Both are optional; defaults to platform / workspace root.
+- **Top-level `PlanConstraints`** section. Optional `must_not_break` / `must_keep_working` lists (each 1-1000 chars, deduped case-insensitively) plus `performance_budget` and `security_posture` strings (1-2000 chars). Submitted via `ralph_submit_plan_section` with `section="constraints"` in `mode="replace"`. Rendered as `## Project Constraints` between `## Critical Files` and `## Risks and Mitigations`.
+- **Typed `VerificationStep.timeout_seconds` and `cwd`.** `timeout_seconds: int | None` with `gt=0, le=3600`; `cwd: str | None` with `max_length=500`. Both are optional; defaults to platform / workspace root.
 - **Typed `noop: bool | None` field on `PlanArtifact`.** Default `None`, `exclude=True` for mypy-completeness and `model_fields` introspection. The runtime noop short-circuit (`is_noop_plan`) is unchanged: it reads the raw `Mapping` and `normalize_plan_artifact_content` returns `{'noop': True}` directly without round-tripping through the model. The typed field is for discovery only; do NOT rely on `model.model_dump()` to preserve the noop marker (it is dropped by `exclude=True`).
 - **`step_type` default is `action`** (closed enum: `file_change`, `action`, `research`, `verify`). File-modifying steps must explicitly set `step_type="file_change"` and provide `targets`.
 - **Four new cross-section validators** in `PlanArtifact._validate_step_ac_cross_references`:
@@ -66,7 +66,7 @@ The `content` argument must be a JSON string whose decoded object is the RAW pla
 ## Required fields (inside content)
 
 - `summary` — a summary object with:
-  - `context` — a string up to 2000 chars describing the task; if empty/absent, render_plan_markdown inserts the placeholder "No additional context provided."
+  - `context` — a string up to 8000 chars describing the task; if empty/absent, render_plan_markdown inserts the placeholder "No additional context provided."
   - `scope_items` — an array of at least 3 scope items, each with a non-empty `text` (optional `count` and `category`)
 - `skills_mcp` — a skills/MCP object with:
   - `skills` — an array of skill names; required to be non-empty UNLESS `design.planning_profile == "minimal"` (under minimal, an empty list is auto-filled with `["writing-plans"]`)
@@ -90,8 +90,8 @@ The `content` argument must be a JSON string whose decoded object is the RAW pla
 - `design` — a design object (see Design sub-section below). Strongly recommended for any non-trivial multi-file task or refactor. May include an optional `planning_profile` preset (`strict` | `balanced` | `minimal`) that bias-fills the seven typed sub-sections for cheap models; user values always win, and `minimal` permits `skills_mcp.skills = []` (auto-filled with `["writing-plans"]`).
 - `parallel_plan` — an array of `ParallelPlanItem` objects describing safe-to-parallelize work chunks. Use only when genuinely safe.
 - `work_units` — an array of work unit objects for same-workspace parallel fan-out. Each unit must declare `allowed_directories` and pass the parallel preflight.
-- `summary.intent` and `summary.intent_verb` — `Summary` gains two optional, cheap-model-friendly fields. `intent` is a ≤200-char one-line user-facing outcome (defaults to empty string; dropped from model_dump(exclude_defaults=True), mirroring `summary.context`); `intent_verb` is a closed enum (`add`|`fix`|`refactor`|`migrate`|`document`|`investigate`|`improve`|`configure`|`remove`) stored as `str` with default `""` (also dropped from model_dump(exclude_defaults=True) so the round-trip is clean). A before-validator lowercases the value BEFORE the closed-enum check (so `Add` and `ADD` both pass), and explicit `""` is rejected with `ValueError("intent_verb must not be empty")` to distinguish a deliberate empty value from an omitted field. When set, the rendered plan gets a new `## Intent` heading at the top with the verb and the outcome.
-- `steps[*].satisfies`, `steps[*].expected_evidence`, `steps[*].verify_command` — `PlanStep` gains three optional fields. `satisfies` is a list of acceptance-criterion ids (each matching `^[A-Z]+-\d{2,}$`); `expected_evidence` lists the artifacts / files / test outputs that prove the step completed (deduped case-insensitively, blank entries dropped, last-wins for case collision); `verify_command` is the shell command the executor should run when `step_type == "verify"`. See the new tightened contract section.
+- `summary.intent` and `summary.intent_verb` — `Summary` gains two optional, cheap-model-friendly fields. `intent` is a ≤500-char one-line user-facing outcome (defaults to empty string; dropped from model_dump(exclude_defaults=True), mirroring `summary.context`); `intent_verb` is a closed enum (`add`|`fix`|`refactor`|`migrate`|`document`|`investigate`|`improve`|`configure`|`remove`) stored as `str` with default `""` (also dropped from model_dump(exclude_defaults=True) so the round-trip is clean). A before-validator lowercases the value BEFORE the closed-enum check (so `Add` and `ADD` both pass), and explicit `""` is rejected with `ValueError("intent_verb must not be empty")` to distinguish a deliberate empty value from an omitted field. When set, the rendered plan gets a new `## Intent` heading at the top with the verb and the outcome.
+- `steps[*].satisfies`, `steps[*].expected_evidence`, `steps[*].verify_command` — `PlanStep` gains three optional fields. `satisfies` is a list of acceptance-criterion ids (each matching `^[A-Z]+-\d{2,}$`); `expected_evidence` lists the artifacts / files / test outputs that prove the step completed (deduped case-insensitively, blank entries dropped, last-wins for case collision); `verify_command` is an optional command the executor may run for a step and is REQUIRED whenever `step_type == "verify"` and `location` is absent. See the new tightened contract section.
 
 ## Tightened step contract
 
@@ -123,7 +123,7 @@ The four step-mutation tools (`ralph_insert_plan_step`, `ralph_replace_plan_step
 
 ### Net-new read-only tool: `ralph_validate_draft`
 
-`ralph_validate_draft` runs the full `PlanArtifact` cross-section validator (depends_on cycle, intent_verb vs scope_item category, parallel_plan XOR work_units, shell-invocation guard, research/verify steps in AC.satisfied_by_steps, AC id pattern, 4 MB size cap) without writing `plan.json` and without deleting the in-progress draft. Returns `{valid: true}` on success or `{valid: false, errors: [...]}` on failure. Cross-section invariants only run at `finalize_plan` in the write path; `ralph_validate_draft` exposes the same checks in a read-only path. Capability: `artifact.plan_read`.
+`ralph_validate_draft` runs the full `PlanArtifact` cross-section validator (depends_on cycle, intent_verb vs scope_item category, parallel_plan XOR work_units, shell-invocation guard, research/verify steps in AC.satisfied_by_steps, AC id pattern, 4 MB size cap) without writing `plan.json` and without deleting the in-progress draft. Returns `{valid: true}` on success or `{valid: false, errors: [...]}` on failure. If no draft exists yet, it returns `{valid: false}` with a named missing-draft error instead of a false-green success. Cross-section invariants only run at `finalize_plan` in the write path; `ralph_validate_draft` exposes the same checks in a read-only path. Capability: `artifact.plan_read`.
 
 ### Net-new batched tool: `ralph_submit_plan_sections`
 
@@ -139,7 +139,7 @@ The `design` field is OPTIONAL. When present, it carries seven typed sub-models 
 - `drift_detection` — `DriftDetection` with optional `guard_commands` (each must use only `[A-Za-z0-9 _./\-:=+]`), `expected_outputs`, `sources` (one of `ruff`, `mypy`, `pytest`, `make`, `custom-script`, `ci`, `unknown`), and `on_drift_action` (`fail-verify`, `log-only`, `open-issue`, `ignore`).
 - `testability` — `Testability` with `must_be_black_box` (bool), optional `forbidden_in_tests` and `required_test_layers` from the schema enums, optional `clock_injection_required`, and `max_unit_test_seconds` (0 < N <= 60).
 - `refactor_strategy` — `RefactorStrategy` with `approach` (one of `greenfield`, `incremental`, `strangler`, `branch-by-abstraction`, `rebuild-in-parallel`, `no-refactor`), optional `preserve_public_api`, `dead_code_policy` (default `delete-immediately`), and `allow_temporary_hacks` (default `false`).
-- `acceptance_criteria` — `AcceptanceCriteria` with at least 1 `AcceptanceCriterion` entry. Each criterion has `id` matching `^[A-Z]+-\d{2,}$`, `description` (1-1000 chars), and optional `verification_step` and `evidence_path`.
+- `acceptance_criteria` — `AcceptanceCriteria` with at least 1 `AcceptanceCriterion` entry. Each criterion has `id` matching `^[A-Z]+-\d{2,}$`, `description` (1-8000 chars), and optional `verification_step` and `evidence_path`.
 - `notes` — optional free-form rationale. High-quality models should populate it with rationale, alternative designs, and trade-offs; cheap models may leave it unset. Either is acceptable.
 
 Minimal `design` example payload:
@@ -243,7 +243,7 @@ This example is the canonical high-quality-model plan. It exercises the full `Pl
       "number": 4,
       "title": "Run ruff + mypy + pytest",
       "content": "Run the full verification chain to prove the refactor is clean.",
-      "step_type": "verify",
+      "step_type": "action",
       "verify_command": "ruff check src/ && mypy src/ && pytest tests/test_foo.py -q",
       "depends_on": [2, 3],
       "expected_evidence": [
@@ -523,15 +523,15 @@ When to use: you are drafting the `steps` array and want a copy-paste template t
       "number": 1,
       "title": "Add a regression test",
       "content": "Write a unit test that exposes the off-by-one.",
-      "step_type": "verify",
-      "verify_command": "pytest tests/test_foo.py -q"
+      "step_type": "file_change",
+      "targets": [{"path": "tests/test_foo.py", "action": "modify"}]
     },
     {
       "number": 2,
-      "title": "Modify src/foo.py",
-      "content": "Clamp the index in foo() and re-run the test.",
-      "step_type": "file_change",
-      "targets": [{"path": "src/foo.py", "action": "modify"}]
+      "title": "Run the regression test",
+      "content": "Run the unit test that proves the off-by-one stays fixed.",
+      "step_type": "verify",
+      "verify_command": "pytest tests/test_foo.py -q"
     },
     {
       "number": 3,
@@ -648,7 +648,7 @@ The Preset table above maps each shape to the right preset depth.
 
 ## Common mistakes
 
-- Do NOT wrap the atomic payload in `{"type":"plan","content":...}` — only the step-wise flow accepts that envelope; atomic `content` must be the raw plan payload as a JSON string.
+- Do NOT wrap the atomic payload in `{"type":"plan","content":...}` — atomic `content` must be the raw plan payload as a JSON string, and the step-wise section tools accept per-section `{section, content, mode}` payloads instead.
 - Do NOT use `ralph_submit_artifact` with `artifact_type="plan"` for a long plan — prefer the step-wise flow (`ralph_submit_plan_section` + `ralph_finalize_plan`) so each section validates independently.
 - Do NOT instruct the executor to invoke Ralph-managed fan-out — fan-out is dormant in this build and the bundled CLI exposes no coordination command for plan work. The executing agent dispatches its own sub-agents per the plan's `work_units` / `parallel_plan`.
 - Do NOT leave `step_type` blank — set it to one of `file_change`, `action`, `research`, or `verify`.
@@ -661,7 +661,7 @@ The Preset table above maps each shape to the right preset depth.
 - Do NOT submit the `design` section with `mode="append"` — only `mode="replace"` is supported for object sections.
 - Do NOT mix atomic and step-wise flows in the same session — pick one.
 - Do NOT omit `targets` on a `file_change` step — the per-step validator rejects it. Use a `read` or `reference` target action for steps that touch zero files.
-- Do NOT omit `verify_command` and `location` on a `verify` step — the per-step validator rejects it. Pick the most natural one for the step (a shell command or a test file path).
+- Do NOT omit both `verify_command` and `location` on a `verify` step — the per-step validator rejects it. Pick the most natural one for the step (a shell command or a test file path).
 - Do NOT let `step.satisfies` reference a criterion id that is missing from `design.acceptance_criteria.criteria` — the cross-section validator rejects orphan references. Define the AC first, then link to it.
 - Do NOT let `AC.satisfied_by_steps` reference a `step_type="research"` or `step_type="verify"` step — the cross-section validator rejects it. Only `file_change` and `action` steps can satisfy an AC.
 - Do NOT declare BOTH `parallel_plan` and `work_units` in the same plan — the cross-section validator rejects it. Pick one.
@@ -672,15 +672,15 @@ The Preset table above maps each shape to the right preset depth.
 ## Dumb-proof checklist
 
 - Did you set `artifact_type` to `"plan"` (atomic flow) or use `ralph_submit_plan_section` (step-wise flow)?
-- Did you include all required fields: `summary` (with at least 3 scope items; `summary.context` is now OPTIONAL — a string up to 2000 chars; if empty/absent, render_plan_markdown inserts the placeholder "No additional context provided."), `skills_mcp` (with at least 1 skill UNLESS `design.planning_profile == "minimal"`, under which an empty list is auto-filled with `["writing-plans"]`), `steps` (at least 1), `critical_files` (at least 1 primary file), `risks_mitigations` (at least 1), `verification_strategy` (at least 1)?
+- Did you include all required fields: `summary` (with at least 3 scope items; `summary.context` is now OPTIONAL — a string up to 8000 chars; if empty/absent, render_plan_markdown inserts the placeholder "No additional context provided."), `skills_mcp` (with at least 1 skill UNLESS `design.planning_profile == "minimal"`, under which an empty list is auto-filled with `["writing-plans"]`), `steps` (at least 1), `critical_files` (at least 1 primary file), `risks_mitigations` (at least 1), `verification_strategy` (at least 1)?
 - Did every step include a non-empty `title`, `content`, and a valid `step_type`?
-- Did every `targets[*].action` and `critical_files.primary_files[*].action` use one of `create`, `modify`, or `delete`?
+- Did every `targets[*].action` use one of `create`, `modify`, `delete`, `read`, or `reference`, and did every `critical_files.primary_files[*].action` use one of `create`, `modify`, or `delete`?
 - Did you provide exact commands in `verification_strategy` (not vague "run tests")?
 - If you included `design`, did every sub-section's shape match the schema (enums for `architecture_style`, `step_type`, `forbidden_patterns`, `required_test_layers`, `approach`, `dead_code_policy`, `sources`, `on_drift_action`; regex `^[A-Z]+-\d{2,}$` for `acceptance_criteria.criteria[*].id`)?
 - If you used `step_type="file_change"`, did you list every file in `targets`?
 - If you used `step_type="verify"`, did you set `verify_command` (or `location` for a test file)?
 - Did you use exactly one of `file_change`, `action`, `research`, `verify` for `step_type` (never `test`, `check`, `run`, or any other label)?
-- Did you set `summary.intent_verb` to one of the 9 closed values (or leave it blank), and `summary.intent` to a ≤200-char one-line outcome (or leave it blank)?
+- Did you set `summary.intent_verb` to one of the 9 closed values (or leave it blank), and `summary.intent` to a ≤500-char one-line outcome (or leave it blank)?
 - Did you stringify the content object into a JSON string for the `content` field (atomic flow only)?
 - Did you verify the plan fits within the size limits in `## Plan size limits`? (4 MB total, 500 steps max, 200 scope_items max, 500 AC max, 500 evidence per step max)
 
@@ -1053,6 +1053,10 @@ Repeat the same pattern for `critical_files`, `risks_mitigations`,
 
 A single `ralph_submit_plan_section` call for the summary section
 looks like this:
+
+`content` may be passed either as the native JSON object/array or as a JSON string
+that decodes to that same payload. For list sections like `steps` or
+`risks_mitigations`, pass the native array or its JSON-string equivalent.
 
 ```json
 {

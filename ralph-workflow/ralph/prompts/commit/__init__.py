@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL
+from ralph.mcp.tools.names import DECLARE_COMPLETE_TOOL, WRITE_FILE_TOOL
 
 from ..payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ..template_engine import render_template
@@ -55,6 +55,7 @@ def prompt_commit_message(
         ),
         "SUBMIT_ARTIFACT_TOOL_REFERENCE": submit_reference,
         "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
+        "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
     }
     variables.update(
         _commit_payload_variables(
@@ -85,6 +86,7 @@ def prompt_commit_message_for_opencode(
         "SUBMIT_ARTIFACT_TOOL_NAME": submit_artifact_tool_name,
         "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{submit_artifact_tool_name}`",
         "DECLARE_COMPLETE_TOOL_REFERENCE": DECLARE_COMPLETE_TOOL,
+        "WRITE_FILE_TOOL_REFERENCE": f"`{WRITE_FILE_TOOL}`",
     }
     variables.update(
         _commit_payload_variables(

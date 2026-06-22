@@ -20,10 +20,10 @@
    ever changes so receipts alone satisfy completion, REMOVE step 5 in
    the same change.
 #}
-{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_payload='<inner payload JSON object — see format doc>') -%}
+{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_payload='<inner payload JSON object — see format doc>', write_file_tool_reference='') -%}
 ## Submit a `{{ artifact_type }}` artifact
 
-**DO STEPS 1-5 IN ORDER. SKIPPING STEP 5 = SILENT FAILURE = GATE RETRIES FOREVER.**
+**DO STEPS 1-5 IN ORDER. IF STEP 3 IS UNAVAILABLE AND YOUR TOOL LIST INCLUDES THE DOCUMENTED WRITE-FILE FALLBACK, USE STEP 6 INSTEAD OF STEP 3. SKIPPING STEP 5 = SILENT FAILURE = GATE RETRIES FOREVER.**
 
 1. **Read the format doc** at `.agent/artifact-formats/{{ artifact_type }}.md`
    (or `artifact_formats_index.md`). Do NOT guess.
@@ -47,12 +47,14 @@
    Example: `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}(summary="commit_message")`.
    You may echo one short line AFTER, but the MCP call is the contract.
 
-6. **If submit-artifact MCP tool is unavailable**, write the raw inner
-   payload JSON to `.agent/tmp/{{ artifact_type }}.json` via `write_file`
+{% if write_file_tool_reference %}
+6. **If submit-artifact MCP tool is unavailable, use this INSTEAD OF step 3**, write the raw inner
+   payload JSON to `.agent/tmp/{{ artifact_type }}.json` via {{ write_file_tool_reference }}
    (no outer envelope). STILL call `{{ DECLARE_COMPLETE_TOOL_REFERENCE }}`
    as the last action. Ralph Workflow detects this fallback file at
    completion-check time and stamps a canonical receipt, so it is equivalent
    to a successful submit_artifact call.
+{% endif %}
 
 ## Do NOT
 

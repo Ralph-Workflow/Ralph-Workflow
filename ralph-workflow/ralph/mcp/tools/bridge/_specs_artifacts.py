@@ -6,6 +6,7 @@ from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.tools.bridge._spec_helpers import (
     _EXAMPLE_PLAN_CONTENT,
+    _EXAMPLE_PLAN_SECTION_CONTENT,
     _EXAMPLE_STEPS_CONTENT,
     _SUBMIT_ARTIFACT_DESCRIPTION,
     _metadata,
@@ -87,12 +88,13 @@ def artifact_specs() -> list[ToolSpec]:
                     "parallel_plan, work_units. "
                     "Call ralph_finalize_plan after staging all sections. "
                     'Example: {"section": "summary", "content": '
-                    + _EXAMPLE_PLAN_CONTENT
+                    + _EXAMPLE_PLAN_SECTION_CONTENT
                     + ', "mode": "replace"}. '
                     "Only the single submitted section is validated here; cross-section "
                     "invariants (depends_on cycle, parallel_plan XOR work_units, "
                     "shell-invocation guard, research/verify in AC.satisfied_by_steps) "
-                    "run ONLY at finalize_plan. mode=append is list-sections only; "
+                    "run ONLY at finalize_plan. content may be either a native JSON object/array "
+                    "or a JSON-serialized string of that payload. mode=append is list-sections only; "
                     "object sections only accept mode=replace. Plans over the 4 MB cap "
                     "or PlanSizeLimits per-list caps are rejected with PlanArtifactSizeError."
                 ),
@@ -110,11 +112,12 @@ def artifact_specs() -> list[ToolSpec]:
                             ),
                         },
                         "content": {
-                            "type": "string",
+                            "anyOf": [{"type": "string"}, {"type": "object"}, {"type": "array"}],
                             "description": (
-                                "JSON-serialized section payload as a string "
+                                "Section payload as either the native JSON object/array or a "
+                                "JSON-serialized string of that payload "
                                 "(example values: "
-                                + _EXAMPLE_PLAN_CONTENT
+                                + _EXAMPLE_PLAN_SECTION_CONTENT
                                 + ", "
                                 + _EXAMPLE_STEPS_CONTENT
                                 + ")."
@@ -143,14 +146,17 @@ def artifact_specs() -> list[ToolSpec]:
                 name=SUBMIT_PLAN_SECTIONS_TOOL,
                 description=(
                     "Batched section submit. Accepts a list of "
-                    "{section: str, content: <json string>, mode: 'replace'|'append'} "
+                    "{section: str, content: <json payload>, mode: 'replace'|'append'} "
                     "entries and validates ALL of them BEFORE any merge; if any entry "
                     "fails, the entire batch is rejected and the on-disk draft is "
                     "unchanged. On success it stages every entry and returns "
                     "{submitted: [...section names...], staged_sections: [...], "
                     "total_bytes: <int>}. Use this to stage every section of a "
                     "small-to-medium plan in one round-trip instead of N calls to "
-                    "ralph_submit_plan_section. The full cross-section validator still "
+                    "ralph_submit_plan_section. content may be either the native JSON "
+                    "object/array or a JSON-serialized string of that payload. For list "
+                    "sections, mode='append' accepts either one item object or an array "
+                    "of items. The full cross-section validator still "
                     "runs at finalize_plan; this tool only stages sections. Capability: "
                     "ARTIFACT_PLAN_WRITE."
                 ),
@@ -163,7 +169,13 @@ def artifact_specs() -> list[ToolSpec]:
                                 "type": "object",
                                 "properties": {
                                     "section": {"type": "string"},
-                                    "content": {"type": "string"},
+                                    "content": {
+                                        "anyOf": [
+                                            {"type": "string"},
+                                            {"type": "object"},
+                                            {"type": "array"},
+                                        ]
+                                    },
                                     "mode": {
                                         "type": "string",
                                         "enum": ["replace", "append"],
@@ -342,7 +354,8 @@ def artifact_specs() -> list[ToolSpec]:
                     " satisfied_by_steps, AC id pattern, 4 MB size cap) without writing"
                     " plan.json and without deleting the in-progress draft. Returns"
                     " {valid: true} on success or {valid: false, errors: [...]} on"
-                    " failure. The same checks run at finalize_plan in the write path;"
+                    " failure. If no draft exists, returns valid=false with a named"
+                    " missing-draft error. The same checks run at finalize_plan in the write path;"
                     " ralph_validate_draft exposes them in a read-only path so the agent"
                     " can dry-run validation before committing. Capability:"
                     " ARTIFACT_PLAN_READ."

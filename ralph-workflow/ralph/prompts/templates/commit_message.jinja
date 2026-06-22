@@ -75,8 +75,9 @@ Call the tool before emitting any final text. If you skip the tool call, the tas
 Do not call Bash. Do not use `content_path` for this task.
 
 MCP REQUIREMENT:
-The only tool you may call for this task is {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }}.
-You MUST submit the final result by calling it with `artifact_type="commit_message"` and `content` set to a JSON string matching one of these shapes:
+The only state-changing tools you may call for this task are {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
+If {{ SUBMIT_ARTIFACT_TOOL_REFERENCE }} is unavailable and your tool list includes {{ WRITE_FILE_TOOL_REFERENCE }}, you may use that one write_file call only for the documented fallback file.
+You MUST submit the final result through the documented artifact path: call {{ SUBMIT_ARTIFACT_TOOL_REFERENCE }} when it is available, or use the documented write-file fallback only when that tool is unavailable and your tool list exposes {{ WRITE_FILE_TOOL_REFERENCE }}. The inner payload must match one of these shapes:
 {"type": "commit", "subject": "type(scope): description"}
 {"type": "commit", "subject": "type(scope): description", "body": "Optional multi-line body"}
 {"type": "commit", "subject": "type(scope): description", "body_summary": "Brief summary", "body_details": "Detailed explanation", "body_footer": "Fixes #123"}
@@ -91,7 +92,7 @@ Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed bo
 
 Read the diff and decide whether the correct result is a commit artifact or a skip artifact. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
 
-{{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
+{{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 

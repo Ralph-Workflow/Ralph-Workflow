@@ -130,6 +130,6 @@ The artifact content JSON schema:
 {"analysis_complete": true|false, "actions": [{"action": "delete_file"|"add_to_gitignore"|"add_to_git_exclude", "path"|"pattern": "value"}]}
 ```
 
-{{ render_artifact_submission('commit_cleanup', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
+{{ render_artifact_submission('commit_cleanup', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}

@@ -75,16 +75,16 @@ def _read_response_text(result: object) -> str:
     return cast("str", content[0].text)
 
 
-def test_validate_draft_no_draft_returns_valid_empty(tmp_path: Path) -> None:
-    """When no draft exists, validate returns valid=True with empty staged sections."""
+def test_validate_draft_no_draft_reports_missing_draft(tmp_path: Path) -> None:
+    """validate_draft should surface the same missing-draft precondition as finalize."""
     workspace = FsWorkspace(tmp_path)
     result = handle_validate_plan_draft(planning_session(), workspace, {})
     payload = json.loads(_read_response_text(result))
-    assert payload == {
-        "valid": True,
-        "errors": [],
-        "staged_sections": [],
-    }
+    assert payload["valid"] is False
+    assert payload["staged_sections"] == []
+    errors = cast("list[dict[str, object]]", payload["errors"])
+    assert len(errors) == 1
+    assert "No plan draft" in cast("str", errors[0]["message"])
     assert result.is_error is False
 
 

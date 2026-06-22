@@ -205,6 +205,61 @@ def test_submit_plan_sections_mode_append_on_list_section_works(tmp_path: Path) 
     assert "Second" in titles
 
 
+def test_submit_plan_sections_mode_append_accepts_single_item_payload(tmp_path: Path) -> None:
+    """Batch append accepts the same single-item payload shape as single-section append."""
+    workspace = FsWorkspace(tmp_path)
+    first = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {
+            "entries": [
+                {
+                    "section": "steps",
+                    "content": json.dumps(
+                        [
+                            {
+                                "number": 1,
+                                "title": "First",
+                                "content": "first",
+                                "step_type": "verify",
+                                "verify_command": "pytest tests/test_x.py -q",
+                            }
+                        ]
+                    ),
+                }
+            ]
+        },
+    )
+    assert first.is_error is False
+
+    second = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {
+            "entries": [
+                {
+                    "section": "steps",
+                    "content": json.dumps(
+                        {
+                            "number": 2,
+                            "title": "Second",
+                            "content": "second",
+                            "step_type": "verify",
+                            "verify_command": "pytest tests/test_y.py -q",
+                        }
+                    ),
+                    "mode": "append",
+                }
+            ]
+        },
+    )
+
+    assert second.is_error is False
+    draft = _read_draft(tmp_path)
+    steps = cast("list[dict[str, object]]", cast("dict[str, object]", draft["sections"])["steps"])
+    assert [cast("str", step["title"]) for step in steps] == ["First", "Second"]
+
+
 def test_submit_plan_sections_mode_append_on_object_section_rejected(tmp_path: Path) -> None:
     """mode='append' on an object section is rejected (object sections accept only replace)."""
     workspace = FsWorkspace(tmp_path)

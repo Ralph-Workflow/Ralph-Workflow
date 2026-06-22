@@ -317,8 +317,8 @@ def handle_submit_plan_section(
         raise InvalidParamsError(
             f"Unknown plan section '{section}'. Valid sections: {sorted(PLAN_SECTION_NAMES)}"
         )
-    raw_content = _required_string(params, "content")
-    payload = _parse_content_any(raw_content)
+    raw_content = params.get("content")
+    payload = _parse_plan_section_content(raw_content)
     mode = _section_mode(params)
 
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
@@ -520,7 +520,18 @@ def handle_validate_plan_draft(
     if draft is None:
         return ToolResult(
             content=[
-                ToolContent.json_content({"valid": True, "errors": [], "staged_sections": []})
+                ToolContent.json_content(
+                    {
+                        "valid": False,
+                        "errors": [
+                            {
+                                "message": "No plan draft to validate. Submit plan sections first or use ralph_submit_artifact with artifact_type='plan'.",
+                                "type": "InvalidDraftState",
+                            }
+                        ],
+                        "staged_sections": [],
+                    }
+                )
             ],
             is_error=False,
         )
@@ -605,7 +616,7 @@ def _check_entry_shape(
         return _submit_sections_error_result(index, f"Entry {index} missing 'section' string")
     if not isinstance(content_obj, (str, dict, list)):
         return _submit_sections_error_result(
-            index, f"Entry {index} 'content' must be a JSON string or object"
+            index, f"Entry {index} 'content' must be a JSON string, object, or array"
         )
     if not isinstance(mode, str) or mode not in ("replace", "append"):
         return _submit_sections_error_result(
@@ -656,16 +667,20 @@ def _check_parsed_content_type(
             index,
             f"Entry {index} (section '{section}') with mode='replace' must be a JSON array",
         )
-    if (
-        section in PLAN_SECTION_LIST_ITEM_MODELS
-        and mode == "append"
-        and not isinstance(parsed_content, list)
+    if section in PLAN_SECTION_LIST_ITEM_MODELS and mode == "append" and not isinstance(
+        parsed_content, (dict, list)
     ):
         return _submit_sections_error_result(
             index,
-            f"Entry {index} (section '{section}') with mode='append' must be a JSON array of items",
+            f"Entry {index} (section '{section}') with mode='append' must be a JSON object or array of items",
         )
     return None
+
+
+def _append_items(payload: object) -> list[object]:
+    if isinstance(payload, list):
+        return payload
+    return [payload]
 
 
 def _submit_sections_error_result(index: int, message: str) -> ToolResult:
@@ -687,7 +702,7 @@ def _validate_submit_plan_sections_batch(
     for index, (section, parsed_content, mode) in enumerate(parsed_entries):
         try:
             if mode == "append" and section in PLAN_SECTION_LIST_ITEM_MODELS:
-                items = cast("list[object]", parsed_content)
+                items = _append_items(parsed_content)
                 for item in items:
                     validate_plan_section(section, item, mode="append")
             else:
@@ -711,7 +726,7 @@ def _merge_submit_plan_sections_batch(
     for section, parsed_content, mode in parsed_entries:
         try:
             if mode == "append" and section in PLAN_SECTION_LIST_ITEM_MODELS:
-                items = cast("list[object]", parsed_content)
+                items = _append_items(parsed_content)
                 existing_obj = new_sections.get(section)
                 existing_list = (
                     list(cast("list[object]", existing_obj))
@@ -838,6 +853,14 @@ def _parse_content_any(raw_content: str) -> object:
         return cast("object", json.loads(raw_content))
     except json.JSONDecodeError as exc:
         raise InvalidParamsError(f"Content must be valid JSON: {exc}") from exc
+
+
+def _parse_plan_section_content(raw_content: object) -> object:
+    if isinstance(raw_content, str):
+        return _parse_content_any(raw_content)
+    if isinstance(raw_content, (dict, list)):
+        return raw_content
+    raise InvalidParamsError("Missing 'content' (must be a JSON string, object, or array)")
 
 
 def _parse_plan_content(raw_content: str) -> dict[str, object]:

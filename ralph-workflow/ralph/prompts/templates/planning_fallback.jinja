@@ -32,6 +32,7 @@ If your runtime provides a subagent mechanism, fan out read-only discovery scout
 
 Fallback still needs an executor-grade plan. Include:
 - summary context and scope items
+- skills_mcp with task-relevant skills (or an empty skills list only when `design.planning_profile="minimal"` will auto-fill it)
 - concrete ordered steps
 - critical files with actions/reasons
 - risks with mitigations
@@ -49,7 +50,7 @@ Every plan must fit within the generous-but-bounded caps in `.agent/artifact-for
 
 ## Model tier
 
-Pick the model tier first, then fill the fields that tier is expected to provide. For cheap models, set `design.planning_profile = "minimal"` (or "balanced") and let the bias-fill presets cover the seven sub-sections; under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`). For high-quality models, leave `planning_profile` unset and handcraft all seven sub-sections plus `design.outcome` and `design.notes`. The two paths converge on the same `PlanArtifact` shape.
+Pick the model tier first, then fill the fields that tier is expected to provide. For cheap models, set `design.planning_profile = "minimal"` (or "balanced") and let the bias-fill presets cover the seven sub-sections; under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`). If you rely on that preset shortcut, you MUST also stage the `design` section before finalizing. For high-quality models, leave `planning_profile` unset and handcraft all seven sub-sections plus `design.outcome` and `design.notes`. The two paths converge on the same `PlanArtifact` shape.
 
 ## Cycle guard
 
@@ -64,7 +65,8 @@ High-quality models should populate `design.notes`, `design.drift_detection.guar
 See `.agent/artifact-formats/plan.md` §`Plan size limits` for the canonical per-field and per-list caps (4 MB hard cap, steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500; string tiers short=1000 / medium=8000 / long=20000).
 
 Unless the plan is genuinely short, submit each required section separately.
-- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`.
+- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`.
+- If you rely on `design.planning_profile` or want the SE-opinionated design guidance, stage `design` before finalize.
 - For small-to-medium plans, prefer {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} to stage every section in one batched round-trip.
 - Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalize.
 - Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if validation fails or you need to resume.
@@ -76,4 +78,4 @@ For genuinely short plans, you may submit atomically via {{SUBMIT_ARTIFACT_TOOL_
 The `content` argument must be a JSON string whose decoded object is the RAW plan payload, not an outer artifact wrapper.
 Do NOT send `{ "type": "plan", "content": ... }`.
 Use this exact top-level shape and fill it with concrete executor-ready detail:
-{"summary":{"context":"What is being done and why","scope_items":[{"text":"Concrete outcome 1"},{"text":"Concrete outcome 2"},{"text":"Concrete outcome 3"}]},"steps":[{"number":1,"title":"Concrete step title","content":"Detailed executor instructions for a weaker agent","step_type":"file_change","priority":"high","targets":[{"path":"path/to/file.py","action":"modify"}],"depends_on":[]}],"critical_files":{"primary_files":[{"path":"path/to/file.py","action":"modify"}],"reference_files":[{"path":"path/to/reference.py","purpose":"pattern to follow"}]},"risks_mitigations":[{"risk":"Specific failure mode","mitigation":"How to avoid it","severity":"medium"}],"verification_strategy":[{"method":"Exact command or check","expected_outcome":"What success looks like"}],"work_units":[]}
+{"summary":{"context":"What is being done and why","scope_items":[{"text":"Concrete outcome 1"},{"text":"Concrete outcome 2"},{"text":"Concrete outcome 3"}]},"skills_mcp":{"skills":["writing-plans"],"mcps":[]},"steps":[{"number":1,"title":"Concrete step title","content":"Detailed executor instructions for a weaker agent","step_type":"file_change","priority":"high","targets":[{"path":"path/to/file.py","action":"modify"}],"depends_on":[]}],"critical_files":{"primary_files":[{"path":"path/to/file.py","action":"modify"}],"reference_files":[{"path":"path/to/reference.py","purpose":"pattern to follow"}]},"risks_mitigations":[{"risk":"Specific failure mode","mitigation":"How to avoid it","severity":"medium"}],"verification_strategy":[{"method":"Exact command or check","expected_outcome":"What success looks like"}],"work_units":[]}

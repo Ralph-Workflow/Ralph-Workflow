@@ -136,9 +136,10 @@ Default submission flow:
 4. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `critical_files`.
 5. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `risks_mitigations`.
 6. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `verification_strategy`.
-7. Stage optional sections like `parallel_plan` (read-mostly chunks) or `work_units` (same-workspace parallelization intent for agent-managed sub-agents) only when they add real value — see ## Agent-Driven Parallel Execution below.
-8. Call {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalizing. (Optional but recommended for non-trivial plans.)
-9. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
+7. If you rely on `design.planning_profile` (`strict`, `balanced`, or `minimal`) or need the SE-opinionated design guidance for a non-trivial task, stage `design` before finalizing.
+8. Stage optional sections like `parallel_plan` (read-mostly chunks) or `work_units` (same-workspace parallelization intent for agent-managed sub-agents) only when they add real value — see ## Agent-Driven Parallel Execution below.
+9. Call {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalizing. (Optional but recommended for non-trivial plans.)
+10. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
 
 Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{section, content, mode}` entries and stages them all in one round-trip. Use this for small-to-medium plans where you want a single round-trip instead of N stage calls.
 
@@ -146,7 +147,7 @@ Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{s
 
 Every plan benefits from declaring two optional `summary` fields that make the cheapest possible signal of what the plan does:
 
-- `summary.intent` — a ≤200-char one-line user-facing outcome (e.g. "Clamp foo() index so the off-by-one regression cannot recur."). Empty string is allowed and dropped from `model_dump(exclude_defaults=True)`. Strip whitespace, no min length.
+- `summary.intent` — a ≤500-char one-line user-facing outcome (e.g. "Clamp foo() index so the off-by-one regression cannot recur."). Empty string is allowed and dropped from `model_dump(exclude_defaults=True)`. Strip whitespace, no min length.
 - `summary.intent_verb` — a closed enum value, stored as `str` with default `""` (also dropped from `model_dump(exclude_defaults=True)`). Accepted values are `add`, `fix`, `refactor`, `migrate`, `document`, `investigate`, `improve`, `configure`, `remove`. A before-validator normalizes the default `""` (no-op) and runs on every supplied value: it accepts `None` (returns `""`), lowercases the input before the closed-enum check (so `Add`, `ADD`, and `add` all pass), and rejects explicit `""` with `ValueError("intent_verb must not be empty")` to distinguish a deliberate empty value from an omitted field.
 
 Cheap models should set these two fields first. The rendered plan surfaces them as a `## Intent` heading before the `## Summary` block, giving the executor a one-line answer to "what does this plan do?" without having to parse the full context.
@@ -223,7 +224,7 @@ The seven typed sub-sections, with the exact labels the executor will see in the
 
 **`design.outcome` (top-level design outcome)**: The optional `outcome` field (≤500 chars, distinct from `notes`) is a one-line top-level design outcome that the executor surfaces as a `### Outcome` sub-block at the TOP of the Design section, before the seven sub-section headings. Cheap models can populate `design.outcome` and skip `design.notes` for the same level of executor signal. Stripped empty values are dropped from the dump.
 
-**`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset also seeds a sentinel acceptance criterion `PRESET-01` that you may strip or replace. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
+**`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset also seeds a sentinel acceptance criterion `PRESET-01` that you may strip or replace. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. If you rely on any preset, you MUST stage the `design` section before finalizing so the profile is actually present in the artifact. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
 
 **Model tier**: Pick the model tier first, then fill the fields that tier is expected to provide.
 
@@ -237,7 +238,7 @@ The seven typed sub-sections, with the exact labels the executor will see in the
 - `design.acceptance_criteria` with 3+ criteria, each with `satisfied_by_steps` populated.
 - High-quality models SHOULD set `planning_profile="strict"` and override the bias-filled defaults with project-specific values.
 
-**Cheap models SHOULD use** `planning_profile="balanced"` or `planning_profile="minimal"` to get the SE defaults bias-filled automatically. Cheap models may leave `design.notes` unset and skip per-element sub-section population; the preset covers the gaps. Cheap models should still populate `summary.intent` + `summary.intent_verb` for the cheap-model shortcut.
+**Cheap models SHOULD use** `planning_profile="balanced"` or `planning_profile="minimal"` to get the SE defaults bias-filled automatically. Cheap models may leave `design.notes` unset and skip per-element sub-section population; the preset covers the gaps, but only if the `design` section is staged. Cheap models should still populate `summary.intent` + `summary.intent_verb` for the cheap-model shortcut.
 
 The two paths converge on the same `PlanArtifact` shape, so the executor cannot tell which model tier produced the plan by inspecting the artifact alone.
 
@@ -256,7 +257,7 @@ Your payload must decode to an object shaped like this:
 {
   "summary": {
     "context": "What is being changed, why it matters, and what the executor should accomplish.",
-    "intent": "One-line user-facing outcome (<=200 chars).",
+    "intent": "One-line user-facing outcome (<=500 chars).",
     "intent_verb": "fix",
     "scope_items": [
       {"text": "Concrete outcome 1", "count": "optional quantity", "category": "optional category"},
@@ -291,7 +292,6 @@ Your payload must decode to an object shaped like this:
       "step_type": "verify",
       "verify_command": "pytest tests/test_x.py -q",
       "location": "tests/test_x.py",
-      "satisfies": ["AC-01"],
       "depends_on": [1]
     }
   ],
@@ -328,7 +328,7 @@ Your payload must decode to an object shaped like this:
     },
     "acceptance_criteria": {
       "criteria": [
-        {"id": "AC-01", "description": "All new tests pass", "satisfied_by_steps": [1, 2]}
+        {"id": "AC-01", "description": "Primary file change is implemented", "satisfied_by_steps": [1]}
       ]
     }
   }
@@ -341,7 +341,7 @@ Hard requirements for the payload:
 - `skills_mcp.skills` names must match skill names your agent can discover and invoke.
 - `steps` must contain at least 1 step, and every step must be explicit enough for a weaker agent to execute without re-planning.
 - `critical_files.primary_files` must contain at least 1 file.
-- `targets[*].action` and `critical_files.primary_files[*].action` must be one of `create`, `modify`, or `delete`.
+- `targets[*].action` must be one of `create`, `modify`, `delete`, `read`, or `reference`; `critical_files.primary_files[*].action` must be one of `create`, `modify`, or `delete`.
 - `risks_mitigations` must contain at least 1 real risk with a mitigation.
 - `verification_strategy` must contain exact commands/checks, not vague statements.
 - Include `work_units` only when parallel work is genuinely safe; otherwise omit it or use an empty array.

@@ -289,7 +289,7 @@ Return a JSON object.
   be needed, including possible redo or start over from the planning phase:
   `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
 
-{{ render_artifact_submission('planning_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE) }}
+{{ render_artifact_submission('planning_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 ---
 
@@ -321,7 +321,7 @@ For every item in `what_came_up_short`, provide a corresponding fix entry:
 2. **Use this shared defect vocabulary in both analysis findings and replanning fixes** so the planner can map each gap to the right revision class.
 3. **Preserve the same stable gap ID from the corresponding `what_came_up_short` entry** so the planner can prove closure without ambiguity.
 4. **Exact behaviors or details to add/change inside those plan sections, including any dependent sections that must also change for the plan to become coherent.**
-5. **Step-by-step remediation using the planner's MCP flow** (`get_plan_draft` / `submit_plan_section` / `ralph_insert_plan_step` / `ralph_replace_plan_step` / `ralph_remove_plan_step` / `finalize_plan`, or restart only when truly unsalvageable).
+5. **Step-by-step remediation using the planner's MCP flow** (`ralph_get_plan_draft` / `ralph_submit_plan_section` / `ralph_insert_plan_step` / `ralph_replace_plan_step` / `ralph_remove_plan_step` / `ralph_finalize_plan`, or restart only when truly unsalvageable).
 6. **Commands or checks to validate the revised plan.**
 7. **What passing evidence looks like.**
 

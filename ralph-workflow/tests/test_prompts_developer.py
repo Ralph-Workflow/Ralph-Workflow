@@ -301,6 +301,7 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: 
     assert 'artifact_type="plan"' in prompt
     assert "Unless the plan is genuinely short" in prompt
     assert "submit each required section separately" in prompt
+    assert "If you rely on `design.planning_profile`" in prompt
     assert "Use `ralph_submit_plan_section`" in prompt
     assert "Use `ralph_get_plan_draft`" in prompt
     assert "Use `ralph_discard_plan_draft`" in prompt
@@ -315,6 +316,8 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: 
     assert '"risks_mitigations": [' in prompt
     assert '"verification_strategy": [' in prompt
     assert "`summary.scope_items` must contain at least 3 concrete items" in prompt
+    assert "<=500 chars" in prompt
+    assert '`targets[*].action` must be one of `create`, `modify`, `delete`, `read`, or `reference`' in prompt
 
 
 def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> None:
