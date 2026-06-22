@@ -34,6 +34,7 @@ network.
 
 from __future__ import annotations
 
+import typing
 from dataclasses import dataclass
 
 from ralph.agents.execution_state import AgentExecutionState
@@ -105,17 +106,11 @@ def _make_watchdog(
         IdleWatchdog(
             policy,
             clock,
-            corroborator=cast("WaitingCorroborator", _StubCorroborator(alive_by)),
+            corroborator=typing.cast("WaitingCorroborator", _StubCorroborator(alive_by)),
             process_monitor=_NoProcessMonitor(),
         ),
         clock,
     )
-
-
-def cast(tp, obj):  # type: ignore[no-redef]
-    import typing
-
-    return typing.cast(tp, obj)
 
 
 def test_strictly_stuck_enum_exists() -> None:

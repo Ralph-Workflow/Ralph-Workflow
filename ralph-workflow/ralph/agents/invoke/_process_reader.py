@@ -621,14 +621,14 @@ class _ProcessLineReader:
         # moment of the fire for post-mortem reconstruction. It is
         # optional because a watchdog mock without ``diagnostic_snapshot``
         # must not crash the fire path.
-        snapshot_fn = getattr(watchdog, "diagnostic_snapshot", None)
-        if callable(snapshot_fn):
+        snapshot_method: object = getattr(watchdog, "diagnostic_snapshot", None)
+        if callable(snapshot_method):
             try:
-                snapshot = snapshot_fn(now=now)
+                snapshot_obj: dict[str, object] | None = snapshot_method(now=now)
             except Exception:
-                snapshot = None
-            if snapshot is not None:
-                merged_diag["watchdog_snapshot"] = snapshot
+                snapshot_obj = None
+            if snapshot_obj:
+                merged_diag["watchdog_snapshot"] = snapshot_obj
         if hard_stop_diag is not None:
             for key, value in hard_stop_diag.items():
                 if key not in merged_diag:

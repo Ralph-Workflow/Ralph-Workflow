@@ -227,8 +227,6 @@ def test_no_output_at_start_defers_within_dumb_kill_floor() -> None:
     BEFORE the ``classify_quiet`` short-circuit so the LOADING window
     is safe regardless of classify_quiet's return value.
     """
-    from ralph.agents.idle_watchdog import TimeoutPolicy
-
     clock = FakeClock(start=0.0)
     policy = TimeoutPolicy(
         idle_timeout_seconds=60.0,

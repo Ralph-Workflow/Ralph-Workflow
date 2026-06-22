@@ -109,7 +109,7 @@ def test_gate_fire_throttles_identical_deferred_emission(
     the throttle keeps it to <= 2 (initial transition + first refresh
     window).
     """
-    buf, records = captured_debug_records
+    _buf, records = captured_debug_records
     watchdog, clock = _make_watchdog(throttle_seconds=30.0)
     _patch_classifier_to_silent_subagent(watchdog)
     # SESSION_CEILING_EXCEEDED bypasses the gate; use a normal gated
@@ -136,7 +136,9 @@ def test_gate_fire_throttles_identical_deferred_emission(
     )
 
 
-def test_gate_fire_throttle_uses_configured_window(captured_debug_records) -> None:
+def test_gate_fire_throttle_uses_configured_window(
+    captured_debug_records: tuple[io.StringIO, list[str]],
+) -> None:
     """A throttle window of 0.01s MUST allow refresh emissions.
 
     With a tiny throttle window the test exercises the refresh
@@ -144,7 +146,7 @@ def test_gate_fire_throttle_uses_configured_window(captured_debug_records) -> No
     first tick emits, then no emissions for 0.01s; the 0.05s tick
     is past the refresh window so it emits again.
     """
-    buf, records = captured_debug_records
+    _buf, records = captured_debug_records
     watchdog, clock = _make_watchdog(throttle_seconds=0.01)
     _patch_classifier_to_silent_subagent(watchdog)
     fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
@@ -227,7 +229,7 @@ def test_gate_fire_throttle_is_per_key() -> None:
         "IdleWatchdog MUST expose _last_deferred_log_at for per-key"
         " log throttling"
     )
-    log_map = getattr(watchdog, "_last_deferred_log_at")
+    log_map = watchdog._last_deferred_log_at
     assert (fire_reason.value, StuckKind.SILENT_SUBAGENT.value) in log_map, (
         f"SILENT_SUBAGENT key missing from throttle map; keys={list(log_map)}"
     )

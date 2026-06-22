@@ -1247,7 +1247,7 @@ class IdleWatchdog:
         )
         return WatchdogVerdict.FIRE
 
-    def _evaluate_strictly_stuck(
+    def _evaluate_strictly_stuck(  # noqa: PLR0911 - early-exit guards per branch of the strictly-stuck state machine
         self,
         now: float,
         idle_elapsed: float,
@@ -1289,12 +1289,12 @@ class IdleWatchdog:
             # Reset the run counter so a future enable starts fresh.
             self._strictly_stuck_run_started_at = None
             return None
-        _STRICTLY_STUCK_ALIVE_BY = (
+        _strictly_stuck_alive_by = (
             AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
             AliveBy.CPU_IDLE_WHILE_ALIVE,
             AliveBy.LOG_STALE_WHILE_ALIVE,
         )
-        if corroboration.alive_by not in _STRICTLY_STUCK_ALIVE_BY:
+        if corroboration.alive_by not in _strictly_stuck_alive_by:
             # Transition OUT of the strictly-stuck alive_by set: reset
             # the run counter so a brief liveness gap does not accumulate
             # across runs.
@@ -2624,7 +2624,7 @@ class IdleWatchdog:
             return eff, "os_descendant_only"
         return self._config.suspect_waiting_on_child_seconds, "standard"
 
-    def _handle_waiting_branch(  # noqa: PLR0915 - 5 orchestrated reasons + gate path
+    def _handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + gate path
         self,
         now: float,
         classify_quiet: Callable[[], AgentExecutionState],
@@ -2815,34 +2815,31 @@ class IdleWatchdog:
         if (
             self._last_subagent_progress_description is not None
             or live_subagent_count > 0
+        ) and (
+            self._last_subagent_progress_emit_at is None
+            or (now - self._last_subagent_progress_emit_at)
+            >= self._config.watchdog_subagent_progress_interval_seconds
         ):
-            if (
-                self._last_subagent_progress_emit_at is None
-                or (now - self._last_subagent_progress_emit_at)
-                >= self._config.watchdog_subagent_progress_interval_seconds
-            ):
-                self._last_subagent_progress_emit_at = now
-                subagent_diag: dict[str, object] = {
-                    "live_subagent_count": live_subagent_count,
-                    "subagent_progress_count": self._subagent_progress_count,
-                    "last_subagent_progress_at": self._last_subagent_progress_at,
-                }
-                if self._last_subagent_progress_description is not None:
-                    subagent_diag["subagent_activity"] = (
-                        _sanitize_subagent_description(
-                            self._last_subagent_progress_description
-                        )[:200]
-                    )
-                self._emit(
-                    WaitingStatusKind.SUBAGENT_PROGRESS,
-                    current_run_seconds=current_run_elapsed,
-                    idle_elapsed=idle_elapsed,
-                    ceiling_seconds=effective_ceiling,
-                    diagnostic=cast(
-                        "dict[str, str | int | float | bool | list[object]]",
-                        subagent_diag,
-                    ),
-                )
+            self._last_subagent_progress_emit_at = now
+            subagent_diag: dict[str, object] = {
+                "live_subagent_count": live_subagent_count,
+                "subagent_progress_count": self._subagent_progress_count,
+                "last_subagent_progress_at": self._last_subagent_progress_at,
+            }
+            if self._last_subagent_progress_description is not None:
+                subagent_diag["subagent_activity"] = _sanitize_subagent_description(
+                    self._last_subagent_progress_description
+                )[:200]
+            self._emit(
+                WaitingStatusKind.SUBAGENT_PROGRESS,
+                current_run_seconds=current_run_elapsed,
+                idle_elapsed=idle_elapsed,
+                ceiling_seconds=effective_ceiling,
+                diagnostic=cast(
+                    "dict[str, str | int | float | bool | list[object]]",
+                    subagent_diag,
+                ),
+            )
 
         return WatchdogVerdict.WAITING_ON_CHILD
 

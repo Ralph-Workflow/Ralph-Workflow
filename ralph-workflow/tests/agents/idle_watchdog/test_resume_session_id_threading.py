@@ -45,12 +45,7 @@ budget is preserved.
 
 from __future__ import annotations
 
-from ralph.agents.idle_watchdog import (
-    IdleWatchdog,
-    TimeoutPolicy,
-    WatchdogFireReason,
-    WatchdogVerdict,
-)
+from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
 from ralph.agents.invoke._agent_inactivity_timeout_error import (
     AgentInactivityTimeoutError,
@@ -61,14 +56,10 @@ from ralph.agents.invoke._process_reader import (
     _convert_idle_stream_timeout_to_agent_error,
     _is_resumable_fire_reason,
 )
-from ralph.agents.timeout_clock import FakeClock
+from ralph.pipeline.agent_chain_state import AgentChainState
 from ralph.pipeline.state import PipelineState
-
-
-def _active_classify_quiet():
-    from ralph.agents.execution_state import AgentExecutionState
-
-    return AgentExecutionState.ACTIVE
+from ralph.recovery.classifier import FailureClassifier, FailureContext
+from ralph.recovery.controller import RecoveryController
 
 
 def _make_pipeline_state(
@@ -82,8 +73,6 @@ def _make_pipeline_state(
     that has ``chain_agents`` and ``current_index=0``, and
     ``last_agent_session_id=None`` (the empty pre-fire state).
     """
-    from ralph.pipeline.agent_chain_state import AgentChainState
-
     chain = AgentChainState(agents=list(chain_agents), current_index=0, retries=retries)
     state = PipelineState(
         phase="development",
@@ -115,8 +104,6 @@ def test_failure_classifier_carries_resumable_session_id() -> None:
 
     Pre-fix the field is missing on ``ClassifiedFailure``.
     """
-    from ralph.recovery.classifier import FailureClassifier
-
     captured_session_id = "sess-abc123"
     wrapper = AgentInactivityTimeoutError(
         agent_name="test-agent",
@@ -152,9 +139,6 @@ def test_recovery_controller_sets_last_agent_session_id() -> None:
     ``state.last_agent_session_id`` stays None and ``_apply_chain_retry``
     emits a cleared retry intent.
     """
-    from ralph.recovery.classifier import FailureContext
-    from ralph.recovery.controller import RecoveryController
-
     captured_session_id = "sess-abc123"
     wrapper = AgentInactivityTimeoutError(
         agent_name="test-agent",
@@ -192,9 +176,6 @@ def test_apply_chain_retry_emits_resume_intent_with_captured_id() -> None:
     retry emits a cleared intent and the next attempt starts a fresh
     session.
     """
-    from ralph.recovery.classifier import FailureContext
-    from ralph.recovery.controller import RecoveryController
-
     captured_session_id = "sess-abc123"
     wrapper = AgentInactivityTimeoutError(
         agent_name="test-agent",

@@ -105,8 +105,7 @@ def test_deferred_by_stuck_classifier_never_fires() -> None:
     state.
     """
     clock = FakeClock(start=0.0)
-    from ralph.agents.idle_watchdog import TimeoutPolicy as _TP
-    policy = _TP(
+    policy = TimeoutPolicy(
         idle_timeout_seconds=60.0,
         no_output_at_start_seconds=30.0,
         no_progress_quiet_seconds=None,

@@ -673,7 +673,9 @@ class FailureClassifier:
             direct_cause = cast("BaseException | None", getattr(exc_obj, "__cause__", None))
             if isinstance(direct_cause, IdleWatchdogKilledError):
                 child_alive = direct_cause.child_alive
-                cause_session_id = getattr(direct_cause, "resumable_session_id", None)
+                cause_session_id: str | None = getattr(
+                    direct_cause, "resumable_session_id", None
+                )
                 if isinstance(cause_session_id, str) and cause_session_id:
                     resumable_session_id = cause_session_id
         # Also read the wrapped ``AgentInactivityTimeoutError.resumable_session_id``

@@ -210,7 +210,7 @@ def test_diagnostic_snapshot_is_method_not_coroutine() -> None:
     coroutine, so the watchdog-kill path can call it synchronously
     without awaiting.
     """
-    import inspect
+    import inspect  # noqa: PLC0415
 
     watchdog, _clock = _make_watchdog()
     assert not inspect.iscoroutinefunction(watchdog.diagnostic_snapshot), (

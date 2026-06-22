@@ -37,6 +37,7 @@ network.
 
 from __future__ import annotations
 
+import typing
 from dataclasses import dataclass
 
 from ralph.agents.execution_state import AgentExecutionState
@@ -44,6 +45,8 @@ from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
     WaitingCorroborator,
+    WatchdogFireReason,
+    WatchdogVerdict,
 )
 from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
 from ralph.agents.timeout_clock import FakeClock
@@ -106,11 +109,9 @@ def _make_watchdog(
     )
 
 
-def cast(tp, obj):  # type: ignore[no-redef]
-    """Local cast helper to avoid importing typing.cast at module scope."""
-    import typing
-
-    return typing.cast(tp, obj)
+def cast(tp: type[object], obj: object) -> object:
+    """Local cast helper to avoid shadowing typing.cast at module scope."""
+    return typing.cast("type[object]", obj)
 
 
 def test_no_output_at_start_defers_within_dumb_kill_floor() -> None:
@@ -137,8 +138,6 @@ def test_no_output_at_start_defers_within_dumb_kill_floor() -> None:
     #     post-fix)
     clock.advance(60.0)
 
-    from ralph.agents.idle_watchdog import WatchdogVerdict
-
     verdict = wd.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.CONTINUE, (
         f"NO_OUTPUT_AT_START MUST defer within the dumb-kill floor"
@@ -162,8 +161,6 @@ def test_no_output_at_start_still_fires_after_floor_elapsed() -> None:
     wd.record_invocation_start()
     # Advance to 150 s: past the floor and past the short ceiling.
     clock.advance(150.0)
-
-    from ralph.agents.idle_watchdog import WatchdogFireReason, WatchdogVerdict
 
     verdict = wd.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.FIRE, (
