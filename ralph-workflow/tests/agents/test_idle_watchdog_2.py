@@ -653,3 +653,136 @@ def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
         os_descendant_only_ceiling_seconds=None,
     )
     assert policy.max_waiting_on_child_no_progress_seconds == equal_ceiling
+
+
+def test_safe_corroborate_bypasses_cache_outside_evaluate() -> None:
+    """Two consecutive ``_safe_corroborate()`` calls OUTSIDE ``evaluate()`` must
+    each invoke the corroborator and return FRESH snapshots, never reuse a
+    cached snapshot from a prior bypass-path call.
+
+    Regression test for the stale-cache bug pinned by analysis feedback:
+    ``_safe_corroborate()`` previously stored its return value in
+    ``self._tick_corroboration`` unconditionally, so two bypass-path calls
+    returned the SAME (now-stale) ``alive_by`` value and never observed the
+    corroborator's second return. The fix routes outside-``evaluate()``
+    calls to ``_call_corroborator_raw()`` directly without touching
+    ``_tick_corroboration`` (gated on the explicit ``_evaluate_tick_active``
+    sentinel). The contract pinned here:
+
+    1. Outside ``evaluate()``, two consecutive ``_safe_corroborate()``
+       calls invoke the corroborator TWICE (not once).
+    2. The second call returns the corroborator's SECOND return value
+       (not the first cached snapshot).
+    3. A single ``evaluate()`` tick still reuses ONE snapshot across its
+       internal reads (the existing per-tick-reuse contract pinned by
+       ``test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics``
+       is NOT weakened).
+    """
+    call_count = 0
+    alive_by_sequence = (
+        "fresh_progress",
+        "log_stale_while_alive",
+        "os_descendant_only_stale_progress",
+        "fresh_heartbeat_only",
+    )
+
+    def _flaky_corroborator() -> CorroborationSnapshot:
+        nonlocal call_count
+        call_count += 1
+        return CorroborationSnapshot(
+            alive_by=alive_by_sequence[call_count - 1],
+            scoped_child_active=True,
+        )
+
+    config = TimeoutPolicy(
+        idle_timeout_seconds=10.0,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=1800.0,
+        max_waiting_on_child_no_progress_seconds=_NO_PROGRESS_CEILING,
+        suspect_waiting_on_child_seconds=None,
+        waiting_status_interval_seconds=0.001,
+        no_progress_quiet_seconds=None,
+        no_progress_quiet_minimum_invocation_seconds=None,
+        os_descendant_only_ceiling_seconds=None,
+    )
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(config, clock, corroborator=_flaky_corroborator)
+
+    # Two consecutive bypass-path calls: each MUST invoke the corroborator
+    # and return the corresponding fresh value. A stale cache would return
+    # the FIRST ``alive_by`` on the second call (the original bug).
+    first = watchdog._safe_corroborate()
+    second = watchdog._safe_corroborate()
+    assert call_count == 2, (
+        f"Outside evaluate(), _safe_corroborate() must call the corroborator "
+        f"each time. Got call_count={call_count}; a stale cache would be 1."
+    )
+    assert first.alive_by == "fresh_progress", (
+        f"First bypass-path call: expected 'fresh_progress', got {first.alive_by!r}"
+    )
+    assert second.alive_by == "log_stale_while_alive", (
+        f"Second bypass-path call: expected 'log_stale_while_alive' (the "
+        f"corroborator's second return), got {second.alive_by!r}. A stale "
+        f"cache would return 'fresh_progress' here."
+    )
+
+    # A third bypass-path call: still bypassing the cache, returning the
+    # third fresh value (further pins the per-call freshness contract).
+    third = watchdog._safe_corroborate()
+    assert call_count == 3
+    assert third.alive_by == "os_descendant_only_stale_progress", (
+        f"Third bypass-path call: expected "
+        f"'os_descendant_only_stale_progress', got {third.alive_by!r}"
+    )
+
+    # The cache field MUST remain None outside ``evaluate()`` so the next
+    # bypass-path call cannot accidentally hit a stale snapshot.
+    assert watchdog._tick_corroboration is None, (
+        "Outside evaluate(), _tick_corroboration must remain None. A non-None "
+        "value here means the bypass path poisoned the cache, and the next "
+        "_safe_corroborate() call (still outside evaluate()) would return the "
+        "stale snapshot."
+    )
+
+    # Per-tick reuse contract: a single ``evaluate()`` tick must still
+    # capture ONE snapshot and reuse it for all sub-evaluators on that tick.
+    # Reset call_count so the assertion isolates the ``evaluate()`` call.
+    call_count = 0
+    watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+    assert call_count == 1, (
+        f"A single evaluate() tick must call the corroborator exactly once "
+        f"(tick-scoped reuse), got call_count={call_count}."
+    )
+
+    # After ``evaluate()`` returns, ``_evaluate_tick_active`` MUST be False
+    # so a subsequent bypass-path call is again routed to the raw
+    # corroborator rather than the now-stale tick cache.
+    assert watchdog._evaluate_tick_active is False, (
+        "evaluate() must reset _evaluate_tick_active to False in its finally "
+        "block. A True value here means the tick cache is still 'active' "
+        "after evaluate() returned, which would poison the next bypass-path "
+        "call with the tick's stale snapshot."
+    )
+    assert watchdog._tick_corroboration is None, (
+        "evaluate() must reset _tick_corroboration to None in its finally "
+        "block so the next bypass-path call cannot hit a stale snapshot."
+    )
+
+    # Bypass-path call AFTER evaluate(): must observe the corroborator's
+    # NEXT fresh value, not the snapshot captured during the previous tick.
+    fourth = watchdog._safe_corroborate()
+    assert call_count == 2, (
+        f"Bypass-path call AFTER evaluate() must invoke the corroborator "
+        f"(call_count=2), got call_count={call_count}."
+    )
+    # evaluate() consumed call_count=1 (first index of sequence), so the
+    # bypass-path call after evaluate() consumes index 1 of the sequence.
+    # Crucially, this is the corroborator's LIVE second return, NOT the
+    # snapshot cached during the previous tick (which would be
+    # "fresh_progress"). A poisoned cache would either return the tick's
+    # cached snapshot or skip the corroborator entirely (call_count == 1).
+    assert fourth.alive_by == "log_stale_while_alive", (
+        f"Bypass-path call after evaluate() must return the corroborator's "
+        f"NEXT fresh value, not a stale tick snapshot or a duplicate of the "
+        f"evaluate() tick's snapshot. Got alive_by={fourth.alive_by!r}."
+    )

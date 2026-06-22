@@ -681,8 +681,8 @@ class IdleWatchdog:
         default=None, init=False
     )
     # Tick-scoped corroboration cache. ``evaluate()`` captures one
-    # ``CorroborationSnapshot`` at the top of every tick and reuses it
-    # for ALL sub-evaluators on that tick (``_evaluate_no_output_at_start``,
+    # ``CorroborationSnapshot`` and reuses it for ALL sub-evaluators on
+    # that tick (``_evaluate_no_output_at_start``,
     # ``_evaluate_strictly_stuck``, ``_evaluate_no_progress_quiet``,
     # ``_handle_waiting_branch``, etc.) so a single corroborator call
     # drives both the decision path and the diagnostic surface. Without
@@ -691,10 +691,22 @@ class IdleWatchdog:
     # values on each call would produce inconsistent decisions vs.
     # diagnostics on the same tick (the bug the regression test
     # ``test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics``
-    # pins). ``None`` means ``evaluate()`` is not running; calls outside
-    # the tick (e.g. external probing) bypass the cache and invoke the
-    # corroborator directly.
+    # pins). The cache is only consulted while ``_evaluate_tick_active``
+    # is ``True``; outside an ``evaluate()`` call ``_safe_corroborate()``
+    # bypasses the cache and invokes the corroborator directly so stale
+    # out-of-band reads cannot feed into later watchdog probes
+    # (``test_safe_corroborate_bypasses_cache_outside_evaluate`` pins
+    # this contract).
     _tick_corroboration: CorroborationSnapshot | None = field(default=None, init=False)
+    # Explicit "evaluate tick active" flag. The cache alone is not a
+    # sufficient sentinel because ``_tick_corroboration is None`` is
+    # overloaded: it means BOTH "no tick active" AND "tick active, cache
+    # not yet populated". Storing a snapshot on the bypass path
+    # (outside ``evaluate()``) would poison subsequent bypass-path reads
+    # with stale liveness evidence. This flag makes the "tick active"
+    # state unambiguous so ``_safe_corroborate()`` can route outside
+    # calls to the raw corroborator without touching the cache.
+    _evaluate_tick_active: bool = field(default=False, init=False)
 
     def __init__(
         self,
@@ -2085,25 +2097,37 @@ class IdleWatchdog:
         ``AttributeError`` mid-evaluation and break the watchdog
         decision path instead of failing closed.
 
-        Tick-scoped cache: when ``evaluate()`` is running, the
-        snapshot captured at the top of the tick (``self._tick_corroboration``)
-        is returned on every subsequent ``_safe_corroborate()`` call
-        so all sub-evaluators (NO_OUTPUT_AT_START, STRICTLY_STUCK,
+        Tick-scoped cache: when ``evaluate()`` is running
+        (``_evaluate_tick_active`` is ``True``), the snapshot captured
+        at the top of the tick (``self._tick_corroboration``) is
+        returned on every subsequent ``_safe_corroborate()`` call so
+        all sub-evaluators (NO_OUTPUT_AT_START, STRICTLY_STUCK,
         NO_PROGRESS_QUIET, WAITING_ON_CHILD) see the SAME alive_by
         signal on a single tick. The cache is LAZILY populated on the
         first ``_safe_corroborate()`` call inside ``evaluate()`` so the
         strategy's first ``classify_quiet()`` read of shared state
         (e.g. ``ChildLivenessRegistry.prune_stale`` inside the
-        corroborator) is NOT pre-empted. Outside of ``evaluate()``
-        (external probing, helper access from test code that bypasses
-        ``evaluate()``) the cache is ``None`` and the corroborator is
-        invoked directly.
+        corroborator) is NOT pre-empted.
+
+        Outside-evaluate bypass: when ``_evaluate_tick_active`` is
+        ``False`` (external probing, helper access from test code that
+        bypasses ``evaluate()``) this method invokes the corroborator
+        DIRECTLY without consulting or storing ``_tick_corroboration``.
+        A previous implementation stored the snapshot on the bypass
+        path, which poisoned subsequent bypass-path reads with stale
+        liveness evidence (the bug
+        ``test_safe_corroborate_bypasses_cache_outside_evaluate``
+        pins). The ``_evaluate_tick_active`` flag makes the "tick
+        active" state unambiguous so ``None`` is never ambiguous
+        between "no tick active" and "tick active, cache empty".
         """
-        if self._tick_corroboration is not None:
-            return self._tick_corroboration
-        snapshot = self._call_corroborator_raw()
-        self._tick_corroboration = snapshot
-        return snapshot
+        if self._evaluate_tick_active:
+            if self._tick_corroboration is not None:
+                return self._tick_corroboration
+            snapshot = self._call_corroborator_raw()
+            self._tick_corroboration = snapshot
+            return snapshot
+        return self._call_corroborator_raw()
 
     def _call_corroborator_raw(self) -> CorroborationSnapshot:
         """Invoke the underlying corroborator and normalize the result.
@@ -2363,17 +2387,24 @@ class IdleWatchdog:
         # fire, which is the bug the analysis feedback called out.
         self._classify_quiet_provider = classify_quiet
 
-        # Arm the tick-scoped corroboration cache sentinel ``None`` for
-        # this ``evaluate()`` call. The cache is lazily populated on the
-        # FIRST ``_safe_corroborate()`` call inside ``_evaluate_inner``
-        # so the corroborator's side-effects (e.g. registry
-        # ``prune_stale``) do NOT pre-empt the strategy's first
-        # ``classify_quiet()`` read of the same registry. This preserves
-        # the historical "strategy first, corroborator second" call
-        # order that ``test_stale_scoped_child_evidence_fires_no_output_deadline``
-        # pins while still reusing one snapshot across the WAITING_ON_CHILD
-        # path's entry/ceiling/diagnostic reads inside a single tick
+        # Arm the tick-scoped corroboration cache for this
+        # ``evaluate()`` call. ``_evaluate_tick_active`` is the
+        # unambiguous "tick active" sentinel that ``_safe_corroborate``
+        # checks before consulting ``_tick_corroboration`` (the cache is
+        # only consulted while the tick is active). The cache itself
+        # (``_tick_corroboration``) starts as ``None`` and is lazily
+        # populated on the FIRST ``_safe_corroborate()`` call inside
+        # ``_evaluate_inner`` so the corroborator's side-effects (e.g.
+        # registry ``prune_stale``) do NOT pre-empt the strategy's
+        # first ``classify_quiet()`` read of the same registry. This
+        # preserves the historical "strategy first, corroborator
+        # second" call order that
+        # ``test_stale_scoped_child_evidence_fires_no_output_deadline``
+        # pins while still reusing one snapshot across the
+        # WAITING_ON_CHILD path's entry/ceiling/diagnostic reads
+        # inside a single tick
         # (``test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics``).
+        self._evaluate_tick_active = True
         self._tick_corroboration = None
         try:
             return self._evaluate_inner(
@@ -2381,6 +2412,7 @@ class IdleWatchdog:
                 classify_quiet=classify_quiet,
             )
         finally:
+            self._evaluate_tick_active = False
             self._tick_corroboration = None
     def _evaluate_inner(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distinct verdict path
         self,
