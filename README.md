@@ -194,6 +194,7 @@ Questions, ideas, or something not working? Open an issue — the Codeberg track
 - **[Ask a question](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=question)** — anything from "will this work for my stack?" to feature ideas
 - **[PMF survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey)** (60 seconds) — the one signal we get since Ralph collects zero telemetry
 - **[See who's building with Ralph](USERS.md)** — 27+ projects and 15+ adopters
+- 🆕 **[23 Projects Reinvented the Same AI Coding Loop](https://ralphworkflow.com/blog/ralph-loop-ecosystem-convergent-evolution-2026)** — how the pattern is converging across 23+ independent projects, what JPMorganChase and AI-infra builders are doing with it
 
 ## Engineering-practice requirements
 
