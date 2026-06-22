@@ -35,6 +35,7 @@ from ralph.agents.invoke._process_reader import (
     _NON_MEANINGFUL_ACTIVITY_KINDS,
     _TERMINAL_PROCESS_STATUSES,
     _extract_tool_call_from_activity_signal,
+    _is_resumable_fire_reason,
 )
 from ralph.agents.invoke._pty_extras import _PtyExtras
 from ralph.agents.invoke._pty_helpers import (
@@ -95,6 +96,16 @@ if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
 
 type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
+
+
+def _zero_idle_elapsed(_now: float) -> float:
+    """Unused helper kept for backward-compat with any caller that
+    relied on the prior module-level helper. Returns 0.0 so a
+    watchdog mock without the full ``IdleWatchdog`` surface does
+    not crash the fire path.
+    """
+    return 0.0
+
 
 _EIO_DRAIN_MAX = 32
 _EIO_DRAIN_SELECT_SECONDS = 0.005
@@ -171,6 +182,20 @@ class PtyLineReader:
         self._recent_choice_lines: list[str] = []
         self._transcript_session_ids: list[str] = []
         self._transcript_session_ids_lock = threading.Lock()
+        # Captured transport-level session id from the most recent
+        # visible-TUI line (or ``expected_session_id`` if no captured
+        # line has been observed yet). Mirrors
+        # ``_process_reader._captured_session_id``: the canonical
+        # seam is :func:`extract_visible_tui_transport_session_id`
+        # called from :meth:`_record_transcript_session_id`; this
+        # field is the cache so the watchdog-kill path can read it
+        # at the moment of the fire WITHOUT re-walking the PTY
+        # transcript queue. The id flows into the typed
+        # ``IdleWatchdogKilledError.resumable_session_id`` so the
+        # recovery controller can read it from the ``__cause__``
+        # chain and resume the same agent session instead of
+        # starting a fresh one.
+        self._captured_session_id: str | None = self._expected_session_id
         if self._expected_session_id:
             self._transcript_session_ids.append(self._expected_session_id)
 
@@ -397,6 +422,12 @@ class PtyLineReader:
             if session_id in self._transcript_session_ids:
                 self._transcript_session_ids.remove(session_id)
             self._transcript_session_ids.insert(0, session_id)
+        # Mirror the subprocess reader's ``_captured_session_id`` cache so
+        # the watchdog-kill -> resume path sees the same id without
+        # re-walking the PTY queue. The id flows into
+        # ``IdleWatchdogKilledError.resumable_session_id`` so the
+        # recovery controller can resume the same agent session.
+        self._captured_session_id = session_id
 
     def _transcript_session_id_candidates(self) -> tuple[str, ...]:
         with self._transcript_session_ids_lock:
@@ -514,6 +545,24 @@ class PtyLineReader:
         pid = cast("int | None", getattr(self._handle, "pid", None))
         if pid is not None:
             teardown_subtree(pid)
+        # Real resume-safety from the canonical helper at
+        # ``_process_reader._is_resumable_fire_reason`` so the PTY
+        # watchdog kill path produces the same resume-safety signal
+        # as the subprocess path. Mirrors the same helper used by
+        # ``_process_reader._check_fire``.
+        resume_safe = _is_resumable_fire_reason(fire_reason)
+        # The canonical watchdog-kill warning is logged by
+        # ``IdleWatchdog._emit_fire_log``; we do not duplicate it
+        # here. The subprocess path also logs only the canonical
+        # warning; the ``resume_safe`` / ``resumable_session_id``
+        # surface is the typed ``IdleWatchdogKilledError`` attached
+        # as ``__cause__`` and the merged_diag payload.
+        # Captured transport session id from the reader-level cache
+        # (mirrors ``_process_reader._captured_session_id``). Populated
+        # by :meth:`_record_transcript_session_id` from the visible-TUI
+        # extractor so PTY-visible session ids are promoted into the
+        # same resumable path the subprocess reader uses.
+        captured_session_id = self._captured_session_id
         # Always merge the watchdog's per-channel evidence summary into
         # the diagnostic so a post-mortem (or the on-call operator) can
         # see exactly which evidence channels were fresh and which
@@ -524,11 +573,30 @@ class PtyLineReader:
         # (HARD_STOP or post-tool-result). ``diagnostic`` is mutable in
         # the post-tool-result rewrite above, so this merge is
         # deliberately applied AFTER that rewrite.
+        now = self._clock.monotonic()
         merged_diag: dict[str, object] = {
-            "evidence_summary": watchdog.last_evidence_summary(
-                self._clock.monotonic()
-            ).to_dict_list(),
+            "evidence_summary": watchdog.last_evidence_summary(now).to_dict_list(),
         }
+        # Surface the captured session id and the real resume-safety
+        # signal in the post-mortem diagnostic so an on-call grep of
+        # the merged_diag payload sees the captured id here as well
+        # (the ``FailureClassifier.classify`` consults
+        # ``exc.__cause__`` first, but the diagnostic carries the id
+        # for log-only consumers).
+        merged_diag["resumable_session_id"] = captured_session_id
+        merged_diag["resume_safe"] = resume_safe
+        # The diagnostic_snapshot adds the full watchdog state at the
+        # moment of the fire for post-mortem reconstruction. It is
+        # optional because a watchdog mock without
+        # ``diagnostic_snapshot`` must not crash the fire path.
+        snapshot_method: object = getattr(watchdog, "diagnostic_snapshot", None)
+        if callable(snapshot_method):
+            try:
+                snapshot_obj: dict[str, object] | None = snapshot_method(now=now)
+            except Exception:
+                snapshot_obj = None
+            if snapshot_obj:
+                merged_diag["watchdog_snapshot"] = snapshot_obj
         if diagnostic is not None:
             for key, value in diagnostic.items():
                 if key not in merged_diag:
@@ -572,6 +640,7 @@ class PtyLineReader:
             signal=15,  # SIGTERM
             evidence_summary=str(merged_diag),
             child_alive=_child_alive,
+            resumable_session_id=captured_session_id,
         )
         wrapper = _IdleStreamTimeoutError(
             timeout_val,

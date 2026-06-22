@@ -926,20 +926,112 @@ class IdleWatchdog:
         self._default_subagent_activity_listener = listener
 
     def record_invocation_start(self) -> None:
-        """Record the start of the invocation."""
+        """Record the start of the invocation.
+
+        Reset EVERY per-invocation field so a reused watchdog cannot
+        defer/fingerprint/throttle based on the previous run's state.
+        Process-lifetime state (the monotonic clock handle, the
+        configured policy, the injected corroborator/monitor/listener
+        providers) is intentionally preserved.
+
+        Fields reset (per-invocation semantics):
+          * ``_last_activity`` -- baseline for the stdout activity line
+          * ``_invocation_started_at`` -- invocation timestamp
+          * ``_last_meaningful_output_at`` / ``_has_meaningful_output``
+          * ``_waiting_on_child_started_at`` /
+            ``_cumulative_waiting_on_child_seconds`` --
+            WAITING_ON_CHILD is per-invocation; the cumulative counter
+            resets so a chained retry on the same watchdog cannot
+            inherit the prior run's cumulative budget
+          * ``_in_drain_window`` / ``_drain_started_at``
+          * ``_last_fire_reason`` / ``_last_deferred_kind`` /
+            ``_last_alive_by`` -- the fire history belongs to the
+            previous run, NOT the new invocation
+          * ``_last_deferred_log_at`` / ``_last_evidence_deferral_log_at``
+            -- the per-key log throttle MUST survive long-lived
+            WAITING runs but MUST NOT carry state across invocations
+            (different run = different operator-relevant history)
+          * ``_last_waiting_status_at`` /
+            ``_suspicion_announced_for_run`` -- the suspicion /
+            status emit cadence is per-invocation
+          * ``_last_tool_result_at`` /
+            ``_awaiting_post_tool_result_progression`` -- the
+            post-tool-result wedge state is per-invocation
+          * Per-channel evidence counters and timestamps
+            (``_mcp_tool_call_count`` / ``_last_mcp_tool_call_at``,
+            ``_subagent_progress_count`` / ``_last_subagent_progress_at``,
+            ``_subagent_output_count`` / ``_last_subagent_output_at``,
+            ``_workspace_event_count_internal`` /
+            ``_last_workspace_event_at`` /
+            ``_last_workspace_event_weight`` /
+            ``_workspace_kind_counts``) -- each channel's evidence
+            state is per-invocation; a stale channel from the prior
+            run could otherwise defer a fresh fire incorrectly
+          * ``_last_subagent_progress_emit_at`` -- the
+            SUBAGENT_PROGRESS waiting-status emit throttle timestamp
+            is per-invocation (the channel-evidence timestamp is
+            already cleared above; this is the separate emit-cadence
+            timestamp the gate consults in ``_handle_waiting_branch``)
+          * ``_last_subagent_progress_description`` /
+            ``_default_subagent_activity_listener``
+          * ``_subagent_output_captures`` -- the capture cache is
+            per-invocation (each run opens new child PIDs)
+          * ``_entry_corroboration`` -- the entry corroboration is
+            captured at run-start; the previous run's entry is stale
+          * ``_last_progress_fingerprint`` -- the progress-repeat
+            fingerprint is per-invocation (a fingerprint from the
+            previous run would cause a same-fingerprint line in the
+            new run to be skipped as a "repeat" when it is actually
+            fresh)
+          * ``_last_classify_quiet_provider`` -- the per-invocation
+            ``classify_quiet`` callable the gate consults on every
+            non-absolute fire; stale callable from the prior run
+            could make the gate read a dead run's state
+        """
         now = self._clock.monotonic()
+        self._last_activity = now
         self._invocation_started_at = now
         self._last_meaningful_output_at = now
         self._has_meaningful_output = False
+        self._waiting_on_child_started_at = None
+        self._cumulative_waiting_on_child_seconds = 0.0
+        self._in_drain_window = False
+        self._drain_started_at = None
+        self._last_fire_reason = None
+        self._last_deferred_kind = None
+        self._last_alive_by = None
         self._last_subagent_progress_description = None
         self._default_subagent_activity_listener = None
-        self._last_deferred_kind = None
         # Reset the per-key log throttle so a new invocation starts with an
         # empty map. The throttle MUST survive long-lived WAITING runs but
         # MUST NOT carry state across invocations (different run = different
         # operator-relevant history).
         self._last_deferred_log_at = {}
         self._last_evidence_deferral_log_at = {}
+        self._last_waiting_status_at = None
+        self._suspicion_announced_for_run = False
+        self._last_tool_result_at = None
+        self._awaiting_post_tool_result_progression = False
+        # Per-channel evidence state: counters, last_at timestamps, and
+        # the workspace kind counters. All cleared so a reused watchdog
+        # starts from a clean baseline; otherwise a previous run's
+        # fresh channel could defer a fresh fire incorrectly on the
+        # new invocation.
+        self._mcp_tool_call_count = 0
+        self._last_mcp_tool_call_at = None
+        self._subagent_progress_count = 0
+        self._last_subagent_progress_at = None
+        self._last_subagent_progress_emit_at = None
+        self._subagent_output_count = 0
+        self._last_subagent_output_at = None
+        self._workspace_event_count_internal = 0
+        self._last_workspace_event_at = None
+        self._last_workspace_event_weight = 0.0
+        self._workspace_kind_counts = {}
+        self._subagent_output_captures = {}
+        self._entry_corroboration = None
+        self._last_progress_fingerprint = None
+        self._classify_quiet_provider = None
 
     def set_is_waiting_state(self, is_waiting_state: bool) -> None:
         """Update the pipeline's wait-state flag for the StuckClassifier gate.

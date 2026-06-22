@@ -10,7 +10,10 @@ from ralph.agents.invoke._agent_inactivity_timeout_error import AgentInactivityT
 from ralph.agents.invoke._agent_invocation_error import AgentInvocationError
 from ralph.pipeline.agent_retry_decision import resolve_retry_intent
 
-from ._session import extract_transport_session_id, extract_transport_session_id_from_line
+from ._session import (
+    extract_transport_session_id,
+    extract_transport_session_id_with_visible_tui,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
@@ -135,7 +138,15 @@ def iter_with_direct_mcp_recovery(
         try:
             for line in run_attempt(current_session_id):
                 attempt_lines.append(line)
-                observed_session_id = extract_transport_session_id_from_line(line)
+                # Use the visible-TUI-aware extractor so a session id
+                # carried in a PTY banner line (with ANSI codes) is
+                # captured into ``current_session_id`` and threaded
+                # into the recovery plan. The plain
+                # ``extract_transport_session_id_from_line`` would
+                # miss the id because the anchored text patterns in
+                # ``_session._TRANSPORT_TEXT_SESSION_PATTERNS`` do not
+                # match TUI lines that contain ANSI escape codes.
+                observed_session_id = extract_transport_session_id_with_visible_tui(line)
                 if observed_session_id is not None:
                     current_session_id = observed_session_id
                     if on_session_observed is not None:

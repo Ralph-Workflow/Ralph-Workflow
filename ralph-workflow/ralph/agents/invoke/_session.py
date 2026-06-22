@@ -6,6 +6,8 @@ import json
 import re
 from typing import cast
 
+from ralph.agents.invoke._pty_helpers import _visible_tui_text
+
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
 _TURN_BOUNDARY_MARKER = "[claude turn boundary]"
 
@@ -84,6 +86,36 @@ def extract_transport_session_id(raw_output: list[str] | tuple[str, ...]) -> str
 def extract_transport_session_id_from_line(line: str) -> str | None:
     """Extract only top-level transport/runtime session IDs from one line."""
     return _extract_transport_session_id_from_line(line)
+
+
+def extract_transport_session_id_with_visible_tui(line: str) -> str | None:
+    """Extract transport session IDs from a PTY line, with ANSI-strip fallback.
+
+    PTY output lines frequently contain ANSI escape codes that prevent
+    ``extract_transport_session_id_from_line`` from matching the
+    anchored text patterns in :data:`_TRANSPORT_TEXT_SESSION_PATTERNS`
+    (e.g. ``^Claude session ready\\. Session ID:\\s*(...)$``). The
+    visible-TUI helper :func:`extract_visible_tui_transport_session_id`
+    strips ANSI codes via :func:`ralph.agents.invoke._pty_helpers._visible_tui_text`
+    before matching, so a TUI line like
+    ``\\x1b[32mClaude session ready. Session ID: abc123\\x1b[0m``
+    still yields the captured id.
+
+    Used by the PTY watchdog / recovery paths so the resumable
+    session id survives a watchdog-kill -> resume flow on the PTY
+    transport. Mirrors the per-line capture already used by
+    :meth:`PtyLineReader._record_transcript_session_id`.
+    """
+    primary = extract_transport_session_id_from_line(line)
+    if primary:
+        return primary
+    # Fallback: strip ANSI codes and re-run the visible-TUI extractor
+    # so a session id carried in a TUI banner / status line is
+    # captured.
+    visible_line = _visible_tui_text(line)
+    if visible_line and visible_line != line.strip():
+        return extract_visible_tui_transport_session_id(visible_line)
+    return None
 
 
 def extract_visible_tui_transport_session_id(text: str) -> str | None:

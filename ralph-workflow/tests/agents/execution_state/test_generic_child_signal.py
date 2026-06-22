@@ -882,9 +882,18 @@ class TestOpenCodeStrategyDoesNotDoubleInvokeSink:
     ) -> None:
         """OpenCodeExecutionStrategy.observe_line invokes the sink exactly once
         for a child_progress line, not twice.
+
+        The line carries an explicit ``child_id`` so the sink/registry
+        parity gate (FIX: a JSON-shaped CHILD_PROGRESS line without a
+        child_id is dropped from BOTH the sink AND the registry) does
+        not apply. The test focuses on the no-double-invoke contract;
+        the parity contract is pinned separately in
+        ``tests/agents/execution_state/test_opencode_sink_registry_parity.py``.
         """
         strategy = OpenCodeExecutionStrategy()
-        strategy.observe_line('{"type":"child_progress","msg":"thinking"}')
+        strategy.observe_line(
+            '{"type":"child_progress","child_id":"child-A","msg":"thinking"}'
+        )
 
         assert len(subagent_sink_spy) == 1, (
             f"expected exactly one sink invocation for OpenCode strategy on"

@@ -26,6 +26,7 @@ from ._helpers import (
     _probe_check_quiet,
     _progress_report_signal,
     _route_opencode_line_to_registry,
+    parse_opencode_child_id,
 )
 from .agent_execution_state import AgentExecutionState
 
@@ -141,6 +142,23 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         # cross-transport generic classifier is consulted as a
         # fallback so every supported transport feeds the watchdog
         # surface with REAL extracted progress.
+        #
+        # SINK/REGISTRY PARITY (FIX): the watchdog activity sink
+        # and the child-liveness registry MUST consume the SAME
+        # evidence model so the watchdog cannot treat a line as
+        # fresh subagent activity while the registry-backed
+        # liveness view stays stale. The registry drops lines
+        # without a child id (see
+        # ``_route_opencode_line_to_registry``); the sink now
+        # applies the same gate: a CHILD_PROGRESS / CHILD_HEARTBEAT
+        # line without a parsed child id is treated as
+        # un-attributable and is dropped from the sink. Plain-text
+        # generic markers (``[subagent] progress`` /
+        # ``[subagent] heartbeat``) classify as CHILD_PROGRESS /
+        # CHILD_HEARTBEAT but do NOT carry a JSON child_id; the
+        # plain-text path passes the gate because child scoping
+        # is implicit in the marker text itself.
+        child_id: str | None = parse_opencode_child_id(line)
         if self._subagent_activity_sink is not None or _has_subagent_sink():
             signal = _classify_opencode_child_signal(line)
             if signal is None:
@@ -149,7 +167,27 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
                 AgentActivityKind.CHILD_PROGRESS,
                 AgentActivityKind.CHILD_HEARTBEAT,
             ):
-                if self._subagent_activity_sink is not None:
+                # Plain-text generic markers carry implicit child
+                # scoping via the marker text; JSON envelopes must
+                # carry an explicit child_id to be attributed to a
+                # specific child record. Without this gate a
+                # JSON-shaped CHILD_PROGRESS line without a child_id
+                # would refresh the watchdog but be dropped from the
+                # registry (parity bug).
+                if _classify_opencode_child_signal(line) is not None:
+                    # OpenCode JSON envelope -- require an explicit
+                    # child_id so the registry and the sink see the
+                    # SAME attribution.
+                    if child_id is not None:
+                        if self._subagent_activity_sink is not None:
+                            with contextlib.suppress(Exception):
+                                self._subagent_activity_sink(line)
+                        else:
+                            _invoke_subagent_sink(line)
+                elif self._subagent_activity_sink is not None:
+                    # Plain-text generic marker -- child scoping is
+                    # implicit in the marker text, no child_id
+                    # required for parity.
                     with contextlib.suppress(Exception):
                         self._subagent_activity_sink(line)
                 else:
