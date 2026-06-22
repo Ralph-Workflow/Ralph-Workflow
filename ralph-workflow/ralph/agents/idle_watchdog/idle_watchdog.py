@@ -590,6 +590,19 @@ class IdleWatchdog:
     _last_deferred_log_at: dict[tuple[str, str], float] = field(
         default_factory=dict, init=False
     )
+    # Per-channel log throttle map for ``_handle_evidence_deferral``.
+    # Mirrors ``_last_deferred_log_at`` (which throttles ``_gate_fire``
+    # DEBUG spam) but keys on the active channel name (mcp_tool /
+    # subagent / workspace / none). The PROMPT log showed per-tick
+    # debug spam at ``_handle_evidence_deferral`` while a session
+    # stayed active only through non-stdout evidence; the same
+    # ``watchdog_log_throttle_seconds`` window is reused so the
+    # emission cadence stays aligned with the gate-throttle cadence.
+    # Reset to empty in ``record_invocation_start`` so a new
+    # invocation starts with an empty throttle map.
+    _last_evidence_deferral_log_at: dict[str, float] = field(
+        default_factory=dict, init=False
+    )
     # Corroborator's alive_by signal at the moment of the most recent
     # NO_PROGRESS_QUIET fire. ``None`` when the watchdog has not fired
     # yet OR when the most recent fire was not NO_PROGRESS_QUIET
@@ -737,6 +750,7 @@ class IdleWatchdog:
         self._last_fire_reason = None
         self._last_deferred_kind = None
         self._last_deferred_log_at = {}
+        self._last_evidence_deferral_log_at = {}
         self._last_waiting_status_at = None
         self._suspicion_announced_for_run = False
         self._last_tool_result_at = None
@@ -925,6 +939,7 @@ class IdleWatchdog:
         # MUST NOT carry state across invocations (different run = different
         # operator-relevant history).
         self._last_deferred_log_at = {}
+        self._last_evidence_deferral_log_at = {}
 
     def set_is_waiting_state(self, is_waiting_state: bool) -> None:
         """Update the pipeline's wait-state flag for the StuckClassifier gate.
@@ -2549,6 +2564,13 @@ class IdleWatchdog:
         This is the activity-aware verdict path. The SESSION_CEILING and
         CHILDREN_PERSIST_TOO_LONG ceilings are checked BEFORE this hook
         in ``evaluate()`` and remain absolute.
+
+        The debug emission is throttled by the same
+        ``watchdog_log_throttle_seconds`` window used by ``_gate_fire``
+        so a session that stays active only through non-stdout evidence
+        does not produce per-tick DEBUG spam (the PROMPT log showed
+        repeated per-tick emissions here while the gate already
+        silenced its own spam).
         """
         summary, freshest_age = self._build_evidence_summary_diag(now)
         active_channel_value = summary.get("active_channel", "none")
@@ -2561,13 +2583,38 @@ class IdleWatchdog:
         # deferred (or, for 'none', that the deferral was driven by
         # some channel the helper did not enumerate).
         age_for_log = round(freshest_age, 1) if freshest_age is not None else round(idle_elapsed, 1)
-        self._log.debug(
-            "idle watchdog: deferred via activity evidence channel={} age={}s idle_elapsed={}s",
-            channel_label,
-            age_for_log,
-            round(idle_elapsed, 1),
-        )
+        if self._maybe_log_evidence_deferral(channel_label, now):
+            self._log.debug(
+                "idle watchdog: deferred via activity evidence channel={} age={}s idle_elapsed={}s",
+                channel_label,
+                age_for_log,
+                round(idle_elapsed, 1),
+            )
         return WatchdogVerdict.CONTINUE
+
+    def _maybe_log_evidence_deferral(self, channel_label: str, now: float) -> bool:
+        """Return True (and stamp the throttle map) when the
+        ``_handle_evidence_deferral`` DEBUG emission is allowed for
+        this ``channel_label`` key.
+
+        Mirrors ``_maybe_log_deferred`` (which throttles ``_gate_fire``
+        DEBUG spam). The PROMPT log showed per-tick DEBUG records at
+        ``_handle_evidence_deferral`` while a session stayed active
+        only through non-stdout evidence; this helper consults
+        ``self._last_evidence_deferral_log_at`` and the configured
+        ``watchdog_log_throttle_seconds`` to keep emissions to at most
+        one per channel key per throttle window. A different channel
+        label (e.g. ``mcp_tool`` vs ``subagent``) gets its own entry
+        so the operator still sees the channel transition even when
+        the previous channel's emissions were suppressed.
+        """
+        key = channel_label
+        last = self._last_evidence_deferral_log_at.get(key)
+        throttle = self._config.watchdog_log_throttle_seconds
+        if last is None or (now - last) >= throttle:
+            self._last_evidence_deferral_log_at[key] = now
+            return True
+        return False
 
     def _post_tool_result_stalled(self, now: float, idle_elapsed: float) -> WatchdogVerdict | None:
         """Return the verdict when post-tool-result progression has stalled long enough.

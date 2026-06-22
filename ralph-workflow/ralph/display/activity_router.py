@@ -17,6 +17,7 @@ from ralph.display.ring_buffer import PARALLEL_DISPLAY_BUFFER_SIZE, RingBuffer
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.agents.parsers.agent_output_line import AgentOutputLine
     from ralph.agents.parsers.base import AgentParser
 
 # Parser imports are deferred: ``ralph.agents.parsers`` pulls in
@@ -164,6 +165,7 @@ class ActivityRouter:
                 buffer.enqueue(rendered)
                 if self._on_event is not None:
                     self._on_event(unit_id, kind, event.content, raw_reference, out.metadata or {})
+                self._dispatch_subagent_progress(parser, out, unit_id, raw_reference)
         except Exception as exc:
             if self._raw_overflow_callback is not None:
                 with contextlib.suppress(Exception):
@@ -183,6 +185,61 @@ class ActivityRouter:
             if self._on_event is not None:
                 self._on_event(
                     unit_id, ActivityEventKind.ERROR, error_event.content, raw_reference, {}
+                )
+
+    def _dispatch_subagent_progress(
+        self,
+        parser: AgentParser,
+        out: AgentOutputLine,
+        unit_id: str,
+        raw_reference: str | None,
+    ) -> None:
+        """Forward parsed lines to the subagent sink and emit SUBAGENT_PROGRESS.
+
+        Mirrors ``stream_parsed_agent_activity`` (in
+        ``ralph/pipeline/activity_stream.py``): when the parser
+        implements ``emit_subagent_activity`` (the shared hook used by
+        Claude/OpenCode/Codex/Gemini/Pi/Agy/Generic), invoke it with a
+        capturing sink, then (a) forward the captured summary to the
+        per-task subagent sink via ``invoke_subagent_sink`` so the idle
+        watchdog's ``record_subagent_work`` channel stays fresh, and
+        (b) emit a ``SUBAGENT_PROGRESS`` event through the
+        ``_on_event`` callback so the operator sees real-time per-tool
+        subagent progress on the console transcript.
+
+        The hook is fail-soft: a buggy hook cannot crash the router
+        because the exception is swallowed and the inner ``sink``
+        capture re-raises into ``invoke_subagent_sink`` which is
+        already exception-swallowing at the helper boundary.
+        """
+        emit_hook: object = getattr(parser, "emit_subagent_activity", None)
+        if not callable(emit_hook):
+            return
+        captured: list[str] = []
+        try:
+            cast(
+                "Callable[[AgentOutputLine, Callable[[str], None]], None]",
+                emit_hook,
+            )(out, captured.append)
+        except Exception:
+            return
+        if not captured:
+            return
+        summary = captured[0]
+        try:
+            from ralph.mcp.server._activity_sink import invoke_subagent_sink
+
+            invoke_subagent_sink(summary)
+        except Exception:
+            pass
+        if self._on_event is not None:
+            with contextlib.suppress(Exception):
+                self._on_event(
+                    unit_id,
+                    ActivityEventKind.SUBAGENT_PROGRESS,
+                    summary,
+                    raw_reference,
+                    out.metadata or {},
                 )
 
 
