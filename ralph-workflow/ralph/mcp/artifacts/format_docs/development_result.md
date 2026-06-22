@@ -27,11 +27,11 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `development_r
   - For steps plans, include one entry per plan step
   - `plan_item` must exactly match the canonical step reference `"Step N: <title>"`
   - For work_units plans, include one entry for your assigned work unit and `plan_item` must exactly match that work unit's `unit_id`
-  - Unknown references and duplicate `plan_item` values fail validation
+  - Unknown references and duplicate `plan_item` values fail the downstream proof-validation step when proof policy is enabled
 - `analysis_items_addressed` — array of `{how_to_fix_item: str, proof: str}` objects
   - Include one entry per prior `how_to_fix` item when analysis feedback exists
   - `how_to_fix_item` must be an exact verbatim copy of the prior analysis text
-  - Unknown references and duplicate `how_to_fix_item` values fail validation
+  - Unknown references and duplicate `how_to_fix_item` values fail the downstream proof-validation step when proof policy is enabled
 
 ## Optional fields
 
@@ -44,6 +44,15 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `development_r
 {
   "artifact_type": "development_result",
   "content": "{\"status\": \"completed\", \"summary\": \"Implemented the feature.\", \"files_changed\": \"- src/main.py\", \"plan_items_proven\": [{\"plan_item\": \"Step 1: Add validation\", \"proof\": \"Updated src/main.py and tests.\"}], \"analysis_items_addressed\": [{\"how_to_fix_item\": \"Add test for edge case\", \"proof\": \"Added the regression test and verified it passes.\"}]}"
+}
+```
+
+## Retry-ready partial example
+
+```json
+{
+  "artifact_type": "development_result",
+  "content": "{\"status\": \"partial\", \"summary\": \"Core work is done but verification is still pending.\", \"files_changed\": \"- src/main.py\", \"next_steps\": \"Run the remaining verification command and confirm the output.\", \"continuation\": {\"prior_session_id\": \"<current-session-id>\"}, \"plan_items_proven\": [{\"plan_item\": \"Step 1: Add validation\", \"proof\": \"Updated src/main.py and tests.\"}], \"analysis_items_addressed\": []}"
 }
 ```
 

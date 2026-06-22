@@ -353,8 +353,90 @@ def test_submit_plan_sections_mode_append_on_object_section_rejected(tmp_path: P
     assert "summary" in err or "replace" in err
 
 
+def test_submit_plan_sections_append_steps_error_includes_item_shape(tmp_path: Path) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {"entries": [{"section": "steps", "content": json.dumps("bad"), "mode": "append"}]},
+    )
+
+    assert result.is_error is True
+    payload = json.loads(_read_response_text(result))
+    error = cast("str", payload["error"])
+    assert "Expected shape for section 'steps' with mode='append'" in error
+
+
+def test_submit_plan_sections_append_risks_error_includes_item_shape(tmp_path: Path) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {
+            "entries": [
+                {"section": "risks_mitigations", "content": json.dumps("bad"), "mode": "append"}
+            ]
+        },
+    )
+
+    assert result.is_error is True
+    payload = json.loads(_read_response_text(result))
+    error = cast("str", payload["error"])
+    assert "Expected shape for section 'risks_mitigations' with mode='append'" in error
+
+
+def test_submit_plan_sections_error_payload_includes_fix_guidance_and_doc(tmp_path: Path) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {
+            "entries": [
+                {
+                    "section": "steps",
+                    "content": json.dumps(
+                        {
+                            "number": 1,
+                            "title": "One",
+                            "content": "single object instead of list",
+                        }
+                    ),
+                }
+            ]
+        },
+    )
+
+    assert result.is_error is True
+    payload = json.loads(_read_response_text(result))
+    error = cast("str", payload["error"])
+    assert ".agent/artifact-formats/plan.md" in error
+    assert "JSON array like [{...}]" in error
+    assert "ralph_submit_plan_sections" in error
+
+
 def test_submit_plan_sections_missing_entries_raises(tmp_path: Path) -> None:
     """Missing 'entries' array raises InvalidParamsError."""
     workspace = FsWorkspace(tmp_path)
-    with pytest.raises(InvalidParamsError, match="Missing 'entries' array"):
+    with pytest.raises(InvalidParamsError) as exc_info:
         handle_submit_plan_sections(planning_session(), workspace, {})
+
+    message = str(exc_info.value)
+    assert "Missing 'entries' array" in message
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "{'entries': [{'section': 'summary'" in message
+
+
+def test_submit_plan_sections_unknown_section_includes_fix_guidance(tmp_path: Path) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {"entries": [{"section": "bogus", "content": json.dumps({})}]},
+    )
+
+    assert result.is_error is True
+    payload = json.loads(_read_response_text(result))
+    error = cast("str", payload["error"])
+    assert ".agent/artifact-formats/plan.md" in error
+    assert "Unknown plan section 'bogus'" in error
+    assert "{'entries': [{'section': 'summary'" in error

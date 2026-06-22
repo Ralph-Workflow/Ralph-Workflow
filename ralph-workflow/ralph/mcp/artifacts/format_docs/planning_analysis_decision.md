@@ -10,6 +10,10 @@ You can also submit this using `artifact_type: "analysis_decision"` when your se
 
 Call the `ralph_submit_artifact` tool with `artifact_type` set to `planning_analysis_decision` and `content` set to a JSON string of your decision payload.
 
+After a successful submit, the run-scoped artifact receipt is sufficient completion evidence for the current analysis flow. `declare_complete` remains an explicit signal but is not required just to make the submission count.
+
+If your session drain is `planning_analysis`, the generic alias `artifact_type: "analysis_decision"` is also accepted. The payload shape is the same; only the outer `artifact_type` changes.
+
 ```json
 {
   "artifact_type": "planning_analysis_decision",
@@ -36,6 +40,24 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `planning_anal
 }
 ```
 
+## Retry-ready non-completed example
+
+```json
+{
+  "artifact_type": "planning_analysis_decision",
+  "content": "{\"status\": \"request_changes\", \"summary\": \"The plan needs revision before execution.\", \"what_came_up_short\": [\"critical_files is missing the real target file\"], \"how_to_fix\": [\"Resubmit critical_files with primary_files populated, then rerun planning analysis\"]}"
+}
+```
+
+## Alias example for `analysis_decision`
+
+```json
+{
+  "artifact_type": "analysis_decision",
+  "content": "{\"status\": \"request_changes\", \"summary\": \"The plan needs revision before execution.\", \"what_came_up_short\": [\"critical_files is missing the real target file\"], \"how_to_fix\": [\"Resubmit critical_files with primary_files populated, then rerun planning analysis\"]}"
+}
+```
+
 ## Common mistakes
 
 - Do NOT use any status other than `"completed"`, `"request_changes"`, or `"failed"`
@@ -47,7 +69,7 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `planning_anal
 
 ## Dumb-proof checklist
 
-- Did you set `artifact_type` to `"planning_analysis_decision"`?
+- Did you set `artifact_type` to `"planning_analysis_decision"` or, when the drain is `planning_analysis`, the alias `"analysis_decision"`?
 - Did you set `status` to `"completed"`, `"request_changes"`, or `"failed"` (not something else)?
 - Did you write a non-empty `summary`?
 - Did you omit `what_came_up_short` and `how_to_fix` when status is `"completed"`?

@@ -46,10 +46,17 @@ The table below uses a few drain groupings:
 | `unsafe_exec` | `process.exec_unbounded` | write drains | Execute an unrestricted shell command in the real workspace directory (use when `exec` sandbox overhead is too high) |
 | `raw_exec` | `process.exec_unbounded` | write drains | Alias for `unsafe_exec` — same handler, same permissions, unrestricted shell execution with no sandbox overhead |
 | `ralph_submit_artifact` | `artifact.submit` | all | Submit a structured artifact |
-| `ralph_submit_plan_section` | `artifact.submit` | planning | Submit one section of the plan draft |
-| `ralph_finalize_plan` | `artifact.submit` | planning | Finalize and validate the plan draft |
-| `ralph_get_plan_draft` | `artifact.submit` | planning | Retrieve the current plan draft |
-| `ralph_discard_plan_draft` | `artifact.submit` | planning | Discard the current plan draft |
+| `ralph_submit_plan_section` | `artifact.plan_write` | planning | Submit one section of the plan draft |
+| `ralph_submit_plan_sections` | `artifact.plan_write` | planning | Submit multiple plan sections atomically in one batch |
+| `ralph_validate_draft` | `artifact.plan_read` | planning | Run the full read-only plan validator against the staged draft |
+| `ralph_insert_plan_step` | `artifact.plan_write` | planning | Insert one plan step and return the reindex echo payload |
+| `ralph_replace_plan_step` | `artifact.plan_write` | planning | Replace one plan step and return the reindex echo payload |
+| `ralph_remove_plan_step` | `artifact.plan_write` | planning | Remove one plan step and return the reindex echo payload |
+| `ralph_move_plan_step` | `artifact.plan_write` | planning | Move one plan step and return the reindex echo payload |
+| `ralph_patch_step` | `artifact.plan_write` | planning | Patch one plan step while preserving the other fields |
+| `ralph_finalize_plan` | `artifact.plan_write` | planning | Finalize and validate the plan draft |
+| `ralph_get_plan_draft` | `artifact.plan_read` | planning | Retrieve the current plan draft |
+| `ralph_discard_plan_draft` | `artifact.plan_write` | planning | Discard the current plan draft |
 | `report_progress` | `run.report_progress` | write drains, commit drains | Report progress to the pipeline |
 | `declare_complete` | `artifact.submit` | all | Declare that the agent has finished |
 | `coordinate` | `artifact.submit` | all | Parallel worker coordination |
@@ -171,17 +178,25 @@ Capability grants follow these rules (implemented in `ralph.mcp.session_plan`):
 
 Agents use `ralph_submit_artifact` to submit structured JSON payloads. Each type has a
 validated schema; an invalid payload is rejected and the error response points the agent
-to the format doc at `.agent/artifact-formats/<type>.md`.
+to `.agent/artifact-formats/<type>.md` for payload-shape failures, or to
+`.agent/artifact-formats/artifact_formats_index.md` for artifact-type selection failures.
+For single-shot artifacts, the repair loop is: read the referenced file, rebuild the payload
+or artifact_type, and retry `ralph_submit_artifact`. For `plan`, repair the staged draft with
+the plan staging tools, then rerun `ralph_validate_draft` or `ralph_finalize_plan`.
 
 | Artifact type | Submitted by | Description |
 |---------------|-------------|-------------|
 | `plan` | planning agent | Structured implementation plan with steps, summary, and optional work units |
-| `development_result` | developer agent | Summary of what was implemented and a self-assessment |
+| `development_result` | developer agent | Proof-bearing implementation result with summary, changed files, proof entries, and partial-result continuation fields |
 | `issues` | reviewer agent | List of issues found during review, each with severity and fix guidance |
 | `fix_result` | fix agent | Summary of fixes applied and residual issues |
 | `commit_message` | commit agent | Conventional commit message for the changes |
+| `commit_cleanup` | commit-cleanup agent | Cleanup actions for transient or internal files before commit |
 | `development_analysis_decision` | analysis agent (development) | Decision on whether to proceed, loop, or escalate after development |
+| `planning_analysis_decision` | analysis agent (planning) | Decision on whether to approve, revise, or restart the plan |
 | `review_analysis_decision` | analysis agent (review) | Decision on whether to pass, loop review, or escalate after review |
+| `smoke_test_result` | smoke-test agent | Structured result of a smoke-test run |
+| `product_spec` | planning/product-spec agent | Structured product spec artifact |
 
 Format docs for each type live in `ralph/mcp/artifacts/format_docs/`. Agents are
 directed to read the relevant format doc before retrying a failed submission.
@@ -211,6 +226,8 @@ Validate your upstream server registration:
 ralph --check-mcp
 ```
 
+Run this from the human operator shell outside any Ralph-managed agent session.
+
 See [Local Web Access](local-web-access.md) for a worked example using Crawl4AI.
 
 ## Capability Flags
@@ -227,7 +244,9 @@ callable. The capability strings are:
 | `workspace.edit` | `edit_file`, `append_file`, `create_directory`, `move_file`, `copy_file` |
 | `workspace.delete` | `delete_path` (distinct destructive capability) |
 | `process.exec_bounded` | `exec` (with command blacklist enforced) |
-| `artifact.submit` | `ralph_submit_artifact`, `declare_complete`, `coordinate`, plan draft tools |
+| `artifact.submit` | `ralph_submit_artifact`, `declare_complete`, `coordinate` |
+| `artifact.plan_read` | `ralph_get_plan_draft`, `ralph_validate_draft` |
+| `artifact.plan_write` | `ralph_submit_plan_section`, `ralph_submit_plan_sections`, `ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_remove_plan_step`, `ralph_move_plan_step`, `ralph_patch_step`, `ralph_finalize_plan`, `ralph_discard_plan_draft` |
 | `run.report_progress` | `report_progress` |
 | `git.status_read` | `git_status`, `git_log`, `git_show` |
 | `git.diff_read` | `git_diff` |

@@ -66,9 +66,10 @@ def init_local_config_help_text() -> str:
 def fresh_workspace_next_steps() -> tuple[str, ...]:
     """Return the minimal next steps for a completely fresh workspace."""
     return (
-        f"Run {INIT_COMMAND} to scaffold {PROMPT_FILE} and .agent/ configs",
+        "From a human-operated shell outside any Ralph-managed agent session, "
+        f"run {INIT_COMMAND} to scaffold {PROMPT_FILE} and .agent/ configs",
         f"Edit {PROMPT_FILE} with your task",
-        f"Run {RUN_COMMAND} to start the pipeline",
+        f"From that same human-operated shell, run {RUN_COMMAND} to start the pipeline",
     )
 
 
@@ -94,9 +95,10 @@ def welcome_panel_next_steps() -> tuple[str, ...]:
         "Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, "
         "and common IDE/OS files",
         f"(Optional) Run {INIT_LOCAL_CONFIG_COMMAND} when this repo needs an {explanation}",
-        f"(Recommended) Run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
+        "(Recommended) From a human-operated shell outside any Ralph-managed agent "
+        f"session, run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
         "before the first real run",
-        f"Run {RUN_COMMAND} to start the pipeline",
+        f"From that same human-operated shell, run {RUN_COMMAND} to start the pipeline",
         "Run `ralph --regenerate-config` to reset configs",
         CODEBERG_STAR_CTA,
     )
@@ -122,9 +124,10 @@ def fallback_next_steps() -> tuple[str, ...]:
         "`~/.config/ralph-workflow-mcp.toml`",
         "(Optional) Review `.agent/pipeline.toml` and `.agent/artifacts.toml` "
         "if you need advanced workflow overrides",
-        f"(Recommended) Run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
+        "(Recommended) From a human-operated shell outside any Ralph-managed agent "
+        f"session, run {DIAGNOSE_COMMAND} to verify agents, MCP servers, and config "
         "before the first real run",
-        f"Run {RUN_COMMAND} to start the pipeline",
+        f"From that same human-operated shell, run {RUN_COMMAND} to start the pipeline",
     )
 
 

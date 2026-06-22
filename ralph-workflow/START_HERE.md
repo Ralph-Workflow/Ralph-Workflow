@@ -118,6 +118,8 @@ $EDITOR PROMPT.md
 ralph
 ```
 
+Run those commands from a human-operated shell outside any Ralph-managed agent session.
+
 ## Judge the result honestly
 
 Do not ask whether the agent sounded smart.

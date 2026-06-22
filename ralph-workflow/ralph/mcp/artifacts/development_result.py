@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from ralph.mcp.artifacts.analysis_item_proof import AnalysisItemProof
@@ -29,6 +31,10 @@ class DevelopmentResult(RalphBaseModel):
 
     @model_validator(mode="after")
     def validate_status_requirements(self) -> DevelopmentResult:
+        allowed_statuses: tuple[Literal["completed", "partial"], ...] = ("completed", "partial")
+        if self.status not in allowed_statuses:
+            msg = f"status must be one of {list(cast('tuple[str, ...]', allowed_statuses))!r}"
+            raise ValueError(msg)
         if self.status == "partial":
             if self.next_steps is None:
                 raise ValueError("partial development_result artifacts require next_steps")

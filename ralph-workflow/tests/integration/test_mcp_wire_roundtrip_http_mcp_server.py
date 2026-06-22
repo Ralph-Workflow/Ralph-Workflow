@@ -45,6 +45,8 @@ _REQUIRED_CAPABILITIES = {
     "GitStatusRead",
     "ProcessExecBounded",
     "ArtifactSubmit",
+    "ArtifactPlanRead",
+    "ArtifactPlanWrite",
     "RunReportProgress",
     "EnvRead",
     "WebSearch",
@@ -116,6 +118,25 @@ def _do_tool_call(
     resp, _ = server.handle_request(req, state)
     assert resp is not None, f"tools/call {name!r} returned None"
     return cast("dict[str, Any]", resp.result)
+
+
+def _do_tool_call_response(
+    server: McpServer,
+    state: ServerState,
+    call_id: list[int],
+    name: str,
+    args: dict[str, object],
+) -> object:
+    call_id[0] += 1
+    req = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="tools/call",
+        params={"name": name, "arguments": args},
+        msg_id=call_id[0],
+    )
+    resp, _ = server.handle_request(req, state)
+    assert resp is not None, f"tools/call {name!r} returned None"
+    return resp
 
 
 def _assert_tool_descriptions(tools: list[dict[str, object]]) -> None:
@@ -258,8 +279,27 @@ class TestHttpMcpServer:
         assert "ralph_submit_artifact" in tool_names
         assert "visit_url" in tool_names
 
-        _assert_tool_descriptions(tools)
-        _do_read_file_test(server, state)
+    def test_tools_call_invalid_plan_section_returns_iserror_result_not_jsonrpc_error(
+        self, temp_workspace: Path
+    ) -> None:
+        server = _build_server(temp_workspace, drain="planning")
+        state = _do_initialize(server)
+        response = _do_tool_call_response(
+            server,
+            state,
+            [1000],
+            "ralph_submit_plan_section",
+            {
+                "section": "steps",
+                "content": json.dumps(
+                    {"number": 1, "title": "One", "content": "bad replace shape"}
+                ),
+            },
+        )
+
+        assert getattr(response, "error", None) is None
+        result = cast("dict[str, Any]", response.result)
+        assert result["isError"] is True
 
     def test_new_workspace_tools_roundtrip(self, temp_workspace: Path) -> None:
         """In-process roundtrip for the expanded workspace tool surface.

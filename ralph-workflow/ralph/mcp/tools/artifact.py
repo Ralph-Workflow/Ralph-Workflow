@@ -119,10 +119,10 @@ _KNOWN_ARTIFACT_TYPES = frozenset(
     | {"review", "verification"}
 )
 
-# Multi-step planning artifact types: each phase has its own submit, and
-# completion is the explicit ``finalize_plan`` / ``declare_complete`` call.
-# These MUST be excluded from the auto-complete-on-submit path so a phase
-# submit does not prematurely satisfy the gate.
+# Planning and analysis-decision artifact types are excluded from the
+# auto-complete-on-submit path. Their canonical receipt still counts as
+# completion evidence for the current run, but the submit handler itself
+# must not unconditionally stamp the single-shot completion sentinel.
 _PLANNING_DECISION_ARTIFACT_TYPES: frozenset[str] = frozenset(
     {
         PLAN_ARTIFACT_TYPE,
@@ -250,22 +250,6 @@ def handle_submit_artifact(
     )
     # === END CANONICAL SUBMIT OPS ===
 
-    # Post-submission verification: development_result artifacts require status="completed"
-    # or status="partial" (from instructions). If status is neither, surface a verification
-    # error after successful submission to direct the agent to complete work first.
-    if artifact_type == DEVELOPMENT_RESULT_ARTIFACT_TYPE:
-        status = parsed_content.get("status")
-        if status not in ("completed", "partial"):
-            return ToolResult(
-                content=[
-                    ToolContent.text_content(
-                        "VERIFICATION ERROR: work must be completed before submitting "
-                        "completion artifact. Partial status is not allowed."
-                    )
-                ],
-                is_error=True,
-            )
-
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {artifact_type}")],
         is_error=False,
@@ -312,26 +296,101 @@ def handle_submit_plan_section(
     """Validate a single plan section and merge it into the on-disk draft."""
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan section submission")
 
-    section = _required_string(params, "section")
-    if section not in PLAN_SECTION_NAMES:
+    try:
+        section = _required_string(params, "section")
+    except InvalidParamsError as exc:
+        workspace_root = _workspace_root(workspace)
+        resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
         raise InvalidParamsError(
-            f"Unknown plan section '{section}'. Valid sections: {sorted(PLAN_SECTION_NAMES)}"
+            _format_plan_section_submission_error(
+                section="<missing>",
+                mode="replace",
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_submit_plan_section",
+            )
+        ) from exc
+    if section not in PLAN_SECTION_NAMES:
+        workspace_root = _workspace_root(workspace)
+        resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+        raise InvalidParamsError(
+            _format_plan_section_submission_error(
+                section=section,
+                mode="replace",
+                detail=(
+                    f"Unknown plan section '{section}'. Valid sections: "
+                    f"{sorted(PLAN_SECTION_NAMES)}"
+                ),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_submit_plan_section",
+            )
         )
-    raw_content = params.get("content")
-    payload = _parse_plan_section_content(raw_content)
-    mode = _section_mode(params)
+    try:
+        mode = _section_mode(params)
+    except InvalidParamsError as exc:
+        workspace_root = _workspace_root(workspace)
+        resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+        raise InvalidParamsError(
+            _format_plan_section_submission_error(
+                section=section,
+                mode="<invalid>",
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_submit_plan_section",
+            )
+        ) from exc
 
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
-
-    try:
-        fragment = validate_plan_section(section, payload, mode=mode)
-    except PlanArtifactValidationError as exc:
-        raise InvalidParamsError(f"[{section}] {exc}") from exc
+    workspace_root = _workspace_root(workspace)
+    raw_content = params.get("content")
+    payload = _parse_plan_section_content(
+        raw_content,
+        section=section,
+        mode=mode,
+        workspace_root=workspace_root,
+        backend=resolved_deps.backend,
+    )
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
     current_sections = cast("dict[str, object]", draft.get("sections", {}))
-    updated_sections = merge_plan_section(current_sections, section, fragment, mode)
+
+    fragment: object
+    try:
+        if (
+            mode == "append"
+            and section in PLAN_SECTION_LIST_ITEM_MODELS
+            and isinstance(payload, list)
+        ):
+            existing_obj = current_sections.get(section)
+            existing_list = (
+                list(cast("list[object]", existing_obj))
+                if isinstance(existing_obj, list)
+                else []
+            )
+            for item in payload:
+                existing_list.append(validate_plan_section(section, item, mode="append"))
+            fragment = existing_list
+            merge_mode: SectionMode = "replace"
+        else:
+            fragment = validate_plan_section(section, payload, mode=mode)
+            merge_mode = mode
+    except PlanArtifactValidationError as exc:
+        raise InvalidParamsError(
+            _format_plan_section_submission_error(
+                section=section,
+                mode=mode,
+                detail=f"[{section}] {exc}",
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_submit_plan_section",
+            )
+        ) from exc
+
+    updated_sections = merge_plan_section(current_sections, section, fragment, merge_mode)
     draft["sections"] = updated_sections
     _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
 
@@ -339,7 +398,7 @@ def handle_submit_plan_section(
     return ToolResult(
         content=[
             ToolContent.text_content(
-                f"Plan section staged: {section} (mode={mode}). Staged sections: {staged}"
+                f"Plan section staged: {section} (mode={merge_mode}). Staged sections: {staged}"
             )
         ],
         is_error=False,
@@ -357,24 +416,38 @@ def handle_finalize_plan(
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan finalization")
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    workspace_root = _workspace_root(workspace)
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend)
     if draft is None:
         raise InvalidParamsError(
-            "No plan draft to finalize. Submit plan sections first or use "
-            "ralph_submit_artifact with artifact_type='plan'."
+            _format_plan_finalize_error(
+                detail=(
+                    "No plan draft to finalize. Submit plan sections first or use "
+                    "ralph_submit_artifact with artifact_type='plan'."
+                ),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_finalize_plan",
+            )
         )
 
     try:
         normalized = finalize_plan_draft(draft)
     except PlanArtifactValidationError as exc:
-        raise InvalidParamsError(str(exc)) from exc
+        raise InvalidParamsError(
+            _format_plan_finalize_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_finalize_plan",
+            )
+        ) from exc
 
     # Keep the structured JSON artifact for Ralph's validation/routing, but
     # always mirror agent/user-consumed artifacts into Markdown handoffs so
     # downstream phases never need to read raw JSON directly.
-    workspace_root = _workspace_root(workspace)
     drain = _session_drain(session)
     history_enabled = _resolve_history_enabled(PLAN_ARTIFACT_TYPE, workspace_root, drain)
     effective_deps = ArtifactHandlerDeps(
@@ -526,8 +599,16 @@ def handle_validate_plan_draft(
                         "errors": [
                             {
                                 "message": (
-                                    "No plan draft to validate. Submit plan sections first "
-                                    "or use ralph_submit_artifact with artifact_type='plan'."
+                                    _format_plan_finalize_error(
+                                        detail=(
+                                            "No plan draft to validate. Submit plan sections first "
+                                            "or use ralph_submit_artifact with artifact_type="
+                                            "'plan'."
+                                        ),
+                                        workspace_root=_workspace_root(workspace),
+                                        backend=resolved_deps.backend,
+                                        tool_name="ralph_validate_draft",
+                                    )
                                 ),
                                 "type": "InvalidDraftState",
                             }
@@ -542,12 +623,23 @@ def handle_validate_plan_draft(
     try:
         finalize_plan_draft(draft)
     except PlanArtifactValidationError as exc:
+        workspace_root = _workspace_root(workspace)
         return ToolResult(
             content=[
                 ToolContent.json_content(
                     {
                         "valid": False,
-                        "errors": [{"message": str(exc), "type": type(exc).__name__}],
+                        "errors": [
+                            {
+                                "message": _format_plan_finalize_error(
+                                    detail=str(exc),
+                                    workspace_root=workspace_root,
+                                    backend=resolved_deps.backend,
+                                    tool_name="ralph_validate_draft",
+                                ),
+                                "type": type(exc).__name__,
+                            }
+                        ],
                     }
                 )
             ],
@@ -572,6 +664,9 @@ def handle_validate_plan_draft(
 def _parse_submit_plan_section_entry(
     index: int,
     raw_entry: object,
+    *,
+    workspace_root: Path,
+    backend: FileBackend,
 ) -> tuple[str, object, SectionMode] | ToolResult:
     """Parse one batched-section entry; return a ToolResult on any failure.
 
@@ -580,12 +675,26 @@ def _parse_submit_plan_section_entry(
     ``failed_at`` index and the failure message.
     """
     if not isinstance(raw_entry, dict):
-        return _submit_sections_error_result(index, f"Entry {index} must be a JSON object")
+        return _submit_sections_error_result(
+            index,
+            _format_plan_batch_envelope_error(
+                detail=f"Entry {index} must be a JSON object",
+                workspace_root=workspace_root,
+                backend=backend,
+            ),
+        )
     entry_dict = cast("dict[str, object]", raw_entry)
     section = entry_dict.get("section")
     content_obj = entry_dict.get("content")
     mode = entry_dict.get("mode", "replace")
-    shape_error = _check_entry_shape(index, section, content_obj, mode)
+    shape_error = _check_entry_shape(
+        index,
+        section,
+        content_obj,
+        mode,
+        workspace_root=workspace_root,
+        backend=backend,
+    )
     if shape_error is not None:
         return shape_error
     section_str = cast("str", section)
@@ -593,12 +702,33 @@ def _parse_submit_plan_section_entry(
     if section_str not in PLAN_SECTION_NAMES:
         return _submit_sections_error_result(
             index,
-            f"Unknown plan section '{section_str}'. Valid sections: {sorted(PLAN_SECTION_NAMES)}",
+            _format_plan_batch_envelope_error(
+                detail=(
+                    f"Unknown plan section '{section_str}'. Valid sections: "
+                    f"{sorted(PLAN_SECTION_NAMES)}"
+                ),
+                workspace_root=workspace_root,
+                backend=backend,
+            ),
         )
-    parsed_content = _decode_entry_content(index, content_obj)
+    parsed_content = _decode_entry_content(
+        index,
+        content_obj,
+        section=section_str,
+        mode=mode_str,
+        workspace_root=workspace_root,
+        backend=backend,
+    )
     if isinstance(parsed_content, ToolResult):
         return parsed_content
-    type_error = _check_parsed_content_type(index, section_str, mode_str, parsed_content)
+    type_error = _check_parsed_content_type(
+        index,
+        section_str,
+        mode_str,
+        parsed_content,
+        workspace_root=workspace_root,
+        backend=backend,
+    )
     if type_error is not None:
         return type_error
     return section_str, parsed_content, mode_str
@@ -609,6 +739,9 @@ def _check_entry_shape(
     section: object,
     content_obj: object,
     mode: object,
+    *,
+    workspace_root: Path,
+    backend: FileBackend,
 ) -> ToolResult | None:
     """Return a ToolResult on the first shape failure, or None on success.
 
@@ -616,19 +749,44 @@ def _check_entry_shape(
     ruff PLR0911 cap (≤6 return statements) for the parent function.
     """
     if not isinstance(section, str):
-        return _submit_sections_error_result(index, f"Entry {index} missing 'section' string")
+        return _submit_sections_error_result(
+            index,
+            _format_plan_batch_envelope_error(
+                detail=f"Entry {index} missing 'section' string",
+                workspace_root=workspace_root,
+                backend=backend,
+            ),
+        )
     if not isinstance(content_obj, (str, dict, list)):
         return _submit_sections_error_result(
-            index, f"Entry {index} 'content' must be a JSON string, object, or array"
+            index,
+            _format_plan_batch_envelope_error(
+                detail=f"Entry {index} 'content' must be a JSON string, object, or array",
+                workspace_root=workspace_root,
+                backend=backend,
+            ),
         )
     if not isinstance(mode, str) or mode not in ("replace", "append"):
         return _submit_sections_error_result(
-            index, f"Entry {index} 'mode' must be 'replace' or 'append'"
+            index,
+            _format_plan_batch_envelope_error(
+                detail=f"Entry {index} 'mode' must be 'replace' or 'append'",
+                workspace_root=workspace_root,
+                backend=backend,
+            ),
         )
     return None
 
 
-def _decode_entry_content(index: int, content_obj: object) -> object | ToolResult:
+def _decode_entry_content(
+    index: int,
+    content_obj: object,
+    *,
+    section: str,
+    mode: str,
+    workspace_root: Path,
+    backend: FileBackend,
+) -> object | ToolResult:
     """Decode a JSON-string content payload; pass through dict/list payloads.
 
     Returns the parsed object on success or a ``ToolResult`` on JSON failure.
@@ -641,7 +799,15 @@ def _decode_entry_content(index: int, content_obj: object) -> object | ToolResul
         decoded: object = json.loads(content_obj)
     except json.JSONDecodeError as exc:
         return _submit_sections_error_result(
-            index, f"Entry {index} content must be valid JSON: {exc}"
+            index,
+            _format_plan_section_submission_error(
+                section=section,
+                mode=mode,
+                detail=f"Content must be valid JSON: {exc}",
+                workspace_root=workspace_root,
+                backend=backend,
+                tool_name="ralph_submit_plan_sections",
+            ),
         )
     return decoded
 
@@ -651,6 +817,9 @@ def _check_parsed_content_type(
     section: str,
     mode: str,
     parsed_content: object,
+    *,
+    workspace_root: Path,
+    backend: FileBackend,
 ) -> ToolResult | None:
     """Return a ToolResult on the first type-shape failure, or None on success.
 
@@ -659,7 +828,15 @@ def _check_parsed_content_type(
     """
     if section in PLAN_SECTION_OBJECT_MODELS and not isinstance(parsed_content, dict):
         return _submit_sections_error_result(
-            index, f"Entry {index} (section '{section}') must be a JSON object"
+            index,
+            _format_plan_section_submission_error(
+                section=section,
+                mode=mode,
+                detail=f"Entry {index} (section '{section}') must be a JSON object",
+                workspace_root=workspace_root,
+                backend=backend,
+                tool_name="ralph_submit_plan_sections",
+            ),
         )
     if (
         section in PLAN_SECTION_LIST_ITEM_MODELS
@@ -668,15 +845,33 @@ def _check_parsed_content_type(
     ):
         return _submit_sections_error_result(
             index,
-            f"Entry {index} (section '{section}') with mode='replace' must be a JSON array",
+            _format_plan_section_submission_error(
+                section=section,
+                mode=mode,
+                detail=(
+                    f"Entry {index} (section '{section}') with mode='replace' must be a JSON array"
+                ),
+                workspace_root=workspace_root,
+                backend=backend,
+                tool_name="ralph_submit_plan_sections",
+            ),
         )
     if section in PLAN_SECTION_LIST_ITEM_MODELS and mode == "append" and not isinstance(
         parsed_content, (dict, list)
     ):
         return _submit_sections_error_result(
             index,
-            f"Entry {index} (section '{section}') with mode='append' must be "
-            "a JSON object or array of items",
+            _format_plan_section_submission_error(
+                section=section,
+                mode=mode,
+                detail=(
+                    f"Entry {index} (section '{section}') with mode='append' must be "
+                    "a JSON object or array of items"
+                ),
+                workspace_root=workspace_root,
+                backend=backend,
+                tool_name="ralph_submit_plan_sections",
+            ),
         )
     return None
 
@@ -696,6 +891,9 @@ def _submit_sections_error_result(index: int, message: str) -> ToolResult:
 
 def _validate_submit_plan_sections_batch(
     parsed_entries: list[tuple[str, object, SectionMode]],
+    *,
+    workspace_root: Path,
+    backend: FileBackend,
 ) -> ToolResult | None:
     """Validate the parsed entries; return a ToolResult error on the first failure.
 
@@ -712,13 +910,26 @@ def _validate_submit_plan_sections_batch(
             else:
                 validate_plan_section(section, parsed_content, mode=mode)
         except PlanArtifactValidationError as exc:
-            return _submit_sections_error_result(index, f"[{section}] {exc}")
+            return _submit_sections_error_result(
+                index,
+                _format_plan_section_submission_error(
+                    section=section,
+                    mode=mode,
+                    detail=f"[{section}] {exc}",
+                    workspace_root=workspace_root,
+                    backend=backend,
+                    tool_name="ralph_submit_plan_sections",
+                ),
+            )
     return None
 
 
 def _merge_submit_plan_sections_batch(
     parsed_entries: list[tuple[str, object, SectionMode]],
     current_sections: dict[str, object],
+    *,
+    workspace_root: Path,
+    backend: FileBackend,
 ) -> tuple[dict[str, object], list[str]] | ToolResult:
     """Apply the batched-section merges onto ``current_sections``.
 
@@ -745,7 +956,17 @@ def _merge_submit_plan_sections_batch(
                 fragment = validate_plan_section(section, parsed_content, mode=mode)
                 new_sections = merge_plan_section(new_sections, section, fragment, mode)
         except PlanArtifactValidationError as exc:
-            return _submit_sections_error_result(len(submitted), f"[{section}] {exc}")
+            return _submit_sections_error_result(
+                len(submitted),
+                _format_plan_section_submission_error(
+                    section=section,
+                    mode=mode,
+                    detail=f"[{section}] {exc}",
+                    workspace_root=workspace_root,
+                    backend=backend,
+                    tool_name="ralph_submit_plan_sections",
+                ),
+            )
         submitted.append(section)
     return new_sections, submitted
 
@@ -764,28 +985,48 @@ def handle_submit_plan_sections(
     success every entry is merged and the draft is saved once.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan sections batched submit")
+    resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    workspace_root = _workspace_root(workspace)
     entries_obj = params.get("entries")
     if not isinstance(entries_obj, list):
-        raise InvalidParamsError("Missing 'entries' array")
+        raise InvalidParamsError(
+            _format_plan_batch_envelope_error(
+                detail="Missing 'entries' array",
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+            )
+        )
     entries = cast("list[object]", entries_obj)
-
-    resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 
     parsed_entries: list[tuple[str, object, SectionMode]] = []
     for index, raw_entry in enumerate(entries):
-        parsed = _parse_submit_plan_section_entry(index, raw_entry)
+        parsed = _parse_submit_plan_section_entry(
+            index,
+            raw_entry,
+            workspace_root=workspace_root,
+            backend=resolved_deps.backend,
+        )
         if isinstance(parsed, ToolResult):
             return parsed
         parsed_entries.append(parsed)
 
-    validation_error = _validate_submit_plan_sections_batch(parsed_entries)
+    validation_error = _validate_submit_plan_sections_batch(
+        parsed_entries,
+        workspace_root=workspace_root,
+        backend=resolved_deps.backend,
+    )
     if validation_error is not None:
         return validation_error
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
     current_sections = cast("dict[str, object]", draft.get("sections", {}))
-    merge_result = _merge_submit_plan_sections_batch(parsed_entries, current_sections)
+    merge_result = _merge_submit_plan_sections_batch(
+        parsed_entries,
+        current_sections,
+        workspace_root=workspace_root,
+        backend=resolved_deps.backend,
+    )
     if isinstance(merge_result, ToolResult):
         return merge_result
     new_sections, submitted = merge_result
@@ -859,12 +1100,245 @@ def _parse_content_any(raw_content: str) -> object:
         raise InvalidParamsError(f"Content must be valid JSON: {exc}") from exc
 
 
-def _parse_plan_section_content(raw_content: object) -> object:
+def _parse_plan_section_content(
+    raw_content: object,
+    *,
+    section: str,
+    mode: str,
+    workspace_root: Path,
+    backend: FileBackend,
+) -> object:
     if isinstance(raw_content, str):
-        return _parse_content_any(raw_content)
+        try:
+            return _parse_content_any(raw_content)
+        except InvalidParamsError as exc:
+            raise InvalidParamsError(
+                _format_plan_section_submission_error(
+                    section=section,
+                    mode=mode,
+                    detail=str(exc),
+                    workspace_root=workspace_root,
+                    backend=backend,
+                    tool_name="ralph_submit_plan_section",
+                )
+            ) from exc
     if isinstance(raw_content, (dict, list)):
         return raw_content
-    raise InvalidParamsError("Missing 'content' (must be a JSON string, object, or array)")
+    raise InvalidParamsError(
+        _format_plan_section_submission_error(
+            section=section,
+            mode=mode,
+            detail="Missing 'content' (must be a JSON string, object, or array)",
+            workspace_root=workspace_root,
+            backend=backend,
+            tool_name="ralph_submit_plan_section",
+        )
+    )
+
+
+def _plan_format_doc_reference(workspace_root: Path, backend: FileBackend) -> str:
+    relative_path = materialize_format_doc(workspace_root, PLAN_ARTIFACT_TYPE, backend=backend)
+    if relative_path is not None:
+        return relative_path
+    return "ralph/mcp/artifacts/format_docs/plan.md"
+
+
+def _format_plan_section_submission_error(
+    *,
+    section: str,
+    mode: str,
+    detail: str,
+    workspace_root: Path,
+    backend: FileBackend,
+    tool_name: str,
+) -> str:
+    plan_doc = _plan_format_doc_reference(workspace_root, backend)
+    guidance = [
+        detail,
+        f"Fix this by reading '{plan_doc}' inside the workspace.",
+        (
+            f"Use {tool_name} with section='{section}' and mode='{mode}'. "
+            "The plan format doc sections 'Step-wise submission' and 'Cheap-model shortcut "
+            "examples' show the canonical payload shapes."
+        ),
+        f"After fixing the payload, retry {tool_name}.",
+    ]
+    if section == "skills_mcp" and "mcps" in detail and "valid list" in detail:
+        guidance.append(
+            "Expected shape for section 'skills_mcp': {'skills': ['writing-plans'], 'mcps': []}. "
+            "mcps must be a JSON array like [] or ['docs-mcp']."
+        )
+    if section == "skills_mcp" and "skills" in detail and (
+        "required" in detail.lower() or "valid list" in detail or "at least one" in detail.lower()
+    ):
+        guidance.append(
+            "Expected shape for section 'skills_mcp': {'skills': ['writing-plans'], 'mcps': []}. "
+            "skills must be a JSON array of skill names, unless design.planning_profile='minimal' "
+            "makes an empty skills list valid at full-plan validation time."
+        )
+    if section == "summary" and (
+        "scope_items" in detail or "must be a JSON object" in detail or "required" in detail.lower()
+    ):
+        guidance.append(
+            "Expected shape for section 'summary': {'context': 'What is being changed and why', "
+            "'intent': 'Optional one-line outcome', 'intent_verb': 'Optional closed verb', "
+            "'scope_items': [{'text': 'Concrete outcome 1'}, {'text': 'Concrete outcome 2'}, "
+            "{'text': 'Concrete outcome 3'}]}. summary must be a JSON object, not "
+            "{'summary': {...}}."
+        )
+    if section == "critical_files" and "primary_files" in detail and "required" in detail.lower():
+        guidance.append(
+            "Expected shape for section 'critical_files': {'primary_files': "
+            "[{'path': 'path/to/file.py', 'action': 'modify'}], 'reference_files': []}. "
+            "primary_files is required and must be a JSON array."
+        )
+    if section == "steps" and mode == "replace" and "must be a JSON array" in detail:
+        guidance.append(
+            "Expected shape for section 'steps' with mode='replace': a JSON array like [{...}], "
+            "not a single object and not {'steps': [...]} wrapped under a key."
+        )
+    if section == "steps" and mode == "append" and "object or array of items" in detail:
+        guidance.append(
+            "Expected shape for section 'steps' with mode='append': either one step object like "
+            "{'number': 2, 'title': 'Concrete step title', 'content': 'Detailed executor "
+            "instructions', 'step_type': 'file_change', 'targets': [{'path': 'path/to/file.py', "
+            "'action': 'modify'}]} "
+            "or a JSON array of such step objects."
+        )
+    if section == "steps" and (
+        "step_type" in detail or "verify step" in detail or "target" in detail.lower()
+    ):
+        guidance.append(
+            "Expected shape for one steps item: {'number': 1, 'title': 'Concrete step title', "
+            "'content': 'Detailed executor instructions', 'step_type': 'file_change', "
+            "'targets': [{'path': 'path/to/file.py', 'action': 'modify'}], 'depends_on': []}. "
+            "For verify steps, "
+            "use step_type='verify' plus verify_command or location."
+        )
+    if section == "risks_mitigations" and mode == "replace" and "must be a JSON array" in detail:
+        guidance.append(
+            "Expected shape for section 'risks_mitigations' with mode='replace': a JSON array like "
+            "[{'risk': 'Specific failure mode', 'mitigation': 'How to avoid it', "
+            "'severity': 'medium'}]."
+        )
+    if section == "risks_mitigations" and mode == "append" and "object or array of items" in detail:
+        guidance.append(
+            "Expected shape for section 'risks_mitigations' with mode='append': either one "
+            "object like "
+            "{'risk': 'Specific failure mode', 'mitigation': 'How to avoid it', "
+            "'severity': 'medium'} "
+            "or a JSON array of such risk objects."
+        )
+    if section == "verification_strategy" and (
+        (mode == "replace" and "must be a JSON array" in detail)
+        or (mode == "append" and "object or array of items" in detail)
+        or "method" in detail
+        or "expected_outcome" in detail
+    ):
+        guidance.append(
+            "Expected shape for section 'verification_strategy': [{'method': "
+            "'pytest tests/test_x.py -q', 'expected_outcome': 'All tests pass', "
+            "'timeout_seconds': 60, 'cwd': 'ralph-workflow'}]. With mode='replace' use a "
+            "JSON array, not {'verification_strategy': [...]}; with mode='append' use one "
+            "verification object or a JSON array of verification objects."
+        )
+    if (
+        section in {"steps", "risks_mitigations", "verification_strategy"}
+        and "Content must be valid JSON" in detail
+    ):
+        guidance.append(
+            f"Expected shape for section '{section}' with mode='{mode}': JSON array like "
+            f"[{ '{...}' }]. Fix the JSON syntax first (for example the parser is often "
+            "missing a comma or closing brace)."
+        )
+    return " ".join(guidance)
+
+
+def _format_plan_batch_envelope_error(
+    *,
+    detail: str,
+    workspace_root: Path,
+    backend: FileBackend,
+) -> str:
+    plan_doc = _plan_format_doc_reference(workspace_root, backend)
+    return " ".join(
+        [
+            detail,
+            f"Fix this by reading '{plan_doc}' inside the workspace.",
+            (
+                "Use ralph_submit_plan_sections with the canonical batch envelope "
+                "{'entries': [{'section': 'summary', 'mode': 'replace', 'content': {...}}]}. "
+                "The plan format doc section 'Step-wise submission' shows the valid section names, "
+                "content shapes, and mode usage."
+            ),
+            "After fixing the batch payload, retry ralph_submit_plan_sections.",
+        ]
+    )
+
+
+def _format_plan_finalize_error(
+    *,
+    detail: str,
+    workspace_root: Path,
+    backend: FileBackend,
+    tool_name: str,
+) -> str:
+    plan_doc = _plan_format_doc_reference(workspace_root, backend)
+    return " ".join(
+        [
+            detail,
+            f"Fix this by reading '{plan_doc}' inside the workspace.",
+            (
+                f"Repair the staged draft with ralph_submit_plan_section, "
+                "ralph_submit_plan_sections, or the plan step-edit tools, then retry "
+                f"{tool_name}. The plan format doc sections 'Step-wise submission' and "
+                "'Dumb-proof checklist' show the required sections and valid payload shapes."
+            ),
+            (
+                "Canonical required section shapes: summary={'context': '...', 'scope_items': "
+                "[{'text': 'Concrete outcome 1'}, {'text': 'Concrete outcome 2'}, {'text': "
+                "'Concrete outcome 3'}]}; "
+                "skills_mcp={'skills': ['writing-plans'], 'mcps': []}; "
+                "steps=[{'number': 1, 'title': 'Concrete step title', 'content': 'Detailed "
+                "executor instructions', 'step_type': 'file_change', 'targets': [{'path': "
+                "'path/to/file.py', 'action': 'modify'}], 'depends_on': []}]; "
+                "critical_files={'primary_files': [{'path': 'path/to/file.py', 'action': "
+                "'modify'}], 'reference_files': []}; risks_mitigations=[{'risk': "
+                "'Specific failure mode', 'mitigation': 'How to avoid it', 'severity': "
+                "'medium'}]; verification_strategy=[{'method': 'pytest tests/test_x.py -q', "
+                "'expected_outcome': 'All tests pass'}]."
+            ),
+        ]
+    )
+
+
+def _format_plan_step_edit_error(
+    *,
+    detail: str,
+    workspace_root: Path,
+    backend: FileBackend,
+    tool_name: str,
+) -> str:
+    plan_doc = _plan_format_doc_reference(workspace_root, backend)
+    return " ".join(
+        [
+            detail,
+            f"Fix this by reading '{plan_doc}' inside the workspace.",
+            (
+                f"Use {tool_name} with the current step numbers from ralph_get_plan_draft. "
+                "The plan format doc sections 'Step-mutation read-after-write echo' and "
+                "'Step-wise submission' show the valid step payload shape and numbering flow."
+            ),
+            (
+                "Minimal retry envelopes: ralph_insert_plan_step => {'index': 2, 'step': {...}}; "
+                "ralph_replace_plan_step => {'step_number': 2, 'step': {...}}; "
+                "ralph_remove_plan_step => {'step_number': 2}; "
+                "ralph_move_plan_step => {'from_step_number': 2, 'to_index': 1}; "
+                "ralph_patch_step => {'step_number': 2, 'step': {...}}."
+            ),
+            f"After fixing the payload or step number, retry {tool_name}.",
+        ]
+    )
 
 
 def _parse_plan_content(raw_content: str) -> dict[str, object]:
@@ -917,7 +1391,7 @@ def _raise_index_format_error(
     raise InvalidParamsError(
         f"{reason} Read '.agent/artifact-formats/artifact_formats_index.md' inside the workspace "
         "for the list of valid artifact_type values and how to submit each one. "
-        "Do NOT rely on the raw error text."
+        "Fix the payload, then retry ralph_submit_artifact. Do NOT rely on the raw error text."
     ) from None
 
 
@@ -968,6 +1442,7 @@ def prepare_artifact_submission(
                     "directly instead when needed. Read "
                     "'.agent/artifact-formats/artifact_formats_index.md' "
                     "for the full list of valid artifact_type values. "
+                    "Fix the artifact_type, then retry ralph_submit_artifact. "
                     "Do NOT rely on the raw error text."
                 ) from None
             elif raw_artifact_type not in _KNOWN_ARTIFACT_TYPES:
@@ -1274,28 +1749,50 @@ def _raise_format_doc_error(
     backend: FileBackend,
     original_exc: Exception,
 ) -> NoReturn:
+    detail = str(original_exc).strip() or "<missing validation detail>"
+    prefix = "Validation detail: "
+    if detail.startswith("Artifact '") and prefix in detail:
+        detail = detail.split(prefix, 1)[1]
+        detail = detail.split(". The exact format is documented at", 1)[0]
+        detail = detail.split(". (note: could not write the reference file;", 1)[0]
+    detail = detail.replace(
+        "Field required; field is required and must be provided",
+        "required field is missing",
+    )
+    retry_example = (
+        f'{{"artifact_type":"{artifact_type}","content":"{{...valid {artifact_type} JSON...}}"}}'
+    )
     try:
         relative_path = materialize_format_doc(workspace_root, artifact_type, backend=backend)
         if relative_path is not None:
             msg = (
                 f"Artifact '{artifact_type}' failed validation. "
+                f"Validation detail: {detail}. "
                 f"The exact format is documented at '{relative_path}' inside the workspace. "
                 "Read that file and rebuild your submission before retrying. "
-                "Do NOT rely on the raw error text for format guidance."
+                "Then retry ralph_submit_artifact. "
+                f"Canonical retry envelope: {retry_example}. "
+                "Do NOT rely on guesswork; follow the documented shape exactly."
             )
         else:
             msg = (
                 f"Artifact '{artifact_type}' failed validation. "
+                f"Validation detail: {detail}. "
                 f"(note: could not write the reference file; "
-                f"read ralph/mcp/artifacts/format_docs/{artifact_type}.md "
-                "in the ralph package source instead)"
+                f"read 'ralph/mcp/artifacts/format_docs/{artifact_type}.md' "
+                "in the repo source tree "
+                "instead, rebuild the submission before retrying, then retry "
+                f"ralph_submit_artifact with envelope {retry_example})"
             )
     except OSError:
         msg = (
             f"Artifact '{artifact_type}' failed validation. "
+            f"Validation detail: {detail}. "
             f"(note: could not write the reference file; "
-            f"read ralph/mcp/artifacts/format_docs/{artifact_type}.md "
-            "in the ralph package source instead)"
+            f"read 'ralph/mcp/artifacts/format_docs/{artifact_type}.md' "
+            "in the repo source tree "
+            "instead, rebuild the submission before retrying, then retry "
+            f"ralph_submit_artifact with envelope {retry_example})"
         )
     raise InvalidParamsError(msg) from original_exc
 

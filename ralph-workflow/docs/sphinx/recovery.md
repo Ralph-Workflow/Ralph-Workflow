@@ -88,15 +88,11 @@ Typical checkpoint information includes:
 
 ### Useful checkpoint commands
 
-```bash
-ralph --resume
-ralph --inspect-checkpoint
-ralph --no-resume
-```
+These are operator-side shell commands for the human running Ralph Workflow from a separate shell, not instructions for an in-session agent to spawn another `ralph` process recursively.
 
-- `ralph --resume` — continue from the saved checkpoint
-- `ralph --inspect-checkpoint` — show what would be resumed
-- `ralph --no-resume` — ignore the checkpoint and start fresh
+- From the human operator shell, `ralph --resume` continues from the saved checkpoint.
+- From the human operator shell, `ralph --inspect-checkpoint` shows what would be resumed.
+- From the human operator shell, `ralph --no-resume` ignores the checkpoint and starts fresh.
 
 ### Enabling or disabling checkpoints
 

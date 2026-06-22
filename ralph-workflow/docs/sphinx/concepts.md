@@ -100,10 +100,12 @@ A **checkpoint** is Ralph Workflow's saved resume state.
 
 Ralph Workflow writes checkpoint state as the run progresses so it can continue from the last completed step after an interruption, crash, or transient failure.
 
-Useful commands:
+Useful operator commands:
 
-- `ralph --inspect-checkpoint` — show what would be resumed
-- `ralph --no-resume` — ignore the saved checkpoint and start fresh
+These are operator-side shell commands for the human running Ralph Workflow, not instructions for an agent inside a Ralph-managed session to launch Ralph again.
+
+- From the human operator shell, `ralph --inspect-checkpoint` shows what would be resumed.
+- From the human operator shell, `ralph --no-resume` ignores the saved checkpoint and starts fresh.
 
 ## Recovery
 
@@ -160,7 +162,7 @@ Use `--quiet`, `--debug`, or `--verbosity <level>` depending on how much detail 
 
 ## `ralph --explain-policy`
 
-`ralph --explain-policy` prints a human-readable summary of the active workflow policy.
+From the human operator shell, `ralph --explain-policy` prints a human-readable summary of the active workflow policy.
 
 Use it when you want to answer questions like:
 

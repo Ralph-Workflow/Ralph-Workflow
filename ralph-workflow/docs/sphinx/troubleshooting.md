@@ -22,7 +22,8 @@ that `ralph --init` places at the top. Ralph Workflow refuses to run while this 
 present so you cannot accidentally run the pipeline against the placeholder task.
 
 **Fix:** Open `PROMPT.md`, replace the example content with your actual task description,
-and remove the sentinel comment at the top. Then re-run `ralph`.
+and remove the sentinel comment at the top. Then the human operator can re-run `ralph`
+from their shell.
 
 See [Concepts](concepts.md) for what a good PROMPT.md should contain.
 
@@ -45,6 +46,8 @@ Verify after installation:
 ```bash
 ralph --diagnose
 ```
+
+Run this from the human operator shell outside any Ralph-managed agent session.
 
 The PATH column in the Agents table should show `on PATH` in green.
 
@@ -71,6 +74,8 @@ The PATH column in the Agents table should show `on PATH` in green.
 python -m ralph smoke-interactive-agy
 ```
 
+Run this from the human operator shell outside any Ralph-managed agent session.
+
 The parity table reports five acceptance signals:
 
 | Column | Green means |
@@ -96,6 +101,8 @@ When running with `RALPH_AGY_BINARY` set (for example to the deterministic mock 
 ```bash
 RALPH_AGY_BINARY=tests/_support/mock_agy.sh python -m ralph smoke-interactive-agy
 ```
+
+Run this from the human operator shell outside any Ralph-managed agent session.
 
 This should report file=yes, artifact=yes, and no upstream-quota break.
 
@@ -137,6 +144,8 @@ Validate after fixing:
 ```bash
 ralph --check-mcp
 ```
+
+Run this from the human operator shell outside any Ralph-managed agent session.
 
 ## Agent run times out even though the transcript showed activity
 
@@ -204,13 +213,16 @@ Key fields:
 
 ## When to use `--no-resume` vs `--resume`
 
+These are operator-side shell flags for the human running Ralph Workflow. They are not
+instructions for an in-session agent to spawn another `ralph` process recursively.
+
 | Flag | When to use |
 |------|------------|
 | `--resume` | You interrupted a run and want Ralph Workflow to continue from the saved checkpoint |
 | `--no-resume` | You want to ignore any saved checkpoint and start fresh |
 | (neither) | Default: Ralph Workflow starts a fresh run without loading checkpoint state |
 
-Use `ralph --inspect-checkpoint` to see what the current checkpoint contains before deciding.
+From the human operator shell, `ralph --inspect-checkpoint` shows what the current checkpoint contains before deciding.
 
 ## Background child work seems to hang indefinitely
 
@@ -248,13 +260,19 @@ quiet periods between progress signals.
 
 **Symptom:** The pipeline retried the default Claude transport, or the run log shows `RESUMABLE_CONTINUE` after a Claude invocation.
 
-**Cause:** Ralph Workflow evaluates completion on the default Claude transport by artifact presence or an explicit `declare_complete` MCP call. If neither signal is present when the subprocess exits, Ralph Workflow classifies the exit as incomplete and retries the session using `--resume SESSION_ID`. This is expected behavior, not a failure.
+The commands in this section are operator-side shell commands for the human running Ralph Workflow. They are not instructions for an agent inside a Ralph-managed session to spawn another `ralph` process recursively.
+
+**Cause:** Ralph Workflow evaluates completion on the default Claude transport from durable completion evidence. A run-scoped artifact receipt is sufficient completion evidence for required-artifact flows, and single-shot artifact submissions also write the completion sentinel automatically after a successful submit. If the required completion evidence is missing when the subprocess exits, Ralph Workflow classifies the exit as incomplete and resumes the underlying agent session internally. This is expected behavior, not a failure.
 
 **Fix:**
 
-- If the agent completed its work but did not write an artifact, confirm the agent wrote its plan or result artifact to `.agent/artifacts/` and called `declare_complete`.
-- If the session keeps retrying without completing, check the agent logs for errors and confirm that `.agent/mcp.toml` is configured correctly and that the `declare_complete` tool is accessible.
-- To force a fresh start instead of continuing, run `ralph --no-resume`.
+- If the agent completed a single-shot artifact submission, confirm the canonical artifact was written and that the submit path completed successfully.
+- Check the concrete completion evidence files for the current run: `.agent/receipts/<run_id>/<artifact_type>.json` and `.agent/completion_seen_<run_id>.json`.
+- If the agent used the fallback file path instead of a successful MCP submit, inspect `.agent/tmp/<artifact_type>.json` first, then `.agent/artifacts/<artifact_type>.json` for direct-write paths such as the AGY fallback. The fallback payload must be promoted into the canonical chain before completion is considered satisfied.
+- If the agent was in a multi-step flow such as staged plan drafting, confirm it reached the artifact-writing completion step for that flow (for example `ralph_finalize_plan`) and that the run-scoped receipt was written.
+- If the session keeps retrying without completing, check the agent logs for errors and confirm that `.agent/mcp.toml` is configured correctly and that the required completion tool for the active flow is accessible.
+- If the MCP server rejected an artifact payload, follow the repair loop from the referenced doc: read `.agent/artifact-formats/<type>.md` or `.agent/artifact-formats/artifact_formats_index.md`, rebuild the payload or artifact_type, and retry the same MCP tool. For plan rejections, repair the staged draft with the plan staging tools, then rerun `ralph_validate_draft` or `ralph_finalize_plan`.
+- To force a fresh start instead of continuing, the human operator can choose the `--no-resume` startup path from their shell outside the agent session.
 
 See [Recovery](recovery.md) for retry budget and fallover behavior.
 
@@ -268,7 +286,7 @@ See [Recovery](recovery.md) for retry budget and fallover behavior.
 
 - Use `claude-headless` on Windows when you need Claude specifically.
 - Or route the phase to another headless transport such as Codex or OpenCode.
-- For a live semantic check of the transport behavior, run `python -m ralph smoke-interactive-claude` on Linux or macOS.
+- For a live semantic check of the transport behavior, the human operator can run `python -m ralph smoke-interactive-claude` on Linux or macOS from a shell outside the managed agent session.
 
 ## Related pages
 

@@ -295,6 +295,252 @@ def test_submit_plan_section_rejects_unknown_section(tmp_path: Path) -> None:
         )
 
 
+def test_submit_plan_section_skills_mcp_error_explains_mcps_shape_and_doc(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "section": "skills_mcp",
+                "content": _content({"skills": ["writing-plans"], "mcps": "docs-mcp"}),
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "skills_mcp" in message
+    assert "mcps must be a JSON array" in message
+    assert '[]' in message
+
+
+def test_submit_plan_section_skills_mcp_error_explains_skills_shape_and_doc(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "section": "skills_mcp",
+                "content": _content({"mcps": []}),
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "Expected shape for section 'skills_mcp'" in message
+    assert "skills must be a JSON array" in message
+
+
+def test_submit_plan_section_summary_error_explains_expected_shape(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {"section": "summary", "content": _content({"context": "ctx"})},
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "Expected shape for section 'summary'" in message
+    assert "scope_items" in message
+
+
+def test_submit_plan_section_steps_replace_error_explains_array_shape_and_doc(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "section": "steps",
+                "content": _content(
+                    {
+                        "number": 1,
+                        "title": "One",
+                        "content": "single object instead of list",
+                    }
+                ),
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "section 'steps' with mode='replace' must be a JSON array" in message
+    assert "[{...}]" in message
+    assert '{"steps":' not in message
+
+
+def test_submit_plan_section_critical_files_error_explains_primary_files_shape(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {"section": "critical_files", "content": _content({"reference_files": []})},
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "primary_files" in message
+    assert "Expected shape for section 'critical_files'" in message
+
+
+def test_submit_plan_section_risks_array_error_explains_expected_shape(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "section": "risks_mitigations",
+                "content": _content({"risk": "r", "mitigation": "m"}),
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "Expected shape for section 'risks_mitigations'" in message
+    assert "severity" in message
+
+
+def test_submit_plan_section_verification_strategy_error_explains_expected_shape(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "section": "verification_strategy",
+                "content": _content({"method": "pytest", "expected_outcome": "passes"}),
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "Expected shape for section 'verification_strategy'" in message
+    assert "not {'verification_strategy': [...]}" in message
+
+
+def test_submit_plan_section_invalid_json_explains_fix_and_doc(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "section": "steps",
+                "content": '[{"number": 1, "title": "One" "content": "missing comma"}]',
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "Content must be valid JSON" in message
+    assert "Expected shape for section 'steps'" in message
+    assert "JSON array like [{...}]" in message
+
+
+def test_submit_plan_section_missing_section_includes_fix_guidance(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "content": _content(
+                    {
+                        "context": "ctx",
+                        "scope_items": [
+                            {"text": "a"},
+                            {"text": "b"},
+                            {"text": "c"},
+                        ],
+                    }
+                )
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "Missing 'section' parameter" in message
+    assert "ralph_submit_plan_section" in message
+
+
+def test_submit_plan_section_invalid_mode_includes_fix_guidance(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_plan_section(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "section": "summary",
+                "mode": "merge",
+                "content": _content(
+                    {
+                        "context": "ctx",
+                        "scope_items": [
+                            {"text": "a"},
+                            {"text": "b"},
+                            {"text": "c"},
+                        ],
+                    }
+                ),
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "'mode' must be 'replace' or 'append'" in message
+    assert "section='summary'" in message
+
+
+def test_submit_plan_section_append_accepts_list_payload_for_steps(tmp_path: Path) -> None:
+    _submit_section(
+        tmp_path,
+        "summary",
+        {"context": "ctx", "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]},
+    )
+    _submit_section(tmp_path, "skills_mcp", {"skills": ["writing-plans"], "mcps": []})
+    _submit_section(
+        tmp_path,
+        "steps",
+        [
+            {"number": 1, "title": "First", "content": "first"},
+            {"number": 2, "title": "Second", "content": "second"},
+        ],
+        mode="append",
+    )
+
+    draft = json.loads(
+        (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").read_text(encoding="utf-8")
+    )
+    steps = cast("list[dict[str, object]]", cast("dict[str, object]", draft["sections"])["steps"])
+    assert [cast("str", step["title"]) for step in steps] == ["First", "Second"]
+
+
+def test_submit_artifact_invalid_development_result_status_includes_doc_guidance(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_result",
+                "content": _content(
+                    {
+                        "status": "blocked",
+                        "summary": "bad status",
+                        "files_changed": "- src/example.py",
+                    }
+                ),
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/development_result.md" in message
+    assert "status" in message and "completed" in message and "partial" in message
+    assert "ralph_submit_artifact" in message
+
+
 def test_finalize_plan_fails_when_required_section_missing(tmp_path: Path) -> None:
     plan = _full_plan_payload()
     _submit_section(tmp_path, "summary", plan["summary"])

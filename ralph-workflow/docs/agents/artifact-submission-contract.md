@@ -19,8 +19,9 @@ become possible:
 - A receipt is stamped but the artifact file is malformed or missing.
 - A model writes the fallback file, but no code promotes it, so the gate
   reports "no artifact submitted".
-- A model skips ``declare_complete`` after a successful submit, so the run
-  is retried even though the artifact was received.
+- A multi-step flow (for example staged plan drafting) skips the explicit
+  completion action, so the run is retried even though intermediate state was
+  written.
 - A bypass write evades validation, logging, history snapshotting, or
   markdown handoff.
 
@@ -76,7 +77,10 @@ The function:
 4. Snapshots history (when enabled).
 5. Stamps the run-scoped receipt.
 6. For single-shot artifact types, writes the completion sentinel so a model
-   that stops without calling ``declare_complete`` is not force-retried.
+   that stops without calling ``declare_complete`` is not force-retried. For the
+   current completion gate, a run-scoped artifact receipt is already sufficient
+   completion evidence for required-artifact flows; ``declare_complete`` remains
+   useful as an explicit signal but is not the sole path to terminal completion.
 
 If the function raises, none of the run-scoped files are visible to the gate.
 
@@ -218,8 +222,9 @@ where ``dst`` resolves to ``.agent/receipts/x.json`` would be flagged.
 
 The audit module now imports ``_CANONICAL_TYPES`` directly from
 ``ralph.mcp.tools.artifact._KNOWN_ARTIFACT_TYPES`` instead of maintaining a
-separate hardcoded set. ``'review'`` and ``'verification'`` were added to
-``_KNOWN_ARTIFACT_TYPES`` to unify the 13-element canonical set.
+separate hardcoded set. The set includes internal compatibility aliases such as
+``'review'`` and ``'verification'`` in addition to the user-facing artifact
+types documented in the runtime format-doc tables.
 
 This single-source-of-truth arrangement means any future canonical type added
 to ``_KNOWN_ARTIFACT_TYPES`` propagates automatically to the audit — no

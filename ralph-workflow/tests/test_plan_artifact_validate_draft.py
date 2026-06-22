@@ -85,6 +85,8 @@ def test_validate_draft_no_draft_reports_missing_draft(tmp_path: Path) -> None:
     errors = cast("list[dict[str, object]]", payload["errors"])
     assert len(errors) == 1
     assert "No plan draft" in cast("str", errors[0]["message"])
+    assert ".agent/artifact-formats/plan.md" in cast("str", errors[0]["message"])
+    assert "ralph_validate_draft" in cast("str", errors[0]["message"])
     assert result.is_error is False
 
 
@@ -140,6 +142,9 @@ def test_validate_draft_depends_on_cycle_returns_invalid(tmp_path: Path) -> None
     errors = cast("list[dict[str, str]]", payload["errors"])
     assert len(errors) >= 1
     assert "cycle" in errors[0]["message"].lower()
+    assert ".agent/artifact-formats/plan.md" in errors[0]["message"]
+    assert "Canonical required section shapes:" in errors[0]["message"]
+    assert "steps=[{" in errors[0]["message"]
 
 
 def test_validate_draft_ac_orphan_step_returns_invalid(tmp_path: Path) -> None:

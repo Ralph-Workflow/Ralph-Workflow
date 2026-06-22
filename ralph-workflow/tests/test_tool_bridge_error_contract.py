@@ -1,5 +1,5 @@
 """The tool-dispatch boundary must not turn operational failures into retryable
-protocol errors.
+protocol errors at the server edge.
 
 INCIDENT: an agent re-issued an identical failing MCP tool call for ~5 hours.
 Mechanism: an operational failure inside a handler (a timeout) propagated as an
@@ -10,9 +10,10 @@ Contract pinned here (single systemic guard, independent of any one handler):
 - An OPERATIONAL ``ToolError`` (timeout, output-limit, spawn/IO/git failure —
   including ``ExecutionError``) becomes a ``ToolResult(is_error=True)``. It is
   terminal and non-retryable, never a ``-32603``.
-- A FIX-YOUR-CALL error (``InvalidParamsError``, ``CapabilityDeniedError``) still
-  propagates as a protocol error: retrying unchanged is correctly rejected, and
-  the agent must change the call.
+- A FIX-YOUR-CALL error (``InvalidParamsError``, ``CapabilityDeniedError``) may still
+  propagate from ``ToolBridge`` itself, but the MCP ``tools/call`` boundary must
+  convert it into a terminal ``ToolResult(is_error=True)`` so clients do not see
+  a retryable ``-32603`` transport/internal failure.
 - A genuine bug (any non-``ToolError`` exception) still becomes a
   ``ToolDispatchError`` (``-32603``).
 """
@@ -75,13 +76,13 @@ def test_operational_tool_error_becomes_is_error_result() -> None:
     assert "disk error" in result.content[0].text
 
 
-def test_invalid_params_error_still_propagates_as_protocol_error() -> None:
+def test_invalid_params_error_still_propagates_from_tool_bridge() -> None:
     bridge = _bridge_with_handler(InvalidParamsError("'x' must be a string"))
     with pytest.raises(InvalidParamsError):
         bridge.dispatch("boom", {})
 
 
-def test_capability_denied_error_still_propagates() -> None:
+def test_capability_denied_error_still_propagates_from_tool_bridge() -> None:
     bridge = _bridge_with_handler(CapabilityDeniedError("nope"))
     with pytest.raises(CapabilityDeniedError):
         bridge.dispatch("boom", {})

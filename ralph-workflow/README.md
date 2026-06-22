@@ -205,6 +205,8 @@ $EDITOR PROMPT.md
 ralph
 ```
 
+Run those commands from a human-operated shell outside any Ralph-managed agent session.
+
 What happens in that flow:
 
 - **`ralph --init`** creates the local `.agent/` support files.

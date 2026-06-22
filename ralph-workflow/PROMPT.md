@@ -30,5 +30,5 @@ It is used by load balancers and uptime monitors to verify the service is runnin
 **Next steps**
 
 1. Edit the sections above to describe YOUR task and remove the sentinel comment.
-2. Run `ralph --diagnose` to verify agents, MCP servers, and config.
-3. Run `ralph` to start the planning → development pipeline.
+2. From a human-operated shell outside any Ralph-managed agent session, run `ralph --diagnose` to verify agents, MCP servers, and config.
+3. From that same human-operated shell, run `ralph` to start the planning → development pipeline.

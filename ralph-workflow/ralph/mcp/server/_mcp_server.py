@@ -17,6 +17,12 @@ from ralph.mcp.server._json_rpc_response import JsonRpcResponse
 from ralph.mcp.server._metrics import McpMetrics, get_default_metrics
 from ralph.mcp.server._server_state import ServerState
 from ralph.mcp.server._session_wrapup import SessionWrapupBudget
+from ralph.mcp.tools.coordination import (
+    CapabilityDeniedError,
+    InvalidParamsError,
+    ToolContent,
+    ToolResult,
+)
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME, RalphToolName, claude_tool_name
 from ralph.timeout_defaults import MAX_SESSION_SECONDS, SESSION_SOFT_WRAPUP_SECONDS
 
@@ -489,6 +495,11 @@ class McpServer:
         try:
             raw_result = self._registry.dispatch(
                 tool_name, dict(arguments_value), host_session=self._session
+            )
+        except (InvalidParamsError, CapabilityDeniedError) as exc:
+            raw_result = ToolResult(
+                content=[ToolContent.text_content(str(exc))],
+                is_error=True,
             )
         except Exception as exc:
             error = {"code": -32603, "message": str(exc)}

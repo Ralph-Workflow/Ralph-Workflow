@@ -8,6 +8,7 @@ import pytest
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.bridge import ToolBridge, ToolDispatchError, build_ralph_tool_registry
+from ralph.mcp.tools.coordination import InvalidParamsError
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.fs import FsWorkspace
 
@@ -233,3 +234,50 @@ def test_handle_move_plan_step_reindexes_and_remaps_depends_on(tmp_path: Path) -
     ]["acceptance_criteria"]["criteria"][0]["satisfied_by_steps"]
     # Remap [1, 2, 3, 4, 5] (old) → [2, 3, 1, 4, 5] (new)
     assert ac == [2, 3, 1, 4, 5]
+
+
+def test_patch_step_error_includes_doc_and_get_draft_guidance(tmp_path: Path) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    with pytest.raises(InvalidParamsError) as exc_info:
+        bridge.dispatch(
+            "ralph_patch_step",
+            {"step_number": 99, "step": {"title": "patched"}},
+            workspace=workspace,
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "ralph_get_plan_draft" in message
+    assert "step 99" in message.lower()
+
+
+def test_insert_step_missing_index_includes_doc_and_get_draft_guidance(tmp_path: Path) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    with pytest.raises(InvalidParamsError) as exc_info:
+        bridge.dispatch(
+            "ralph_insert_plan_step",
+            {"step": {"title": "Inserted", "content": "inserted"}},
+            workspace=workspace,
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/plan.md" in message
+    assert "ralph_get_plan_draft" in message
+    assert "Missing 'index' parameter" in message
+    assert "Minimal retry envelopes:" in message

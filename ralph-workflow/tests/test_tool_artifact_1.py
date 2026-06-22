@@ -253,14 +253,19 @@ chain = \"failed_terminal\"
 def test_prepare_artifact_submission_rejects_generic_analysis_decision_outside_analysis_drain() -> (
     None
 ):
-    with pytest.raises(InvalidParamsError, match="analysis_decision requires an analysis drain"):
+    with pytest.raises(InvalidParamsError) as exc_info:
         prepare_artifact_submission(
             {
                 "artifact_type": "analysis_decision",
                 "content": _content({"status": "completed"}),
             },
+            base_path=Path("/tmp"),
             session_drain="development",
         )
+
+    message = str(exc_info.value)
+    assert "artifact_formats_index.md" in message
+    assert "retry ralph_submit_artifact" in message
 
 
 def test_prepare_artifact_submission_rejects_content_path(tmp_path: Path) -> None:
@@ -414,7 +419,7 @@ def test_handle_submit_artifact_normalizes_commit_alias_type_to_commit_message(
 
 
 def test_legacy_commit_message_payload_points_to_format_doc(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"):
+    with pytest.raises(InvalidParamsError) as exc_info:
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -423,6 +428,10 @@ def test_legacy_commit_message_payload_points_to_format_doc(tmp_path: Path) -> N
                 "content": _content({"message": "fix: old format"}),
             },
         )
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/commit_message.md" in message
+    assert "structured commit_message schema" in message
+    assert "Read that file and rebuild your submission before retrying" in message
     assert (tmp_path / ".agent" / "artifact-formats" / "commit_message.md").exists()
 
 
@@ -580,7 +589,7 @@ def test_handle_submit_artifact_rejects_content_path_for_plan_submission(tmp_pat
 
 
 def test_handle_submit_artifact_rejects_plan_without_required_sections(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match=r"artifact-formats/plan\.md"):
+    with pytest.raises(InvalidParamsError) as exc_info:
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -605,6 +614,30 @@ def test_handle_submit_artifact_rejects_plan_without_required_sections(tmp_path:
                 ),
             },
         )
+
+    message = str(exc_info.value)
+    assert "artifact-formats/plan.md" in message
+    assert "skills_mcp" in message
+    assert "Read that file and rebuild your submission before retrying" in message
+
+
+def test_handle_submit_artifact_invalid_development_result_includes_fix_guidance(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_result",
+                "content": _content({"status": "partial", "summary": "missing next steps"}),
+            },
+        )
+
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/development_result.md" in message
+    assert "next_steps" in message or "development_result" in message
+    assert "Read that file and rebuild your submission before retrying" in message
 
 
 def test_handle_submit_artifact_accepts_structured_development_result(tmp_path: Path) -> None:

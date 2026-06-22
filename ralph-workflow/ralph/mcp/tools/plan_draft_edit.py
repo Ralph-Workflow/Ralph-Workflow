@@ -24,9 +24,11 @@ from .artifact import (
     DEFAULT_ARTIFACT_HANDLER_DEPS,
     PLAN_DRAFT_WRITE_CAPABILITY,
     ArtifactHandlerDeps,
+    _format_plan_step_edit_error,
     _load_or_create_plan_draft,
     _resolve_artifact_dir,
     _save_updated_plan_draft,
+    _workspace_root,
 )
 
 
@@ -52,9 +54,20 @@ def handle_insert_plan_step(
     and the new total step count.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step insertion")
-    index = _required_int(params, "index")
-    step_payload = params.get("step")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    workspace_root = _workspace_root(workspace)
+    try:
+        index = _required_int(params, "index")
+    except InvalidParamsError as exc:
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_insert_plan_step",
+            )
+        ) from exc
+    step_payload = params.get("step")
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
@@ -66,7 +79,14 @@ def handle_insert_plan_step(
             step_payload=step_payload,
         )
     except PlanArtifactValidationError as exc:
-        raise InvalidParamsError(str(exc)) from exc
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_insert_plan_step",
+            )
+        ) from exc
     draft["sections"] = updated_sections
     _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
     return ToolResult(
@@ -98,9 +118,20 @@ def handle_replace_plan_step(
     count.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step replacement")
-    step_number = _required_int(params, "step_number")
-    step_payload = params.get("step")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    workspace_root = _workspace_root(workspace)
+    try:
+        step_number = _required_int(params, "step_number")
+    except InvalidParamsError as exc:
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_replace_plan_step",
+            )
+        ) from exc
+    step_payload = params.get("step")
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
@@ -112,7 +143,14 @@ def handle_replace_plan_step(
             step_payload=step_payload,
         )
     except PlanArtifactValidationError as exc:
-        raise InvalidParamsError(str(exc)) from exc
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_replace_plan_step",
+            )
+        ) from exc
     draft["sections"] = updated_sections
     _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
     return ToolResult(
@@ -146,8 +184,19 @@ def handle_remove_plan_step(
     new total step count.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step removal")
-    step_number = _required_int(params, "step_number")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    workspace_root = _workspace_root(workspace)
+    try:
+        step_number = _required_int(params, "step_number")
+    except InvalidParamsError as exc:
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_remove_plan_step",
+            )
+        ) from exc
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
@@ -157,7 +206,14 @@ def handle_remove_plan_step(
             current_sections, step_number=step_number
         )
     except PlanArtifactValidationError as exc:
-        raise InvalidParamsError(str(exc)) from exc
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_remove_plan_step",
+            )
+        ) from exc
     draft["sections"] = updated_sections
     _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
     return ToolResult(
@@ -190,9 +246,20 @@ def handle_move_plan_step(
     count.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step move")
-    from_step_number = _required_int(params, "from_step_number")
-    to_index = _required_int(params, "to_index")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    workspace_root = _workspace_root(workspace)
+    try:
+        from_step_number = _required_int(params, "from_step_number")
+        to_index = _required_int(params, "to_index")
+    except InvalidParamsError as exc:
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_move_plan_step",
+            )
+        ) from exc
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
@@ -204,7 +271,14 @@ def handle_move_plan_step(
             to_index=to_index,
         )
     except PlanArtifactValidationError as exc:
-        raise InvalidParamsError(str(exc)) from exc
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_move_plan_step",
+            )
+        ) from exc
     draft["sections"] = updated_sections
     _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
     return ToolResult(
@@ -231,12 +305,29 @@ def handle_patch_step(
     as ``handle_replace_plan_step``.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step patch")
-    step_number = _required_int(params, "step_number")
+    resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    workspace_root = _workspace_root(workspace)
+    try:
+        step_number = _required_int(params, "step_number")
+    except InvalidParamsError as exc:
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_patch_step",
+            )
+        ) from exc
     step_payload = params.get("step")
     if not isinstance(step_payload, dict):
-        raise InvalidParamsError("Missing 'step' object")
-    resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
-
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail="Missing 'step' object",
+                workspace_root=_workspace_root(workspace),
+                backend=(deps or DEFAULT_ARTIFACT_HANDLER_DEPS).backend,
+                tool_name="ralph_patch_step",
+            )
+        )
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
     current_sections = cast("dict[str, object]", draft.get("sections", {}))
@@ -249,7 +340,14 @@ def handle_patch_step(
                 existing_step = step
                 break
     if existing_step is None:
-        raise InvalidParamsError(f"Step {step_number} does not exist")
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=f"Step {step_number} does not exist",
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_patch_step",
+            )
+        )
 
     merged = dict(existing_step)
     for key, value in cast("dict[str, object]", step_payload).items():
@@ -264,7 +362,14 @@ def handle_patch_step(
             step_payload=merged,
         )
     except PlanArtifactValidationError as exc:
-        raise InvalidParamsError(str(exc)) from exc
+        raise InvalidParamsError(
+            _format_plan_step_edit_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_patch_step",
+            )
+        ) from exc
     draft["sections"] = updated_sections
     _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
     return ToolResult(

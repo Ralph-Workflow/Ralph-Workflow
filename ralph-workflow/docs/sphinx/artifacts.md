@@ -13,20 +13,24 @@ Artifacts are the structured files Ralph Workflow leaves behind so later phases 
 | Artifact type | Submitted by | Purpose | Required? |
 |---|---|---|---|
 | `plan` | planning agent | Implementation plan with steps and work units | yes |
-| `development_result` | development agent | Summary of changes made (context for analysis) | **yes** |
+| `development_result` | development agent | Summary of changes made (context for analysis) | policy-controlled |
 | `issues` | review agent | List of issues found in the development output | yes |
 | `fix_result` | fix agent | Summary of fixes applied | yes |
 | `commit_message` | commit agent | Proposed commit subject and body | yes |
+| `commit_cleanup` | commit cleanup agent | Cleanup actions for transient or internal files before commit | yes |
 | `development_analysis_decision` | analysis agent | Go/no-go for development output | yes |
+| `planning_analysis_decision` | analysis agent | Go/no-go for planning output | yes |
 | `review_analysis_decision` | analysis agent | Go/no-go for review output | yes |
+| `smoke_test_result` | smoke-test agent | Structured result of a smoke-test run | no |
+| `product_spec` | planning/product-spec agent | Structured product spec | no |
 
-> **Required artifacts:** When *Required?* is **yes**, the phase must submit the artifact before completion. A submitted artifact is still fully validated against its schema. Whether a phase requires `development_result` is controlled by `pipeline.toml` on the phase definition; artifact contracts in `artifacts.toml` only describe the artifact itself.
+> **Required artifacts:** When *Required?* is **yes**, the phase must submit the artifact before completion. A submitted artifact is still fully validated against its schema. `development_result` is policy-controlled: whether a phase requires it is set by `pipeline.toml` on the phase definition. Artifact contracts in `artifacts.toml` only describe the artifact itself.
 
 See `ralph.mcp.artifacts.typed_artifacts` for Pydantic schema definitions for each type.
 
 ## Format docs
 
-Each non-plan artifact type also ships with a small Markdown format guide that agents can read at runtime before they submit data. The bundled source files live in `ralph/mcp/artifacts/format_docs/`, and Ralph Workflow materializes them into the workspace at `.agent/artifact-formats/` before each agent invocation.
+Each artifact type with a bundled format guide — including `plan` — ships with a small Markdown reference that agents can read at runtime before they submit data. The bundled source files live in `ralph/mcp/artifacts/format_docs/`, and Ralph Workflow materializes them into the workspace at `.agent/artifact-formats/` before each agent invocation.
 
 The format doc loader is in `ralph.mcp.artifacts.format_docs`. The `FORMAT_DOC_ARTIFACT_TYPES` tuple lists all types that have bundled docs:
 
@@ -40,12 +44,21 @@ An index doc (`artifact_formats_index.md`) is also materialized at `.agent/artif
 
 ## MCP submission tools
 
-Agents submit artifacts through these MCP tools, exposed by `ralph.mcp.tools.artifact`:
+Agents submit artifacts through these MCP tools. `ralph_submit_artifact`, the plan-draft
+read/finalize helpers, and batch section submit live in `ralph.mcp.tools.artifact`.
+The step-edit tools live in `ralph.mcp.tools.plan_draft_edit`:
 
 | Tool | Purpose |
 |---|---|
 | `ralph_submit_artifact` | Submit any artifact type as a JSON string |
 | `ralph_submit_plan_section` | Submit one section of a `plan` artifact incrementally |
+| `ralph_submit_plan_sections` | Submit multiple plan sections atomically in one batch |
+| `ralph_validate_draft` | Run the full read-only validator against the staged plan draft |
+| `ralph_insert_plan_step` | Insert one numbered step into the staged plan draft |
+| `ralph_replace_plan_step` | Replace one numbered step in the staged plan draft |
+| `ralph_remove_plan_step` | Remove one numbered step from the staged plan draft |
+| `ralph_move_plan_step` | Move one numbered step within the staged plan draft |
+| `ralph_patch_step` | Patch one numbered step while preserving the other fields |
 | `ralph_finalize_plan` | Validate the staged plan draft and write `plan.json` |
 | `ralph_get_plan_draft` | Read the currently staged plan draft |
 | `ralph_discard_plan_draft` | Delete the staged plan draft to start fresh |
@@ -69,7 +82,7 @@ The bundled defaults enable both checks. Omitting the block in a project-local p
 
 ## Schema validation
 
-Submitted artifacts are parsed and validated by `ralph.mcp.artifacts.typed_artifacts`. Each `artifact_type` maps to a Pydantic model. If validation fails, the MCP server returns an error and the agent must retry. The planning artifact additionally runs through a staging layer (`ralph_submit_plan_section` / `ralph_finalize_plan`) before final validation.
+Submitted artifacts are parsed and validated by `ralph.mcp.artifacts.typed_artifacts`. Each `artifact_type` maps to a Pydantic model. If validation fails, the MCP server returns an error that includes the validation detail plus a pointer to `.agent/artifact-formats/<type>.md` for payload-shape failures, or `.agent/artifact-formats/artifact_formats_index.md` for artifact-type selection failures. The agent is expected to read the referenced file, rebuild the payload or artifact_type, and retry the same tool. The planning artifact additionally runs through a staging layer (`ralph_submit_plan_section`, `ralph_submit_plan_sections`, the step-edit tools, `ralph_validate_draft`, then `ralph_finalize_plan`) before final validation. If `ralph_validate_draft` or `ralph_finalize_plan` fails, the repair loop is: use the staging tools to fix the draft, then rerun `ralph_validate_draft` or `ralph_finalize_plan`.
 
 ## File backend and storage
 
@@ -99,6 +112,7 @@ Each validated artifact is also written as a human-readable Markdown file direct
 | `development_result` | `.agent/DEVELOPMENT_RESULT.md` |
 | `issues` | `.agent/ISSUES.md` |
 | `fix_result` | `.agent/FIX_RESULT.md` |
+| `planning_analysis_decision` | `.agent/PLANNING_ANALYSIS_DECISION.md` |
 | `development_analysis_decision` | `.agent/DEVELOPMENT_ANALYSIS_DECISION.md` |
 | `review_analysis_decision` | `.agent/REVIEW_ANALYSIS_DECISION.md` |
 
