@@ -86,6 +86,12 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators
     ("idle_watchdog", "PLR0912"),  # _handle_waiting_branch has 5 reasons + gate path branches
     ("idle_watchdog", "PLR0915"),  # _handle_waiting_branch orchestrates 5 reasons
+    ("_active_branch", "PLR0911"),  # extracted evaluate_inner keeps original gate fan-out
+    ("_fire_evaluators", "PLR0911"),  # extracted fire evaluators preserve early-exit paths
+    ("_fire_evaluators", "PLR0912"),  # extracted no-progress branches
+    ("_waiting_branch", "PLR0911"),  # extracted waiting branch preserves 5 verdict paths
+    ("_waiting_branch", "PLR0912"),  # extracted waiting branch preserves suspect/hard-stop branches
+    ("_waiting_branch", "PLR0915"),  # extracted waiting branch orchestrates 5 reasons
     ("_stuck_classifier", "PLR0911"),  # 7 distinct StuckKind outcomes
     ("heartbeat", "PLC0415"),
     ("canonical_submit", "PLC0415"),  # lazy import avoids cycle with tools.artifact
