@@ -34,6 +34,7 @@ _TRANSPORT_TO_PROVIDER: dict[str, ActivityProvider] = {
     "claude_interactive": ActivityProvider.CLAUDE_INTERACTIVE,
     "codex": ActivityProvider.CODEX,
     "opencode": ActivityProvider.OPENCODE,
+    "gemini": ActivityProvider.GEMINI,
     "agy": ActivityProvider.AGY,
     "pi": ActivityProvider.PI,
     "generic": ActivityProvider.GENERIC,

@@ -457,6 +457,7 @@ def test_provider_for_transport_round_trips_supported_transports() -> None:
     )
     assert provider_for_transport("codex") is ActivityProvider.CODEX
     assert provider_for_transport("opencode") is ActivityProvider.OPENCODE
+    assert provider_for_transport("gemini") is ActivityProvider.GEMINI
     assert provider_for_transport("agy") is ActivityProvider.AGY
     assert provider_for_transport("pi") is ActivityProvider.PI
     # ``generic`` is the fallback parser for any transport that does
