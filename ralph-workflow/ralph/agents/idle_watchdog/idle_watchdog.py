@@ -1298,7 +1298,9 @@ class IdleWatchdog:
         # 600s). Without this branch a heartbeat-only subagent that
         # emits heartbeats but no real work runs for the full
         # cumulative ceiling -- too late. The dedicated heartbeat-only
-        # ceiling (default 120s; must be <= ``no_progress_quiet_seconds``
+        # ceiling (default 240s, sourced from
+        # ``NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS`` in
+        # ``ralph/timeout_defaults.py``; must be <= ``no_progress_quiet_seconds``
         # per the cross-field validator) trips NO_PROGRESS_QUIET when
         # the agent has been alive for at least
         # ``no_progress_quiet_heartbeat_ceiling_seconds``. This branch

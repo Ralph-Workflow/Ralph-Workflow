@@ -215,7 +215,11 @@ def test_heartbeat_ceiling_disabled_when_none() -> None:
     fire.
 
     Operators can opt out by setting the field to ``None``. The
-    default 120s is opt-in via ``[general]`` config. The
+    default 240s is opt-in via ``[general]`` config (the
+    ``agent_no_progress_quiet_heartbeat_ceiling_seconds`` field
+    on ``GeneralConfig``, which inherits the constant
+    ``NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS`` from
+    ``ralph/timeout_defaults.py``). The
     WAITING_ON_CHILD classifier is used so the test exercises the
     same waiting-branch path the production bug lives on; otherwise
     the test would pass on the ACTIVE path and not catch the
