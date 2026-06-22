@@ -10,6 +10,11 @@ The Ralph Loop pattern — plan → build → verify, iterated by an AI coding a
 
 These independent projects implement the Ralph Loop architecture in their own tools and frameworks. They validate the pattern independently of the Ralph Workflow reference implementation.
 
+> **🏷 Already built one of these?** Add 1 line to your README and your project links back to the ecosystem:
+> ```
+> [![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
+> ```
+
 | Project | Stars | Description |
 |---------|-------|-------------|
 | [umputun/ralphex](https://github.com/umputun/ralphex) | 1,296 ⭐ | Multi-provider LLM loop with plan-build-verify cycle | (verify: gh)
@@ -40,18 +45,38 @@ These independent projects implement the Ralph Loop architecture in their own to
 | [dscherm/comfyprompts](https://github.com/dscherm/comfyprompts) | — | Mini-ralphs with delegation matrix | (verify: gh)
 | [Delqhi-Projects/ZOE-Solar-Accounting-OCR](https://github.com/Delqhi-Projects/ZOE-Solar-Accounting-OCR) | — | Ralph/Lisa pipeline executor for accounting OCR | (verify: gh)
 
+## Shadow Ecosystem — Skill Registries, MCP & Media (2026-06-22 scout)
+
+| Project | Type | Description | Verify |
+|---------|------|-------------|--------|
+| [majiayu000/claude-skill-registry](https://github.com/majiayu000/claude-skill-registry) | Skill Registry | Ralph Workflow SKILL.md in community skill registry — distribution channel | (verify: gh) |
+| [dgbau/rl](https://github.com/dgbau/rl) | RL Project | Reinforcement learning project with ralph-workflow skill integration | (verify: gh) |
+| [salmanrrana/brain-dump](https://github.com/salmanrrana/brain-dump) | OpenCode Integration | `@ralph` command loading ralph-workflow skill in OpenCode | (verify: gh) |
+| [fbratten/8me](https://github.com/fbratten/8me) | MCP Server | FastMCP server named "ralph-workflow" in tier3 agent pipeline | (verify: gh) |
+| [tincke10/Barto-MCP](https://github.com/tincke10/Barto-MCP) | MCP Server | MCP server with ralph-workflow tool in server.ts | (verify: gh) |
+| [plusplusoneplusplus/shortcuts](https://github.com/plusplusoneplusplus/shortcuts) | IDE Integration | RalphWorkflowPane React component in development shortcuts toolkit | (verify: gh) |
+| [robheat/ainformed-dev](https://github.com/robheat/ainformed-dev) | Media Coverage | AI news article: "Ralph Workflow — a free, open-source AI orchestrator for everyone" (2026-05-12) | (verify: gh) |
+| [huifeideyu-1121/ai-info-aggregator](https://github.com/huifeideyu-1121/ai-info-aggregator) | Media Coverage | AI Daily newsletter covering Show HN launch (2026-05-13) | (verify: gh) |
+| [robzilla79/forgecore-newsletter](https://github.com/robzilla79/forgecore-newsletter) | Media Coverage | Forgecore newsletter — research raw on Ralph Workflow Show HN (2026-05-12) | (verify: gh) |
+| [fanshanhong/claude-skills-cn](https://github.com/fanshanhong/claude-skills-cn) | Chinese Content | Chinese-language Claude skills article featuring Ralph Workflow (2026-06-02) | (verify: gh) |
+| [Brickea/daily-program](https://github.com/Brickea/daily-program) | Individual Adopter | Daily programmer tracking ralph-workflow 0.8.6 in daily notes | (verify: gh) |
+| [leolilisisy/gameList](https://github.com/leolilisisy/gameList) | Game Project | Game project using `@ralph-workflow.md` in memory-bank agent template | (verify: gh) |
+| [arisng/github-copilot-fc](https://github.com/arisng/github-copilot-fc) | Enterprise Planning | Ralph Workflow version governance documentation in GitHub Copilot config | (verify: gh) |
+| [tallesborges/zdx](https://github.com/tallesborges/zdx) | Enterprise Planning | `ralph-workflow-engine.md` superseding workflow-bundles architecture | (verify: gh) |
+| [szabgab/pydigger-data](https://github.com/szabgab/pydigger-data) | PyPI Index | ralph-workflow PyPI package data indexed in pydigger | (verify: gh) |
+
 ## Early Adopters
 
 These practitioners installed, starred, forked, or watched the Ralph Workflow project. They're the people who found it useful enough to engage — our warmest signal for what the ICP actually looks like.
 
 | User | Platform | Signal | Profile |
-|------|----------|--------|---------|
+|---------|------|-------------|
 | pierodibello | Codeberg | ⭐ Star + 👁 Watch | Multi-signal adopter |
 | RoxanneA | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
 | TusharKarsan | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
 | awoehrl | GitHub | 👁 Watch | Data/analytics engineer |
-| swstegall | GitHub | ⭐ Star | JPMorganChase enterprise dev |
-| labumbu | GitHub | ⭐ Star | AI tool explorer |
+| swstegall | GitHub | ⭐ Star | Sam Stegall, JPMorganChase — polyglot enterprise dev (175 followers, 50 repos) |
+| labumbu | GitHub | ⭐ Star | Author of everything-claude-code (Anthropic Hackathon winner, 50K+ ⭐) — agent harness optimizer for Claude Code/Codex/OpenCode/Cursor |
 | andrei_legram | Codeberg | ⭐ Star | — |
 | bort | Codeberg | ⭐ Star | — |
 | brianr | Codeberg | ⭐ Star | — |

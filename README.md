@@ -6,7 +6,7 @@
 
 Ralph Workflow is a free, open-source Loop Engineering framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition.
 
-![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)  
+![Codeberg stars](https://img.shields.io/codeberg/stars/RalphWorkflow/Ralph-Workflow) ![GitHub stars](https://img.shields.io/github/stars/Ralph-Workflow/Ralph-Workflow) ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)  
 [![Built with Ralph Loop](assets/built-with-ralph-loop.svg)](https://github.com/Ralph-Workflow/Ralph-Workflow)
 
 🌐 **[ralphworkflow.com](https://ralphworkflow.com)** — full site with comparison guides, first-run walkthrough, blog, and social card.
@@ -86,13 +86,15 @@ Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and 
 
 ## Who it's for
 
-Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly. A good first run looks like:
+If one of these describes you, you're the reason Ralph exists:
 
-- The fitness app you wanted to build
-- A major product milestone
-- A substantial application slice with real acceptance criteria
+**The solo builder.** You have side projects with real spec depth — you know what to build but you're one person. Set `PROMPT.md` before bed, wake up to reviewed commits.
 
-It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
+**The team lead.** Your CI pipeline watches your sleep. Ralph fits between PR and review — unattended verification that your agents are shipping what you asked for, not what they guessed.
+
+**The AI tool builder.** You're already wiring Claude Code into your workflow. Ralph gives you the loop pattern (phase routing, cost arbitrage, recovery) as infrastructure instead of something you'd build yourself.
+
+Ralph is not for one-line fixes, vague prompts, or repos without tests. It's for **ambitious, well-specified work** you'd trust a capable colleague to do unattended.
 
 ## Built with Ralph
 
@@ -192,6 +194,7 @@ Questions, ideas, or something not working? Open an issue — the Codeberg track
 - **[Ask a question](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=question)** — anything from "will this work for my stack?" to feature ideas
 - **[PMF survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey)** (60 seconds) — the one signal we get since Ralph collects zero telemetry
 - **[See who's building with Ralph](USERS.md)** — 27+ projects and 15+ adopters
+- 🆕 **[23 Projects Reinvented the Same AI Coding Loop](https://ralphworkflow.com/blog/ralph-loop-ecosystem-convergent-evolution-2026)** — how the pattern is converging across 23+ independent projects, what JPMorganChase and AI-infra builders are doing with it
 
 ## Engineering-practice requirements
 
