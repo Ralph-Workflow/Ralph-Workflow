@@ -50,8 +50,8 @@ These practitioners installed, starred, forked, or watched the Ralph Workflow pr
 | RoxanneA | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
 | TusharKarsan | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
 | awoehrl | GitHub | 👁 Watch | Data/analytics engineer |
-| swstegall | GitHub | ⭐ Star | JPMorganChase enterprise dev |
-| labumbu | GitHub | ⭐ Star | AI tool explorer |
+| swstegall | GitHub | ⭐ Star | Sam Stegall, JPMorganChase — 50 repos, 175 followers |
+| labumbu | GitHub | ⭐ Star | everything-claude-code author, agent harness optimizer |
 | andrei_legram | Codeberg | ⭐ Star | — |
 | bort | Codeberg | ⭐ Star | — |
 | brianr | Codeberg | ⭐ Star | — |
