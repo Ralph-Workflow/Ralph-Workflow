@@ -10,6 +10,11 @@ The Ralph Loop pattern — plan → build → verify, iterated by an AI coding a
 
 These independent projects implement the Ralph Loop architecture in their own tools and frameworks. They validate the pattern independently of the Ralph Workflow reference implementation.
 
+> **🏷 Already built one of these?** Add 1 line to your README and your project links back to the ecosystem:
+> ```
+> [![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
+> ```
+
 | Project | Stars | Description |
 |---------|-------|-------------|
 | [umputun/ralphex](https://github.com/umputun/ralphex) | 1,296 ⭐ | Multi-provider LLM loop with plan-build-verify cycle | (verify: gh)
@@ -50,8 +55,8 @@ These practitioners installed, starred, forked, or watched the Ralph Workflow pr
 | RoxanneA | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
 | TusharKarsan | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
 | awoehrl | GitHub | 👁 Watch | Data/analytics engineer |
-| swstegall | GitHub | ⭐ Star | Sam Stegall, JPMorganChase — 50 repos, 175 followers |
-| labumbu | GitHub | ⭐ Star | everything-claude-code author, agent harness optimizer |
+| swstegall | GitHub | ⭐ Star | Sam Stegall, JPMorganChase — polyglot enterprise dev (175 followers, 50 repos) |
+| labumbu | GitHub | ⭐ Star | Author of everything-claude-code (Anthropic Hackathon winner, 50K+ ⭐) — agent harness optimizer for Claude Code/Codex/OpenCode/Cursor |
 | andrei_legram | Codeberg | ⭐ Star | — |
 | bort | Codeberg | ⭐ Star | — |
 | brianr | Codeberg | ⭐ Star | — |
