@@ -61,6 +61,7 @@ class TestStuckChildPromptLogScenario:
             suspect_waiting_on_child_seconds=None,
             waiting_status_interval_seconds=100.0,
             max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+            stuck_job_sub_ceiling_seconds=None,
             # Disable OS-descendant-only ceiling (its default is larger than full_ceiling)
             os_descendant_only_ceiling_seconds=None,
             no_progress_quiet_seconds=None,

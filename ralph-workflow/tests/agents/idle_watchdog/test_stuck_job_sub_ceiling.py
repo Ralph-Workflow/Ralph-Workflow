@@ -56,6 +56,7 @@ from ralph.agents.idle_watchdog import (
 )
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.child_liveness import AliveBy
+from ralph.timeout_defaults import STUCK_JOB_SUB_CEILING_SECONDS
 
 
 def _make_policy(
@@ -263,6 +264,14 @@ def test_stuck_job_sub_ceiling_disabled_when_none() -> None:
         f" got verdict={verdict!r}"
     )
     assert watchdog.last_fire_reason is None
+
+
+def test_timeout_policy_default_stuck_job_sub_ceiling_matches_constant() -> None:
+    """Default direct ``TimeoutPolicy`` callers get the 600s sub-ceiling."""
+    policy = TimeoutPolicy(idle_timeout_seconds=200.0)
+
+    assert policy.stuck_job_sub_ceiling_seconds == STUCK_JOB_SUB_CEILING_SECONDS
+    assert policy.stuck_job_sub_ceiling_seconds == 600.0
 
 
 def test_stuck_job_sub_ceiling_validated_positive_and_bounded() -> None:

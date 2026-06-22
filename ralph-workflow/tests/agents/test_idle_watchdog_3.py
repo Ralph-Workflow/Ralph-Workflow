@@ -76,6 +76,7 @@ def _make_watchdog(
         "max_session_seconds": max_session,
         "suspect_waiting_on_child_seconds": suspect,
         "max_waiting_on_child_no_progress_seconds": no_progress_ceiling,
+        "stuck_job_sub_ceiling_seconds": None,
         "os_descendant_only_ceiling_seconds": None,
         # Disable the SILENT_SUBAGENT diagnostic by default so this
         # file exercises the activity-aware fire path (NO_OUTPUT_DEADLINE
@@ -347,6 +348,7 @@ def test_evidence_summary_in_hard_stop_diagnostic() -> None:
         # which channels were fresh and which were stale at the
         # moment the watchdog fired.
         activity_evidence_ttl_seconds=0.0,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -473,6 +475,7 @@ def test_stalled_after_tool_result_fire_carries_evidence_summary() -> None:
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=30.0,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)

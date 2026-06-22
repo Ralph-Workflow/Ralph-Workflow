@@ -63,6 +63,7 @@ def _make_watchdog(
         suspect_waiting_on_child_seconds=suspect,
         waiting_status_interval_seconds=status_interval if status_interval is not None else 30.0,
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
         no_output_at_start_seconds=None,
         no_progress_quiet_seconds=None,
@@ -427,6 +428,7 @@ def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies
         suspect_waiting_on_child_seconds=None,
         waiting_status_interval_seconds=1.0,
         max_waiting_on_child_no_progress_seconds=_NO_PROGRESS_CEILING,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
         no_progress_quiet_seconds=None,
     )
@@ -496,6 +498,7 @@ def test_no_progress_ceiling_adapts_when_corroboration_degrades() -> None:
         suspect_waiting_on_child_seconds=None,
         waiting_status_interval_seconds=100.0,
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
         no_progress_quiet_seconds=None,
     )
@@ -651,6 +654,7 @@ def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
         no_progress_quiet_minimum_invocation_seconds=equal_ceiling,
         no_progress_quiet_heartbeat_ceiling_seconds=None,
         suspect_waiting_on_child_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )
     assert policy.max_waiting_on_child_no_progress_seconds == equal_ceiling

@@ -231,6 +231,7 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
         suspect_waiting_on_child_seconds=None,
         # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
@@ -279,6 +280,7 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
         suspect_waiting_on_child_seconds=None,
         # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
@@ -375,6 +377,7 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
         suspect_waiting_on_child_seconds=None,
         # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
@@ -444,6 +447,7 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
         suspect_waiting_on_child_seconds=None,
         # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
@@ -517,6 +521,7 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
         suspect_waiting_on_child_seconds=None,
         # Disable no-progress ceiling to avoid validation issues with small max_waiting
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than small max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
@@ -594,6 +599,7 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
         idle_poll_interval_seconds=0.05,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
         no_progress_quiet_seconds=None,
@@ -684,6 +690,7 @@ def test_stale_scoped_child_evidence_fires_no_output_deadline() -> None:
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=30.0,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
@@ -760,6 +767,7 @@ def test_fresh_then_stale_scoped_child_evidence_fires_no_output_deadline() -> No
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
         activity_evidence_ttl_seconds=30.0,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
     )
@@ -840,6 +848,7 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
         idle_poll_interval_seconds=0.05,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
         no_progress_quiet_seconds=None,

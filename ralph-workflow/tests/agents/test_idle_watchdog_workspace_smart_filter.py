@@ -76,6 +76,7 @@ def _make_watchdog(
         # than the small max_waiting=10s used in these tests).
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         activity_evidence_ttl_seconds=activity_ttl,
         workspace_change_weights=workspace_change_weights,
         # Disable the OS-descendant-only ceiling (its default is larger

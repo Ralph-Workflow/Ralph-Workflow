@@ -215,63 +215,6 @@ if _actual != _EXPECTED_FIRE_REASONS:
     )
 
 
-# Fresh AliveBy states -- the only states that should defer the short
-# NO_OUTPUT_AT_START kill. Every other AliveBy value (including None)
-# describes either a stale signal or no signal at all.
-#
-# The set is consumed by ``_alive_by_is_fresh`` which is consulted from
-# ``_evaluate_no_output_at_start``. Pre-fix the deferral gate was
-# ``corroboration.alive_by is not None`` which deferred on every
-# AliveBy value including stale states -- a wedged startup that
-# reported ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (or one of the other
-# stale states) would defer the short kill and never reach
-# ``_gate_fire`` / StuckClassifier. The fresh-evidence subset is
-# ``FRESH_PROGRESS`` and ``FRESH_HEARTBEAT_ONLY`` -- both describe a
-# child that has produced a recent progress / heartbeat signal.
-#
-# The stale states that DO NOT defer:
-#   * ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` -- the agent has a process
-#     tree descendant but no recent progress or heartbeat. This is
-#     the classic wedged-startup signal: the orchestrator is
-#     blocked on an unrelated long-lived process (e.g. an MCP server,
-#     a Playwright browser) but the AGENT itself is not producing
-#     output. The watchdog MUST still fire NO_OUTPUT_AT_START so the
-#     agent is killed and the parent process is not stuck forever.
-#   * ``CPU_IDLE_WHILE_ALIVE`` -- the descendant process is alive but
-#     has not used CPU recently. Same wedged-startup pattern.
-#   * ``LOG_STALE_WHILE_ALIVE`` -- the descendant's log output is
-#     stale. Same wedged-startup pattern.
-#   * ``STALE_LABEL_ONLY`` -- the child has no fresh heartbeat or
-#     progress and is past the stale_label_ttl grace window. The
-#     label is the only evidence left, and it is stale.
-_FRESH_ALIVE_BY_STATES: frozenset[AliveBy] = frozenset(
-    {AliveBy.FRESH_PROGRESS, AliveBy.FRESH_HEARTBEAT_ONLY}
-)
-
-
-def _alive_by_is_fresh(alive_by: AliveBy | None) -> bool:
-    """Return True when ``alive_by`` describes a TRULY live child agent.
-
-    The fresh states are ``FRESH_PROGRESS`` and ``FRESH_HEARTBEAT_ONLY``
-    -- both describe a child that has produced a recent
-    progress / heartbeat signal. Every other ``AliveBy`` value
-    (including ``None``) is NOT fresh: the corroborator either
-    reported a stale signal or no signal at all.
-
-    The watchdog consults this helper from
-    ``_evaluate_no_output_at_start`` so the live-corroboration
-    deferral gate only suppresses ``NO_OUTPUT_AT_START`` for
-    FRESH evidence. Stale evidence falls through to ``_gate_fire``
-    and the StuckClassifier so a wedged startup that reports
-    ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (or one of the other
-    stale states) is still killed by the short-fire path.
-    See ``TestNoOutputAtStartStaleAliveByDoesNotDefer`` in
-    ``tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py``
-    for the regression test that pins this contract.
-    """
-    return alive_by in _FRESH_ALIVE_BY_STATES
-
-
 @dataclass
 class IdleWatchdog:
     """Tracks agent idle time and decides when to fire the timeout.

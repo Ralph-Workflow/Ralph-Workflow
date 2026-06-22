@@ -147,6 +147,7 @@ def test_idle_watchdog_does_not_fire_no_output_deadline_after_long_silence_with_
         drain_window_seconds=30.0,
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -186,6 +187,7 @@ def test_idle_watchdog_fires_no_output_deadline_after_long_silence_with_terminat
         drain_window_seconds=30.0,
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -223,6 +225,7 @@ def test_idle_watchdog_with_active_quiet_defers_to_next_record_activity(
         drain_window_seconds=drain_window_seconds,
         suspect_waiting_on_child_seconds=None,
         max_waiting_on_child_no_progress_seconds=None,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=0.0)

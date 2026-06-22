@@ -33,6 +33,7 @@ from ralph.timeout_defaults import (
     REPEATED_ERROR_WINDOW_COUNT,
     REPEATED_ERROR_WINDOW_SECONDS,
     SILENT_SUBAGENT_SECONDS,
+    STUCK_JOB_SUB_CEILING_SECONDS,
     SUBAGENT_OUTPUT_CAPTURE_ENABLED,
     SUBAGENT_OUTPUT_POLL_INTERVAL_SECONDS,
     SUSPECT_WAITING_ON_CHILD_SECONDS,
@@ -324,7 +325,7 @@ class TimeoutPolicy:
     # disabled and the legacy ``max_waiting_on_child_no_progress_seconds``
     # behavior is preserved. Must be > 0 and <= ``max_waiting_on_child_seconds``
     # when set.
-    stuck_job_sub_ceiling_seconds: float | None = None
+    stuck_job_sub_ceiling_seconds: float | None = STUCK_JOB_SUB_CEILING_SECONDS
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()

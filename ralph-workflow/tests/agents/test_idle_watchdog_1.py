@@ -66,6 +66,7 @@ def _make_watchdog(
         suspect_waiting_on_child_seconds=suspect,
         waiting_status_interval_seconds=status_interval if status_interval is not None else 30.0,
         max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        stuck_job_sub_ceiling_seconds=None,
         os_descendant_only_ceiling_seconds=None,
     )
     clock = FakeClock(start=start)
