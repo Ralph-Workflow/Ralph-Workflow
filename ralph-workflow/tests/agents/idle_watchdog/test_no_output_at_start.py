@@ -217,15 +217,15 @@ def test_no_output_at_start_fires_after_waiting_ceiling_reached() -> None:
     )
 
 
-def test_no_output_at_start_defers_within_dumb_kill_floor() -> None:
-    """NO_OUTPUT_AT_START defers (returns CONTINUE) when invocation_elapsed
-    is under the dumb-kill floor (``no_progress_quiet_minimum_invocation_seconds``).
+def test_no_output_at_start_fires_at_threshold_even_when_floor_unreached() -> None:
+    """NO_OUTPUT_AT_START fires at the threshold even when invocation_elapsed
+    is under the ``no_progress_quiet_minimum_invocation_seconds`` floor.
 
-    The dumb-kill floor is the canonical bound that prevents the
-    watchdog from killing a recently-launched agent that has not yet
-    produced first-party activity evidence. The floor is enforced
-    BEFORE the ``classify_quiet`` short-circuit so the LOADING window
-    is safe regardless of classify_quiet's return value.
+    The dumb-kill floor is intentionally NOT consulted inside
+    ``_evaluate_no_output_at_start`` so the operator's
+    ``no_output_at_start_seconds`` short ceiling is the single source of
+    truth for ``NO_OUTPUT_AT_START`` lifetime. The floor is enforced
+    inside ``_is_no_progress_quiet`` for ``NO_PROGRESS_QUIET`` only.
     """
     clock = FakeClock(start=0.0)
     policy = TimeoutPolicy(
@@ -245,12 +245,14 @@ def test_no_output_at_start_defers_within_dumb_kill_floor() -> None:
         process_monitor=_NoProcessMonitor(),
     )
     wd.record_invocation_start()
-    # Advance to 60s: past the 30s NO_OUTPUT_AT_START threshold but
-    # under the 120s dumb-kill floor. The watchdog MUST defer.
+    # Advance to 60s: past the 30s NO_OUTPUT_AT_START threshold AND
+    # under the 120s dumb-kill floor. The watchdog MUST fire at the
+    # short ceiling; the floor does NOT defer NO_OUTPUT_AT_START.
     clock.advance(60.0)
     verdict = wd.evaluate(classify_quiet=_active)
-    assert verdict == WatchdogVerdict.CONTINUE, (
-        f"NO_OUTPUT_AT_START MUST defer within the dumb-kill floor"
-        f" (invocation_elapsed=60s, floor=120s); got {verdict}"
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"NO_OUTPUT_AT_START MUST fire at the threshold regardless of"
+        f" the dumb-kill floor (invocation_elapsed=60s, threshold=30s,"
+        f" floor=120s); got {verdict}"
     )
-    assert wd.last_fire_reason is None
+    assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START

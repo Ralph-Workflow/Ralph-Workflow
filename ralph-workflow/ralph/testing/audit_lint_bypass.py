@@ -84,6 +84,7 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("run_loop", "PLR0912"),
     ("run_loop", "PLR0915"),
     ("idle_watchdog", "PLR0911"),  # evaluate() consults gate then 5 sub-evaluators
+    ("idle_watchdog", "PLR0912"),  # _handle_waiting_branch has 5 reasons + gate path branches
     ("idle_watchdog", "PLR0915"),  # _handle_waiting_branch orchestrates 5 reasons
     ("_stuck_classifier", "PLR0911"),  # 7 distinct StuckKind outcomes
     ("heartbeat", "PLC0415"),

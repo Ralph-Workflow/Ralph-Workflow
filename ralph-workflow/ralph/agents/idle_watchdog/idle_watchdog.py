@@ -680,6 +680,21 @@ class IdleWatchdog:
     _classify_quiet_provider: Callable[[], AgentExecutionState] | None = field(
         default=None, init=False
     )
+    # Tick-scoped corroboration cache. ``evaluate()`` captures one
+    # ``CorroborationSnapshot`` at the top of every tick and reuses it
+    # for ALL sub-evaluators on that tick (``_evaluate_no_output_at_start``,
+    # ``_evaluate_strictly_stuck``, ``_evaluate_no_progress_quiet``,
+    # ``_handle_waiting_branch``, etc.) so a single corroborator call
+    # drives both the decision path and the diagnostic surface. Without
+    # this cache the watchdog would call the corroborator once per
+    # sub-evaluator, and a flaky corroborator that rotates alive_by
+    # values on each call would produce inconsistent decisions vs.
+    # diagnostics on the same tick (the bug the regression test
+    # ``test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics``
+    # pins). ``None`` means ``evaluate()`` is not running; calls outside
+    # the tick (e.g. external probing) bypass the cache and invoke the
+    # corroborator directly.
+    _tick_corroboration: CorroborationSnapshot | None = field(default=None, init=False)
 
     def __init__(
         self,
@@ -1412,24 +1427,22 @@ class IdleWatchdog:
             or (now - self._last_meaningful_output_at) < self._config.no_output_at_start_seconds
         ):
             return None
-        # Dumb-kill floor: defer the fire while the agent has been alive
-        # for less than ``no_progress_quiet_minimum_invocation_seconds``
-        # so a recently-launched agent in the LOADING window (loading
-        # prompt, dispatching a subagent, etc.) is not killed at the
-        # 30s short ceiling before any liveness signal has a chance
-        # to arrive. The floor MUST be consulted BEFORE the
-        # ``classify_quiet`` call so the load-strategy classification
-        # cost is not paid on the floor path. The
-        # ``no_progress_quiet_minimum_invocation_seconds`` default
-        # (120s) is the same bound already enforced for
-        # ``NO_PROGRESS_QUIET`` in ``_is_no_progress_quiet``, so the
-        # worst-case first-output latency is still bounded by 120s.
-        if (
-            self._config.no_progress_quiet_minimum_invocation_seconds is not None
-            and self.invocation_elapsed_seconds
-            < self._config.no_progress_quiet_minimum_invocation_seconds
-        ):
-            return None
+        # NOTE: NO_OUTPUT_AT_START has NO dumb-kill floor. The dumb-kill
+        # floor (``no_progress_quiet_minimum_invocation_seconds``) is
+        # ONLY consulted inside ``_is_no_progress_quiet`` for
+        # ``NO_PROGRESS_QUIET``. The 30s/60s ``NO_OUTPUT_AT_START``
+        # short ceiling fires on a truly silent ACTIVE run regardless
+        # of how recently the agent was launched -- a freshly-launched
+        # agent that never produces any channel evidence (stdout, MCP
+        # tool call, file change, subagent progress) inside the
+        # ``no_output_at_start_seconds`` window is a stuck process and
+        # the short kill MUST fire. The 120s default dumb-kill floor
+        # is intentionally NOT consulted here so the operator's
+        # documented ``no_output_at_start_seconds`` threshold is the
+        # single source of truth for ``NO_OUTPUT_AT_START`` lifetime.
+        # ``classify_quiet()`` (waiting / subagent deferral) and the
+        # corroborator's alive_by (FRESH subagent deferral) are still
+        # consulted below as the canonical subagent deferral paths.
         try:
             quiet_state = classify_quiet()
         except Exception:
@@ -2071,6 +2084,35 @@ class IdleWatchdog:
         directly, so a ``None`` return would otherwise raise
         ``AttributeError`` mid-evaluation and break the watchdog
         decision path instead of failing closed.
+
+        Tick-scoped cache: when ``evaluate()`` is running, the
+        snapshot captured at the top of the tick (``self._tick_corroboration``)
+        is returned on every subsequent ``_safe_corroborate()`` call
+        so all sub-evaluators (NO_OUTPUT_AT_START, STRICTLY_STUCK,
+        NO_PROGRESS_QUIET, WAITING_ON_CHILD) see the SAME alive_by
+        signal on a single tick. The cache is LAZILY populated on the
+        first ``_safe_corroborate()`` call inside ``evaluate()`` so the
+        strategy's first ``classify_quiet()`` read of shared state
+        (e.g. ``ChildLivenessRegistry.prune_stale`` inside the
+        corroborator) is NOT pre-empted. Outside of ``evaluate()``
+        (external probing, helper access from test code that bypasses
+        ``evaluate()``) the cache is ``None`` and the corroborator is
+        invoked directly.
+        """
+        if self._tick_corroboration is not None:
+            return self._tick_corroboration
+        snapshot = self._call_corroborator_raw()
+        self._tick_corroboration = snapshot
+        return snapshot
+
+    def _call_corroborator_raw(self) -> CorroborationSnapshot:
+        """Invoke the underlying corroborator and normalize the result.
+
+        No caching: this is the bypass path used by ``evaluate()`` to
+        populate the tick-scoped cache (``self._tick_corroboration``)
+        at the start of every tick. Returns an empty
+        ``CorroborationSnapshot`` on ``None``, exceptions, or
+        non-``CorroborationSnapshot`` returns (fail-closed).
         """
         if self._corroborator is None:
             return CorroborationSnapshot()
@@ -2291,7 +2333,7 @@ class IdleWatchdog:
                     event.subagent_activity,
                 )
 
-    def evaluate(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distinct verdict path
+    def evaluate(
         self,
         *,
         classify_quiet: Callable[[], AgentExecutionState],
@@ -2321,6 +2363,43 @@ class IdleWatchdog:
         # fire, which is the bug the analysis feedback called out.
         self._classify_quiet_provider = classify_quiet
 
+        # Arm the tick-scoped corroboration cache sentinel ``None`` for
+        # this ``evaluate()`` call. The cache is lazily populated on the
+        # FIRST ``_safe_corroborate()`` call inside ``_evaluate_inner``
+        # so the corroborator's side-effects (e.g. registry
+        # ``prune_stale``) do NOT pre-empt the strategy's first
+        # ``classify_quiet()`` read of the same registry. This preserves
+        # the historical "strategy first, corroborator second" call
+        # order that ``test_stale_scoped_child_evidence_fires_no_output_deadline``
+        # pins while still reusing one snapshot across the WAITING_ON_CHILD
+        # path's entry/ceiling/diagnostic reads inside a single tick
+        # (``test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics``).
+        self._tick_corroboration = None
+        try:
+            return self._evaluate_inner(
+                now=now,
+                classify_quiet=classify_quiet,
+            )
+        finally:
+            self._tick_corroboration = None
+    def _evaluate_inner(  # noqa: PLR0911 - gate + 5 sub-evaluators; each is a distinct verdict path
+        self,
+        *,
+        now: float,
+        classify_quiet: Callable[[], AgentExecutionState],
+    ) -> WatchdogVerdict:
+        """Inner ``evaluate()`` body. Runs inside the tick-scoped cache lifetime.
+
+        ``evaluate()`` arms ``self._tick_corroboration = None`` for this
+        call. ``_safe_corroborate()`` lazily populates the cache on the
+        first read, then returns the cached snapshot for every
+        subsequent read so all sub-evaluators (NO_OUTPUT_AT_START,
+        STRICTLY_STUCK, NO_PROGRESS_QUIET, WAITING_ON_CHILD) and
+        diagnostic surfaces on this tick see the SAME alive_by signal.
+        Outside of ``evaluate()`` (external probing, helper access from
+        test code that bypasses ``evaluate()``) the cache is ``None``
+        and the corroborator is invoked directly.
+        """
         # Poll observable subagent output streams before any verdict so fresh
         # subagent output is treated as first-party activity on this tick.
         self.poll_subagent_output(now=now)

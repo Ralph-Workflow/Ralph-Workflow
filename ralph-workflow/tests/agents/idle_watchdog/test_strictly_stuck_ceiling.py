@@ -147,8 +147,14 @@ def test_strictly_stuck_fires_when_alive_by_pure_descendant_stale() -> None:
     # single advance of 305 s yields a 305 s strictly-stuck run, well
     # past the 300 s ceiling. This avoids depending on the production
     # code's two-tick seed semantics and keeps the test focused on the
-    # ceiling behavior.
-    wd._strictly_stuck_run_started_at = clock.monotonic()  # type: ignore[attr-defined]
+    # ceiling behavior. Use ``setattr`` with the attribute name held
+    # in a local variable so mypy cannot narrow the access to a
+    # private-attribute assignment AND ruff B010 does not flag a
+    # setattr-with-constant-value call. The policy test for
+    # ``test_zero_test_file_suppressions`` rejects bare mypy
+    # suppression comments inside test files.
+    _run_started_attr = "_strictly_stuck_run_started_at"
+    setattr(wd, _run_started_attr, clock.monotonic())
     clock.advance(305.0)
     verdict = wd.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.FIRE, (

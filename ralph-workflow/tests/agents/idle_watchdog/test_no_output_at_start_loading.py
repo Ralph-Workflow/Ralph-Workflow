@@ -114,15 +114,23 @@ def cast(tp: type[object], obj: object) -> object:
     return typing.cast("type[object]", obj)
 
 
-def test_no_output_at_start_defers_within_dumb_kill_floor() -> None:
-    """NO_OUTPUT_AT_START MUST defer when invocation_elapsed_seconds is
-    under the dumb-kill floor, regardless of alive_by.
+def test_no_output_at_start_fires_at_threshold_with_stale_alive_by() -> None:
+    """NO_OUTPUT_AT_START fires at the threshold even when alive_by is a
+    stale descendant-only signal AND invocation_elapsed is under the
+    dumb-kill floor (default 120 s).
 
-    Drives evaluate() at invocation elapsed = 60 s with the floor at
-    120 s. The corroborator reports
-    ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (a wedged-startup signal:
-    process tree descendant exists but no progress/heartbeat yet).
-    Pre-fix this returns FIRE; post-fix it returns CONTINUE.
+    The dumb-kill floor (``no_progress_quiet_minimum_invocation_seconds``)
+    is intentionally NOT consulted inside ``_evaluate_no_output_at_start``
+    so the operator's ``no_output_at_start_seconds`` short ceiling is the
+    single source of truth for ``NO_OUTPUT_AT_START`` lifetime. A wedged
+    startup that reports ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` (process
+    tree descendant exists but no progress/heartbeat yet) is precisely
+    the stuck-agent pattern the 30 s short kill is meant to detect, so
+    the floor MUST NOT defer the fire.
+
+    Drives ``evaluate()`` at invocation elapsed = 60 s with the floor at
+    120 s, threshold at 30 s, and the corroborator reporting
+    ``OS_DESCENDANT_ONLY_STALE_PROGRESS``.
     """
     wd, clock = _make_watchdog(
         invocation_floor=120.0,
@@ -133,25 +141,32 @@ def test_no_output_at_start_defers_within_dumb_kill_floor() -> None:
 
     # Advance to 60 s, which is:
     #   - past the 30 s no_output_at_start threshold (so the
-    #     short ceiling WOULD fire pre-fix)
-    #   - under the 120 s dumb-kill floor (so the floor MUST defer
-    #     post-fix)
+    #     short ceiling fires)
+    #   - under the 120 s dumb-kill floor (the floor MUST NOT
+    #     defer for NO_OUTPUT_AT_START)
     clock.advance(60.0)
 
     verdict = wd.evaluate(classify_quiet=_active)
-    assert verdict == WatchdogVerdict.CONTINUE, (
-        f"NO_OUTPUT_AT_START MUST defer within the dumb-kill floor"
-        f" (invocation_elapsed=60s, floor=120s); got {verdict}"
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"NO_OUTPUT_AT_START MUST fire at the threshold even when the"
+        f" dumb-kill floor is not yet elapsed and alive_by is stale"
+        f" (invocation_elapsed=60s, threshold=30s, floor=120s);"
+        f" got {verdict}"
     )
+    assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
 
 
-def test_no_output_at_start_still_fires_after_floor_elapsed() -> None:
-    """NO_OUTPUT_AT_START MUST still fire once invocation_elapsed_seconds
-    crosses the floor AND the short ceiling is hit.
+def test_no_output_at_start_fires_for_truly_silent_run() -> None:
+    """NO_OUTPUT_AT_START fires at the threshold for a truly silent ACTIVE
+    run (no corroborator alive_by, no channel evidence).
 
-    The dumb-kill floor only suppresses the short kill during the
-    load window; past the floor the 30 s short ceiling is the correct
-    bound for a never-launched agent.
+    Drives ``evaluate()`` at invocation elapsed = 150 s with the floor at
+    120 s, threshold at 30 s, and no corroborator. This pins the canonical
+    short-kill behaviour: a freshly-launched agent that never produces
+    any channel evidence (stdout, MCP tool call, file change, subagent
+    progress) inside the ``no_output_at_start_seconds`` window is a stuck
+    process and the 30 s short kill MUST fire even though the agent is
+    well past the dumb-kill floor.
     """
     wd, clock = _make_watchdog(
         invocation_floor=120.0,
@@ -164,7 +179,7 @@ def test_no_output_at_start_still_fires_after_floor_elapsed() -> None:
 
     verdict = wd.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.FIRE, (
-        f"NO_OUTPUT_AT_START MUST fire after the dumb-kill floor"
-        f" elapses; got {verdict}"
+        f"NO_OUTPUT_AT_START MUST fire at the threshold for a truly"
+        f" silent run; got {verdict}"
     )
     assert wd.last_fire_reason == WatchdogFireReason.NO_OUTPUT_AT_START
