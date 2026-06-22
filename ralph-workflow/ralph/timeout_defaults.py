@@ -257,15 +257,16 @@ NO_PROGRESS_QUIET_SECONDS: float | None = 120.0
 #: AND ``STRICTLY_STUCK`` (which requires a stale alive_by) and only
 #: trip the cumulative 600s ``CHILDREN_PERSIST_TOO_LONG`` ceiling --
 #: too late for a heartbeat-only subagent that emits heartbeats but no
-#: real work. The 240s default is conservative (matches the
-#: ``NO_PROGRESS_QUIET_SECONDS`` default of 120s scaled by 2) so
-#: long-running legitimate work that emits heartbeats is not killed.
-#: Must be > 0 when set and <= ``NO_PROGRESS_QUIET_SECONDS`` when both
-#: are set (the heartbeat-only ceiling fires BEFORE the dumb-kill
-#: ``NO_PROGRESS_QUIET`` ceiling). When ``None``, the heartbeat-only
-#: ceiling is disabled and the watchdog falls back to the cumulative
-#: ``CHILDREN_PERSIST_TOO_LONG`` ceiling.
-NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS: float | None = 240.0
+#: real work. The default equals ``NO_PROGRESS_QUIET_SECONDS`` (120s)
+#: so the heartbeat-only branch fires AT the dumb-kill ceiling (the
+#: degenerate equal case permitted by the cross-field validator).
+#: Operators can RAISE the ceiling to give heartbeat-only subagents
+#: more headroom (e.g. long-running exploration, dispatching
+#: subagents) as long as the value stays <= ``NO_PROGRESS_QUIET_SECONDS``
+#: when both are set. Must be > 0 when set. When ``None``, the
+#: heartbeat-only ceiling is disabled and the watchdog falls back to
+#: the cumulative ``CHILDREN_PERSIST_TOO_LONG`` ceiling.
+NO_PROGRESS_QUIET_HEARTBEAT_CEILING_SECONDS: float | None = 120.0
 
 #: Default dumb-kill floor: NO_PROGRESS_QUIET cannot fire within the first N seconds
 #: of an agent run. This prevents the watchdog from killing a recently-launched

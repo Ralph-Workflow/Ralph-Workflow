@@ -272,9 +272,12 @@ class TimeoutPolicy:
     # -- too late for a heartbeat-only subagent that emits heartbeats but
     # no real work. Must be > 0 when set and <=
     # ``no_progress_quiet_seconds`` when both are set (the heartbeat-only
-    # ceiling fires BEFORE the dumb-kill ``NO_PROGRESS_QUIET`` ceiling).
-    # When ``None``, the heartbeat-only ceiling is disabled and the
-    # watchdog falls back to the cumulative
+    # ceiling is a SHORTER, ORTHOGONAL ceiling that fires BEFORE the
+    # dumb-kill ``NO_PROGRESS_QUIET`` ceiling; if the heartbeat ceiling
+    # were longer than the outer ceiling the heartbeat branch would
+    # never fire and the operator's intent would be silently
+    # defeated). When ``None``, the heartbeat-only ceiling is disabled
+    # and the watchdog falls back to the cumulative
     # ``CHILDREN_PERSIST_TOO_LONG`` ceiling. The 240s default tolerates
     # long-running legitimate work that emits heartbeats but no first-party
     # progress (e.g. multi-step exploration, dispatching subagents).
@@ -571,6 +574,24 @@ class TimeoutPolicy:
             return
         if self.no_progress_quiet_heartbeat_ceiling_seconds <= 0:
             msg = "no_progress_quiet_heartbeat_ceiling_seconds must be positive when set"
+            raise ValueError(msg)
+        # The heartbeat-only ceiling MUST be <= ``no_progress_quiet_seconds``
+        # when both fields are set. The heartbeat-only branch is a
+        # SHORTER, ORTHOGONAL ceiling that fires BEFORE the dumb-kill
+        # ``NO_PROGRESS_QUIET`` ceiling; if the heartbeat ceiling were
+        # longer than the outer ``no_progress_quiet_seconds`` ceiling,
+        # the heartbeat branch would never fire (the outer ceiling
+        # would trip first) and the operator's intent (a faster kill
+        # for heartbeat-only subagents) would be silently defeated.
+        if (
+            self.no_progress_quiet_seconds is not None
+            and self.no_progress_quiet_heartbeat_ceiling_seconds
+            > self.no_progress_quiet_seconds
+        ):
+            msg = (
+                "no_progress_quiet_heartbeat_ceiling_seconds must be <="
+                " no_progress_quiet_seconds when both are set"
+            )
             raise ValueError(msg)
 
     def _validate_watchdog_log_throttle_seconds(self) -> None:

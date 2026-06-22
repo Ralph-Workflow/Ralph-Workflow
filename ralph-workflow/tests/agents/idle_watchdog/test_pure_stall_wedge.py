@@ -66,6 +66,7 @@ def _make_watchdog() -> tuple[IdleWatchdog, FakeClock]:
         no_output_at_start_seconds=_NO_OUTPUT_AT_START_SECONDS,
         no_progress_quiet_seconds=_NO_PROGRESS_QUIET_SECONDS,
         no_progress_quiet_minimum_invocation_seconds=None,
+        no_progress_quiet_heartbeat_ceiling_seconds=None,
         silent_subagent_seconds=_SILENT_SUBAGENT_SECONDS,
         activity_evidence_ttl_seconds=30.0,
     )
