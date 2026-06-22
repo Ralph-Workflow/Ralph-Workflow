@@ -71,6 +71,7 @@ def render_review_prompt(
                 "SUBMIT_ARTIFACT_TOOL_REFERENCE": _SUBMIT_ARTIFACT_TOOL_REFERENCE,
                 "SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS": f"the tool named {SUBMIT_ARTIFACT_TOOL}",
                 "DECLARE_COMPLETE_TOOL_REFERENCE": _DECLARE_COMPLETE_TOOL_REFERENCE,
+                "WRITE_FILE_TOOL_REFERENCE": "",
             },
             partials,
         )

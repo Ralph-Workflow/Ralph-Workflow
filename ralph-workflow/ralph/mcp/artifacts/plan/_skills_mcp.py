@@ -8,7 +8,7 @@ from ralph.pydantic_compat import RalphBaseModel
 class SkillsMcp(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    skills: list[str] = Field(..., min_length=1, max_length=100)
+    skills: list[str] = Field(..., max_length=100)
     mcps: list[str] = Field(default_factory=list, max_length=50)
 
     @field_validator("skills")
@@ -22,9 +22,6 @@ class SkillsMcp(RalphBaseModel):
                 continue
             seen.add(stripped)
             deduped.append(stripped)
-        if not deduped:
-            msg = "skills must contain at least one non-empty skill name"
-            raise ValueError(msg)
         return deduped
 
     @field_validator("mcps")

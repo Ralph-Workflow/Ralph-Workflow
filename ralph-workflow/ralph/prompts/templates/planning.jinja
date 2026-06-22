@@ -222,9 +222,9 @@ The seven typed sub-sections, with the exact labels the executor will see in the
 
 **Model-tier guidance for the optional `notes` field**: For high-quality models, use the optional `notes` free-form field to capture rationale, alternative designs considered, and trade-offs that do not fit the seven typed sub-models. For cheap models, leave `notes` unset and rely entirely on the seven typed sub-models for schema-driven validation. Either choice is acceptable; the section passes validation as long as the seven sub-models are well-formed (or all None).
 
-**`design.outcome` (top-level design outcome)**: The optional `outcome` field (≤500 chars, distinct from `notes`) is a one-line top-level design outcome that the executor surfaces as a `### Outcome` sub-block at the TOP of the Design section, before the seven sub-section headings. Cheap models can populate `design.outcome` and skip `design.notes` for the same level of executor signal. Stripped empty values are dropped from the dump.
+**`design.outcome` (top-level design outcome)**: The optional `outcome` field (≤1000 chars, distinct from `notes`) is a one-line top-level design outcome that the executor surfaces as a `### Outcome` sub-block at the TOP of the Design section, before the seven sub-section headings. Cheap models can populate `design.outcome` and skip `design.notes` for the same level of executor signal. Stripped empty values are dropped from the dump.
 
-**`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset also seeds a sentinel acceptance criterion `PRESET-01` that you may strip or replace. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. If you rely on any preset, you MUST stage the `design` section before finalizing so the profile is actually present in the artifact. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
+**`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset seeds a sentinel acceptance criterion `PRESET-01` only when `acceptance_criteria` is otherwise absent, and you may strip or replace it. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. If you rely on any preset, you MUST stage the `design` section before finalizing so the profile is actually present in the artifact. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
 
 **Model tier**: Pick the model tier first, then fill the fields that tier is expected to provide.
 
@@ -320,7 +320,7 @@ Your payload must decode to an object shaped like this:
   "work_units": [],
   "design": {
     "planning_profile": "strict",
-    "outcome": "One-line design outcome (<=500 chars). Distinct from notes.",
+    "outcome": "One-line design outcome (<=1000 chars). Distinct from notes.",
     "testability": {
       "must_be_black_box": true,
       "forbidden_in_tests": ["time.sleep"],
@@ -337,7 +337,7 @@ Your payload must decode to an object shaped like this:
 
 Hard requirements for the payload:
 - `summary.scope_items` must contain at least 3 concrete items.
-- `skills_mcp.skills` must contain at least 1 skill name from skills already available in your environment. Choose skills the development agent should invoke for this task, not every installed skill.
+- `skills_mcp.skills` must contain at least 1 skill name from skills already available in your environment, UNLESS you stage `design.planning_profile="minimal"`, under which an empty list is auto-filled with `["writing-plans"]`. Choose skills the development agent should invoke for this task, not every installed skill.
 - `skills_mcp.skills` names must match skill names your agent can discover and invoke.
 - `steps` must contain at least 1 step, and every step must be explicit enough for a weaker agent to execute without re-planning.
 - `critical_files.primary_files` must contain at least 1 file.

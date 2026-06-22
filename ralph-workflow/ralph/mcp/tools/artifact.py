@@ -525,7 +525,10 @@ def handle_validate_plan_draft(
                         "valid": False,
                         "errors": [
                             {
-                                "message": "No plan draft to validate. Submit plan sections first or use ralph_submit_artifact with artifact_type='plan'.",
+                                "message": (
+                                    "No plan draft to validate. Submit plan sections first "
+                                    "or use ralph_submit_artifact with artifact_type='plan'."
+                                ),
                                 "type": "InvalidDraftState",
                             }
                         ],
@@ -672,7 +675,8 @@ def _check_parsed_content_type(
     ):
         return _submit_sections_error_result(
             index,
-            f"Entry {index} (section '{section}') with mode='append' must be a JSON object or array of items",
+            f"Entry {index} (section '{section}') with mode='append' must be "
+            "a JSON object or array of items",
         )
     return None
 

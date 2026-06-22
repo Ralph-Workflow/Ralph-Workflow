@@ -708,7 +708,8 @@ def test_plan_format_doc_documents_three_new_tools() -> None:
     assert "ralph_submit_plan_sections" in doc
 
 
-def test_plan_format_doc_high_quality_example_does_not_use_verify_steps_for_ac_satisfaction() -> None:
+def test_plan_format_doc_high_quality_example_does_not_use_verify_steps_for_ac_satisfaction(
+) -> None:
     """The high-quality example must not contradict the AC satisfied_by_steps validator."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None

@@ -12,10 +12,31 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools.bridge._types import JsonObject
 
-_EXAMPLE_PLAN_CONTENT = '{"summary": {"context": "Tweak the config key", "scope_items": [{"text": "Edit config/app.yml"}, {"text": "Verify reload"}, {"text": "Document the change"}]}, "skills_mcp": {"skills": ["writing-plans"], "mcps": []}, "steps": [{"number": 1, "title": "Edit config", "content": "Update the config key.", "step_type": "file_change", "targets": [{"path": "config/app.yml", "action": "modify"}]}], "critical_files": {"primary_files": [{"path": "config/app.yml", "action": "modify"}]}, "risks_mitigations": [{"risk": "Wrong key renamed", "mitigation": "Verify config loading."}], "verification_strategy": [{"method": "pytest tests/test_config.py -q", "expected_outcome": "All tests pass"}]}'
-_EXAMPLE_PLAN_SECTION_CONTENT = '{"context": "Tweak the config key", "scope_items": [{"text": "Edit config/app.yml"}, {"text": "Verify reload"}, {"text": "Document the change"}]}'
+_EXAMPLE_PLAN_CONTENT = (
+    '{"summary": {"context": "Tweak the config key", "scope_items": '
+    '[{"text": "Edit config/app.yml"}, {"text": "Verify reload"}, '
+    '{"text": "Document the change"}]}, "skills_mcp": '
+    '{"skills": ["writing-plans"], "mcps": []}, "steps": '
+    '[{"number": 1, "title": "Edit config", "content": "Update the '
+    'config key.", "step_type": "file_change", "targets": '
+    '[{"path": "config/app.yml", "action": "modify"}]}], '
+    '"critical_files": {"primary_files": [{"path": "config/app.yml", '
+    '"action": "modify"}]}, "risks_mitigations": [{"risk": "Wrong key '
+    'renamed", "mitigation": "Verify config loading."}], '
+    '"verification_strategy": [{"method": "pytest tests/test_config.py -q", '
+    '"expected_outcome": "All tests pass"}]}'
+)
+_EXAMPLE_PLAN_SECTION_CONTENT = (
+    '{"context": "Tweak the config key", "scope_items": '
+    '[{"text": "Edit config/app.yml"}, {"text": "Verify reload"}, '
+    '{"text": "Document the change"}]}'
+)
 _EXAMPLE_COMMIT_CONTENT = '{"type": "commit", "subject": "placeholder"}'
-_EXAMPLE_STEPS_CONTENT = '[{"number": 1, "title": "Edit config", "content": "Update the config key.", "step_type": "file_change", "targets": [{"path": "config/app.yml", "action": "modify"}]}]'
+_EXAMPLE_STEPS_CONTENT = (
+    '[{"number": 1, "title": "Edit config", "content": "Update the '
+    'config key.", "step_type": "file_change", "targets": '
+    '[{"path": "config/app.yml", "action": "modify"}]}]'
+)
 
 _SUBMIT_ARTIFACT_DESCRIPTION = (
     "Submit a structured artifact. Required: artifact_type (string) and "

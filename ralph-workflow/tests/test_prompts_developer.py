@@ -317,7 +317,10 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: 
     assert '"verification_strategy": [' in prompt
     assert "`summary.scope_items` must contain at least 3 concrete items" in prompt
     assert "<=500 chars" in prompt
-    assert '`targets[*].action` must be one of `create`, `modify`, `delete`, `read`, or `reference`' in prompt
+    assert (
+        "`targets[*].action` must be one of `create`, `modify`, `delete`, "
+        "`read`, or `reference`" in prompt
+    )
 
 
 def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> None:

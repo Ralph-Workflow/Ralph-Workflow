@@ -260,6 +260,72 @@ def test_submit_plan_sections_mode_append_accepts_single_item_payload(tmp_path: 
     assert [cast("str", step["title"]) for step in steps] == ["First", "Second"]
 
 
+def test_submit_plan_sections_allows_empty_skills_when_minimal_design_is_staged(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {
+            "entries": [
+                {
+                    "section": "summary",
+                    "content": json.dumps(
+                        {
+                            "context": "ctx",
+                            "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+                        }
+                    ),
+                },
+                {
+                    "section": "skills_mcp",
+                    "content": json.dumps({"skills": [], "mcps": []}),
+                },
+                {
+                    "section": "steps",
+                    "content": json.dumps(
+                        [
+                            {
+                                "number": 1,
+                                "title": "First",
+                                "content": "do it",
+                                "step_type": "verify",
+                                "verify_command": "pytest tests/test_x.py -q",
+                            }
+                        ]
+                    ),
+                },
+                {
+                    "section": "critical_files",
+                    "content": json.dumps(
+                        {"primary_files": [{"path": "a.py", "action": "modify"}]}
+                    ),
+                },
+                {
+                    "section": "risks_mitigations",
+                    "content": json.dumps([{"risk": "r", "mitigation": "m"}]),
+                },
+                {
+                    "section": "verification_strategy",
+                    "content": json.dumps([{"method": "pytest", "expected_outcome": "passes"}]),
+                },
+                {
+                    "section": "design",
+                    "content": json.dumps({"planning_profile": "minimal"}),
+                },
+            ]
+        },
+    )
+
+    assert result.is_error is False
+    draft = _read_draft(tmp_path)
+    sections = cast("dict[str, object]", draft["sections"])
+    skills_mcp = cast("dict[str, object]", sections["skills_mcp"])
+    skills = cast("list[str]", skills_mcp["skills"])
+    assert skills == []
+
+
 def test_submit_plan_sections_mode_append_on_object_section_rejected(tmp_path: Path) -> None:
     """mode='append' on an object section is rejected (object sections accept only replace)."""
     workspace = FsWorkspace(tmp_path)

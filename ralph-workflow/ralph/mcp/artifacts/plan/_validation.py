@@ -243,6 +243,13 @@ class PlanArtifact(RalphBaseModel):
         if criteria:
             step_type_by_number: dict[int, str] = {s.number: str(s.step_type) for s in self.steps}
             _check_research_verify_step_references(criteria, step_type_by_number)
+
+        design_profile = self.design.planning_profile if self.design is not None else None
+        if not self.skills_mcp.skills and design_profile != "minimal":
+            raise PlanArtifactValidationError(
+                "skills_mcp.skills must contain at least one skill name unless "
+                "design.planning_profile == 'minimal'"
+            )
         return self
 
     @model_validator(mode="before")

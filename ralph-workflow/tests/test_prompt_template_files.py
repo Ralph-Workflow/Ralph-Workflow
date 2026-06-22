@@ -739,7 +739,10 @@ def test_planning_fallback_requires_skills_mcp_in_required_shapes() -> None:
     planning_fallback = (TEMPLATES_ROOT / "planning_fallback.jinja").read_text(encoding="utf-8")
 
     assert "skills_mcp" in planning_fallback
-    assert "stage `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`" in planning_fallback
+    assert (
+        "stage `summary`, `skills_mcp`, `steps`, `critical_files`, "
+        "`risks_mitigations`, and `verification_strategy`" in planning_fallback
+    )
     assert "If you rely on `design.planning_profile`" in planning_fallback
 
 
