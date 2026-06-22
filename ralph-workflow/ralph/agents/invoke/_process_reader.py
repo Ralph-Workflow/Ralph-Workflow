@@ -349,15 +349,40 @@ class _ProcessLineReader:
         spawned subagents as ``SPAWNED_SUBAGENT`` instead of guessing from
         the command line.
         """
-        registry = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
+        registry, prefix = self._strategy_registry_and_prefix()
         if registry is None:
             return None
+        return ChildLivenessSubagentPidSource(registry, prefix)
+
+    def _strategy_registry_and_prefix(
+        self,
+    ) -> tuple[ChildLivenessRegistry | None, str]:
+        """Return ``(registry, scope_prefix)`` from the strategy, or ``(None, "")``.
+
+        Reads the strategy's ``_registry`` attribute and resolves the
+        active label scope prefix via ``_active_label_prefix``. The prefix
+        lookup is wrapped in a try/except so a strategy stub that omits
+        ``_label_scope`` (used by some test fakes) does not crash the
+        caller. The returned ``scope_prefix`` is ``""`` when the registry
+        is missing or when the prefix lookup raises so downstream
+        ``OpenCodeRegistryDiscoveryStrategy`` calls always receive a
+        well-typed string.
+        """
+        registry = cast(
+            "ChildLivenessRegistry | None",
+            getattr(self._strategy, "_registry", None),
+        )
+        if registry is None:
+            return None, ""
         active_prefix_fn = cast(
             "Callable[[], str | None] | None",
             getattr(self._strategy, "_active_label_prefix", None),
         )
-        prefix = active_prefix_fn() if active_prefix_fn is not None else ""
-        return ChildLivenessSubagentPidSource(registry, prefix or "")
+        try:
+            prefix = active_prefix_fn() if active_prefix_fn is not None else ""
+        except AttributeError:
+            prefix = ""
+        return registry, prefix or ""
 
     def _bind_watchdog_monitors_and_sinks(
         self, watchdog: IdleWatchdog
@@ -748,8 +773,14 @@ class _ProcessLineReader:
         reader = threading.Thread(target=self._read_thread, daemon=True)
         reader.start()
         subagent_pid_source = self._build_subagent_pid_source()
+        registry, scope_prefix = self._strategy_registry_and_prefix()
         process_monitor = _make_process_monitor(
-            self._handle, self._config, self._policy, subagent_pid_source
+            self._handle,
+            self._config,
+            self._policy,
+            subagent_pid_source,
+            registry=registry,
+            scope_prefix=scope_prefix,
         )
         watchdog = IdleWatchdog(
             self._policy,

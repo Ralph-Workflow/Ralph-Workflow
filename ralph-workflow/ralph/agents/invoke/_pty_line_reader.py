@@ -818,11 +818,44 @@ class PtyLineReader:
             raise exc
         self._clock.wait_for_event(self._lines_event, self._policy.idle_poll_interval_seconds)
 
+    def _strategy_registry_and_prefix(
+        self,
+    ) -> tuple[ChildLivenessRegistry | None, str]:
+        """Return ``(registry, scope_prefix)`` from the strategy, or ``(None, "")``.
+
+        Mirrors ``_process_reader._strategy_registry_and_prefix``. The
+        prefix lookup is wrapped in a try/except so a strategy stub that
+        omits ``_label_scope`` (used by some test fakes) does not crash
+        the caller.
+        """
+        registry = cast(
+            "ChildLivenessRegistry | None",
+            getattr(self._strategy, "_registry", None),
+        )
+        if registry is None:
+            return None, ""
+        active_prefix_fn = cast(
+            "Callable[[], str | None] | None",
+            getattr(self._strategy, "_active_label_prefix", None),
+        )
+        try:
+            prefix = active_prefix_fn() if active_prefix_fn is not None else ""
+        except AttributeError:
+            prefix = ""
+        return registry, prefix or ""
+
     def read_lines(self) -> Iterator[str]:
         reader = self._start_thread(self._read_thread)
         transcript_reader = self._start_thread(self._transcript_thread)
         sentinel_reader = self._start_thread(self._sentinel_thread)
-        process_monitor = _make_process_monitor(self._handle, self._config, self._policy)
+        registry, scope_prefix = self._strategy_registry_and_prefix()
+        process_monitor = _make_process_monitor(
+            self._handle,
+            self._config,
+            self._policy,
+            registry=registry,
+            scope_prefix=scope_prefix,
+        )
         self._raw_overflow = RawOverflowLog(
             self._workspace_path or Path.cwd(),
             self._agent_name,

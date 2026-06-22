@@ -17,6 +17,7 @@ from ralph.process.child_liveness import classify_child_snapshot
 from ._base import BaseExecutionStrategy
 from ._helpers import (
     _AGENT_LABEL_PREFIX,
+    _classify_generic_child_signal,
     _classify_opencode_child_signal,
     _error_output_signal,
     _evidence_precedence,
@@ -131,8 +132,19 @@ class OpenCodeExecutionStrategy(BaseExecutionStrategy):
         # registers itself before its lines loop starts). The
         # constructor sink takes precedence so test fixtures can
         # override the production wiring.
+        #
+        # Signal resolution order: OpenCode's specialised classifier
+        # runs first (it understands the OpenCode wire format);
+        # when it returns None (e.g. for plain-text child markers
+        # like ``[subagent] progress`` or ``[subagent] heartbeat``
+        # that some agent setups emit on the same stdout), the
+        # cross-transport generic classifier is consulted as a
+        # fallback so every supported transport feeds the watchdog
+        # surface with REAL extracted progress.
         if self._subagent_activity_sink is not None or _has_subagent_sink():
             signal = _classify_opencode_child_signal(line)
+            if signal is None:
+                signal = _classify_generic_child_signal(line)
             if signal is not None and signal.kind in (
                 AgentActivityKind.CHILD_PROGRESS,
                 AgentActivityKind.CHILD_HEARTBEAT,

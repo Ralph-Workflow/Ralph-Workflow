@@ -16,6 +16,7 @@ from ralph.process.child_liveness import ChildLivenessSubagentPidSource
 from ralph.process.monitor import (
     DefaultProcessMonitor,
     NullDiscoveryStrategy,
+    OpenCodeRegistryDiscoveryStrategy,
     ProcessMonitor,
     ProcessRole,
     SubagentOutputCapture,
@@ -114,7 +115,6 @@ def test_invoke_wires_process_monitor_for_transport(
     [
         AgentTransport.CLAUDE,
         AgentTransport.CLAUDE_INTERACTIVE,
-        AgentTransport.OPENCODE,
         AgentTransport.CODEX,
         AgentTransport.NANOCODER,
         AgentTransport.GENERIC,
@@ -126,7 +126,7 @@ def test_invoke_wires_discovery_strategy_for_transport(
     tmp_path: Path,
     transport: AgentTransport,
 ) -> None:
-    """All transports get NullDiscoveryStrategy (consolidated)."""
+    """Non-OpenCode transports get NullDiscoveryStrategy (consolidated)."""
     captured: dict[str, object] = {}
     _capture_idle_watchdog_args(monkeypatch, captured)
     _patch_resolve_invocation_runtime(monkeypatch)
@@ -147,6 +147,41 @@ def test_invoke_wires_discovery_strategy_for_transport(
     monitor = captured.get("process_monitor")
     assert isinstance(monitor, DefaultProcessMonitor)
     assert isinstance(monitor._discovery_strategy, NullDiscoveryStrategy)
+
+
+def test_invoke_wires_opencode_registry_discovery_strategy(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """OpenCode transport gets ``OpenCodeRegistryDiscoveryStrategy`` when a registry is provided.
+
+    The OpenCode execution strategy constructs a ``ChildLivenessRegistry`` per
+    invocation, so the factory receives a non-``None`` registry and returns
+    a registry-backed strategy. The watchdog therefore has a real
+    per-transport subagent-output extraction path for OPENCODE; for the
+    other supported transports the factory returns
+    ``NullDiscoveryStrategy`` (no documented per-worker log path).
+    """
+    captured: dict[str, object] = {}
+    _capture_idle_watchdog_args(monkeypatch, captured)
+    _patch_resolve_invocation_runtime(monkeypatch)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._build_command",
+        _noop_command,
+    )
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("test prompt", encoding="utf-8")
+    config = AgentConfig(
+        cmd=AgentTransport.OPENCODE.value,
+        transport=AgentTransport.OPENCODE,
+    )
+
+    list(invoke_agent(config, str(prompt_file)))
+
+    monitor = captured.get("process_monitor")
+    assert isinstance(monitor, DefaultProcessMonitor)
+    assert isinstance(monitor._discovery_strategy, OpenCodeRegistryDiscoveryStrategy)
 
 
 @pytest.mark.parametrize(
@@ -381,7 +416,7 @@ def test_invoke_fresh_subagent_output_defers_no_output_deadline(
     )
     monkeypatch.setattr(
         "ralph.agents.invoke._process_reader._make_process_monitor",
-        lambda _handle, _config, _policy, _pid_source=None: _FreshProcessMonitor(),
+        lambda _handle, _config, _policy, _pid_source=None, **_kwargs: _FreshProcessMonitor(),
     )
 
     prompt_file = tmp_path / "PROMPT.md"
