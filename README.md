@@ -86,13 +86,15 @@ Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and 
 
 ## Who it's for
 
-Developers and teams who have **ambitious, well-specified work** that's too big to babysit and too risky to trust blindly. A good first run looks like:
+If one of these describes you, you're the reason Ralph exists:
 
-- The fitness app you wanted to build
-- A major product milestone
-- A substantial application slice with real acceptance criteria
+**The solo builder.** You have side projects with real spec depth — you know what to build but you're one person. Set `PROMPT.md` before bed, wake up to reviewed commits.
 
-It is **not** for small tweaks, narrow chores, or vague ideas with no spec.
+**The team lead.** Your CI pipeline watches your sleep. Ralph fits between PR and review — unattended verification that your agents are shipping what you asked for, not what they guessed.
+
+**The AI tool builder.** You're already wiring Claude Code into your workflow. Ralph gives you the loop pattern (phase routing, cost arbitrage, recovery) as infrastructure instead of something you'd build yourself.
+
+Ralph is not for one-line fixes, vague prompts, or repos without tests. It's for **ambitious, well-specified work** you'd trust a capable colleague to do unattended.
 
 ## Built with Ralph
 
