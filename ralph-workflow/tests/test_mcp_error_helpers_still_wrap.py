@@ -116,13 +116,31 @@ def test_planning_jinja_preserves_source_of_truth_wording() -> None:
 
 
 def _locate_plan_md() -> Path:
-    """Locate ``.agent/artifact-formats/plan.md`` from any test runner CWD."""
+    """Locate the workspace-root ``.agent/artifact-formats/plan.md``.
+
+    PLAN step 4 mandates the ``## Canonical validator errors to fix``
+    H2 in the workspace-root artifact-format doc. The package also
+    ships its own bundled copy under ``ralph-workflow/.agent/...``
+    so the test must skip past that copy and pin to the workspace
+    root. We resolve the test file path and walk upward until we find
+    a parent that hosts ``.agent/`` but does NOT host a ``pyproject.toml``
+    (the Python package lives at ``ralph-workflow/`` and owns both).
+    This pins the assertion to the workspace-root copy and prevents
+    the prior bug where the first-match parent returned
+    ``ralph-workflow/.agent/artifact-formats/plan.md`` instead.
+    """
     repo_root = Path(__file__).resolve()
     for parent in repo_root.parents:
+        if not (parent / ".agent").exists():
+            continue
+        if (parent / "pyproject.toml").exists():
+            continue
         candidate = parent / ".agent" / "artifact-formats" / "plan.md"
         if candidate.exists():
             return candidate
-    raise AssertionError("could not locate .agent/artifact-formats/plan.md on disk")
+    raise AssertionError(
+        "could not locate workspace-root .agent/artifact-formats/plan.md on disk"
+    )
 
 
 @pytest.mark.timeout_seconds(5)
