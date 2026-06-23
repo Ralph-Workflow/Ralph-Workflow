@@ -49,6 +49,7 @@ Submission protocol:
 ## OPTIONAL: submit-plan-artifact skill
 
 The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a one-shot worked example of `ralph_submit_plan_section` and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` — that is the source of truth.
+For step-mutation tools (ralph_insert_plan_step, ralph_replace_plan_step, ralph_patch_step, ralph_remove_plan_step, ralph_move_plan_step) and add-one-step-at-a-time examples, the bundled `submit-plan-step-edits` skill (in `ralph/skills/content/`) is OPTIONAL and lives alongside `submit-plan-artifact`.
 
 USER REQUIREMENTS:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
@@ -135,7 +136,7 @@ Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{s
 
 ## Plan-artifact canonical contract
 
-Full schema, per-section shapes, per-list caps, and string-length tiers live in `.agent/artifact-formats/plan.md`. Topics previously inlined as pointer H2 sections (Intent & intent_verb, Step contract, Plan size limits, Cycle guard, Module family, StepType reference, Step ↔ acceptance-criteria linking, Design section, Plan-artifact payload) are all defined there; this template no longer duplicates them. `Common StepType mistakes` (the alias-coercion warning unique to this template) is preserved inline below.
+Full schema, per-section shapes, per-list caps, and string-length tiers live in `.agent/artifact-formats/plan.md`. Topics previously inlined as pointer H2 sections (Intent & intent_verb, Step contract, Plan size limits, Cycle guard, Module family, StepType reference, Step ↔ acceptance-criteria linking, Design section, Plan-artifact payload) are all defined there. The closed-set reference for `step_type` is preserved inline below as `Common StepType mistakes`.
 
 ## Common StepType mistakes
 
@@ -143,7 +144,7 @@ Full schema, per-section shapes, per-list caps, and string-length tiers live in 
 - Do NOT use `step_type: "check"`, `step_type: "run"`, or any other ad-hoc label. The closed set is `file_change`, `action`, `research`, `verify`.
 - If a step does not modify a file and does not run a verification command, it is `action` (a non-mutating executor action) or `research` (an exploratory step with no committed change).
 
-The before-validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep._coerce_step_type_aliases` silently coerces `test`, `tests`, `check`, and `run` to `verify` with a WARNING log so cheap-model mistakes do not fail validation; the canonical value is still `verify` and you should set it explicitly.
+The before-validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep._coerce_step_type_aliases` silently coerces `test`, `tests`, `check`, and `run` to `verify` with a WARNING log; set the canonical value explicitly so the validator does not have to coerce.
 
 ---
 
