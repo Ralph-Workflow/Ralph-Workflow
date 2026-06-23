@@ -56,6 +56,58 @@ def test_submit_plan_sections_empty_batch_returns_empty_submitted(tmp_path: Path
     assert payload["staged_sections"] == []
 
 
+def test_submit_plan_sections_accepts_entries_json_string(tmp_path: Path) -> None:
+    """Batched planning submit repairs JSON-string ``entries`` before validation."""
+    workspace = FsWorkspace(tmp_path)
+    entries = [
+        {
+            "section": "summary",
+            "content": {
+                "context": "ctx",
+                "scope_items": [
+                    {"text": "a", "category": "file_change"},
+                    {"text": "b", "category": "test"},
+                    {"text": "c", "category": "prompt"},
+                ],
+            },
+        },
+        {
+            "section": "skills_mcp",
+            "content": {"skills": '["writing-plans"]', "mcps": "[]"},
+        },
+        {
+            "section": "steps",
+            "content": [
+                {
+                    "number": 1,
+                    "title": "First",
+                    "content": "do it",
+                    "step_type": "file_change",
+                    "targets": '[{"path": "x.py", "action": "modify"}]',
+                    "depends_on": "[]",
+                    "expected_evidence": '[{"kind": "file", "ref": "x.py"}]',
+                }
+            ],
+        },
+    ]
+
+    result = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {"entries": json.dumps(entries)},
+    )
+
+    assert result.is_error is False, _read_response_text(result)
+    payload = json.loads(_read_response_text(result))
+    assert payload["submitted"] == ["summary", "skills_mcp", "steps"]
+    draft = _read_draft(tmp_path)
+    sections = cast("dict[str, object]", draft["sections"])
+    step = cast("list[dict[str, object]]", sections["steps"])[0]
+    assert step["targets"] == [{"path": "x.py", "action": "modify"}]
+    assert step.get("depends_on", []) == []
+    assert step["expected_evidence"] == [{"kind": "file", "ref": "x.py"}]
+
+
 def test_submit_plan_sections_all_valid_sections_are_staged(tmp_path: Path) -> None:
     """A batch of [summary, skills_mcp, steps] all valid returns submitted=[...] and the draft
     has all 3 sections."""
@@ -260,7 +312,7 @@ def test_submit_plan_sections_mode_append_accepts_single_item_payload(tmp_path: 
     assert [cast("str", step["title"]) for step in steps] == ["First", "Second"]
 
 
-def test_submit_plan_sections_allows_empty_skills_when_minimal_design_is_staged(
+def test_submit_plan_sections_rejects_empty_skills_even_when_design_is_staged(
     tmp_path: Path,
 ) -> None:
     workspace = FsWorkspace(tmp_path)
@@ -312,18 +364,15 @@ def test_submit_plan_sections_allows_empty_skills_when_minimal_design_is_staged(
                 },
                 {
                     "section": "design",
-                    "content": json.dumps({"planning_profile": "minimal"}),
+                    "content": json.dumps({"planning_profile": "strict"}),
                 },
             ]
         },
     )
 
-    assert result.is_error is False
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    skills_mcp = cast("dict[str, object]", sections["skills_mcp"])
-    skills = cast("list[str]", skills_mcp["skills"])
-    assert skills == []
+    assert result.is_error is True
+    assert "skills_mcp.skills must contain at least one skill name" in result.content[0].text
+    assert not (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
 
 
 def test_submit_plan_sections_mode_append_on_object_section_rejected(tmp_path: Path) -> None:

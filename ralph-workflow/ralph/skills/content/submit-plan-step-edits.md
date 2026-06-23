@@ -18,9 +18,7 @@ per-list cap, every string-length tier, and the full step contract.
 tools that share a single read-after-write echo contract. The umbrella
 `submit-plan-artifact` skill covers the rest of the planning MCP surface
 (`ralph_submit_plan_section`, `ralph_submit_plan_sections`,
-`ralph_finalize_plan`, `ralph_discard_plan_draft`). The atomic
-`ralph_submit_artifact` envelope for the canonical short-plan escape hatch
-is documented in the format doc itself.
+`ralph_finalize_plan`, `ralph_discard_plan_draft`).
 
 ## When to Use
 
@@ -51,7 +49,7 @@ If you are not editing a staged plan draft, this skill is the wrong skill —
 see the companion `submit-plan-artifact` skill for the rest of the
 planning MCP surface.
 
-## Core Flow (one-shot)
+## Core Flow (step mutation)
 
 1. Read `.agent/artifact-formats/plan.md` once. It defines every step
    field, the closed `step_type` set (`file_change`, `action`, `research`,
@@ -87,11 +85,16 @@ planning MCP surface.
 {
   "index": 2,
   "step": {
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
+    "title": "Add the foo() regression test",
+    "content": "Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.",
     "step_type": "file_change",
     "priority": "high",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
+    "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+    "satisfies": ["AC-01"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "tests/test_foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
     "depends_on": []
   }
 }
@@ -103,12 +106,17 @@ planning MCP surface.
 {
   "step_number": 2,
   "step": {
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
+    "title": "Clamp the foo() index",
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
     "step_type": "file_change",
     "priority": "high",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
-    "depends_on": []
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
   }
 }
 ```
@@ -121,7 +129,13 @@ fields you omit are preserved, NOT cleared):
 {
   "step_number": 2,
   "step": {
-    "content": "Revised executor instructions for this step only"
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
   }
 }
 ```
@@ -145,9 +159,9 @@ draft, follow this exact worked example. Each call is independent
 and round-trips through the MCP broker — there is no batching for
 step mutations.
 
-**Call 1 — `ralph_submit_plan_sections`** with 6 batched entries to
-stage the initial draft (2 starter steps + the 4 other required
-sections):
+**Call 1 — `ralph_submit_plan_sections`** with complete section entries to
+stage the initial draft (2 starter steps, the other required sections, and
+the design AC links):
 
 ```json
 {
@@ -156,14 +170,20 @@ sections):
       "section": "summary",
       "mode": "replace",
       "content": {
-        "context": "ctx",
-        "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]
+        "context": "Fix the foo() off-by-one regression and prove it with a focused unit test.",
+        "intent": "Clamp foo() index so the regression cannot recur.",
+        "intent_verb": "improve",
+        "scope_items": [
+          {"text": "Add a regression test for the out-of-range foo() index", "category": "test"},
+          {"text": "Modify src/foo.py to clamp the index before lookup", "category": "bugfix"},
+          {"text": "Run pytest tests/test_foo.py -q to prove the regression is fixed", "category": "test"}
+        ]
       }
     },
     {
       "section": "skills_mcp",
       "mode": "replace",
-      "content": {"skills": ["writing-plans"], "mcps": []}
+      "content": {"skills": ["test-driven-development", "systematic-debugging"], "mcps": []}
     },
     {
       "section": "steps",
@@ -171,34 +191,86 @@ sections):
       "content": [
         {
           "number": 1,
-          "title": "First step",
-          "content": "first",
-          "step_type": "verify",
-          "verify_command": "pytest tests/test_first.py -q"
+          "title": "Add the foo() regression test",
+          "content": "Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.",
+          "step_type": "file_change",
+          "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+          "satisfies": ["AC-01"],
+          "expected_evidence": [
+            {"kind": "file", "ref": "tests/test_foo.py"},
+            {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+          ],
+          "depends_on": []
         },
         {
           "number": 2,
-          "title": "Second step",
-          "content": "second",
-          "step_type": "verify",
-          "verify_command": "pytest tests/test_second.py -q"
+          "title": "Clamp the foo() index",
+          "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
+          "step_type": "file_change",
+          "targets": [{"path": "src/foo.py", "action": "modify"}],
+          "satisfies": ["AC-02"],
+          "expected_evidence": [
+            {"kind": "file", "ref": "src/foo.py"},
+            {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+          ],
+          "depends_on": [1]
         }
       ]
     },
     {
       "section": "critical_files",
       "mode": "replace",
-      "content": {"primary_files": [{"path": "x.py", "action": "modify"}]}
+      "content": {
+        "primary_files": [
+          {"path": "src/foo.py", "action": "modify"},
+          {"path": "tests/test_foo.py", "action": "modify"}
+        ]
+      }
     },
     {
       "section": "risks_mitigations",
       "mode": "replace",
-      "content": [{"risk": "drift", "mitigation": "preserve"}]
+      "content": [
+        {
+          "risk": "Clamping could hide a caller bug that should remain visible in behavior expectations.",
+          "mitigation": "Preserve the public signature and add focused assertions documenting the intended clamping behavior.",
+          "severity": "medium"
+        }
+      ]
     },
     {
       "section": "verification_strategy",
       "mode": "replace",
-      "content": [{"method": "pytest", "expected_outcome": "passes"}]
+      "content": [
+        {
+          "method": "pytest tests/test_foo.py -q",
+          "expected_outcome": "The focused regression test passes.",
+          "timeout_seconds": 60,
+          "cwd": "."
+        }
+      ]
+    },
+    {
+      "section": "design",
+      "mode": "replace",
+      "content": {
+        "planning_profile": "strict",
+        "outcome": "foo() handles out-of-range indexes without crashing and the regression test passes.",
+        "acceptance_criteria": {
+          "criteria": [
+            {
+              "id": "AC-01",
+              "description": "A focused regression test covers the out-of-range index.",
+              "satisfied_by_steps": [1]
+            },
+            {
+              "id": "AC-02",
+              "description": "src/foo.py clamps the index while preserving the public signature.",
+              "satisfied_by_steps": [2]
+            }
+          ]
+        }
+      }
     }
   ]
 }
@@ -213,8 +285,8 @@ reindex map from any prior mutation may have rewritten them.
 ```
 
 The echoed payload has the shape `{"staged_sections": [...], "draft":
-{"sections": {...}}, "source": "draft"}`. The current step numbers
-live at `draft.sections.steps[*].number`; the example draft above
+{...sections...}, "source": "draft"}`. The current step numbers
+live at `draft.steps[*].number`; the example draft above
 contains `[1, 2]`.
 
 **Call 3 — `ralph_insert_plan_step`** at `index=3` to insert a new
@@ -226,11 +298,16 @@ numbers stay `1..N`.
 {
   "index": 3,
   "step": {
-    "title": "New middle step",
-    "content": "Detailed executor instructions",
+    "title": "Document the foo() clamp behavior",
+    "content": "Update docs/foo.md with the accepted out-of-range index behavior after the code and focused regression test are in place.",
     "step_type": "file_change",
-    "targets": [{"path": "x.py", "action": "modify"}],
-    "depends_on": []
+    "targets": [{"path": "docs/foo.md", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "docs/foo.md"},
+      {"kind": "command_output", "ref": "pytest tests/test_foo.py -q", "note": "Regression test still passes after documentation update"}
+    ],
+    "depends_on": [2]
   }
 }
 ```
@@ -265,11 +342,11 @@ a time". The same pattern (read draft → mutate → validate →
 finalize) applies for `ralph_replace_plan_step`, `ralph_patch_step`,
 `ralph_remove_plan_step`, and `ralph_move_plan_step`.
 
-## Recovery from a Bad Payload
+## Correcting Rejected Step Edits
 
 When any of the five step-mutation tools rejects a payload, the helper
 `_format_plan_step_edit_error` produces a structured message that names
-the failing tool, the plan format doc reference, a one-shot retry
+the failing tool, the plan format doc reference, a canonical retry
 envelope, and a pointer to the bundled `submit-plan-step-edits` skill.
 Read it carefully, then:
 
@@ -293,10 +370,12 @@ Read it carefully, then:
    on fails fast with `cannot remove step N; another step depends on step N`.
    Remove the dependent steps first, or edit the dependent step's
    `depends_on` to drop the doomed reference.
-5. For `ralph_move_plan_step`: confirm both `from_step_number` and
-   `to_index` are integers in range. `from_step_number` is the current
-   1-based position, `to_index` is the destination 1-based position. Do
-   NOT combine `ralph_move_plan_step` with `ralph_insert_plan_step` or
+5. For `ralph_move_plan_step`: confirm `from_step_number` is an integer
+   that exists in the current staged draft. Prefer an in-range integer
+   for `to_index`; the handler clamps out-of-range destination indexes
+   to the valid 1..N range. `from_step_number` is the current 1-based
+   position, and `to_index` is the destination 1-based position. Do NOT
+   combine `ralph_move_plan_step` with `ralph_insert_plan_step` or
    `ralph_remove_plan_step` in the same draft-edit batch — the move
    auto-reindexes once, and a follow-up insert/remove will rewrite the
    numbers a second time. Sequence the calls: move, then insert/remove,
@@ -315,10 +394,15 @@ failure on `ralph_insert_plan_step`:
 {
   "index": 2,
   "step": {
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
+    "title": "Add the foo() regression test",
+    "content": "Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.",
     "step_type": "file_change",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
+    "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+    "satisfies": ["AC-01"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "tests/test_foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
     "depends_on": []
   }
 }
@@ -328,11 +412,89 @@ After every successful step-mutation call, call `ralph_get_plan_draft` to
 recover the new step numbers from the reindexed draft. Do not guess the
 new numbers.
 
+## Analysis Feedback Corrections
+
+Planning analysis commonly rejects drafts where a step is too vague, lacks
+evidence, omits concrete file targets, or leaves an acceptance criterion
+unproven. Fix those findings with `ralph_replace_plan_step` or
+`ralph_patch_step` by adding the missing engineering detail directly to the
+step payload.
+
+### Replace a vague implementation step
+
+Use `ralph_replace_plan_step` when the whole step is underspecified. This
+example corrects analysis feedback: "Step 2 says fix foo() but does not name
+the file, dependency, AC, or evidence."
+
+```json
+{
+  "step_number": 2,
+  "step": {
+    "title": "Clamp the foo() index",
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature. Keep the regression test from step 1 red before this change and green after it.",
+    "step_type": "file_change",
+    "priority": "high",
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"},
+      {"kind": "command_output", "ref": "pytest tests/test_foo.py -q"}
+    ],
+    "depends_on": [1]
+  }
+}
+```
+
+### Patch missing proof onto an otherwise good step
+
+Use `ralph_patch_step` when the title and main content are already correct
+but analysis feedback identifies missing proof fields. This example preserves
+the rest of step 2 and adds the list-shaped fields that prove the work.
+
+```json
+{
+  "step_number": 2,
+  "step": {
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
+  }
+}
+```
+
+### Insert a verification step after implementation
+
+Use `ralph_insert_plan_step` when analysis feedback says the plan has no
+observable verification step after code changes. A verify step must include
+`verify_command` or `location`; it does not satisfy ACs directly, but it does
+provide evidence that the implementation steps completed.
+
+```json
+{
+  "index": 3,
+  "step": {
+    "title": "Run the focused regression test",
+    "content": "Run pytest tests/test_foo.py -q from the repository root and confirm it passes after the foo() clamp change.",
+    "step_type": "verify",
+    "verify_command": "pytest tests/test_foo.py -q",
+    "expected_evidence": [
+      {"kind": "command_output", "ref": "pytest tests/test_foo.py -q"}
+    ],
+    "depends_on": [2]
+  }
+}
+```
+
 ### Per-tool retry envelopes
 
-These eight fenced-JSON blocks are the **exact minimal retry shapes**
+These fenced-JSON blocks are the **exact canonical retry shapes**
 the no-skill helper `_format_plan_step_edit_error` inlines in its
-repair guidance (see `ralph/mcp/tools/artifact.py:1910-1918`). Use
+step-edit guidance. Use
 the matching block when a step-mutation tool returns an error.
 
 **`ralph_insert_plan_step`** — stage a new step at a 1-based
@@ -342,10 +504,15 @@ position; the runtime assigns the synthetic `step.number`.
 {
   "index": 2,
   "step": {
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
+    "title": "Add the foo() regression test",
+    "content": "Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.",
     "step_type": "file_change",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
+    "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+    "satisfies": ["AC-01"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "tests/test_foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
     "depends_on": []
   }
 }
@@ -358,11 +525,16 @@ full payload; missing fields are NOT preserved (full payload required).
 {
   "step_number": 2,
   "step": {
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
+    "title": "Clamp the foo() index",
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
     "step_type": "file_change",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
-    "depends_on": []
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
   }
 }
 ```
@@ -374,7 +546,13 @@ fields you omit are preserved, NOT cleared.
 {
   "step_number": 2,
   "step": {
-    "content": "Revised executor instructions for this step only"
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
   }
 }
 ```

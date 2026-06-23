@@ -298,10 +298,10 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: 
         session_caps=session_caps,
     )
 
-    assert 'artifact_type="plan"' in prompt
-    assert "Unless the plan is genuinely short" in prompt
+    assert "Do not use" in prompt
+    assert "for planning" in prompt
     assert "submit each required section separately" in prompt
-    assert "If you rely on `design.planning_profile`" in prompt
+    assert "Stage `design` for non-trivial plans" in prompt
     assert "Use `ralph_submit_plan_section`" in prompt
     assert "Use `ralph_get_plan_draft`" in prompt
     assert "Use `ralph_discard_plan_draft`" in prompt
@@ -456,9 +456,12 @@ def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path: Pat
             session_caps=session_caps,
         )
 
-    assert 'artifact_type="plan"' in prompt
-    assert "Unless the plan is genuinely short" in prompt
+    assert "Use the plan tools exactly as named below" in prompt
+    assert 'artifact_type="plan"' not in prompt
+    assert "Unless the plan is genuinely short" not in prompt
     assert "ralph_submit_plan_section" in prompt
+    assert "ralph_submit_plan_sections" in prompt
+    assert "ralph_validate_draft" in prompt
     assert "ralph_finalize_plan" in prompt
     assert "plan.json" not in prompt
     assert "content_path" not in prompt
@@ -488,12 +491,12 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path: Path) -> No
     assert "mcp__ralph__ralph_finalize_plan" in prompt
     assert "mcp__ralph__ralph_get_plan_draft" in prompt
     assert "mcp__ralph__ralph_discard_plan_draft" in prompt
-    assert "mcp__ralph__ralph_submit_artifact" in prompt
+    assert "mcp__ralph__ralph_submit_artifact" not in prompt
     assert "or bare `ralph_submit_plan_section`" in prompt
     assert "or bare `ralph_finalize_plan`" in prompt
     assert "or bare `ralph_get_plan_draft`" in prompt
     assert "or bare `ralph_discard_plan_draft`" in prompt
-    assert "or bare `ralph_submit_artifact`" in prompt
+    assert "or bare `ralph_submit_artifact`" not in prompt
     assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert "{{" not in prompt
     assert "{%" not in prompt

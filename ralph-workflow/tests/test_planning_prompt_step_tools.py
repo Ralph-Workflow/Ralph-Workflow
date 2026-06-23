@@ -151,7 +151,7 @@ def test_planning_prompt_has_plan_artifact_scope_callout(tmp_path: Path) -> None
     # The four worked examples
     for example in (
         "add a JSON Schema for the plan artifact",
-        "document the minimal preset in the format doc",
+        "document planning quality guidance in the format doc",
         "rewrite the planning prompt to be more universal",
         "add an audit check for plan-field drift",
     ):

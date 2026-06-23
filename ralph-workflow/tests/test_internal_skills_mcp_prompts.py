@@ -100,8 +100,9 @@ def test_submit_plan_artifact_skill_shape() -> None:
     expected_h2 = (
         "## Overview",
         "## When to Use",
-        "## Core Flow (one-shot)",
-        "## Recovery from a Bad Payload",
+        "## Core Flow",
+        "## Planning Quality Criteria",
+        "## Correcting a Rejected Payload",
         "## Source of Truth Reference",
         "## Common Mistakes",
     )
@@ -135,7 +136,7 @@ def test_submit_artifact_skill_shape() -> None:
     expected_h2 = (
         "## Overview",
         "## When to Use",
-        "## Core Flow (one-shot)",
+        "## Core Flow (canonical submission)",
         "## Recovery from a Bad Payload",
         "## Source of Truth Reference",
         "## Common Mistakes",
@@ -216,7 +217,6 @@ def test_planning_fallback_jinja_skill_pointer_and_invariants() -> None:
     preserved = (
         "## Plan-artifact canonical contract",
         "Plan size limits",
-        "Model tier",
         "Cycle guard",
         "ARTIFACT_HISTORY_PATH",
         "ARTIFACT_HISTORY_DIR",
@@ -756,8 +756,9 @@ def test_submit_plan_step_edits_skill_shape() -> None:
     expected_h2 = (
         "## Overview",
         "## When to Use",
-        "## Core Flow (one-shot)",
-        "## Recovery from a Bad Payload",
+        "## Core Flow (step mutation)",
+        "## Correcting Rejected Step Edits",
+        "## Analysis Feedback Corrections",
         "## Source of Truth Reference",
         "## Common Mistakes",
         "## Red Flags - STOP and Start Over",

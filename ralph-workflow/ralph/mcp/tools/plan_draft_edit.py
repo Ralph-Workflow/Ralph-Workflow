@@ -19,6 +19,7 @@ from ralph.mcp.tools.coordination import (
     WorkspaceLike,
     require_capability,
 )
+from ralph.mcp.tools.json_repair import repair_json_containers
 
 from .artifact import (
     DEFAULT_ARTIFACT_HANDLER_DEPS,
@@ -67,7 +68,7 @@ def handle_insert_plan_step(
                 tool_name="ralph_insert_plan_step",
             )
         ) from exc
-    step_payload = params.get("step")
+    step_payload = _step_payload_from_params(params)
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
@@ -131,7 +132,7 @@ def handle_replace_plan_step(
                 tool_name="ralph_replace_plan_step",
             )
         ) from exc
-    step_payload = params.get("step")
+    step_payload = _step_payload_from_params(params)
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
@@ -318,7 +319,7 @@ def handle_patch_step(
                 tool_name="ralph_patch_step",
             )
         ) from exc
-    step_payload = params.get("step")
+    step_payload = _step_payload_from_params(params)
     if not isinstance(step_payload, dict):
         raise InvalidParamsError(
             _format_plan_step_edit_error(
@@ -383,6 +384,39 @@ def _required_int(params: dict[str, object], name: str) -> int:
     if not isinstance(value, int):
         raise InvalidParamsError(f"Missing '{name}' parameter")
     return value
+
+
+_STEP_PAYLOAD_KEYS: frozenset[str] = frozenset(
+    {
+        "number",
+        "title",
+        "content",
+        "step_type",
+        "priority",
+        "targets",
+        "location",
+        "rationale",
+        "depends_on",
+        "satisfies",
+        "expected_evidence",
+        "verify_command",
+    }
+)
+
+
+def _step_payload_from_params(params: dict[str, object]) -> object:
+    """Return a repaired step object from either ``step`` or flat step args."""
+    raw_step = params.get("step")
+    if raw_step is not None:
+        return repair_json_containers(raw_step)
+    flat_step = {
+        key: value
+        for key, value in params.items()
+        if key in _STEP_PAYLOAD_KEYS
+    }
+    if not flat_step:
+        return None
+    return repair_json_containers(flat_step)
 
 
 __all__ = [

@@ -73,11 +73,24 @@ def test_submit_artifact_description_references_pydantic_and_byte_cap() -> None:
     assert "4 MB" in desc, f"SUBMIT_ARTIFACT description missing '4 MB': {desc[:200]}"
 
 
-def test_submit_artifact_description_plan_example_is_full_raw_plan_payload() -> None:
+def test_submit_artifact_description_sends_plans_to_planning_tools() -> None:
     descs = _descs()
     desc = descs["ralph_submit_artifact"]
-    assert "skills_mcp" in desc
-    assert "verification_strategy" in desc
+    assert "Do not use this generic tool for plan artifacts" in desc
+    assert "ralph_submit_plan_section" in desc
+    assert "skills_mcp" not in desc
+    assert "verification_strategy" not in desc
+
+
+def test_replace_and_patch_descriptions_include_analysis_feedback_proof_fields() -> None:
+    descs = _descs()
+    replace_desc = descs["ralph_replace_plan_step"]
+    patch_desc = descs["ralph_patch_step"]
+    for desc in (replace_desc, patch_desc):
+        assert "analysis feedback" in desc
+        assert "targets" in desc
+        assert "expected_evidence" in desc
+        assert "depends_on" in desc
 
 
 def test_read_only_tool_descriptions_mark_themselves_as_noop_or_draft() -> None:

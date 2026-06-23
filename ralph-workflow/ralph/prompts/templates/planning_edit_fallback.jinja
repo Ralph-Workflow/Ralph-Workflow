@@ -50,4 +50,4 @@ Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or stag
 - Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
 - If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files; do not preserve the prior target cluster as the starting scope.
 - Do not edit `.agent/artifacts/plan.json` directly. If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent.
-- Do not finalize a draft that still has any known unresolved analyzer finding, even if some sections improved. Prefer a full atomic replacement over piecemeal repair when that is the simplest way to restore global coherence.
+- Do not finalize a draft that still has any known unresolved analyzer finding, even if some sections improved. Replace every affected section through the planning tools when that is the simplest way to restore global coherence.

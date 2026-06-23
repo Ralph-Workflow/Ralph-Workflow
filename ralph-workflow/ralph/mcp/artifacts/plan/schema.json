@@ -348,8 +348,7 @@
             {
               "enum": [
                 "strict",
-                "balanced",
-                "minimal"
+                "balanced"
               ],
               "type": "string"
             },
@@ -942,6 +941,7 @@
             "type": "string"
           },
           "maxItems": 100,
+          "minItems": 1,
           "title": "Skills",
           "type": "array"
         }

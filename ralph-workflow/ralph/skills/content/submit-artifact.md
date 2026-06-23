@@ -1,6 +1,6 @@
 ---
 name: submit-artifact
-description: Use when submitting any Ralph Workflow artifact (plan, development_result, commit_message, planning_analysis_decision, development_analysis_decision, review_analysis_decision, issues, fix_result, smoke_test_result, commit_cleanup, product_spec) via ralph_submit_artifact, or when a validation error mentions artifact_type and you need to recover the canonical envelope shape
+description: Use when submitting non-plan Ralph Workflow artifacts (development_result, commit_message, planning_analysis_decision, development_analysis_decision, review_analysis_decision, issues, fix_result, smoke_test_result, commit_cleanup, product_spec) via ralph_submit_artifact, or when a validation error mentions artifact_type and you need the canonical envelope shape
 ---
 
 # submit-artifact
@@ -31,14 +31,12 @@ artifact type whose format lives under `.agent/artifact-formats/<type>.md`:
   `review_analysis_decision` (and the generic `analysis_decision` alias
   inside an analysis drain)
 - `smoke_test_result`, `product_spec`
-- `plan` (the atomic short-plan path; for staged step-wise submission see
-  the companion `submit-plan-artifact` skill instead)
 
-If you are about to call `ralph_submit_plan_section` or `ralph_finalize_plan`
-for a non-trivial plan, this is the wrong skill — use
-`submit-plan-artifact` instead.
+If you are submitting a plan, this is the wrong skill. Use
+`submit-plan-artifact` and the planning tools (`ralph_submit_plan_section`,
+`ralph_submit_plan_sections`, `ralph_finalize_plan`) instead.
 
-## Core Flow (one-shot)
+## Core Flow (canonical submission)
 
 1. Read `.agent/artifact-formats/artifact_formats_index.md` to pick the
    correct `artifact_type` from the supported list.
@@ -52,7 +50,7 @@ for a non-trivial plan, this is the wrong skill — use
 5. Call `ralph_submit_artifact({"artifact_type": "<type>", "content":
    "<fresh JSON string>"})`.
 
-**Minimal one-shot envelope** for `commit_message`:
+**Canonical envelope** for `commit_message`:
 
 ```json
 {
@@ -61,12 +59,12 @@ for a non-trivial plan, this is the wrong skill — use
 }
 ```
 
-**Minimal one-shot envelope** for `development_result`:
+**Canonical proof envelope** for `development_result`:
 
 ```json
 {
   "artifact_type": "development_result",
-  "content": "{\"status\":\"completed\",\"summary\":\"Implemented the feature.\",\"files_changed\":\"- src/main.py\",\"plan_items_proven\":[{\"plan_item\":\"Step 1: Add feature\",\"proof\":\"Added the feature and tests.\"}]}"
+  "content": "{\"status\":\"completed\",\"summary\":\"Added the foo() regression test, clamped the index in src/foo.py, and verified the focused test passes.\",\"files_changed\":\"- src/foo.py\\n- tests/test_foo.py\",\"plan_items_proven\":[{\"plan_item\":\"Step 1: Add the foo() regression test\",\"proof\":\"tests/test_foo.py contains test_clamp_handles_out_of_range_index.\"},{\"plan_item\":\"Step 2: Clamp the foo() index\",\"proof\":\"src/foo.py clamps the index before lookup while preserving the public foo() signature.\"}],\"analysis_items_addressed\":[{\"analysis_item\":\"AC-01\",\"proof\":\"Focused regression test covers the out-of-range index.\"},{\"analysis_item\":\"AC-02\",\"proof\":\"Production change prevents the crash and the regression test passes.\"}],\"verification\":[{\"command\":\"pytest tests/test_foo.py -q\",\"result\":\"passed\"}]}"
 }
 ```
 

@@ -10,6 +10,9 @@ Pick the correct `artifact_type` for your case from the list below. Then call `r
 - `artifact_type` set to the exact type name
 - `content` set to a JSON string with the required fields for that type
 
+Plan artifacts are the exception: use `ralph_submit_plan_section` or
+`ralph_submit_plan_sections`, then `ralph_finalize_plan`.
+
 ### Examples
 
 Submit a commit message:
@@ -55,7 +58,7 @@ This example shows the minimum fields needed to submit each type:
 ```json
 {
   "artifact_type": "commit_message",
-  "content": "{\"type\": \"commit\", \"subject\": \"placeholder\"}"
+  "content": "{\"type\": \"commit\", \"subject\": \"fix(auth): prevent token expiry race\"}"
 }
 ```
 
@@ -81,7 +84,7 @@ This example shows the minimum fields needed to submit each type:
 | `review_analysis_decision` | Report a review analysis decision | `.agent/artifact-formats/review_analysis_decision.md` |
 | `smoke_test_result` | Report the outcome of a manual runtime smoke test | `.agent/artifact-formats/smoke_test_result.md` |
 | `product_spec` | Submit a product specification from the prompt-helper agent | `.agent/artifact-formats/product_spec.md` |
-| `plan` | Submit a structured execution plan | `.agent/artifact-formats/plan.md` |
+| `plan` | Submit a structured execution plan with `ralph_submit_plan_section` / `ralph_submit_plan_sections` and `ralph_finalize_plan` | `.agent/artifact-formats/plan.md` |
 
 ## Dumb-proof checklist
 
@@ -91,3 +94,4 @@ This example shows the minimum fields needed to submit each type:
 - Did you put the required fields inside the `content` JSON string?
 - Did you use the correct format doc for your artifact type?
 - Did you stringify the content object into a JSON string for the `content` field?
+- If you are submitting a plan, did you use the planning tools instead of the generic artifact tool?

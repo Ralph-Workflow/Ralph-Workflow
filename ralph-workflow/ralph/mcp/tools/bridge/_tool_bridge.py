@@ -12,6 +12,7 @@ from ralph.mcp.tools.bridge._tool_dispatch_error import ToolDispatchError
 from ralph.mcp.tools.bridge._tool_registration_error import ToolRegistrationError
 from ralph.mcp.tools.capability_denied_error import CapabilityDeniedError
 from ralph.mcp.tools.invalid_params_error import InvalidParamsError
+from ralph.mcp.tools.json_repair import repair_params_for_schema
 from ralph.mcp.tools.tool_content import ToolContent
 from ralph.mcp.tools.tool_error import ToolError
 from ralph.mcp.tools.tool_result import ToolResult
@@ -122,7 +123,10 @@ class ToolBridge:
         if not self._is_tool_allowed(tool.metadata, session=session):
             capability = tool.metadata.required_capability
             raise ToolDispatchError(f"Tool '{name}' requires capability '{capability}'")
-        tool_params = dict(params or {})
+        tool_params = repair_params_for_schema(
+            dict(params or {}),
+            tool.metadata.definition.input_schema,
+        )
         try:
             return tool.handler(host_session, workspace, tool_params)
         except ToolBridgeError:

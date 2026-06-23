@@ -13,7 +13,7 @@ import signal
 import sys
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 from ralph.display._mode_adaptive_limits import _ModeAdaptiveLimits
 from ralph.display._resolved_env import _ResolvedEnv
@@ -160,6 +160,8 @@ def _compute_width(
     resolved_env: _ResolvedEnv,
     console: Console,
     force_width: int | None,
+    *,
+    prefer_configured_width: bool = True,
 ) -> int:
     """Resolve effective terminal width from overrides, env, and console.
 
@@ -175,7 +177,20 @@ def _compute_width(
         return force_width
     if resolved_env.columns is not None:
         return resolved_env.columns
+    configured_width = cast("object", getattr(console, "_width", None))
+    if prefer_configured_width and isinstance(configured_width, int) and configured_width > 0:
+        return configured_width
     return console.width or 80
+
+
+def _set_injected_console_width(console: Console, width: int) -> None:
+    """Align Rich's render width with Ralph's resolved injected-console width."""
+    with contextlib.suppress(Exception):
+        height = cast("object", getattr(console, "_height", None))
+        if not isinstance(height, int) or height <= 0:
+            height = console.size.height
+        console._width = width
+        console._height = height
 
 
 def _compute_mode(
@@ -296,7 +311,12 @@ class DisplayContext:
         Returns:
             New DisplayContext with updated width, mode, and limits.
         """
-        new_width = _compute_width(self._resolved_env, self.console, self._force_width)
+        new_width = _compute_width(
+            self._resolved_env,
+            self.console,
+            self._force_width,
+            prefer_configured_width=False,
+        )
         new_mode = _compute_mode(self._resolved_env, self._force_mode, new_width)
         new_limits = _MODE_LIMITS.get(new_mode, _MODE_LIMITS["wide"])
 
@@ -384,6 +404,8 @@ def make_display_context(
         resolved_console = console
         _normalize_injected_console_color(resolved_console, resolved_env)
     width = _compute_width(resolved_env, resolved_console, force_width)
+    if injected_console:
+        _set_injected_console_width(resolved_console, width)
     mode = _compute_mode(resolved_env, force_mode, width)
     limits = _MODE_LIMITS.get(mode, _MODE_LIMITS["wide"])
 

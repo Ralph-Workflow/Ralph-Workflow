@@ -1883,6 +1883,13 @@ ralph.mcp.tools.invalid_params_error
    :members:
    :show-inheritance:
 
+ralph.mcp.tools.json_repair
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.tools.json_repair
+   :members:
+   :show-inheritance:
+
 ralph.mcp.tools.tool_content
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

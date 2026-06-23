@@ -743,7 +743,8 @@ def test_planning_fallback_requires_skills_mcp_in_required_shapes() -> None:
         "stage `summary`, `skills_mcp`, `steps`, `critical_files`, "
         "`risks_mitigations`, and `verification_strategy`" in planning_fallback
     )
-    assert "If you rely on `design.planning_profile`" in planning_fallback
+    assert "Stage `design` for non-trivial plans" in planning_fallback
+    assert "Planning quality guidance" in planning_fallback
 
 
 def test_planning_analysis_uses_canonical_plan_tool_names_in_remediation_flow() -> None:
