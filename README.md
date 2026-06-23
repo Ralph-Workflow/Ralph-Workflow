@@ -2,7 +2,7 @@
 
 > Mirror of [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star/issues/discussion on Codeberg.
 
-**The original Ralph Loop toolkit — production-grade Loop Engineering.** Hand your coding agents a spec. Walk away. Come back to reviewable, tested commits. The reference implementation of the Ralph Loop pattern that powers 25+ independent projects.
+**An early, production-grade Loop Engineering toolkit for coding agents.** Hand your coding agents a spec. Walk away. Come back to reviewable, tested commits. One of 27+ independent projects implementing the Ralph Loop pattern (see [USERS.md](USERS.md)).
 
 Ralph Workflow is a free, open-source Loop Engineering framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition.
 
@@ -11,7 +11,7 @@ Ralph Workflow is a free, open-source Loop Engineering framework that runs the c
 
 🌐 **[ralphworkflow.com](https://ralphworkflow.com)** — full site with comparison guides, first-run walkthrough, blog, and social card.
 
-*The original Loop Engineering toolkit · 13,230+ lifetime PyPI downloads · 4,911 last 30 days · 92 last 24h (pepy.tech, 2026-06-21).*
+*An early Loop Engineering toolkit for coding agents · 13,230+ lifetime PyPI downloads · 4,911 last 30 days · 92 last 24h (pepy.tech, 2026-06-21).*
 
 > **Built something with Ralph?** See the [Showcase](SHOWCASE.md) — add a credit line to your README and you're on the page (60-second task). Also see the [Ecosystem Map](ECOSYSTEM.md) — projects using Ralph discovered through code-level search.
 
@@ -70,7 +70,7 @@ Watch a full first run — the getting-started walkthrough:
 
 Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph` command spawns planning, development iteration, review, and fix cycles across multiple agents, then produces finished git commits you can review when you come back.
 
-**This is not a chat window or a prompt tool.** It's an orchestrator — an operating system for autonomous coding — that runs real engineering pipelines unattended. Fire it off overnight, over lunch, or while you're in meetings. The default workflow ships strong enough to start with immediately; customize it later when you need more control. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
+**This is not a chat window or a prompt tool.** It's an orchestrator — a composable Loop Engineering framework — that runs real engineering pipelines unattended. Fire it off overnight, over lunch, or while you're in meetings. The default workflow ships strong enough to start with immediately; customize it later when you need more control.
 
 ## Why it's different
 
@@ -98,7 +98,7 @@ Ralph is not for one-line fixes, vague prompts, or repos without tests. It's for
 
 ## Built with Ralph
 
-Ralph Workflow is the reference implementation of a pattern that now powers 25+ independent projects. Here are a few of them:
+Ralph Workflow is one of 27+ independent implementations of the Ralph Loop pattern documented in [USERS.md](USERS.md). The pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph). A few notable peer implementations:
 
 | Project | Stars | Description |
 |---------|-------|-------------|
