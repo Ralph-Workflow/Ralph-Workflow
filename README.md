@@ -196,6 +196,7 @@ Questions, ideas, or something not working? Open an issue — the Codeberg track
 - **[See who's building with Ralph](USERS.md)** — 27+ projects and 15+ adopters
 - 🆕 **[23 Projects Reinvented the Same AI Coding Loop](https://ralphworkflow.com/blog/ralph-loop-ecosystem-convergent-evolution-2026)** — how the pattern is converging across 23+ independent projects, what JPMorganChase and AI-infra builders are doing with it
 - 📰 **[Microsoft Is Ending Claude Code Access — Why Vendor-Neutral AI Coding Matters Now](https://ralphworkflow.com/blog/microsoft-claude-code-migration-vendor-neutral-2026)** — the real-world vendor-lock event that validates the Loop Engineering argument
+- 📋 **[How to Migrate Off Claude Code — Practical Guide](https://ralphworkflow.com/blog/claude-code-migration-practical-guide-2026)** — step-by-step: pipx install → write spec → run overnight. For the June 30 deadline
 
 ## Engineering-practice requirements
 
