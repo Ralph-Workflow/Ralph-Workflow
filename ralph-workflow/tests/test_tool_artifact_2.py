@@ -429,7 +429,7 @@ def test_submit_plan_section_invalid_json_explains_fix_and_doc(tmp_path: Path) -
             MockWorkspace(tmp_path),
             {
                 "section": "steps",
-                "content": '[{"number": 1, "title": "One" "content": "missing comma"}]',
+                "content": '[{"number": 1, "title": "One", "content": "missing close"',
             },
         )
 

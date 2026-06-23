@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import tomllib
 from contextlib import suppress
@@ -98,6 +99,12 @@ if TYPE_CHECKING:
 
 PLAN_DRAFT_READ_CAPABILITY = Capability.ARTIFACT_PLAN_READ.value
 PLAN_DRAFT_WRITE_CAPABILITY = Capability.ARTIFACT_PLAN_WRITE.value
+_MIN_CODE_FENCE_LINE_COUNT = 2
+_MAX_JSON_REPAIR_CANDIDATES = 64
+_JSON_REPAIR_LOOKAHEAD_OFFSET = 1
+_BLOCK_COMMENT_WIDTH = 2
+_BARE_KEY_MIN_LENGTH = 1
+_JSON_LITERAL_REPAIRS = {"null": "None", "true": "True", "false": "False"}
 
 
 _TYPED_ARTIFACT_TYPES = frozenset(
@@ -367,9 +374,7 @@ def handle_submit_plan_section(
         ):
             existing_obj = current_sections.get(section)
             existing_list = (
-                list(cast("list[object]", existing_obj))
-                if isinstance(existing_obj, list)
-                else []
+                list(cast("list[object]", existing_obj)) if isinstance(existing_obj, list) else []
             )
             for item in payload:
                 existing_list.append(validate_plan_section(section, item, mode="append"))
@@ -794,22 +799,22 @@ def _decode_entry_content(
     return-statement count under the ruff PLR0911 cap.
     """
     if not isinstance(content_obj, str):
-        return content_obj
+        return _normalize_plan_section_payload(section, content_obj, mode=mode)
     try:
-        decoded: object = json.loads(content_obj)
-    except json.JSONDecodeError as exc:
+        decoded = _parse_content_any(content_obj)
+    except InvalidParamsError as exc:
         return _submit_sections_error_result(
             index,
             _format_plan_section_submission_error(
                 section=section,
                 mode=mode,
-                detail=f"Content must be valid JSON: {exc}",
+                detail=str(exc),
                 workspace_root=workspace_root,
                 backend=backend,
                 tool_name="ralph_submit_plan_sections",
             ),
         )
-    return decoded
+    return _normalize_plan_section_payload(section, decoded, mode=mode)
 
 
 def _check_parsed_content_type(
@@ -856,8 +861,10 @@ def _check_parsed_content_type(
                 tool_name="ralph_submit_plan_sections",
             ),
         )
-    if section in PLAN_SECTION_LIST_ITEM_MODELS and mode == "append" and not isinstance(
-        parsed_content, (dict, list)
+    if (
+        section in PLAN_SECTION_LIST_ITEM_MODELS
+        and mode == "append"
+        and not isinstance(parsed_content, (dict, list))
     ):
         return _submit_sections_error_result(
             index,
@@ -1083,6 +1090,540 @@ def _section_mode(params: dict[str, object]) -> SectionMode:
     return raw
 
 
+_JSON_CONTAINER_FIELD_NAMES: frozenset[str] = frozenset(
+    {
+        "acceptance_criteria",
+        "actions",
+        "analysis_items_addressed",
+        "continuation",
+        "constraints",
+        "criteria",
+        "critical_files",
+        "depends_on",
+        "evidence_refs",
+        "goals",
+        "headless_guide_checks",
+        "how_to_fix",
+        "issues",
+        "mcps",
+        "observed_breaks",
+        "observed_working",
+        "open_questions",
+        "parallel_plan",
+        "plan_items_proven",
+        "primary_files",
+        "product_behavior",
+        "reference_files",
+        "risks_mitigations",
+        "satisfied_by_steps",
+        "satisfies",
+        "scope_boundaries",
+        "scope_items",
+        "skills",
+        "steps",
+        "success_criteria",
+        "targets",
+        "users",
+        "ux_ui_requirements",
+        "verification_strategy",
+        "what_came_up_short",
+        "work_units",
+    }
+)
+
+
+def _loads_json_text_one_or_two_layers(raw_content: str) -> object:
+    """Decode JSON text, unwrapping one double-encoded layer when valid."""
+    parsed = _loads_json_text_one_layer(raw_content)
+    if not isinstance(parsed, str):
+        return parsed
+    try:
+        return _loads_json_text_one_layer(parsed)
+    except InvalidParamsError:
+        return parsed
+
+
+def _loads_json_text_one_layer(raw_content: str) -> object:
+    """Decode JSON text after deterministic, non-ambiguous repairs."""
+    first_error: json.JSONDecodeError | None = None
+    for candidate in _json_text_candidates(raw_content):
+        try:
+            return cast("object", json.loads(candidate))
+        except json.JSONDecodeError as exc:
+            if first_error is None:
+                first_error = exc
+        literal = _literal_container(candidate)
+        if literal is not None:
+            return literal
+    if first_error is None:
+        try:
+            json.loads(raw_content)
+        except json.JSONDecodeError as exc:
+            first_error = exc
+    if first_error is None:
+        raise InvalidParamsError("Content must be valid JSON")
+    raise InvalidParamsError(f"Content must be valid JSON: {first_error}") from first_error
+
+
+def _json_text_candidates(raw_content: str) -> list[str]:
+    """Return parse candidates that each imply one container unambiguously."""
+    candidates: list[str] = []
+
+    def add(candidate: str) -> None:
+        stripped = candidate.strip()
+        if (
+            stripped
+            and stripped not in candidates
+            and len(candidates) < _MAX_JSON_REPAIR_CANDIDATES
+        ):
+            candidates.append(stripped)
+
+    add(raw_content)
+    fenced = _strip_full_code_fence(raw_content)
+    if fenced is not None:
+        add(fenced)
+    extracted = _extract_single_container(raw_content)
+    if extracted is not None:
+        add(extracted)
+    index = 0
+    while index < len(candidates):
+        candidate = candidates[index]
+        for repaired in _json_repair_candidates(candidate):
+            add(repaired)
+        index += 1
+    return candidates
+
+
+def _json_repair_candidates(candidate: str) -> list[str]:
+    """Return deterministic repairs for common model-produced JSON mistakes."""
+    return [
+        _strip_json_comments_and_trailing_commas(candidate),
+        _normalize_smart_quote_delimiters(candidate),
+        _quote_bare_identifier_keys(candidate),
+        _replace_unquoted_json_literals_for_python(candidate),
+        _insert_missing_value_commas(candidate),
+    ]
+
+
+def _literal_container(candidate: str) -> object | None:
+    """Parse Python-literal dict/list text only when it is a container."""
+    try:
+        parsed: object = ast.literal_eval(candidate)
+    except (SyntaxError, ValueError):
+        return None
+    if not isinstance(parsed, (dict, list)):
+        return None
+    return parsed if _is_json_compatible_literal(parsed) else None
+
+
+def _is_json_compatible_literal(value: object) -> bool:
+    """Return true when a Python literal can be represented as JSON."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return True
+    if isinstance(value, list):
+        return all(_is_json_compatible_literal(item) for item in value)
+    if isinstance(value, dict):
+        return all(
+            isinstance(key, str) and _is_json_compatible_literal(item)
+            for key, item in value.items()
+        )
+    return False
+
+
+def _strip_full_code_fence(raw_content: str) -> str | None:
+    stripped = raw_content.strip()
+    if not stripped.startswith("```") or not stripped.endswith("```"):
+        return None
+    lines = stripped.splitlines()
+    if (
+        len(lines) < _MIN_CODE_FENCE_LINE_COUNT
+        or not lines[0].startswith("```")
+        or lines[-1].strip() != "```"
+    ):
+        return None
+    return "\n".join(lines[1:-1]).strip()
+
+
+def _strip_json_comments_and_trailing_commas(raw_content: str) -> str:
+    no_comments = _strip_json_comments(raw_content)
+    return _strip_trailing_commas(no_comments)
+
+
+def _normalize_smart_quote_delimiters(raw_content: str) -> str:
+    return raw_content.translate(
+        {
+            ord("\u201c"): '"',
+            ord("\u201d"): '"',
+            ord("\u2018"): "'",
+            ord("\u2019"): "'",
+        }
+    )
+
+
+def _quote_bare_identifier_keys(raw_content: str) -> str:
+    output: list[str] = []
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(raw_content):
+        char = raw_content[index]
+        if quote is not None:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in ('"', "'"):
+            quote = char
+            output.append(char)
+            index += 1
+            continue
+        if _is_ascii_identifier_start(char) and _can_start_bare_key(output):
+            key_end = index + _BARE_KEY_MIN_LENGTH
+            while key_end < len(raw_content) and _is_ascii_identifier_char(raw_content[key_end]):
+                key_end += 1
+            next_index = _next_nonspace_index(raw_content, key_end)
+            if next_index < len(raw_content) and raw_content[next_index] == ":":
+                output.extend(('"', raw_content[index:key_end], '"'))
+                index = key_end
+                continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _replace_unquoted_json_literals_for_python(raw_content: str) -> str:
+    output: list[str] = []
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(raw_content):
+        char = raw_content[index]
+        if quote is not None:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in ('"', "'"):
+            quote = char
+            output.append(char)
+            index += 1
+            continue
+        replacement = _json_literal_replacement_at(raw_content, index)
+        if replacement is not None:
+            source, target = replacement
+            output.append(target)
+            index += len(source)
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _insert_missing_value_commas(raw_content: str) -> str:
+    output: list[str] = []
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(raw_content):
+        char = raw_content[index]
+        if quote is not None:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in ('"', "'"):
+            quote = char
+            output.append(char)
+            index += 1
+            continue
+        if char.isspace():
+            previous = _previous_nonspace_char(output)
+            next_index = _next_nonspace_index(
+                raw_content,
+                index + _JSON_REPAIR_LOOKAHEAD_OFFSET,
+            )
+            if (
+                previous is not None
+                and next_index < len(raw_content)
+                and _is_json_value_boundary(previous, raw_content[next_index])
+            ):
+                output.append(",")
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _json_literal_replacement_at(raw_content: str, index: int) -> tuple[str, str] | None:
+    for source, target in _JSON_LITERAL_REPAIRS.items():
+        if (
+            raw_content.startswith(source, index)
+            and _is_word_boundary(raw_content, index - 1)
+            and _is_word_boundary(raw_content, index + len(source))
+        ):
+            return source, target
+    return None
+
+
+def _can_start_bare_key(output: list[str]) -> bool:
+    previous = _previous_nonspace_char(output)
+    return previous in ("{", ",")
+
+
+def _previous_nonspace_char(chars: list[str]) -> str | None:
+    for char in reversed(chars):
+        if not char.isspace():
+            return char
+    return None
+
+
+def _next_nonspace_index(raw_content: str, index: int) -> int:
+    while index < len(raw_content) and raw_content[index].isspace():
+        index += 1
+    return index
+
+
+def _is_ascii_identifier_start(char: str) -> bool:
+    return char == "_" or "A" <= char <= "Z" or "a" <= char <= "z"
+
+
+def _is_ascii_identifier_char(char: str) -> bool:
+    return _is_ascii_identifier_start(char) or "0" <= char <= "9"
+
+
+def _is_word_boundary(raw_content: str, index: int) -> bool:
+    return index < 0 or index >= len(raw_content) or not _is_ascii_identifier_char(
+        raw_content[index]
+    )
+
+
+def _is_json_value_boundary(previous: str, next_char: str) -> bool:
+    return _can_end_json_value(previous) and _can_start_json_value(next_char)
+
+
+def _can_end_json_value(char: str) -> bool:
+    return char in ('}', ']', '"', "'", "e", "E", "l") or "0" <= char <= "9"
+
+
+def _can_start_json_value(char: str) -> bool:
+    return char in ('{', '[', '"', "'", "-", "t", "f", "n") or "0" <= char <= "9"
+
+
+def _strip_json_comments(raw_content: str) -> str:
+    output: list[str] = []
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(raw_content):
+        char = raw_content[index]
+        next_char = raw_content[index + 1] if index + 1 < len(raw_content) else ""
+        if quote is not None:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in ('"', "'"):
+            quote = char
+            output.append(char)
+            index += 1
+            continue
+        if char == "/" and next_char == "/":
+            index += _BLOCK_COMMENT_WIDTH
+            while index < len(raw_content) and raw_content[index] not in "\r\n":
+                index += 1
+            continue
+        if char == "/" and next_char == "*":
+            index += _BLOCK_COMMENT_WIDTH
+            while (
+                index + _JSON_REPAIR_LOOKAHEAD_OFFSET < len(raw_content)
+                and raw_content[index : index + _BLOCK_COMMENT_WIDTH] != "*/"
+            ):
+                index += 1
+            if index + _JSON_REPAIR_LOOKAHEAD_OFFSET < len(raw_content):
+                index += _BLOCK_COMMENT_WIDTH
+            continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _strip_trailing_commas(raw_content: str) -> str:
+    output: list[str] = []
+    quote: str | None = None
+    escaped = False
+    index = 0
+    while index < len(raw_content):
+        char = raw_content[index]
+        if quote is not None:
+            output.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in ('"', "'"):
+            quote = char
+            output.append(char)
+            index += 1
+            continue
+        if char == ",":
+            next_index = index + 1
+            while next_index < len(raw_content) and raw_content[next_index].isspace():
+                next_index += 1
+            if next_index < len(raw_content) and raw_content[next_index] in ("}", "]"):
+                index += 1
+                continue
+        output.append(char)
+        index += 1
+    return "".join(output)
+
+
+def _extract_single_container(raw_content: str) -> str | None:
+    starts = [idx for idx, char in enumerate(raw_content) if char in ("{", "[")]
+    for start in starts:
+        end = _matching_container_end(raw_content, start)
+        if end is None:
+            continue
+        container = raw_content[start : end + 1]
+        remainder = raw_content[end + 1 :]
+        if any(char in ("{", "[") for char in remainder):
+            return None
+        prefix = raw_content[:start].strip()
+        suffix = remainder.strip()
+        if _looks_like_json_container(prefix) or _looks_like_json_container(suffix):
+            return None
+        return container
+    return None
+
+
+def _looks_like_json_container(text: str) -> bool:
+    return text.startswith(("{", "[")) or text.endswith(("}", "]"))
+
+
+def _matching_container_end(raw_content: str, start: int) -> int | None:
+    opener = raw_content[start]
+    closer = "}" if opener == "{" else "]"
+    stack: list[str] = [closer]
+    quote: str | None = None
+    escaped = False
+    index = start + 1
+    while index < len(raw_content):
+        char = raw_content[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in ('"', "'"):
+            quote = char
+            index += 1
+            continue
+        if char in ("{", "["):
+            stack.append("}" if char == "{" else "]")
+        elif char in ("}", "]"):
+            if char != stack[-1]:
+                return None
+            stack.pop()
+            if not stack:
+                return index
+        index += 1
+    return None
+
+
+def _coerce_json_text_container(value: object) -> object:
+    """Convert JSON strings to native containers only when they decode as containers."""
+    if isinstance(value, str):
+        try:
+            decoded = _loads_json_text_one_or_two_layers(value)
+        except InvalidParamsError:
+            return value
+        if isinstance(decoded, (dict, list)):
+            return _coerce_known_container_fields(decoded)
+        return value
+    return _coerce_known_container_fields(value)
+
+
+def _coerce_known_container_fields(value: object) -> object:
+    """Repair known dict/list container fields without changing scalar fields."""
+    if isinstance(value, list):
+        return [_coerce_known_container_fields(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    normalized: dict[str, object] = {}
+    for key, item in value.items():
+        if key in _JSON_CONTAINER_FIELD_NAMES or key in PLAN_SECTION_NAMES:
+            normalized[key] = _coerce_json_text_container(item)
+        else:
+            normalized[key] = _coerce_known_container_fields(item)
+    return normalized
+
+
+def _coerce_artifact_envelope_content(value: object) -> object:
+    """Decode only artifact-envelope ``content`` fields, not arbitrary text fields."""
+    if not isinstance(value, dict):
+        return value
+    normalized = dict(cast("dict[str, object]", value))
+    content = normalized.get("content")
+    if isinstance(content, str):
+        decoded = _coerce_json_text_container(content)
+        if isinstance(decoded, (dict, list)):
+            normalized["content"] = decoded
+    return normalized
+
+
+def _normalize_plan_section_payload(
+    section: str,
+    payload: object,
+    *,
+    mode: str,
+) -> object:
+    """Repair safe section-level JSON/container mismatches before validation."""
+    normalized = _coerce_json_text_container(payload)
+    if isinstance(normalized, dict):
+        normalized_dict = cast("dict[str, object]", normalized)
+        if len(normalized_dict) == 1 and section in normalized_dict:
+            normalized = _coerce_json_text_container(normalized_dict[section])
+    if section in PLAN_SECTION_OBJECT_MODELS and mode == "replace" and isinstance(normalized, str):
+        decoded = _coerce_json_text_container(normalized)
+        if isinstance(decoded, dict):
+            normalized = decoded
+    if (
+        (section in PLAN_SECTION_LIST_ITEM_MODELS or section == "work_units")
+        and mode == "replace"
+        and isinstance(normalized, str)
+    ):
+        decoded = _coerce_json_text_container(normalized)
+        if isinstance(decoded, list):
+            normalized = decoded
+    return _coerce_known_container_fields(normalized)
+
+
 def _parse_content(raw_content: str) -> dict[str, object]:
     try:
         parsed = _parse_content_any(raw_content)
@@ -1094,10 +1635,7 @@ def _parse_content(raw_content: str) -> dict[str, object]:
 
 
 def _parse_content_any(raw_content: str) -> object:
-    try:
-        return cast("object", json.loads(raw_content))
-    except json.JSONDecodeError as exc:
-        raise InvalidParamsError(f"Content must be valid JSON: {exc}") from exc
+    return _loads_json_text_one_or_two_layers(raw_content)
 
 
 def _parse_plan_section_content(
@@ -1110,7 +1648,7 @@ def _parse_plan_section_content(
 ) -> object:
     if isinstance(raw_content, str):
         try:
-            return _parse_content_any(raw_content)
+            parsed = _parse_content_any(raw_content)
         except InvalidParamsError as exc:
             raise InvalidParamsError(
                 _format_plan_section_submission_error(
@@ -1122,8 +1660,9 @@ def _parse_plan_section_content(
                     tool_name="ralph_submit_plan_section",
                 )
             ) from exc
+        return _normalize_plan_section_payload(section, parsed, mode=mode)
     if isinstance(raw_content, (dict, list)):
-        return raw_content
+        return _normalize_plan_section_payload(section, raw_content, mode=mode)
     raise InvalidParamsError(
         _format_plan_section_submission_error(
             section=section,
@@ -1168,8 +1707,14 @@ def _format_plan_section_submission_error(
             "Expected shape for section 'skills_mcp': {'skills': ['writing-plans'], 'mcps': []}. "
             "mcps must be a JSON array like [] or ['docs-mcp']."
         )
-    if section == "skills_mcp" and "skills" in detail and (
-        "required" in detail.lower() or "valid list" in detail or "at least one" in detail.lower()
+    if (
+        section == "skills_mcp"
+        and "skills" in detail
+        and (
+            "required" in detail.lower()
+            or "valid list" in detail
+            or "at least one" in detail.lower()
+        )
     ):
         guidance.append(
             "Expected shape for section 'skills_mcp': {'skills': ['writing-plans'], 'mcps': []}. "
@@ -1248,7 +1793,7 @@ def _format_plan_section_submission_error(
     ):
         guidance.append(
             f"Expected shape for section '{section}' with mode='{mode}': JSON array like "
-            f"[{ '{...}' }]. Fix the JSON syntax first (for example the parser is often "
+            f"[{'{...}'}]. Fix the JSON syntax first (for example the parser is often "
             "missing a comma or closing brace)."
         )
     return " ".join(guidance)
@@ -1351,7 +1896,13 @@ def _parse_plan_content(raw_content: str) -> dict[str, object]:
     the MCP tool error path stays consistent.
     """
     try:
-        return parse_plan_payload_strict(raw_content)
+        decoded = _parse_content_any(raw_content)
+        if isinstance(decoded, dict):
+            normalized = _coerce_artifact_envelope_content(decoded)
+            return parse_plan_payload_strict(cast("dict[str, object]", normalized))
+        if isinstance(decoded, str):
+            return parse_plan_payload_strict(decoded)
+        raise PlanArtifactValidationError("plan payload must decode to a JSON object")
     except PlanArtifactValidationError as exc:
         raise InvalidParamsError(str(exc)) from exc
 
@@ -1367,6 +1918,7 @@ def _decode_artifact_payload(artifact_type: str, raw_content: str) -> dict[str, 
         decoded = _parse_plan_content(raw_content)
     else:
         decoded = _parse_content(raw_content)
+    decoded = cast("dict[str, object]", _coerce_artifact_envelope_content(decoded))
     return _unwrap_persisted_artifact_payload(artifact_type, decoded)
 
 
@@ -1497,6 +2049,9 @@ def _resolve_artifact_content_source(
             _raise_format_doc_error(artifact_type, base_path, backend, exc)
         raise exc
 
+    if isinstance(raw_content, (dict, list)):
+        return json.dumps(raw_content)
+
     if not isinstance(raw_content, str):
         exc = InvalidParamsError("Missing 'content' parameter")
         if base_path is not None and has_format_doc(artifact_type):
@@ -1601,6 +2156,10 @@ def _normalize_artifact_payload(
     workspace_root: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, object]:
+    parsed_content = cast(
+        "dict[str, object]",
+        _coerce_known_container_fields(parsed_content),
+    )
     if artifact_type == COMMIT_MESSAGE_TYPE:
         return _normalize_commit_message_payload(
             parsed_content, workspace_root=workspace_root, backend=backend

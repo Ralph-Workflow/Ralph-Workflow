@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from contextlib import suppress
 from importlib import import_module
 from typing import TYPE_CHECKING, cast
 
@@ -748,6 +749,9 @@ def _decode_plan_payload(raw: str | Mapping[str, object]) -> PlanArtifactDict:
             parsed: object = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise PlanArtifactValidationError(f"Content must be valid JSON: {exc}") from exc
+        if isinstance(parsed, str):
+            with suppress(json.JSONDecodeError):
+                parsed = json.loads(parsed)
     elif isinstance(raw, Mapping):
         parsed = dict(raw)
     else:
