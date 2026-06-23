@@ -138,6 +138,72 @@ fields you omit are preserved, NOT cleared):
 {"from_step_number": 2, "to_index": 1}
 ```
 
+### Add one step at a time
+
+When you need to insert a single new step into an existing staged
+draft, follow this exact worked example. Each call is independent
+and round-trips through the MCP broker — there is no batching for
+step mutations.
+
+```python
+# 1. Stage the 6 required sections + 2 initial steps so the draft has
+#    a known starting state. Use ralph_submit_plan_sections to batch
+#    every section in one round-trip.
+ralph_submit_plan_sections(entries=[
+    {"section": "summary", "mode": "replace",
+     "content": {"context": "ctx", "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]}},
+    {"section": "skills_mcp", "mode": "replace",
+     "content": {"skills": ["writing-plans"], "mcps": []}},
+    {"section": "steps", "mode": "replace", "content": [
+        {"number": 1, "title": "First step", "content": "first",
+         "step_type": "verify", "verify_command": "pytest tests/test_first.py -q"},
+        {"number": 2, "title": "Second step", "content": "second",
+         "step_type": "verify", "verify_command": "pytest tests/test_second.py -q"},
+    ]},
+    {"section": "critical_files", "mode": "replace",
+     "content": {"primary_files": [{"path": "x.py", "action": "modify"}]}},
+    {"section": "risks_mitigations", "mode": "replace",
+     "content": [{"risk": "drift", "mitigation": "preserve"}]},
+    {"section": "verification_strategy", "mode": "replace",
+     "content": [{"method": "pytest", "expected_outcome": "passes"}]},
+])
+
+# 2. Read the staged draft to learn the current step numbers. Do NOT
+#    guess — the reindex map from any prior mutation may have rewritten
+#    them.
+draft = ralph_get_plan_draft()  # returns {staged_sections, draft, source}
+existing_numbers = [s["number"] for s in draft["draft"]["sections"]["steps"]]
+# -> [1, 2]
+
+# 3. Insert a new step at index 3 (1-based position after the existing
+#    two). The runtime assigns a synthetic number, then reindexes the
+#    full steps list so existing numbers stay 1..N.
+ralph_insert_plan_step(index=3, step={
+    "title": "New middle step",
+    "content": "Detailed executor instructions",
+    "step_type": "file_change",
+    "targets": [{"path": "x.py", "action": "modify"}],
+    "depends_on": [],
+})
+# Echo payload includes: action, new_step_number, reindex_map,
+# rewritten_depends_on, rewritten_ac_satisfied_by_steps,
+# dropped_ac_satisfied_by_steps, total_steps.
+
+# 4. Dry-run validate BEFORE finalizing. The dry-run is read-only; it
+#    does NOT delete the staged draft on success or failure.
+result = ralph_validate_draft()
+assert result == {"valid": True}
+
+# 5. Finalize once every required section is staged AND valid. On
+#    success, plan.json is written and the staged draft is deleted.
+ralph_finalize_plan()
+```
+
+The 5-call sequence is the entire happy-path for "add one step at
+a time". The same pattern (read draft → mutate → validate →
+finalize) applies for `ralph_replace_plan_step`, `ralph_patch_step`,
+`ralph_remove_plan_step`, and `ralph_move_plan_step`.
+
 ## Recovery from a Bad Payload
 
 When any of the five step-mutation tools rejects a payload, the helper
@@ -201,6 +267,129 @@ After every successful step-mutation call, call `ralph_get_plan_draft` to
 recover the new step numbers from the reindexed draft. Do not guess the
 new numbers.
 
+### Per-tool retry envelopes
+
+These eight fenced-JSON blocks are the **exact minimal retry shapes**
+the no-skill helper `_format_plan_step_edit_error` inlines in its
+repair guidance (see `ralph/mcp/tools/artifact.py:1910-1918`). Use
+the matching block when a step-mutation tool returns an error.
+
+**`ralph_insert_plan_step`** — stage a new step at a 1-based
+position; the runtime assigns the synthetic `step.number`.
+
+```json
+{
+  "index": 2,
+  "step": {
+    "title": "Concrete step title",
+    "content": "Detailed executor instructions",
+    "step_type": "file_change",
+    "targets": [{"path": "path/to/file.py", "action": "modify"}],
+    "depends_on": []
+  }
+}
+```
+
+**`ralph_replace_plan_step`** — overwrite a single existing step's
+full payload; missing fields are NOT preserved (full payload required).
+
+```json
+{
+  "step_number": 2,
+  "step": {
+    "title": "Concrete step title",
+    "content": "Detailed executor instructions",
+    "step_type": "file_change",
+    "targets": [{"path": "path/to/file.py", "action": "modify"}],
+    "depends_on": []
+  }
+}
+```
+
+**`ralph_patch_step`** — shallow-merge a single existing step;
+fields you omit are preserved, NOT cleared.
+
+```json
+{
+  "step_number": 2,
+  "step": {
+    "content": "Revised executor instructions for this step only"
+  }
+}
+```
+
+**`ralph_remove_plan_step`** — delete a single existing step by
+its current 1-based number.
+
+```json
+{"step_number": 2}
+```
+
+**`ralph_move_plan_step`** — move a step to a new 1-based index.
+
+```json
+{"from_step_number": 2, "to_index": 1}
+```
+
+**`ralph_get_plan_draft`** — read the staged draft to learn the
+current step numbers (no parameters required).
+
+```json
+{}
+```
+
+**`ralph_validate_draft`** — read-only dry-run of the cross-section
+validator (no parameters required).
+
+```json
+{}
+```
+
+**`ralph_discard_plan_draft`** — delete the on-disk staged draft
+so the agent can start over (no parameters required).
+
+```json
+{}
+```
+
+### Cross-section validator error to fix mapping
+
+The 5 step-edit-relevant error strings emitted by
+`ralph/mcp/artifacts/plan/_validation.py` and what to do about each:
+
+- `plan step depends_on cycle detected at step N` — the new step
+  you inserted (or a step you updated via `ralph_patch_step` /
+  `ralph_replace_plan_step`) closes a cycle in `depends_on`. Edit
+  one `depends_on` entry to break the loop, then re-issue the
+  mutation.
+- `acceptance criterion 'ID' references unknown step number N` —
+  the cited step number in `design.acceptance_criteria.criteria[*]
+  .satisfied_by_steps` no longer exists because the step was
+  removed (orphan reference). Either add a new step that satisfies
+  the dropped AC, or edit the AC to remove the broken reference.
+- `satisfied_by_steps cannot reference a research or verify step;
+  step N is 'TYPE' for criterion 'ID'` — the step you inserted has
+  `step_type="research"` or `step_type="verify"` but is referenced
+  by an AC's `satisfied_by_steps`. Only `file_change` and `action`
+  steps can satisfy an AC. Change the step's `step_type` or remove
+  the AC reference.
+- `plan draft is missing a 'sections' object` — you called a step
+  mutation without first staging the 6 required sections via
+  `ralph_submit_plan_section` or `ralph_submit_plan_sections`.
+  Stage `summary`, `skills_mcp`, `steps`, `critical_files`,
+  `risks_mitigations`, and `verification_strategy` first.
+- `plan envelope has no valid 'content' object` / `plan payload must
+  decode to a JSON object` — the `step` argument to a mutation tool
+  was not a JSON object (it was a string, list, or scalar). The
+  handler expects `params['step']` to be a dict shaped like
+  `{'title': ..., 'content': ..., 'step_type': ..., 'targets':
+  [...], 'depends_on': [...]}`.
+
+If the error you received is not in this list, read the
+`## Recovery from a Bad Payload` section of the companion
+`submit-plan-artifact` skill for the broader section-shape
+mismatches.
+
 ## Source of Truth Reference
 
 - `.agent/artifact-formats/plan.md` — the canonical schema for the plan
@@ -255,6 +444,34 @@ If this skill and the format doc ever disagree, the format doc wins.
   `dropped_ac_satisfied_by_steps` were rewritten. If the echo payload is
   ignored, downstream AC references and `depends_on` arrays can drift
   silently until the cross-section validator fails them at finalize.
+- Submitting `ralph_insert_plan_step` (or any of the other four
+  step-mutation tools) without first calling `ralph_get_plan_draft` to
+  confirm the current step numbers. The off-by-one error pattern is the
+  single most common step-edit mistake: the agent submits `index=2`
+  assuming step 1 is still in position 1, but a prior move or insert
+  has shifted the surviving steps. Always re-read the draft first.
+- Omitting the reindex echo acknowledgment after a mutation. The
+  handler auto-reindexes every `depends_on` array and every
+  `AC.satisfied_by_steps` reference in the same call. The echo payload
+  reports the new `step.number`, the `reindex_map`, the rewritten
+  `depends_on`, the rewritten AC ids, and any dropped AC ids. If the
+  echo payload is suppressed or ignored, the next mutation is built on
+  stale numbers and the cross-section validator will reject it at
+  finalize.
+- Calling `ralph_finalize_plan` immediately after a step-mutation
+  without re-running `ralph_validate_draft` first. The dry-run
+  validator is the only signal you get BEFORE the staged draft is
+  deleted on a successful finalize. Skipping it means a failed
+  finalize leaves the draft already gone; the agent must start over
+  from step 1 of the submission protocol.
+- Ignoring the `dropped_ac_satisfied_by_steps` field in the mutation
+  echo. An empty list means no AC references were dropped (good); a
+  non-empty list means an AC's `satisfied_by_steps` entries were
+  silently dropped because the referenced step is gone. Either add a
+  new step that satisfies the dropped AC, or edit the AC to remove
+  the broken reference — leaving the drop unaddressed produces a stale
+  draft that the cross-section validator catches at finalize with
+  `acceptance criterion 'ID' references unknown step number N`.
 
 ## Red Flags - STOP and Start Over
 
