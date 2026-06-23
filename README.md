@@ -195,6 +195,7 @@ Questions, ideas, or something not working? Open an issue — the Codeberg track
 - **[PMF survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey)** (60 seconds) — the one signal we get since Ralph collects zero telemetry
 - **[See who's building with Ralph](USERS.md)** — 27+ projects and 15+ adopters
 - 🆕 **[23 Projects Reinvented the Same AI Coding Loop](https://ralphworkflow.com/blog/ralph-loop-ecosystem-convergent-evolution-2026)** — how the pattern is converging across 23+ independent projects, what JPMorganChase and AI-infra builders are doing with it
+- 📰 **[Microsoft Is Ending Claude Code Access — Why Vendor-Neutral AI Coding Matters Now](https://ralphworkflow.com/blog/microsoft-claude-code-migration-vendor-neutral-2026)** — the real-world vendor-lock event that validates the Loop Engineering argument
 
 ## Engineering-practice requirements
 
