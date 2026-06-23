@@ -15,6 +15,7 @@ and complete in well under one second each.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import cast
 
@@ -112,3 +113,47 @@ def test_planning_jinja_preserves_source_of_truth_wording() -> None:
     body = template_path.read_text(encoding="utf-8")
     assert "source of truth" in body
     assert ".agent/artifact-formats/plan.md" in body
+
+
+def _locate_plan_md() -> Path:
+    """Locate ``.agent/artifact-formats/plan.md`` from any test runner CWD."""
+    repo_root = Path(__file__).resolve()
+    for parent in repo_root.parents:
+        candidate = parent / ".agent" / "artifact-formats" / "plan.md"
+        if candidate.exists():
+            return candidate
+    raise AssertionError("could not locate .agent/artifact-formats/plan.md on disk")
+
+
+@pytest.mark.timeout_seconds(5)
+def test_plan_md_has_canonical_validator_errors_to_fix_heading() -> None:
+    """``.agent/artifact-formats/plan.md`` must carry the cross-section error index.
+
+    PLAN step 4 mandates a new ``## Canonical validator errors to fix``
+    H2 placed *between* ``## Dumb-proof checklist`` and
+    ``## Module family``. Cheap-model agents use that index to map any
+    Pydantic / cross-section rejection message back to the literal
+    error string emitted by ``_validation.py``. If the H2 is missing,
+    the agent retries against a stale schema and the helper wrap cannot
+    shorten the loop. Lock the heading existence AND its position so a
+    silent rename or re-order cannot regress the documentation surface.
+    """
+    plan_md_path = _locate_plan_md()
+    body = plan_md_path.read_text(encoding="utf-8")
+    h2_titles: list[str] = [
+        match.group(2).strip()
+        for match in re.finditer(r"^(#{2,6}) (.+?)\s*$", body, flags=re.MULTILINE)
+    ]
+    assert "## Canonical validator errors to fix" in body, (
+        "PLAN step 4 requires .agent/artifact-formats/plan.md to expose the "
+        "## Canonical validator errors to fix H2 that maps every literal "
+        "cross-section validator message to its canonical fix"
+    )
+    dumb_idx = h2_titles.index("Dumb-proof checklist")
+    canonical_idx = h2_titles.index("Canonical validator errors to fix")
+    module_idx = h2_titles.index("Module family")
+    assert dumb_idx < canonical_idx < module_idx, (
+        "## Canonical validator errors to fix must appear between "
+        "## Dumb-proof checklist and ## Module family; got "
+        f"dumb_idx={dumb_idx}, canonical_idx={canonical_idx}, module_idx={module_idx}"
+    )
