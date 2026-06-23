@@ -12,9 +12,7 @@ Recent retry context:
 {{ LAST_RETRY_ERROR }}
 {% endif %}
 
-The prior plan was rejected by planning analysis.
-Treat the planning-analysis feedback as a starting point, not as the full list of issues.
-The goal is not merely to fix what the analyzer found; it is to eliminate every repo-grounded issue the analyzer could still surface on the next pass.
+The prior plan was rejected by planning analysis. Treat the planning-analysis feedback as a starting point, not as the full list of issues. The goal is not merely to fix what the analyzer found; it is to eliminate every repo-grounded issue the analyzer could still surface on the next pass.
 
 Canonical request file: `{{PROMPT_PATH}}`
 Current plan context is provided inline below.
@@ -39,35 +37,16 @@ Not submitting the revised plan is a FAILURE.
 
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 
-Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or staged draft before editing.
-Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace the sections whose correctness depends on the revised scope, inventory, or verification model.
-Use `{{FINALIZE_PLAN_TOOL_NAME}}` after revising the affected sections so the updated plan replaces the prior finalized plan.
-Use `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` only when the existing plan is unsalvageable and you must restart from section 1.
-Your target is to submit the strongest revised plan you can so the next planning-analysis pass returns `completed`, not another partial patch cycle.
-Do not localize your revision pass to only the sections explicitly cited by the analyzer.
-You must perform your own repo-grounded analysis before finalizing.
-Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
-Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
-Build a closure ledger before finalizing the revised draft.
+Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or staged draft before editing, `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace scope/inventory/verification-affected sections, `{{FINALIZE_PLAN_TOOL_NAME}}` to commit the revised plan, and `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` only when the plan is unsalvageable. Your target is a revised plan that returns `completed` on the next planning-analysis pass.
 
-Classify the defect scope as `local_section`, `cross_section`, or `repo_wide` before deciding what to preserve.
-This classification is diagnostic only. It does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
-If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan narrowed scope before running repository-wide discovery, treat that as a scope-invalidating defect.
-If the revised plan would make the development agent reread feedback, compare prompt files, or decide scope, the draft is still underspecified.
-Do not preserve the prior target cluster as the starting scope in that case.
-If a canonical verification command or repo-wide audit already surfaces a blocker during replanning, that blocker immediately becomes in-scope plan work and must be reflected in the revised draft.
-When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example or the currently edited file cluster.
-Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before deciding the draft is ready.
-If your runtime provides a subagent mechanism, fan out read-only scouts to verify each analyzer finding's closure and review the draft from independent angles before deciding it is ready; otherwise run the same checks sequentially yourself.
-This continuation exists because the prior planning pass failed. If your runtime provides a subagent gate, you MUST use it as a hard stop against the plan-quality rubric and your replanning self-audit. Until a subagent review reports no remaining rubric-grounded findings, you MUST NOT finalize or submit the revised plan artifact.
-Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
-If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files.
-When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
-Do not edit `.agent/artifacts/plan.json` directly.
-If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent, including any dependent sections that must also change for the plan to become coherent.
-Do not preserve prompt-violating tests, files, or workflows as justified exceptions unless the ORIGINAL REQUEST explicitly allows them.
-Do not finalize a draft that still has any known unresolved analyzer finding, even if some sections improved.
-Before finalizing, proactively search for any additional repo-grounded failure the next planning-analysis pass could still raise against the ORIGINAL REQUEST, current repo state, or surfaced verification output.
-Account for the adjacent or implied issues your own analysis discovered before deciding the draft is ready.
-The draft is not ready unless you have tried to eliminate every repo-grounded issue the analyzer could still surface, not just the issues it already named.
-Prefer a full atomic replacement over piecemeal repair when that is the simplest way to restore global coherence.
+- Do not localize your revision pass to only the sections explicitly cited by the analyzer; you must perform your own repo-grounded analysis before finalizing.
+- Build a closure ledger before finalizing the revised draft. At minimum, account for (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent.
+- Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
+- Classify the defect scope as `local_section`, `cross_section`, or `repo_wide` before deciding what to preserve. The classification is diagnostic only and does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
+- When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory for every rule category those requirements cover instead of deriving scope only from the first failing example.
+- Re-run enough repo-grounded analysis yourself to discover additional rejectable issues beyond the analyzer's cited list before deciding the draft is ready; if your runtime provides a subagent mechanism, fan out read-only scouts to verify each analyzer finding's closure and review from independent angles, otherwise run the same checks sequentially yourself.
+- This continuation exists because the prior planning pass failed. If your runtime provides a subagent gate, you MUST use it as a hard stop against the plan-quality rubric and your replanning self-audit; until a subagent review reports no remaining rubric-grounded findings, you MUST NOT finalize or submit the revised plan artifact.
+- Infer the core user-facing workflows and prerequisite actions that must exist for the ORIGINAL REQUEST to count as working, even when the prompt states them only implicitly.
+- If the defect scope is `repo_wide`, replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery before narrowing to specific files; do not preserve the prior target cluster as the starting scope.
+- Do not edit `.agent/artifacts/plan.json` directly. If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent.
+- Do not finalize a draft that still has any known unresolved analyzer finding, even if some sections improved. Prefer a full atomic replacement over piecemeal repair when that is the simplest way to restore global coherence.

@@ -28,59 +28,32 @@ Docs MCP is active (localhost:6280). Prefer docs-mcp search over web_search for 
 Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml improves documentation lookup quality during planning.
 {% endif %}
 
-Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools.
-If you have not verified something yet, do not present it as settled fact — add an explicit discovery step instead.
-If your runtime provides a subagent mechanism, fan out read-only discovery scouts before drafting and a per-dimension review pass before finalizing; otherwise run the same checks sequentially yourself.
+Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools. If you have not verified something yet, do not present it as settled fact — add an explicit discovery step instead. If your runtime provides a subagent mechanism, fan out read-only discovery scouts before drafting and a per-dimension review pass before finalizing; otherwise run the same checks sequentially yourself.
 
-Fallback still needs an executor-grade plan. Include:
-- summary context and scope items
-- skills_mcp with task-relevant skills (or an empty skills list only when `design.planning_profile="minimal"` will auto-fill it)
-- concrete ordered steps
-- critical files with actions/reasons
-- risks with mitigations
-- verification strategy with expected outcomes
-- work_units if parallel work is safe
-- an optional `design` section listing the seven SE-opinionated sub-sections (Design Constraints, Non-Goals, Dependency Injection, Drift Detection, Testability, Refactor Strategy, Acceptance Criteria), even if some are empty
+Fallback still needs an executor-grade plan. Include: summary context and scope items; skills_mcp with task-relevant skills (or an empty skills list only when `design.planning_profile="minimal"` will auto-fill it); concrete ordered steps; critical files with actions/reasons; risks with mitigations; verification strategy with expected outcomes; work_units if parallel work is safe; an optional `design` section listing the seven SE-opinionated sub-sections (Design Constraints, Non-Goals, Dependency Injection, Drift Detection, Testability, Refactor Strategy, Acceptance Criteria), even if some are empty.
 
-Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern.
-Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
-If the executor would need to stop and research basic repository structure, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
+Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern. Do not use phrases like "run tests" unless you provide the exact command and the expected passing result. If the executor would need to stop and research basic repository structure, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
 
-## OPTIONAL: submit-plan-artifact skill
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 
 ## Plan size limits
-
-Every plan must fit within the generous-but-bounded caps in `.agent/artifact-formats/plan.md` §`Plan size limits`. The hard cap is 4 MB total JSON; per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500) keep runaway loops detectable. A plan that exceeds any cap is rejected with a structured `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) before Pydantic runs. The cap table in §`Plan size limits` is the single source of truth — no model hard-codes a cap.
+- See `.agent/artifact-formats/plan.md` §`Plan size limits` for the canonical 4 MB hard cap and per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500). A plan that exceeds any cap is rejected with `PlanArtifactSizeError` before Pydantic runs.
 
 ## Model tier
-
-Pick the model tier first, then fill the fields that tier is expected to provide. For cheap models, set `design.planning_profile = "minimal"` (or "balanced") and let the bias-fill presets cover the seven sub-sections; under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`). If you rely on that preset shortcut, you MUST also stage the `design` section before finalizing. For high-quality models, leave `planning_profile` unset and handcraft all seven sub-sections plus `design.outcome` and `design.notes`. The two paths converge on the same `PlanArtifact` shape.
+- See `.agent/artifact-formats/plan.md` §`Model tier` for the `design.planning_profile` choice and bias-fill preset contract. Cheap models use `"minimal"` / `"balanced"`; high-quality models handcraft all seven design sub-sections plus `design.outcome` and `design.notes`.
 
 ## Cycle guard
+- See `.agent/artifact-formats/plan.md` §`Cycle guard` for the `depends_on` cycle validation contract (DAG only; diamond-shaped DAGs accepted).
 
-A plan with a `depends_on` cycle (e.g. step 1 -> 2 -> 3 -> 1) is rejected at normalize time with `PlanArtifactValidationError("plan step depends_on cycle detected at step N")`; plan a DAG, not a ring. Diamond-shaped DAGs (a node with multiple parents) are accepted — only TRUE cycles are rejected.
-
-Native file and shell tools are disabled in this brokered fallback; native orchestration tools (sub-agents/tasks, skills, todo tracking, web fetch/search) remain enabled. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}, {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}}, {{INSERT_PLAN_STEP_TOOL_REFERENCE}}, {{REPLACE_PLAN_STEP_TOOL_REFERENCE}}, {{PATCH_PLAN_STEP_TOOL_REFERENCE}}, {{REMOVE_PLAN_STEP_TOOL_REFERENCE}}, {{MOVE_PLAN_STEP_TOOL_REFERENCE}}, {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}}, {{GET_PLAN_DRAFT_TOOL_REFERENCE}}, {{FINALIZE_PLAN_TOOL_REFERENCE}}, {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}, and {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} exactly as named below.
-
-Step mutation tools ({{INSERT_PLAN_STEP_TOOL_REFERENCE}}, {{REPLACE_PLAN_STEP_TOOL_REFERENCE}}, {{PATCH_PLAN_STEP_TOOL_REFERENCE}}, {{REMOVE_PLAN_STEP_TOOL_REFERENCE}}, {{MOVE_PLAN_STEP_TOOL_REFERENCE}}) echo the new step number(s), the `depends_on` reindex map, and the AC ids whose `satisfied_by_steps` were rewritten; you do not need to call {{GET_PLAN_DRAFT_TOOL_REFERENCE}} immediately after.
-
-High-quality models should populate `design.notes`, `design.drift_detection.guard_commands`, `design.testability.required_test_layers`, `design.dependency_injection.preferred/forbidden_patterns`, and `design.refactor_strategy`. Cheap models should use `planning_profile="balanced"` or `"minimal"` for bias-fill defaults.
-
-See `.agent/artifact-formats/plan.md` §`Plan size limits` for the canonical per-field and per-list caps (4 MB hard cap, steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500; string tiers short=1000 / medium=8000 / long=20000).
+Native file and shell tools are disabled in this brokered fallback; native orchestration tools remain enabled. Use the plan tools and {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} exactly as named below. Step mutation tools echo the new step number(s), the `depends_on` reindex map, and the AC ids whose `satisfied_by_steps` were rewritten.
 
 Unless the plan is genuinely short, submit each required section separately.
-- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`.
-- If you rely on `design.planning_profile` or want the SE-opinionated design guidance, stage `design` before finalize.
+- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, and `verification_strategy`. If you rely on `design.planning_profile` or want the SE-opinionated design guidance, stage `design` before finalize.
 - For small-to-medium plans, prefer {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} to stage every section in one batched round-trip.
-- Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalize.
-- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if validation fails or you need to resume.
-- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} once all required sections are staged.
-- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} only if you need to throw away the draft and restart from section 1.
+- Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalize and {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if validation fails.
+- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} once all required sections are staged, and {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} only to throw the draft away.
 
-For genuinely short plans, you may submit atomically via {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan".
+For genuinely short plans, you may submit atomically via {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan". `content` must be a JSON string of the RAW plan payload (not an outer artifact wrapper); do NOT send `{ "type": "plan", "content": ... }`.
 {{SUBMIT_ARTIFACT_BARE_HINT}}
-The `content` argument must be a JSON string whose decoded object is the RAW plan payload, not an outer artifact wrapper.
-Do NOT send `{ "type": "plan", "content": ... }`.
 Use this exact top-level shape and fill it with concrete executor-ready detail:
 {"summary":{"context":"What is being done and why","scope_items":[{"text":"Concrete outcome 1"},{"text":"Concrete outcome 2"},{"text":"Concrete outcome 3"}]},"skills_mcp":{"skills":["writing-plans"],"mcps":[]},"steps":[{"number":1,"title":"Concrete step title","content":"Detailed executor instructions for a weaker agent","step_type":"file_change","priority":"high","targets":[{"path":"path/to/file.py","action":"modify"}],"depends_on":[]}],"critical_files":{"primary_files":[{"path":"path/to/file.py","action":"modify"}],"reference_files":[{"path":"path/to/reference.py","purpose":"pattern to follow"}]},"risks_mitigations":[{"risk":"Specific failure mode","mitigation":"How to avoid it","severity":"medium"}],"verification_strategy":[{"method":"Exact command or check","expected_outcome":"What success looks like"}],"work_units":[]}

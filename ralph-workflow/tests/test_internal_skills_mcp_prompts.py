@@ -221,6 +221,15 @@ def test_planning_fallback_jinja_skill_pointer_and_invariants() -> None:
     for needle in preserved:
         assert needle in source, f"planning_fallback.jinja must preserve {needle!r}"
 
+    rendered = _render_template_source(PLANNING_FALLBACK_JINJA)
+    heading_count = rendered.count("## OPTIONAL: submit-plan-artifact skill")
+    assert heading_count == 1, (
+        "planning_fallback.jinja must render exactly one "
+        "'## OPTIONAL: submit-plan-artifact skill' heading (was "
+        f"{heading_count}); the shared include already emits the heading, so "
+        "the source must not duplicate it inline."
+    )
+
 
 # ---------------------------------------------------------------------------
 # AC-05 — planning_edit.jinja and planning_edit_fallback.jinja gain a skill pointer
@@ -486,6 +495,18 @@ def test_submit_commit_cleanup_artifact_skill_shape() -> None:
     for header in expected_h2:
         assert header in body, f"missing H2 section: {header!r}"
 
+    actual_h2 = tuple(re.findall(r"^## .+$", body, flags=re.MULTILINE))
+    assert actual_h2 == expected_h2, (
+        f"submit-commit-cleanup-artifact.md must contain exactly six H2 sections in the "
+        f"planned order; got {actual_h2!r}"
+    )
+
+    assert "SECURITY BOUNDARY" not in body, (
+        "submit-commit-cleanup-artifact.md must NOT contain any dangling "
+        "'SECURITY BOUNDARY' cross-reference (the security-boundary rule is "
+        "covered under Common Mistakes, not as a standalone section)"
+    )
+
     assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
     assert ".agent/artifact-formats/commit_cleanup.md" in body, (
         "body must reference the commit_cleanup format doc"
@@ -494,6 +515,30 @@ def test_submit_commit_cleanup_artifact_skill_shape() -> None:
     assert "retry" in body.lower(), "body must contain retry guidance"
     assert "ralph_submit_artifact" in body, (
         "body must mention the ralph_submit_artifact MCP tool"
+    )
+
+
+def test_submit_commit_message_artifact_skill_documents_breaking_change_marker() -> None:
+    """The conventional-commit breaking-change `!` marker must be documented."""
+    assert COMMIT_MESSAGE_SKILL_PATH.exists(), (
+        f"missing skill: {COMMIT_MESSAGE_SKILL_PATH}"
+    )
+    _, body = _read_skill(COMMIT_MESSAGE_SKILL_PATH)
+    assert "!" in body, (
+        "submit-commit-message-artifact.md must document the breaking-change `!` marker"
+    )
+    needle = (
+        "Breaking"
+        if "Breaking" in body
+        else "breaking"
+    )
+    assert needle in body, (
+        "submit-commit-message-artifact.md must surface the breaking-change "
+        "concept alongside the conventional-commit subject shape"
+    )
+    assert re.search(r"\(\)!\:|!:\s", body), (
+        "submit-commit-message-artifact.md must show the breaking-change `!` "
+        "placement (e.g. `type!:` or `type(scope)!:`)"
     )
 
 

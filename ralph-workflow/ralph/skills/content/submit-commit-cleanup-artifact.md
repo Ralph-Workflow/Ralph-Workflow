@@ -50,11 +50,13 @@ smoke_test_result, or analysis-decision artifacts, use the companion
    - `add_to_git_exclude` — paired with a `pattern`. Use for
      machine-local files like `.env.local`, `.vscode/`. NEVER use
      `delete_file` for environment files.
-4. Honor the runtime-artifact allowlist (see "RUNTIME ARTIFACT ALLOWLIST"
-   below). Files in the allowlist are unconditionally deletable.
-5. Honor the security boundary (see "SECURITY BOUNDARY" below). Files
-   outside the allowlist that are source code, tests, documentation, or
-   configuration MUST NOT be deleted.
+4. Honor the runtime-artifact allowlist (see the
+   `Runtime-artifact allowlist quick reference` subsection under
+   `Common Mistakes` below). Files in the allowlist are unconditionally
+   deletable.
+5. Honor the security boundary. Files outside the allowlist that are
+   source code, tests, documentation, or configuration MUST NOT be
+   deleted; the runtime silently drops such actions.
 6. Build the inner payload as a plain JSON object:
    `{"analysis_complete": <bool>, "actions": [<action>, ...]}`.
 7. Stringify the inner payload into a JSON string and pass it as the
@@ -111,10 +113,11 @@ points at `.agent/artifact-formats/commit_cleanup.md` and names
    `.git/info/exclude` rule via comment-line injection — the validator
    rejects it on purpose.
 6. If the runtime safety boundary silently dropped your actions, you
-   recommended paths outside the runtime-artifact allowlist (see below)
-   OR you recommended a blanket `.agent/`, `artifacts/`, or `reports/`
-   directory deletion. Re-narrow to specific basenames / per-directory
-   extension restrictions and resubmit.
+   recommended paths outside the runtime-artifact allowlist (see the
+   `Runtime-artifact allowlist quick reference` subsection under
+   `Common Mistakes` below) OR you recommended a blanket `.agent/`,
+   `artifacts/`, or `reports/` directory deletion. Re-narrow to specific
+   basenames / per-directory extension restrictions and resubmit.
 
 **Worked retry envelope** for a `_raise_format_doc_error` style failure on
 `commit_cleanup`:
@@ -138,46 +141,6 @@ points at `.agent/artifact-formats/commit_cleanup.md` and names
 
 If this skill and the format doc ever disagree, the format doc wins.
 
-## RUNTIME ARTIFACT ALLOWLIST (quick reference)
-
-The following paths are Ralph Workflow runtime artifacts. They are
-unconditionally deletable from any commit, even when tracked in HEAD.
-Recommend them with `delete_file` without hesitation.
-
-### Top-level `.agent/` basenames (the canonical 14)
-
-`.agent/CURRENT_PROMPT.md`, `.agent/PLAN.md`, `.agent/ISSUES.md`,
-`.agent/DEVELOPMENT_RESULT.md`, `.agent/FIX_RESULT.md`,
-`.agent/DEVELOPMENT_ANALYSIS_DECISION.md`,
-`.agent/PLANNING_ANALYSIS_DECISION.md`,
-`.agent/REVIEW_ANALYSIS_DECISION.md`, `.agent/checkpoint.json`,
-`.agent/rebase_checkpoint.json`, `.agent/rebase_checkpoint.json.bak`,
-`.agent/rebase.lock`, `.agent/start_commit`, `.agent/mcp.toml`.
-
-### Completion sentinels
-
-Any `.agent/completion_seen_*.json` (the filename glob is
-`completion_seen_*.json`, NOT `completion_sentinel_*.json`).
-
-### Root-level
-
-Bare `checkpoint.json` at the repo root.
-
-### Per-directory extension restrictions
-
-Files inside engine-internal directories are deletable ONLY when their
-extension matches the engine-written file types for that directory:
-
-| Directory | Deletable extensions | Example |
-|---|---|---|
-| `.agent/raw/` | `.log` | `.agent/raw/opencode.log` |
-| `.agent/tmp/` | `.log`, `.md`, `.json` | `.agent/tmp/mcp-server.log`, `.agent/tmp/<safe_id>.md` |
-| `.agent/artifacts/` | `.json` | `.agent/artifacts/commit_cleanup.json` |
-| `.agent/receipts/<run-id>/` | `.json` | `.agent/receipts/run-1/commit_cleanup.json` |
-| `.agent/prompt_history/` | `.json` | `.agent/prompt_history/abc.json` |
-| `.agent/artifact-formats/` | `.md` | `.agent/artifact-formats/commit_message.md` |
-| `.agent/workers/<unit>/...` | `.log`, `.md`, `.json` | `.agent/workers/unit-a/tmp/checkpoint.json` |
-
 ## Common Mistakes
 
 - Treating this skill as authoritative. The format doc at
@@ -195,7 +158,9 @@ extension matches the engine-written file types for that directory:
 - Recommending broad `.agent/`, `artifacts/`, or `reports/` directory
   deletion. A blanket directory-prefix recommendation is silently dropped
   by the runtime safety boundary. Only the specific basenames /
-  per-directory extensions listed above are deletable.
+  per-directory extensions listed in the
+  `Runtime-artifact allowlist quick reference` subsection below are
+  deletable.
 - Using `delete_file` for source code, test files, documentation, or
   configuration files. Those categories MUST NOT be deleted, even when
   tracked in HEAD.
@@ -217,3 +182,38 @@ extension matches the engine-written file types for that directory:
 - Passing an object instead of a JSON string for `content`. The
   `content` field must be a stringified JSON object, not the object
   itself.
+
+### Runtime-artifact allowlist quick reference
+
+The following paths are Ralph Workflow runtime artifacts. They are
+unconditionally deletable from any commit, even when tracked in HEAD.
+Recommend them with `delete_file` without hesitation.
+
+**Top-level `.agent/` basenames (the canonical 14):**
+`.agent/CURRENT_PROMPT.md`, `.agent/PLAN.md`, `.agent/ISSUES.md`,
+`.agent/DEVELOPMENT_RESULT.md`, `.agent/FIX_RESULT.md`,
+`.agent/DEVELOPMENT_ANALYSIS_DECISION.md`,
+`.agent/PLANNING_ANALYSIS_DECISION.md`,
+`.agent/REVIEW_ANALYSIS_DECISION.md`, `.agent/checkpoint.json`,
+`.agent/rebase_checkpoint.json`, `.agent/rebase_checkpoint.json.bak`,
+`.agent/rebase.lock`, `.agent/start_commit`, `.agent/mcp.toml`.
+
+**Completion sentinels:** any `.agent/completion_seen_*.json` (the
+filename glob is `completion_seen_*.json`, NOT
+`completion_sentinel_*.json`).
+
+**Root-level:** bare `checkpoint.json` at the repo root.
+
+**Per-directory extension restrictions:** files inside engine-internal
+directories are deletable ONLY when their extension matches the
+engine-written file types for that directory:
+
+| Directory | Deletable extensions | Example |
+|---|---|---|
+| `.agent/raw/` | `.log` | `.agent/raw/opencode.log` |
+| `.agent/tmp/` | `.log`, `.md`, `.json` | `.agent/tmp/mcp-server.log`, `.agent/tmp/<safe_id>.md` |
+| `.agent/artifacts/` | `.json` | `.agent/artifacts/commit_cleanup.json` |
+| `.agent/receipts/<run-id>/` | `.json` | `.agent/receipts/run-1/commit_cleanup.json` |
+| `.agent/prompt_history/` | `.json` | `.agent/prompt_history/abc.json` |
+| `.agent/artifact-formats/` | `.md` | `.agent/artifact-formats/commit_message.md` |
+| `.agent/workers/<unit>/...` | `.log`, `.md`, `.json` | `.agent/workers/unit-a/tmp/checkpoint.json` |

@@ -52,32 +52,18 @@ Not submitting the revised plan is a FAILURE.
 
 {% include 'shared/_planning_subagents.j2' %}
 
-Your job is to revise the existing plan, not start from a blank slate unless the feedback proves the plan is unsalvageable.
-Preserve still-valid sections only after you have re-validated them against the ORIGINAL REQUEST, repository reality, and the full analysis feedback set.
-Do not localize your revision pass to only the sections explicitly cited by the analyzer.
-You must perform your own repo-grounded analysis before finalizing.
-Every analyzer issue must map to concrete revised sections or an explicit verified reason that a section truly remains valid unchanged.
-Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
-Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
-Build a closure ledger before finalizing the revised draft. At minimum, account for: (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent.
-Before revising any section, classify the feedback scope as one of:
+Your job is to revise the existing plan, not start from a blank slate unless the feedback proves the plan is unsalvageable. Preserve still-valid sections only after you have re-validated them against the ORIGINAL REQUEST, repository reality, and the full analysis feedback set. Do not localize your revision pass to only the sections explicitly cited by the analyzer. You must perform your own repo-grounded analysis before finalizing.
+
+Every analyzer issue must map to concrete revised sections or an explicit verified reason that a section truly remains valid unchanged. Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
+
+Build a closure ledger before finalizing the revised draft. At minimum, account for: (1) each analyzer-cited issue, (2) the adjacent or implied issues your own analysis discovered, (3) the exact revised sections that close each issue, and (4) any dependent sections that must also change for the plan to become coherent. Before revising any section, classify the feedback scope as one of:
 - local_section
 - cross_section
 - repo_wide
 
-This classification is diagnostic only. It does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
+This classification is diagnostic only; it does not permit a localized repair if your own repo-grounded analysis reveals broader issues.
 
-If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan against the ORIGINAL REQUEST and current repository reality before editing sections.
-Do not treat the latest analysis feedback as the full task. Treat it as evidence about what the current plan missed.
-If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan narrowed scope before running repository-wide discovery, treat that as a scope-invalidating defect.
-Do not preserve the prior target cluster as the starting scope in that case.
-For repo-wide defects:
-- replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery
-- recompute the full inventory
-- recompute critical files
-- recompute verification breadth
-- recompute risks
-- then replace every affected section so the finalized plan is globally coherent
+If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan against the ORIGINAL REQUEST and current repository reality before editing sections. Treat the latest analysis feedback as evidence about what the current plan missed, not the full task. If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan narrowed scope before running repository-wide discovery, treat that as a scope-invalidating defect and do not preserve the prior target cluster as the starting scope. For repo-wide defects: replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery; recompute the full inventory, critical files, verification breadth, and risks; then replace every affected section so the finalized plan is globally coherent.
 
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 
@@ -100,11 +86,7 @@ Recommended edit flow:
 8. Use `mode="append"` only when intentionally extending list sections such as `steps` after you have confirmed append is still globally coherent.
 9. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} only after the revised draft passes the self-audit below.
 
-Do not edit `.agent/artifacts/plan.json` directly.
-If the defect scope is `repo_wide`, prefer a full atomic plan replacement over piecemeal section repair when that is the simplest way to restore global coherence.
-Do not throw away valid sections just because one part of the plan was rejected, but do replace every section whose correctness depends on changed scope, inventory, paths, or verification.
-If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent.
-When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
+Do not edit `.agent/artifacts/plan.json` directly. If the defect scope is `repo_wide`, prefer a full atomic plan replacement over piecemeal section repair when that is the simplest way to restore global coherence. Do not throw away valid sections just because one part of the plan was rejected, but do replace every section whose correctness depends on changed scope, inventory, paths, or verification. If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent. When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
 
 ## REVISION REQUIREMENTS
 

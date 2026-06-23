@@ -58,6 +58,44 @@ do not need this skill; the body-less envelope in the format doc is enough.
    `ralph_submit_artifact({"artifact_type": "commit_message", "content": "<fresh JSON string>"})`.
 8. After the submit success text, call `ralph_declare_complete(summary="commit_message")`.
 
+### Conventional-commit subject shape (the contract)
+
+The `subject` field is matched by this regex:
+
+```
+^(feat|fix|docs|refactor|test|style|perf|build|ci|chore)(\([a-z0-9/_-]+\))?(!)?: [a-z0-9].+
+```
+
+Three accepted forms — pick exactly one per commit:
+
+- `<type>: <description>` — no scope, no breaking marker.
+  Example: `fix: clamp expiry window`.
+- `<type>(<scope>): <description>` — scoped commit. `<scope>` must be a
+  lowercase token of `[a-z0-9/_-]+` (letters, digits, `/`, `_`, `-`).
+  Examples: `fix(auth): prevent token expiry race`,
+  `feat(api/export): add CSV export`.
+- `<type>(<scope>)!: <description>` or `<type>!: <description>` —
+  **breaking change**. Append `!` immediately after the type or
+  `type(scope)` token and BEFORE the colon. Examples:
+  `feat(api)!: drop legacy /v1 endpoints`,
+  `fix(parser)!: tighten whitespace handling`.
+
+Rules that hold for every form:
+
+- `<type>` must be one of the ten tokens above. No other tokens are
+  accepted (`release`, `merge`, `wip`, etc. are rejected).
+- `<scope>` is optional and must be lowercase `[a-z0-9/_-]+`. Multi-word
+  scopes use `-` or `_` separators (`rate-limiter`, `csv_export`).
+- A breaking change is marked with `!` immediately after the type or
+  type(scope). The description must still start with a lowercase
+  alphanumeric character, never with whitespace or punctuation.
+- The `BREAKING CHANGE:` footer line is allowed but not required when
+  `!` is present. If you only want to flag a breaking change in the
+  body, do BOTH (the `!` AND the `BREAKING CHANGE:` footer) so the
+  intent is unambiguous.
+- A subject like `fix(auth) prevent token expiry race` (missing colon)
+  or `Fix(auth): ...` (capitalized type) is rejected.
+
 **Minimal one-shot happy-path envelope** for a commit with a body:
 
 ```json
@@ -109,7 +147,13 @@ as the retry tool. Read the message, then:
    prefix. The subject must look like `<type>(<scope>): <description>` (e.g.
    `fix(auth): clamp expiry window`), with `<type>` in
    `feat|fix|docs|refactor|test|style|perf|build|ci|chore` and a lowercase
-   imperative description.
+   imperative description. For breaking changes, append `!` immediately
+   after the type or `type(scope)` and BEFORE the colon — e.g.
+   `feat(api)!: drop legacy /v1 endpoints` or
+   `fix(parser)!: tighten whitespace handling`. Subjects without the
+   breaking `!` are accepted for non-breaking changes; the `!` is the
+   only marker that the runtime accepts in the subject (a `BREAKING
+   CHANGE:` footer alone is informational, not a substitute).
 
 **Worked retry envelope** for a `_raise_format_doc_error` style failure on
 `commit_message`:
@@ -174,3 +218,16 @@ If this skill and the format doc ever disagree, the format doc wins.
 - Using `excluded_files[].reason` outside the four-value closed enum. The
   reason must be `internal_ignore`, `not_task_related`, `sensitive`, or
   `deferred`.
+- Forgetting the `!` marker on a breaking change. Subjects like
+  `feat(api): drop legacy /v1 endpoints` (no `!`) silently lose the
+  breaking-change flag. Append `!` after the type or `type(scope)` and
+  before the colon: `feat(api)!: drop legacy /v1 endpoints`.
+- Misplacing the `!` marker. Only positions `type!:` and `type(scope)!:`
+  are accepted. `type(scope)!extra:` or `type:!something` are rejected.
+- Capitalizing the type token. `Fix(auth): ...` is rejected even though
+  conventional-commit examples sometimes show `FIX(...)`. The runtime
+  accepts only lowercase `<type>` from the ten-token set.
+- Adding `!` for non-breaking changes. A breaking marker on a routine
+  commit triggers SemVer-major bumps in downstream consumers and
+  changelog tooling; reserve it for commits that actually break
+  compatibility.
