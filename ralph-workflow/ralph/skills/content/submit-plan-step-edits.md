@@ -236,11 +236,14 @@ If this skill and the format doc ever disagree, the format doc wins.
   replace the existing field; fields you omit are preserved. There is no
   deep-merge of nested objects like `targets` or `depends_on` — those
   are replaced wholesale.
-- Omitting `step.number` on `ralph_insert_plan_step`. The runtime assigns
-  a synthetic `number` from `max(existing_numbers, default=0) + 1` and
-  then reindexes the full list, so a user-supplied `number` is ignored.
-  Supplying a `number` that conflicts with an existing step raises a
-  `PlanArtifactValidationError`.
+- Relying on a user-supplied `step.number` on `ralph_insert_plan_step`.
+  The runtime assigns a synthetic `number` from
+  `max(existing_numbers, default=0) + 1` and then reindexes the full list,
+  so a user-supplied `number` is ignored. Supplying a `number` that
+  conflicts with an existing step raises a `PlanArtifactValidationError`,
+  and supplying a `number` that you expect to survive reindex is wrong
+  because the runtime rewrites every step's `number` after the call.
+  Omit `step.number` from the payload; position is governed by `index`.
 - Supplying a `depends_on` entry after a move without re-reading the
   draft. The move rewrites every step's `depends_on` through the reindex
   map; the new numbers you want to depend on are the numbers from the

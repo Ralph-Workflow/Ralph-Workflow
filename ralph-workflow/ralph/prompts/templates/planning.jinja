@@ -118,49 +118,24 @@ Your plan must be executor-ready for unattended development. The submitted artif
 - Include work_units when the work can be parallelized safely
 - Make the planning-to-development handoff explicit so the development agent can start immediately
 
-Prefer concrete executor actions and acceptance criteria over vague or meta-planning advice. This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure.
-If the executor would need to stop and research basic repository structure, guess which file owns a behavior, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
-Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern.
-Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
-For every concrete requirement or acceptance criterion in the PROMPT, make sure the plan maps it to implementation steps and verification that prove the outcome.
-Infer the core user-facing workflows and prerequisite actions that must exist for the requested outcome to count as working, even when the PROMPT states them only implicitly.
-Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden.
-Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry.
-If one section change would invalidate another section, revise any dependent sections that must also change for the plan to become coherent before you finalize the draft.
-Your target is to submit a plan that planning analysis can approve on the first pass, not a draft that relies on a later repair cycle to become executor-ready.
+This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure. If the executor would need to stop and research basic repository structure, guess which file owns a behavior, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified. Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern. Do not use phrases like "run tests" unless you provide the exact command and the expected passing result. For every concrete requirement or acceptance criterion in the PROMPT, make sure the plan maps it to implementation steps and verification that prove the outcome. Infer the core user-facing workflows and prerequisite actions that must exist for the requested outcome to count as working, even when the PROMPT states them only implicitly. Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry. If one section change would invalidate another section, revise any dependent sections that must also change for the plan to become coherent before you finalize the draft. Your target is to submit a plan that planning analysis can approve on the first pass, not a draft that relies on a later repair cycle to become executor-ready.
 
 {% include 'shared/_plan_quality_rubric.j2' %}
 
 Before finalizing, run the pre-finalize review fan-out from ## PLANNING WITH SUBAGENTS (or its sequential equivalent) against every rubric dimension above, then fix every confirmed finding in the same planning pass.
 
 Default submission flow:
-1. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`.
-2. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `skills_mcp` with task-relevant skills and any MCP servers the development agent should use.
-3. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `steps`.
-4. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `critical_files`.
-5. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `risks_mitigations`.
-6. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `verification_strategy`.
-7. If you rely on `design.planning_profile` (`strict`, `balanced`, or `minimal`) or need the SE-opinionated design guidance for a non-trivial task, stage `design` before finalizing.
-8. Stage optional sections like `parallel_plan` (read-mostly chunks) or `work_units` (same-workspace parallelization intent for agent-managed sub-agents) only when they add real value — see ## Agent-Driven Parallel Execution below.
-9. Call {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalizing. (Optional but recommended for non-trivial plans.)
-10. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
+1. Stage `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, `verification_strategy` via {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}.
+2. If you rely on `design.planning_profile` (`strict`, `balanced`, or `minimal`), stage `design` before finalizing.
+3. Stage optional `parallel_plan` / `work_units` only when they add real value (see ## Agent-Driven Parallel Execution).
+4. Call {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalizing.
+5. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
 
-Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{section, content, mode}` entries and stages them all in one round-trip. Use this for small-to-medium plans where you want a single round-trip instead of N stage calls.
+Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{section, content, mode}` entries and stages them all in one round-trip.
 
 ## Plan-artifact canonical contract
 
-The full schema, per-section shapes, per-list caps, and string-length tiers live in `.agent/artifact-formats/plan.md`. Each bullet below points at the matching format-doc section for the topic that previously had an inlined pointer in this template:
-
-- Intent & intent_verb → `.agent/artifact-formats/plan.md` §`Intent & intent_verb`.
-- Step contract → `.agent/artifact-formats/plan.md` §`Step contract`.
-- Plan size limits → `.agent/artifact-formats/plan.md` §`Plan size limits`.
-- Cycle guard → `.agent/artifact-formats/plan.md` §`Cycle guard`.
-- Module family → `.agent/artifact-formats/plan.md` §`Module family`.
-- StepType reference → `.agent/artifact-formats/plan.md` §`StepType reference`.
-- Step ↔ acceptance-criteria linking → `.agent/artifact-formats/plan.md` §`Step ↔ acceptance-criteria linking`.
-- Design section + atomic-fallback payload → `.agent/artifact-formats/plan.md` §`Design section` and §`Plan-artifact payload`.
-
-`Common StepType mistakes` (the alias-coercion warning unique to this template) is preserved inline below.
+Full schema, per-section shapes, per-list caps, and string-length tiers live in `.agent/artifact-formats/plan.md`. Topics previously inlined as pointer H2 sections (Intent & intent_verb, Step contract, Plan size limits, Cycle guard, Module family, StepType reference, Step ↔ acceptance-criteria linking, Design section, Plan-artifact payload) are all defined there; this template no longer duplicates them. `Common StepType mistakes` (the alias-coercion warning unique to this template) is preserved inline below.
 
 ## Common StepType mistakes
 

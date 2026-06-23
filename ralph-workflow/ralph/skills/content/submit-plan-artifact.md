@@ -27,23 +27,26 @@ Use this skill when you are about to call any of:
 - `ralph_submit_plan_sections` to batch every section in one round-trip.
 - `ralph_insert_plan_step` / `ralph_replace_plan_step` / `ralph_patch_step` /
   `ralph_remove_plan_step` / `ralph_move_plan_step` to edit a staged draft.
-- `ralph_validate_draft` for a dry-run before finalizing.
+- `ralph_get_plan_draft` to recover the current staged draft (returns
+  `{staged_sections, draft, source: 'draft'|'finalized_plan'}`). Use this
+  to inspect or resume work after an interruption, after a step-mutation
+  echo payload rewrote the step numbers, or when you need to confirm the
+  surviving step numbers before issuing another mutation.
+- `ralph_validate_draft` for a read-only dry-run of the cross-section
+  validator before finalizing. Returns `{valid: true}` on success or
+  `{valid: false, errors: [...]}` on failure with the same error shape
+  the finalize path returns, so you can fix the offending sections and
+  re-run the dry-run before staging again.
 - `ralph_finalize_plan` once every required section is staged and valid.
 - `ralph_discard_plan_draft` only when the staged draft is unsalvageable.
 - `ralph_submit_artifact` with `artifact_type="plan"` for the atomic short-plan
   path.
 
-If you are about to call `ralph_get_plan_draft` to recover the current
-step numbers after an insert/replace/remove/move echo payload, you also
-need this skill — `ralph_get_plan_draft` returns
-`{staged_sections, draft, source: 'draft'|'finalized_plan'}` and the new
-step numbers from the echo's `reindex_map` are the only authoritative
-source for subsequent edits. The per-tool retry envelopes and reindex
-semantics for `ralph_insert_plan_step`, `ralph_replace_plan_step`,
-`ralph_patch_step`, `ralph_remove_plan_step`, and
-`ralph_move_plan_step` are documented in the companion
-`submit-plan-step-edits` skill; consult it whenever the error came from
-one of those five tools.
+The per-tool retry envelopes and reindex semantics for
+`ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_patch_step`,
+`ralph_remove_plan_step`, and `ralph_move_plan_step` are documented in the
+companion `submit-plan-step-edits` skill; consult it whenever the error came
+from one of those five tools.
 
 If you are not submitting a plan, this skill is the wrong skill — see the
 companion `submit-artifact` skill for generic artifact submission.
