@@ -15,6 +15,10 @@ of that documentation, in priority order:
    or the batched ``ralph_submit_plan_sections`` and finalize to
    ``plan.json``).
 
+The happy-path test extracts the six documented payload templates from the
+skill body itself (not a hand-written helper) so any drift between the skill
+documentation and the working validator fails the test.
+
 The tests are fully type-annotated and rely only on the in-process Pydantic
 + tool handlers (no real I/O, no ``subprocess``, no ``time.sleep``).
 """
@@ -24,7 +28,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -35,6 +39,9 @@ from ralph.mcp.tools.artifact import (
 )
 from ralph.workspace.fs import FsWorkspace
 from tests.test_artifact_format_docs_mock_session import planning_session
+
+if TYPE_CHECKING:
+    from ralph.mcp.tools.tool_content import ToolContent
 
 
 def _load_skill_body() -> str:
@@ -47,46 +54,114 @@ def _load_skill_body() -> str:
     pytest.fail("could not locate submit-plan-artifact.md on disk")
 
 
-def _minimal_section_payloads() -> dict[str, object]:
-    """Return the six minimum-valid section payloads the skill documents."""
-    return {
-        "summary": {
-            "context": "What is being changed and why",
-            "scope_items": [
-                {"text": "Concrete outcome 1"},
-                {"text": "Concrete outcome 2"},
-                {"text": "Concrete outcome 3"},
-            ],
-        },
-        "skills_mcp": {"skills": ["writing-plans"], "mcps": []},
-        "steps": [
-            {
-                "number": 1,
-                "title": "Concrete step title",
-                "content": "Detailed executor instructions",
-                "step_type": "file_change",
-                "targets": [{"path": "path/to/file.py", "action": "modify"}],
-                "depends_on": [],
-            }
-        ],
-        "critical_files": {
-            "primary_files": [{"path": "path/to/file.py", "action": "modify"}],
-            "reference_files": [],
-        },
-        "risks_mitigations": [
-            {
-                "risk": "Specific failure mode",
-                "mitigation": "How to avoid it",
-                "severity": "medium",
-            }
-        ],
-        "verification_strategy": [
-            {
-                "method": "pytest tests/test_x.py -q",
-                "expected_outcome": "All tests pass",
-            }
-        ],
-    }
+def _extract_section_templates(body: str) -> dict[str, object]:
+    """Parse the six fenced `````json`` blocks out of the skill body.
+
+    The ``## Per-section minimal payload templates`` section embeds one
+    fenced JSON block per required plan section, in this exact order:
+    ``summary``, ``skills_mcp``, ``steps``, ``critical_files``,
+    ``risks_mitigations``, ``verification_strategy``. The block order
+    maps 1:1 to the section names via the H3 ``### <section>`` headings
+    that precede each block. Returns the parsed payloads indexed by
+    section name; this is the canonical happy-path payload set the
+    round-trip test feeds into the handlers.
+    """
+    templates_match = re.search(
+        r"## Per-section minimal payload templates\s*\n([\s\S]*?)\n## Dumb-proof checklist",
+        body,
+    )
+    assert templates_match is not None, (
+        "submit-plan-artifact skill is missing the '## Per-section minimal "
+        "payload templates' section before '## Dumb-proof checklist'"
+    )
+    templates_body = templates_match.group(1)
+    expected_sections = (
+        "summary",
+        "skills_mcp",
+        "steps",
+        "critical_files",
+        "risks_mitigations",
+        "verification_strategy",
+    )
+    payloads: dict[str, object] = {}
+    cursor = 0
+    for section in expected_sections:
+        heading_match = re.search(
+            rf"### {re.escape(section)}\s*\n", templates_body[cursor:]
+        )
+        assert heading_match is not None, (
+            f"submit-plan-artifact skill is missing the '### {section}' "
+            f"heading inside the per-section templates section"
+        )
+        section_start = cursor + heading_match.end()
+        block_match = re.search(
+            r"```json\s*\n([\s\S]*?)\n```", templates_body[section_start:]
+        )
+        assert block_match is not None, (
+            f"submit-plan-artifact skill is missing the fenced JSON block "
+            f"for section {section!r} inside the per-section templates section"
+        )
+        payload = json.loads(block_match.group(1))
+        payloads[section] = payload
+        cursor = section_start + block_match.end()
+    return payloads
+
+
+def _canonical_validator_strings() -> tuple[tuple[str, str], ...]:
+    """Return the canonical validator strings with their source locations.
+
+    Each entry is ``(verbatim_error_string, source_location)``. The
+    verbatim error string is the exact text the runtime raises, with
+    variable parts (``{node!r}``, ``{criterion.id!r}``, ``{step_ref}``,
+    ``{step_type!r}``) substituted by the same placeholder convention
+    the skill body uses (``N``, ``ID``, ``TYPE``). The placeholder text
+    matches the ``!r`` formatting exactly: single quotes around the
+    string-formatted values (``'ID'`` / ``'TYPE'``) and bare integer
+    text for the int-formatted values (``N``). This is the strongest
+    verbatim contract we can check against a static skill body without
+    losing the variable substitution.
+    """
+    return (
+        (
+            "plan step depends_on cycle detected at step N",
+            "_validation.py cycle guard (~line 173)",
+        ),
+        (
+            "plan cannot declare both parallel_plan and work_units; pick one",
+            "_validation.py parallel_plan XOR (~line 229)",
+        ),
+        (
+            "verification method must not invoke a shell interpreter directly; "
+            "use the executable path",
+            "_validation.py shell-invocation guard (~line 239)",
+        ),
+        (
+            "skills_mcp.skills must contain at least one skill name unless "
+            "design.planning_profile == 'minimal'",
+            "_validation.py skills gate (~line 251)",
+        ),
+        (
+            "acceptance criterion 'ID' references unknown step number N",
+            "_validation.py _check_satisfied_by_steps_links (~line 681)",
+        ),
+        (
+            "satisfied_by_steps cannot reference a research or verify step; "
+            "step N is 'TYPE' for criterion 'ID'",
+            "_validation.py _check_research_verify_step_references (~line 732)",
+        ),
+        (
+            "plan envelope has no valid 'content' object",
+            "_validation.py _decode_plan_payload (~line 769)",
+        ),
+        (
+            "plan payload must decode to a JSON object",
+            "_validation.py _decode_plan_payload (~line 763)",
+        ),
+        (
+            "plan draft is missing a 'sections' object",
+            "_validation.py finalize_plan_draft (~line 796)",
+        ),
+    )
 
 
 @pytest.mark.timeout_seconds(10)
@@ -94,28 +169,23 @@ def test_skill_documents_every_validator_error_string() -> None:
     """Every canonical error string from ``_validation.py`` must appear verbatim.
 
     The skill body MUST quote the canonical error strings the agent will
-    see so the agent can pattern-match the failure back to the fix without
-    re-reading the source. Missing a quote is the single most common cause
-    of a stuck retry loop, so every line in the canonical set is checked.
+    see so the agent can pattern-match the failure back to the fix
+    without re-reading the source. Each entry below is the EXACT text
+    the runtime raises (with variable parts replaced by the
+    ``N``/``ID``/``TYPE`` placeholder convention the skill body uses);
+    paraphrased or shortened quotes break the retry loop and let the
+    agent ship a stale fix. The placeholder substitution preserves the
+    ``!r`` formatting exactly (single quotes around string values, bare
+    integer text for ints), so the substring check is exact-match on
+    every character the runtime will emit.
     """
     body = _load_skill_body()
-    canonical_errors: list[str] = [
-        "plan step depends_on cycle detected at step ",
-        "plan cannot declare both parallel_plan and work_units; pick one",
-        "verification method must not invoke a shell interpreter directly; "
-        "use the executable path",
-        "skills_mcp.skills must contain at least one skill name unless "
-        "design.planning_profile == 'minimal'",
-        "references unknown step number",
-        "satisfied_by_steps cannot reference a research or verify step",
-        "plan envelope has no valid 'content' object",
-        "plan payload must decode to a JSON object",
-        "plan draft is missing a 'sections' object",
-    ]
-    for needle in canonical_errors:
-        assert needle in body, (
-            f"submit-plan-artifact skill body is missing the canonical error "
-            f"substring: {needle!r}. Agents pattern-match on this text to pick a fix."
+    for verbatim, source in _canonical_validator_strings():
+        assert verbatim in body, (
+            f"submit-plan-artifact skill body is missing the canonical "
+            f"validator error string from {source}: {verbatim!r}. Agents "
+            f"pattern-match on this text to pick a fix; paraphrase, "
+            f"truncation, or omission breaks the retry loop."
         )
 
 
@@ -139,21 +209,11 @@ def test_skill_contains_per_section_payload_templates() -> None:
         "risks_mitigations": "risk",
         "verification_strategy": "method",
     }
-    templates_match = re.search(
-        r"## Per-section minimal payload templates\s*\n([\s\S]*?)\n## Dumb-proof checklist",
-        body,
-    )
-    assert templates_match is not None, (
-        "submit-plan-artifact skill is missing the '## Per-section minimal payload "
-        "templates' section before '## Dumb-proof checklist'"
-    )
-    templates_body = templates_match.group(1)
-    blocks = re.findall(r"```json\s*\n([\s\S]*?)\n```", templates_body)
-    assert len(blocks) == len(expected_keys), (
+    decoded_blocks = list(_extract_section_templates(body).values())
+    assert len(decoded_blocks) == len(expected_keys), (
         f"per-section minimal payload templates section must contain exactly "
-        f"{len(expected_keys)} fenced JSON blocks, found {len(blocks)}"
+        f"{len(expected_keys)} fenced JSON blocks, found {len(decoded_blocks)}"
     )
-    decoded_blocks = [json.loads(block) for block in blocks]
     for section, marker_key in expected_keys.items():
         if section in {"summary", "skills_mcp", "critical_files"}:
             match = next(
@@ -188,16 +248,20 @@ def test_skill_contains_per_section_payload_templates() -> None:
 def test_documented_happy_path_round_trips_through_handlers(tmp_path: Path) -> None:
     """The documented happy-path round-trips through the canonical handlers.
 
-    Stage every required section via the single-section
-    ``ralph_submit_plan_section`` handler (with one batched
-    ``ralph_submit_plan_sections`` to mirror the documented batched
+    The six payload templates are PARSED OUT OF THE SKILL BODY (not
+    hand-written) so any drift between the skill documentation and the
+    working validator fails this test. Stage every required section via
+    the batched ``ralph_submit_plan_sections`` (with one single-section
+    ``ralph_submit_plan_section`` to mirror the documented two-call
     flow), then ``ralph_finalize_plan`` writes ``plan.json`` whose
-    decoded ``content`` matches the staged payload. A green finalize
-    is the contract that proves the documented shapes are accepted.
+    decoded ``content`` includes all six staged sections. A green
+    finalize is the contract that proves the documented shapes are
+    accepted.
     """
+    body = _load_skill_body()
+    payloads = _extract_section_templates(body)
     workspace = FsWorkspace(tmp_path)
     session = planning_session()
-    payloads = _minimal_section_payloads()
 
     batched_result = handle_submit_plan_sections(
         session,
@@ -239,6 +303,6 @@ def test_documented_happy_path_round_trips_through_handlers(tmp_path: Path) -> N
 
 def _result_text(result: object) -> str:
     """Return the first text content block of a ToolResult."""
-    content = cast("list[object]", result.content)
+    content = cast("list[ToolContent]", result.content)
     first = content[0]
     return cast("str", getattr(first, "text", str(first)))
