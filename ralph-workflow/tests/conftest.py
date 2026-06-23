@@ -6,6 +6,7 @@ import hashlib
 import shutil
 import signal
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
@@ -15,6 +16,7 @@ from typer.testing import CliRunner
 from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.config.prompt_helper_config import PromptHelperConfig
+from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -38,7 +40,6 @@ pytest_plugins = ("ralph.testing.pytest_timeout_plugin",)
 
 if TYPE_CHECKING:
     from collections.abc import Generator
-    from pathlib import Path
     from types import FrameType
 
 
@@ -93,6 +94,34 @@ def _isolate_process_home(
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_xdg))
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _materialized_format_docs() -> Path:
+    """Materialize every bundled format doc into the ralph-workflow workspace.
+
+    Several regression tests (notably ``test_plan_md_canonical_validator_errors_section``
+    and the ``test_plan_md_has_canonical_validator_errors_to_fix_heading`` lock in
+    ``test_mcp_error_helpers_still_wrap``) read ``.agent/artifact-formats/plan.md``
+    straight off disk. That file is generated from
+    ``ralph/mcp/artifacts/format_docs/plan.md`` at runtime via
+    ``materialize_all_format_docs``; if a fresh checkout runs the tests before the
+    runtime has had a chance to materialize the docs (for example, in CI before
+    any pipeline session starts), the tests fail because the workspace is empty.
+
+    This session-scope fixture writes every bundled format doc into
+    ``ralph-workflow/.agent/artifact-formats/`` once per pytest session so the
+    on-disk copy always matches the bundled source. The fixture is side-effect
+    free beyond the local ``.agent/`` directory (which is gitignored), runs in
+    well under one second on the bundled set, and is skipped when the directory
+    is already populated to avoid redundant writes.
+    """
+    workspace_root = Path(__file__).resolve().parent.parent
+    artifact_dir = workspace_root / ".agent" / "artifact-formats"
+    plan_doc = artifact_dir / "plan.md"
+    if not plan_doc.exists():
+        materialize_all_format_docs(workspace_root)
+    return workspace_root
 
 
 def _configure_repo_identity(repo: object) -> None:
