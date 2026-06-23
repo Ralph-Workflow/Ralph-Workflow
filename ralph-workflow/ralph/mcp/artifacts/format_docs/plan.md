@@ -683,6 +683,28 @@ The Preset table above maps each shape to the right preset depth.
 - Did you set `summary.intent_verb` to one of the 9 closed values (or leave it blank), and `summary.intent` to a ≤500-char one-line outcome (or leave it blank)?
 - Did you stringify the content object into a JSON string for the `content` field (atomic flow only)?
 - Did you verify the plan fits within the size limits in `## Plan size limits`? (4 MB total, 500 steps max, 200 scope_items max, 500 AC max, 500 evidence per step max)
+- Is the `depends_on` graph a strict DAG (no cycles)? A cycle raises `plan step depends_on cycle detected at step N` from `ralph/mcp/artifacts/plan/_validation.py`.
+- Did you set `parallel_plan` XOR `work_units` (not both)? Declaring both raises `plan cannot declare both parallel_plan and work_units; pick one`.
+- Does every `verification_strategy[*].method` start with an executable path (not `bash -c ...`, `sh -c ...`, or `eval ...`)? The shell-invocation guard rejects any of those prefixes.
+- Does every `design.acceptance_criteria.criteria[*].satisfied_by_steps` reference a step whose `step_type` is one of `file_change` or `action`? Referencing a `research` or `verify` step raises `satisfied_by_steps cannot reference a research or verify step; step N is T for criterion ID`.
+- Does every `satisfied_by_steps` integer reference a real `step.number` that exists in `steps`? An orphan integer raises `acceptance criterion ID references unknown step number N`.
+- Is `skills_mcp.skills` non-empty (or is `design.planning_profile == "minimal"`)? Empty skills on a non-minimal plan raises `skills_mcp.skills must contain at least one skill name unless design.planning_profile == 'minimal'`.
+
+## Canonical validator errors to fix
+
+When `ralph_finalize_plan` or `ralph_validate_draft` rejects a draft, the error message comes from one of the cross-section validators in `ralph/mcp/artifacts/plan/_validation.py`. This section enumerates every literal error string the agent will see and the canonical fix.
+
+### Cross-section validator errors (raised by `_validation.py`)
+
+- `plan step depends_on cycle detected at step N` - fix: remove the cycle by editing one `depends_on` entry to break the loop.
+- `plan cannot declare both parallel_plan and work_units; pick one` - fix: declare exactly one of `parallel_plan` or `work_units`, leave the other empty.
+- `verification method must not invoke a shell interpreter directly; use the executable path` - fix: replace `bash -c "..."` with the executable name and pass args as a list.
+- `satisfied_by_steps cannot reference a research or verify step; step N is T for criterion ID` - fix: only `file_change` and `action` step_types may appear in `satisfied_by_steps`; replace research/verify refs with the concrete `file_change`/`action` step that delivers the AC.
+- `skills_mcp.skills must contain at least one skill name unless design.planning_profile == 'minimal'` - fix: add at least one skill to `skills_mcp.skills`, or set `design.planning_profile = 'minimal'`.
+- `acceptance criterion ID references unknown step number N` - fix: the step number must match an existing `step.number` in `steps`.
+- `step N satisfies unknown acceptance criterion ID` - fix: add the cited criterion id to `design.acceptance_criteria.criteria` first.
+- `plan envelope has no valid 'content' object` / `plan payload must decode to a JSON object` - fix: ensure `ralph_submit_artifact` / `ralph_submit_plan_section` content is a JSON object, not a string.
+- `plan draft is missing a 'sections' object` - fix: every staged draft must contain all 6 required sections.
 
 ## Module family
 

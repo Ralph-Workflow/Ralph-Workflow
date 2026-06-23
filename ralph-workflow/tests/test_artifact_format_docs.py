@@ -751,12 +751,55 @@ def test_plan_format_doc_did_not_add_duplicate_h2() -> None:
 
 
 def test_plan_format_doc_h2_count_increased_by_one() -> None:
-    """The bundled plan.md H2 count is exactly 25 (was 22, gained 3:
-    ## Plan size limits, ## Complete example (high-quality-model plan), ## Closed enums)."""
+    """The bundled plan.md H2 count is exactly 26 (was 22, gained 4:
+    ## Plan size limits, ## Complete example (high-quality-model plan),
+    ## Closed enums, ## Canonical validator errors to fix)."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     h2_count = sum(1 for line in doc.split("\n") if line.startswith("## "))
-    assert h2_count == 25, f"Expected exactly 25 H2 sections in plan format doc, got {h2_count}"
+    assert h2_count == 26, f"Expected exactly 26 H2 sections in plan format doc, got {h2_count}"
+
+
+def test_plan_format_doc_has_canonical_validator_errors_to_fix_section() -> None:
+    """The bundled plan.md has a '## Canonical validator errors to fix' section.
+
+    Regression lock: this section must exist BETWEEN '## Dumb-proof checklist'
+    and '## Module family' and must enumerate the cross-section validator
+    error strings emitted by ralph/mcp/artifacts/plan/_validation.py.
+    """
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+
+    dumb_proof_index = doc.find("## Dumb-proof checklist")
+    canonical_index = doc.find("## Canonical validator errors to fix")
+    module_family_index = doc.find("## Module family")
+
+    assert dumb_proof_index >= 0, "plan format doc missing '## Dumb-proof checklist' section"
+    assert canonical_index >= 0, (
+        "plan format doc missing '## Canonical validator errors to fix' section"
+    )
+    assert module_family_index >= 0, "plan format doc missing '## Module family' section"
+
+    assert dumb_proof_index < canonical_index < module_family_index, (
+        "'## Canonical validator errors to fix' must appear between "
+        "'## Dumb-proof checklist' and '## Module family'"
+    )
+
+    canonical_section = doc[canonical_index:module_family_index]
+    canonical_error_strings = (
+        "plan step depends_on cycle detected at step N",
+        "plan cannot declare both parallel_plan and work_units; pick one",
+        "verification method must not invoke a shell interpreter directly",
+        "satisfied_by_steps cannot reference a research or verify step",
+        "skills_mcp.skills must contain at least one skill name",
+        "plan envelope has no valid",
+        "plan payload must decode to a JSON object",
+        "plan draft is missing a 'sections' object",
+    )
+    for needle in canonical_error_strings:
+        assert needle in canonical_section, (
+            f"plan format doc '## Canonical validator errors to fix' missing literal: {needle!r}"
+        )
 
 
 def test_plan_format_doc_extends_existing_model_tier_guidance() -> None:
