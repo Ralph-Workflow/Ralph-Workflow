@@ -1796,6 +1796,10 @@ def _format_plan_section_submission_error(
             f"[{'{...}'}]. Fix the JSON syntax first (for example the parser is often "
             "missing a comma or closing brace)."
         )
+    guidance.append(
+        "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
+        "example and recovery flow for this same error."
+    )
     return " ".join(guidance)
 
 
@@ -1817,6 +1821,8 @@ def _format_plan_batch_envelope_error(
                 "content shapes, and mode usage."
             ),
             "After fixing the batch payload, retry ralph_submit_plan_sections.",
+            "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
+            "example and recovery flow for this same error.",
         ]
     )
 
@@ -1853,6 +1859,10 @@ def _format_plan_finalize_error(
                 "'medium'}]; verification_strategy=[{'method': 'pytest tests/test_x.py -q', "
                 "'expected_outcome': 'All tests pass'}]."
             ),
+            (
+                "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
+                "example and recovery flow for this same error."
+            ),
         ]
     )
 
@@ -1882,6 +1892,10 @@ def _format_plan_step_edit_error(
                 "ralph_patch_step => {'step_number': 2, 'step': {...}}."
             ),
             f"After fixing the payload or step number, retry {tool_name}.",
+            (
+                "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
+                "example and recovery flow for this same error."
+            ),
         ]
     )
 
@@ -1943,7 +1957,9 @@ def _raise_index_format_error(
     raise InvalidParamsError(
         f"{reason} Read '.agent/artifact-formats/artifact_formats_index.md' inside the workspace "
         "for the list of valid artifact_type values and how to submit each one. "
-        "Fix the payload, then retry ralph_submit_artifact. Do NOT rely on the raw error text."
+        "Fix the payload, then retry ralph_submit_artifact. Do NOT rely on the raw error text. "
+        "Optional: the bundled `submit-artifact` skill shows a one-shot worked envelope and "
+        "recovery flow for this same error."
     ) from None
 
 
@@ -2070,7 +2086,9 @@ def _artifact_content_format_error(artifact_type: str) -> str:
         "Artifact submission requires the 'content' field. "
         "Use 'content' with a freshly generated JSON string. "
         "Do not use 'content_path' in agent-facing artifact submissions. "
-        f"Example submit: {fresh_submit_example}."
+        f"Example submit: {fresh_submit_example}. "
+        "Optional: the bundled `submit-artifact` skill shows a one-shot worked envelope and "
+        "recovery flow for this same error."
     )
 
 
@@ -2331,7 +2349,9 @@ def _raise_format_doc_error(
                 "Read that file and rebuild your submission before retrying. "
                 "Then retry ralph_submit_artifact. "
                 f"Canonical retry envelope: {retry_example}. "
-                "Do NOT rely on guesswork; follow the documented shape exactly."
+                "Do NOT rely on guesswork; follow the documented shape exactly. "
+                "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
+                "envelope and recovery flow for this same error."
             )
         else:
             msg = (
@@ -2341,7 +2361,9 @@ def _raise_format_doc_error(
                 f"read 'ralph/mcp/artifacts/format_docs/{artifact_type}.md' "
                 "in the repo source tree "
                 "instead, rebuild the submission before retrying, then retry "
-                f"ralph_submit_artifact with envelope {retry_example})"
+                f"ralph_submit_artifact with envelope {retry_example}) "
+                "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
+                "envelope and recovery flow for this same error."
             )
     except OSError:
         msg = (
@@ -2351,7 +2373,9 @@ def _raise_format_doc_error(
             f"read 'ralph/mcp/artifacts/format_docs/{artifact_type}.md' "
             "in the repo source tree "
             "instead, rebuild the submission before retrying, then retry "
-            f"ralph_submit_artifact with envelope {retry_example})"
+            f"ralph_submit_artifact with envelope {retry_example}) "
+            "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
+            "envelope and recovery flow for this same error."
         )
     raise InvalidParamsError(msg) from original_exc
 

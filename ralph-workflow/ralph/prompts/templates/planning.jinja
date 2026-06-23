@@ -46,6 +46,10 @@ Submission protocol:
 - Only use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" when the plan is genuinely short and can be safely submitted in one atomic payload.
 - The MCP tool descriptions are the contract; the tool name and one-line description in the brokered tool list tell you what side effects to expect. Re-read the description of any tool you have not used before. Do NOT call a tool without first understanding its implicit side effects: {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} fails fast on dangling depends_on and silently drops orphan AC satisfied_by_steps entries; {{FINALIZE_PLAN_TOOL_REFERENCE}} deletes the draft on success; the four step-mutation tools (insert/replace/remove/move) return an echo payload with the new step number(s), the reindex map, and the list of AC ids whose satisfied_by_steps were rewritten.
 
+## OPTIONAL: submit-plan-artifact skill
+
+The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a one-shot worked example of `ralph_submit_plan_section` and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` — that is the source of truth.
+
 USER REQUIREMENTS:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 

@@ -44,6 +44,10 @@ Do not use phrases like "follow the existing pattern" unless you name the exact 
 Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
 If the executor would need to stop and research basic repository structure, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
 
+## OPTIONAL: submit-plan-artifact skill
+
+The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a one-shot worked example of `ralph_submit_plan_section` and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` — that is the source of truth.
+
 ## Plan size limits
 
 Every plan must fit within the generous-but-bounded caps in `.agent/artifact-formats/plan.md` §`Plan size limits`. The hard cap is 4 MB total JSON; per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500) keep runaway loops detectable. A plan that exceeds any cap is rejected with a structured `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) before Pydantic runs. The cap table in §`Plan size limits` is the single source of truth — no model hard-codes a cap.

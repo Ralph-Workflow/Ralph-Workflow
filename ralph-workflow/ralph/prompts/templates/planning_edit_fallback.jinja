@@ -35,6 +35,10 @@ Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml im
 
 Not submitting the revised plan is a FAILURE.
 
+## OPTIONAL: submit-plan-artifact and submit-artifact skills
+
+The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL and applies to plan revisions; the companion `submit-artifact` skill covers non-plan generic artifact edits. Each gives a one-shot worked example and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` and `.agent/artifact-formats/artifact_formats_index.md` — those are the source of truth.
+
 Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or staged draft before editing.
 Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace the sections whose correctness depends on the revised scope, inventory, or verification model.
 Use `{{FINALIZE_PLAN_TOOL_NAME}}` after revising the affected sections so the updated plan replaces the prior finalized plan.

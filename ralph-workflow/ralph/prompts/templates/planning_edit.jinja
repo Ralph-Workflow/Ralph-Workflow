@@ -78,6 +78,10 @@ For repo-wide defects:
 - recompute risks
 - then replace every affected section so the finalized plan is globally coherent
 
+## OPTIONAL: submit-plan-artifact and submit-artifact skills
+
+The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL and applies to plan revisions; the companion `submit-artifact` skill covers non-plan generic artifact edits. Each gives a one-shot worked example and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` and `.agent/artifact-formats/artifact_formats_index.md` — those are the source of truth.
+
 ## MCP PLAN EDIT WORKFLOW
 
 Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or staged draft before editing.

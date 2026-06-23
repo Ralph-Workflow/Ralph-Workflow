@@ -36,7 +36,9 @@
     "open-design--baseline-ui",
     "open-design--fixing-accessibility",
     "open-design--fixing-motion-performance",
-    "open-design--fixing-metadata"
+    "open-design--fixing-metadata",
+    "submit-plan-artifact",
+    "submit-artifact"
   ],
   "bundles": {
     "using-superpowers": "core-workflow",
@@ -62,7 +64,9 @@
     "open-design--baseline-ui": "open-design",
     "open-design--fixing-accessibility": "open-design",
     "open-design--fixing-motion-performance": "open-design",
-    "open-design--fixing-metadata": "open-design"
+    "open-design--fixing-metadata": "open-design",
+    "submit-plan-artifact": "core-workflow",
+    "submit-artifact": "core-workflow"
   },
   "skill_sources": {
     "using-superpowers": {
@@ -304,6 +308,26 @@
       "repo": "https://github.com/ibelick/ui-skills",
       "ref": "main",
       "path": "skills/fixing-metadata/SKILL.md"
+    },
+    "submit-plan-artifact": {
+      "bundle": "core-workflow",
+      "upstream_name": "submit-plan-artifact",
+      "catalog_repo": null,
+      "catalog_ref": null,
+      "catalog_path": null,
+      "repo": "https://github.com/anomalyco/opencode",
+      "ref": "internal",
+      "path": "skills/submit-plan-artifact/SKILL.md"
+    },
+    "submit-artifact": {
+      "bundle": "core-workflow",
+      "upstream_name": "submit-artifact",
+      "catalog_repo": null,
+      "catalog_ref": null,
+      "catalog_path": null,
+      "repo": "https://github.com/anomalyco/opencode",
+      "ref": "internal",
+      "path": "skills/submit-artifact/SKILL.md"
     }
   }
 }
