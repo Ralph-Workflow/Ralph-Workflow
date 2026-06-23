@@ -20,13 +20,27 @@ import pytest
 
 
 def _load_plan_md() -> str:
-    """Read the canonical ``.agent/artifact-formats/plan.md`` body."""
+    """Read the workspace-root ``.agent/artifact-formats/plan.md`` body.
+
+    The package also ships its own bundled copy under
+    ``ralph-workflow/.agent/...`` so we must skip past that copy and
+    pin to the workspace root. Walk upward from the test file and
+    return the first parent that hosts ``.agent/`` but does NOT host
+    a ``pyproject.toml`` (the Python package lives at
+    ``ralph-workflow/`` and owns both). The prior first-match parent
+    walk returned ``ralph-workflow/.agent/artifact-formats/plan.md``
+    instead of the workspace-root copy.
+    """
     repo_root = Path(__file__).resolve()
     for parent in repo_root.parents:
+        if not (parent / ".agent").exists():
+            continue
+        if (parent / "pyproject.toml").exists():
+            continue
         candidate = parent / ".agent" / "artifact-formats" / "plan.md"
         if candidate.exists():
             return candidate.read_text(encoding="utf-8")
-    pytest.fail("could not locate .agent/artifact-formats/plan.md on disk")
+    pytest.fail("could not locate workspace-root .agent/artifact-formats/plan.md on disk")
 
 
 @pytest.mark.timeout_seconds(5)
