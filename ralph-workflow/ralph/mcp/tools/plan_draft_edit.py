@@ -381,9 +381,15 @@ def handle_patch_step(
 
 def _required_int(params: dict[str, object], name: str) -> int:
     value = params.get(name)
-    if not isinstance(value, int):
+    if isinstance(value, bool):
         raise InvalidParamsError(f"Missing '{name}' parameter")
-    return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped and stripped.lstrip("-").isdigit():
+            return int(stripped)
+    raise InvalidParamsError(f"Missing '{name}' parameter")
 
 
 _STEP_PAYLOAD_KEYS: frozenset[str] = frozenset(

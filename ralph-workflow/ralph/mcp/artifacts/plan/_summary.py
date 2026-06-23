@@ -1,6 +1,6 @@
 """Summary section for the plan artifact schema.
 
-Carries the cheap-model-friendly ``intent`` and ``intent_verb`` shortcuts in
+Carries the explicit ``intent`` and ``intent_verb`` analysis fields in
 addition to the existing ``context`` and ``scope_items`` fields. ``intent`` is
 a free-form 1-line user-facing outcome (defaults to empty string so it is
 dropped by ``model_dump(exclude_defaults=True)``, mirroring ``context``).

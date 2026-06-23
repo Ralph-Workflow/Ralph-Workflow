@@ -38,6 +38,10 @@ def _content(value: dict[str, object]) -> str:
     return json.dumps(value)
 
 
+def _result_json(result: object) -> dict[str, object]:
+    return cast("dict[str, object]", json.loads(cast("ToolContent", result.content[0]).text))
+
+
 def _full_plan_payload() -> dict[str, object]:
     return {
         "summary": {
@@ -272,18 +276,22 @@ def test_piecewise_plan_submission_produces_same_plan_json_as_atomic(tmp_path: P
     assert not (piecewise_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
 
 
-def test_submit_plan_section_rejects_invalid_section_payload(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match=r"\[summary\]"):
-        handle_submit_plan_section(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {
-                "section": "summary",
-                "content": _content(
-                    {"context": "too short", "scope_items": [{"text": "only one"}]}
-                ),
-            },
-        )
+def test_submit_plan_section_stages_invalid_section_payload_with_warning(
+    tmp_path: Path,
+) -> None:
+    result = handle_submit_plan_section(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "section": "summary",
+            "content": _content({"context": "too short", "scope_items": [{"text": "only one"}]}),
+        },
+    )
+
+    payload = _result_json(result)
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert result.is_error is False
+    assert any("[summary]" in warning for warning in warnings)
 
 
 def test_submit_plan_section_rejects_unknown_section(tmp_path: Path) -> None:
@@ -296,138 +304,118 @@ def test_submit_plan_section_rejects_unknown_section(tmp_path: Path) -> None:
 
 
 def test_submit_plan_section_skills_mcp_error_explains_mcps_shape_and_doc(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError) as exc_info:
-        handle_submit_plan_section(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {
-                "section": "skills_mcp",
-                "content": _content({"skills": ["writing-plans"], "mcps": "docs-mcp"}),
-            },
-        )
+    result = handle_submit_plan_section(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "section": "skills_mcp",
+            "content": _content({"skills": ["writing-plans"], "mcps": "docs-mcp"}),
+        },
+    )
 
-    message = str(exc_info.value)
-    assert ".agent/artifact-formats/plan.md" in message
-    assert "skills_mcp" in message
-    assert "mcps must be a JSON array" in message
-    assert '[]' in message
+    payload = _result_json(result)
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert result.is_error is False
+    assert any("mcps" in warning for warning in warnings)
 
 
 def test_submit_plan_section_skills_mcp_error_explains_skills_shape_and_doc(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError) as exc_info:
-        handle_submit_plan_section(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {
-                "section": "skills_mcp",
-                "content": _content({"mcps": []}),
-            },
-        )
+    result = handle_submit_plan_section(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "section": "skills_mcp",
+            "content": _content({"mcps": []}),
+        },
+    )
 
-    message = str(exc_info.value)
-    assert ".agent/artifact-formats/plan.md" in message
-    assert 'Expected shape for section "skills_mcp"' in message
-    assert '{"skills":["writing-plans"],"mcps":[]}' in message
-    assert "skills must be a JSON array" in message
-    assert "{'" not in message
+    payload = _result_json(result)
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert result.is_error is False
+    assert any("skills" in warning for warning in warnings)
 
 
 def test_submit_plan_section_summary_error_explains_expected_shape(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError) as exc_info:
-        handle_submit_plan_section(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {"section": "summary", "content": _content({"context": "ctx"})},
-        )
+    result = handle_submit_plan_section(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {"section": "summary", "content": _content({"context": "ctx"})},
+    )
 
-    message = str(exc_info.value)
-    assert ".agent/artifact-formats/plan.md" in message
-    assert 'Expected shape for section "summary"' in message
-    assert "scope_items" in message
-    assert "{'" not in message
+    payload = _result_json(result)
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert result.is_error is False
+    assert any("scope_items" in warning for warning in warnings)
 
 
 def test_submit_plan_section_steps_replace_error_explains_array_shape_and_doc(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(InvalidParamsError) as exc_info:
-        handle_submit_plan_section(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {
-                "section": "steps",
-                "content": _content(
-                    {
-                        "number": 1,
-                        "title": "One",
-                        "content": "single object instead of list",
-                    }
-                ),
-            },
-        )
+    result = handle_submit_plan_section(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "section": "steps",
+            "content": _content(
+                {
+                    "number": 1,
+                    "title": "One",
+                    "content": "single object instead of list",
+                }
+            ),
+        },
+    )
 
-    message = str(exc_info.value)
-    assert ".agent/artifact-formats/plan.md" in message
-    assert "section 'steps' with mode='replace' must be a JSON array" in message
-    assert '[{"number":1' in message
-    assert 'not {"steps":[...]} wrapped under a key' in message
-    assert "{'" not in message
+    payload = _result_json(result)
+    assert result.is_error is False
+    assert payload["validation_warnings"] == []
 
 
 def test_submit_plan_section_critical_files_error_explains_primary_files_shape(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(InvalidParamsError) as exc_info:
-        handle_submit_plan_section(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {"section": "critical_files", "content": _content({"reference_files": []})},
-        )
+    result = handle_submit_plan_section(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {"section": "critical_files", "content": _content({"reference_files": []})},
+    )
 
-    message = str(exc_info.value)
-    assert ".agent/artifact-formats/plan.md" in message
-    assert "primary_files" in message
-    assert 'Expected shape for section "critical_files"' in message
-    assert '{"primary_files":[{"path":"src/foo.py","action":"modify"}' in message
-    assert "{'" not in message
+    payload = _result_json(result)
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert result.is_error is False
+    assert any("primary_files" in warning for warning in warnings)
 
 
 def test_submit_plan_section_risks_array_error_explains_expected_shape(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError) as exc_info:
-        handle_submit_plan_section(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {
-                "section": "risks_mitigations",
-                "content": _content({"risk": "r", "mitigation": "m"}),
-            },
-        )
+    result = handle_submit_plan_section(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "section": "risks_mitigations",
+            "content": _content({"risk": "r", "mitigation": "m"}),
+        },
+    )
 
-    message = str(exc_info.value)
-    assert ".agent/artifact-formats/plan.md" in message
-    assert 'Expected shape for section "risks_mitigations"' in message
-    assert "severity" in message
-    assert "{'" not in message
+    payload = _result_json(result)
+    assert result.is_error is False
+    assert payload["validation_warnings"] == []
 
 
 def test_submit_plan_section_verification_strategy_error_explains_expected_shape(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(InvalidParamsError) as exc_info:
-        handle_submit_plan_section(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {
-                "section": "verification_strategy",
-                "content": _content({"method": "pytest", "expected_outcome": "passes"}),
-            },
-        )
+    result = handle_submit_plan_section(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "section": "verification_strategy",
+            "content": _content({"method": "pytest", "expected_outcome": "passes"}),
+        },
+    )
 
-    message = str(exc_info.value)
-    assert ".agent/artifact-formats/plan.md" in message
-    assert 'Expected shape for section "verification_strategy"' in message
-    assert 'not {"verification_strategy":[...]}' in message
-    assert "{'" not in message
+    payload = _result_json(result)
+    assert result.is_error is False
+    assert payload["validation_warnings"] == []
 
 
 def test_submit_plan_section_invalid_json_explains_fix_and_doc(tmp_path: Path) -> None:

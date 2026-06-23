@@ -1,7 +1,7 @@
 """Typed ``EvidenceRef`` sub-model for plan-step evidence entries.
 
 The ``PlanStep.expected_evidence`` field is typed as ``list[EvidenceRef]``
-so cheap models can declare the kind of evidence (file, command output,
+so agents can declare the kind of evidence (file, command output,
 or test name) in a structured way that the executor can parse. The
 ``kind`` discriminator lets a step mix evidence types without forcing
 the executor to sniff the entry shape.

@@ -246,6 +246,14 @@ def test_skill_contains_per_section_payload_templates() -> None:
 
 
 @pytest.mark.timeout_seconds(10)
+def test_skill_documents_validation_warnings_repair_path() -> None:
+    body = _load_skill_body()
+    assert "validation_warnings" in body
+    assert "valid JSON that is not yet" in body
+    assert "ralph_validate_draft" in body
+
+
+@pytest.mark.timeout_seconds(10)
 def test_documented_happy_path_round_trips_through_handlers(tmp_path: Path) -> None:
     """The documented happy-path round-trips through the canonical handlers.
 

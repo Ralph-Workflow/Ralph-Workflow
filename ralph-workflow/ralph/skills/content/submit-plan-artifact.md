@@ -60,8 +60,11 @@ companion `submit-artifact` skill for generic artifact submission.
 3. Stage each section via `ralph_submit_plan_section(section='<name>',
    mode='replace', content=<section-payload-as-dict>)` OR stage multiple
    complete sections via `ralph_submit_plan_sections(entries=[...])`.
+   Inspect the returned `validation_warnings`; valid JSON that is not yet
+   schema-valid is staged, not abandoned.
 4. Run `ralph_validate_draft` for a dry-run check before finalizing. If it
-   returns `valid=false`, fix the offending sections (the message names
+   returns `valid=false` or any staging call returned non-empty
+   `validation_warnings`, fix the offending sections (the message names
    them) and re-run the dry-run before finalizing.
 5. Call `ralph_finalize_plan` to write `.agent/artifacts/plan.json`.
 
@@ -189,6 +192,11 @@ in the same module. The table below enumerates every literal error
 string the agent will see and the canonical fix. The error strings
 are copied verbatim from the f-strings that raise
 `PlanArtifactValidationError`; do NOT paraphrase them when retrying.
+
+Staging tools can also return `is_error=false` with non-empty
+`validation_warnings`. Treat those warnings as repair work: the JSON was
+preserved in the draft, but `ralph_validate_draft` / `ralph_finalize_plan`
+will reject it until the named fields are fixed.
 
 | Error string (verbatim from the validator) | Source location | Fix |
 | --- | --- | --- |

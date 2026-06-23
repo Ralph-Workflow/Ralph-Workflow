@@ -1,6 +1,6 @@
 ---
 name: submit-plan-step-edits
-description: Use when the cross-section validator failure rejected a step mutation, when step numbering off-by-one after an insert/remove/move echo, when a dangling depends_on fails the build, or when an orphan AC satisfied_by_steps reference was silently dropped from the staged draft
+description: Use when a cross-section validator failure or validation_warnings involves a plan step mutation, step numbering off-by-one, dangling depends_on, orphan AC satisfied_by_steps, or step schema repair
 ---
 
 # submit-plan-step-edits
@@ -37,10 +37,9 @@ echo contract; both are documented below.
   `ralph/mcp/artifacts/plan/_step_edit.py`; missing fields are preserved).
   Prefer over `ralph_replace_plan_step` when only one or two fields change.
 - `ralph_remove_plan_step` — delete a single existing step. Auto-reindexes
-  `depends_on` and `AC.satisfied_by_steps`; orphan AC
-  `satisfied_by_steps` entries that referenced the removed step are
-  silently dropped (this is the principle-of-least-surprise behavior,
-  not a bug).
+  `depends_on` and `AC.satisfied_by_steps`; references to the removed
+  step are preserved as staged JSON and reported in
+  `validation_warnings` so validation can fail without losing data.
 - `ralph_move_plan_step` — move a step to a new 1-based index in a single
   round-trip. The move auto-reindexes once, so do NOT combine it with
   insert/remove in the same draft-edit batch.
@@ -354,38 +353,37 @@ Read it carefully, then:
    `ralph_replace_plan_step`, `ralph_patch_step`,
    `ralph_remove_plan_step`, `ralph_move_plan_step`) and that the
    envelope shape matches the one for that tool in ## Core Flow.
-2. For `ralph_insert_plan_step`: confirm `index` is an integer between
-   `1` and `len(steps) + 1`. Confirm `step.number` is either omitted or
-   ignored — the runtime assigns a synthetic number and reindexes; passing
-   a `number` that conflicts with an existing step raises a
-   `PlanArtifactValidationError`.
+2. For `ralph_insert_plan_step`: `index` may be an integer or numeric
+   string. Values `<= 0` insert at the beginning; values beyond
+   `len(steps) + 1` append. Confirm `step.number` is either omitted or
+   ignored — the runtime assigns a synthetic number and reindexes before
+   validation. A conflicting user-supplied `step.number` does not survive
+   the mutation.
 3. For `ralph_replace_plan_step` / `ralph_patch_step`: confirm
    `step_number` is an integer that exists in the CURRENT staged draft.
    After a previous insert/remove/move, the surviving step numbers are
    renumbered 1..N; re-read the draft via `ralph_get_plan_draft` to learn
    the current numbers.
-4. For `ralph_remove_plan_step`: confirm `step_number` is an integer that
-   exists in the CURRENT staged draft AND that no surviving step's
-   `depends_on` references it. Removing a step that another step depends
-   on fails fast with `cannot remove step N; another step depends on step N`.
-   Remove the dependent steps first, or edit the dependent step's
-   `depends_on` to drop the doomed reference.
+4. For `ralph_remove_plan_step`: confirm `step_number` is an integer or
+   numeric string that exists in the CURRENT staged draft. If surviving
+   steps or AC entries still reference the removed step, the edit stages
+   unresolved JSON and returns `validation_warnings`; fix those warnings
+   before `ralph_finalize_plan`.
 5. For `ralph_move_plan_step`: confirm `from_step_number` is an integer
-   that exists in the current staged draft. Prefer an in-range integer
-   for `to_index`; the handler clamps out-of-range destination indexes
-   to the valid 1..N range. `from_step_number` is the current 1-based
+   that exists in the current staged draft. `to_index` may be an integer
+   or numeric string; values `<= 0` move to the beginning and oversized
+   values append. `from_step_number` is the current 1-based
    position, and `to_index` is the destination 1-based position. Do NOT
    combine `ralph_move_plan_step` with `ralph_insert_plan_step` or
    `ralph_remove_plan_step` in the same draft-edit batch — the move
    auto-reindexes once, and a follow-up insert/remove will rewrite the
    numbers a second time. Sequence the calls: move, then insert/remove,
    or insert/remove, then move.
-6. If the echo payload reports a non-empty
-   `dropped_ac_satisfied_by_steps` list, an AC's `satisfied_by_steps`
-   entries were silently dropped because the referenced step is gone.
-   Re-fetch the plan, re-check the surviving AC ids, and either add a
-   new step that satisfies the dropped AC or edit the AC to remove the
-   broken reference.
+6. If the echo payload reports non-empty `validation_warnings`, re-fetch
+   or inspect the staged draft, repair the named step/AC fields, and run
+   `ralph_validate_draft` before finalizing. Future numeric references
+   are allowed to remain staged while you add the future step; unresolved
+   removed-step references must be repaired before finalize.
 
 **Worked retry envelope** for a `_format_plan_step_edit_error` style
 failure on `ralph_insert_plan_step`:
@@ -497,8 +495,8 @@ the no-skill helper `_format_plan_step_edit_error` inlines in its
 step-edit guidance. Use
 the matching block when a step-mutation tool returns an error.
 
-**`ralph_insert_plan_step`** — stage a new step at a 1-based
-position; the runtime assigns the synthetic `step.number`.
+**`ralph_insert_plan_step`** — stage a new step at a normalized
+1-based position; the runtime assigns the synthetic `step.number`.
 
 ```json
 {
@@ -667,10 +665,10 @@ If this skill and the format doc ever disagree, the format doc wins.
 - Relying on a user-supplied `step.number` on `ralph_insert_plan_step`.
   The runtime assigns a synthetic `number` from
   `max(existing_numbers, default=0) + 1` and then reindexes the full list,
-  so a user-supplied `number` is ignored. Supplying a `number` that
-  conflicts with an existing step raises a `PlanArtifactValidationError`,
-  and supplying a `number` that you expect to survive reindex is wrong
-  because the runtime rewrites every step's `number` after the call.
+  so a user-supplied `number` is ignored. Supplying a `number` that you
+  expect to survive reindex is wrong, whether it is unique or conflicts
+  with an existing step, because the runtime rewrites every step's
+  `number` after the call.
   Omit `step.number` from the payload; position is governed by `index`.
 - Supplying a `depends_on` entry after a move without re-reading the
   draft. The move rewrites every step's `depends_on` through the reindex
@@ -703,14 +701,11 @@ If this skill and the format doc ever disagree, the format doc wins.
   path. A failed finalize keeps the staged draft available for repair;
   a successful finalize writes the final artifact and deletes the
   staged draft.
-- Ignoring the `dropped_ac_satisfied_by_steps` field in the mutation
-  echo. An empty list means no AC references were dropped (good); a
-  non-empty list means an AC's `satisfied_by_steps` entries were
-  silently dropped because the referenced step is gone. Either add a
-  new step that satisfies the dropped AC, or edit the AC to remove
-  the broken reference — leaving the drop unaddressed produces a stale
-  draft that the cross-section validator catches at finalize with
-  `acceptance criterion 'ID' references unknown step number N`.
+- Ignoring `validation_warnings` in the mutation echo. Empty warnings mean
+  the edit staged cleanly. Non-empty warnings mean valid JSON was
+  preserved but does not yet pass the plan schema; repair the named
+  `depends_on`, `satisfied_by_steps`, or step fields and rerun
+  `ralph_validate_draft`.
 
 ## Red Flags - STOP and Start Over
 

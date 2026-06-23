@@ -155,6 +155,163 @@ def test_insert_plan_step_tool_updates_draft_and_reindexes(tmp_path: Path) -> No
     assert [step["title"] for step in steps] == ["First", "Inserted", "Second"]
 
 
+def test_insert_plan_step_ignores_conflicting_user_supplied_step_number(
+    tmp_path: Path,
+) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    bridge.dispatch(
+        "ralph_insert_plan_step",
+        {
+            "index": 2,
+            "step": {
+                "number": 1,
+                "title": "Inserted with ignored number",
+                "content": "inserted",
+                "depends_on": [1],
+            },
+        },
+        workspace=workspace,
+    )
+
+    steps = _draft_steps_after(bridge, workspace)
+    assert [step["number"] for step in steps] == [1, 2, 3]
+    assert [step["title"] for step in steps] == [
+        "First",
+        "Inserted with ignored number",
+        "Second",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("index", "expected_titles", "expected_index"),
+    [
+        (-99, ["Inserted", "First", "Second"], 1),
+        (0, ["Inserted", "First", "Second"], 1),
+        ("99", ["First", "Second", "Inserted"], 3),
+    ],
+)
+def test_insert_plan_step_normalizes_edge_indexes(
+    tmp_path: Path,
+    index: int | str,
+    expected_titles: list[str],
+    expected_index: int,
+) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    result = cast(
+        "ToolResult",
+        bridge.dispatch(
+            "ralph_insert_plan_step",
+            {
+                "index": index,
+                "step": {
+                    "title": "Inserted",
+                    "content": "inserted",
+                    "depends_on": [],
+                },
+            },
+            workspace=workspace,
+        ),
+    )
+
+    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    assert payload["index"] == expected_index
+    steps = _draft_steps_after(bridge, workspace)
+    assert [step["number"] for step in steps] == [1, 2, 3]
+    assert [step["title"] for step in steps] == expected_titles
+
+
+def test_insert_plan_step_preserves_future_depends_on_reference(
+    tmp_path: Path,
+) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    result = cast(
+        "ToolResult",
+        bridge.dispatch(
+            "ralph_insert_plan_step",
+            {
+                "index": 3,
+                "step": {
+                    "title": "Inserted",
+                    "content": "inserted",
+                    "depends_on": [9],
+                },
+            },
+            workspace=workspace,
+        ),
+    )
+
+    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert any("depends_on references unknown step 9" in warning for warning in warnings)
+    steps = _draft_steps_after(bridge, workspace)
+    inserted = next(step for step in steps if step["title"] == "Inserted")
+    assert inserted["depends_on"] == [9]
+
+
+def test_insert_plan_step_keeps_draft_editable_when_existing_step_item_is_scalar(
+    tmp_path: Path,
+) -> None:
+    _seed_plan_draft(tmp_path)
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    draft = json.loads((artifact_dir / ".plan_draft.json").read_text(encoding="utf-8"))
+    draft["sections"]["steps"] = ["bad-but-valid-json"]
+    (artifact_dir / ".plan_draft.json").write_text(json.dumps(draft), encoding="utf-8")
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    result = cast(
+        "ToolResult",
+        bridge.dispatch(
+            "ralph_insert_plan_step",
+            {
+                "index": 99,
+                "step": {
+                    "title": "Inserted",
+                    "content": "inserted",
+                    "depends_on": [],
+                },
+            },
+            workspace=workspace,
+        ),
+    )
+
+    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert any("raw_step_json" in warning for warning in warnings)
+    steps = _draft_steps_after(bridge, workspace)
+    assert steps[0]["raw_step_json"] == "bad-but-valid-json"
+    assert steps[1]["title"] == "Inserted"
+
+
 def test_insert_plan_step_accepts_json_string_step_payload(tmp_path: Path) -> None:
     _seed_plan_draft(tmp_path)
     workspace = _workspace(tmp_path)

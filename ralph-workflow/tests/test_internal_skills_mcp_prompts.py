@@ -11,6 +11,7 @@ remains GREEN.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -732,6 +733,17 @@ def test_commit_cleanup_jinja_has_optional_skill_pointer() -> None:
     assert ".agent/artifact-formats/commit_cleanup.md" in rendered, (
         "commit_cleanup.jinja must reference the commit_cleanup.md doc"
     )
+
+
+def test_commit_cleanup_jinja_json_fences_are_parseable() -> None:
+    text = COMMIT_CLEANUP_JINJA.read_text(encoding="utf-8")
+    blocks = re.findall(r"```json\s*\n(.*?)\n```", text, flags=re.DOTALL)
+    assert blocks, "commit_cleanup.jinja must contain JSON examples"
+    for index, block in enumerate(blocks, start=1):
+        try:
+            json.loads(block)
+        except json.JSONDecodeError as exc:  # pragma: no cover - failure path
+            pytest.fail(f"commit_cleanup.jinja JSON block {index} is invalid: {exc}")
 
 
 

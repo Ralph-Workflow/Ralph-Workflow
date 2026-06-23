@@ -10,6 +10,8 @@ description must reference the depends_on cycle detector.
 
 from __future__ import annotations
 
+from typing import cast
+
 from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
 
 _MUTATION_TOOLS = (
@@ -120,6 +122,42 @@ def test_step_tools_schema_exposes_flat_argument_style() -> None:
         )
         for field in flat_fields:
             assert field in properties, f"{name} schema does not advertise flat field {field!r}"
+
+
+def test_planning_tool_descriptions_advertise_lenient_staging_and_warnings() -> None:
+    descs = _descs()
+    for name in (
+        "ralph_submit_plan_section",
+        "ralph_submit_plan_sections",
+        "ralph_insert_plan_step",
+        "ralph_replace_plan_step",
+        "ralph_patch_step",
+        "ralph_remove_plan_step",
+        "ralph_move_plan_step",
+    ):
+        desc = descs[name]
+        assert "validation_warnings" in desc
+        assert "validate_draft" in desc or name.startswith("ralph_submit_plan")
+
+    forbidden_by_tool = {
+        "ralph_submit_plan_sections": ("validates ALL", "first failure"),
+        "ralph_remove_plan_step": ("Fails fast", "Silently drops"),
+    }
+    for name, fragments in forbidden_by_tool.items():
+        desc = descs[name]
+        for fragment in fragments:
+            assert fragment not in desc, f"{name} description still says {fragment!r}"
+
+
+def test_step_index_schemas_accept_numeric_strings_and_edge_indexes() -> None:
+    schemas = _schemas()
+    insert_index = schemas["ralph_insert_plan_step"]["properties"]["index"]
+    assert insert_index == {"anyOf": [{"type": "integer"}, {"type": "string"}]}
+    move_properties = schemas["ralph_move_plan_step"]["properties"]
+    assert move_properties["to_index"] == {
+        "anyOf": [{"type": "integer"}, {"type": "string"}]
+    }
+    assert "minimum" not in cast("dict[str, object]", move_properties["to_index"])
 
 
 def test_planning_tool_descriptions_do_not_advertise_pseudo_json_call_examples() -> None:

@@ -162,6 +162,27 @@ def test_skill_documents_every_step_mutation_tool() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(10)
+def test_skill_documents_insert_step_number_is_ignored_not_rejected() -> None:
+    body = _load_skill_body()
+    forbidden = (
+        "conflicts with an existing step raises",
+        "conflicting step.number raises",
+        "conflicting `step.number` raises",
+    )
+    for fragment in forbidden:
+        assert fragment not in body
+    assert "A conflicting user-supplied `step.number` does not survive" in body
+
+
+@pytest.mark.timeout_seconds(10)
+def test_skill_documents_validation_warnings_not_silent_drops() -> None:
+    body = _load_skill_body()
+    assert "validation_warnings" in body
+    assert "silently dropped" not in body
+    assert "preserved as staged JSON" in body
+
+
 def _parse_helper_envelope_fragments(
     helper_text: str,
 ) -> dict[str, tuple[str, ...]]:

@@ -22,6 +22,7 @@ without leaking the production I/O boundary.
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.plan._validation import (
@@ -33,15 +34,55 @@ if TYPE_CHECKING:
     from ralph.mcp.artifacts.plan._section_models import PlanArtifactDict
 
 
-def _steps_from_sections(sections: PlanArtifactDict) -> list[dict[str, object]]:
+def _coerce_positive_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit() and int(stripped) > 0:
+            return int(stripped)
+    return None
+
+
+def _jsonish(value: object) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=True, sort_keys=True)
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _wrap_invalid_step_entry(value: object, index: int) -> dict[str, object]:
+    return {
+        "number": index,
+        "title": f"Unresolved staged step {index}",
+        "content": _jsonish(value),
+        "step_type": "action",
+        "raw_step_json": value,
+    }
+
+
+def _steps_from_sections(sections: PlanArtifactDict) -> tuple[list[dict[str, object]], list[str]]:
     raw_steps = sections.get("steps")
     if raw_steps is None:
-        return []
+        return [], []
     if not isinstance(raw_steps, list):
         raise PlanArtifactValidationError("section 'steps' must be a JSON array")
 
-    validated = validate_plan_section("steps", raw_steps, mode="replace")
-    return cast("list[dict[str, object]]", validated)
+    steps: list[dict[str, object]] = []
+    warnings: list[str] = []
+    raw_step_items = cast("list[object]", raw_steps)
+    for index, step in enumerate(raw_step_items, start=1):
+        if isinstance(step, dict):
+            steps.append(dict(cast("dict[str, object]", step)))
+            continue
+        steps.append(_wrap_invalid_step_entry(step, index))
+        warnings.append(
+            f"step at index {index} was valid JSON but not a JSON object; preserved "
+            "it in raw_step_json for validate_draft/finalize to report"
+        )
+    return steps, warnings
 
 
 def _collect_ac_ids(sections: PlanArtifactDict) -> set[str]:
@@ -65,7 +106,7 @@ def _collect_ac_ids(sections: PlanArtifactDict) -> set[str]:
 def _remap_ac_step_refs(
     sections: PlanArtifactDict,
     number_map: dict[int, int],
-) -> tuple[PlanArtifactDict, list[str], list[str]]:
+) -> tuple[PlanArtifactDict, list[str], list[str], list[str]]:
     """Keep ``AC.satisfied_by_steps`` in lockstep with the new step numbering.
 
     Returns the new sections dict plus two parallel lists:
@@ -74,48 +115,65 @@ def _remap_ac_step_refs(
       least one entry translated through ``number_map`` (the references
       survived the reindex but moved).
     - ``dropped_ac_ids``: AC ids whose ``satisfied_by_steps`` list lost at
-      least one entry because the referenced step is gone (the
-      principle-of-least-surprise orphan-drop behavior).
+      least one entry because the referenced step is gone. This remains
+      empty for the lenient staging path because unresolved references are
+      preserved as JSON objects for validate/finalize to reject.
 
-    Entries that no longer point at a real step are dropped silently; entries
-    that survive the reindex are translated through ``number_map``.
+    Entries that survive the reindex are translated through ``number_map``.
+    Entries that no longer point at a real step are preserved as unresolved
+    JSON markers so a draft edit does not silently lose user intent.
     """
     new_sections: dict[str, object] = dict(sections)
     design = new_sections.get("design")
     if not isinstance(design, dict):
-        return new_sections, [], []
+        return new_sections, [], [], []
     ac = design.get("acceptance_criteria")
     if not isinstance(ac, dict):
-        return new_sections, [], []
+        return new_sections, [], [], []
     criteria = ac.get("criteria")
     if not isinstance(criteria, list):
-        return new_sections, [], []
-    kept_new_numbers = set(number_map.values())
+        return new_sections, [], [], []
     new_criteria: list[object] = []
     rewritten_ac_ids: list[str] = []
     dropped_ac_ids: list[str] = []
+    warnings: list[str] = []
     for entry in criteria:
         if not isinstance(entry, dict):
             new_criteria.append(entry)
             continue
         refs = entry.get("satisfied_by_steps")
         if not isinstance(refs, list):
+            if refs is not None:
+                warnings.append(
+                    "AC satisfied_by_steps was not a list; left unchanged for "
+                    "validate_draft/finalize to report"
+                )
             new_criteria.append(entry)
             continue
-        remapped: list[int] = []
+        remapped: list[object] = []
         rewritten_for_this_ac = False
-        dropped_for_this_ac = False
+        kept_non_int: list[object] = []
         for ref in refs:
-            if not isinstance(ref, int) or ref not in number_map:
-                dropped_for_this_ac = True
+            ref_number = _coerce_positive_int(ref)
+            if ref_number is None:
+                kept_non_int.append(ref)
+                warnings.append(
+                    "AC satisfied_by_steps contained a non-integer entry; left it "
+                    "unchanged for validate_draft/finalize to report"
+                )
                 continue
-            new_number = number_map[ref]
-            if new_number not in kept_new_numbers:
-                dropped_for_this_ac = True
+            new_number = number_map.get(ref_number)
+            if new_number is None:
+                remapped.append(ref_number)
+                warnings.append(
+                    "AC satisfied_by_steps references a step that is not currently staged; "
+                    "preserved the numeric reference so a later step edit can satisfy it"
+                )
                 continue
-            if new_number != ref:
+            if new_number != ref_number:
                 rewritten_for_this_ac = True
             remapped.append(new_number)
+        remapped.extend(kept_non_int)
         new_entry: dict[str, object] = dict(entry)
         new_entry["satisfied_by_steps"] = remapped
         new_criteria.append(new_entry)
@@ -124,14 +182,12 @@ def _remap_ac_step_refs(
             continue
         if rewritten_for_this_ac and ac_id not in rewritten_ac_ids:
             rewritten_ac_ids.append(ac_id)
-        if dropped_for_this_ac and ac_id not in dropped_ac_ids:
-            dropped_ac_ids.append(ac_id)
     new_ac_dict: dict[str, object] = dict(ac)
     new_ac_dict["criteria"] = new_criteria
     new_design_dict: dict[str, object] = dict(design)
     new_design_dict["acceptance_criteria"] = new_ac_dict
     new_sections["design"] = new_design_dict
-    return new_sections, rewritten_ac_ids, dropped_ac_ids
+    return new_sections, rewritten_ac_ids, dropped_ac_ids, warnings
 
 
 def _normalize_step_edit_payload(
@@ -143,51 +199,145 @@ def _normalize_step_edit_payload(
         raise PlanArtifactValidationError("step payload must be a JSON object")
     payload: dict[str, object] = dict(cast("dict[str, object]", step_payload))
     payload["number"] = synthetic_number
-    fragment = validate_plan_section("steps", payload, mode="append")
-    return cast("dict[str, object]", fragment)
+    return _normalize_lenient_step_fields(payload)
+
+
+def _normalize_lenient_step_fields(step: dict[str, object]) -> dict[str, object]:
+    normalized = dict(step)
+    for field in ("targets", "depends_on", "satisfies", "expected_evidence"):
+        value = normalized.get(field)
+        if value is None or isinstance(value, list):
+            continue
+        if field == "depends_on" and _coerce_positive_int(value) is not None:
+            normalized[field] = [_coerce_positive_int(value)]
+            continue
+        if field in {"satisfies", "expected_evidence"} and isinstance(value, str):
+            stripped = value.strip()
+            normalized[field] = [stripped] if stripped else []
+            continue
+        if isinstance(value, dict) and field in {"targets", "expected_evidence"}:
+            normalized[field] = [value]
+    expected_evidence = normalized.get("expected_evidence")
+    if isinstance(expected_evidence, list):
+        normalized_evidence: list[object] = []
+        for entry in cast("list[object]", expected_evidence):
+            if isinstance(entry, str):
+                stripped = entry.strip()
+                if stripped:
+                    normalized_evidence.append({"kind": "file", "ref": stripped})
+                continue
+            normalized_evidence.append(entry)
+        normalized["expected_evidence"] = normalized_evidence
+    return normalized
+
+
+def _prepare_steps_for_reindex(
+    steps: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[int], list[str]]:
+    valid_numbers = [
+        number
+        for step in steps
+        if (number := _coerce_positive_int(step.get("number"))) is not None
+    ]
+    next_synthetic = max(valid_numbers, default=0) + 1
+    seen: set[int] = set()
+    prepared_steps: list[dict[str, object]] = []
+    old_numbers: list[int] = []
+    warnings: list[str] = []
+    for position, step in enumerate(steps, start=1):
+        raw_number = step.get("number")
+        number = _coerce_positive_int(raw_number)
+        if number is None:
+            number = next_synthetic
+            next_synthetic += 1
+            warnings.append(
+                f"step at index {position} had missing or invalid number; assigned "
+                "a temporary number before reindexing"
+            )
+        elif number in seen:
+            number = next_synthetic
+            next_synthetic += 1
+            warnings.append(
+                f"step at index {position} reused a duplicate number; assigned "
+                "a temporary number before reindexing"
+            )
+        seen.add(number)
+        normalized = _normalize_lenient_step_fields(dict(step))
+        normalized["number"] = number
+        prepared_steps.append(normalized)
+        old_numbers.append(number)
+    return prepared_steps, old_numbers, warnings
+
+
+def _steps_schema_warnings(steps: list[dict[str, object]]) -> list[str]:
+    try:
+        validate_plan_section("steps", steps, mode="replace")
+    except PlanArtifactValidationError as exc:
+        return [
+            "staged steps do not yet pass PlanStep validation; run "
+            f"ralph_validate_draft before finalize: {exc}"
+        ]
+    return []
 
 
 def _reindex_plan_steps(
     steps: list[dict[str, object]],
     *,
     removed_step_number: int | None = None,
-) -> tuple[list[dict[str, object]], dict[int, int], list[int]]:
+) -> tuple[list[dict[str, object]], dict[int, int], list[int], list[str]]:
     """Reindex the steps list to 1-based contiguous numbers.
 
     Returns the reindexed steps, the ``{old_number: new_number}`` map, and
     the list of step numbers whose ``depends_on`` array was rewritten.
     """
-    old_numbers = [cast("int", step["number"]) for step in steps]
-    if len(set(old_numbers)) != len(old_numbers):
-        raise PlanArtifactValidationError("plan steps must have unique step numbers before edit")
-
+    prepared_steps, old_numbers, warnings = _prepare_steps_for_reindex(steps)
     number_map = {old_number: index for index, old_number in enumerate(old_numbers, start=1)}
     updated_steps: list[dict[str, object]] = []
     rewritten_depends_on: list[int] = []
-    for step, old_number in zip(steps, old_numbers, strict=False):
+    for step, old_number in zip(prepared_steps, old_numbers, strict=False):
         remapped = dict(step)
         remapped["number"] = number_map[old_number]
-        dependencies = step.get("depends_on", [])
-        if not isinstance(dependencies, list):
-            raise PlanArtifactValidationError("step depends_on must be a JSON array")
+        raw_dependencies = step.get("depends_on", [])
+        if raw_dependencies is None:
+            raw_dependencies = []
+        if not isinstance(raw_dependencies, list):
+            warnings.append(
+                f"step {old_number} depends_on is not a list; left it unchanged for "
+                "validate_draft/finalize to report"
+            )
+            remapped["depends_on"] = raw_dependencies
+            updated_steps.append(remapped)
+            continue
 
-        remapped_dependencies: list[int] = []
+        remapped_dependencies: list[object] = []
         step_depends_rewritten = False
-        for dependency in dependencies:
-            if not isinstance(dependency, int):
-                raise PlanArtifactValidationError("step depends_on must contain integers")
-            if removed_step_number is not None and dependency == removed_step_number:
-                raise PlanArtifactValidationError(
-                    "cannot remove step "
-                    f"{removed_step_number}; another step depends on step "
-                    f"{removed_step_number}"
+        for dependency in raw_dependencies:
+            dependency_number = _coerce_positive_int(dependency)
+            if dependency_number is None:
+                warnings.append(
+                    f"step {old_number} depends_on contains a non-integer entry; "
+                    "left it unchanged for validate_draft/finalize to report"
                 )
-            mapped_dependency = number_map.get(dependency)
+                remapped_dependencies.append(dependency)
+                continue
+            if removed_step_number is not None and dependency_number == removed_step_number:
+                warnings.append(
+                    f"step {old_number} depended on removed step {removed_step_number}; "
+                    "preserved it as unresolved JSON for validate_draft/finalize to report"
+                )
+                remapped_dependencies.append({"removed_step_number": removed_step_number})
+                step_depends_rewritten = True
+                continue
+            mapped_dependency = number_map.get(dependency_number)
             if mapped_dependency is None:
-                raise PlanArtifactValidationError(
-                    f"step {old_number} depends on unknown step {dependency}"
+                warnings.append(
+                    f"step {old_number} depends_on references unknown step "
+                    f"{dependency_number}; preserved the numeric reference so a later "
+                    "step edit can satisfy it"
                 )
-            if mapped_dependency != dependency:
+                remapped_dependencies.append(dependency_number)
+                continue
+            if mapped_dependency != dependency_number:
                 step_depends_rewritten = True
             remapped_dependencies.append(mapped_dependency)
         remapped["depends_on"] = remapped_dependencies
@@ -195,8 +345,8 @@ def _reindex_plan_steps(
             rewritten_depends_on.append(cast("int", remapped["number"]))
         updated_steps.append(remapped)
 
-    normalized = validate_plan_section("steps", updated_steps, mode="replace")
-    return cast("list[dict[str, object]]", normalized), number_map, rewritten_depends_on
+    warnings.extend(_steps_schema_warnings(updated_steps))
+    return updated_steps, number_map, rewritten_depends_on, warnings
 
 
 def _build_step_mutation_echo(
@@ -212,6 +362,7 @@ def _build_step_mutation_echo(
     rewritten_ac_satisfied_by_steps: list[str],
     dropped_ac_satisfied_by_steps: list[str],
     total_steps: int,
+    validation_warnings: list[str],
 ) -> dict[str, object]:
     """Build the JSON echo payload the 4 step-mutation tools return.
 
@@ -225,6 +376,10 @@ def _build_step_mutation_echo(
     ``dropped_ac_satisfied_by_steps``, ``total_steps``) are always
     populated.
     """
+    deduped_warnings: list[str] = []
+    for warning in validation_warnings:
+        if warning not in deduped_warnings:
+            deduped_warnings.append(warning)
     echo: dict[str, object] = {
         "action": action,
         "reindex_map": dict(number_map),
@@ -232,6 +387,7 @@ def _build_step_mutation_echo(
         "rewritten_ac_satisfied_by_steps": list(rewritten_ac_satisfied_by_steps),
         "dropped_ac_satisfied_by_steps": list(dropped_ac_satisfied_by_steps),
         "total_steps": total_steps,
+        "validation_warnings": deduped_warnings,
     }
     if new_step_number is not None:
         echo["new_step_number"] = new_step_number
@@ -250,7 +406,8 @@ def _apply_step_mutation(
     sections: PlanArtifactDict,
     *,
     steps: list[dict[str, object]],
-) -> tuple[PlanArtifactDict, list[int], list[str], list[str]]:
+    initial_warnings: list[str] | None = None,
+) -> tuple[PlanArtifactDict, dict[int, int], list[int], list[str], list[str], list[str]]:
     """Run the reindex + AC remap and return the new sections + echo lists.
 
     Helper for the four public entry points. The reindex produces a
@@ -259,14 +416,35 @@ def _apply_step_mutation(
     ``satisfied_by_steps`` was rewritten AND a list of AC ids whose
     ``satisfied_by_steps`` entries were dropped (orphan references).
     """
-    reindexed_steps, number_map, rewritten_depends_on = _reindex_plan_steps(steps)
+    reindexed_steps, number_map, rewritten_depends_on, warnings = _reindex_plan_steps(steps)
+    if initial_warnings:
+        warnings = [*initial_warnings, *warnings]
     updated_sections: dict[str, object] = dict(sections)
     updated_sections["steps"] = reindexed_steps
-    updated_sections, rewritten_ac_ids, dropped_ac_ids = _remap_ac_step_refs(
+    updated_sections, rewritten_ac_ids, dropped_ac_ids, ac_warnings = _remap_ac_step_refs(
         updated_sections,
         number_map,
     )
-    return updated_sections, rewritten_depends_on, rewritten_ac_ids, dropped_ac_ids
+    warnings.extend(ac_warnings)
+    return (
+        updated_sections,
+        number_map,
+        rewritten_depends_on,
+        rewritten_ac_ids,
+        dropped_ac_ids,
+        warnings,
+    )
+
+
+def _clamp_insert_index(index: int, steps_count: int) -> int:
+    """Normalize a requested 1-based insertion point.
+
+    Agents often use this tool as an append primitive by passing a large
+    number, or as a prepend primitive by passing zero/negative numbers. The
+    insert operation is intentionally tolerant: anything before the first slot
+    becomes ``1`` and anything past the append slot becomes ``len + 1``.
+    """
+    return max(1, min(int(index), steps_count + 1))
 
 
 def insert_plan_step(
@@ -275,21 +453,27 @@ def insert_plan_step(
     index: int,
     step_payload: object,
 ) -> PlanArtifactDict:
-    steps = _steps_from_sections(sections)
-    if index < 1 or index > len(steps) + 1:
-        raise PlanArtifactValidationError(
-            f"step insert index must be between 1 and {len(steps) + 1}"
-        )
+    steps, warnings = _steps_from_sections(sections)
+    clamped_index = _clamp_insert_index(index, len(steps))
 
-    existing_numbers = [cast("int", step["number"]) for step in steps]
+    existing_numbers = [
+        number
+        for step in steps
+        if (number := _coerce_positive_int(step.get("number"))) is not None
+    ]
     inserted_step = _normalize_step_edit_payload(
         step_payload,
         synthetic_number=max(existing_numbers, default=0) + 1,
     )
-    steps.insert(index - 1, inserted_step)
-    updated_sections, _rewritten_depends_on, _rewritten_ac, _dropped_ac = _apply_step_mutation(
-        sections, steps=steps
-    )
+    steps.insert(clamped_index - 1, inserted_step)
+    (
+        updated_sections,
+        _number_map,
+        _rewritten_depends_on,
+        _rewritten_ac,
+        _dropped_ac,
+        _warnings,
+    ) = _apply_step_mutation(sections, steps=steps, initial_warnings=warnings)
     return updated_sections
 
 
@@ -305,28 +489,32 @@ def insert_plan_step_with_echo(
     serializes to the agent. The echo shape is documented in
     ``_build_step_mutation_echo``.
     """
-    steps = _steps_from_sections(sections)
-    if index < 1 or index > len(steps) + 1:
-        raise PlanArtifactValidationError(
-            f"step insert index must be between 1 and {len(steps) + 1}"
-        )
+    steps, source_warnings = _steps_from_sections(sections)
+    clamped_index = _clamp_insert_index(index, len(steps))
 
-    existing_numbers = [cast("int", step["number"]) for step in steps]
+    existing_numbers = [
+        number
+        for step in steps
+        if (number := _coerce_positive_int(step.get("number"))) is not None
+    ]
     inserted_step = _normalize_step_edit_payload(
         step_payload,
         synthetic_number=max(existing_numbers, default=0) + 1,
     )
-    steps.insert(index - 1, inserted_step)
-    updated_sections, rewritten_depends_on, rewritten_ac, dropped_ac = _apply_step_mutation(
-        sections, steps=steps
-    )
+    synthetic_number = cast("int", inserted_step["number"])
+    steps.insert(clamped_index - 1, inserted_step)
+    (
+        updated_sections,
+        number_map,
+        rewritten_depends_on,
+        rewritten_ac,
+        dropped_ac,
+        warnings,
+    ) = _apply_step_mutation(sections, steps=steps, initial_warnings=source_warnings)
     reindexed_steps = cast("list[dict[str, object]]", updated_sections.get("steps", []))
-    number_map = {
-        cast("int", step["number"]): index_ for index_, step in enumerate(reindexed_steps, start=1)
-    }
     echo = _build_step_mutation_echo(
         action="insert",
-        new_step_number=cast("int", inserted_step["number"]),
+        new_step_number=number_map[synthetic_number],
         step_number=None,
         removed_step_number=None,
         from_step_number=None,
@@ -336,7 +524,9 @@ def insert_plan_step_with_echo(
         rewritten_ac_satisfied_by_steps=rewritten_ac,
         dropped_ac_satisfied_by_steps=dropped_ac,
         total_steps=len(reindexed_steps),
+        validation_warnings=warnings,
     )
+    echo["index"] = clamped_index
     return updated_sections, echo
 
 
@@ -346,9 +536,13 @@ def replace_plan_step(
     step_number: int,
     step_payload: object,
 ) -> PlanArtifactDict:
-    steps = _steps_from_sections(sections)
+    steps, warnings = _steps_from_sections(sections)
     target_index = next(
-        (idx for idx, step in enumerate(steps) if step["number"] == step_number),
+        (
+            idx
+            for idx, step in enumerate(steps)
+            if _coerce_positive_int(step.get("number")) == step_number
+        ),
         None,
     )
     if target_index is None:
@@ -359,9 +553,14 @@ def replace_plan_step(
         synthetic_number=step_number,
     )
     steps[target_index] = replacement_step
-    updated_sections, _rewritten_depends_on, _rewritten_ac, _dropped_ac = _apply_step_mutation(
-        sections, steps=steps
-    )
+    (
+        updated_sections,
+        _number_map,
+        _rewritten_depends_on,
+        _rewritten_ac,
+        _dropped_ac,
+        _warnings,
+    ) = _apply_step_mutation(sections, steps=steps, initial_warnings=warnings)
     return updated_sections
 
 
@@ -375,9 +574,13 @@ def replace_plan_step_with_echo(
 
     The echo shape is documented in ``_build_step_mutation_echo``.
     """
-    steps = _steps_from_sections(sections)
+    steps, source_warnings = _steps_from_sections(sections)
     target_index = next(
-        (idx for idx, step in enumerate(steps) if step["number"] == step_number),
+        (
+            idx
+            for idx, step in enumerate(steps)
+            if _coerce_positive_int(step.get("number")) == step_number
+        ),
         None,
     )
     if target_index is None:
@@ -388,13 +591,15 @@ def replace_plan_step_with_echo(
         synthetic_number=step_number,
     )
     steps[target_index] = replacement_step
-    updated_sections, rewritten_depends_on, rewritten_ac, dropped_ac = _apply_step_mutation(
-        sections, steps=steps
-    )
+    (
+        updated_sections,
+        number_map,
+        rewritten_depends_on,
+        rewritten_ac,
+        dropped_ac,
+        warnings,
+    ) = _apply_step_mutation(sections, steps=steps, initial_warnings=source_warnings)
     reindexed_steps = cast("list[dict[str, object]]", updated_sections.get("steps", []))
-    number_map = {
-        cast("int", step["number"]): index_ for index_, step in enumerate(reindexed_steps, start=1)
-    }
     echo = _build_step_mutation_echo(
         action="replace",
         new_step_number=None,
@@ -407,6 +612,7 @@ def replace_plan_step_with_echo(
         rewritten_ac_satisfied_by_steps=rewritten_ac,
         dropped_ac_satisfied_by_steps=dropped_ac,
         total_steps=len(reindexed_steps),
+        validation_warnings=warnings,
     )
     return updated_sections, echo
 
@@ -416,18 +622,20 @@ def remove_plan_step(
     *,
     step_number: int,
 ) -> PlanArtifactDict:
-    steps = _steps_from_sections(sections)
-    remaining_steps = [step for step in steps if step["number"] != step_number]
+    steps, _source_warnings = _steps_from_sections(sections)
+    remaining_steps = [
+        step for step in steps if _coerce_positive_int(step.get("number")) != step_number
+    ]
     if len(remaining_steps) == len(steps):
         raise PlanArtifactValidationError(f"step {step_number} does not exist")
 
-    reindexed_steps, number_map, _rewritten_depends_on = _reindex_plan_steps(
+    reindexed_steps, number_map, _rewritten_depends_on, _warnings = _reindex_plan_steps(
         remaining_steps,
         removed_step_number=step_number,
     )
     updated_sections = dict(sections)
     updated_sections["steps"] = reindexed_steps
-    updated_sections, _rewritten_ac, _dropped_ac = _remap_ac_step_refs(
+    updated_sections, _rewritten_ac, _dropped_ac, _ac_warnings = _remap_ac_step_refs(
         updated_sections,
         number_map,
     )
@@ -443,21 +651,24 @@ def remove_plan_step_with_echo(
 
     The echo shape is documented in ``_build_step_mutation_echo``.
     """
-    steps = _steps_from_sections(sections)
-    remaining_steps = [step for step in steps if step["number"] != step_number]
+    steps, source_warnings = _steps_from_sections(sections)
+    remaining_steps = [
+        step for step in steps if _coerce_positive_int(step.get("number")) != step_number
+    ]
     if len(remaining_steps) == len(steps):
         raise PlanArtifactValidationError(f"step {step_number} does not exist")
 
-    reindexed_steps, number_map, rewritten_depends_on = _reindex_plan_steps(
+    reindexed_steps, number_map, rewritten_depends_on, warnings = _reindex_plan_steps(
         remaining_steps,
         removed_step_number=step_number,
     )
     updated_sections = dict(sections)
     updated_sections["steps"] = reindexed_steps
-    updated_sections, rewritten_ac, dropped_ac = _remap_ac_step_refs(
+    updated_sections, rewritten_ac, dropped_ac, ac_warnings = _remap_ac_step_refs(
         updated_sections,
         number_map,
     )
+    warnings = [*source_warnings, *warnings, *ac_warnings]
     echo = _build_step_mutation_echo(
         action="remove",
         new_step_number=None,
@@ -470,6 +681,7 @@ def remove_plan_step_with_echo(
         rewritten_ac_satisfied_by_steps=rewritten_ac,
         dropped_ac_satisfied_by_steps=dropped_ac,
         total_steps=len(reindexed_steps),
+        validation_warnings=warnings,
     )
     return updated_sections, echo
 
@@ -497,25 +709,36 @@ def move_plan_step(
     ``remove_plan_step`` + ``insert_plan_step``) so the reindex is
     performed exactly once per call.
     """
-    steps = _steps_from_sections(sections)
+    steps, _source_warnings = _steps_from_sections(sections)
     source_idx = next(
-        (idx for idx, step in enumerate(steps) if step["number"] == from_step_number),
+        (
+            idx
+            for idx, step in enumerate(steps)
+            if _coerce_positive_int(step.get("number")) == from_step_number
+        ),
         None,
     )
     if source_idx is None:
         raise PlanArtifactValidationError(f"step {from_step_number} does not exist")
 
     moved_step = steps[source_idx]
-    remaining_steps = [step for step in steps if step["number"] != from_step_number]
+    remaining_steps = [
+        step for step in steps if _coerce_positive_int(step.get("number")) != from_step_number
+    ]
     upper = len(remaining_steps) + 1
     clamped_index = max(1, min(int(to_index), upper))
     new_steps = list(remaining_steps)
     new_steps.insert(clamped_index - 1, moved_step)
 
-    reindexed_steps, number_map, _rewritten_depends_on = _reindex_plan_steps(new_steps)
+    reindexed_steps, number_map, _rewritten_depends_on, _warnings = _reindex_plan_steps(
+        new_steps
+    )
     updated_sections: PlanArtifactDict = dict(sections)
     updated_sections["steps"] = reindexed_steps
-    updated_sections, _rewritten_ac, _dropped_ac = _remap_ac_step_refs(updated_sections, number_map)
+    updated_sections, _rewritten_ac, _dropped_ac, _ac_warnings = _remap_ac_step_refs(
+        updated_sections,
+        number_map,
+    )
     return updated_sections
 
 
@@ -529,25 +752,37 @@ def move_plan_step_with_echo(
 
     The echo shape is documented in ``_build_step_mutation_echo``.
     """
-    steps = _steps_from_sections(sections)
+    steps, source_warnings = _steps_from_sections(sections)
     source_idx = next(
-        (idx for idx, step in enumerate(steps) if step["number"] == from_step_number),
+        (
+            idx
+            for idx, step in enumerate(steps)
+            if _coerce_positive_int(step.get("number")) == from_step_number
+        ),
         None,
     )
     if source_idx is None:
         raise PlanArtifactValidationError(f"step {from_step_number} does not exist")
 
     moved_step = steps[source_idx]
-    remaining_steps = [step for step in steps if step["number"] != from_step_number]
+    remaining_steps = [
+        step for step in steps if _coerce_positive_int(step.get("number")) != from_step_number
+    ]
     upper = len(remaining_steps) + 1
     clamped_index = max(1, min(int(to_index), upper))
     new_steps = list(remaining_steps)
     new_steps.insert(clamped_index - 1, moved_step)
 
-    reindexed_steps, number_map, rewritten_depends_on = _reindex_plan_steps(new_steps)
+    reindexed_steps, number_map, rewritten_depends_on, warnings = _reindex_plan_steps(
+        new_steps
+    )
     updated_sections = dict(sections)
     updated_sections["steps"] = reindexed_steps
-    updated_sections, rewritten_ac, dropped_ac = _remap_ac_step_refs(updated_sections, number_map)
+    updated_sections, rewritten_ac, dropped_ac, ac_warnings = _remap_ac_step_refs(
+        updated_sections,
+        number_map,
+    )
+    warnings = [*source_warnings, *warnings, *ac_warnings]
     echo = _build_step_mutation_echo(
         action="move",
         new_step_number=None,
@@ -560,6 +795,7 @@ def move_plan_step_with_echo(
         rewritten_ac_satisfied_by_steps=rewritten_ac,
         dropped_ac_satisfied_by_steps=dropped_ac,
         total_steps=len(reindexed_steps),
+        validation_warnings=warnings,
     )
     return updated_sections, echo
 

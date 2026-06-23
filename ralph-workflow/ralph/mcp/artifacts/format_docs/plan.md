@@ -99,13 +99,13 @@ Every plan must satisfy the following per-step and cross-section rules or it wil
 
 The five step-mutation tools (`ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_patch_step`, `ralph_remove_plan_step`, `ralph_move_plan_step`) auto-reindex the entire steps list AND remap `depends_on` / `AC.satisfied_by_steps` references in the design sub-section. After the mutation, the tool returns a JSON echo payload so the agent does not need to call `ralph_get_plan_draft` to learn the new numbering. The echo shape per tool:
 
-- `ralph_insert_plan_step` returns `{"action":"insert","index":2,"new_step_number":2,"reindex_map":{"2":3},"rewritten_depends_on":[3],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"total_steps":3}`.
-- `ralph_replace_plan_step` returns `{"action":"replace","step_number":2,"reindex_map":{"2":2},"rewritten_depends_on":[],"rewritten_ac_satisfied_by_steps":[],"dropped_ac_satisfied_by_steps":[],"total_steps":3}`.
-- `ralph_patch_step` returns `{"action":"replace","step_number":2,"reindex_map":{"2":2},"rewritten_depends_on":[],"rewritten_ac_satisfied_by_steps":[],"dropped_ac_satisfied_by_steps":[],"total_steps":3}`.
-- `ralph_remove_plan_step` returns `{"action":"remove","removed_step_number":2,"reindex_map":{"3":2},"rewritten_depends_on":[2],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"total_steps":2}`.
-- `ralph_move_plan_step` returns `{"action":"move","from_step_number":3,"to_index":1,"reindex_map":{"3":1},"rewritten_depends_on":[1],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"total_steps":3}`.
+- `ralph_insert_plan_step` returns `{"action":"insert","index":2,"new_step_number":2,"reindex_map":{"2":3},"rewritten_depends_on":[3],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":3}`.
+- `ralph_replace_plan_step` returns `{"action":"replace","step_number":2,"reindex_map":{"2":2},"rewritten_depends_on":[],"rewritten_ac_satisfied_by_steps":[],"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":3}`.
+- `ralph_patch_step` returns `{"action":"replace","step_number":2,"reindex_map":{"2":2},"rewritten_depends_on":[],"rewritten_ac_satisfied_by_steps":[],"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":3}`.
+- `ralph_remove_plan_step` returns `{"action":"remove","removed_step_number":2,"reindex_map":{"3":2},"rewritten_depends_on":[2],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":2}`.
+- `ralph_move_plan_step` returns `{"action":"move","from_step_number":3,"to_index":1,"reindex_map":{"3":1},"rewritten_depends_on":[1],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":3}`.
 
-`removed_step_number` / `from_step_number` are the source identifiers (pre-mutation). `reindex_map` is the `{old: new}` number mapping. `rewritten_depends_on` lists step numbers whose `depends_on` array was rewritten. `rewritten_ac_satisfied_by_steps` lists AC ids whose `satisfied_by_steps` was rewritten. `dropped_ac_satisfied_by_steps` lists AC ids whose entries were silently dropped because the referenced step is gone (the orphan-drop is the principle-of-least-surprise behavior for the executor).
+`removed_step_number` / `from_step_number` are the source identifiers (pre-mutation). `reindex_map` is the `{old: new}` number mapping. `rewritten_depends_on` lists step numbers whose `depends_on` array was rewritten. `rewritten_ac_satisfied_by_steps` lists AC ids whose `satisfied_by_steps` was rewritten. `dropped_ac_satisfied_by_steps` is retained for compatibility; the lenient staging path preserves unresolved JSON and reports it through `validation_warnings` so `ralph_validate_draft` / `ralph_finalize_plan` reject the final plan without losing data.
 
 ### Net-new step-mutation tool: `ralph_patch_step`
 
@@ -117,7 +117,7 @@ The five step-mutation tools (`ralph_insert_plan_step`, `ralph_replace_plan_step
 
 ### Net-new batched tool: `ralph_submit_plan_sections`
 
-`ralph_submit_plan_sections` accepts a list of `{"section":"summary","content":{...},"mode":"replace"}` entries and validates ALL of them BEFORE any merge; if any entry fails, the entire batch is rejected (`{"submitted":[],"failed_at":1,"error":"..."}`) and the draft is unchanged. On success it returns `{"submitted":["summary"],"staged_sections":["summary"],"total_bytes":123}`. Use this only when you have already built complete, analysis-ready section payloads. The full cross-section validator still runs at `finalize_plan`. Capability: `artifact.plan_write`.
+`ralph_submit_plan_sections` accepts a list of `{"section":"summary","content":{...},"mode":"replace"}` entries and parses ALL of them BEFORE any merge; malformed JSON, unknown sections, and impossible modes reject the batch (`{"submitted":[],"failed_at":1,"error":"..."}`) and leave the draft unchanged. Schema-invalid but valid JSON is staged and returned in `validation_warnings`. On success it returns `{"submitted":["summary"],"staged_sections":["summary"],"total_bytes":123,"validation_warnings":[]}`. Use this when you have built complete, analysis-ready section payloads, then run `ralph_validate_draft`. The full cross-section validator still runs at `validate_draft` / `finalize_plan`. Capability: `artifact.plan_write`.
 
 ### Design sub-section
 
@@ -528,7 +528,7 @@ Required; case-sensitive; must be unique within `design.acceptance_criteria.crit
 
 ### `StepMode` — `ralph_insert_plan_step.index` semantics
 
-1-based insert index. Range `[1, len(steps) + 1]`. Out-of-range indices are clamped (move) or rejected (insert: range error).
+1-based insert index. Integers and numeric strings are accepted. Values `<= 0` insert at the beginning; values greater than `len(steps) + 1` append at the end. The echo returns the normalized `index`.
 
 ## Canonical field examples
 

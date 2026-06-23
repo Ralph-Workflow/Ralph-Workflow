@@ -10,6 +10,7 @@ import pytest
 from ralph.mcp.tools.artifact import (
     handle_submit_plan_section,
     handle_submit_plan_sections,
+    handle_validate_plan_draft,
     prepare_artifact_submission,
 )
 from ralph.mcp.tools.coordination import InvalidParamsError, ToolResult
@@ -632,12 +633,22 @@ def test_plan_section_concatenated_json_still_fails(tmp_path: Path) -> None:
         )
 
 
-def test_plan_section_missing_required_field_still_fails(tmp_path: Path) -> None:
+def test_plan_section_missing_required_field_stages_then_fails_validation(
+    tmp_path: Path,
+) -> None:
     workspace = FsWorkspace(tmp_path)
 
-    with pytest.raises(InvalidParamsError, match="primary_files"):
-        handle_submit_plan_section(
-            _planning_session(),
-            workspace,
-            {"section": "critical_files", "content": {"reference_files": []}},
-        )
+    result = handle_submit_plan_section(
+        _planning_session(),
+        workspace,
+        {"section": "critical_files", "content": {"reference_files": []}},
+    )
+
+    assert result.is_error is False
+    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert any("primary_files" in warning for warning in warnings)
+
+    validation = handle_validate_plan_draft(_planning_session(), workspace, {})
+    assert validation.is_error is False
+    assert "primary_files" in cast("ToolContent", validation.content[0]).text

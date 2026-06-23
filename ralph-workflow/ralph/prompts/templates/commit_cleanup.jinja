@@ -126,9 +126,13 @@ Submit a ``commit_cleanup`` artifact. The ``content`` JSON string must decode to
 
 **If cleanup is needed**, perform one iteration and set ``analysis_complete: true`` once done, or set ``analysis_complete: false`` to request another cleanup pass.
 
-The artifact content JSON schema:
+Artifact content JSON examples:
 ```json
-{"analysis_complete": true|false, "actions": [{"action": "delete_file"|"add_to_gitignore"|"add_to_git_exclude", "path"|"pattern": "value"}]}
+{"analysis_complete": true, "actions": []}
+```
+
+```json
+{"analysis_complete": true, "actions": [{"action": "delete_file", "path": "tmp/debug.log"}, {"action": "add_to_gitignore", "pattern": "tmp/*.log"}]}
 ```
 
 {{ render_artifact_submission('commit_cleanup', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}

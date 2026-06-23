@@ -80,20 +80,24 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=SUBMIT_PLAN_SECTION_TOOL,
                 description=(
-                    "Submit one validated plan section. Required: section, content. "
+                    "Stage one plan section. Required: section, content. "
                     "Optional: mode (replace|append, default replace). "
                     "Sections: summary, skills_mcp, steps, critical_files, "
                     "risks_mitigations, constraints, design, verification_strategy, "
                     "parallel_plan, work_units. "
-                    "Call ralph_finalize_plan after staging all sections. "
+                    "Call ralph_validate_draft and then ralph_finalize_plan after staging "
+                    "all sections. "
                     'Example: {"section": "summary", "content": '
                     + _EXAMPLE_PLAN_SECTION_CONTENT
                     + ', "mode": "replace"}. '
-                    "Only the single submitted section is validated here; cross-section "
+                    "Valid section JSON is staged even when it does not yet pass the plan "
+                    "schema; the response includes validation_warnings for schema issues. "
+                    "Valid sections are stored in normalized canonical form. Malformed JSON, "
+                    "unknown section names, and impossible modes are rejected. Cross-section "
                     "invariants (depends_on cycle, parallel_plan XOR work_units, "
                     "shell-invocation guard, research/verify in AC.satisfied_by_steps, "
                     "and non-empty skills_mcp.skills) "
-                    "run ONLY at finalize_plan. Pass content as the native JSON "
+                    "run ONLY at validate_draft/finalize_plan. Pass content as the native JSON "
                     "object/array for that section. "
                     "mode=append is list-sections only; "
                     "object sections only accept mode=replace. Plans over the 4 MB cap "
@@ -146,18 +150,22 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=SUBMIT_PLAN_SECTIONS_TOOL,
                 description=(
-                    "Batched section submit. Accepts a list of "
+                    "Batched section staging. Accepts a list of "
                     '{"section":"summary","content":{...},"mode":"replace"} '
-                    "entries and validates ALL of them BEFORE any merge; if any entry "
-                    "fails, the entire batch is rejected and the on-disk draft is "
-                    "unchanged. On success it stages every entry and returns "
+                    "entries and parses ALL of them BEFORE any merge; if any entry "
+                    "has malformed JSON, an unknown section, or an impossible mode, "
+                    "the entire batch is rejected and the on-disk draft is unchanged. "
+                    "Schema-invalid but valid JSON is staged with validation_warnings. "
+                    "On success it stages every entry and returns "
                     '{"submitted":["summary"],"staged_sections":["summary"],'
-                    '"total_bytes":123}. Use this only when every entry already '
-                    "contains complete, analysis-ready section content. content must be "
-                    "the native JSON object/array for that section. For list "
-                    "sections, mode='append' accepts either one item object or an array "
-                    "of items. The full cross-section validator still "
-                    "runs at finalize_plan; this tool only stages sections. Capability: "
+                    '"total_bytes":123,"validation_warnings":[]}. Use this when every entry '
+                    "contains complete, analysis-ready section content. content should be "
+                    "the native JSON object/array for that section; obvious wrappers and "
+                    "single list-section objects are repaired. For list sections, "
+                    "mode='append' accepts either one item object or an array of items. "
+                    "The full strict validator still "
+                    "runs at validate_draft/finalize_plan; this tool only stages sections. "
+                    "Capability: "
                     "ARTIFACT_PLAN_WRITE."
                 ),
                 input_schema={
@@ -186,8 +194,8 @@ def artifact_specs() -> list[ToolSpec]:
                             },
                             "description": (
                                 "List of {section, content, mode} entries to stage as a "
-                                "batch. Each entry is validated BEFORE any merge; the "
-                                "entire batch is rejected on the first failure."
+                                "batch. Entries are parsed before any merge; valid JSON "
+                                "that fails the plan schema is staged with validation_warnings."
                             ),
                         },
                     },
@@ -202,19 +210,23 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=INSERT_PLAN_STEP_TOOL,
                 description=(
-                    "Insert one plan step at a 1-based index and reindex the whole steps list. "
-                    "Required: index (integer) plus either step (object) or flat step fields "
+                    "Insert one plan step at a normalized 1-based index and reindex the whole "
+                    "steps list. Required: index (integer or numeric string; <=0 "
+                    "inserts at the beginning, >len+1 appends at the end) plus either step "
+                    "(object) or flat step fields "
                     "(title/content/step_type/targets/depends_on/expected_evidence/etc.). "
                     "The step number in the step object is ignored. Auto-reindexes remaining "
                     "steps, rewrites every "
                     "depends_on array, and rewrites every AC.satisfied_by_steps reference in "
                     "the design sub-section. Returns an echo payload with the new step number, "
                     "the reindex map, the list of rewritten depends_on step numbers, the list "
-                    "of rewritten AC ids, the list of dropped AC ids (orphan references), and "
+                    "of rewritten AC ids, the list of dropped AC ids, validation_warnings, and "
                     'the new total step count: {"action":"insert","index":3,'
                     '"new_step_number":3,"reindex_map":{"2":2},'
                     '"rewritten_depends_on":[3],"rewritten_ac_satisfied_by_steps":["AC-02"],'
-                    '"dropped_ac_satisfied_by_steps":[],"total_steps":3}. Example: '
+                    '"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":3}. '
+                    "Invalid-but-JSON step fields and future numeric references are staged "
+                    "with validation_warnings; validate_draft/finalize remain strict. Example: "
                     '{"index":3,"step":{"title":"Document the foo() clamp behavior",'
                     '"content":"Update docs/foo.md with the accepted out-of-range index behavior '
                     'after the code and focused regression test are in place.",'
@@ -225,7 +237,7 @@ def artifact_specs() -> list[ToolSpec]:
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "index": {"type": "integer", "minimum": 1},
+                        "index": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
                         "step": {"type": "object"},
                         "title": {"type": "string"},
                         "content": {"type": "string"},
@@ -251,7 +263,8 @@ def artifact_specs() -> list[ToolSpec]:
                 name=REPLACE_PLAN_STEP_TOOL,
                 description=(
                     "Replace one plan step by its current number and reindex the whole steps list. "
-                    "Required: step_number (integer) plus either step (object) or flat step fields "
+                    "Required: step_number (integer or numeric string) plus either step "
+                    "(object) or flat step fields "
                     "(title/content/step_type/targets/depends_on/expected_evidence/etc.). "
                     "The step number in the step object is ignored. Auto-reindexes remaining "
                     "steps, rewrites every "
@@ -259,11 +272,15 @@ def artifact_specs() -> list[ToolSpec]:
                     "the design sub-section. The reindex map is typically a no-op since the "
                     "step number is preserved. Returns an echo payload with the (unchanged) "
                     "step number, the reindex map, the list of rewritten depends_on step "
-                    "numbers, the list of rewritten AC ids, the list of dropped AC ids, and "
+                    "numbers, the list of rewritten AC ids, the list of dropped AC ids, "
+                    "validation_warnings, and "
                     'the new total step count: {"action":"replace","step_number":2,'
                     '"reindex_map":{"2":2},"rewritten_depends_on":[3],'
                     '"rewritten_ac_satisfied_by_steps":["AC-02"],'
-                    '"dropped_ac_satisfied_by_steps":[],"total_steps":3}. Use this when planning '
+                    '"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":3}. '
+                    "Invalid-but-JSON replacement fields are staged with validation_warnings; "
+                    "validate_draft/finalize remain strict. "
+                    "Use this when planning "
                     "analysis feedback says a step is vague or missing software-engineering proof: "
                     "replace the full step with concrete content, targets, satisfies, "
                     "expected_evidence, and depends_on arrays. Example: "
@@ -277,7 +294,7 @@ def artifact_specs() -> list[ToolSpec]:
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "step_number": {"type": "integer", "minimum": 1},
+                        "step_number": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
                         "step": {"type": "object"},
                         "title": {"type": "string"},
                         "content": {"type": "string"},
@@ -302,7 +319,8 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=PATCH_PLAN_STEP_TOOL,
                 description=(
-                    "Partial-update a single plan step. Required: step_number (integer) plus "
+                    "Partial-update a single plan step. Required: step_number (integer or "
+                    "numeric string) plus "
                     "either step (object with ANY SUBSET of step fields) or flat patch fields. "
                     "The missing fields are"
                     " preserved from the existing step. The provided `step.number` is"
@@ -312,7 +330,9 @@ def artifact_specs() -> list[ToolSpec]:
                     " as `ralph_replace_plan_step`: "
                     '{"action":"replace","step_number":2,"reindex_map":{"2":2},'
                     '"rewritten_depends_on":[3],"rewritten_ac_satisfied_by_steps":["AC-02"],'
-                    '"dropped_ac_satisfied_by_steps":[],"total_steps":3}. Use this instead of'
+                    '"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":3}. '
+                    "Invalid-but-JSON patch fields are staged with validation_warnings; "
+                    "validate_draft/finalize remain strict. Use this instead of"
                     " `ralph_replace_plan_step` when only one or two fields need to"
                     " change. For analysis feedback like 'step lacks targets/evidence',"
                     " patch just those proof fields: "
@@ -324,7 +344,7 @@ def artifact_specs() -> list[ToolSpec]:
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "step_number": {"type": "integer", "minimum": 1},
+                        "step_number": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
                         "step": {"type": "object"},
                         "title": {"type": "string"},
                         "content": {"type": "string"},
@@ -350,22 +370,24 @@ def artifact_specs() -> list[ToolSpec]:
                 name=REMOVE_PLAN_STEP_TOOL,
                 description=(
                     "Remove one plan step by its current number and reindex the whole steps list. "
-                    "Required: step_number (integer). Auto-reindexes remaining steps, rewrites "
+                    "Required: step_number (integer or numeric string). Auto-reindexes "
+                    "remaining steps, rewrites "
                     "every depends_on array, and rewrites every AC.satisfied_by_steps reference "
-                    "in the design sub-section. Fails fast with PlanArtifactValidationError if "
-                    "any other step depends on the removed step. Silently drops AC entries "
-                    "whose satisfied_by_steps reference the removed step. Returns an echo "
+                    "in the design sub-section. References to the removed step are preserved "
+                    "as staged JSON markers or numeric AC references and reported in "
+                    "validation_warnings so validate_draft/finalize reject them without "
+                    "losing data. Returns an echo "
                     "payload with the removed step number, the reindex map, the list of "
                     "rewritten depends_on step numbers, the list of rewritten AC ids, the "
-                    "list of dropped AC ids, and the new total step count: "
+                    "list of dropped AC ids, validation_warnings, and the new total step count: "
                     '{"action":"remove","removed_step_number":2,"reindex_map":{"3":2},'
                     '"rewritten_depends_on":[2],"rewritten_ac_satisfied_by_steps":["AC-02"],'
-                    '"dropped_ac_satisfied_by_steps":[],"total_steps":2}.'
+                    '"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":2}.'
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "step_number": {"type": "integer", "minimum": 1},
+                        "step_number": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
                     },
                     "required": ["step_number"],
                 },
@@ -378,25 +400,31 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=MOVE_PLAN_STEP_TOOL,
                 description=(
-                    "Move one plan step to a 1-based index in a single call. Required: "
-                    "from_step_number (integer), to_index (integer; clamped to [1, len+1]). "
+                    "Move one plan step to a normalized 1-based index in a single call. Required: "
+                    "from_step_number (integer or numeric string), to_index (integer or numeric "
+                    "string; <=0 moves to the beginning, >len+1 appends). "
                     "Equivalent to remove_plan_step + insert_plan_step but exposed as one "
                     "round-trip. Auto-reindexes remaining steps, rewrites every depends_on "
                     "array, and rewrites every AC.satisfied_by_steps reference. Returns an "
                     "echo payload with the source and target step numbers (typically "
                     "identical since move preserves step numbers), the reindex map "
                     "(typically a no-op), the list of rewritten depends_on step numbers, "
-                    "the list of rewritten AC ids, the list of dropped AC ids, and the new "
+                    "the list of rewritten AC ids, the list of dropped AC ids, "
+                    "validation_warnings, and the new "
                     'total step count: {"action":"move","from_step_number":3,"to_index":1,'
                     '"reindex_map":{"3":1},"rewritten_depends_on":[1],'
                     '"rewritten_ac_satisfied_by_steps":["AC-02"],'
-                    '"dropped_ac_satisfied_by_steps":[],"total_steps":3}.'
+                    '"dropped_ac_satisfied_by_steps":[],"validation_warnings":[],"total_steps":3}.'
+                    " Invalid-but-JSON existing step fields are preserved with "
+                    "validation_warnings; validate_draft/finalize remain strict."
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
-                        "from_step_number": {"type": "integer", "minimum": 1},
-                        "to_index": {"type": "integer", "minimum": 1},
+                        "from_step_number": {
+                            "anyOf": [{"type": "integer"}, {"type": "string"}]
+                        },
+                        "to_index": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
                     },
                     "required": ["from_step_number", "to_index"],
                 },

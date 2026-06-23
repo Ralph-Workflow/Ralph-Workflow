@@ -323,7 +323,7 @@ def handle_submit_plan_section(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Validate a single plan section and merge it into the on-disk draft."""
+    """Stage a single plan section and report validation warnings."""
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan section submission")
 
     try:
@@ -375,6 +375,17 @@ def handle_submit_plan_section(
 
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
     workspace_root = _workspace_root(workspace)
+    if "content" not in params:
+        raise InvalidParamsError(
+            _format_plan_section_submission_error(
+                section=section,
+                mode=mode,
+                detail="Missing 'content' (must be valid JSON)",
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+                tool_name="ralph_submit_plan_section",
+            )
+        )
     raw_content = params.get("content")
     payload = _parse_plan_section_content(
         raw_content,
@@ -388,24 +399,13 @@ def handle_submit_plan_section(
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
     current_sections = cast("dict[str, object]", draft.get("sections", {}))
 
-    fragment: object
     try:
-        if (
-            mode == "append"
-            and section in PLAN_SECTION_LIST_ITEM_MODELS
-            and isinstance(payload, list)
-        ):
-            existing_obj = current_sections.get(section)
-            existing_list = (
-                list(cast("list[object]", existing_obj)) if isinstance(existing_obj, list) else []
-            )
-            for item in payload:
-                existing_list.append(validate_plan_section(section, item, mode="append"))
-            fragment = existing_list
-            merge_mode: SectionMode = "replace"
-        else:
-            fragment = validate_plan_section(section, payload, mode=mode)
-            merge_mode = mode
+        updated_sections, merge_mode, validation_warnings = _stage_plan_section_fragment(
+            current_sections,
+            section,
+            payload,
+            mode,
+        )
     except PlanArtifactValidationError as exc:
         raise InvalidParamsError(
             _format_plan_section_submission_error(
@@ -418,15 +418,20 @@ def handle_submit_plan_section(
             )
         ) from exc
 
-    updated_sections = merge_plan_section(current_sections, section, fragment, merge_mode)
     draft["sections"] = updated_sections
     _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
 
     staged = sorted(updated_sections.keys())
     return ToolResult(
         content=[
-            ToolContent.text_content(
-                f"Plan section staged: {section} (mode={merge_mode}). Staged sections: {staged}"
+            ToolContent.json_content(
+                {
+                    "submitted": [section],
+                    "section": section,
+                    "mode": merge_mode,
+                    "staged_sections": staged,
+                    "validation_warnings": validation_warnings,
+                }
             )
         ],
         is_error=False,
@@ -714,12 +719,14 @@ def _parse_submit_plan_section_entry(
     entry_dict = cast("dict[str, object]", raw_entry)
     section = entry_dict.get("section")
     content_obj = entry_dict.get("content")
+    has_content = "content" in entry_dict
     mode = entry_dict.get("mode", "replace")
     shape_error = _check_entry_shape(
         index,
         section,
         content_obj,
         mode,
+        has_content=has_content,
         workspace_root=workspace_root,
         backend=backend,
     )
@@ -768,6 +775,7 @@ def _check_entry_shape(
     content_obj: object,
     mode: object,
     *,
+    has_content: bool,
     workspace_root: Path,
     backend: FileBackend,
 ) -> ToolResult | None:
@@ -785,11 +793,11 @@ def _check_entry_shape(
                 backend=backend,
             ),
         )
-    if not isinstance(content_obj, (str, dict, list)):
+    if not has_content:
         return _submit_sections_error_result(
             index,
             _format_plan_batch_envelope_error(
-                detail=f"Entry {index} 'content' must be a JSON string, object, or array",
+                detail=f"Entry {index} missing 'content'",
                 workspace_root=workspace_root,
                 backend=backend,
             ),
@@ -849,60 +857,8 @@ def _check_parsed_content_type(
     workspace_root: Path,
     backend: FileBackend,
 ) -> ToolResult | None:
-    """Return a ToolResult on the first type-shape failure, or None on success.
-
-    Factored out of ``_parse_submit_plan_section_entry`` to keep its
-    return-statement count under the ruff PLR0911 cap.
-    """
-    if section in PLAN_SECTION_OBJECT_MODELS and not isinstance(parsed_content, dict):
-        return _submit_sections_error_result(
-            index,
-            _format_plan_section_submission_error(
-                section=section,
-                mode=mode,
-                detail=f"Entry {index} (section '{section}') must be a JSON object",
-                workspace_root=workspace_root,
-                backend=backend,
-                tool_name="ralph_submit_plan_sections",
-            ),
-        )
-    if (
-        section in PLAN_SECTION_LIST_ITEM_MODELS
-        and mode == "replace"
-        and not isinstance(parsed_content, list)
-    ):
-        return _submit_sections_error_result(
-            index,
-            _format_plan_section_submission_error(
-                section=section,
-                mode=mode,
-                detail=(
-                    f"Entry {index} (section '{section}') with mode='replace' must be a JSON array"
-                ),
-                workspace_root=workspace_root,
-                backend=backend,
-                tool_name="ralph_submit_plan_sections",
-            ),
-        )
-    if (
-        section in PLAN_SECTION_LIST_ITEM_MODELS
-        and mode == "append"
-        and not isinstance(parsed_content, (dict, list))
-    ):
-        return _submit_sections_error_result(
-            index,
-            _format_plan_section_submission_error(
-                section=section,
-                mode=mode,
-                detail=(
-                    f"Entry {index} (section '{section}') with mode='append' must be "
-                    "a JSON object or array of items"
-                ),
-                workspace_root=workspace_root,
-                backend=backend,
-                tool_name="ralph_submit_plan_sections",
-            ),
-        )
+    """Keep structural parsing permissive; validate/finalize enforce schema."""
+    del index, section, mode, parsed_content, workspace_root, backend
     return None
 
 
@@ -919,86 +875,89 @@ def _submit_sections_error_result(index: int, message: str) -> ToolResult:
     )
 
 
-def _validate_submit_plan_sections_batch(
-    parsed_entries: list[tuple[str, object, SectionMode]],
-    *,
-    workspace_root: Path,
-    backend: FileBackend,
-) -> ToolResult | None:
-    """Validate the parsed entries; return a ToolResult error on the first failure.
+def _plan_section_validation_warnings(
+    section: str,
+    payload: object,
+    mode: SectionMode,
+) -> list[str]:
+    try:
+        validate_plan_section(section, payload, mode=mode)
+    except PlanArtifactValidationError as exc:
+        return [
+            f"[{section}] staged section does not yet pass schema validation; "
+            f"run ralph_validate_draft before finalize: {exc}"
+        ]
+    return []
 
-    Returns ``None`` when every entry validates cleanly. The split into
-    a separate helper keeps ``handle_submit_plan_sections`` under the
-    ruff PLR0911 / PLR0912 caps.
-    """
-    for index, (section, parsed_content, mode) in enumerate(parsed_entries):
-        try:
-            if mode == "append" and section in PLAN_SECTION_LIST_ITEM_MODELS:
-                items = _append_items(parsed_content)
-                for item in items:
-                    validate_plan_section(section, item, mode="append")
-            else:
-                validate_plan_section(section, parsed_content, mode=mode)
-        except PlanArtifactValidationError as exc:
-            return _submit_sections_error_result(
-                index,
-                _format_plan_section_submission_error(
-                    section=section,
-                    mode=mode,
-                    detail=f"[{section}] {exc}",
-                    workspace_root=workspace_root,
-                    backend=backend,
-                    tool_name="ralph_submit_plan_sections",
-                ),
-            )
-    return None
+
+def _validated_or_raw_plan_section(
+    section: str,
+    payload: object,
+    mode: SectionMode,
+) -> tuple[object, list[str]]:
+    warnings = _plan_section_validation_warnings(section, payload, mode)
+    if warnings:
+        return payload, warnings
+    return validate_plan_section(section, payload, mode=mode), []
+
+
+def _stage_plan_section_fragment(
+    current_sections: dict[str, object],
+    section: str,
+    parsed_content: object,
+    mode: SectionMode,
+) -> tuple[dict[str, object], SectionMode, list[str]]:
+    if mode == "append" and section in PLAN_SECTION_OBJECT_MODELS:
+        raise PlanArtifactValidationError(
+            f"section '{section}' only supports mode='replace'"
+        )
+    if mode == "append" and (section in PLAN_SECTION_LIST_ITEM_MODELS or section == "work_units"):
+        items = _append_items(parsed_content)
+        existing_obj = current_sections.get(section)
+        existing_list = (
+            list(cast("list[object]", existing_obj)) if isinstance(existing_obj, list) else []
+        )
+        existing_list.extend(items)
+        fragment, warnings = _validated_or_raw_plan_section(
+            section,
+            existing_list,
+            "replace",
+        )
+        updated_sections = merge_plan_section(
+            current_sections,
+            section,
+            fragment,
+            "replace",
+        )
+        return updated_sections, "replace", warnings
+    fragment, warnings = _validated_or_raw_plan_section(section, parsed_content, mode)
+    updated_sections = merge_plan_section(current_sections, section, fragment, mode)
+    return updated_sections, mode, warnings
 
 
 def _merge_submit_plan_sections_batch(
     parsed_entries: list[tuple[str, object, SectionMode]],
     current_sections: dict[str, object],
-    *,
-    workspace_root: Path,
-    backend: FileBackend,
-) -> tuple[dict[str, object], list[str]] | ToolResult:
+) -> tuple[dict[str, object], list[str], list[str]]:
     """Apply the batched-section merges onto ``current_sections``.
 
-    Returns the new sections dict + the list of submitted section names
-    on success, or a ToolResult error on the first merge failure.
+    Returns the new sections dict, submitted section names, and validation
+    warnings. Schema warnings do not reject staging; validate/finalize remain
+    the strict gates.
     """
     submitted: list[str] = []
+    validation_warnings: list[str] = []
     new_sections: dict[str, object] = current_sections
     for section, parsed_content, mode in parsed_entries:
-        try:
-            if mode == "append" and section in PLAN_SECTION_LIST_ITEM_MODELS:
-                items = _append_items(parsed_content)
-                existing_obj = new_sections.get(section)
-                existing_list = (
-                    list(cast("list[object]", existing_obj))
-                    if isinstance(existing_obj, list)
-                    else []
-                )
-                for item in items:
-                    fragment = validate_plan_section(section, item, mode="append")
-                    existing_list.append(fragment)
-                new_sections = merge_plan_section(new_sections, section, existing_list, "replace")
-            else:
-                fragment = validate_plan_section(section, parsed_content, mode=mode)
-                new_sections = merge_plan_section(new_sections, section, fragment, mode)
-        except PlanArtifactValidationError as exc:
-            return _submit_sections_error_result(
-                len(submitted),
-                _format_plan_section_submission_error(
-                    section=section,
-                    mode=mode,
-                    detail=f"[{section}] {exc}",
-                    workspace_root=workspace_root,
-                    backend=backend,
-                    tool_name="ralph_submit_plan_sections",
-                ),
-            )
+        new_sections, _merge_mode, warnings = _stage_plan_section_fragment(
+            new_sections,
+            section,
+            parsed_content,
+            mode,
+        )
+        validation_warnings.extend(warnings)
         submitted.append(section)
-    return new_sections, submitted
+    return new_sections, submitted, validation_warnings
 
 
 def handle_submit_plan_sections(
@@ -1010,9 +969,10 @@ def handle_submit_plan_sections(
 ) -> ToolResult:
     """Stage a batch of plan sections in a single round-trip.
 
-    Validates EVERY entry before any merge; if any entry fails, the
-    entire batch is rejected and the on-disk draft is unchanged. On
-    success every entry is merged and the draft is saved once.
+    Parses EVERY entry before any merge; if any entry is structurally
+    malformed, the entire batch is rejected and the on-disk draft is
+    unchanged. Schema-invalid but valid JSON sections are staged with
+    validation_warnings so validate/finalize can be the strict gates.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan sections batched submit")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
@@ -1042,26 +1002,23 @@ def handle_submit_plan_sections(
             return parsed
         parsed_entries.append(parsed)
 
-    validation_error = _validate_submit_plan_sections_batch(
-        parsed_entries,
-        workspace_root=workspace_root,
-        backend=resolved_deps.backend,
-    )
-    if validation_error is not None:
-        return validation_error
-
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = _load_or_create_plan_draft(artifact_dir, deps=resolved_deps)
     current_sections = cast("dict[str, object]", draft.get("sections", {}))
-    merge_result = _merge_submit_plan_sections_batch(
-        parsed_entries,
-        current_sections,
-        workspace_root=workspace_root,
-        backend=resolved_deps.backend,
-    )
-    if isinstance(merge_result, ToolResult):
-        return merge_result
-    new_sections, submitted = merge_result
+    try:
+        new_sections, submitted, validation_warnings = _merge_submit_plan_sections_batch(
+            parsed_entries,
+            current_sections,
+        )
+    except PlanArtifactValidationError as exc:
+        return _submit_sections_error_result(
+            0,
+            _format_plan_batch_envelope_error(
+                detail=str(exc),
+                workspace_root=workspace_root,
+                backend=resolved_deps.backend,
+            ),
+        )
     draft["sections"] = new_sections
     _save_updated_plan_draft(artifact_dir, draft, deps=resolved_deps)
     serialized = json.dumps(draft, default=str)
@@ -1072,6 +1029,7 @@ def handle_submit_plan_sections(
                     "submitted": submitted,
                     "staged_sections": sorted(new_sections.keys()),
                     "total_bytes": len(serialized),
+                    "validation_warnings": validation_warnings,
                 }
             )
         ],
@@ -1599,11 +1557,9 @@ def _normalize_plan_section_payload(
     if (
         (section in PLAN_SECTION_LIST_ITEM_MODELS or section == "work_units")
         and mode == "replace"
-        and isinstance(normalized, str)
+        and not isinstance(normalized, list)
     ):
-        decoded = _coerce_json_text_container(normalized)
-        if isinstance(decoded, list):
-            normalized = decoded
+        normalized = [normalized]
     return _coerce_known_container_fields(normalized)
 
 
@@ -1644,18 +1600,7 @@ def _parse_plan_section_content(
                 )
             ) from exc
         return _normalize_plan_section_payload(section, parsed, mode=mode)
-    if isinstance(raw_content, (dict, list)):
-        return _normalize_plan_section_payload(section, raw_content, mode=mode)
-    raise InvalidParamsError(
-        _format_plan_section_submission_error(
-            section=section,
-            mode=mode,
-            detail="Missing 'content' (must be a JSON string, object, or array)",
-            workspace_root=workspace_root,
-            backend=backend,
-            tool_name="ralph_submit_plan_section",
-        )
-    )
+    return _normalize_plan_section_payload(section, raw_content, mode=mode)
 
 
 def _plan_format_doc_reference(workspace_root: Path, backend: FileBackend) -> str:

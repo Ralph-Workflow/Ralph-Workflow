@@ -141,6 +141,19 @@ def test_plan_format_doc_is_registered() -> None:
     assert len(scope_items) >= 3
 
 
+def test_plan_format_doc_documents_lenient_staging_contract() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "validation_warnings" in doc
+    assert "Schema-invalid but valid JSON is staged" in doc
+    for stale_fragment in (
+        "validates ALL of them BEFORE any merge",
+        "insert: range error",
+        "silently dropped",
+    ):
+        assert stale_fragment not in doc
+
+
 def test_materialize_format_doc_writes_markdown_to_workspace() -> None:
     backend = MemoryBackend()
     workspace_root = Path("/virtual-ws")

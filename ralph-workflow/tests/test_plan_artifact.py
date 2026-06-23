@@ -404,7 +404,7 @@ def test_remove_plan_step_reindexes_numbers_and_dependency_targets() -> None:
     assert steps[1].get("depends_on", []) == [1]
 
 
-def test_remove_plan_step_rejects_when_other_steps_depend_on_removed_step() -> None:
+def test_remove_plan_step_preserves_removed_dependency_as_validation_failure() -> None:
     sections = _valid_plan()
     sections["steps"] = [
         {
@@ -421,8 +421,12 @@ def test_remove_plan_step_rejects_when_other_steps_depend_on_removed_step() -> N
         },
     ]
 
-    with pytest.raises(PlanArtifactValidationError, match="depends on step 1"):
-        remove_plan_step(sections, step_number=1)
+    updated = remove_plan_step(sections, step_number=1)
+    steps = cast("list[dict[str, object]]", updated["steps"])
+    assert steps[0]["depends_on"] == [{"removed_step_number": 1}]
+
+    with pytest.raises(PlanArtifactValidationError, match="depends_on"):
+        normalize_plan_artifact_content(updated)
 
 
 def test_replace_plan_step_preserves_position_and_reindexes_number() -> None:
@@ -1456,7 +1460,7 @@ def test_replace_plan_step_remaps_satisfied_by_steps() -> None:
 
 
 def test_remove_plan_step_remaps_satisfied_by_steps() -> None:
-    """remove_plan_step drops dead AC references (the removed step's number) without raising."""
+    """remove_plan_step preserves dead AC refs for the validation gate."""
     sections = _valid_plan()
     sections["design"] = {
         "acceptance_criteria": {
@@ -1483,7 +1487,10 @@ def test_remove_plan_step_remaps_satisfied_by_steps() -> None:
     design = cast("dict[str, object]", updated["design"])
     ac = cast("dict[str, object]", design["acceptance_criteria"])
     criteria = cast("list[dict[str, object]]", ac["criteria"])
-    assert criteria[0]["satisfied_by_steps"] == []
+    assert criteria[0]["satisfied_by_steps"] == [2]
+
+    with pytest.raises(PlanArtifactValidationError, match="unknown step number"):
+        normalize_plan_artifact_content(updated)
 
 
 # ---------------------------------------------------------------------------

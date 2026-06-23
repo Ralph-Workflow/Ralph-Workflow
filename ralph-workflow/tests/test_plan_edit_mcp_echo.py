@@ -141,12 +141,13 @@ def test_insert_returns_echo_payload_shape(tmp_path: Path) -> None:
         "rewritten_ac_satisfied_by_steps",
         "dropped_ac_satisfied_by_steps",
         "total_steps",
+        "validation_warnings",
     ):
         assert key in payload, f"insert echo missing key {key!r}"
     assert payload["action"] == "insert"
-    # The inserted step is assigned a new number
+    # The inserted step is assigned its post-reindex number.
     assert isinstance(payload["new_step_number"], int)
-    assert cast("int", payload["new_step_number"]) > 3
+    assert payload["new_step_number"] == 2
     # Reindex map has 4 entries
     reindex_map = cast("dict[str, int], object", payload["reindex_map"])
     assert len(reindex_map) == 4
@@ -184,6 +185,7 @@ def test_replace_returns_echo_payload_shape(tmp_path: Path) -> None:
         "rewritten_ac_satisfied_by_steps",
         "dropped_ac_satisfied_by_steps",
         "total_steps",
+        "validation_warnings",
     ):
         assert key in payload, f"replace echo missing key {key!r}"
     assert payload["action"] == "replace"
@@ -216,15 +218,19 @@ def test_remove_returns_echo_payload_shape(tmp_path: Path) -> None:
         "rewritten_ac_satisfied_by_steps",
         "dropped_ac_satisfied_by_steps",
         "total_steps",
+        "validation_warnings",
     ):
         assert key in payload, f"remove echo missing key {key!r}"
     assert payload["action"] == "remove"
     assert payload["removed_step_number"] == 3
     # total_steps is 2 after removal
     assert payload["total_steps"] == 2
-    # AC-01 lost the step-3 reference so it's in dropped_ac_satisfied_by_steps
+    # Removed AC references are preserved as staged JSON and surfaced as warnings
+    # so the validation/finalize gate reports the schema error without losing data.
     dropped = cast("list[str], object", payload["dropped_ac_satisfied_by_steps"])
-    assert "AC-01" in dropped
+    assert dropped == []
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert any("satisfied_by_steps" in warning for warning in warnings)
 
 
 def test_move_returns_echo_payload_shape(tmp_path: Path) -> None:

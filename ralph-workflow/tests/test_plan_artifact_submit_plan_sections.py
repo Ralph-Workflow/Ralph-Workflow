@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ralph.mcp.tools.artifact import handle_submit_plan_sections
+from ralph.mcp.tools.artifact import handle_submit_plan_sections, handle_validate_plan_draft
 from ralph.mcp.tools.coordination import InvalidParamsError
 from ralph.workspace.fs import FsWorkspace
 from tests.test_artifact_format_docs_mock_session import planning_session
@@ -370,9 +370,19 @@ def test_submit_plan_sections_rejects_empty_skills_even_when_design_is_staged(
         },
     )
 
-    assert result.is_error is True
-    assert "skills_mcp.skills must contain at least one skill name" in result.content[0].text
-    assert not (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+    assert result.is_error is False
+    payload = json.loads(_read_response_text(result))
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert any("skills_mcp.skills must contain at least one skill name" in w for w in warnings)
+    assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+
+    validate_result = handle_validate_plan_draft(planning_session(), workspace, {})
+    assert validate_result.is_error is False
+    validate_payload = json.loads(_read_response_text(validate_result))
+    assert validate_payload["valid"] is False
+    assert "skills_mcp.skills must contain at least one skill name" in _read_response_text(
+        validate_result
+    )
 
 
 def test_submit_plan_sections_mode_append_on_object_section_rejected(tmp_path: Path) -> None:
@@ -402,7 +412,9 @@ def test_submit_plan_sections_mode_append_on_object_section_rejected(tmp_path: P
     assert "summary" in err or "replace" in err
 
 
-def test_submit_plan_sections_append_steps_error_includes_item_shape(tmp_path: Path) -> None:
+def test_submit_plan_sections_append_steps_stages_invalid_item_with_warning(
+    tmp_path: Path,
+) -> None:
     workspace = FsWorkspace(tmp_path)
     result = handle_submit_plan_sections(
         planning_session(),
@@ -410,13 +422,19 @@ def test_submit_plan_sections_append_steps_error_includes_item_shape(tmp_path: P
         {"entries": [{"section": "steps", "content": json.dumps("bad"), "mode": "append"}]},
     )
 
-    assert result.is_error is True
+    assert result.is_error is False
     payload = json.loads(_read_response_text(result))
-    error = cast("str", payload["error"])
-    assert "Expected shape for section 'steps' with mode='append'" in error
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert any("section 'steps' items must be JSON objects" in warning for warning in warnings)
+
+    draft = _read_draft(tmp_path)
+    sections = cast("dict[str, object]", draft["sections"])
+    assert sections["steps"] == ["bad"]
 
 
-def test_submit_plan_sections_append_risks_error_includes_item_shape(tmp_path: Path) -> None:
+def test_submit_plan_sections_append_risks_stages_invalid_item_with_warning(
+    tmp_path: Path,
+) -> None:
     workspace = FsWorkspace(tmp_path)
     result = handle_submit_plan_sections(
         planning_session(),
@@ -428,13 +446,20 @@ def test_submit_plan_sections_append_risks_error_includes_item_shape(tmp_path: P
         },
     )
 
-    assert result.is_error is True
+    assert result.is_error is False
     payload = json.loads(_read_response_text(result))
-    error = cast("str", payload["error"])
-    assert "Expected shape for section 'risks_mitigations' with mode='append'" in error
+    warnings = cast("list[str]", payload["validation_warnings"])
+    assert any(
+        "section 'risks_mitigations' items must be JSON objects" in warning
+        for warning in warnings
+    )
+
+    draft = _read_draft(tmp_path)
+    sections = cast("dict[str, object]", draft["sections"])
+    assert sections["risks_mitigations"] == ["bad"]
 
 
-def test_submit_plan_sections_error_payload_includes_fix_guidance_and_doc(tmp_path: Path) -> None:
+def test_submit_plan_sections_wraps_single_step_object_for_replace(tmp_path: Path) -> None:
     workspace = FsWorkspace(tmp_path)
     result = handle_submit_plan_sections(
         planning_session(),
@@ -455,13 +480,20 @@ def test_submit_plan_sections_error_payload_includes_fix_guidance_and_doc(tmp_pa
         },
     )
 
-    assert result.is_error is True
+    assert result.is_error is False
     payload = json.loads(_read_response_text(result))
-    error = cast("str", payload["error"])
-    assert ".agent/artifact-formats/plan.md" in error
-    assert '"steps" with mode="replace": a JSON array like [{"number":1' in error
-    assert "ralph_submit_plan_sections" in error
-    assert "{'" not in error
+    assert payload["validation_warnings"] == []
+
+    draft = _read_draft(tmp_path)
+    sections = cast("dict[str, object]", draft["sections"])
+    steps = cast("list[dict[str, object]]", sections["steps"])
+    assert steps == [
+        {
+            "number": 1,
+            "title": "One",
+            "content": "single object instead of list",
+        }
+    ]
 
 
 def test_submit_plan_sections_missing_entries_raises(tmp_path: Path) -> None:
