@@ -7,8 +7,10 @@ These tests assert the three promises of that documentation:
 1. Every step-mutation tool the skill claims to support is actually
    named in the skill body so an agent does not invent a tool name.
 2. The eight retry envelopes the skill embeds match the canonical
-   ``_format_plan_step_edit_error`` helper output (the same envelope
-   the runtime inlines for an agent that has not consulted the skill).
+   ``_format_plan_step_edit_error`` helper output verbatim (the same
+   envelope the runtime inlines for an agent that has not consulted
+   the skill). Drift between the skill and the helper silently forces
+   the agent to retry with a stale shape.
 3. The "add one step at a time" worked example round-trips end-to-end
    against the in-process tool handlers: stage a draft, insert a step,
    validate, finalize.
@@ -66,6 +68,40 @@ def _load_skill_body() -> str:
     pytest.fail("could not locate submit-plan-step-edits.md on disk")
 
 
+def _extract_retry_envelopes(body: str) -> dict[str, dict[str, object]]:
+    """Parse the eight fenced `````json`` retry envelopes out of the skill body.
+
+    The ``### Per-tool retry envelopes`` subsection embeds one fenced
+    JSON block per step-mutation / step-utility tool, with the tool
+    name declared via a ``**`<tool>`**`` bold marker immediately above
+    the block. Returns a dict mapping each tool name to its parsed
+    envelope dict. Used to verify the skill and helper stay in sync.
+    """
+    section_match = re.search(
+        r"### Per-tool retry envelopes\s*\n([\s\S]*?)\n### ",
+        body,
+    )
+    assert section_match is not None, (
+        "submit-plan-step-edits skill is missing the '### Per-tool retry "
+        "envelopes' subsection"
+    )
+    section_body = section_match.group(1)
+    envelopes: dict[str, dict[str, object]] = {}
+    pattern = re.compile(
+        r"\*\*`(?P<tool>[a-z_]+)`\*\*[\s\S]*?```json\s*\n(?P<block>[\s\S]*?)\n```"
+    )
+    for match in pattern.finditer(section_body):
+        tool = match.group("tool")
+        block_text = match.group("block")
+        payload = json.loads(block_text)
+        assert isinstance(payload, dict), (
+            f"submit-plan-step-edits retry envelope for {tool!r} decoded to "
+            f"a non-object ({type(payload).__name__}); expected a dict"
+        )
+        envelopes[tool] = payload
+    return envelopes
+
+
 def _two_step_initial_payloads() -> dict[str, object]:
     """Return the 6 required section payloads for a 2-step starter draft."""
     return {
@@ -114,29 +150,53 @@ def test_skill_documents_every_step_mutation_tool() -> None:
     )
 
 
+def _parse_helper_envelope_fragments(
+    helper_text: str,
+) -> dict[str, tuple[str, ...]]:
+    """Parse the inline retry-envelope fragments emitted by the no-skill helper.
+
+    ``_format_plan_step_edit_error`` inlines a literal fragment for each
+    step-mutation tool of the form ``<tool> => {'<k1>': <v1>, '<k2>':
+    <v2>}`` (where each value is the literal ``2``, ``1``, or ``{...}``
+    that the helper uses as an example). Returns a dict mapping the
+    tool name to the tuple of keys the fragment declares, in the
+    order the helper emitted them. Used to compare the helper output
+    against the skill-documented envelope keys.
+    """
+    fragment_pattern = re.compile(
+        r"\b(?P<tool>ralph_(?:insert_plan_step|replace_plan_step|patch_step"
+        r"|remove_plan_step|move_plan_step))"
+        r"\s*=>\s*\{(?P<body>[^}]*)\}"
+    )
+    fragments: dict[str, tuple[str, ...]] = {}
+    key_pattern = re.compile(r"'([^']+)'\s*:")
+    for match in fragment_pattern.finditer(helper_text):
+        tool = match.group("tool")
+        body = match.group("body")
+        keys = tuple(key_pattern.findall(body))
+        fragments[tool] = keys
+    return fragments
+
+
 @pytest.mark.timeout_seconds(10)
 def test_skill_retry_envelopes_match_handler_output() -> None:
-    """The 8 retry envelopes in the skill match the no-skill helper output.
+    """The 8 retry envelopes in the skill match the no-skill helper output verbatim.
 
-    The skill embeds eight ``\\`\\`\\`json\\`\\`\\` blocks under
-    ``Per-tool retry envelopes``. Each MUST decode as JSON and contain
-    exactly the keys the corresponding no-skill helper
-    (``_format_plan_step_edit_error`` in ``ralph/mcp/tools/artifact.py``)
-    names in its repair guidance. A drift between skill and helper
-    silently forces the agent to retry with a stale shape.
+    ``_format_plan_step_edit_error`` in ``ralph/mcp/tools/artifact.py``
+    inlines a minimal retry envelope per tool (a literal fragment like
+    ``ralph_insert_plan_step => {'index': 2, 'step': {...}}``). The
+    skill embeds the same envelope as a fenced JSON block under
+    ``### Per-tool retry envelopes``. Both MUST describe the same
+    payload shape so the agent can copy the skill envelope verbatim
+    and have the helper accept it. The test parses the helper's inline
+    envelope fragments to learn the canonical key set per tool, then
+    asserts that the skill's documented envelope keys match verbatim
+    (same keys, same order). Drift between the helper and the skill
+    fails the test on the first mismatched key.
     """
     body = _load_skill_body()
-    section_match = re.search(
-        r"### Per-tool retry envelopes\s*\n([\s\S]*?)\n### ",
-        body,
-    )
-    assert section_match is not None, (
-        "submit-plan-step-edits skill is missing the '### Per-tool retry "
-        "envelopes' subsection"
-    )
-    section_body = section_match.group(1)
-
-    expected_envelopes: dict[str, set[str]] = {
+    envelopes = _extract_retry_envelopes(body)
+    expected_envelope_keys: dict[str, set[str]] = {
         "ralph_insert_plan_step": {"index", "step"},
         "ralph_replace_plan_step": {"step_number", "step"},
         "ralph_patch_step": {"step_number", "step"},
@@ -146,29 +206,23 @@ def test_skill_retry_envelopes_match_handler_output() -> None:
         "ralph_validate_draft": set(),
         "ralph_discard_plan_draft": set(),
     }
-    blocks = re.findall(r"```json\s*\n([\s\S]*?)\n```", section_body)
-    assert len(blocks) == len(expected_envelopes), (
-        f"per-tool retry envelopes section must contain exactly "
-        f"{len(expected_envelopes)} fenced JSON blocks, found {len(blocks)}"
+    missing_tools = [
+        tool for tool in expected_envelope_keys if tool not in envelopes
+    ]
+    assert not missing_tools, (
+        f"submit-plan-step-edits skill is missing retry envelopes for: "
+        f"{missing_tools}"
     )
-    decoded_blocks = [json.loads(block) for block in blocks]
-    for tool, expected_keys in expected_envelopes.items():
-        match = next(
-            (
-                block
-                for block in decoded_blocks
-                if isinstance(block, dict) and set(block.keys()) == expected_keys
-            ),
-            None,
-        )
-        assert match is not None, (
-            f"submit-plan-step-edits skill is missing the canonical retry "
-            f"envelope for {tool!r} with keys {sorted(expected_keys)}"
+    for tool, expected_keys in expected_envelope_keys.items():
+        actual_keys = set(envelopes[tool].keys())
+        assert actual_keys == expected_keys, (
+            f"submit-plan-step-edits retry envelope for {tool!r} has keys "
+            f"{sorted(actual_keys)}, expected {sorted(expected_keys)}"
         )
 
     helper_text = _format_plan_step_edit_error(
         detail="synthetic detail",
-        workspace_root=__import__("pathlib").Path("/tmp"),
+        workspace_root=Path("/tmp"),
         backend=DEFAULT_FILE_BACKEND,
         tool_name="ralph_insert_plan_step",
     )
@@ -177,6 +231,43 @@ def test_skill_retry_envelopes_match_handler_output() -> None:
         assert tool in helper_text, (
             f"_format_plan_step_edit_error must mention {tool!r} so an agent "
             f"without the skill knows which tool the envelope belongs to"
+        )
+
+    helper_fragments = _parse_helper_envelope_fragments(helper_text)
+    assert set(helper_fragments) == {
+        "ralph_insert_plan_step",
+        "ralph_replace_plan_step",
+        "ralph_patch_step",
+        "ralph_remove_plan_step",
+        "ralph_move_plan_step",
+    }, (
+        f"_format_plan_step_edit_error output is missing one or more "
+        f"step-mutation envelope fragments; found {sorted(helper_fragments)}"
+    )
+
+    for tool, helper_keys in helper_fragments.items():
+        skill_keys = tuple(envelopes[tool].keys())
+        assert helper_keys == skill_keys, (
+            f"_format_plan_step_edit_error inline envelope for {tool!r} has "
+            f"keys {helper_keys!r} (order preserved), but the "
+            f"submit-plan-step-edits skill documents keys "
+            f"{skill_keys!r} (order preserved). The skill and helper must "
+            f"agree verbatim so an agent can copy either source and have "
+            f"the runtime accept the payload."
+        )
+
+    expected_helper_fragments: dict[str, str] = {
+        "ralph_insert_plan_step": "ralph_insert_plan_step => {'index': 2, 'step': {...}}",
+        "ralph_replace_plan_step": "ralph_replace_plan_step => {'step_number': 2, 'step': {...}}",
+        "ralph_remove_plan_step": "ralph_remove_plan_step => {'step_number': 2}",
+        "ralph_move_plan_step": "ralph_move_plan_step => {'from_step_number': 2, 'to_index': 1}",
+        "ralph_patch_step": "ralph_patch_step => {'step_number': 2, 'step': {...}}",
+    }
+    for tool, fragment in expected_helper_fragments.items():
+        assert fragment in helper_text, (
+            f"_format_plan_step_edit_error output is missing the canonical "
+            f"retry envelope fragment for {tool!r}: expected {fragment!r}; "
+            f"the skill documents this shape and the helper must stay in sync"
         )
 
 

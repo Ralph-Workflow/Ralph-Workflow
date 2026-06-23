@@ -31,20 +31,11 @@ You MUST submit your plan via Ralph Workflow's planning MCP tools.
 
 Submission protocol:
 - Unless the plan is genuinely short, submit each required section separately.
-- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage sections one by one and validate each section as you go.
-- For small-to-medium plans, prefer {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} to stage every section in one batched round-trip; the batch validates ALL sections before any merge and the whole batch is rejected on the first failure.
-- Use {{INSERT_PLAN_STEP_TOOL_REFERENCE}} to insert a step at a specific numbered position when you are refining an existing staged draft.
-- Use {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} to replace a specific numbered step when only one executor action needs revision.
-- Use {{PATCH_PLAN_STEP_TOOL_REFERENCE}} to partial-update a single step (shallow-merge; missing fields are preserved). Prefer this over {{REPLACE_PLAN_STEP_TOOL_REFERENCE}} when only one or two fields change.
-- Use {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} to remove a specific numbered step when the staged draft contains obsolete work.
-- Use {{MOVE_PLAN_STEP_TOOL_REFERENCE}} to move a step to a new position in a single round-trip (the move auto-reindexes once, so do NOT combine it with insert/remove).
-- The insert/remove/move step tools automatically reindex the full steps list; do not renumber steps manually.
-- Use {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to run the full PlanArtifact cross-section validator without writing plan.json and without deleting the in-progress draft. Call this BEFORE {{FINALIZE_PLAN_TOOL_REFERENCE}} if you want a dry-run check.
-- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect the staged draft if you need to confirm current state after an error or resume.
-- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} only after every required section is staged and valid. The full cross-section validator runs at finalize_plan; on success, the staged draft is deleted.
-- If the staged draft becomes unusable and you need to restart from step 1, use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}.
-- Only use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" when the plan is genuinely short and can be safely submitted in one atomic payload.
-- The MCP tool descriptions are the contract; the tool name and one-line description in the brokered tool list tell you what side effects to expect. Re-read the description of any tool you have not used before. Do NOT call a tool without first understanding its implicit side effects: {{REMOVE_PLAN_STEP_TOOL_REFERENCE}} fails fast on dangling depends_on and silently drops orphan AC satisfied_by_steps entries; {{FINALIZE_PLAN_TOOL_REFERENCE}} deletes the draft on success; the four step-mutation tools (insert/replace/remove/move) return an echo payload with the new step number(s), the reindex map, and the list of AC ids whose satisfied_by_steps were rewritten.
+- Use `{{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}` to stage one section at a time (validates as you go); prefer `{{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}}` for the batched one-round-trip path (validates ALL sections, rejects the batch on the first failure).
+- Use `{{INSERT_PLAN_STEP_TOOL_REFERENCE}}`, `{{REPLACE_PLAN_STEP_TOOL_REFERENCE}}`, `{{PATCH_PLAN_STEP_TOOL_REFERENCE}}`, `{{REMOVE_PLAN_STEP_TOOL_REFERENCE}}`, `{{MOVE_PLAN_STEP_TOOL_REFERENCE}}` to refine a staged draft; insert/remove/move auto-reindex so do NOT renumber steps manually.
+- Use `{{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}}` to dry-run the cross-section validator BEFORE `{{FINALIZE_PLAN_TOOL_REFERENCE}}`; on success finalize writes `plan.json` and deletes the staged draft.
+- Use `{{GET_PLAN_DRAFT_TOOL_REFERENCE}}` to inspect the staged draft, or `{{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}` to start over.
+- Only use `{{SUBMIT_ARTIFACT_TOOL_REFERENCE}}` with `artifact_type="plan"` for the atomic short-plan path.
 
 ## OPTIONAL: submit-plan-artifact skill
 
@@ -126,13 +117,8 @@ This is an unattended pipeline: do not ask for clarification, do not defer decis
 Before finalizing, run the pre-finalize review fan-out from ## PLANNING WITH SUBAGENTS (or its sequential equivalent) against every rubric dimension above, then fix every confirmed finding in the same planning pass.
 
 Default submission flow:
-1. Stage `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, `verification_strategy` via {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}.
-2. If you rely on `design.planning_profile` (`strict`, `balanced`, or `minimal`), stage `design` before finalizing.
-3. Stage optional `parallel_plan` / `work_units` only when they add real value (see ## Agent-Driven Parallel Execution).
-4. Call {{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}} to dry-run the cross-section validator before finalizing.
-5. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} to validate the full assembled plan and write `.agent/artifacts/plan.json`.
-
-Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{section, content, mode}` entries and stages them all in one round-trip.
+1. Stage the 6 required sections (`summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, `verification_strategy`) per the Submission protocol above. If you rely on `design.planning_profile` (`strict`, `balanced`, or `minimal`), stage `design` before finalizing. Stage optional `parallel_plan` / `work_units` only when they add real value (see ## Agent-Driven Parallel Execution).
+2. Dry-run with `{{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}}`, then call `{{FINALIZE_PLAN_TOOL_REFERENCE}}` to write `.agent/artifacts/plan.json`.
 
 ## Plan-artifact canonical contract
 
