@@ -1,6 +1,6 @@
 ---
 name: submit-development-result-artifact
-description: Use when submitting a development_result artifact with plan_items_proven and analysis_items_addressed proof entries via ralph_submit_artifact
+description: Use when submitting a development_result artifact with plan_items_proven and analysis_items_addressed proof entries via ralph_submit_artifact, or when plan_items_proven or analysis_items_addressed were rejected as unknown references and you need to recover the canonical-reference matching rule
 ---
 
 # submit-development-result-artifact
@@ -179,3 +179,27 @@ If this skill and the format doc ever disagree, the format doc wins.
   generated JSON string; `content_path` is reserved for non-agent callers.
 - Passing an object instead of a JSON string for `content`. The `content`
   field must be a stringified JSON object, not the object itself.
+## Red Flags - STOP and Start Over
+
+- "I have read the format doc so I do not need the skill." STOP. The
+  skill is a per-tool retry envelope; the format doc is the schema. They
+  cover different failure modes.
+- "The skill is OPTIONAL therefore ignorable." STOP. The OPTIONAL marker
+  means the agent may consult the skill, not that the agent may skip the
+  source-of-truth format doc. The skill names the format doc explicitly.
+- "I will paraphrase the `plan_item` reference." STOP. The `plan_item`
+  field must EXACTLY equal `"Step N: <title>"` as written in the staged
+  plan (or the assigned `unit_id` for work_units plans). Stripping the
+  `"Step N: "` prefix, changing case, or trimming trailing whitespace
+  all fail validation.
+- "I will paraphrase the `how_to_fix_item` reference." STOP. The string
+  must be a verbatim copy of the prior analysis text — do not rewrite,
+  abbreviate, or reorder it.
+- "I will skip `next_steps` and `continuation` for a partial result."
+  STOP. Both are required when `status="partial"`. A partial result
+  without `continuation` is rejected as a downstream agent has no
+  session to continue from.
+- "I will reuse a `plan_item` from a different plan." STOP. The proof
+  validator matches `plan_item` against the staged plan that is
+  currently being proven; a value from a prior plan fails as an unknown
+  reference and re-prompts.

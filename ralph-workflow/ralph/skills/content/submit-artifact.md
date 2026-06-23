@@ -1,6 +1,6 @@
 ---
 name: submit-artifact
-description: Use when submitting any Ralph Workflow artifact (plan, development_result, commit_message, planning_analysis_decision, development_analysis_decision, review_analysis_decision, issues, fix_result, smoke_test_result, commit_cleanup, product_spec) via ralph_submit_artifact
+description: Use when submitting any Ralph Workflow artifact (plan, development_result, commit_message, planning_analysis_decision, development_analysis_decision, review_analysis_decision, issues, fix_result, smoke_test_result, commit_cleanup, product_spec) via ralph_submit_artifact, or when a validation error mentions artifact_type and you need to recover the canonical envelope shape
 ---
 
 # submit-artifact
@@ -141,3 +141,24 @@ If this skill and a format doc ever disagree, the format doc wins.
 - Using the generic `analysis_decision` alias outside an analysis drain.
   The alias is only valid when the session drain is
   `development_analysis`, `planning_analysis`, or `review_analysis`.
+
+## Red Flags - STOP and Start Over
+
+- "I have read the format doc so I do not need the skill." STOP. The
+  skill is a per-artifact-type retry envelope; the format doc is the
+  schema. They cover different failure modes.
+- "The skill is OPTIONAL therefore ignorable." STOP. The OPTIONAL
+  marker means the agent may consult the skill, not that the agent may
+  skip the source-of-truth format doc. The skill names the format doc
+  explicitly.
+- "I will reuse a payload from a prior artifact type." STOP. Every
+  artifact type has its own closed enums, required fields, and
+  validation rules; copying a payload from one type re-runs every
+  validation failure of that type.
+- "I will invent an `artifact_type` because the index is missing it."
+  STOP. The closed set lives in
+  `.agent/artifact-formats/artifact_formats_index.md`; unknown types
+  are rejected with a pointer to the index.
+- "I will wrap the inner payload in `{"type": ..., "content": ...}`."
+  STOP. The canonical envelope is `{"artifact_type": "<type>",
+  "content": "<fresh JSON string>"}` with no outer wrapper.

@@ -36,6 +36,7 @@ Tip: Configuring arabold/docs-mcp-server on localhost:6280 in .agent/mcp.toml im
 Not submitting the revised plan is a FAILURE.
 
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
+{{ render_optional_artifact_skill_pointer('submit-plan-step-edits', '.agent/artifact-formats/plan.md') }}
 
 Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or staged draft before editing, `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace scope/inventory/verification-affected sections, `{{FINALIZE_PLAN_TOOL_NAME}}` to commit the revised plan, and `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` only when the plan is unsalvageable. Your target is a revised plan that returns `completed` on the next planning-analysis pass.
 

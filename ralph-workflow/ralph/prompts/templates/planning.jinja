@@ -147,29 +147,20 @@ Default submission flow:
 
 Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{section, content, mode}` entries and stages them all in one round-trip. Use this for small-to-medium plans where you want a single round-trip instead of N stage calls.
 
-## INTENT & INTENT_VERB (cheap-model shortcut)
+## Plan-artifact canonical contract
 
-- See `.agent/artifact-formats/plan.md` §`Intent & intent_verb` for the canonical definition.
+The full schema, per-section shapes, per-list caps, and string-length tiers live in `.agent/artifact-formats/plan.md`. Each bullet below points at the matching format-doc section for the topic that previously had an inlined pointer in this template:
 
-## STEP CONTRACT
+- Intent & intent_verb → `.agent/artifact-formats/plan.md` §`Intent & intent_verb`.
+- Step contract → `.agent/artifact-formats/plan.md` §`Step contract`.
+- Plan size limits → `.agent/artifact-formats/plan.md` §`Plan size limits`.
+- Cycle guard → `.agent/artifact-formats/plan.md` §`Cycle guard`.
+- Module family → `.agent/artifact-formats/plan.md` §`Module family`.
+- StepType reference → `.agent/artifact-formats/plan.md` §`StepType reference`.
+- Step ↔ acceptance-criteria linking → `.agent/artifact-formats/plan.md` §`Step ↔ acceptance-criteria linking`.
+- Design section + atomic-fallback payload → `.agent/artifact-formats/plan.md` §`Design section` and §`Plan-artifact payload`.
 
-- See `.agent/artifact-formats/plan.md` §`Step contract` for the canonical definition.
-
-## PLAN SIZE LIMITS
-
-- See `.agent/artifact-formats/plan.md` §`Plan size limits` for the canonical definition.
-
-## CYCLE GUARD
-
-- See `.agent/artifact-formats/plan.md` §`Cycle guard` for the canonical definition.
-
-## MODULE FAMILY
-
-- See `.agent/artifact-formats/plan.md` §`Module family` for the canonical definition.
-
-## StepType reference
-
-- See `.agent/artifact-formats/plan.md` §`StepType reference` for the canonical definition.
+`Common StepType mistakes` (the alias-coercion warning unique to this template) is preserved inline below.
 
 ## Common StepType mistakes
 
@@ -178,15 +169,6 @@ Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{s
 - If a step does not modify a file and does not run a verification command, it is `action` (a non-mutating executor action) or `research` (an exploratory step with no committed change).
 
 The before-validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep._coerce_step_type_aliases` silently coerces `test`, `tests`, `check`, and `run` to `verify` with a WARNING log so cheap-model mistakes do not fail validation; the canonical value is still `verify` and you should set it explicitly.
-
-## STEP ↔ ACCEPTANCE-CRITERIA LINKING
-
-- See `.agent/artifact-formats/plan.md` §`Step ↔ acceptance-criteria linking` for the canonical definition.
-
-## DESIGN SECTION
-
-- See `.agent/artifact-formats/plan.md` §`Design section` for the canonical definition.
-- See `.agent/artifact-formats/plan.md` §`Plan-artifact payload` for the atomic-fallback JSON shape, hard requirements for the payload, and the canonical short-plan escape hatch.
 
 ---
 

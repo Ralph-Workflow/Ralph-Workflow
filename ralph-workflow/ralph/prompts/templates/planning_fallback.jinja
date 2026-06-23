@@ -36,14 +36,13 @@ Do not use phrases like "follow the existing pattern" unless you name the exact 
 
 {{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 
-## Plan size limits
-- See `.agent/artifact-formats/plan.md` §`Plan size limits` for the canonical 4 MB hard cap and per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500). A plan that exceeds any cap is rejected with `PlanArtifactSizeError` before Pydantic runs.
+## Plan-artifact canonical contract
 
-## Model tier
-- See `.agent/artifact-formats/plan.md` §`Model tier` for the `design.planning_profile` choice and bias-fill preset contract. Cheap models use `"minimal"` / `"balanced"`; high-quality models handcraft all seven design sub-sections plus `design.outcome` and `design.notes`.
+The full schema, per-section shapes, per-list caps, and string-length tiers for the plan artifact live in `.agent/artifact-formats/plan.md`. The bullets below point at the matching format-doc section for the topic that previously had an inlined pointer in this template:
 
-## Cycle guard
-- See `.agent/artifact-formats/plan.md` §`Cycle guard` for the `depends_on` cycle validation contract (DAG only; diamond-shaped DAGs accepted).
+- Plan size limits → `.agent/artifact-formats/plan.md` §`Plan size limits` (4 MB hard cap, per-list caps, `PlanArtifactSizeError` before Pydantic).
+- Model tier → `.agent/artifact-formats/plan.md` §`Model tier` (`design.planning_profile` choice and bias-fill preset contract).
+- Cycle guard → `.agent/artifact-formats/plan.md` §`Cycle guard` (`depends_on` DAG contract; diamond-shaped DAGs accepted).
 
 Native file and shell tools are disabled in this brokered fallback; native orchestration tools remain enabled. Use the plan tools and {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} exactly as named below. Step mutation tools echo the new step number(s), the `depends_on` reindex map, and the AC ids whose `satisfied_by_steps` were rewritten.
 

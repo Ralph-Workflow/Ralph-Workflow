@@ -1,6 +1,6 @@
 ---
 name: submit-commit-message-artifact
-description: Use when submitting a commit_message artifact with a structured commit or skip payload via ralph_submit_artifact
+description: Use when submitting a commit_message artifact with a structured commit or skip payload via ralph_submit_artifact, or when the conventional-commit subject regex was rejected and you need to recover the subject shape
 ---
 
 # submit-commit-message-artifact
@@ -231,3 +231,24 @@ If this skill and the format doc ever disagree, the format doc wins.
   commit triggers SemVer-major bumps in downstream consumers and
   changelog tooling; reserve it for commits that actually break
   compatibility.
+
+## Red Flags - STOP and Start Over
+
+- "I have read the format doc so I do not need the skill." STOP. The
+  skill is a per-tool retry envelope; the format doc is the schema. They
+  cover different failure modes.
+- "The skill is OPTIONAL therefore ignorable." STOP. The OPTIONAL marker
+  means the agent may consult the skill, not that the agent may skip the
+  source-of-truth format doc. The skill names the format doc explicitly.
+- "I will write the conventional-commit prefix in `type`." STOP. The
+  `type` field must be `"commit"` or `"skip"`; the `fix:` prefix goes in
+  `subject`.
+- "I will skip the body for a non-trivial change." STOP. The commit
+  message skill and the format doc both surface the dual body shape
+  decision tree for a reason: most commits need a body — when in doubt,
+  include one.
+- "I will mark a routine commit as breaking with `!`." STOP. The `!`
+  marker triggers SemVer-major bumps in downstream consumers; reserve
+  it for commits that actually break compatibility.
+- "I will mix `body` and `body_summary`/`body_details`/`body_footer`."
+  STOP. The two shapes are mutually exclusive — pick exactly one.

@@ -1,6 +1,6 @@
 ---
 name: submit-commit-cleanup-artifact
-description: Use when submitting a commit_cleanup artifact with an actions array distinguishing delete_file, add_to_gitignore, and add_to_git_exclude via ralph_submit_artifact
+description: Use when submitting a commit_cleanup artifact with an actions array distinguishing delete_file, add_to_gitignore, and add_to_git_exclude via ralph_submit_artifact, or when the actions array was rejected by the security-boundary check and you need to recover the runtime-artifact allowlist
 ---
 
 # submit-commit-cleanup-artifact
@@ -217,3 +217,29 @@ engine-written file types for that directory:
 | `.agent/prompt_history/` | `.json` | `.agent/prompt_history/abc.json` |
 | `.agent/artifact-formats/` | `.md` | `.agent/artifact-formats/commit_message.md` |
 | `.agent/workers/<unit>/...` | `.log`, `.md`, `.json` | `.agent/workers/unit-a/tmp/checkpoint.json` |
+
+## Red Flags - STOP and Start Over
+
+- "I have read the format doc so I do not need the skill." STOP. The
+  skill is a per-tool retry envelope; the format doc is the schema. They
+  cover different failure modes.
+- "The skill is OPTIONAL therefore ignorable." STOP. The OPTIONAL marker
+  means the agent may consult the skill, not that the agent may skip the
+  source-of-truth format doc. The skill names the format doc explicitly.
+- "I will use `delete_file` for source code, test files, documentation,
+  or configuration." STOP. The security boundary silently drops such
+  actions. Source code and tracked user-authored content MUST NOT be
+  deleted, even when tracked in HEAD.
+- "I will recommend broad `.agent/`, `artifacts/`, or `reports/`
+  directory deletion." STOP. A blanket directory-prefix recommendation
+  is silently dropped by the runtime safety boundary. Use the specific
+  basenames / per-directory extensions listed in the
+  `Runtime-artifact allowlist quick reference` subsection.
+- "I will use `add_to_gitignore` for machine-local patterns like
+  `.env.local` or `.vscode/`." STOP. Use `add_to_git_exclude` for
+  machine-local patterns; `add_to_gitignore` is for project-wide
+  patterns like `*.pyc`, `build/`, `dist/`.
+- "I will remove a lock file (`package-lock.json`, `uv.lock`,
+  `Cargo.lock`, etc.)." STOP. Lock files are intentional committed
+  dependency manifests; deleting them silently breaks every
+  contributor's `npm install` / `uv sync` / `cargo build` etc.

@@ -1915,6 +1915,12 @@ def _format_plan_step_edit_error(
             ),
             f"After fixing the payload or step number, retry {tool_name}.",
             (
+                "Per-tool guidance: the bundled submit-plan-step-edits skill documents the exact "
+                "retry envelope and reindex semantics for ralph_insert_plan_step, "
+                "ralph_replace_plan_step, ralph_patch_step, ralph_remove_plan_step, and "
+                "ralph_move_plan_step."
+            ),
+            (
                 "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
                 "example and recovery flow for this same error."
             ),

@@ -45,6 +45,7 @@ SKILL_DIR = REPO_ROOT / "ralph" / "skills" / "content"
 TEMPLATES_DIR = REPO_ROOT / "ralph" / "prompts" / "templates"
 
 PLAN_SKILL_PATH = SKILL_DIR / "submit-plan-artifact.md"
+PLAN_STEP_EDITS_SKILL_PATH = SKILL_DIR / "submit-plan-step-edits.md"
 ARTIFACT_SKILL_PATH = SKILL_DIR / "submit-artifact.md"
 COMMIT_MESSAGE_SKILL_PATH = SKILL_DIR / "submit-commit-message-artifact.md"
 DEVELOPMENT_RESULT_SKILL_PATH = SKILL_DIR / "submit-development-result-artifact.md"
@@ -156,16 +157,17 @@ def test_submit_artifact_skill_shape() -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-03 — BASELINE_SKILL_NAMES registers both new skills (length 29)
+# AC-03 — BASELINE_SKILL_NAMES registers both new skills (length 30)
 # ---------------------------------------------------------------------------
 
 
 def test_baseline_skill_names_includes_new_skills() -> None:
     assert isinstance(BASELINE_SKILL_NAMES, tuple)
-    assert len(BASELINE_SKILL_NAMES) == 29, (
-        f"expected 29 baseline skills after registration, got {len(BASELINE_SKILL_NAMES)}"
+    assert len(BASELINE_SKILL_NAMES) == 30, (
+        f"expected 30 baseline skills after registration, got {len(BASELINE_SKILL_NAMES)}"
     )
     assert "submit-plan-artifact" in BASELINE_SKILL_NAMES
+    assert "submit-plan-step-edits" in BASELINE_SKILL_NAMES
     assert "submit-artifact" in BASELINE_SKILL_NAMES
     assert "submit-commit-message-artifact" in BASELINE_SKILL_NAMES
     assert "submit-development-result-artifact" in BASELINE_SKILL_NAMES
@@ -212,9 +214,10 @@ def test_planning_fallback_jinja_skill_pointer_and_invariants() -> None:
         "planning_fallback.jinja must reference submit-plan-artifact"
     )
     preserved = (
-        "## Plan size limits",
-        "## Model tier",
-        "## Cycle guard",
+        "## Plan-artifact canonical contract",
+        "Plan size limits",
+        "Model tier",
+        "Cycle guard",
         "ARTIFACT_HISTORY_PATH",
         "ARTIFACT_HISTORY_DIR",
     )
@@ -491,13 +494,14 @@ def test_submit_commit_cleanup_artifact_skill_shape() -> None:
         "## Recovery from a Bad Payload",
         "## Source of Truth Reference",
         "## Common Mistakes",
+        "## Red Flags - STOP and Start Over",
     )
     for header in expected_h2:
         assert header in body, f"missing H2 section: {header!r}"
 
     actual_h2 = tuple(re.findall(r"^## .+$", body, flags=re.MULTILINE))
     assert actual_h2 == expected_h2, (
-        f"submit-commit-cleanup-artifact.md must contain exactly six H2 sections in the "
+        f"submit-commit-cleanup-artifact.md must contain exactly seven H2 sections in the "
         f"planned order; got {actual_h2!r}"
     )
 
@@ -709,3 +713,185 @@ def test_commit_cleanup_jinja_has_optional_skill_pointer() -> None:
     )
 
 
+
+
+# ---------------------------------------------------------------------------
+# AC-11 — submit-plan-step-edits.md skill shape (new skill)
+# ---------------------------------------------------------------------------
+
+
+def test_submit_plan_step_edits_skill_shape() -> None:
+    assert PLAN_STEP_EDITS_SKILL_PATH.exists(), (
+        f"missing skill: {PLAN_STEP_EDITS_SKILL_PATH}"
+    )
+    fm, body = _read_skill(PLAN_STEP_EDITS_SKILL_PATH)
+
+    assert fm.get("name") == "submit-plan-step-edits"
+    assert fm.get("description"), "frontmatter description is required"
+    assert fm["description"].startswith("Use when"), (
+        f"description must start with 'Use when', got: {fm['description']!r}"
+    )
+    assert len(fm["description"]) <= 500, (
+        f"description must stay under the 500-char soft cap, got {len(fm['description'])}"
+    )
+
+    frontmatter_text = PLAN_STEP_EDITS_SKILL_PATH.read_text(encoding="utf-8")
+    total_frontmatter = len(re.match(r"---\n.*?\n---", frontmatter_text, re.DOTALL).group(0))
+    assert total_frontmatter <= 1024, (
+        f"frontmatter must stay under the 1024-char hard cap, got {total_frontmatter}"
+    )
+
+    cso_keywords = (
+        "cross-section validator failure",
+        "step numbering off-by-one",
+        "dangling depends_on",
+        "orphan AC satisfied_by_steps",
+    )
+    for keyword in cso_keywords:
+        assert keyword in fm["description"], (
+            f"description must contain CSO keyword {keyword!r} for trigger-symptom "
+            f"discovery; got: {fm['description']!r}"
+        )
+
+    expected_h2 = (
+        "## Overview",
+        "## When to Use",
+        "## Core Flow (one-shot)",
+        "## Recovery from a Bad Payload",
+        "## Source of Truth Reference",
+        "## Common Mistakes",
+        "## Red Flags - STOP and Start Over",
+    )
+    for header in expected_h2:
+        assert header in body, f"missing H2 section: {header!r}"
+
+    tool_names = (
+        "ralph_insert_plan_step",
+        "ralph_replace_plan_step",
+        "ralph_patch_step",
+        "ralph_remove_plan_step",
+        "ralph_move_plan_step",
+    )
+    for tool_name in tool_names:
+        assert tool_name in body, f"body must mention {tool_name!r}"
+
+    assert ".agent/artifact-formats/plan.md" in body, (
+        "body must reference the plan format doc"
+    )
+    assert "reindex" in body, "body must surface the reindex semantics"
+    assert "orphan" in body, "body must surface the orphan AC drop semantics"
+    assert "## Red Flags - STOP and Start Over" in body, (
+        "body must end with the Red Flags section per writing-skills.md"
+    )
+    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
+
+
+# ---------------------------------------------------------------------------
+# AC-12 — planning.jinja pointer sections removed
+# ---------------------------------------------------------------------------
+
+
+def test_planning_jinja_pointer_sections_removed() -> None:
+    source = PLANNING_JINJA.read_text(encoding="utf-8")
+
+    removed_h2 = (
+        "## INTENT & INTENT_VERB",
+        "## STEP CONTRACT",
+        "## PLAN SIZE LIMITS",
+        "## CYCLE GUARD",
+        "## MODULE FAMILY",
+        "## StepType reference",
+        "## STEP \u2194 ACCEPTANCE-CRITERIA LINKING",
+        "## DESIGN SECTION",
+    )
+    for header in removed_h2:
+        assert f"{header}\n" not in source, (
+            f"planning.jinja must NOT contain the deleted H2 heading {header!r}"
+        )
+
+    assert "## Plan-artifact canonical contract\n" in source, (
+        "planning.jinja must contain the new '## Plan-artifact canonical contract' heading"
+    )
+    assert "## Common StepType mistakes" in source, (
+        "planning.jinja must preserve the '## Common StepType mistakes' section"
+    )
+    assert "## OPTIONAL: submit-plan-artifact skill" in source, (
+        "planning.jinja must preserve the existing '## OPTIONAL: submit-plan-artifact skill' "
+        "section (per AC-04 invariants)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# AC-13 — planning_fallback.jinja pointer sections removed
+# ---------------------------------------------------------------------------
+
+
+def test_planning_fallback_jinja_pointer_sections_removed() -> None:
+    source = PLANNING_FALLBACK_JINJA.read_text(encoding="utf-8")
+
+    removed_h2 = ("## Plan size limits", "## Model tier", "## Cycle guard")
+    for header in removed_h2:
+        assert f"{header}\n" not in source, (
+            f"planning_fallback.jinja must NOT contain the deleted H2 heading {header!r}"
+        )
+
+    rendered = _render_template_source(PLANNING_FALLBACK_JINJA)
+    heading_count = rendered.count("## OPTIONAL: submit-plan-artifact skill")
+    assert heading_count == 1, (
+        "planning_fallback.jinja must render exactly one "
+        "'## OPTIONAL: submit-plan-artifact skill' heading (was "
+        f"{heading_count}); the shared include already emits the heading, so "
+        "the source must not duplicate it inline."
+    )
+
+    assert "ARTIFACT_HISTORY_PATH" in source and "ARTIFACT_HISTORY_DIR" in source, (
+        "planning_fallback.jinja must preserve the ARTIFACT_HISTORY_PATH / "
+        "ARTIFACT_HISTORY_DIR tokens"
+    )
+
+
+# ---------------------------------------------------------------------------
+# AC-14 — planning_edit*.jinja reference the new submit-plan-step-edits skill
+# ---------------------------------------------------------------------------
+
+
+def test_planning_edit_skill_pointer_wired() -> None:
+    edit_source = PLANNING_EDIT_JINJA.read_text(encoding="utf-8")
+    edit_fallback_source = PLANNING_EDIT_FALLBACK_JINJA.read_text(encoding="utf-8")
+
+    for source, label in (
+        (edit_source, "planning_edit.jinja"),
+        (edit_fallback_source, "planning_edit_fallback.jinja"),
+    ):
+        assert "submit-plan-step-edits" in source, (
+            f"{label} must reference the new submit-plan-step-edits skill pointer"
+        )
+        assert "submit-plan-artifact" in source, (
+            f"{label} must preserve the existing submit-plan-artifact skill pointer"
+        )
+
+
+# ---------------------------------------------------------------------------
+# AC-15 — _format_plan_step_edit_error mentions submit-plan-step-edits
+# ---------------------------------------------------------------------------
+
+
+def test_format_plan_step_edit_error_mentions_submit_plan_step_edits(
+    tmp_path: Path,
+) -> None:
+    backend = PathFileBackend()
+    message = _format_plan_step_edit_error(
+        detail="synthetic test detail",
+        workspace_root=tmp_path,
+        backend=backend,
+        tool_name="ralph_insert_plan_step",
+    )
+    assert "submit-plan-step-edits" in message, (
+        "_format_plan_step_edit_error must mention the submit-plan-step-edits skill pointer"
+    )
+    assert "submit-plan-artifact" in message, (
+        "_format_plan_step_edit_error must preserve the existing submit-plan-artifact sentence"
+    )
+    assert ".agent/artifact-formats/plan.md" in message, (
+        "_format_plan_step_edit_error must keep the existing plan.md format-doc reference"
+    )

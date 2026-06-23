@@ -38,6 +38,7 @@
     "open-design--fixing-motion-performance",
     "open-design--fixing-metadata",
     "submit-plan-artifact",
+    "submit-plan-step-edits",
     "submit-artifact",
     "submit-commit-message-artifact",
     "submit-development-result-artifact",
@@ -69,6 +70,7 @@
     "open-design--fixing-motion-performance": "open-design",
     "open-design--fixing-metadata": "open-design",
     "submit-plan-artifact": "core-workflow",
+    "submit-plan-step-edits": "core-workflow",
     "submit-artifact": "core-workflow",
     "submit-commit-message-artifact": "core-workflow",
     "submit-development-result-artifact": "core-workflow",
@@ -324,6 +326,16 @@
       "repo": "https://github.com/anomalyco/opencode",
       "ref": "internal",
       "path": "skills/submit-plan-artifact/SKILL.md"
+    },
+    "submit-plan-step-edits": {
+      "bundle": "core-workflow",
+      "upstream_name": "submit-plan-step-edits",
+      "catalog_repo": null,
+      "catalog_ref": null,
+      "catalog_path": null,
+      "repo": "https://github.com/anomalyco/opencode",
+      "ref": "internal",
+      "path": "skills/submit-plan-step-edits/SKILL.md"
     },
     "submit-artifact": {
       "bundle": "core-workflow",

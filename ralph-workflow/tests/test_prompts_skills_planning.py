@@ -38,7 +38,7 @@ DOCS_MCP_FALSE_BRANCH_HINTS_FALLBACK = (
 )
 
 DESIGN_SECTION_HINTS = (
-    "## DESIGN SECTION",
+    "## Plan-artifact canonical contract",
     "Design section",
     ".agent/artifact-formats/plan.md",
 )
