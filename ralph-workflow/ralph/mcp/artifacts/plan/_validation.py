@@ -245,34 +245,11 @@ class PlanArtifact(RalphBaseModel):
             step_type_by_number: dict[int, str] = {s.number: str(s.step_type) for s in self.steps}
             _check_research_verify_step_references(criteria, step_type_by_number)
 
-        design_profile = self.design.planning_profile if self.design is not None else None
-        if not self.skills_mcp.skills and design_profile != "minimal":
+        if not self.skills_mcp.skills:
             raise PlanArtifactValidationError(
-                "skills_mcp.skills must contain at least one skill name unless "
-                "design.planning_profile == 'minimal'"
+                "skills_mcp.skills must contain at least one skill name"
             )
         return self
-
-    @model_validator(mode="before")
-    @classmethod
-    def _auto_fill_minimal_skills(cls, raw: object) -> object:
-        """When planning_profile is 'minimal', auto-fill empty skills with default.
-
-        Runs in mode='before' so the patch lands before SkillsMcp field-level
-        validators (min_length=1 and normalize_skill_names empty-check) execute.
-        """
-        if not isinstance(raw, dict):
-            return raw
-        skills_mcp_raw: object = raw.get("skills_mcp")
-        design_raw: object = raw.get("design")
-        if not isinstance(skills_mcp_raw, dict) or not isinstance(design_raw, dict):
-            return raw
-        skills_value: object = skills_mcp_raw.get("skills")
-        design_profile: object = design_raw.get("planning_profile")
-        if isinstance(skills_value, list) and not skills_value and design_profile == "minimal":
-            skills_mcp_raw["skills"] = cast("list[str]", ["writing-plans"])
-        return raw
-
 
 class _PlanArtifactRebuildState:
     rebuilt: bool = False

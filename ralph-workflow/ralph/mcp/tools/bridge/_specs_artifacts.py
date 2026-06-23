@@ -5,7 +5,6 @@ from __future__ import annotations
 from ralph.mcp.protocol._mcp_capability import McpCapability
 from ralph.mcp.protocol.capability_mapping import Capability
 from ralph.mcp.tools.bridge._spec_helpers import (
-    _EXAMPLE_PLAN_CONTENT,
     _EXAMPLE_PLAN_SECTION_CONTENT,
     _EXAMPLE_STEPS_CONTENT,
     _SUBMIT_ARTIFACT_DESCRIPTION,
@@ -40,8 +39,9 @@ def artifact_specs() -> list[ToolSpec]:
                 name=SUBMIT_ARTIFACT_TOOL,
                 description=(
                     _SUBMIT_ARTIFACT_DESCRIPTION
-                    + " For 'plan', the draft is deleted on success and plan.json is"
-                    " written; draft preserved on failure."
+                    + " Do not use this generic tool for plan artifacts; plans must go"
+                    " through ralph_submit_plan_section, ralph_submit_plan_sections,"
+                    " and ralph_finalize_plan."
                 ),
                 input_schema={
                     "type": "object",
@@ -49,7 +49,7 @@ def artifact_specs() -> list[ToolSpec]:
                         "artifact_type": {
                             "type": "string",
                             "description": (
-                                "Type of artifact as a string. Common types: plan, "
+                                "Type of artifact as a string. Common types: "
                                 "development_result, issues, fix_result, commit_message, "
                                 "development_analysis_decision, planning_analysis_decision, "
                                 "review_analysis_decision (this list is not exhaustive). "
@@ -63,9 +63,8 @@ def artifact_specs() -> list[ToolSpec]:
                             "description": (
                                 "Artifact payload as a JSON-serialized string "
                                 "(example values: "
-                                + _EXAMPLE_PLAN_CONTENT
-                                + ", "
-                                + '{"type": "commit", "subject": "placeholder"}'
+                                + '{"type": "commit", "subject": '
+                                + '"fix(auth): prevent token expiry race"}'
                                 + ")."
                             ),
                         },
@@ -93,9 +92,9 @@ def artifact_specs() -> list[ToolSpec]:
                     "Only the single submitted section is validated here; cross-section "
                     "invariants (depends_on cycle, parallel_plan XOR work_units, "
                     "shell-invocation guard, research/verify in AC.satisfied_by_steps, "
-                    "and empty skills_mcp.skills outside design.planning_profile=minimal) "
-                    "run ONLY at finalize_plan. content may be either a native JSON "
-                    "object/array or a JSON-serialized string of that payload. "
+                    "and non-empty skills_mcp.skills) "
+                    "run ONLY at finalize_plan. Pass content as the native JSON "
+                    "object/array for that section. "
                     "mode=append is list-sections only; "
                     "object sections only accept mode=replace. Plans over the 4 MB cap "
                     "or PlanSizeLimits per-list caps are rejected with PlanArtifactSizeError."
@@ -116,8 +115,8 @@ def artifact_specs() -> list[ToolSpec]:
                         "content": {
                             "anyOf": [{"type": "string"}, {"type": "object"}, {"type": "array"}],
                             "description": (
-                                "Section payload as either the native JSON object/array or a "
-                                "JSON-serialized string of that payload "
+                                "Section payload as the native JSON object/array for the "
+                                "selected section "
                                 "(example values: "
                                 + _EXAMPLE_PLAN_SECTION_CONTENT
                                 + ", "
@@ -153,10 +152,9 @@ def artifact_specs() -> list[ToolSpec]:
                     "fails, the entire batch is rejected and the on-disk draft is "
                     "unchanged. On success it stages every entry and returns "
                     "{submitted: [...section names...], staged_sections: [...], "
-                    "total_bytes: <int>}. Use this to stage every section of a "
-                    "small-to-medium plan in one round-trip instead of N calls to "
-                    "ralph_submit_plan_section. content may be either the native JSON "
-                    "object/array or a JSON-serialized string of that payload. For list "
+                    "total_bytes: <int>}. Use this only when every entry already "
+                    "contains complete, analysis-ready section content. content must be "
+                    "the native JSON object/array for that section. For list "
                     "sections, mode='append' accepts either one item object or an array "
                     "of items. The full cross-section validator still "
                     "runs at finalize_plan; this tool only stages sections. Capability: "
@@ -213,7 +211,14 @@ def artifact_specs() -> list[ToolSpec]:
                     "of rewritten AC ids, the list of dropped AC ids (orphan references), and "
                     "the new total step count: {action: 'insert', index, new_step_number, "
                     "reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
-                    "dropped_ac_satisfied_by_steps, total_steps}."
+                    "dropped_ac_satisfied_by_steps, total_steps}. Example: "
+                    "{'index': 3, 'step': {'title': 'Document the foo() clamp behavior', "
+                    "'content': 'Update docs/foo.md with the accepted out-of-range index "
+                    "behavior after the code and focused regression test are in place.', "
+                    "'step_type': 'file_change', 'targets': [{'path': 'docs/foo.md', "
+                    "'action': 'modify'}], 'depends_on': [2], 'expected_evidence': "
+                    "[{'kind': 'file', 'ref': 'docs/foo.md'}, {'kind': 'command_output', "
+                    "'ref': 'pytest tests/test_foo.py -q'}]}}."
                 ),
                 input_schema={
                     "type": "object",
@@ -242,7 +247,17 @@ def artifact_specs() -> list[ToolSpec]:
                     "numbers, the list of rewritten AC ids, the list of dropped AC ids, and "
                     "the new total step count: {action: 'replace', step_number, reindex_map, "
                     "rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
-                    "dropped_ac_satisfied_by_steps, total_steps}."
+                    "dropped_ac_satisfied_by_steps, total_steps}. Use this when planning "
+                    "analysis feedback says a step is vague or missing software-engineering proof: "
+                    "replace the full step with concrete content, targets, satisfies, "
+                    "expected_evidence, and depends_on arrays. Example step object: "
+                    "{title: 'Clamp the foo() index', content: 'Update src/foo.py while "
+                    "preserving the public foo() signature.', step_type: 'file_change', "
+                    "targets: [{path: 'src/foo.py', action: 'modify'}], satisfies: ['AC-02'], "
+                    "expected_evidence: [{kind: 'file', ref: 'src/foo.py'}, {kind: "
+                    "'test_name', ref: "
+                    "'tests/test_foo.py::test_clamp_handles_out_of_range_index'}], "
+                    "depends_on: [1]}."
                 ),
                 input_schema={
                     "type": "object",
@@ -272,7 +287,11 @@ def artifact_specs() -> list[ToolSpec]:
                     " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
                     " dropped_ac_satisfied_by_steps, total_steps}. Use this instead of"
                     " `ralph_replace_plan_step` when only one or two fields need to"
-                    " change. Capability: ARTIFACT_PLAN_WRITE."
+                    " change. For analysis feedback like 'step lacks targets/evidence',"
+                    " patch just those proof fields: {targets: [{path: 'src/foo.py',"
+                    " action: 'modify'}], expected_evidence: [{kind: 'file',"
+                    " ref: 'src/foo.py'}], depends_on: [1]}. Capability:"
+                    " ARTIFACT_PLAN_WRITE."
                 ),
                 input_schema={
                     "type": "object",
@@ -353,14 +372,17 @@ def artifact_specs() -> list[ToolSpec]:
                     "Read-only. Runs the full PlanArtifact cross-section validator"
                     " (depends_on cycle, intent_verb vs scope_item category, parallel_plan"
                     " XOR work_units, shell-invocation guard, research/verify steps in AC"
-                    " satisfied_by_steps, AC id pattern, empty skills_mcp.skills outside"
-                    " design.planning_profile=minimal, 4 MB size cap) without writing"
+                    " satisfied_by_steps, AC id pattern, non-empty skills_mcp.skills,"
+                    " 4 MB size cap) without writing"
                     " plan.json and without deleting the in-progress draft. Returns"
                     " {valid: true} on success or {valid: false, errors: [...]} on"
                     " failure. If no draft exists, returns valid=false with a named"
                     " missing-draft error. The same checks run at finalize_plan in the write path;"
                     " ralph_validate_draft exposes them in a read-only path so the agent"
-                    " can dry-run validation before committing. Capability:"
+                    " can dry-run validation before committing. Use errors from this tool"
+                    " as analysis feedback: add concrete targets, task-relevant skills,"
+                    " acceptance-criterion links, expected evidence, and exact verification"
+                    " commands before finalizing. Capability:"
                     " ARTIFACT_PLAN_READ."
                 ),
                 input_schema={"type": "object", "properties": {}},

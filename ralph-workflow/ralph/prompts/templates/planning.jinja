@@ -30,16 +30,16 @@ You MUST submit your plan via Ralph Workflow's planning MCP tools.
   (for example file reads/search/listing and image analysis)
 
 Submission protocol:
-- Unless the plan is genuinely short, submit each required section separately.
-- Use `{{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}` to stage one section at a time (validates as you go); prefer `{{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}}` for the batched one-round-trip path (validates ALL sections, rejects the batch on the first failure).
+- Use `{{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}` to stage one section at a time and submit each required section separately when that is clearer (validates as you go); prefer `{{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}}` only when every batched entry is already complete and analysis-ready (validates ALL sections, rejects the batch on the first failure).
 - Use `{{INSERT_PLAN_STEP_TOOL_REFERENCE}}`, `{{REPLACE_PLAN_STEP_TOOL_REFERENCE}}`, `{{PATCH_PLAN_STEP_TOOL_REFERENCE}}`, `{{REMOVE_PLAN_STEP_TOOL_REFERENCE}}`, `{{MOVE_PLAN_STEP_TOOL_REFERENCE}}` to refine a staged draft; insert/remove/move auto-reindex so do NOT renumber steps manually.
 - Use `{{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}}` to dry-run the cross-section validator BEFORE `{{FINALIZE_PLAN_TOOL_REFERENCE}}`; on success finalize writes `plan.json` and deletes the staged draft.
 - Use `{{GET_PLAN_DRAFT_TOOL_REFERENCE}}` to inspect the staged draft, or `{{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}}` to start over.
-- Only use `{{SUBMIT_ARTIFACT_TOOL_REFERENCE}}` with `artifact_type="plan"` for the atomic short-plan path.
+- Do not use `{{SUBMIT_ARTIFACT_TOOL_REFERENCE}}` for planning. Plan artifacts must go through the planning tools so section validation and canonical section shapes stay visible.
+- Stage `design` for non-trivial plans, especially when steps use `satisfies`, acceptance criteria are part of planning-analysis feedback, or the plan needs explicit engineering tradeoffs.
 
 ## OPTIONAL: submit-plan-artifact skill
 
-The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a one-shot worked example of `ralph_submit_plan_section` and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` — that is the source of truth.
+The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a worked example of `ralph_submit_plan_section` / `ralph_submit_plan_sections` and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` — that is the source of truth.
 For step-mutation tools (ralph_insert_plan_step, ralph_replace_plan_step, ralph_patch_step, ralph_remove_plan_step, ralph_move_plan_step) and add-one-step-at-a-time examples, the bundled `submit-plan-step-edits` skill (in `ralph/skills/content/`) is OPTIONAL and lives alongside `submit-plan-artifact`.
 
 USER REQUIREMENTS:
@@ -63,7 +63,7 @@ Classify the user prompt into exactly one scope bucket BEFORE drafting any step.
 2. **planner-meta-task** — the user wants to change the planner itself: the plan artifact schema, the planning prompt, the planning MCP tools, the planning audit checks, or any other Ralph Workflow internal that participates in producing plans. Examples: "add a typed summary.coverage_areas field to the plan artifact", "rewrite the planning.jinja prompt", "fix the planner misclassifying MCP prompts as planner-bug-fix-task", "generalize the StepType alias pattern to other enums".
 3. **planner-bug-fix-task** — the user reports a specific concrete bug in the planner WITH a reproduction. The bug is reproducible: a specific commit SHA, a specific failing test name, a specific input/output pair, a specific stack trace, or a specific observed-vs-expected diff. Generic complaints ("the planner is bad", "planner is slow") are NOT planner-bug-fix-task — they are planner-meta-task (improvement) or external-task (the user's real complaint is about a downstream tool).
 
-Decision rule: if the prompt mentions MCP, plan artifact, planner, Ralph Workflow internals, pydantic ValidationError on a plan, or any other self-referential keyword AND the prompt is not a clear bug report with a reproduction, default to `planner-meta-task`. Cheap models frequently misroute external-task prompts into planner-bug-fix-task because the visible error message contains the string "plan" or "planner"; that string match is not a reproduction.
+Decision rule: if the prompt mentions MCP, plan artifact, planner, Ralph Workflow internals, pydantic ValidationError on a plan, or any other self-referential keyword AND the prompt is not a clear bug report with a reproduction, default to `planner-meta-task`. Do not misroute external-task prompts into planner-bug-fix-task just because the visible error message contains the string "plan" or "planner"; that string match is not a reproduction.
 
 Self-check before finalize: re-read your `summary.intent` one last time. If `summary.intent` describes a single bug fix in the planner but the user's prompt is broader (e.g. "optimize the plan artifact for AI coding", "make planning more robust"), re-classify as `planner-meta-task` and rewrite the steps to cover the broader scope. A single-bug plan that fails to address the user's actual ask is a misroute.
 
@@ -76,7 +76,7 @@ When `planner-meta-task` is the correct bucket AND the user's ask is specificall
   - Planning MCP tools: change the tool handlers under `ralph/mcp/tools/` (e.g. `ralph_submit_plan_section`, `ralph_finalize_plan`, `ralph_discard_plan_draft`) or the validators they call. Treat MCP tools as a public API; preserve the existing tool names and argument shapes unless the change explicitly renames them.
   - Planning audit checks: add or change an audit under `ralph/testing/` (e.g. `audit_di_seam`, `audit_lint_bypass`, `audit_mcp_timeout`, `audit_typecheck_bypass`, `audit_test_policy`). Audit checks are policy; coordinate with AGENTS.md non-circumvention rule before adding a new allowlist entry.
 
-When the prompt mentions one of these sub-tasks by name (e.g. "add a JSON Schema for the plan artifact", "document the minimal preset in the format doc", "rewrite the planning prompt to be more universal", "add an audit check for plan-field drift"), the plan MUST target that sub-task directly. Do NOT route the work through a misclassification fix or an unrelated sub-task; that is the planner picking the wrong sub-task within `planner-meta-task`, not a misroute to a different bucket.
+When the prompt mentions one of these sub-tasks by name (e.g. "add a JSON Schema for the plan artifact", "document planning quality guidance in the format doc", "rewrite the planning prompt to be more universal", "add an audit check for plan-field drift"), the plan MUST target that sub-task directly. Do NOT route the work through a misclassification fix or an unrelated sub-task; that is the planner picking the wrong sub-task within `planner-meta-task`, not a misroute to a different bucket.
 
 ## DISCOVERY PREFLIGHT
 
@@ -110,14 +110,14 @@ Your plan must be executor-ready for unattended development. The submitted artif
 - Include work_units when the work can be parallelized safely
 - Make the planning-to-development handoff explicit so the development agent can start immediately
 
-This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure. If the executor would need to stop and research basic repository structure, guess which file owns a behavior, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified. Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern. Do not use phrases like "run tests" unless you provide the exact command and the expected passing result. For every concrete requirement or acceptance criterion in the PROMPT, make sure the plan maps it to implementation steps and verification that prove the outcome. Infer the core user-facing workflows and prerequisite actions that must exist for the requested outcome to count as working, even when the PROMPT states them only implicitly. Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry. If one section change would invalidate another section, revise any dependent sections that must also change for the plan to become coherent before you finalize the draft. Your target is to submit a plan that planning analysis can approve on the first pass, not a draft that relies on a later repair cycle to become executor-ready.
+This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure. If the executor would need to stop and research basic repository structure, guess which file owns a behavior, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified. Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern. Do not use phrases like "run tests" unless you provide the exact command and the expected passing result. For every concrete requirement or acceptance criterion in the PROMPT, make sure the plan maps it to implementation steps and verification that prove the outcome. Infer the core user-facing workflows and prerequisite actions that must exist for the requested outcome to count as working, even when the PROMPT states them only implicitly. Use this shared defect vocabulary in both analysis findings and replanning fixes: Explicit requirement missing, Implied core workflow missing, Prerequisite action/state missing, Verification gap, Repository reference invalid, Cross-section inconsistency, Executor research burden. Assign a stable ID to every gap you report and preserve that ID in the corresponding fix entry. If one section change would invalidate another section, revise any dependent sections that must also change for the plan to become coherent before you finalize the draft. Your target is to submit a plan that planning analysis can approve on the first pass.
 
 {% include 'shared/_plan_quality_rubric.j2' %}
 
 Before finalizing, run the pre-finalize review fan-out from ## PLANNING WITH SUBAGENTS (or its sequential equivalent) against every rubric dimension above, then fix every confirmed finding in the same planning pass.
 
 Default submission flow:
-1. Stage the 6 required sections (`summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, `verification_strategy`) per the Submission protocol above. If you rely on `design.planning_profile` (`strict`, `balanced`, or `minimal`), stage `design` before finalizing. Stage optional `parallel_plan` / `work_units` only when they add real value (see ## Agent-Driven Parallel Execution).
+1. Stage the 6 required sections (`summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, `verification_strategy`) per the Submission protocol above. If you rely on `design.planning_profile` (`strict` or `balanced`), stage `design` before finalizing. Stage optional `parallel_plan` / `work_units` only when they add real value (see ## Agent-Driven Parallel Execution).
 2. Dry-run with `{{VALIDATE_PLAN_DRAFT_TOOL_REFERENCE}}`, then call `{{FINALIZE_PLAN_TOOL_REFERENCE}}` to write `.agent/artifacts/plan.json`.
 
 ## Plan-artifact canonical contract
@@ -130,7 +130,7 @@ Full schema, per-section shapes, per-list caps, and string-length tiers live in 
 - Do NOT use `step_type: "check"`, `step_type: "run"`, or any other ad-hoc label. The closed set is `file_change`, `action`, `research`, `verify`.
 - If a step does not modify a file and does not run a verification command, it is `action` (a non-mutating executor action) or `research` (an exploratory step with no committed change).
 
-The before-validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep._coerce_step_type_aliases` silently coerces `test`, `tests`, `check`, and `run` to `verify` with a WARNING log; set the canonical value explicitly so the validator does not have to coerce.
+Use only canonical step types: `file_change`, `action`, `research`, or `verify`. For test-running steps, set `step_type` to `verify` and include `verify_command` or `location`.
 
 ---
 

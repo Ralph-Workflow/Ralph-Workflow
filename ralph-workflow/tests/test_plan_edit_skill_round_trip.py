@@ -324,11 +324,18 @@ def test_add_one_step_at_a_time_example_round_trips(tmp_path: Path) -> None:
     assert len(initial_steps) == 2
 
     new_step_payload = {
-        "title": "New middle step",
-        "content": "Detailed executor instructions",
+        "title": "Document the foo() clamp behavior",
+        "content": (
+            "Update docs/foo.md with the accepted out-of-range index behavior after "
+            "the code and focused regression test are in place."
+        ),
         "step_type": "file_change",
-        "targets": [{"path": "x.py", "action": "modify"}],
-        "depends_on": [],
+        "targets": [{"path": "docs/foo.md", "action": "modify"}],
+        "expected_evidence": [
+            {"kind": "file", "ref": "docs/foo.md"},
+            {"kind": "command_output", "ref": "pytest tests/test_foo.py -q"},
+        ],
+        "depends_on": [2],
     }
     insert_result = handle_insert_plan_step(
         session,
@@ -360,7 +367,7 @@ def test_add_one_step_at_a_time_example_round_trips(tmp_path: Path) -> None:
     stored_steps = cast("list[dict[str, object]]", content["steps"])
     assert len(stored_steps) == 3
     titles = [cast("str", step["title"]) for step in stored_steps]
-    assert titles == ["First step", "Second step", "New middle step"]
+    assert titles == ["First step", "Second step", "Document the foo() clamp behavior"]
 
 
 def _tool_text(result: object) -> str:

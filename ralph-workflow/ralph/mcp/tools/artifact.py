@@ -90,6 +90,7 @@ from ralph.mcp.tools.coordination import (
     WorkspaceLike,
     require_capability,
 )
+from ralph.mcp.tools.json_repair import JSON_CONTAINER_FIELD_NAMES
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -451,8 +452,8 @@ def handle_finalize_plan(
         raise InvalidParamsError(
             _format_plan_finalize_error(
                 detail=(
-                    "No plan draft to finalize. Submit plan sections first or use "
-                    "ralph_submit_artifact with artifact_type='plan'."
+                    "No plan draft to finalize. Submit plan sections first with "
+                    "ralph_submit_plan_section or ralph_submit_plan_sections."
                 ),
                 workspace_root=workspace_root,
                 backend=resolved_deps.backend,
@@ -629,8 +630,8 @@ def handle_validate_plan_draft(
                                     _format_plan_finalize_error(
                                         detail=(
                                             "No plan draft to validate. Submit plan sections first "
-                                            "or use ralph_submit_artifact with artifact_type="
-                                            "'plan'."
+                                            "with ralph_submit_plan_section or "
+                                            "ralph_submit_plan_sections."
                                         ),
                                         workspace_root=_workspace_root(workspace),
                                         backend=resolved_deps.backend,
@@ -1017,6 +1018,8 @@ def handle_submit_plan_sections(
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
     workspace_root = _workspace_root(workspace)
     entries_obj = params.get("entries")
+    if isinstance(entries_obj, str):
+        entries_obj = _coerce_json_text_container(entries_obj)
     if not isinstance(entries_obj, list):
         raise InvalidParamsError(
             _format_plan_batch_envelope_error(
@@ -1110,48 +1113,6 @@ def _section_mode(params: dict[str, object]) -> SectionMode:
     if raw not in ("replace", "append"):
         raise InvalidParamsError("'mode' must be 'replace' or 'append'")
     return raw
-
-
-_JSON_CONTAINER_FIELD_NAMES: frozenset[str] = frozenset(
-    {
-        "acceptance_criteria",
-        "actions",
-        "analysis_items_addressed",
-        "continuation",
-        "constraints",
-        "criteria",
-        "critical_files",
-        "depends_on",
-        "evidence_refs",
-        "goals",
-        "headless_guide_checks",
-        "how_to_fix",
-        "issues",
-        "mcps",
-        "observed_breaks",
-        "observed_working",
-        "open_questions",
-        "parallel_plan",
-        "plan_items_proven",
-        "primary_files",
-        "product_behavior",
-        "reference_files",
-        "risks_mitigations",
-        "satisfied_by_steps",
-        "satisfies",
-        "scope_boundaries",
-        "scope_items",
-        "skills",
-        "steps",
-        "success_criteria",
-        "targets",
-        "users",
-        "ux_ui_requirements",
-        "verification_strategy",
-        "what_came_up_short",
-        "work_units",
-    }
-)
 
 
 def _loads_json_text_one_or_two_layers(raw_content: str) -> object:
@@ -1599,7 +1560,7 @@ def _coerce_known_container_fields(value: object) -> object:
         return value
     normalized: dict[str, object] = {}
     for key, item in value.items():
-        if key in _JSON_CONTAINER_FIELD_NAMES or key in PLAN_SECTION_NAMES:
+        if key in JSON_CONTAINER_FIELD_NAMES or key in PLAN_SECTION_NAMES:
             normalized[key] = _coerce_json_text_container(item)
         else:
             normalized[key] = _coerce_known_container_fields(item)
@@ -1719,7 +1680,7 @@ def _format_plan_section_submission_error(
         f"Fix this by reading '{plan_doc}' inside the workspace.",
         (
             f"Use {tool_name} with section='{section}' and mode='{mode}'. "
-            "The plan format doc sections 'Step-wise submission' and 'Cheap-model shortcut "
+            "The plan format doc sections 'Step-wise submission' and 'Detailed worked "
             "examples' show the canonical payload shapes."
         ),
         f"After fixing the payload, retry {tool_name}.",
@@ -1740,23 +1701,25 @@ def _format_plan_section_submission_error(
     ):
         guidance.append(
             "Expected shape for section 'skills_mcp': {'skills': ['writing-plans'], 'mcps': []}. "
-            "skills must be a JSON array of skill names, unless design.planning_profile='minimal' "
-            "makes an empty skills list valid at full-plan validation time."
+            "skills must be a JSON array and must contain at least one task-relevant skill name."
         )
     if section == "summary" and (
         "scope_items" in detail or "must be a JSON object" in detail or "required" in detail.lower()
     ):
         guidance.append(
-            "Expected shape for section 'summary': {'context': 'What is being changed and why', "
-            "'intent': 'Optional one-line outcome', 'intent_verb': 'Optional closed verb', "
-            "'scope_items': [{'text': 'Concrete outcome 1'}, {'text': 'Concrete outcome 2'}, "
-            "{'text': 'Concrete outcome 3'}]}. summary must be a JSON object, not "
-            "{'summary': {...}}."
+            "Expected shape for section 'summary': {'context': 'Fix the foo() regression and "
+            "prove it with a focused unit test', 'intent': 'Clamp foo() index so the "
+            "regression cannot recur', 'intent_verb': 'improve', 'scope_items': "
+            "[{'text': 'Add a regression test', 'category': 'test'}, {'text': "
+            "'Modify src/foo.py', 'category': 'file_change'}, {'text': 'Run pytest "
+            "tests/test_foo.py -q', 'category': 'test'}]}. summary must be a JSON object, "
+            "not {'summary': {...}}."
         )
     if section == "critical_files" and "primary_files" in detail and "required" in detail.lower():
         guidance.append(
             "Expected shape for section 'critical_files': {'primary_files': "
-            "[{'path': 'path/to/file.py', 'action': 'modify'}], 'reference_files': []}. "
+            "[{'path': 'src/foo.py', 'action': 'modify'}, {'path': "
+            "'tests/test_foo.py', 'action': 'modify'}], 'reference_files': []}. "
             "primary_files is required and must be a JSON array."
         )
     if section == "steps" and mode == "replace" and "must be a JSON array" in detail:
@@ -1767,32 +1730,42 @@ def _format_plan_section_submission_error(
     if section == "steps" and mode == "append" and "object or array of items" in detail:
         guidance.append(
             "Expected shape for section 'steps' with mode='append': either one step object like "
-            "{'number': 2, 'title': 'Concrete step title', 'content': 'Detailed executor "
-            "instructions', 'step_type': 'file_change', 'targets': [{'path': 'path/to/file.py', "
-            "'action': 'modify'}]} "
+            "{'number': 2, 'title': 'Clamp the foo() index', 'content': 'Update src/foo.py so "
+            "the lookup index is clamped while preserving the public foo() signature.', "
+            "'step_type': 'file_change', 'targets': [{'path': 'src/foo.py', 'action': "
+            "'modify'}], 'depends_on': [1], 'expected_evidence': [{'kind': 'file', "
+            "'ref': 'src/foo.py'}]} "
             "or a JSON array of such step objects."
         )
     if section == "steps" and (
         "step_type" in detail or "verify step" in detail or "target" in detail.lower()
     ):
         guidance.append(
-            "Expected shape for one steps item: {'number': 1, 'title': 'Concrete step title', "
-            "'content': 'Detailed executor instructions', 'step_type': 'file_change', "
-            "'targets': [{'path': 'path/to/file.py', 'action': 'modify'}], 'depends_on': []}. "
+            "Expected shape for one steps item: {'number': 1, 'title': 'Add the foo() "
+            "regression test', 'content': 'Add "
+            "tests/test_foo.py::test_clamp_handles_out_of_range_index before changing "
+            "production code.', 'step_type': 'file_change', 'targets': "
+            "[{'path': 'tests/test_foo.py', 'action': 'modify'}], 'depends_on': [], "
+            "'expected_evidence': [{'kind': 'test_name', 'ref': "
+            "'tests/test_foo.py::test_clamp_handles_out_of_range_index'}]}. "
             "For verify steps, "
             "use step_type='verify' plus verify_command or location."
         )
     if section == "risks_mitigations" and mode == "replace" and "must be a JSON array" in detail:
         guidance.append(
             "Expected shape for section 'risks_mitigations' with mode='replace': a JSON array like "
-            "[{'risk': 'Specific failure mode', 'mitigation': 'How to avoid it', "
+            "[{'risk': 'Clamping could hide a caller bug that should remain visible in "
+            "behavior expectations.', 'mitigation': 'Preserve the public foo() signature "
+            "and add a focused regression test documenting the intended behavior.', "
             "'severity': 'medium'}]."
         )
     if section == "risks_mitigations" and mode == "append" and "object or array of items" in detail:
         guidance.append(
             "Expected shape for section 'risks_mitigations' with mode='append': either one "
             "object like "
-            "{'risk': 'Specific failure mode', 'mitigation': 'How to avoid it', "
+            "{'risk': 'Clamping could hide a caller bug that should remain visible in "
+            "behavior expectations.', 'mitigation': 'Preserve the public foo() signature "
+            "and add a focused regression test documenting the intended behavior.', "
             "'severity': 'medium'} "
             "or a JSON array of such risk objects."
         )
@@ -1804,7 +1777,8 @@ def _format_plan_section_submission_error(
     ):
         guidance.append(
             "Expected shape for section 'verification_strategy': [{'method': "
-            "'pytest tests/test_x.py -q', 'expected_outcome': 'All tests pass', "
+            "'pytest tests/test_foo.py -q', 'expected_outcome': "
+            "'The focused foo() regression test passes.', "
             "'timeout_seconds': 60, 'cwd': 'ralph-workflow'}]. With mode='replace' use a "
             "JSON array, not {'verification_strategy': [...]}; with mode='append' use one "
             "verification object or a JSON array of verification objects."
@@ -1819,8 +1793,8 @@ def _format_plan_section_submission_error(
             "missing a comma or closing brace)."
         )
     guidance.append(
-        "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
-        "example and recovery flow for this same error."
+        "Optional: the bundled `submit-plan-artifact` skill shows the canonical section "
+        "envelopes and detailed passing plan examples."
     )
     return " ".join(guidance)
 
@@ -1843,8 +1817,8 @@ def _format_plan_batch_envelope_error(
                 "content shapes, and mode usage."
             ),
             "After fixing the batch payload, retry ralph_submit_plan_sections.",
-            "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
-            "example and recovery flow for this same error.",
+            "Optional: the bundled `submit-plan-artifact` skill shows the canonical batch "
+            "envelope and detailed passing plan examples.",
         ]
     )
 
@@ -1862,28 +1836,37 @@ def _format_plan_finalize_error(
             detail,
             f"Fix this by reading '{plan_doc}' inside the workspace.",
             (
-                f"Repair the staged draft with ralph_submit_plan_section, "
+                f"Update the staged draft with ralph_submit_plan_section, "
                 "ralph_submit_plan_sections, or the plan step-edit tools, then retry "
                 f"{tool_name}. The plan format doc sections 'Step-wise submission' and "
                 "'Dumb-proof checklist' show the required sections and valid payload shapes."
             ),
             (
-                "Canonical required section shapes: summary={'context': '...', 'scope_items': "
-                "[{'text': 'Concrete outcome 1'}, {'text': 'Concrete outcome 2'}, {'text': "
-                "'Concrete outcome 3'}]}; "
-                "skills_mcp={'skills': ['writing-plans'], 'mcps': []}; "
-                "steps=[{'number': 1, 'title': 'Concrete step title', 'content': 'Detailed "
-                "executor instructions', 'step_type': 'file_change', 'targets': [{'path': "
-                "'path/to/file.py', 'action': 'modify'}], 'depends_on': []}]; "
-                "critical_files={'primary_files': [{'path': 'path/to/file.py', 'action': "
-                "'modify'}], 'reference_files': []}; risks_mitigations=[{'risk': "
-                "'Specific failure mode', 'mitigation': 'How to avoid it', 'severity': "
-                "'medium'}]; verification_strategy=[{'method': 'pytest tests/test_x.py -q', "
-                "'expected_outcome': 'All tests pass'}]."
-            ),
+            "Canonical required section shapes: summary={'context': 'Fix the foo() "
+            "regression and prove it with a focused unit test', 'intent': 'Clamp "
+            "foo() index so the regression cannot recur', 'intent_verb': 'improve', "
+                "'scope_items': [{'text': 'Add a regression test', 'category': 'test'}, "
+                "{'text': 'Modify src/foo.py', 'category': 'file_change'}, {'text': 'Run "
+            "pytest tests/test_foo.py -q', 'category': 'test'}]}; "
+            "skills_mcp={'skills': ['writing-plans'], 'mcps': []}; "
+            "steps=[{'number': 1, 'title': 'Add the foo() regression test', 'content': "
+            "'Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing "
+            "production code.', 'step_type': 'file_change', 'targets': [{'path': "
+            "'tests/test_foo.py', 'action': 'modify'}], 'depends_on': [], "
+            "'expected_evidence': [{'kind': 'test_name', 'ref': "
+            "'tests/test_foo.py::test_clamp_handles_out_of_range_index'}]}]; "
+            "critical_files={'primary_files': [{'path': 'src/foo.py', 'action': "
+            "'modify'}, {'path': 'tests/test_foo.py', 'action': 'modify'}], "
+            "'reference_files': []}; risks_mitigations=[{'risk': 'Clamping could hide "
+            "a caller bug that should remain visible in behavior expectations.', "
+            "'mitigation': 'Preserve the public foo() signature and add a focused "
+            "regression test documenting the intended clamping behavior.', 'severity': "
+            "'medium'}]; verification_strategy=[{'method': 'pytest tests/test_foo.py -q', "
+            "'expected_outcome': 'The focused foo() regression test passes.'}]."
+        ),
             (
-                "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
-                "example and recovery flow for this same error."
+                "Optional: the bundled `submit-plan-artifact` skill shows the canonical "
+                "required-section shapes and detailed passing plan examples."
             ),
         ]
     )
@@ -1907,7 +1890,8 @@ def _format_plan_step_edit_error(
                 "'Step-wise submission' show the valid step payload shape and numbering flow."
             ),
             (
-                "Minimal retry envelopes: ralph_insert_plan_step => {'index': 2, 'step': {...}}; "
+                "Canonical step-edit envelopes: ralph_insert_plan_step => "
+                "{'index': 2, 'step': {...}}; "
                 "ralph_replace_plan_step => {'step_number': 2, 'step': {...}}; "
                 "ralph_remove_plan_step => {'step_number': 2}; "
                 "ralph_move_plan_step => {'from_step_number': 2, 'to_index': 1}; "
@@ -1921,8 +1905,12 @@ def _format_plan_step_edit_error(
                 "ralph_move_plan_step."
             ),
             (
-                "Optional: the bundled `submit-plan-artifact` skill shows a one-shot worked "
-                "example and recovery flow for this same error."
+                "Optional: the bundled `submit-plan-step-edits` skill shows analysis-feedback "
+                "correction examples for replacing, patching, and inserting detailed steps."
+            ),
+            (
+                "For full-section planning repairs, the bundled `submit-plan-artifact` skill "
+                "shows complete section payloads and detailed passing plan examples."
             ),
         ]
     )
@@ -1986,8 +1974,8 @@ def _raise_index_format_error(
         f"{reason} Read '.agent/artifact-formats/artifact_formats_index.md' inside the workspace "
         "for the list of valid artifact_type values and how to submit each one. "
         "Fix the payload, then retry ralph_submit_artifact. Do NOT rely on the raw error text. "
-        "Optional: the bundled `submit-artifact` skill shows a one-shot worked envelope and "
-        "recovery flow for this same error."
+        "Optional: the bundled `submit-artifact` skill shows the canonical envelope for "
+        "each non-plan artifact type."
     ) from None
 
 
@@ -2116,8 +2104,8 @@ def _artifact_content_format_error(artifact_type: str) -> str:
         "Use 'content' with a freshly generated JSON string. "
         "Do not use 'content_path' in agent-facing artifact submissions. "
         f"Example submit: {fresh_submit_example}. "
-        "Optional: the bundled `submit-artifact` skill shows a one-shot worked envelope and "
-        "recovery flow for this same error."
+        "Optional: the bundled `submit-artifact` skill shows the canonical envelope for "
+        "each non-plan artifact type."
         f"{per_type_sentence}"
     )
 
@@ -2381,8 +2369,8 @@ def _raise_format_doc_error(
                 "Then retry ralph_submit_artifact. "
                 f"Canonical retry envelope: {retry_example}. "
                 "Do NOT rely on guesswork; follow the documented shape exactly. "
-                "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
-                "envelope and recovery flow for this same error."
+                "Optional: the bundled `submit-artifact` skill shows the canonical "
+                "envelope for each non-plan artifact type."
                 f"{per_type_sentence}"
             )
         else:
@@ -2394,8 +2382,8 @@ def _raise_format_doc_error(
                 "in the repo source tree "
                 "instead, rebuild the submission before retrying, then retry "
                 f"ralph_submit_artifact with envelope {retry_example}) "
-                "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
-                "envelope and recovery flow for this same error."
+                "Optional: the bundled `submit-artifact` skill shows the canonical "
+                "envelope for each non-plan artifact type."
                 f"{per_type_sentence}"
             )
     except OSError:
@@ -2407,8 +2395,8 @@ def _raise_format_doc_error(
             "in the repo source tree "
             "instead, rebuild the submission before retrying, then retry "
             f"ralph_submit_artifact with envelope {retry_example}) "
-            "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
-            "envelope and recovery flow for this same error."
+            "Optional: the bundled `submit-artifact` skill shows the canonical "
+            "envelope for each non-plan artifact type."
             f"{per_type_sentence}"
         )
     raise InvalidParamsError(msg) from original_exc

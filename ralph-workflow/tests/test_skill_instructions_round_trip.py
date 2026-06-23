@@ -57,7 +57,7 @@ def _load_skill_body() -> str:
 def _extract_section_templates(body: str) -> dict[str, object]:
     """Parse the six fenced `````json`` blocks out of the skill body.
 
-    The ``## Per-section minimal payload templates`` section embeds one
+    The ``## Per-section canonical payload templates`` section embeds one
     fenced JSON block per required plan section, in this exact order:
     ``summary``, ``skills_mcp``, ``steps``, ``critical_files``,
     ``risks_mitigations``, ``verification_strategy``. The block order
@@ -67,11 +67,11 @@ def _extract_section_templates(body: str) -> dict[str, object]:
     round-trip test feeds into the handlers.
     """
     templates_match = re.search(
-        r"## Per-section minimal payload templates\s*\n([\s\S]*?)\n## Dumb-proof checklist",
+        r"## Per-section canonical payload templates\s*\n([\s\S]*?)\n## Dumb-proof checklist",
         body,
     )
     assert templates_match is not None, (
-        "submit-plan-artifact skill is missing the '## Per-section minimal "
+        "submit-plan-artifact skill is missing the '## Per-section canonical "
         "payload templates' section before '## Dumb-proof checklist'"
     )
     templates_body = templates_match.group(1)
@@ -82,6 +82,7 @@ def _extract_section_templates(body: str) -> dict[str, object]:
         "critical_files",
         "risks_mitigations",
         "verification_strategy",
+        "design",
     )
     payloads: dict[str, object] = {}
     cursor = 0
@@ -136,8 +137,7 @@ def _canonical_validator_strings() -> tuple[tuple[str, str], ...]:
             "_validation.py shell-invocation guard (~line 239)",
         ),
         (
-            "skills_mcp.skills must contain at least one skill name unless "
-            "design.planning_profile == 'minimal'",
+            "skills_mcp.skills must contain at least one skill name",
             "_validation.py skills gate (~line 251)",
         ),
         (
@@ -191,10 +191,10 @@ def test_skill_documents_every_validator_error_string() -> None:
 
 @pytest.mark.timeout_seconds(10)
 def test_skill_contains_per_section_payload_templates() -> None:
-    """The six fenced ``\\`\\`\\`json\\`\\`\\` blocks decode as JSON and target the right key.
+    """The fenced ``\\`\\`\\`json\\`\\`\\` blocks decode as JSON and target the right key.
 
-    The skill embeds a ``Per-section minimal payload templates`` section
-    with one fenced JSON block per required plan section. Each block
+    The skill embeds a ``Per-section canonical payload templates`` section
+    with one fenced JSON block per documented plan section. Each block
     MUST decode as JSON, and the top-level key MUST be the right one
     for the section the block is labelled with. A model copy-pasting
     from a broken template silently submits a malformed draft, so the
@@ -208,14 +208,15 @@ def test_skill_contains_per_section_payload_templates() -> None:
         "critical_files": "primary_files",
         "risks_mitigations": "risk",
         "verification_strategy": "method",
+        "design": "acceptance_criteria",
     }
     decoded_blocks = list(_extract_section_templates(body).values())
     assert len(decoded_blocks) == len(expected_keys), (
-        f"per-section minimal payload templates section must contain exactly "
+        f"per-section canonical payload templates section must contain exactly "
         f"{len(expected_keys)} fenced JSON blocks, found {len(decoded_blocks)}"
     )
     for section, marker_key in expected_keys.items():
-        if section in {"summary", "skills_mcp", "critical_files"}:
+        if section in {"summary", "skills_mcp", "critical_files", "design"}:
             match = next(
                 (
                     block
@@ -248,13 +249,13 @@ def test_skill_contains_per_section_payload_templates() -> None:
 def test_documented_happy_path_round_trips_through_handlers(tmp_path: Path) -> None:
     """The documented happy-path round-trips through the canonical handlers.
 
-    The six payload templates are PARSED OUT OF THE SKILL BODY (not
+    The payload templates are PARSED OUT OF THE SKILL BODY (not
     hand-written) so any drift between the skill documentation and the
     working validator fails this test. Stage every required section via
     the batched ``ralph_submit_plan_sections`` (with one single-section
     ``ralph_submit_plan_section`` to mirror the documented two-call
     flow), then ``ralph_finalize_plan`` writes ``plan.json`` whose
-    decoded ``content`` includes all six staged sections. A green
+    decoded ``content`` includes all staged sections. A green
     finalize is the contract that proves the documented shapes are
     accepted.
     """
@@ -275,7 +276,13 @@ def test_documented_happy_path_round_trips_through_handlers(tmp_path: Path) -> N
     )
     assert batched_result.is_error is False, _result_text(batched_result)
 
-    for section in ("steps", "critical_files", "risks_mitigations", "verification_strategy"):
+    for section in (
+        "steps",
+        "critical_files",
+        "risks_mitigations",
+        "verification_strategy",
+        "design",
+    ):
         result = handle_submit_plan_section(
             session,
             workspace,
@@ -299,6 +306,7 @@ def test_documented_happy_path_round_trips_through_handlers(tmp_path: Path) -> N
     assert "critical_files" in content
     assert "risks_mitigations" in content
     assert "verification_strategy" in content
+    assert "design" in content
 
 
 def _result_text(result: object) -> str:

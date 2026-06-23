@@ -18,9 +18,7 @@ per-list cap, every string-length tier, and the full step contract.
 tools that share a single read-after-write echo contract. The umbrella
 `submit-plan-artifact` skill covers the rest of the planning MCP surface
 (`ralph_submit_plan_section`, `ralph_submit_plan_sections`,
-`ralph_finalize_plan`, `ralph_discard_plan_draft`). The atomic
-`ralph_submit_artifact` envelope for the canonical short-plan escape hatch
-is documented in the format doc itself.
+`ralph_finalize_plan`, `ralph_discard_plan_draft`).
 
 ## When to Use
 
@@ -51,7 +49,7 @@ If you are not editing a staged plan draft, this skill is the wrong skill —
 see the companion `submit-plan-artifact` skill for the rest of the
 planning MCP surface.
 
-## Core Flow (one-shot)
+## Core Flow (step mutation)
 
 1. Read `.agent/artifact-formats/plan.md` once. It defines every step
    field, the closed `step_type` set (`file_change`, `action`, `research`,
@@ -87,11 +85,16 @@ planning MCP surface.
 {
   "index": 2,
   "step": {
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
+    "title": "Add the foo() regression test",
+    "content": "Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.",
     "step_type": "file_change",
     "priority": "high",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
+    "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+    "satisfies": ["AC-01"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "tests/test_foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
     "depends_on": []
   }
 }
@@ -103,12 +106,17 @@ planning MCP surface.
 {
   "step_number": 2,
   "step": {
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
+    "title": "Clamp the foo() index",
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
     "step_type": "file_change",
     "priority": "high",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
-    "depends_on": []
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
   }
 }
 ```
@@ -121,7 +129,13 @@ fields you omit are preserved, NOT cleared):
 {
   "step_number": 2,
   "step": {
-    "content": "Revised executor instructions for this step only"
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
   }
 }
 ```
@@ -138,11 +152,201 @@ fields you omit are preserved, NOT cleared):
 {"from_step_number": 2, "to_index": 1}
 ```
 
-## Recovery from a Bad Payload
+### Add one step at a time
+
+When you need to insert a single new step into an existing staged
+draft, follow this exact worked example. Each call is independent
+and round-trips through the MCP broker — there is no batching for
+step mutations.
+
+**Call 1 — `ralph_submit_plan_sections`** with complete section entries to
+stage the initial draft (2 starter steps, the other required sections, and
+the design AC links):
+
+```json
+{
+  "entries": [
+    {
+      "section": "summary",
+      "mode": "replace",
+      "content": {
+        "context": "Fix the foo() off-by-one regression and prove it with a focused unit test.",
+        "intent": "Clamp foo() index so the regression cannot recur.",
+        "intent_verb": "improve",
+        "scope_items": [
+          {"text": "Add a regression test for the out-of-range foo() index", "category": "test"},
+          {"text": "Modify src/foo.py to clamp the index before lookup", "category": "bugfix"},
+          {"text": "Run pytest tests/test_foo.py -q to prove the regression is fixed", "category": "test"}
+        ]
+      }
+    },
+    {
+      "section": "skills_mcp",
+      "mode": "replace",
+      "content": {"skills": ["test-driven-development", "systematic-debugging"], "mcps": []}
+    },
+    {
+      "section": "steps",
+      "mode": "replace",
+      "content": [
+        {
+          "number": 1,
+          "title": "Add the foo() regression test",
+          "content": "Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.",
+          "step_type": "file_change",
+          "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+          "satisfies": ["AC-01"],
+          "expected_evidence": [
+            {"kind": "file", "ref": "tests/test_foo.py"},
+            {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+          ],
+          "depends_on": []
+        },
+        {
+          "number": 2,
+          "title": "Clamp the foo() index",
+          "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
+          "step_type": "file_change",
+          "targets": [{"path": "src/foo.py", "action": "modify"}],
+          "satisfies": ["AC-02"],
+          "expected_evidence": [
+            {"kind": "file", "ref": "src/foo.py"},
+            {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+          ],
+          "depends_on": [1]
+        }
+      ]
+    },
+    {
+      "section": "critical_files",
+      "mode": "replace",
+      "content": {
+        "primary_files": [
+          {"path": "src/foo.py", "action": "modify"},
+          {"path": "tests/test_foo.py", "action": "modify"}
+        ]
+      }
+    },
+    {
+      "section": "risks_mitigations",
+      "mode": "replace",
+      "content": [
+        {
+          "risk": "Clamping could hide a caller bug that should remain visible in behavior expectations.",
+          "mitigation": "Preserve the public signature and add focused assertions documenting the intended clamping behavior.",
+          "severity": "medium"
+        }
+      ]
+    },
+    {
+      "section": "verification_strategy",
+      "mode": "replace",
+      "content": [
+        {
+          "method": "pytest tests/test_foo.py -q",
+          "expected_outcome": "The focused regression test passes.",
+          "timeout_seconds": 60,
+          "cwd": "."
+        }
+      ]
+    },
+    {
+      "section": "design",
+      "mode": "replace",
+      "content": {
+        "planning_profile": "strict",
+        "outcome": "foo() handles out-of-range indexes without crashing and the regression test passes.",
+        "acceptance_criteria": {
+          "criteria": [
+            {
+              "id": "AC-01",
+              "description": "A focused regression test covers the out-of-range index.",
+              "satisfied_by_steps": [1]
+            },
+            {
+              "id": "AC-02",
+              "description": "src/foo.py clamps the index while preserving the public signature.",
+              "satisfied_by_steps": [2]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+**Call 2 — `ralph_get_plan_draft`** (no parameters) to read the
+staged draft and learn the current step numbers. Do NOT guess — the
+reindex map from any prior mutation may have rewritten them.
+
+```json
+{}
+```
+
+The echoed payload has the shape `{"staged_sections": [...], "draft":
+{...sections...}, "source": "draft"}`. The current step numbers
+live at `draft.steps[*].number`; the example draft above
+contains `[1, 2]`.
+
+**Call 3 — `ralph_insert_plan_step`** at `index=3` to insert a new
+step after the existing two. The runtime assigns a synthetic
+`step.number` and then reindexes the full steps list so existing
+numbers stay `1..N`.
+
+```json
+{
+  "index": 3,
+  "step": {
+    "title": "Document the foo() clamp behavior",
+    "content": "Update docs/foo.md with the accepted out-of-range index behavior after the code and focused regression test are in place.",
+    "step_type": "file_change",
+    "targets": [{"path": "docs/foo.md", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "docs/foo.md"},
+      {"kind": "command_output", "ref": "pytest tests/test_foo.py -q", "note": "Regression test still passes after documentation update"}
+    ],
+    "depends_on": [2]
+  }
+}
+```
+
+The echo payload includes `action`, `new_step_number`, `reindex_map`,
+`rewritten_depends_on`, `rewritten_ac_satisfied_by_steps`,
+`dropped_ac_satisfied_by_steps`, and `total_steps`.
+
+**Call 4 — `ralph_validate_draft`** (no parameters) for a dry-run of
+the cross-section validator BEFORE finalizing. The dry-run is
+read-only; it does NOT delete the staged draft on success or failure.
+
+```json
+{}
+```
+
+A successful dry-run returns `{"valid": true, ...}`; a failed one
+returns `{"valid": false, "errors": [...]}` with the literal
+validator message and the offending field path.
+
+**Call 5 — `ralph_finalize_plan`** (no parameters) to write
+`plan.json` and delete the staged draft. Only call this once every
+required section is staged AND `ralph_validate_draft` returned
+`{"valid": true}`.
+
+```json
+{}
+```
+
+The 5-call sequence is the entire happy-path for "add one step at
+a time". The same pattern (read draft → mutate → validate →
+finalize) applies for `ralph_replace_plan_step`, `ralph_patch_step`,
+`ralph_remove_plan_step`, and `ralph_move_plan_step`.
+
+## Correcting Rejected Step Edits
 
 When any of the five step-mutation tools rejects a payload, the helper
 `_format_plan_step_edit_error` produces a structured message that names
-the failing tool, the plan format doc reference, a one-shot retry
+the failing tool, the plan format doc reference, a canonical retry
 envelope, and a pointer to the bundled `submit-plan-step-edits` skill.
 Read it carefully, then:
 
@@ -166,10 +370,12 @@ Read it carefully, then:
    on fails fast with `cannot remove step N; another step depends on step N`.
    Remove the dependent steps first, or edit the dependent step's
    `depends_on` to drop the doomed reference.
-5. For `ralph_move_plan_step`: confirm both `from_step_number` and
-   `to_index` are integers in range. `from_step_number` is the current
-   1-based position, `to_index` is the destination 1-based position. Do
-   NOT combine `ralph_move_plan_step` with `ralph_insert_plan_step` or
+5. For `ralph_move_plan_step`: confirm `from_step_number` is an integer
+   that exists in the current staged draft. Prefer an in-range integer
+   for `to_index`; the handler clamps out-of-range destination indexes
+   to the valid 1..N range. `from_step_number` is the current 1-based
+   position, and `to_index` is the destination 1-based position. Do NOT
+   combine `ralph_move_plan_step` with `ralph_insert_plan_step` or
    `ralph_remove_plan_step` in the same draft-edit batch — the move
    auto-reindexes once, and a follow-up insert/remove will rewrite the
    numbers a second time. Sequence the calls: move, then insert/remove,
@@ -188,10 +394,15 @@ failure on `ralph_insert_plan_step`:
 {
   "index": 2,
   "step": {
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
+    "title": "Add the foo() regression test",
+    "content": "Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.",
     "step_type": "file_change",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
+    "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+    "satisfies": ["AC-01"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "tests/test_foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
     "depends_on": []
   }
 }
@@ -200,6 +411,223 @@ failure on `ralph_insert_plan_step`:
 After every successful step-mutation call, call `ralph_get_plan_draft` to
 recover the new step numbers from the reindexed draft. Do not guess the
 new numbers.
+
+## Analysis Feedback Corrections
+
+Planning analysis commonly rejects drafts where a step is too vague, lacks
+evidence, omits concrete file targets, or leaves an acceptance criterion
+unproven. Fix those findings with `ralph_replace_plan_step` or
+`ralph_patch_step` by adding the missing engineering detail directly to the
+step payload.
+
+### Replace a vague implementation step
+
+Use `ralph_replace_plan_step` when the whole step is underspecified. This
+example corrects analysis feedback: "Step 2 says fix foo() but does not name
+the file, dependency, AC, or evidence."
+
+```json
+{
+  "step_number": 2,
+  "step": {
+    "title": "Clamp the foo() index",
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature. Keep the regression test from step 1 red before this change and green after it.",
+    "step_type": "file_change",
+    "priority": "high",
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"},
+      {"kind": "command_output", "ref": "pytest tests/test_foo.py -q"}
+    ],
+    "depends_on": [1]
+  }
+}
+```
+
+### Patch missing proof onto an otherwise good step
+
+Use `ralph_patch_step` when the title and main content are already correct
+but analysis feedback identifies missing proof fields. This example preserves
+the rest of step 2 and adds the list-shaped fields that prove the work.
+
+```json
+{
+  "step_number": 2,
+  "step": {
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
+  }
+}
+```
+
+### Insert a verification step after implementation
+
+Use `ralph_insert_plan_step` when analysis feedback says the plan has no
+observable verification step after code changes. A verify step must include
+`verify_command` or `location`; it does not satisfy ACs directly, but it does
+provide evidence that the implementation steps completed.
+
+```json
+{
+  "index": 3,
+  "step": {
+    "title": "Run the focused regression test",
+    "content": "Run pytest tests/test_foo.py -q from the repository root and confirm it passes after the foo() clamp change.",
+    "step_type": "verify",
+    "verify_command": "pytest tests/test_foo.py -q",
+    "expected_evidence": [
+      {"kind": "command_output", "ref": "pytest tests/test_foo.py -q"}
+    ],
+    "depends_on": [2]
+  }
+}
+```
+
+### Per-tool retry envelopes
+
+These fenced-JSON blocks are the **exact canonical retry shapes**
+the no-skill helper `_format_plan_step_edit_error` inlines in its
+step-edit guidance. Use
+the matching block when a step-mutation tool returns an error.
+
+**`ralph_insert_plan_step`** — stage a new step at a 1-based
+position; the runtime assigns the synthetic `step.number`.
+
+```json
+{
+  "index": 2,
+  "step": {
+    "title": "Add the foo() regression test",
+    "content": "Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing production code.",
+    "step_type": "file_change",
+    "targets": [{"path": "tests/test_foo.py", "action": "modify"}],
+    "satisfies": ["AC-01"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "tests/test_foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": []
+  }
+}
+```
+
+**`ralph_replace_plan_step`** — overwrite a single existing step's
+full payload; missing fields are NOT preserved (full payload required).
+
+```json
+{
+  "step_number": 2,
+  "step": {
+    "title": "Clamp the foo() index",
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
+    "step_type": "file_change",
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "satisfies": ["AC-02"],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
+  }
+}
+```
+
+**`ralph_patch_step`** — shallow-merge a single existing step;
+fields you omit are preserved, NOT cleared.
+
+```json
+{
+  "step_number": 2,
+  "step": {
+    "content": "Update src/foo.py so the lookup index is clamped to the valid range while preserving the public foo() signature.",
+    "targets": [{"path": "src/foo.py", "action": "modify"}],
+    "expected_evidence": [
+      {"kind": "file", "ref": "src/foo.py"},
+      {"kind": "test_name", "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index"}
+    ],
+    "depends_on": [1]
+  }
+}
+```
+
+**`ralph_remove_plan_step`** — delete a single existing step by
+its current 1-based number.
+
+```json
+{"step_number": 2}
+```
+
+**`ralph_move_plan_step`** — move a step to a new 1-based index.
+
+```json
+{"from_step_number": 2, "to_index": 1}
+```
+
+**`ralph_get_plan_draft`** — read the staged draft to learn the
+current step numbers (no parameters required).
+
+```json
+{}
+```
+
+**`ralph_validate_draft`** — read-only dry-run of the cross-section
+validator (no parameters required).
+
+```json
+{}
+```
+
+**`ralph_discard_plan_draft`** — delete the on-disk staged draft
+so the agent can start over (no parameters required).
+
+```json
+{}
+```
+
+### Cross-section validator error to fix mapping
+
+The 5 step-edit-relevant error strings emitted by
+`ralph/mcp/artifacts/plan/_validation.py` and what to do about each:
+
+- `plan step depends_on cycle detected at step N` — the new step
+  you inserted (or a step you updated via `ralph_patch_step` /
+  `ralph_replace_plan_step`) closes a cycle in `depends_on`. Edit
+  one `depends_on` entry to break the loop, then re-issue the
+  mutation.
+- `acceptance criterion 'ID' references unknown step number N` —
+  the cited step number in `design.acceptance_criteria.criteria[*]
+  .satisfied_by_steps` no longer exists because the step was
+  removed (orphan reference). Either add a new step that satisfies
+  the dropped AC, or edit the AC to remove the broken reference.
+- `satisfied_by_steps cannot reference a research or verify step;
+  step N is 'TYPE' for criterion 'ID'` — the step you inserted has
+  `step_type="research"` or `step_type="verify"` but is referenced
+  by an AC's `satisfied_by_steps`. Only `file_change` and `action`
+  steps can satisfy an AC. Change the step's `step_type` or remove
+  the AC reference.
+- `plan draft is missing a 'sections' object` — you called a step
+  mutation without first staging the 6 required sections via
+  `ralph_submit_plan_section` or `ralph_submit_plan_sections`.
+  Stage `summary`, `skills_mcp`, `steps`, `critical_files`,
+  `risks_mitigations`, and `verification_strategy` first.
+- `plan envelope has no valid 'content' object` / `plan payload must
+  decode to a JSON object` — the `step` argument to a mutation tool
+  was not a JSON object (it was a string, list, or scalar). The
+  handler expects `params['step']` to be a dict shaped like
+  `{'title': ..., 'content': ..., 'step_type': ..., 'targets':
+  [...], 'depends_on': [...]}`.
+
+If the error you received is not in this list, read the
+`## Recovery from a Bad Payload` section of the companion
+`submit-plan-artifact` skill for the broader section-shape
+mismatches.
 
 ## Source of Truth Reference
 
@@ -255,6 +683,34 @@ If this skill and the format doc ever disagree, the format doc wins.
   `dropped_ac_satisfied_by_steps` were rewritten. If the echo payload is
   ignored, downstream AC references and `depends_on` arrays can drift
   silently until the cross-section validator fails them at finalize.
+- Submitting `ralph_insert_plan_step` (or any of the other four
+  step-mutation tools) without first calling `ralph_get_plan_draft` to
+  confirm the current step numbers. The off-by-one error pattern is the
+  single most common step-edit mistake: the agent submits `index=2`
+  assuming step 1 is still in position 1, but a prior move or insert
+  has shifted the surviving steps. Always re-read the draft first.
+- Omitting the reindex echo acknowledgment after a mutation. The
+  handler auto-reindexes every `depends_on` array and every
+  `AC.satisfied_by_steps` reference in the same call. The echo payload
+  reports the new `step.number`, the `reindex_map`, the rewritten
+  `depends_on`, the rewritten AC ids, and any dropped AC ids. If the
+  echo payload is suppressed or ignored, the next mutation is built on
+  stale numbers and the cross-section validator will reject it at
+  finalize.
+- Calling `ralph_finalize_plan` immediately after a step-mutation
+  without re-running `ralph_validate_draft` first. The dry-run
+  validator is the only signal you get BEFORE the staged draft is
+  deleted on a successful finalize. Skipping it means a failed
+  finalize leaves the draft already gone; the agent must start over
+  from step 1 of the submission protocol.
+- Ignoring the `dropped_ac_satisfied_by_steps` field in the mutation
+  echo. An empty list means no AC references were dropped (good); a
+  non-empty list means an AC's `satisfied_by_steps` entries were
+  silently dropped because the referenced step is gone. Either add a
+  new step that satisfies the dropped AC, or edit the AC to remove
+  the broken reference — leaving the drop unaddressed produces a stale
+  draft that the cross-section validator catches at finalize with
+  `acceptance criterion 'ID' references unknown step number N`.
 
 ## Red Flags - STOP and Start Over
 

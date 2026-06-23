@@ -5,7 +5,6 @@ from __future__ import annotations
 import ast
 import json
 import re
-import tempfile
 from pathlib import Path
 from typing import cast
 
@@ -49,7 +48,9 @@ def _extract_complete_example_inner_payload(doc: str) -> dict[str, object]:
     match = re.search(r"```json\n(.*?)```", section, re.DOTALL)
     assert match is not None, "No ```json block in '## Complete example' section"
     outer = json.loads(match.group(1))
-    assert isinstance(outer, dict) and "content" in outer
+    assert isinstance(outer, dict)
+    if "content" not in outer:
+        return cast("dict[str, object]", outer)
     inner = json.loads(cast("str", outer["content"]))
     assert isinstance(inner, dict)
     return cast("dict[str, object]", inner)
@@ -498,53 +499,59 @@ def test_every_format_doc_has_dumb_proof_checklist(artifact_type: str) -> None:
 
 
 def test_format_doc_forbids_test_step_type() -> None:
-    """The bundled plan.md forbids step_type='test' and contains the cheap-model examples."""
+    """The bundled plan.md forbids step_type='test' and shows canonical field examples."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     assert 'Do NOT use `step_type: "test"`' in doc
-    assert "Cheap-model shortcut examples" in doc
+    assert "Canonical field examples" in doc
 
 
 # ---------------------------------------------------------------------------
-# Step 2: new format doc sections (Minimal preset quickstart, CoverageArea
-# reference, Planning for any coding project, Model-tier guidance)
-# Step 3: per-preset SE-bias defaults + Flexibility boundaries
+# Step 2: new format doc sections (CoverageArea reference, Planning for any
+# coding project, Planning quality guidance)
+# Step 3: per-profile SE-bias defaults + Flexibility boundaries
 # Step 4: Step-wise quickstart subheading + Worked example subheading
 # ---------------------------------------------------------------------------
 
 
-def test_minimal_preset_quickstart_example_round_trips() -> None:
-    """The fenced JSON in '## Minimal preset quickstart' round-trips."""
+def test_detailed_bugfix_example_round_trips_and_links_analysis_fields(tmp_path: Path) -> None:
+    """The first complete plan example is detailed enough to validate and analyze."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
-    parts = doc.split("## Minimal preset quickstart")
-    assert len(parts) > 1, "Missing '## Minimal preset quickstart' section"
-    section = parts[1]
-    match = re.search(r"```json\n(.*?)```", section, re.DOTALL)
-    assert match is not None, "No ```json block in '## Minimal preset quickstart' section"
-    inner_payload = json.loads(match.group(1))
-    assert isinstance(inner_payload, dict)
-
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_path = Path(tmp_dir)
-        result = handle_submit_artifact(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {
-                "artifact_type": "plan",
-                "content": json.dumps(inner_payload),
-            },
-        )
-        assert result.is_error is False, f"Minimal preset quickstart did not round-trip: {result!r}"
+    payload = _extract_complete_example_inner_payload(doc)
+    result = handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "plan",
+            "content": json.dumps(payload),
+        },
+    )
+    assert result.is_error is False, f"Detailed bugfix example did not round-trip: {result!r}"
+    skills_mcp = cast("dict[str, object]", payload["skills_mcp"])
+    assert skills_mcp["skills"] == ["test-driven-development", "systematic-debugging"]
+    design = cast("dict[str, object]", payload["design"])
+    acceptance_criteria = cast("dict[str, object]", design["acceptance_criteria"])
+    criteria = cast("list[dict[str, object]]", acceptance_criteria["criteria"])
+    assert criteria
 
 
-def test_format_doc_has_minimal_preset_quickstart_section() -> None:
-    """The bundled plan.md has a '## Minimal preset quickstart' section."""
+def test_format_doc_does_not_advertise_minimal_plan_or_atomic_path() -> None:
+    """The bundled plan.md does not reintroduce minimal/atomic plan shortcuts."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
-    assert "## Minimal preset quickstart" in doc
-    assert "design.planning_profile" in doc
-    assert "```json" in doc
+    forbidden = (
+        "## Minimal preset quickstart",
+        'planning_profile="minimal"',
+        '"minimal"',
+        "Cheap-model",
+        "cheap-model",
+        "Atomic path",
+        "short plan",
+        "artifact_type=\"plan\"",
+    )
+    for text in forbidden:
+        assert text not in doc
 
 
 def test_format_doc_has_coverage_area_reference_section() -> None:
@@ -568,36 +575,35 @@ def test_format_doc_has_coverage_area_reference_section() -> None:
 
 
 def test_format_doc_has_planning_for_any_coding_project_section() -> None:
-    """The bundled plan.md has a '## Planning for any coding project' section with all 3 presets."""
+    """The bundled plan.md has a project-shape section with balanced/strict profiles."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     assert "## Planning for any coding project" in doc
     match = re.search(
-        r"## Planning for any coding project.*?minimal.*?balanced.*?strict",
+        r"## Planning for any coding project.*?balanced.*?strict",
         doc,
         re.DOTALL,
     )
-    assert match is not None, (
-        "## Planning for any coding project section is missing one of the 3 preset names"
-    )
+    assert match is not None
+    assert "minimal" not in doc
 
 
-def test_format_doc_has_model_tier_guidance_section() -> None:
-    """The bundled plan.md has a '## Model-tier guidance' section with both tiers."""
+def test_format_doc_has_planning_quality_guidance_section() -> None:
+    """The bundled plan.md has planning-analysis quality guidance."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
-    assert "## Model-tier guidance" in doc
-    assert "Cheap-model" in doc
-    assert "High-quality-model" in doc
+    assert "## Planning quality guidance" in doc
+    assert "Analysis-ready plan criteria" in doc
+    assert "Every requirement from the prompt maps" in doc
 
 
 def test_format_doc_preserves_se_opinionated_surfaces_section() -> None:
     """The bundled plan.md preserves the '## SE-opinionated design surfaces' section
-    and gains the '### Preset-by-preset SE-bias defaults' sub-heading."""
+    and gains the '### Profile-by-profile SE-bias defaults' sub-heading."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     assert "## SE-opinionated design surfaces" in doc
-    assert "### Preset-by-preset SE-bias defaults" in doc
+    assert "### Profile-by-profile SE-bias defaults" in doc
     assert "dead_code_policy" in doc
 
 
@@ -614,8 +620,8 @@ def test_format_doc_has_step_wise_quickstart_and_worked_example_subheadings() ->
     """The bundled plan.md has both step-wise sub-headings under '## Step-wise submission'."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
-    assert "### Step-wise quickstart (cheap-model baseline)" in doc
-    assert "### Worked example: 3-section short plan" in doc
+    assert "### Step-wise quickstart" in doc
+    assert "### Worked example: staged section submission" in doc
 
 
 # ---------------------------------------------------------------------------
@@ -663,10 +669,10 @@ def test_plan_format_doc_has_closed_enums_section() -> None:
 
 
 def test_plan_format_doc_has_high_quality_model_example() -> None:
-    """The bundled plan.md has a '## Complete example (high-quality-model plan)' section."""
+    """The bundled plan.md has a detailed architecture example."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
-    assert "## Complete example (high-quality-model plan)" in doc
+    assert "## Complete example (detailed architecture plan)" in doc
     # The example populates design.notes (>=500 chars rationale) and drift_detection.guard_commands
     assert "design.notes" in doc
     assert "drift_detection.guard_commands" in doc
@@ -726,11 +732,11 @@ def test_plan_format_doc_step_type_reference_uses_file_change_for_test_authoring
 
 
 def test_plan_format_doc_documents_step_type_alias_coercion() -> None:
-    """The bundled plan.md documents the silent alias coercion."""
+    """The bundled plan.md documents canonical step type values, not hidden aliases."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
-    assert "Silent alias coercion" in doc or "alias coercion" in doc
-    assert "_coerce_step_type_aliases" in doc
+    assert "StepType aliases" in doc
+    assert "_coerce_step_type_aliases" not in doc
 
 
 def test_plan_format_doc_did_not_add_duplicate_h2() -> None:
@@ -751,13 +757,11 @@ def test_plan_format_doc_did_not_add_duplicate_h2() -> None:
 
 
 def test_plan_format_doc_h2_count_increased_by_one() -> None:
-    """The bundled plan.md H2 count is exactly 26 (was 22, gained 4:
-    ## Plan size limits, ## Complete example (high-quality-model plan),
-    ## Closed enums, ## Canonical validator errors to fix)."""
+    """The bundled plan.md H2 count reflects the current canonical sections."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
     h2_count = sum(1 for line in doc.split("\n") if line.startswith("## "))
-    assert h2_count == 26, f"Expected exactly 26 H2 sections in plan format doc, got {h2_count}"
+    assert h2_count == 25, f"Expected exactly 25 H2 sections in plan format doc, got {h2_count}"
 
 
 def test_plan_format_doc_has_canonical_validator_errors_to_fix_section() -> None:
@@ -802,13 +806,12 @@ def test_plan_format_doc_has_canonical_validator_errors_to_fix_section() -> None
         )
 
 
-def test_plan_format_doc_extends_existing_model_tier_guidance() -> None:
-    """The '## Model-tier guidance' section is extended in place with 'Size-cap awareness'."""
+def test_plan_format_doc_removed_model_tier_guidance() -> None:
+    """The plan doc no longer teaches model-tier/minimal-plan shortcuts."""
     doc = load_bundled_format_doc("plan")
     assert doc is not None
-    assert "## Model-tier guidance" in doc
-    # The new H4 subsection added in place
-    assert "Size-cap awareness" in doc
+    assert "## Model-tier guidance" not in doc
+    assert "model tier" not in doc.lower()
 
 
 def test_plan_format_doc_extends_existing_planning_for_any_coding_project() -> None:

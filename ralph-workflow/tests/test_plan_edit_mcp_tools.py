@@ -155,6 +155,164 @@ def test_insert_plan_step_tool_updates_draft_and_reindexes(tmp_path: Path) -> No
     assert [step["title"] for step in steps] == ["First", "Inserted", "Second"]
 
 
+def test_insert_plan_step_accepts_json_string_step_payload(tmp_path: Path) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    bridge.dispatch(
+        "ralph_insert_plan_step",
+        {
+            "index": 2,
+            "step": json.dumps(
+                {
+                    "title": "Inserted",
+                    "content": "inserted",
+                    "step_type": "file_change",
+                    "targets": '[{"path": "x.py", "action": "modify"}]',
+                    "depends_on": "[1]",
+                    "expected_evidence": '[{"kind": "file", "ref": "x.py"}]',
+                }
+            ),
+        },
+        workspace=workspace,
+    )
+
+    steps = _draft_steps_after(bridge, workspace)
+    inserted = next(step for step in steps if step["title"] == "Inserted")
+    assert inserted["targets"] == [{"path": "x.py", "action": "modify"}]
+    assert inserted["depends_on"] == [1]
+    assert inserted["expected_evidence"] == [{"kind": "file", "ref": "x.py"}]
+
+
+def test_patch_step_accepts_flat_argument_style_step_fields(tmp_path: Path) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    bridge.dispatch(
+        "ralph_patch_step",
+        {
+            "step_number": 2,
+            "content": "patched content",
+            "depends_on": "[]",
+            "expected_evidence": '["src/example.py"]',
+        },
+        workspace=workspace,
+    )
+
+    steps = _draft_steps_after(bridge, workspace)
+    patched = next(step for step in steps if step["number"] == 2)
+    assert patched["content"] == "patched content"
+    assert patched.get("depends_on", []) == []
+    assert patched["expected_evidence"] == [{"kind": "file", "ref": "src/example.py"}]
+
+
+def test_replace_plan_step_accepts_analysis_feedback_correction_example(tmp_path: Path) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    bridge.dispatch(
+        "ralph_replace_plan_step",
+        {
+            "step_number": 2,
+            "step": {
+                "title": "Clamp the foo() index",
+                "content": (
+                    "Update src/foo.py so the lookup index is clamped to the valid range "
+                    "while preserving the public foo() signature."
+                ),
+                "step_type": "file_change",
+                "priority": "high",
+                "targets": [{"path": "src/foo.py", "action": "modify"}],
+                "satisfies": ["AC-02"],
+                "expected_evidence": [
+                    {"kind": "file", "ref": "src/foo.py"},
+                    {
+                        "kind": "test_name",
+                        "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index",
+                    },
+                ],
+                "depends_on": [1],
+            },
+        },
+        workspace=workspace,
+    )
+
+    steps = _draft_steps_after(bridge, workspace)
+    replaced = next(step for step in steps if step["number"] == 2)
+    assert replaced["title"] == "Clamp the foo() index"
+    assert replaced["targets"] == [{"path": "src/foo.py", "action": "modify"}]
+    assert replaced["depends_on"] == [1]
+    assert replaced["expected_evidence"] == [
+        {"kind": "file", "ref": "src/foo.py"},
+        {
+            "kind": "test_name",
+            "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index",
+        },
+    ]
+
+
+def test_patch_plan_step_accepts_analysis_feedback_proof_fields(tmp_path: Path) -> None:
+    _seed_plan_draft(tmp_path)
+    workspace = _workspace(tmp_path)
+    bridge = build_ralph_tool_registry(
+        _session_for_drain("planning", tmp_path),
+        workspace,
+        upstream_registry=None,
+        mcp_config=None,
+    )
+
+    bridge.dispatch(
+        "ralph_patch_step",
+        {
+            "step_number": 2,
+            "step": {
+                "targets": [{"path": "src/foo.py", "action": "modify"}],
+                "satisfies": ["AC-02"],
+                "expected_evidence": [
+                    {"kind": "file", "ref": "src/foo.py"},
+                    {
+                        "kind": "test_name",
+                        "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index",
+                    },
+                ],
+                "depends_on": [1],
+            },
+        },
+        workspace=workspace,
+    )
+
+    steps = _draft_steps_after(bridge, workspace)
+    patched = next(step for step in steps if step["number"] == 2)
+    assert patched["title"] == "Second"
+    assert patched["targets"] == [{"path": "src/foo.py", "action": "modify"}]
+    assert patched["depends_on"] == [1]
+    assert patched["expected_evidence"] == [
+        {"kind": "file", "ref": "src/foo.py"},
+        {
+            "kind": "test_name",
+            "ref": "tests/test_foo.py::test_clamp_handles_out_of_range_index",
+        },
+    ]
+
+
 def test_remove_plan_step_tool_requires_plan_write_capability(tmp_path: Path) -> None:
     _seed_plan_draft(tmp_path)
     workspace = _workspace(tmp_path)
@@ -280,4 +438,4 @@ def test_insert_step_missing_index_includes_doc_and_get_draft_guidance(tmp_path:
     assert ".agent/artifact-formats/plan.md" in message
     assert "ralph_get_plan_draft" in message
     assert "Missing 'index' parameter" in message
-    assert "Minimal retry envelopes:" in message
+    assert "Canonical step-edit envelopes:" in message

@@ -1,11 +1,11 @@
 """Design section aggregating the seven SE-opinionated sub-models.
 
-The optional ``planning_profile`` field is a preset hint for cheap models. When
+The optional ``planning_profile`` field is a preset hint for agents. When
 set, the @model_validator below bias-fills any None sub-section from a
 class-level default dict. User-provided sub-section values always win; the
-preset only fills in missing pieces. Sentinel ids (``PRESET-01``) and minimal
-auto-fill behavior cannot collide with user-provided ``AC-XX`` / ``REF-XX``
-entries because the prefix is distinct.
+preset only fills in missing pieces. Sentinel ids (``PRESET-01``) cannot
+collide with user-provided ``AC-XX`` / ``REF-XX`` entries because the prefix
+is distinct.
 """
 
 from __future__ import annotations
@@ -67,7 +67,6 @@ _BALANCED_DEFAULTS: dict[str, object] = {
 _PRESET_DEFAULTS: dict[PlanningProfile, dict[str, object]] = {
     "strict": _STRICT_DEFAULTS,
     "balanced": _BALANCED_DEFAULTS,
-    "minimal": {},
 }
 
 

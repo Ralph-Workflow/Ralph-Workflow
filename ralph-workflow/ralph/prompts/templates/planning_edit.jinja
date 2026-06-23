@@ -87,7 +87,7 @@ Recommended edit flow:
 8. Use `mode="append"` only when intentionally extending list sections such as `steps` after you have confirmed append is still globally coherent.
 9. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} only after the revised draft passes the self-audit below.
 
-Do not edit `.agent/artifacts/plan.json` directly. If the defect scope is `repo_wide`, prefer a full atomic plan replacement over piecemeal section repair when that is the simplest way to restore global coherence. Do not throw away valid sections just because one part of the plan was rejected, but do replace every section whose correctness depends on changed scope, inventory, paths, or verification. If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent. When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
+Do not edit `.agent/artifacts/plan.json` directly. If the defect scope is `repo_wide`, replace every affected section through the planning tools when that is the simplest way to restore global coherence. Do not throw away valid sections just because one part of the plan was rejected, but do replace every section whose correctness depends on changed scope, inventory, paths, or verification. If fixing one section changes the truth of another section, replace every dependent section in the same draft so the finalized plan is internally consistent. When the task is repo-wide, implementation scope must come from an explicit repo-wide discovery step rather than a guessed subsystem.
 
 ## REVISION REQUIREMENTS
 

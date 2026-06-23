@@ -910,24 +910,16 @@ def test_summary_drops_empty_context_via_exclude_defaults() -> None:
     assert "context" not in dumped
 
 
-def test_skills_mcp_minimal_profile_escape() -> None:
-    """Empty skills_mcp.skills is auto-filled under planning_profile=minimal only."""
-    minimal_plan = {
-        **_valid_plan(),
-        "skills_mcp": {"skills": [], "mcps": []},
-        "design": {"planning_profile": "minimal"},
-    }
-    normalized = normalize_plan_artifact_content(minimal_plan)
-    skills = cast("list[str]", cast("dict[str, object]", normalized["skills_mcp"])["skills"])
-    assert skills == ["writing-plans"]
-
-    no_profile_plan = {
-        **_valid_plan(),
-        "skills_mcp": {"skills": [], "mcps": []},
-        "design": {},
-    }
-    with pytest.raises(PlanArtifactValidationError, match="skills"):
-        normalize_plan_artifact_content(no_profile_plan)
+def test_skills_mcp_empty_skills_rejected_even_with_planning_profile() -> None:
+    """Empty skills_mcp.skills is always rejected; profiles do not auto-fill skills."""
+    for design in ({"planning_profile": "strict"}, {"planning_profile": "balanced"}, {}):
+        plan = {
+            **_valid_plan(),
+            "skills_mcp": {"skills": [], "mcps": []},
+            "design": design,
+        }
+        with pytest.raises(PlanArtifactValidationError, match="skills"):
+            normalize_plan_artifact_content(plan)
 
 
 def test_design_strict_profile_bias_fills_seven_sub_sections() -> None:
@@ -1039,9 +1031,9 @@ def test_format_doc_minimal_plan_example_parses() -> None:
     assert "summary" in normalized
 
 
-def test_planning_jinja_mentions_planning_profile_preset() -> None:
+def test_planning_jinja_mentions_planning_quality_and_step_type() -> None:
     template = Path("ralph/prompts/templates/planning.jinja").read_text(encoding="utf-8")
-    assert "planning_profile" in template
+    assert "planning analysis can approve on the first pass" in template
     assert "step_type" in template
 
 

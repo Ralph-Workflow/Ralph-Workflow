@@ -8,20 +8,27 @@ from ralph.pydantic_compat import RalphBaseModel
 class SkillsMcp(RalphBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    skills: list[str] = Field(..., max_length=100)
+    skills: list[str] = Field(..., min_length=1, max_length=100)
     mcps: list[str] = Field(default_factory=list, max_length=50)
 
-    @field_validator("skills")
+    @field_validator("skills", mode="before")
     @classmethod
-    def normalize_skill_names(cls, skills: list[str]) -> list[str]:
+    def normalize_skill_names(cls, skills: object) -> object:
+        if not isinstance(skills, list):
+            return skills
         deduped: list[str] = []
         seen: set[str] = set()
         for name in skills:
+            if not isinstance(name, str):
+                return skills
             stripped = name.strip()
             if not stripped or stripped in seen:
                 continue
             seen.add(stripped)
             deduped.append(stripped)
+        if not deduped:
+            msg = "skills_mcp.skills must contain at least one skill name"
+            raise ValueError(msg)
         return deduped
 
     @field_validator("mcps")

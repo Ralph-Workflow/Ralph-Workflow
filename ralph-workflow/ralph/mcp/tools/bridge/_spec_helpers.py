@@ -12,26 +12,11 @@ if TYPE_CHECKING:
 
     from ralph.mcp.tools.bridge._types import JsonObject
 
-_EXAMPLE_PLAN_CONTENT = (
-    '{"summary": {"context": "Tweak the config key", "scope_items": '
-    '[{"text": "Edit config/app.yml"}, {"text": "Verify reload"}, '
-    '{"text": "Document the change"}]}, "skills_mcp": '
-    '{"skills": ["writing-plans"], "mcps": []}, "steps": '
-    '[{"number": 1, "title": "Edit config", "content": "Update the '
-    'config key.", "step_type": "file_change", "targets": '
-    '[{"path": "config/app.yml", "action": "modify"}]}], '
-    '"critical_files": {"primary_files": [{"path": "config/app.yml", '
-    '"action": "modify"}]}, "risks_mitigations": [{"risk": "Wrong key '
-    'renamed", "mitigation": "Verify config loading."}], '
-    '"verification_strategy": [{"method": "pytest tests/test_config.py -q", '
-    '"expected_outcome": "All tests pass"}]}'
-)
 _EXAMPLE_PLAN_SECTION_CONTENT = (
     '{"context": "Tweak the config key", "scope_items": '
     '[{"text": "Edit config/app.yml"}, {"text": "Verify reload"}, '
     '{"text": "Document the change"}]}'
 )
-_EXAMPLE_COMMIT_CONTENT = '{"type": "commit", "subject": "placeholder"}'
 _EXAMPLE_STEPS_CONTENT = (
     '[{"number": 1, "title": "Edit config", "content": "Update the '
     'config key.", "step_type": "file_change", "targets": '
@@ -41,11 +26,11 @@ _EXAMPLE_STEPS_CONTENT = (
 _SUBMIT_ARTIFACT_DESCRIPTION = (
     "Submit a structured artifact. Required: artifact_type (string) and "
     "content (JSON string). Returns confirmation. "
-    'Example: {"artifact_type": "plan", "content": "'
-    + _EXAMPLE_PLAN_CONTENT.replace('"', '\\"')
-    + '"}. '
+    'Example: {"artifact_type": "commit_message", "content": "{\\"type\\":'
+    '\\"commit\\",\\"subject\\":\\"type(scope): description\\"}"}. '
     "See .agent/artifact-formats/<type>.md on error. Validated against the "
-    "artifact's Pydantic model; plans enforce a 4 MB cap and dependency cycle detection."
+    "artifact's Pydantic model; artifact payloads enforce the 4 MB cap where "
+    "the format defines one."
 )
 
 

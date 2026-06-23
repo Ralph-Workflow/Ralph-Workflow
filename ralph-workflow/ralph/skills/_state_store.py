@@ -10,7 +10,7 @@ DEFAULT_STATE_PATH: Path = Path.home() / ".config" / "ralph-workflow-capabilitie
 
 
 def default_state_path() -> Path:
-    return DEFAULT_STATE_PATH
+    return Path.home() / ".config" / "ralph-workflow-capabilities.json"
 
 
 def load_capability_state(path: Path | None = None) -> CapabilityState:
