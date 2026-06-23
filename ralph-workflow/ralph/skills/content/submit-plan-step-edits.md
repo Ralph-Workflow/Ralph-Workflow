@@ -145,58 +145,119 @@ draft, follow this exact worked example. Each call is independent
 and round-trips through the MCP broker — there is no batching for
 step mutations.
 
-```python
-# 1. Stage the 6 required sections + 2 initial steps so the draft has
-#    a known starting state. Use ralph_submit_plan_sections to batch
-#    every section in one round-trip.
-ralph_submit_plan_sections(entries=[
-    {"section": "summary", "mode": "replace",
-     "content": {"context": "ctx", "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]}},
-    {"section": "skills_mcp", "mode": "replace",
-     "content": {"skills": ["writing-plans"], "mcps": []}},
-    {"section": "steps", "mode": "replace", "content": [
-        {"number": 1, "title": "First step", "content": "first",
-         "step_type": "verify", "verify_command": "pytest tests/test_first.py -q"},
-        {"number": 2, "title": "Second step", "content": "second",
-         "step_type": "verify", "verify_command": "pytest tests/test_second.py -q"},
-    ]},
-    {"section": "critical_files", "mode": "replace",
-     "content": {"primary_files": [{"path": "x.py", "action": "modify"}]}},
-    {"section": "risks_mitigations", "mode": "replace",
-     "content": [{"risk": "drift", "mitigation": "preserve"}]},
-    {"section": "verification_strategy", "mode": "replace",
-     "content": [{"method": "pytest", "expected_outcome": "passes"}]},
-])
+**Call 1 — `ralph_submit_plan_sections`** with 6 batched entries to
+stage the initial draft (2 starter steps + the 4 other required
+sections):
 
-# 2. Read the staged draft to learn the current step numbers. Do NOT
-#    guess — the reindex map from any prior mutation may have rewritten
-#    them.
-draft = ralph_get_plan_draft()  # returns {staged_sections, draft, source}
-existing_numbers = [s["number"] for s in draft["draft"]["sections"]["steps"]]
-# -> [1, 2]
+```json
+{
+  "entries": [
+    {
+      "section": "summary",
+      "mode": "replace",
+      "content": {
+        "context": "ctx",
+        "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}]
+      }
+    },
+    {
+      "section": "skills_mcp",
+      "mode": "replace",
+      "content": {"skills": ["writing-plans"], "mcps": []}
+    },
+    {
+      "section": "steps",
+      "mode": "replace",
+      "content": [
+        {
+          "number": 1,
+          "title": "First step",
+          "content": "first",
+          "step_type": "verify",
+          "verify_command": "pytest tests/test_first.py -q"
+        },
+        {
+          "number": 2,
+          "title": "Second step",
+          "content": "second",
+          "step_type": "verify",
+          "verify_command": "pytest tests/test_second.py -q"
+        }
+      ]
+    },
+    {
+      "section": "critical_files",
+      "mode": "replace",
+      "content": {"primary_files": [{"path": "x.py", "action": "modify"}]}
+    },
+    {
+      "section": "risks_mitigations",
+      "mode": "replace",
+      "content": [{"risk": "drift", "mitigation": "preserve"}]
+    },
+    {
+      "section": "verification_strategy",
+      "mode": "replace",
+      "content": [{"method": "pytest", "expected_outcome": "passes"}]
+    }
+  ]
+}
+```
 
-# 3. Insert a new step at index 3 (1-based position after the existing
-#    two). The runtime assigns a synthetic number, then reindexes the
-#    full steps list so existing numbers stay 1..N.
-ralph_insert_plan_step(index=3, step={
+**Call 2 — `ralph_get_plan_draft`** (no parameters) to read the
+staged draft and learn the current step numbers. Do NOT guess — the
+reindex map from any prior mutation may have rewritten them.
+
+```json
+{}
+```
+
+The echoed payload has the shape `{"staged_sections": [...], "draft":
+{"sections": {...}}, "source": "draft"}`. The current step numbers
+live at `draft.sections.steps[*].number`; the example draft above
+contains `[1, 2]`.
+
+**Call 3 — `ralph_insert_plan_step`** at `index=3` to insert a new
+step after the existing two. The runtime assigns a synthetic
+`step.number` and then reindexes the full steps list so existing
+numbers stay `1..N`.
+
+```json
+{
+  "index": 3,
+  "step": {
     "title": "New middle step",
     "content": "Detailed executor instructions",
     "step_type": "file_change",
     "targets": [{"path": "x.py", "action": "modify"}],
-    "depends_on": [],
-})
-# Echo payload includes: action, new_step_number, reindex_map,
-# rewritten_depends_on, rewritten_ac_satisfied_by_steps,
-# dropped_ac_satisfied_by_steps, total_steps.
+    "depends_on": []
+  }
+}
+```
 
-# 4. Dry-run validate BEFORE finalizing. The dry-run is read-only; it
-#    does NOT delete the staged draft on success or failure.
-result = ralph_validate_draft()
-assert result == {"valid": True}
+The echo payload includes `action`, `new_step_number`, `reindex_map`,
+`rewritten_depends_on`, `rewritten_ac_satisfied_by_steps`,
+`dropped_ac_satisfied_by_steps`, and `total_steps`.
 
-# 5. Finalize once every required section is staged AND valid. On
-#    success, plan.json is written and the staged draft is deleted.
-ralph_finalize_plan()
+**Call 4 — `ralph_validate_draft`** (no parameters) for a dry-run of
+the cross-section validator BEFORE finalizing. The dry-run is
+read-only; it does NOT delete the staged draft on success or failure.
+
+```json
+{}
+```
+
+A successful dry-run returns `{"valid": true, ...}`; a failed one
+returns `{"valid": false, "errors": [...]}` with the literal
+validator message and the offending field path.
+
+**Call 5 — `ralph_finalize_plan`** (no parameters) to write
+`plan.json` and delete the staged draft. Only call this once every
+required section is staged AND `ralph_validate_draft` returned
+`{"valid": true}`.
+
+```json
+{}
 ```
 
 The 5-call sequence is the entire happy-path for "add one step at
