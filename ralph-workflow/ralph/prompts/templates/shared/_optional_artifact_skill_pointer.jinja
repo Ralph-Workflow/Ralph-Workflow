@@ -1,0 +1,20 @@
+{# Single OPTIONAL skill pointer shared across the planning-family and
+   artifact-producing templates. Import via:
+
+     {% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
+
+   Then call:
+
+     {{ render_optional_artifact_skill_pointer(skill_name, format_doc) }}
+
+   Renders the 4-line block pattern:
+
+     ## OPTIONAL: <skill_name> skill
+
+     The `<skill_name>` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a one-shot worked example and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `<format_doc>` — that is the source of truth.
+#}
+{% macro render_optional_artifact_skill_pointer(skill_name, format_doc) -%}
+## OPTIONAL: {{ skill_name }} skill
+
+The `{{ skill_name }}` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a one-shot worked example and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `{{ format_doc }}` — that is the source of truth.
+{%- endmacro %}

@@ -3,6 +3,7 @@ The diff contains only the changes not yet committed — the current worktree vs
 Read the diff silently. Do not write an analysis.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
+{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -93,6 +94,8 @@ Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed bo
 Read the diff and decide whether the correct result is a commit artifact or a skip artifact. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
 
 {{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+
+{{ render_optional_artifact_skill_pointer('submit-commit-message-artifact', '.agent/artifact-formats/commit_message.md') }}
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}
 

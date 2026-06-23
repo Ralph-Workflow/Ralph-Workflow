@@ -308,19 +308,14 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path: 
     assert "Use `ralph_finalize_plan`" in prompt
     assert "edit `.agent/artifacts/plan.json`" not in prompt
     assert "resubmit with `content_path`" not in prompt
-    assert "The `content` argument must be a JSON string whose decoded object" in prompt
-    assert "Do NOT wrap the payload in outer `type` or `content` fields" in prompt
-    assert '"summary": {' in prompt
-    assert '"steps": [' in prompt
-    assert '"critical_files": {' in prompt
-    assert '"risks_mitigations": [' in prompt
-    assert '"verification_strategy": [' in prompt
-    assert "`summary.scope_items` must contain at least 3 concrete items" in prompt
-    assert "<=500 chars" in prompt
-    assert (
-        "`targets[*].action` must be one of `create`, `modify`, `delete`, "
-        "`read`, or `reference`" in prompt
-    )
+    # After the planning.jinja trim (wt-023), the detailed raw plan payload
+    # contract (JSON example + hard requirements) is documented in
+    # `.agent/artifact-formats/plan.md` §`Plan-artifact payload` and surfaced
+    # via a one-line pointer. The contract is preserved verbatim in the
+    # format doc, so the prompt must point at it and the per-field rules
+    # it relies on must remain reachable.
+    assert ".agent/artifact-formats/plan.md" in prompt
+    assert "Plan-artifact payload" in prompt
 
 
 def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path: Path) -> None:

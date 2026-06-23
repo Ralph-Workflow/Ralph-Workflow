@@ -8,6 +8,7 @@ they are actual binary or generated artifacts that should never enter the repo,
 use `delete_file`.
 
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
+{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -131,5 +132,7 @@ The artifact content JSON schema:
 ```
 
 {{ render_artifact_submission('commit_cleanup', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+
+{{ render_optional_artifact_skill_pointer('submit-commit-cleanup-artifact', '.agent/artifact-formats/commit_cleanup.md') }}
 
 {{ render_payload_section('DIFF', DIFF, DIFF_PATH) }}

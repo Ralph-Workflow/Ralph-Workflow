@@ -149,52 +149,27 @@ Batch alternative: {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} accepts a list of `{s
 
 ## INTENT & INTENT_VERB (cheap-model shortcut)
 
-Every plan benefits from declaring two optional `summary` fields that make the cheapest possible signal of what the plan does:
-
-- `summary.intent` — a ≤500-char one-line user-facing outcome (e.g. "Clamp foo() index so the off-by-one regression cannot recur."). Empty string is allowed and dropped from `model_dump(exclude_defaults=True)`. Strip whitespace, no min length.
-- `summary.intent_verb` — a closed enum value, stored as `str` with default `""` (also dropped from `model_dump(exclude_defaults=True)`). Accepted values are `add`, `fix`, `refactor`, `migrate`, `document`, `investigate`, `improve`, `configure`, `remove`. A before-validator normalizes the default `""` (no-op) and runs on every supplied value: it accepts `None` (returns `""`), lowercases the input before the closed-enum check (so `Add`, `ADD`, and `add` all pass), and rejects explicit `""` with `ValueError("intent_verb must not be empty")` to distinguish a deliberate empty value from an omitted field.
-
-Cheap models should set these two fields first. The rendered plan surfaces them as a `## Intent` heading before the `## Summary` block, giving the executor a one-line answer to "what does this plan do?" without having to parse the full context.
+- See `.agent/artifact-formats/plan.md` §`Intent & intent_verb` for the canonical definition.
 
 ## STEP CONTRACT
 
-Every `PlanStep` is bound by a tightened contract. Plans that violate the contract are rejected at `normalize_plan_artifact_content` time:
-
-- Every `file_change` step MUST declare at least one `targets` entry (a `path` + `action` pair). Use a `read` or `reference` action for steps that touch zero files, or switch the `step_type` to `action` / `research`.
-- Every `verify` step MUST declare either `verify_command` (a shell command the executor should run, e.g. `pytest tests/test_x.py -q`) OR `location` (a test-file path, e.g. `tests/test_x.py`). Both fields are optional individually, but at least one must be present.
-
-These two rules are enforced by the per-step model validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep`. If you set `step_type="file_change"`, declare `targets` for every file the step will touch.
-
-The step-mutation tools ({{INSERT_PLAN_STEP_TOOL_REFERENCE}}, {{REPLACE_PLAN_STEP_TOOL_REFERENCE}}, {{PATCH_PLAN_STEP_TOOL_REFERENCE}}, {{REMOVE_PLAN_STEP_TOOL_REFERENCE}}, {{MOVE_PLAN_STEP_TOOL_REFERENCE}}) return an echo payload with the new step number(s), the `depends_on` reindex map, and the list of AC ids whose `satisfied_by_steps` were rewritten. You do NOT need to call {{GET_PLAN_DRAFT_TOOL_REFERENCE}} immediately after a step mutation to learn the new numbers.
+- See `.agent/artifact-formats/plan.md` §`Step contract` for the canonical definition.
 
 ## PLAN SIZE LIMITS
 
-Every plan must fit within the generous-but-bounded caps in `.agent/artifact-formats/plan.md` §`Plan size limits`. The hard cap is 4 MB total JSON; per-list caps (steps ≤ 500, scope_items ≤ 200, AC ≤ 500, evidence per step ≤ 500, risks ≤ 200, verification ≤ 100, primary/reference files ≤ 200, parallel_plan ≤ 200, work_units ≤ 200, constraint_list_entries ≤ 500) keep runaway loops detectable. The three string-length tiers (`short=1000`, `medium=8000`, `long=20000`) cover every plan-artifact string field; the per-field cap table maps each field to one of the three tiers. If your plan would exceed any cap, you MUST shrink it; do NOT silently truncate fields. The bundled format doc at `.agent/artifact-formats/plan.md` §`Plan size limits` is the canonical reference; consult it before generating a long plan.
-
-A plan that exceeds any cap is rejected with a structured `PlanArtifactSizeError` (with `.field`, `.actual`, `.cap` attributes populated) before Pydantic runs. The cap table is the single source of truth — no model hard-codes a cap.
+- See `.agent/artifact-formats/plan.md` §`Plan size limits` for the canonical definition.
 
 ## CYCLE GUARD
 
-A plan with a `depends_on` cycle (e.g. step 1 -> 2 -> 3 -> 1) is rejected at normalize time with `PlanArtifactValidationError("plan step depends_on cycle detected at step N")`; plan a DAG, not a ring. The cycle detector runs as the FIRST check inside `PlanArtifact._validate_step_ac_cross_references` (a `@model_validator(mode='after')`) BEFORE the existing AC<->step cross-reference scan. The pattern mirrors `ralph.pipeline.work_units._validate_acyclic` at `ralph/pipeline/work_units.py:158`. Diamond-shaped DAGs (a node with multiple parents, e.g. 1 -> 2, 1 -> 3, 2 -> 4, 3 -> 4) are accepted — only TRUE cycles (a node revisits itself in the DFS `visiting` set) are rejected.
+- See `.agent/artifact-formats/plan.md` §`Cycle guard` for the canonical definition.
 
 ## MODULE FAMILY
 
-The plan artifact is implemented as a focused module family under `ralph/mcp/artifacts/plan/`. The public `ralph.mcp.artifacts.plan` package is a thin re-export surface (under 60 lines) that re-exports every public symbol from the seven submodules below, with two leaf-model submodules (`_evidence_ref`, `_plan_constraints`) imported through `_section_models`. Reading order for a new contributor: `_evidence_ref` → `_plan_constraints` → `_section_models` → `_section_registry` → `_validation` → `_step_edit` → `_renderers` → `_draft_io` → `_step_contract` → `_noop`.
-
-Key new public symbols introduced by the module split (so a cheap model can locate them by name): `PlanArtifactDict` (the canonical `dict[str, object]` alias for normalized plan dicts), `StepType` (StrEnum for the per-step kind), `requires_targets` / `requires_verify_handle` (per-step contract helpers), and `parse_plan_payload_strict` / `parse_plan_payload_lenient` (the canonical envelope-aware decoders shared by `tools/artifact.py` and `plan_format.py`).
+- See `.agent/artifact-formats/plan.md` §`Module family` for the canonical definition.
 
 ## StepType reference
 
-The `steps[*].step_type` field is a closed enum. Pick exactly one:
-
-| Value         | When to use                                                            |
-|---------------|------------------------------------------------------------------------|
-| `file_change` | The step creates, modifies, or deletes one or more source files. (Note: this is NOT the default — the default is action; a file_change step must be declared explicitly and must list every file in targets.) |
-| `action`      | The step runs a non-mutating executor action (a command, a tool call). |
-| `research`    | The step is exploratory and may not produce a code change.             |
-| `verify`      | The step is a pure-verification step (e.g. `run ruff`, `run pytest`) with no file changes. |
-
-Default is action so a step that does not declare step_type is a generic non-mutating executor action; file-modifying steps must explicitly set step_type="file_change" and provide targets.
+- See `.agent/artifact-formats/plan.md` §`StepType reference` for the canonical definition.
 
 ## Common StepType mistakes
 
@@ -206,149 +181,12 @@ The before-validator in `ralph.mcp.artifacts.plan._plan_step.PlanStep._coerce_st
 
 ## STEP ↔ ACCEPTANCE-CRITERIA LINKING
 
-If the plan declares `design.acceptance_criteria`, every step's `satisfies` list must reference a real AC id (matching `^[A-Z]+-\d{2,}$`). Every AC's `satisfied_by_steps` list must reference a real step number. The cross-section validator in `ralph.mcp.artifacts.plan.__init__.PlanArtifact` enforces both directions and rejects orphan references. Cheap models should set `satisfies` to a single AC id per step; high-quality models may also populate the reverse link `satisfied_by_steps` for executor provability.
-
-Insert/replace/remove step operations automatically reindex both `depends_on` AND `satisfied_by_steps` so the AC<->step link stays in lockstep after edits.
+- See `.agent/artifact-formats/plan.md` §`Step ↔ acceptance-criteria linking` for the canonical definition.
 
 ## DESIGN SECTION
 
-If the request is about Ralph Workflow internals or any multi-file task (3+ files, refactor, or new feature touching existing modules), also stage a `design` section so the executor gets the seven SE-opinionated sub-sections in one round-trip. The `design` section is OPTIONAL but strongly recommended; submit it via `{{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}}` with `section='design'`, `mode='replace'` (the only supported mode).
-
-The seven typed sub-sections, with the exact labels the executor will see in the rendered plan:
-
-- **Design Constraints**: list hard invariants the design must satisfy (1-2000 chars, with optional `invariants` list and `architecture_style` enum)
-- **Non-Goals**: list what is explicitly out of scope (non-empty `items` list, each 1-500 chars)
-- **Dependency Injection**: mark `required_for_testability=true` and any `forbidden_patterns` (e.g. `global-singleton`, `module-level-mutable-state`); cross-reference `AGENTS.md` §'Non-negotiables' for the canonical list
-- **Drift Detection**: list `guard_commands` you will run to detect drift between plan and code; commands are restricted to `[A-Za-z0-9 _./\-:=+]` for safety
-- **Testability**: mark `must_be_black_box=true` and any `forbidden_in_tests` entries per `AGENTS.md` (e.g. `time.sleep`, `subprocess.run-no-timeout`); also list `required_test_layers` such as `unit` or `integration`
-- **Refactor Strategy**: choose `approach` (e.g. `incremental`, `strangler`) and `dead_code_policy` (default `delete-immediately`)
-- **Acceptance Criteria**: one entry per requirement with a stable id matching `^[A-Z]+-\d{2,}$` (e.g. `AC-01`)
-
-**Model-tier guidance for the optional `notes` field**: For high-quality models, use the optional `notes` free-form field to capture rationale, alternative designs considered, and trade-offs that do not fit the seven typed sub-models. For cheap models, leave `notes` unset and rely entirely on the seven typed sub-models for schema-driven validation. Either choice is acceptable; the section passes validation as long as the seven sub-models are well-formed (or all None).
-
-**`design.outcome` (top-level design outcome)**: The optional `outcome` field (≤1000 chars, distinct from `notes`) is a one-line top-level design outcome that the executor surfaces as a `### Outcome` sub-block at the TOP of the Design section, before the seven sub-section headings. Cheap models can populate `design.outcome` and skip `design.notes` for the same level of executor signal. Stripped empty values are dropped from the dump.
-
-**`planning_profile` preset (cheap-model shortcut)**: If `design.planning_profile` is set to `strict`, `balanced`, or `minimal`, any None sub-section is bias-filled from a class-level default dict (user values always win). The strict preset seeds a sentinel acceptance criterion `PRESET-01` only when `acceptance_criteria` is otherwise absent, and you may strip or replace it. Under `minimal`, `skills_mcp.skills` is allowed to be empty (auto-filled with `["writing-plans"]`); under any other preset or without a profile, `skills_mcp.skills` must be non-empty. If you rely on any preset, you MUST stage the `design` section before finalizing so the profile is actually present in the artifact. Use the preset to keep your payload short; omit it and handcraft the seven sub-sections for finer control.
-
-**Model tier**: Pick the model tier first, then fill the fields that tier is expected to provide.
-
-**High-quality models MUST populate**:
-- `design.notes` — rationale for the chosen design (the high-quality-model hallmark; ~500+ chars).
-- `design.drift_detection.guard_commands` (>=2 commands) + `expected_outputs` + `sources` + `on_drift_action`.
-- `design.testability.required_test_layers` (every layer that applies: `unit`, `integration`, etc.).
-- `design.dependency_injection.preferred_patterns` (every pattern the design uses: `constructor`, `parameter`, `interface`).
-- `design.dependency_injection.forbidden_patterns` (every antipattern explicitly avoided: `global-singleton`, `module-level-mutable-state`).
-- `design.refactor_strategy.approach` + `dead_code_policy="delete-immediately"` (zero-tolerance dead-code policy).
-- `design.acceptance_criteria` with 3+ criteria, each with `satisfied_by_steps` populated.
-- High-quality models SHOULD set `planning_profile="strict"` and override the bias-filled defaults with project-specific values.
-
-**Cheap models SHOULD use** `planning_profile="balanced"` or `planning_profile="minimal"` to get the SE defaults bias-filled automatically. Cheap models may leave `design.notes` unset and skip per-element sub-section population; the preset covers the gaps, but only if the `design` section is staged. Cheap models should still populate `summary.intent` + `summary.intent_verb` for the cheap-model shortcut.
-
-The two paths converge on the same `PlanArtifact` shape, so the executor cannot tell which model tier produced the plan by inspecting the artifact alone.
-
-The full reference for the design sub-section, including every enum value and the JSON shape, is at `.agent/artifact-formats/plan.md` (bundled by Ralph Workflow and materialized into the workspace). Cross-reference `AGENTS.md` §'Non-negotiables' for the canonical SE opinions the sub-sections enforce.
-
-Atomic fallback for short plans:
-- If the plan is genuinely short, you may call {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" and content as a JSON string conforming to the plan schema.
-{{SUBMIT_ARTIFACT_BARE_HINT}}
-
-The `content` argument must be a JSON string whose decoded object is the RAW plan payload.
-Do NOT wrap the payload in outer `type` or `content` fields. Ralph Workflow adds artifact metadata itself.
-
-Your payload must decode to an object shaped like this:
-
-```json
-{
-  "summary": {
-    "context": "What is being changed, why it matters, and what the executor should accomplish.",
-    "intent": "One-line user-facing outcome (<=500 chars).",
-    "intent_verb": "fix",
-    "scope_items": [
-      {"text": "Concrete outcome 1", "count": "optional quantity", "category": "optional category"},
-      {"text": "Concrete outcome 2", "count": "optional quantity", "category": "optional category"},
-      {"text": "Concrete outcome 3", "count": "optional quantity", "category": "optional category"}
-    ]
-  },
-  "skills_mcp": {
-    "skills": ["skill names available to the development agent"],
-    "mcps": ["optional MCP server names the development agent should use"]
-  },
-  "steps": [
-    {
-      "number": 1,
-      "title": "Imperative step title",
-      "content": "Detailed executor-ready instructions. Assume a weaker model will follow this literally.",
-      "step_type": "file_change",
-      "priority": "high",
-      "targets": [
-        {"path": "path/to/file.py", "action": "modify"}
-      ],
-      "location": "optional module or function",
-      "rationale": "optional reason this step exists",
-      "satisfies": ["AC-01"],
-      "expected_evidence": ["file: path/to/file.py"],
-      "depends_on": []
-    },
-    {
-      "number": 2,
-      "title": "Imperative verify step title",
-      "content": "Run the test that proves the fix works.",
-      "step_type": "verify",
-      "verify_command": "pytest tests/test_x.py -q",
-      "location": "tests/test_x.py",
-      "depends_on": [1]
-    }
-  ],
-  "critical_files": {
-    "primary_files": [
-      {"path": "path/to/file.py", "action": "modify", "estimated_changes": "optional scope estimate"}
-    ],
-    "reference_files": [
-      {"path": "path/to/example.py", "purpose": "optional reference or pattern to follow"}
-    ]
-  },
-  "risks_mitigations": [
-    {"risk": "Specific failure mode", "mitigation": "How to avoid or detect it", "severity": "medium"}
-  ],
-  "verification_strategy": [
-    {"method": "Exact command or check", "expected_outcome": "What success looks like"}
-  ],
-  "parallel_plan": [
-    {
-      "id": "optional-parallel-unit",
-      "description": "Optional safe-to-parallelize work chunk",
-      "edit_area": {"paths": ["path/to/file.py"], "directories": ["optional/dir"]},
-      "depends_on": []
-    }
-  ],
-  "work_units": [],
-  "design": {
-    "planning_profile": "strict",
-    "outcome": "One-line design outcome (<=1000 chars). Distinct from notes.",
-    "testability": {
-      "must_be_black_box": true,
-      "forbidden_in_tests": ["time.sleep"],
-      "required_test_layers": ["unit"]
-    },
-    "acceptance_criteria": {
-      "criteria": [
-        {"id": "AC-01", "description": "Primary file change is implemented", "satisfied_by_steps": [1]}
-      ]
-    }
-  }
-}
-```
-
-Hard requirements for the payload:
-- `summary.scope_items` must contain at least 3 concrete items.
-- `skills_mcp.skills` must contain at least 1 skill name from skills already available in your environment, UNLESS you stage `design.planning_profile="minimal"`, under which an empty list is auto-filled with `["writing-plans"]`. Choose skills the development agent should invoke for this task, not every installed skill.
-- `skills_mcp.skills` names must match skill names your agent can discover and invoke.
-- `steps` must contain at least 1 step, and every step must be explicit enough for a weaker agent to execute without re-planning.
-- `critical_files.primary_files` must contain at least 1 file.
-- `targets[*].action` must be one of `create`, `modify`, `delete`, `read`, or `reference`; `critical_files.primary_files[*].action` must be one of `create`, `modify`, or `delete`.
-- `risks_mitigations` must contain at least 1 real risk with a mitigation.
-- `verification_strategy` must contain exact commands/checks, not vague statements.
-- Include `work_units` only when parallel work is genuinely safe; otherwise omit it or use an empty array.
+- See `.agent/artifact-formats/plan.md` §`Design section` for the canonical definition.
+- See `.agent/artifact-formats/plan.md` §`Plan-artifact payload` for the atomic-fallback JSON shape, hard requirements for the payload, and the canonical short-plan escape hatch.
 
 ---
 

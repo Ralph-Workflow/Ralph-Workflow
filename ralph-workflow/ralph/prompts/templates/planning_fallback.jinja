@@ -1,5 +1,7 @@
 PLANNING MODE
 
+{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
+
 {% include 'shared/_unattended_mode.j2' %}
 
 {% set shipped_skills_mode = 'planning' %}
@@ -45,8 +47,7 @@ Do not use phrases like "run tests" unless you provide the exact command and the
 If the executor would need to stop and research basic repository structure, invent a verification command, choose among multiple plausible approaches, or perform planning work such as rereading feedback or deciding scope, the plan is underspecified.
 
 ## OPTIONAL: submit-plan-artifact skill
-
-The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL. You may consult it for a one-shot worked example of `ralph_submit_plan_section` and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` — that is the source of truth.
+{{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 
 ## Plan size limits
 

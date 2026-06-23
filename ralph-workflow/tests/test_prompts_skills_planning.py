@@ -39,6 +39,12 @@ DOCS_MCP_FALSE_BRANCH_HINTS_FALLBACK = (
 
 DESIGN_SECTION_HINTS = (
     "## DESIGN SECTION",
+    "Design section",
+    ".agent/artifact-formats/plan.md",
+)
+
+
+DESIGN_SECTION_HINTS_FALLBACK = (
     "Design Constraints",
     "Non-Goals",
     "Dependency Injection",
@@ -84,11 +90,6 @@ def _assert_shipped_skills_discovery(prompt: str) -> None:
 def _assert_design_section_hints(prompt: str) -> None:
     for hint in DESIGN_SECTION_HINTS:
         assert hint in prompt, f"Missing design-section hint: {hint}"
-
-
-DESIGN_SECTION_HINTS_FALLBACK = tuple(
-    hint for hint in DESIGN_SECTION_HINTS if hint != "## DESIGN SECTION"
-)
 
 
 def _assert_design_section_hints_fallback(prompt: str) -> None:

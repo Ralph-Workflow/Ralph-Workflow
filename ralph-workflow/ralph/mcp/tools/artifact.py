@@ -120,6 +120,28 @@ _TYPED_ARTIFACT_TYPES = frozenset(
     }
 )
 
+_SKILL_POINTERS_BY_ARTIFACT_TYPE: dict[str, str] = {
+    COMMIT_MESSAGE_TYPE: "submit-commit-message-artifact",
+    DEVELOPMENT_RESULT_ARTIFACT_TYPE: "submit-development-result-artifact",
+    "commit_cleanup": "submit-commit-cleanup-artifact",
+}
+
+
+def _per_type_skill_pointer_sentence(artifact_type: str) -> str:
+    """Return the per-type skill pointer sentence for ``artifact_type``.
+
+    Returns an empty string when ``artifact_type`` is not in
+    ``_SKILL_POINTERS_BY_ARTIFACT_TYPE`` so un-targeted artifact types emit
+    only the generic ``submit-artifact`` sentence.
+    """
+    skill_name = _SKILL_POINTERS_BY_ARTIFACT_TYPE.get(artifact_type)
+    if not skill_name:
+        return ""
+    return (
+        f" Optional: the bundled `{skill_name}` skill is the type-specific "
+        f"fast-path for `{artifact_type}`."
+    )
+
 _KNOWN_ARTIFACT_TYPES = frozenset(
     {PLAN_ARTIFACT_TYPE, COMMIT_MESSAGE_TYPE, DEVELOPMENT_RESULT_ARTIFACT_TYPE}
     | _TYPED_ARTIFACT_TYPES
@@ -2082,6 +2104,7 @@ def _artifact_content_format_error(artifact_type: str) -> str:
         f'{{"artifact_type":"{artifact_type}",'
         '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"}'
     )
+    per_type_sentence = _per_type_skill_pointer_sentence(artifact_type)
     return (
         "Artifact submission requires the 'content' field. "
         "Use 'content' with a freshly generated JSON string. "
@@ -2089,6 +2112,7 @@ def _artifact_content_format_error(artifact_type: str) -> str:
         f"Example submit: {fresh_submit_example}. "
         "Optional: the bundled `submit-artifact` skill shows a one-shot worked envelope and "
         "recovery flow for this same error."
+        f"{per_type_sentence}"
     )
 
 
@@ -2339,6 +2363,7 @@ def _raise_format_doc_error(
     retry_example = (
         f'{{"artifact_type":"{artifact_type}","content":"{{...valid {artifact_type} JSON...}}"}}'
     )
+    per_type_sentence = _per_type_skill_pointer_sentence(artifact_type)
     try:
         relative_path = materialize_format_doc(workspace_root, artifact_type, backend=backend)
         if relative_path is not None:
@@ -2352,6 +2377,7 @@ def _raise_format_doc_error(
                 "Do NOT rely on guesswork; follow the documented shape exactly. "
                 "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
                 "envelope and recovery flow for this same error."
+                f"{per_type_sentence}"
             )
         else:
             msg = (
@@ -2364,6 +2390,7 @@ def _raise_format_doc_error(
                 f"ralph_submit_artifact with envelope {retry_example}) "
                 "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
                 "envelope and recovery flow for this same error."
+                f"{per_type_sentence}"
             )
     except OSError:
         msg = (
@@ -2376,6 +2403,7 @@ def _raise_format_doc_error(
             f"ralph_submit_artifact with envelope {retry_example}) "
             "Optional: the bundled `submit-artifact` skill shows a one-shot worked "
             "envelope and recovery flow for this same error."
+            f"{per_type_sentence}"
         )
     raise InvalidParamsError(msg) from original_exc
 

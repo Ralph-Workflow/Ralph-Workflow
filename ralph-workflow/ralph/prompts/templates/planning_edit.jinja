@@ -1,6 +1,7 @@
 You are in PLANNING EDIT MODE. Revise the existing execution plan in response to planning-analysis feedback.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
+{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 
 {% include 'shared/_unattended_mode.j2' %}
 
@@ -78,9 +79,7 @@ For repo-wide defects:
 - recompute risks
 - then replace every affected section so the finalized plan is globally coherent
 
-## OPTIONAL: submit-plan-artifact and submit-artifact skills
-
-The `submit-plan-artifact` skill (bundled in `ralph/skills/content/`) is OPTIONAL and applies to plan revisions; the companion `submit-artifact` skill covers non-plan generic artifact edits. Each gives a one-shot worked example and a recovery path for bad payloads. The canonical schema and per-section shapes remain in `.agent/artifact-formats/plan.md` and `.agent/artifact-formats/artifact_formats_index.md` — those are the source of truth.
+{{ render_optional_artifact_skill_pointer('submit-plan-artifact', '.agent/artifact-formats/plan.md') }}
 
 ## MCP PLAN EDIT WORKFLOW
 

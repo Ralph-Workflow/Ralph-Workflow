@@ -1,4 +1,5 @@
 {% from 'shared/_artifact_submission.j2' import render_artifact_submission %}
+{% from 'shared/_optional_artifact_skill_pointer.j2' import render_optional_artifact_skill_pointer %}
 {% from 'shared/_payload_section.j2' import render_payload_section, render_payload_path %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -210,6 +211,8 @@ Return a JSON object.
   `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
 
 {{ render_artifact_submission('development_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+
+{{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 
 ---
 

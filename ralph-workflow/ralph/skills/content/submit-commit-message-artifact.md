@@ -1,0 +1,176 @@
+---
+name: submit-commit-message-artifact
+description: Use when submitting a commit_message artifact with a structured commit or skip payload via ralph_submit_artifact
+---
+
+# submit-commit-message-artifact
+
+## Overview
+
+This is an **OPTIONAL** skill that lives alongside the canonical commit_message
+format doc at `.agent/artifact-formats/commit_message.md`. Use it as a quick
+lookup before submitting a commit_message artifact, not as a substitute for the
+format doc. The format doc is the source of truth for every required field,
+the dual body shape decision tree, and the type-closed enum.
+
+**Skill name vs MCP tool name.** This skill is named
+`submit-commit-message-artifact`. It is a separate name from the generic MCP
+tool `ralph_submit_artifact`, which is the active submission entry point. Do
+not conflate the two: the MCP tool for committing is `ralph_submit_artifact`
+with `artifact_type="commit_message"`.
+
+## When to Use
+
+Use this skill when you are about to call `ralph_submit_artifact` to report
+the commit message for the current pending diff and the message body shape is
+not obvious from the diff alone. It is the right skill for the canonical
+commit_message artifact only — for plans, development results, commit cleanup,
+issues, fix_result, smoke_test_result, or analysis-decision artifacts, use
+the companion `submit-artifact` skill instead.
+
+If the diff is clearly a one-line typo or a single-file cosmetic change, you
+do not need this skill; the body-less envelope in the format doc is enough.
+
+## Core Flow (one-shot)
+
+1. Read `.agent/artifact-formats/commit_message.md` once. It defines every
+   required field, the dual body shape decision tree, the type closed enum,
+   and the conventional-commit subject prefix invariant. Treat it as a
+   contract you must match exactly.
+2. Decide the artifact type:
+   - `commit` — the diff should be committed with a conventional-commit subject.
+   - `skip` — no commit is needed; a non-empty `reason` explains why.
+3. Choose the body shape:
+   - `body` (single string) when the explanation fits in 1-2 paragraphs.
+   - `body_summary` + `body_details` + `body_footer` when the change is
+     complex (multi-subsystem, refactor, migration, deprecation).
+   - **Never both** — pick exactly one body shape or supply neither.
+4. Optionally narrow the commit scope with `files` (array of strings) or
+   `excluded_files` (array of `{path, reason}` objects with one of the four
+   allowed reason values: `internal_ignore`, `not_task_related`, `sensitive`,
+   `deferred`).
+5. Build the inner payload as a plain JSON object (e.g.
+   `{"type": "commit", "subject": "fix(auth): prevent token expiry race"}`).
+6. Stringify the inner payload into a JSON string and pass it as the
+   `content` field. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
+   envelope — Ralph Workflow adds artifact metadata itself.
+7. Call
+   `ralph_submit_artifact({"artifact_type": "commit_message", "content": "<fresh JSON string>"})`.
+8. After the submit success text, call `ralph_declare_complete(summary="commit_message")`.
+
+**Minimal one-shot happy-path envelope** for a commit with a body:
+
+```json
+{
+  "artifact_type": "commit_message",
+  "content": "{\"type\": \"commit\", \"subject\": \"fix(auth): prevent token expiry race\", \"body\": \"Previously, concurrent refresh requests could cause the token to be invalidated while still being used by another request. This change serializes refresh operations per token to prevent that race condition.\"}"
+}
+```
+
+**Minimal one-shot happy-path envelope** for a detailed-body commit:
+
+```json
+{
+  "artifact_type": "commit_message",
+  "content": "{\"type\": \"commit\", \"subject\": \"feat(api): add CSV export with filtered queries\", \"body_summary\": \"Adds support for exporting reports as CSV with client-side filtering.\", \"body_details\": \"The filter runs entirely in the browser, applying to the loaded dataset before export. This avoids the need for a new API endpoint while still giving users the filtering they expect.\", \"body_footer\": \"Fixes #42\"}"
+}
+```
+
+**Minimal one-shot happy-path envelope** for a skip:
+
+```json
+{
+  "artifact_type": "commit_message",
+  "content": "{\"type\": \"skip\", \"reason\": \"No task-related changes since the last commit.\"}"
+}
+```
+
+## Recovery from a Bad Payload
+
+When `ralph_submit_artifact` rejects a `commit_message` payload, the helper
+`_raise_format_doc_error` raises an `InvalidParamsError` whose message points
+at `.agent/artifact-formats/commit_message.md` and names `ralph_submit_artifact`
+as the retry tool. Read the message, then:
+
+1. If the helper `_artifact_content_format_error` is raised, your payload is
+   missing the `content` field. Re-issue the call with `content` set to a
+   freshly generated JSON string.
+2. If validation complains about `type`, you supplied a conventional-commit
+   prefix (`fix`, `feat`, etc.) or the legacy `message` key instead of the
+   structured shape. The `type` field MUST be `"commit"` or `"skip"` — the
+   conventional-commit prefix goes in `subject`, not `type`.
+3. If validation complains about `body`, you supplied both `body` and the
+   `body_summary` / `body_details` / `body_footer` triple. Pick exactly one
+   shape and resubmit.
+4. If validation complains about `excluded_files.reason`, your reason is not
+   one of the four allowed values. Resubmit with `internal_ignore`,
+   `not_task_related`, `sensitive`, or `deferred`.
+5. If validation complains about `subject`, you forgot the conventional-commit
+   prefix. The subject must look like `<type>(<scope>): <description>` (e.g.
+   `fix(auth): clamp expiry window`), with `<type>` in
+   `feat|fix|docs|refactor|test|style|perf|build|ci|chore` and a lowercase
+   imperative description.
+
+**Worked retry envelope** for a `_raise_format_doc_error` style failure on
+`commit_message`:
+
+```json
+{
+  "artifact_type": "commit_message",
+  "content": "{\"type\": \"commit\", \"subject\": \"fix(auth): prevent token expiry race\"}"
+}
+```
+
+**Worked retry envelope** for a `_artifact_content_format_error` style
+failure (missing `content`):
+
+```json
+{
+  "artifact_type": "commit_message",
+  "content": "{\"type\": \"commit\", \"subject\": \"fix(auth): prevent token expiry race\"}"
+}
+```
+
+## Source of Truth Reference
+
+- `.agent/artifact-formats/commit_message.md` — the canonical schema for the
+  commit_message artifact. Bundled by Ralph Workflow and materialized into the
+  workspace on demand. Every required field, the dual body shape decision
+  tree, and the `type` closed enum are defined here.
+- `.agent/artifact-formats/artifact_formats_index.md` — the index that lists
+  every supported `artifact_type` (including `commit_message`) and points to
+  each format doc.
+
+If this skill and the format doc ever disagree, the format doc wins.
+
+## Common Mistakes
+
+- Treating this skill as authoritative. The format doc at
+  `.agent/artifact-formats/commit_message.md` is the source of truth; this
+  skill is a quick pointer, not a substitute.
+- Conflating `submit-commit-message-artifact` (this skill) with the MCP
+  tool `ralph_submit_artifact`. The MCP tool is the active submission entry
+  point; the skill is the passive reference document.
+- Supplying both `body` and `body_summary`/`body_details`/`body_footer` in
+  the same payload. The two shapes are mutually exclusive — pick exactly
+  one.
+- Supplying `body` together with `body_summary` (and omitting
+  `body_details`/`body_footer`) — the Pydantic model treats the triple as a
+  group and rejects partial triples when `body` is also present. Either the
+  full triple OR `body` alone, never a partial triple mixed with `body`.
+- Writing the conventional-commit prefix in `type` (e.g.
+  `{"type": "fix", ...}`). The `type` field must be `"commit"` or `"skip"`;
+  the `fix:` prefix goes in `subject`.
+- Supplying `"message"` instead of `"subject"`. The legacy `message` key is
+  no longer accepted.
+- Using `"type": "test"` or any other ad-hoc value for the `type` field. The
+  closed set is `"commit"` and `"skip"`.
+- Skipping the body for a non-trivial change. Most commits need a body — when
+  in doubt, include one.
+- Using `content_path` instead of `content`. Use `content` with a freshly
+  generated JSON string; `content_path` is reserved for non-agent callers.
+- Passing an object instead of a JSON string for `content`. The `content`
+  field must be a stringified JSON object, not the object itself.
+- Using `excluded_files[].reason` outside the four-value closed enum. The
+  reason must be `internal_ignore`, `not_task_related`, `sensitive`, or
+  `deferred`.

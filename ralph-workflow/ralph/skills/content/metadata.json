@@ -38,7 +38,10 @@
     "open-design--fixing-motion-performance",
     "open-design--fixing-metadata",
     "submit-plan-artifact",
-    "submit-artifact"
+    "submit-artifact",
+    "submit-commit-message-artifact",
+    "submit-development-result-artifact",
+    "submit-commit-cleanup-artifact"
   ],
   "bundles": {
     "using-superpowers": "core-workflow",
@@ -66,7 +69,10 @@
     "open-design--fixing-motion-performance": "open-design",
     "open-design--fixing-metadata": "open-design",
     "submit-plan-artifact": "core-workflow",
-    "submit-artifact": "core-workflow"
+    "submit-artifact": "core-workflow",
+    "submit-commit-message-artifact": "core-workflow",
+    "submit-development-result-artifact": "core-workflow",
+    "submit-commit-cleanup-artifact": "core-workflow"
   },
   "skill_sources": {
     "using-superpowers": {
@@ -328,6 +334,36 @@
       "repo": "https://github.com/anomalyco/opencode",
       "ref": "internal",
       "path": "skills/submit-artifact/SKILL.md"
+    },
+    "submit-commit-message-artifact": {
+      "bundle": "core-workflow",
+      "upstream_name": "submit-commit-message-artifact",
+      "catalog_repo": null,
+      "catalog_ref": null,
+      "catalog_path": null,
+      "repo": "https://github.com/anomalyco/opencode",
+      "ref": "internal",
+      "path": "skills/submit-commit-message-artifact/SKILL.md"
+    },
+    "submit-development-result-artifact": {
+      "bundle": "core-workflow",
+      "upstream_name": "submit-development-result-artifact",
+      "catalog_repo": null,
+      "catalog_ref": null,
+      "catalog_path": null,
+      "repo": "https://github.com/anomalyco/opencode",
+      "ref": "internal",
+      "path": "skills/submit-development-result-artifact/SKILL.md"
+    },
+    "submit-commit-cleanup-artifact": {
+      "bundle": "core-workflow",
+      "upstream_name": "submit-commit-cleanup-artifact",
+      "catalog_repo": null,
+      "catalog_ref": null,
+      "catalog_path": null,
+      "repo": "https://github.com/anomalyco/opencode",
+      "ref": "internal",
+      "path": "skills/submit-commit-cleanup-artifact/SKILL.md"
     }
   }
 }

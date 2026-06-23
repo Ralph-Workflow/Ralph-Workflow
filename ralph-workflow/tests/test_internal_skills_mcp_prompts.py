@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 import pytest
+from jinja2 import ChainableUndefined, DictLoader, Environment
 
 from ralph.mcp.artifacts._path_file_backend import PathFileBackend
 from ralph.mcp.tools.artifact import (
@@ -45,10 +46,20 @@ TEMPLATES_DIR = REPO_ROOT / "ralph" / "prompts" / "templates"
 
 PLAN_SKILL_PATH = SKILL_DIR / "submit-plan-artifact.md"
 ARTIFACT_SKILL_PATH = SKILL_DIR / "submit-artifact.md"
+COMMIT_MESSAGE_SKILL_PATH = SKILL_DIR / "submit-commit-message-artifact.md"
+DEVELOPMENT_RESULT_SKILL_PATH = SKILL_DIR / "submit-development-result-artifact.md"
+COMMIT_CLEANUP_SKILL_PATH = SKILL_DIR / "submit-commit-cleanup-artifact.md"
 PLANNING_JINJA = TEMPLATES_DIR / "planning.jinja"
 PLANNING_FALLBACK_JINJA = TEMPLATES_DIR / "planning_fallback.jinja"
 PLANNING_EDIT_JINJA = TEMPLATES_DIR / "planning_edit.jinja"
 PLANNING_EDIT_FALLBACK_JINJA = TEMPLATES_DIR / "planning_edit_fallback.jinja"
+COMMIT_MESSAGE_JINJA = TEMPLATES_DIR / "commit_message.jinja"
+DEVELOPER_ITERATION_JINJA = TEMPLATES_DIR / "developer_iteration.jinja"
+DEVELOPER_ITERATION_CONTINUATION_JINJA = TEMPLATES_DIR / "developer_iteration_continuation.jinja"
+COMMIT_CLEANUP_JINJA = TEMPLATES_DIR / "commit_cleanup.jinja"
+DEVELOPMENT_ANALYSIS_JINJA = TEMPLATES_DIR / "development_analysis.jinja"
+REVIEW_ANALYSIS_JINJA = TEMPLATES_DIR / "review_analysis.jinja"
+PLANNING_ANALYSIS_JINJA = TEMPLATES_DIR / "planning_analysis.jinja"
 
 
 def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -145,17 +156,20 @@ def test_submit_artifact_skill_shape() -> None:
 
 
 # ---------------------------------------------------------------------------
-# AC-03 — BASELINE_SKILL_NAMES registers both new skills (length 26)
+# AC-03 — BASELINE_SKILL_NAMES registers both new skills (length 29)
 # ---------------------------------------------------------------------------
 
 
 def test_baseline_skill_names_includes_new_skills() -> None:
     assert isinstance(BASELINE_SKILL_NAMES, tuple)
-    assert len(BASELINE_SKILL_NAMES) == 26, (
-        f"expected 26 baseline skills after registration, got {len(BASELINE_SKILL_NAMES)}"
+    assert len(BASELINE_SKILL_NAMES) == 29, (
+        f"expected 29 baseline skills after registration, got {len(BASELINE_SKILL_NAMES)}"
     )
     assert "submit-plan-artifact" in BASELINE_SKILL_NAMES
     assert "submit-artifact" in BASELINE_SKILL_NAMES
+    assert "submit-commit-message-artifact" in BASELINE_SKILL_NAMES
+    assert "submit-development-result-artifact" in BASELINE_SKILL_NAMES
+    assert "submit-commit-cleanup-artifact" in BASELINE_SKILL_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -378,6 +392,275 @@ def test_artifact_content_format_error_mentions_submit_artifact_skill() -> None:
     )
     assert "content" in message and "artifact_type" in message, (
         "_artifact_content_format_error must keep the existing canonical envelope example"
+    )
+
+
+# ---------------------------------------------------------------------------
+# AC-07 — Three new skill shape tests (commit_message, development_result, commit_cleanup)
+# ---------------------------------------------------------------------------
+
+
+def test_submit_commit_message_artifact_skill_shape() -> None:
+    assert COMMIT_MESSAGE_SKILL_PATH.exists(), f"missing skill: {COMMIT_MESSAGE_SKILL_PATH}"
+    fm, body = _read_skill(COMMIT_MESSAGE_SKILL_PATH)
+
+    assert fm.get("name") == "submit-commit-message-artifact"
+    assert fm.get("description"), "frontmatter description is required"
+    assert fm["description"].startswith("Use when"), (
+        f"description must start with 'Use when', got: {fm['description']!r}"
+    )
+
+    expected_h2 = (
+        "## Overview",
+        "## When to Use",
+        "## Core Flow (one-shot)",
+        "## Recovery from a Bad Payload",
+        "## Source of Truth Reference",
+        "## Common Mistakes",
+    )
+    for header in expected_h2:
+        assert header in body, f"missing H2 section: {header!r}"
+
+    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
+    assert ".agent/artifact-formats/commit_message.md" in body, (
+        "body must reference the commit_message format doc"
+    )
+    assert "retry" in body.lower(), "body must contain retry guidance"
+    assert "ralph_submit_artifact" in body, (
+        "body must mention the ralph_submit_artifact MCP tool"
+    )
+
+
+def test_submit_development_result_artifact_skill_shape() -> None:
+    assert DEVELOPMENT_RESULT_SKILL_PATH.exists(), (
+        f"missing skill: {DEVELOPMENT_RESULT_SKILL_PATH}"
+    )
+    fm, body = _read_skill(DEVELOPMENT_RESULT_SKILL_PATH)
+
+    assert fm.get("name") == "submit-development-result-artifact"
+    assert fm.get("description"), "frontmatter description is required"
+    assert fm["description"].startswith("Use when"), (
+        f"description must start with 'Use when', got: {fm['description']!r}"
+    )
+
+    expected_h2 = (
+        "## Overview",
+        "## When to Use",
+        "## Core Flow (one-shot)",
+        "## Recovery from a Bad Payload",
+        "## Source of Truth Reference",
+        "## Common Mistakes",
+    )
+    for header in expected_h2:
+        assert header in body, f"missing H2 section: {header!r}"
+
+    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
+    assert ".agent/artifact-formats/development_result.md" in body, (
+        "body must reference the development_result format doc"
+    )
+    assert "plan_items_proven" in body, "body must surface plan_items_proven field"
+    assert "retry" in body.lower(), "body must contain retry guidance"
+    assert "ralph_submit_artifact" in body, (
+        "body must mention the ralph_submit_artifact MCP tool"
+    )
+
+
+def test_submit_commit_cleanup_artifact_skill_shape() -> None:
+    assert COMMIT_CLEANUP_SKILL_PATH.exists(), f"missing skill: {COMMIT_CLEANUP_SKILL_PATH}"
+    fm, body = _read_skill(COMMIT_CLEANUP_SKILL_PATH)
+
+    assert fm.get("name") == "submit-commit-cleanup-artifact"
+    assert fm.get("description"), "frontmatter description is required"
+    assert fm["description"].startswith("Use when"), (
+        f"description must start with 'Use when', got: {fm['description']!r}"
+    )
+
+    expected_h2 = (
+        "## Overview",
+        "## When to Use",
+        "## Core Flow (one-shot)",
+        "## Recovery from a Bad Payload",
+        "## Source of Truth Reference",
+        "## Common Mistakes",
+    )
+    for header in expected_h2:
+        assert header in body, f"missing H2 section: {header!r}"
+
+    assert "optional" in body.lower(), "body must explicitly mark the skill as optional"
+    assert ".agent/artifact-formats/commit_cleanup.md" in body, (
+        "body must reference the commit_cleanup format doc"
+    )
+    assert "actions" in body, "body must surface the actions array contract"
+    assert "retry" in body.lower(), "body must contain retry guidance"
+    assert "ralph_submit_artifact" in body, (
+        "body must mention the ralph_submit_artifact MCP tool"
+    )
+
+
+# ---------------------------------------------------------------------------
+# AC-08 — Three per-type pointer tests in _raise_format_doc_error
+# ---------------------------------------------------------------------------
+
+
+def test_raise_format_doc_error_mentions_per_type_skill_for_commit_message(
+    tmp_path: Path,
+) -> None:
+    backend = PathFileBackend()
+    exc = RuntimeError("synthetic format-doc error")
+    with pytest.raises(Exception) as excinfo:
+        _raise_format_doc_error("commit_message", tmp_path, backend, exc)
+    message = str(excinfo.value)
+    assert "submit-artifact" in message, (
+        "_raise_format_doc_error must still emit the generic submit-artifact sentence"
+    )
+    assert "submit-commit-message-artifact" in message, (
+        "_raise_format_doc_error must append the per-type skill pointer for commit_message"
+    )
+
+
+def test_raise_format_doc_error_mentions_per_type_skill_for_development_result(
+    tmp_path: Path,
+) -> None:
+    backend = PathFileBackend()
+    exc = RuntimeError("synthetic format-doc error")
+    with pytest.raises(Exception) as excinfo:
+        _raise_format_doc_error("development_result", tmp_path, backend, exc)
+    message = str(excinfo.value)
+    assert "submit-artifact" in message, (
+        "_raise_format_doc_error must still emit the generic submit-artifact sentence"
+    )
+    assert "submit-development-result-artifact" in message, (
+        "_raise_format_doc_error must append the per-type skill pointer for development_result"
+    )
+
+
+def test_raise_format_doc_error_mentions_per_type_skill_for_commit_cleanup(
+    tmp_path: Path,
+) -> None:
+    backend = PathFileBackend()
+    exc = RuntimeError("synthetic format-doc error")
+    with pytest.raises(Exception) as excinfo:
+        _raise_format_doc_error("commit_cleanup", tmp_path, backend, exc)
+    message = str(excinfo.value)
+    assert "submit-artifact" in message, (
+        "_raise_format_doc_error must still emit the generic submit-artifact sentence"
+    )
+    assert "submit-commit-cleanup-artifact" in message, (
+        "_raise_format_doc_error must append the per-type skill pointer for commit_cleanup"
+    )
+
+
+# ---------------------------------------------------------------------------
+# AC-09 — Three analysis-template OPTIONAL skill pointer tests
+# ---------------------------------------------------------------------------
+
+
+def _render_template_source(template_path: Path) -> str:
+    """Render a .jinja template source with the shared OPTIONAL pointer resolved.
+
+    Renders with empty globals so the include resolves to its literal block.
+    Asserts on substring presence, not exact render equality.
+    """
+    source = template_path.read_text(encoding="utf-8")
+    shared_dir = (
+        REPO_ROOT / "ralph" / "prompts" / "templates" / "shared"
+    )
+
+    partials: dict[str, str] = {}
+    for path in shared_dir.rglob("*.jinja"):
+        key = path.relative_to(shared_dir.parent).with_suffix("").as_posix()
+        partials[key] = path.read_text(encoding="utf-8")
+    for path in shared_dir.rglob("*.j2"):
+        key = path.relative_to(shared_dir.parent).with_suffix("").as_posix()
+        partials[key] = path.read_text(encoding="utf-8")
+
+    env = Environment(
+        loader=DictLoader(
+            {"__main__.j2": source, **{f"{k}.j2": v for k, v in partials.items()}}
+        ),
+        autoescape=False,
+        keep_trailing_newline=True,
+        undefined=ChainableUndefined,
+    )
+    env.globals["raise_error"] = lambda *_args, **_kwargs: ""
+    template = env.get_template("__main__.j2")
+    return template.render()
+
+
+def test_development_analysis_jinja_has_optional_skill_pointer() -> None:
+    rendered = _render_template_source(DEVELOPMENT_ANALYSIS_JINJA)
+    assert "submit-artifact" in rendered, (
+        "development_analysis.jinja must emit the submit-artifact skill pointer"
+    )
+    assert ".agent/artifact-formats/artifact_formats_index.md" in rendered, (
+        "development_analysis.jinja must reference the artifact_formats_index.md doc"
+    )
+
+
+def test_review_analysis_jinja_has_optional_skill_pointer() -> None:
+    rendered = _render_template_source(REVIEW_ANALYSIS_JINJA)
+    assert "submit-artifact" in rendered, (
+        "review_analysis.jinja must emit the submit-artifact skill pointer"
+    )
+    assert ".agent/artifact-formats/artifact_formats_index.md" in rendered, (
+        "review_analysis.jinja must reference the artifact_formats_index.md doc"
+    )
+
+
+def test_planning_analysis_jinja_has_optional_skill_pointer() -> None:
+    rendered = _render_template_source(PLANNING_ANALYSIS_JINJA)
+    assert "submit-artifact" in rendered, (
+        "planning_analysis.jinja must emit the submit-artifact skill pointer"
+    )
+    assert ".agent/artifact-formats/artifact_formats_index.md" in rendered, (
+        "planning_analysis.jinja must reference the artifact_formats_index.md doc"
+    )
+
+
+# ---------------------------------------------------------------------------
+# AC-10 — Four developer/commit template per-type skill pointer tests
+# ---------------------------------------------------------------------------
+
+
+def test_commit_message_jinja_has_optional_skill_pointer() -> None:
+    rendered = _render_template_source(COMMIT_MESSAGE_JINJA)
+    assert "submit-commit-message-artifact" in rendered, (
+        "commit_message.jinja must emit the per-type submit-commit-message-artifact skill pointer"
+    )
+    assert ".agent/artifact-formats/commit_message.md" in rendered, (
+        "commit_message.jinja must reference the commit_message.md doc"
+    )
+
+
+def test_developer_iteration_jinja_has_optional_skill_pointer() -> None:
+    rendered = _render_template_source(DEVELOPER_ITERATION_JINJA)
+    assert "submit-development-result-artifact" in rendered, (
+        "developer_iteration.jinja must emit the per-type "
+        "submit-development-result-artifact skill pointer"
+    )
+    assert ".agent/artifact-formats/development_result.md" in rendered, (
+        "developer_iteration.jinja must reference the development_result.md doc"
+    )
+
+
+def test_developer_iteration_continuation_jinja_has_optional_skill_pointer() -> None:
+    rendered = _render_template_source(DEVELOPER_ITERATION_CONTINUATION_JINJA)
+    assert "submit-development-result-artifact" in rendered, (
+        "developer_iteration_continuation.jinja must emit the per-type "
+        "submit-development-result-artifact skill pointer"
+    )
+    assert ".agent/artifact-formats/development_result.md" in rendered, (
+        "developer_iteration_continuation.jinja must reference the development_result.md doc"
+    )
+
+
+def test_commit_cleanup_jinja_has_optional_skill_pointer() -> None:
+    rendered = _render_template_source(COMMIT_CLEANUP_JINJA)
+    assert "submit-commit-cleanup-artifact" in rendered, (
+        "commit_cleanup.jinja must emit the per-type submit-commit-cleanup-artifact skill pointer"
+    )
+    assert ".agent/artifact-formats/commit_cleanup.md" in rendered, (
+        "commit_cleanup.jinja must reference the commit_cleanup.md doc"
     )
 
 
