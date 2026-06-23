@@ -102,6 +102,18 @@ def _extract_retry_envelopes(body: str) -> dict[str, dict[str, object]]:
     return envelopes
 
 
+def _extract_call_1_submit_plan_sections_payload(body: str) -> dict[str, object]:
+    """Parse the documented Call 1 batch envelope out of the skill body."""
+    marker = "**Call 1 — `ralph_submit_plan_sections`**"
+    assert marker in body, "submit-plan-step-edits skill is missing the Call 1 batch example"
+    section = body.split(marker, maxsplit=1)[1]
+    match = re.search(r"```json\s*\n(?P<block>[\s\S]*?)\n```", section)
+    assert match is not None, "Call 1 batch example is missing a fenced JSON block"
+    payload = json.loads(match.group("block"))
+    assert isinstance(payload, dict)
+    return cast("dict[str, object]", payload)
+
+
 def _two_step_initial_payloads() -> dict[str, object]:
     """Return the 6 required section payloads for a 2-step starter draft."""
     return {
@@ -156,7 +168,7 @@ def _parse_helper_envelope_fragments(
     """Parse the inline retry-envelope fragments emitted by the no-skill helper.
 
     ``_format_plan_step_edit_error`` inlines a literal fragment for each
-    step-mutation tool of the form ``<tool> => {'<k1>': <v1>, '<k2>':
+    step-mutation tool of the form ``<tool> => {"<k1>": <v1>, "<k2>":
     <v2>}`` (where each value is the literal ``2``, ``1``, or ``{...}``
     that the helper uses as an example). Returns a dict mapping the
     tool name to the tuple of keys the fragment declares, in the
@@ -166,10 +178,10 @@ def _parse_helper_envelope_fragments(
     fragment_pattern = re.compile(
         r"\b(?P<tool>ralph_(?:insert_plan_step|replace_plan_step|patch_step"
         r"|remove_plan_step|move_plan_step))"
-        r"\s*=>\s*\{(?P<body>[^}]*)\}"
+        r"\s*=>\s*(?P<body>\{[^;]*\})"
     )
     fragments: dict[str, tuple[str, ...]] = {}
-    key_pattern = re.compile(r"'([^']+)'\s*:")
+    key_pattern = re.compile(r'"([^"]+)"\s*:')
     for match in fragment_pattern.finditer(helper_text):
         tool = match.group("tool")
         body = match.group("body")
@@ -183,8 +195,8 @@ def test_skill_retry_envelopes_match_handler_output() -> None:
     """The 8 retry envelopes in the skill match the no-skill helper output verbatim.
 
     ``_format_plan_step_edit_error`` in ``ralph/mcp/tools/artifact.py``
-    inlines a minimal retry envelope per tool (a literal fragment like
-    ``ralph_insert_plan_step => {'index': 2, 'step': {...}}``). The
+    inlines a retry envelope per tool (a literal fragment like
+    ``ralph_insert_plan_step => {"index":2,"step":{...}}``). The
     skill embeds the same envelope as a fenced JSON block under
     ``### Per-tool retry envelopes``. Both MUST describe the same
     payload shape so the agent can copy the skill envelope verbatim
@@ -257,11 +269,11 @@ def test_skill_retry_envelopes_match_handler_output() -> None:
         )
 
     expected_helper_fragments: dict[str, str] = {
-        "ralph_insert_plan_step": "ralph_insert_plan_step => {'index': 2, 'step': {...}}",
-        "ralph_replace_plan_step": "ralph_replace_plan_step => {'step_number': 2, 'step': {...}}",
-        "ralph_remove_plan_step": "ralph_remove_plan_step => {'step_number': 2}",
-        "ralph_move_plan_step": "ralph_move_plan_step => {'from_step_number': 2, 'to_index': 1}",
-        "ralph_patch_step": "ralph_patch_step => {'step_number': 2, 'step': {...}}",
+        "ralph_insert_plan_step": 'ralph_insert_plan_step => {"index":2,"step":{...}}',
+        "ralph_replace_plan_step": 'ralph_replace_plan_step => {"step_number":2,"step":{...}}',
+        "ralph_remove_plan_step": 'ralph_remove_plan_step => {"step_number":2}',
+        "ralph_move_plan_step": 'ralph_move_plan_step => {"from_step_number":2,"to_index":1}',
+        "ralph_patch_step": 'ralph_patch_step => {"step_number":2,"step":{...}}',
     }
     for tool, fragment in expected_helper_fragments.items():
         assert fragment in helper_text, (
@@ -368,6 +380,22 @@ def test_add_one_step_at_a_time_example_round_trips(tmp_path: Path) -> None:
     assert len(stored_steps) == 3
     titles = [cast("str", step["title"]) for step in stored_steps]
     assert titles == ["First step", "Second step", "Document the foo() clamp behavior"]
+
+
+@pytest.mark.timeout_seconds(10)
+def test_documented_call_1_batch_example_validates_with_real_handlers(tmp_path: Path) -> None:
+    """The skill's documented batch example must pass the same handlers agents call."""
+    workspace = FsWorkspace(tmp_path)
+    session = planning_session()
+    payload = _extract_call_1_submit_plan_sections_payload(_load_skill_body())
+
+    batched = handle_submit_plan_sections(session, workspace, payload)
+    assert batched.is_error is False, _tool_text(batched)
+
+    validate_result = handle_validate_plan_draft(session, workspace, {})
+    assert validate_result.is_error is False, _tool_text(validate_result)
+    validate_payload = json.loads(_tool_text(validate_result))
+    assert validate_payload.get("valid") is True, validate_payload
 
 
 def _tool_text(result: object) -> str:

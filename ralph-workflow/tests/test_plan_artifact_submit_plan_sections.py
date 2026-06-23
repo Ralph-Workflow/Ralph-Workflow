@@ -459,8 +459,9 @@ def test_submit_plan_sections_error_payload_includes_fix_guidance_and_doc(tmp_pa
     payload = json.loads(_read_response_text(result))
     error = cast("str", payload["error"])
     assert ".agent/artifact-formats/plan.md" in error
-    assert "JSON array like [{...}]" in error
+    assert '"steps" with mode="replace": a JSON array like [{"number":1' in error
     assert "ralph_submit_plan_sections" in error
+    assert "{'" not in error
 
 
 def test_submit_plan_sections_missing_entries_raises(tmp_path: Path) -> None:
@@ -472,7 +473,8 @@ def test_submit_plan_sections_missing_entries_raises(tmp_path: Path) -> None:
     message = str(exc_info.value)
     assert "Missing 'entries' array" in message
     assert ".agent/artifact-formats/plan.md" in message
-    assert "{'entries': [{'section': 'summary'" in message
+    assert '{"entries":[{"section":"summary"' in message
+    assert "{'" not in message
 
 
 def test_submit_plan_sections_unknown_section_includes_fix_guidance(tmp_path: Path) -> None:
@@ -488,4 +490,5 @@ def test_submit_plan_sections_unknown_section_includes_fix_guidance(tmp_path: Pa
     error = cast("str", payload["error"])
     assert ".agent/artifact-formats/plan.md" in error
     assert "Unknown plan section 'bogus'" in error
-    assert "{'entries': [{'section': 'summary'" in error
+    assert '{"entries":[{"section":"summary"' in error
+    assert "{'" not in error

@@ -13,7 +13,7 @@ last_updated: 2026-06-12
 - **Typed `EvidenceRef`** for `PlanStep.expected_evidence`. Each entry is a `{kind, ref, note?}` object with `kind` in `{file, command_output, test_name}`.
 - **Top-level `PlanConstraints`** section. Optional `must_not_break` / `must_keep_working` lists (each 1-1000 chars, deduped case-insensitively) plus `performance_budget` and `security_posture` strings (1-2000 chars). Submitted via `ralph_submit_plan_section` with `section="constraints"` in `mode="replace"`. Rendered as `## Project Constraints` between `## Critical Files` and `## Risks and Mitigations`.
 - **Typed `VerificationStep.timeout_seconds` and `cwd`.** `timeout_seconds: int | None` with `gt=0, le=3600`; `cwd: str | None` with `max_length=500`. Both are optional; defaults to platform / workspace root.
-- **Typed `noop: bool | None` field on `PlanArtifact`.** Default `None`, `exclude=True` for mypy-completeness and `model_fields` introspection. The runtime noop short-circuit (`is_noop_plan`) is unchanged: it reads the raw `Mapping` and `normalize_plan_artifact_content` returns `{'noop': True}` directly without round-tripping through the model. The typed field is for discovery only; do NOT rely on `model.model_dump()` to preserve the noop marker (it is dropped by `exclude=True`).
+- **Typed `noop: bool | None` field on `PlanArtifact`.** Default `None`, `exclude=True` for mypy-completeness and `model_fields` introspection. The runtime noop short-circuit (`is_noop_plan`) is unchanged: it reads the raw `Mapping` and `normalize_plan_artifact_content` returns `{"noop":true}` directly without round-tripping through the model. The typed field is for discovery only; do NOT rely on `model.model_dump()` to preserve the noop marker (it is dropped by `exclude=True`).
 - **`step_type` default is `action`** (closed enum: `file_change`, `action`, `research`, `verify`). File-modifying steps must explicitly set `step_type="file_change"` and provide `targets`.
 - **Four new cross-section validators** in `PlanArtifact._validate_step_ac_cross_references`:
   1. `summary.intent_verb` -> `scope_item.category` compatibility (HARD error; widened 9-verb x 15-category mapping).
@@ -99,11 +99,11 @@ Every plan must satisfy the following per-step and cross-section rules or it wil
 
 The five step-mutation tools (`ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_patch_step`, `ralph_remove_plan_step`, `ralph_move_plan_step`) auto-reindex the entire steps list AND remap `depends_on` / `AC.satisfied_by_steps` references in the design sub-section. After the mutation, the tool returns a JSON echo payload so the agent does not need to call `ralph_get_plan_draft` to learn the new numbering. The echo shape per tool:
 
-- `ralph_insert_plan_step` returns `{action: "insert", index, new_step_number, reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
-- `ralph_replace_plan_step` returns `{action: "replace", step_number, reindex_map (typically a no-op), rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
-- `ralph_patch_step` returns `{action: "replace", step_number, reindex_map (typically a no-op), rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
-- `ralph_remove_plan_step` returns `{action: "remove", removed_step_number, reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
-- `ralph_move_plan_step` returns `{action: "move", from_step_number, to_index, reindex_map (typically a no-op), rewritten_depends_on, rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}`.
+- `ralph_insert_plan_step` returns `{"action":"insert","index":2,"new_step_number":2,"reindex_map":{"2":3},"rewritten_depends_on":[3],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"total_steps":3}`.
+- `ralph_replace_plan_step` returns `{"action":"replace","step_number":2,"reindex_map":{"2":2},"rewritten_depends_on":[],"rewritten_ac_satisfied_by_steps":[],"dropped_ac_satisfied_by_steps":[],"total_steps":3}`.
+- `ralph_patch_step` returns `{"action":"replace","step_number":2,"reindex_map":{"2":2},"rewritten_depends_on":[],"rewritten_ac_satisfied_by_steps":[],"dropped_ac_satisfied_by_steps":[],"total_steps":3}`.
+- `ralph_remove_plan_step` returns `{"action":"remove","removed_step_number":2,"reindex_map":{"3":2},"rewritten_depends_on":[2],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"total_steps":2}`.
+- `ralph_move_plan_step` returns `{"action":"move","from_step_number":3,"to_index":1,"reindex_map":{"3":1},"rewritten_depends_on":[1],"rewritten_ac_satisfied_by_steps":["AC-02"],"dropped_ac_satisfied_by_steps":[],"total_steps":3}`.
 
 `removed_step_number` / `from_step_number` are the source identifiers (pre-mutation). `reindex_map` is the `{old: new}` number mapping. `rewritten_depends_on` lists step numbers whose `depends_on` array was rewritten. `rewritten_ac_satisfied_by_steps` lists AC ids whose `satisfied_by_steps` was rewritten. `dropped_ac_satisfied_by_steps` lists AC ids whose entries were silently dropped because the referenced step is gone (the orphan-drop is the principle-of-least-surprise behavior for the executor).
 
@@ -113,11 +113,11 @@ The five step-mutation tools (`ralph_insert_plan_step`, `ralph_replace_plan_step
 
 ### Net-new read-only tool: `ralph_validate_draft`
 
-`ralph_validate_draft` runs the full `PlanArtifact` cross-section validator (depends_on cycle, intent_verb vs scope_item category, parallel_plan XOR work_units, shell-invocation guard, research/verify steps in AC.satisfied_by_steps, AC id pattern, non-empty `skills_mcp.skills`, 4 MB size cap) without writing `plan.json` and without deleting the in-progress draft. Returns `{valid: true}` on success or `{valid: false, errors: [...]}` on failure. If no draft exists yet, it returns `{valid: false}` with a named missing-draft error instead of a false-green success. Cross-section invariants only run at `finalize_plan` in the write path; `ralph_validate_draft` exposes the same checks in a read-only path. Capability: `artifact.plan_read`.
+`ralph_validate_draft` runs the full `PlanArtifact` cross-section validator (depends_on cycle, intent_verb vs scope_item category, parallel_plan XOR work_units, shell-invocation guard, research/verify steps in AC.satisfied_by_steps, AC id pattern, non-empty `skills_mcp.skills`, 4 MB size cap) without writing `plan.json` and without deleting the in-progress draft. Returns `{"valid":true}` on success or `{"valid":false,"errors":[...]}` on failure. If no draft exists yet, it returns `{"valid":false}` with a named missing-draft error instead of a false-green success. Cross-section invariants only run at `finalize_plan` in the write path; `ralph_validate_draft` exposes the same checks in a read-only path. Capability: `artifact.plan_read`.
 
 ### Net-new batched tool: `ralph_submit_plan_sections`
 
-`ralph_submit_plan_sections` accepts a list of `{section, content, mode}` entries and validates ALL of them BEFORE any merge; if any entry fails, the entire batch is rejected (`{submitted: [], failed_at: <index>, error: <message>}`) and the draft is unchanged. On success it returns `{submitted: [...], staged_sections: [...], total_bytes: <int>}`. Use this only when you have already built complete, analysis-ready section payloads. The full cross-section validator still runs at `finalize_plan`. Capability: `artifact.plan_write`.
+`ralph_submit_plan_sections` accepts a list of `{"section":"summary","content":{...},"mode":"replace"}` entries and validates ALL of them BEFORE any merge; if any entry fails, the entire batch is rejected (`{"submitted":[],"failed_at":1,"error":"..."}`) and the draft is unchanged. On success it returns `{"submitted":["summary"],"staged_sections":["summary"],"total_bytes":123}`. Use this only when you have already built complete, analysis-ready section payloads. The full cross-section validator still runs at `finalize_plan`. Capability: `artifact.plan_write`.
 
 ### Design sub-section
 
@@ -287,8 +287,8 @@ This example is the canonical detailed plan. It exercises the full `PlanArtifact
 ```json
 {
   "summary": {
-    "intent": "Refactor src/foo.py to use constructor injection so foo() is testable in isolation.",
-    "intent_verb": "refactor",
+    "intent": "Improve src/foo.py testability by refactoring it to use constructor injection.",
+    "intent_verb": "improve",
     "coverage_areas": ["refactor", "test"],
     "scope_items": [
       {"text": "Replace module-level mutable state in src/foo.py with constructor injection", "category": "refactor"},
@@ -315,9 +315,12 @@ This example is the canonical detailed plan. It exercises the full `PlanArtifact
     {
       "number": 2,
       "title": "Refactor foo() to take its dependencies as constructor parameters",
-      "content": "Add a FooConfig dataclass; convert module-level lookups to constructor params; preserve the public foo() signature for callers.",
+      "content": "Add a FooConfig dataclass; convert module-level lookups to constructor params; preserve the public foo() signature for callers; add the focused unit test that proves FooConfig injection works.",
       "step_type": "file_change",
-      "targets": [{"path": "src/foo.py", "action": "modify"}],
+      "targets": [
+        {"path": "src/foo.py", "action": "modify"},
+        {"path": "tests/test_foo.py", "action": "modify"}
+      ],
       "depends_on": [1],
       "expected_evidence": [
         {"kind": "file", "ref": "src/foo.py", "note": "FooConfig dataclass + injected deps"},
@@ -405,7 +408,7 @@ This example is the canonical detailed plan. It exercises the full `PlanArtifact
       "criteria": [
         {"id": "AC-01", "description": "foo() accepts FooConfig via constructor", "satisfied_by_steps": [2]},
         {"id": "AC-02", "description": "main.py constructs FooConfig and passes it to foo()", "satisfied_by_steps": [3]},
-        {"id": "AC-03", "description": "tests/test_foo.py covers FooConfig injection", "satisfied_by_steps": [1]},
+        {"id": "AC-03", "description": "tests/test_foo.py covers FooConfig injection", "satisfied_by_steps": [2]},
         {"id": "AC-04", "description": "foo.py and main.py both use FooConfig without module-level mutable state", "satisfied_by_steps": [2, 3]}
       ]
     }
@@ -539,8 +542,8 @@ When to use: you want a one-line user-facing outcome plus a closed verb that dri
 
 ```json
 {
-  "intent": "Clamp foo() index so the off-by-one regression cannot recur.",
-  "intent_verb": "fix"
+  "intent": "Improve foo() index handling so the off-by-one regression cannot recur.",
+  "intent_verb": "improve"
 }
 ```
 
@@ -551,7 +554,7 @@ When to use: you are filling the `summary.scope_items[*].category` field and nee
 ```json
 {
   "scope_items": [
-    {"text": "Fix the off-by-one bug in foo()", "category": "bugfix"},
+    {"text": "Refactor foo() index handling", "category": "refactor"},
     {"text": "Modify src/foo.py to clamp the index", "category": "file_change"},
     {"text": "Add a regression test for foo()", "category": "test"}
   ]

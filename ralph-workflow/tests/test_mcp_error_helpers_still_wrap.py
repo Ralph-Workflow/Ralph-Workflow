@@ -94,6 +94,33 @@ def test_format_plan_step_edit_error_mentions_submit_plan_step_edits() -> None:
 
 
 @pytest.mark.timeout_seconds(5)
+def test_plan_error_helpers_use_json_shaped_retry_examples() -> None:
+    """No-skill retry guidance must not show Python dict syntax."""
+    messages = [
+        _format_plan_section_submission_error(
+            section="summary",
+            mode="replace",
+            detail="summary.scope_items: Field required",
+            workspace_root=Path("/tmp"),
+            backend=DEFAULT_FILE_BACKEND,
+            tool_name="ralph_submit_plan_section",
+        ),
+        _format_plan_step_edit_error(
+            detail="synthetic invalid step payload",
+            workspace_root=Path("/tmp"),
+            backend=DEFAULT_FILE_BACKEND,
+            tool_name="ralph_patch_step",
+        ),
+    ]
+    forbidden_fragments = ("{'", "':", "{section:", "{action:", "{valid:", "source: '")
+    for message in messages:
+        for fragment in forbidden_fragments:
+            assert fragment not in message, (
+                f"plan error helper contains pseudo-JSON fragment {fragment!r}: {message}"
+            )
+
+
+@pytest.mark.timeout_seconds(5)
 def test_planning_jinja_preserves_source_of_truth_wording() -> None:
     """``planning.jinja`` must keep the canonical source-of-truth pointer.
 

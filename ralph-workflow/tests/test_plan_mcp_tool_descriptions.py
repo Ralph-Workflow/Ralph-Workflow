@@ -15,6 +15,7 @@ from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
 _MUTATION_TOOLS = (
     "ralph_insert_plan_step",
     "ralph_replace_plan_step",
+    "ralph_patch_step",
     "ralph_remove_plan_step",
     "ralph_move_plan_step",
 )
@@ -22,6 +23,13 @@ _MUTATION_TOOLS = (
 
 def _descs() -> dict[str, str]:
     return {s.metadata.definition.name: s.metadata.definition.description for s in artifact_specs()}
+
+
+def _schemas() -> dict[str, dict[str, object]]:
+    return {
+        s.metadata.definition.name: s.metadata.definition.input_schema
+        for s in artifact_specs()
+    }
 
 
 def test_step_mutation_descriptions_contain_reindex_depends_on_satisfied_by_steps() -> None:
@@ -91,6 +99,52 @@ def test_replace_and_patch_descriptions_include_analysis_feedback_proof_fields()
         assert "targets" in desc
         assert "expected_evidence" in desc
         assert "depends_on" in desc
+
+
+def test_step_tools_schema_exposes_flat_argument_style() -> None:
+    """tools/list must advertise the flat fields that handlers accept."""
+    schemas = _schemas()
+    for name in ("ralph_insert_plan_step", "ralph_replace_plan_step", "ralph_patch_step"):
+        schema = schemas[name]
+        required = set(schema.get("required", []))
+        assert "step" not in required, f"{name} schema must not require nested step only"
+        properties = schema.get("properties")
+        assert isinstance(properties, dict)
+        flat_fields = (
+            "title",
+            "content",
+            "step_type",
+            "targets",
+            "depends_on",
+            "expected_evidence",
+        )
+        for field in flat_fields:
+            assert field in properties, f"{name} schema does not advertise flat field {field!r}"
+
+
+def test_planning_tool_descriptions_do_not_advertise_pseudo_json_call_examples() -> None:
+    """Descriptions are the tools/list contract; examples there must not be Python dict syntax."""
+    descs = _descs()
+    planning_tool_names = [
+        name
+        for name in descs
+        if name.startswith("ralph_")
+        and (
+            "plan" in name
+            or name
+            in {
+                "ralph_submit_artifact",
+                "ralph_patch_step",
+            }
+        )
+    ]
+    forbidden_fragments = ("{'", "':", "{section:", "{action:", "{valid:", "source: '")
+    for name in planning_tool_names:
+        desc = descs[name]
+        for fragment in forbidden_fragments:
+            assert fragment not in desc, (
+                f"{name} description contains pseudo-JSON fragment {fragment!r}: {desc}"
+            )
 
 
 def test_read_only_tool_descriptions_mark_themselves_as_noop_or_draft() -> None:

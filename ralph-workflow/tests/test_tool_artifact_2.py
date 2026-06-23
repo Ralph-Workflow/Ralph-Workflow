@@ -326,8 +326,10 @@ def test_submit_plan_section_skills_mcp_error_explains_skills_shape_and_doc(tmp_
 
     message = str(exc_info.value)
     assert ".agent/artifact-formats/plan.md" in message
-    assert "Expected shape for section 'skills_mcp'" in message
+    assert 'Expected shape for section "skills_mcp"' in message
+    assert '{"skills":["writing-plans"],"mcps":[]}' in message
     assert "skills must be a JSON array" in message
+    assert "{'" not in message
 
 
 def test_submit_plan_section_summary_error_explains_expected_shape(tmp_path: Path) -> None:
@@ -340,8 +342,9 @@ def test_submit_plan_section_summary_error_explains_expected_shape(tmp_path: Pat
 
     message = str(exc_info.value)
     assert ".agent/artifact-formats/plan.md" in message
-    assert "Expected shape for section 'summary'" in message
+    assert 'Expected shape for section "summary"' in message
     assert "scope_items" in message
+    assert "{'" not in message
 
 
 def test_submit_plan_section_steps_replace_error_explains_array_shape_and_doc(
@@ -366,8 +369,9 @@ def test_submit_plan_section_steps_replace_error_explains_array_shape_and_doc(
     message = str(exc_info.value)
     assert ".agent/artifact-formats/plan.md" in message
     assert "section 'steps' with mode='replace' must be a JSON array" in message
-    assert "[{...}]" in message
-    assert '{"steps":' not in message
+    assert '[{"number":1' in message
+    assert 'not {"steps":[...]} wrapped under a key' in message
+    assert "{'" not in message
 
 
 def test_submit_plan_section_critical_files_error_explains_primary_files_shape(
@@ -383,7 +387,9 @@ def test_submit_plan_section_critical_files_error_explains_primary_files_shape(
     message = str(exc_info.value)
     assert ".agent/artifact-formats/plan.md" in message
     assert "primary_files" in message
-    assert "Expected shape for section 'critical_files'" in message
+    assert 'Expected shape for section "critical_files"' in message
+    assert '{"primary_files":[{"path":"src/foo.py","action":"modify"}' in message
+    assert "{'" not in message
 
 
 def test_submit_plan_section_risks_array_error_explains_expected_shape(tmp_path: Path) -> None:
@@ -399,8 +405,9 @@ def test_submit_plan_section_risks_array_error_explains_expected_shape(tmp_path:
 
     message = str(exc_info.value)
     assert ".agent/artifact-formats/plan.md" in message
-    assert "Expected shape for section 'risks_mitigations'" in message
+    assert 'Expected shape for section "risks_mitigations"' in message
     assert "severity" in message
+    assert "{'" not in message
 
 
 def test_submit_plan_section_verification_strategy_error_explains_expected_shape(
@@ -418,8 +425,9 @@ def test_submit_plan_section_verification_strategy_error_explains_expected_shape
 
     message = str(exc_info.value)
     assert ".agent/artifact-formats/plan.md" in message
-    assert "Expected shape for section 'verification_strategy'" in message
-    assert "not {'verification_strategy': [...]}" in message
+    assert 'Expected shape for section "verification_strategy"' in message
+    assert 'not {"verification_strategy":[...]}' in message
+    assert "{'" not in message
 
 
 def test_submit_plan_section_invalid_json_explains_fix_and_doc(tmp_path: Path) -> None:
@@ -436,8 +444,9 @@ def test_submit_plan_section_invalid_json_explains_fix_and_doc(tmp_path: Path) -
     message = str(exc_info.value)
     assert ".agent/artifact-formats/plan.md" in message
     assert "Content must be valid JSON" in message
-    assert "Expected shape for section 'steps'" in message
-    assert "JSON array like [{...}]" in message
+    assert 'Expected shape for section "steps"' in message
+    assert '[{"number":1' in message
+    assert "{'" not in message
 
 
 def test_submit_plan_section_missing_section_includes_fix_guidance(tmp_path: Path) -> None:

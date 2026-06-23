@@ -118,6 +118,27 @@ def test_submit_plan_artifact_skill_shape() -> None:
     )
 
 
+def test_submit_plan_artifact_skill_blocks_stale_atomic_and_minimal_guidance() -> None:
+    """The authored skill must not reintroduce invalid plan recovery shortcuts."""
+    _, body = _read_skill(PLAN_SKILL_PATH)
+
+    forbidden_fragments = (
+        "The atomic `ralph_submit_artifact` payload",
+        '"artifact_type": "plan"',
+        'design.planning_profile = "minimal"',
+        'planning_profile = "minimal"',
+        "to permit an empty list",
+        "empty skill lists are allowed",
+    )
+    for fragment in forbidden_fragments:
+        assert fragment not in body, (
+            f"submit-plan-artifact.md contains stale/minimal plan guidance: {fragment!r}"
+        )
+
+    assert "Do not retry plan submission through generic `ralph_submit_artifact`" in body
+    assert "Empty skill lists are invalid for every planning profile" in body
+
+
 # ---------------------------------------------------------------------------
 # AC-02 — submit-artifact.md skill shape
 # ---------------------------------------------------------------------------

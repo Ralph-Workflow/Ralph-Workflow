@@ -22,6 +22,7 @@ from ralph.mcp.artifacts.format_docs import (
     materialize_format_doc,
     materialize_format_index,
 )
+from ralph.mcp.artifacts.plan import normalize_plan_artifact_content
 from ralph.mcp.artifacts.product_spec import normalize_product_spec_content
 from ralph.mcp.artifacts.smoke_test_result import normalize_smoke_test_result_content
 from ralph.mcp.artifacts.typed_artifacts import normalize_commit_cleanup_content
@@ -56,6 +57,20 @@ def _extract_complete_example_inner_payload(doc: str) -> dict[str, object]:
     return cast("dict[str, object]", inner)
 
 
+def _extract_json_block_after_heading(doc: str, heading: str) -> dict[str, object]:
+    parts = doc.split(heading, maxsplit=1)
+    assert len(parts) == 2, f"Missing heading {heading!r}"
+    match = re.search(r"```json\n(.*?)```", parts[1], re.DOTALL)
+    assert match is not None, f"No ```json block after {heading!r}"
+    payload = json.loads(match.group(1))
+    assert isinstance(payload, dict)
+    return cast("dict[str, object]", payload)
+
+
+def _extract_fenced_json_blocks(markdown: str) -> list[str]:
+    return re.findall(r"```json\s*\n(.*?)\n```", markdown, flags=re.DOTALL)
+
+
 def test_all_supported_artifact_types_have_bundled_markdown() -> None:
     for artifact_type in FORMAT_DOC_ARTIFACT_TYPES:
         doc = load_bundled_format_doc(artifact_type)
@@ -64,6 +79,31 @@ def test_all_supported_artifact_types_have_bundled_markdown() -> None:
         assert "artifact format" in doc, (
             f"Bundled doc for {artifact_type!r} missing '# ... artifact format' heading"
         )
+
+
+def test_planning_markdown_json_fences_are_parseable() -> None:
+    """Planning-facing JSON examples must be real JSON, not pseudo-JSON."""
+    repo_root = Path(__file__).resolve()
+    package_root: Path | None = None
+    for parent in repo_root.parents:
+        if (parent / "pyproject.toml").exists():
+            package_root = parent
+            break
+    assert package_root is not None
+    paths = [
+        package_root / "ralph" / "mcp" / "artifacts" / "format_docs" / "plan.md",
+        package_root / "ralph" / "skills" / "content" / "submit-plan-artifact.md",
+        package_root / "ralph" / "skills" / "content" / "submit-plan-step-edits.md",
+    ]
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        blocks = _extract_fenced_json_blocks(text)
+        assert blocks, f"{path} has no fenced JSON blocks"
+        for index, block in enumerate(blocks, start=1):
+            try:
+                json.loads(block)
+            except json.JSONDecodeError as exc:  # pragma: no cover - failure path
+                pytest.fail(f"{path}:{index} has invalid fenced JSON: {exc}")
 
 
 def test_load_bundled_format_doc_returns_none_for_unsupported_type() -> None:
@@ -680,6 +720,27 @@ def test_plan_format_doc_has_high_quality_model_example() -> None:
     assert "1 -> 2" in doc or "1->2" in doc
     # The example uses the typed EvidenceRef shape
     assert '"kind"' in doc and '"ref"' in doc
+
+
+def test_plan_format_doc_detailed_architecture_example_validates_with_real_plan_logic() -> None:
+    """The later detailed architecture example must validate, not just exist as prose."""
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    payload = _extract_json_block_after_heading(
+        doc, "## Complete example (detailed architecture plan)"
+    )
+
+    normalized = normalize_plan_artifact_content(payload)
+    design = cast("dict[str, object]", normalized["design"])
+    criteria = cast(
+        "list[dict[str, object]]",
+        cast("dict[str, object]", design["acceptance_criteria"])["criteria"],
+    )
+    assert all(
+        4 not in cast("list[int]", criterion.get("satisfied_by_steps", []))
+        for criterion in criteria
+    )
+    assert criteria[2]["satisfied_by_steps"] == [2]
 
 
 def test_plan_format_doc_preserves_audit_literals() -> None:

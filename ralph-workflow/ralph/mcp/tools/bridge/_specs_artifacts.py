@@ -147,12 +147,12 @@ def artifact_specs() -> list[ToolSpec]:
                 name=SUBMIT_PLAN_SECTIONS_TOOL,
                 description=(
                     "Batched section submit. Accepts a list of "
-                    "{section: str, content: <json payload>, mode: 'replace'|'append'} "
+                    '{"section":"summary","content":{...},"mode":"replace"} '
                     "entries and validates ALL of them BEFORE any merge; if any entry "
                     "fails, the entire batch is rejected and the on-disk draft is "
                     "unchanged. On success it stages every entry and returns "
-                    "{submitted: [...section names...], staged_sections: [...], "
-                    "total_bytes: <int>}. Use this only when every entry already "
+                    '{"submitted":["summary"],"staged_sections":["summary"],'
+                    '"total_bytes":123}. Use this only when every entry already '
                     "contains complete, analysis-ready section content. content must be "
                     "the native JSON object/array for that section. For list "
                     "sections, mode='append' accepts either one item object or an array "
@@ -203,30 +203,43 @@ def artifact_specs() -> list[ToolSpec]:
                 name=INSERT_PLAN_STEP_TOOL,
                 description=(
                     "Insert one plan step at a 1-based index and reindex the whole steps list. "
-                    "Required: index (integer), step (object). The step number in the step "
-                    "object is ignored. Auto-reindexes remaining steps, rewrites every "
+                    "Required: index (integer) plus either step (object) or flat step fields "
+                    "(title/content/step_type/targets/depends_on/expected_evidence/etc.). "
+                    "The step number in the step object is ignored. Auto-reindexes remaining "
+                    "steps, rewrites every "
                     "depends_on array, and rewrites every AC.satisfied_by_steps reference in "
                     "the design sub-section. Returns an echo payload with the new step number, "
                     "the reindex map, the list of rewritten depends_on step numbers, the list "
                     "of rewritten AC ids, the list of dropped AC ids (orphan references), and "
-                    "the new total step count: {action: 'insert', index, new_step_number, "
-                    "reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
-                    "dropped_ac_satisfied_by_steps, total_steps}. Example: "
-                    "{'index': 3, 'step': {'title': 'Document the foo() clamp behavior', "
-                    "'content': 'Update docs/foo.md with the accepted out-of-range index "
-                    "behavior after the code and focused regression test are in place.', "
-                    "'step_type': 'file_change', 'targets': [{'path': 'docs/foo.md', "
-                    "'action': 'modify'}], 'depends_on': [2], 'expected_evidence': "
-                    "[{'kind': 'file', 'ref': 'docs/foo.md'}, {'kind': 'command_output', "
-                    "'ref': 'pytest tests/test_foo.py -q'}]}}."
+                    'the new total step count: {"action":"insert","index":3,'
+                    '"new_step_number":3,"reindex_map":{"2":2},'
+                    '"rewritten_depends_on":[3],"rewritten_ac_satisfied_by_steps":["AC-02"],'
+                    '"dropped_ac_satisfied_by_steps":[],"total_steps":3}. Example: '
+                    '{"index":3,"step":{"title":"Document the foo() clamp behavior",'
+                    '"content":"Update docs/foo.md with the accepted out-of-range index behavior '
+                    'after the code and focused regression test are in place.",'
+                    '"step_type":"file_change","targets":[{"path":"docs/foo.md","action":"modify"}],'
+                    '"depends_on":[2],"expected_evidence":[{"kind":"file","ref":"docs/foo.md"},'
+                    '{"kind":"command_output","ref":"pytest tests/test_foo.py -q"}]}}.'
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "index": {"type": "integer", "minimum": 1},
                         "step": {"type": "object"},
+                        "title": {"type": "string"},
+                        "content": {"type": "string"},
+                        "step_type": {"type": "string"},
+                        "priority": {"type": "string"},
+                        "targets": {"type": "array"},
+                        "depends_on": {"type": "array"},
+                        "satisfies": {"type": "array"},
+                        "expected_evidence": {"type": "array"},
+                        "verify_command": {"type": "string"},
+                        "location": {"type": "string"},
+                        "rationale": {"type": "string"},
                     },
-                    "required": ["index", "step"],
+                    "required": ["index"],
                 },
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
@@ -238,34 +251,47 @@ def artifact_specs() -> list[ToolSpec]:
                 name=REPLACE_PLAN_STEP_TOOL,
                 description=(
                     "Replace one plan step by its current number and reindex the whole steps list. "
-                    "Required: step_number (integer), step (object). The step number in the step "
-                    "object is ignored. Auto-reindexes remaining steps, rewrites every "
+                    "Required: step_number (integer) plus either step (object) or flat step fields "
+                    "(title/content/step_type/targets/depends_on/expected_evidence/etc.). "
+                    "The step number in the step object is ignored. Auto-reindexes remaining "
+                    "steps, rewrites every "
                     "depends_on array, and rewrites every AC.satisfied_by_steps reference in "
                     "the design sub-section. The reindex map is typically a no-op since the "
                     "step number is preserved. Returns an echo payload with the (unchanged) "
                     "step number, the reindex map, the list of rewritten depends_on step "
                     "numbers, the list of rewritten AC ids, the list of dropped AC ids, and "
-                    "the new total step count: {action: 'replace', step_number, reindex_map, "
-                    "rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
-                    "dropped_ac_satisfied_by_steps, total_steps}. Use this when planning "
+                    'the new total step count: {"action":"replace","step_number":2,'
+                    '"reindex_map":{"2":2},"rewritten_depends_on":[3],'
+                    '"rewritten_ac_satisfied_by_steps":["AC-02"],'
+                    '"dropped_ac_satisfied_by_steps":[],"total_steps":3}. Use this when planning '
                     "analysis feedback says a step is vague or missing software-engineering proof: "
                     "replace the full step with concrete content, targets, satisfies, "
-                    "expected_evidence, and depends_on arrays. Example step object: "
-                    "{title: 'Clamp the foo() index', content: 'Update src/foo.py while "
-                    "preserving the public foo() signature.', step_type: 'file_change', "
-                    "targets: [{path: 'src/foo.py', action: 'modify'}], satisfies: ['AC-02'], "
-                    "expected_evidence: [{kind: 'file', ref: 'src/foo.py'}, {kind: "
-                    "'test_name', ref: "
-                    "'tests/test_foo.py::test_clamp_handles_out_of_range_index'}], "
-                    "depends_on: [1]}."
+                    "expected_evidence, and depends_on arrays. Example: "
+                    '{"step_number":2,"step":{"title":"Clamp the foo() index",'
+                    '"content":"Update src/foo.py while preserving the public foo() signature.",'
+                    '"step_type":"file_change","targets":[{"path":"src/foo.py","action":"modify"}],'
+                    '"satisfies":["AC-02"],"expected_evidence":[{"kind":"file","ref":"src/foo.py"},'
+                    '{"kind":"test_name","ref":"tests/test_foo.py::test_clamp_handles_out_of_range_index"}],'
+                    '"depends_on":[1]}}.'
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "step_number": {"type": "integer", "minimum": 1},
                         "step": {"type": "object"},
+                        "title": {"type": "string"},
+                        "content": {"type": "string"},
+                        "step_type": {"type": "string"},
+                        "priority": {"type": "string"},
+                        "targets": {"type": "array"},
+                        "depends_on": {"type": "array"},
+                        "satisfies": {"type": "array"},
+                        "expected_evidence": {"type": "array"},
+                        "verify_command": {"type": "string"},
+                        "location": {"type": "string"},
+                        "rationale": {"type": "string"},
                     },
-                    "required": ["step_number", "step"],
+                    "required": ["step_number"],
                 },
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
@@ -276,21 +302,23 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=PATCH_PLAN_STEP_TOOL,
                 description=(
-                    "Partial-update a single plan step. Required: step_number (integer),"
-                    " step (object with ANY SUBSET of step fields). The missing fields are"
+                    "Partial-update a single plan step. Required: step_number (integer) plus "
+                    "either step (object with ANY SUBSET of step fields) or flat patch fields. "
+                    "The missing fields are"
                     " preserved from the existing step. The provided `step.number` is"
                     " ignored (replace_plan_step forces the number to step_number). The"
                     " step-mutation auto-reindex of `depends_on` and `AC.satisfied_by_steps`"
                     " runs as for `ralph_replace_plan_step`. Returns the same echo payload"
                     " as `ralph_replace_plan_step`: "
-                    "{action: 'replace', step_number, reindex_map,"
-                    " rewritten_depends_on, rewritten_ac_satisfied_by_steps,"
-                    " dropped_ac_satisfied_by_steps, total_steps}. Use this instead of"
+                    '{"action":"replace","step_number":2,"reindex_map":{"2":2},'
+                    '"rewritten_depends_on":[3],"rewritten_ac_satisfied_by_steps":["AC-02"],'
+                    '"dropped_ac_satisfied_by_steps":[],"total_steps":3}. Use this instead of'
                     " `ralph_replace_plan_step` when only one or two fields need to"
                     " change. For analysis feedback like 'step lacks targets/evidence',"
-                    " patch just those proof fields: {targets: [{path: 'src/foo.py',"
-                    " action: 'modify'}], expected_evidence: [{kind: 'file',"
-                    " ref: 'src/foo.py'}], depends_on: [1]}. Capability:"
+                    " patch just those proof fields: "
+                    '{"step_number":2,"step":{"targets":[{"path":"src/foo.py","action":"modify"}],'
+                    '"expected_evidence":[{"kind":"file","ref":"src/foo.py"}],'
+                    '"depends_on":[1]}}. Capability:'
                     " ARTIFACT_PLAN_WRITE."
                 ),
                 input_schema={
@@ -298,8 +326,19 @@ def artifact_specs() -> list[ToolSpec]:
                     "properties": {
                         "step_number": {"type": "integer", "minimum": 1},
                         "step": {"type": "object"},
+                        "title": {"type": "string"},
+                        "content": {"type": "string"},
+                        "step_type": {"type": "string"},
+                        "priority": {"type": "string"},
+                        "targets": {"type": "array"},
+                        "depends_on": {"type": "array"},
+                        "satisfies": {"type": "array"},
+                        "expected_evidence": {"type": "array"},
+                        "verify_command": {"type": "string"},
+                        "location": {"type": "string"},
+                        "rationale": {"type": "string"},
                     },
-                    "required": ["step_number", "step"],
+                    "required": ["step_number"],
                 },
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
@@ -319,9 +358,9 @@ def artifact_specs() -> list[ToolSpec]:
                     "payload with the removed step number, the reindex map, the list of "
                     "rewritten depends_on step numbers, the list of rewritten AC ids, the "
                     "list of dropped AC ids, and the new total step count: "
-                    "{action: 'remove', removed_step_number, reindex_map, "
-                    "rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
-                    "dropped_ac_satisfied_by_steps, total_steps}."
+                    '{"action":"remove","removed_step_number":2,"reindex_map":{"3":2},'
+                    '"rewritten_depends_on":[2],"rewritten_ac_satisfied_by_steps":["AC-02"],'
+                    '"dropped_ac_satisfied_by_steps":[],"total_steps":2}.'
                 ),
                 input_schema={
                     "type": "object",
@@ -348,9 +387,10 @@ def artifact_specs() -> list[ToolSpec]:
                     "identical since move preserves step numbers), the reindex map "
                     "(typically a no-op), the list of rewritten depends_on step numbers, "
                     "the list of rewritten AC ids, the list of dropped AC ids, and the new "
-                    "total step count: {action: 'move', from_step_number, to_index, "
-                    "reindex_map, rewritten_depends_on, rewritten_ac_satisfied_by_steps, "
-                    "dropped_ac_satisfied_by_steps, total_steps}."
+                    'total step count: {"action":"move","from_step_number":3,"to_index":1,'
+                    '"reindex_map":{"3":1},"rewritten_depends_on":[1],'
+                    '"rewritten_ac_satisfied_by_steps":["AC-02"],'
+                    '"dropped_ac_satisfied_by_steps":[],"total_steps":3}.'
                 ),
                 input_schema={
                     "type": "object",
@@ -375,7 +415,7 @@ def artifact_specs() -> list[ToolSpec]:
                     " satisfied_by_steps, AC id pattern, non-empty skills_mcp.skills,"
                     " 4 MB size cap) without writing"
                     " plan.json and without deleting the in-progress draft. Returns"
-                    " {valid: true} on success or {valid: false, errors: [...]} on"
+                    ' {"valid":true} on success or {"valid":false,"errors":[...]} on'
                     " failure. If no draft exists, returns valid=false with a named"
                     " missing-draft error. The same checks run at finalize_plan in the write path;"
                     " ralph_validate_draft exposes them in a read-only path so the agent"
@@ -423,8 +463,8 @@ def artifact_specs() -> list[ToolSpec]:
                     " If the in-progress draft is gone (e.g. after a successful finalize"
                     " or a discarded draft) but a finalized plan.json exists on disk,"
                     " returns the finalized plan with source='finalized_plan'. The"
-                    " response shape is {staged_sections: [...], draft: {...},"
-                    " source: 'draft'|'finalized_plan', updated_at: ...}."
+                    ' response shape is {"staged_sections":[...],"draft":{...},'
+                    '"source":"draft"|"finalized_plan","updated_at":"..."}.'
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability=Capability.ARTIFACT_PLAN_READ.value,
@@ -569,7 +609,7 @@ def artifact_specs() -> list[ToolSpec]:
                             "type": "object",
                             "description": (
                                 "Optional coordination payload as a key-value object "
-                                "(example values: {'priority': 'high'}, {'status': 'ready'})."
+                                '(example values: {"priority":"high"}, {"status":"ready"}).'
                             ),
                         },
                     },

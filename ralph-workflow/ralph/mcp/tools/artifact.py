@@ -606,8 +606,8 @@ def handle_validate_plan_draft(
     """Run the full PlanArtifact cross-section validator on the staged draft.
 
     Read-only: does NOT write ``.agent/artifacts/plan.json`` and does NOT
-    delete the in-progress draft. Returns ``{valid: True}`` on success
-    or ``{valid: False, errors: [...]}`` on failure. The same checks
+    delete the in-progress draft. Returns ``{"valid": true}`` on success
+    or ``{"valid": false, "errors": [...]}`` on failure. The same checks
     run at ``finalize_plan`` in the write path; this tool exposes them
     in a read-only path so the agent can dry-run validation before
     committing.
@@ -1687,8 +1687,8 @@ def _format_plan_section_submission_error(
     ]
     if section == "skills_mcp" and "mcps" in detail and "valid list" in detail:
         guidance.append(
-            "Expected shape for section 'skills_mcp': {'skills': ['writing-plans'], 'mcps': []}. "
-            "mcps must be a JSON array like [] or ['docs-mcp']."
+            'Expected shape for section "skills_mcp": {"skills":["writing-plans"],"mcps":[]}. '
+            'mcps must be a JSON array like [] or ["docs-mcp"].'
         )
     if (
         section == "skills_mcp"
@@ -1700,73 +1700,72 @@ def _format_plan_section_submission_error(
         )
     ):
         guidance.append(
-            "Expected shape for section 'skills_mcp': {'skills': ['writing-plans'], 'mcps': []}. "
+            'Expected shape for section "skills_mcp": {"skills":["writing-plans"],"mcps":[]}. '
             "skills must be a JSON array and must contain at least one task-relevant skill name."
         )
     if section == "summary" and (
         "scope_items" in detail or "must be a JSON object" in detail or "required" in detail.lower()
     ):
         guidance.append(
-            "Expected shape for section 'summary': {'context': 'Fix the foo() regression and "
-            "prove it with a focused unit test', 'intent': 'Clamp foo() index so the "
-            "regression cannot recur', 'intent_verb': 'improve', 'scope_items': "
-            "[{'text': 'Add a regression test', 'category': 'test'}, {'text': "
-            "'Modify src/foo.py', 'category': 'file_change'}, {'text': 'Run pytest "
-            "tests/test_foo.py -q', 'category': 'test'}]}. summary must be a JSON object, "
-            "not {'summary': {...}}."
+            'Expected shape for section "summary": {"context":"Fix the foo() regression and '
+            'prove it with a focused unit test","intent":"Clamp foo() index so the regression '
+            'cannot recur","intent_verb":"improve","scope_items":[{"text":"Add a regression '
+            'test","category":"test"},{"text":"Modify src/foo.py","category":"file_change"},'
+            '{"text":"Run pytest tests/test_foo.py -q","category":"test"}]}. summary must be a '
+            'JSON object, not {"summary":{...}}.'
         )
     if section == "critical_files" and "primary_files" in detail and "required" in detail.lower():
         guidance.append(
-            "Expected shape for section 'critical_files': {'primary_files': "
-            "[{'path': 'src/foo.py', 'action': 'modify'}, {'path': "
-            "'tests/test_foo.py', 'action': 'modify'}], 'reference_files': []}. "
+            'Expected shape for section "critical_files": {"primary_files":['
+            '{"path":"src/foo.py","action":"modify"},'
+            '{"path":"tests/test_foo.py","action":"modify"}],"reference_files":[]}. '
             "primary_files is required and must be a JSON array."
         )
     if section == "steps" and mode == "replace" and "must be a JSON array" in detail:
         guidance.append(
-            "Expected shape for section 'steps' with mode='replace': a JSON array like [{...}], "
-            "not a single object and not {'steps': [...]} wrapped under a key."
+            'Expected shape for section "steps" with mode="replace": a JSON array like '
+            '[{"number":1,"title":"Add a regression test","content":"Add the focused test.",'
+            '"step_type":"file_change","targets":[{"path":"tests/test_foo.py","action":"modify"}],'
+            '"depends_on":[],"expected_evidence":[{"kind":"test_name","ref":'
+            '"tests/test_foo.py::test_clamp_handles_out_of_range_index"}]}], not a single '
+            'object and not {"steps":[...]} wrapped under a key.'
         )
     if section == "steps" and mode == "append" and "object or array of items" in detail:
         guidance.append(
             "Expected shape for section 'steps' with mode='append': either one step object like "
-            "{'number': 2, 'title': 'Clamp the foo() index', 'content': 'Update src/foo.py so "
-            "the lookup index is clamped while preserving the public foo() signature.', "
-            "'step_type': 'file_change', 'targets': [{'path': 'src/foo.py', 'action': "
-            "'modify'}], 'depends_on': [1], 'expected_evidence': [{'kind': 'file', "
-            "'ref': 'src/foo.py'}]} "
+            '{"number":2,"title":"Clamp the foo() index","content":"Update src/foo.py so '
+            'the lookup index is clamped while preserving the public foo() signature.",'
+            '"step_type":"file_change","targets":[{"path":"src/foo.py","action":"modify"}],'
+            '"depends_on":[1],"expected_evidence":[{"kind":"file","ref":"src/foo.py"}]} '
             "or a JSON array of such step objects."
         )
     if section == "steps" and (
         "step_type" in detail or "verify step" in detail or "target" in detail.lower()
     ):
         guidance.append(
-            "Expected shape for one steps item: {'number': 1, 'title': 'Add the foo() "
-            "regression test', 'content': 'Add "
-            "tests/test_foo.py::test_clamp_handles_out_of_range_index before changing "
-            "production code.', 'step_type': 'file_change', 'targets': "
-            "[{'path': 'tests/test_foo.py', 'action': 'modify'}], 'depends_on': [], "
-            "'expected_evidence': [{'kind': 'test_name', 'ref': "
-            "'tests/test_foo.py::test_clamp_handles_out_of_range_index'}]}. "
+            'Expected shape for one steps item: {"number":1,"title":"Add the foo() regression '
+            'test","content":"Add tests/test_foo.py::test_clamp_handles_out_of_range_index '
+            'before changing production code.","step_type":"file_change","targets":['
+            '{"path":"tests/test_foo.py","action":"modify"}],"depends_on":[],'
+            '"expected_evidence":[{"kind":"test_name","ref":'
+            '"tests/test_foo.py::test_clamp_handles_out_of_range_index"}]}. '
             "For verify steps, "
             "use step_type='verify' plus verify_command or location."
         )
     if section == "risks_mitigations" and mode == "replace" and "must be a JSON array" in detail:
         guidance.append(
-            "Expected shape for section 'risks_mitigations' with mode='replace': a JSON array like "
-            "[{'risk': 'Clamping could hide a caller bug that should remain visible in "
-            "behavior expectations.', 'mitigation': 'Preserve the public foo() signature "
-            "and add a focused regression test documenting the intended behavior.', "
-            "'severity': 'medium'}]."
+            'Expected shape for section "risks_mitigations" with mode="replace": a JSON array '
+            'like [{"risk":"Clamping could hide a caller bug that should remain visible in '
+            'behavior expectations.","mitigation":"Preserve the public foo() signature and add '
+            'a focused regression test documenting the intended behavior.","severity":"medium"}].'
         )
     if section == "risks_mitigations" and mode == "append" and "object or array of items" in detail:
         guidance.append(
             "Expected shape for section 'risks_mitigations' with mode='append': either one "
             "object like "
-            "{'risk': 'Clamping could hide a caller bug that should remain visible in "
-            "behavior expectations.', 'mitigation': 'Preserve the public foo() signature "
-            "and add a focused regression test documenting the intended behavior.', "
-            "'severity': 'medium'} "
+            '{"risk":"Clamping could hide a caller bug that should remain visible in behavior '
+            'expectations.","mitigation":"Preserve the public foo() signature and add a focused '
+            'regression test documenting the intended behavior.","severity":"medium"} '
             "or a JSON array of such risk objects."
         )
     if section == "verification_strategy" and (
@@ -1776,11 +1775,10 @@ def _format_plan_section_submission_error(
         or "expected_outcome" in detail
     ):
         guidance.append(
-            "Expected shape for section 'verification_strategy': [{'method': "
-            "'pytest tests/test_foo.py -q', 'expected_outcome': "
-            "'The focused foo() regression test passes.', "
-            "'timeout_seconds': 60, 'cwd': 'ralph-workflow'}]. With mode='replace' use a "
-            "JSON array, not {'verification_strategy': [...]}; with mode='append' use one "
+            'Expected shape for section "verification_strategy": [{"method":'
+            '"pytest tests/test_foo.py -q","expected_outcome":"The focused foo() regression '
+            'test passes.","timeout_seconds":60,"cwd":"ralph-workflow"}]. With mode="replace" '
+            'use a JSON array, not {"verification_strategy":[...]}; with mode="append" use one '
             "verification object or a JSON array of verification objects."
         )
     if (
@@ -1788,8 +1786,9 @@ def _format_plan_section_submission_error(
         and "Content must be valid JSON" in detail
     ):
         guidance.append(
-            f"Expected shape for section '{section}' with mode='{mode}': JSON array like "
-            f"[{'{...}'}]. Fix the JSON syntax first (for example the parser is often "
+            f'Expected shape for section "{section}" with mode="{mode}": JSON array like '
+            '[{"number":1,"title":"Add a regression test","content":"Add the focused test."}]. '
+            "Fix the JSON syntax first (for example the parser is often "
             "missing a comma or closing brace)."
         )
     guidance.append(
@@ -1812,7 +1811,7 @@ def _format_plan_batch_envelope_error(
             f"Fix this by reading '{plan_doc}' inside the workspace.",
             (
                 "Use ralph_submit_plan_sections with the canonical batch envelope "
-                "{'entries': [{'section': 'summary', 'mode': 'replace', 'content': {...}}]}. "
+                '{"entries":[{"section":"summary","mode":"replace","content":{...}}]}. '
                 "The plan format doc section 'Step-wise submission' shows the valid section names, "
                 "content shapes, and mode usage."
             ),
@@ -1842,28 +1841,28 @@ def _format_plan_finalize_error(
                 "'Dumb-proof checklist' show the required sections and valid payload shapes."
             ),
             (
-            "Canonical required section shapes: summary={'context': 'Fix the foo() "
-            "regression and prove it with a focused unit test', 'intent': 'Clamp "
-            "foo() index so the regression cannot recur', 'intent_verb': 'improve', "
-                "'scope_items': [{'text': 'Add a regression test', 'category': 'test'}, "
-                "{'text': 'Modify src/foo.py', 'category': 'file_change'}, {'text': 'Run "
-            "pytest tests/test_foo.py -q', 'category': 'test'}]}; "
-            "skills_mcp={'skills': ['writing-plans'], 'mcps': []}; "
-            "steps=[{'number': 1, 'title': 'Add the foo() regression test', 'content': "
-            "'Add tests/test_foo.py::test_clamp_handles_out_of_range_index before changing "
-            "production code.', 'step_type': 'file_change', 'targets': [{'path': "
-            "'tests/test_foo.py', 'action': 'modify'}], 'depends_on': [], "
-            "'expected_evidence': [{'kind': 'test_name', 'ref': "
-            "'tests/test_foo.py::test_clamp_handles_out_of_range_index'}]}]; "
-            "critical_files={'primary_files': [{'path': 'src/foo.py', 'action': "
-            "'modify'}, {'path': 'tests/test_foo.py', 'action': 'modify'}], "
-            "'reference_files': []}; risks_mitigations=[{'risk': 'Clamping could hide "
-            "a caller bug that should remain visible in behavior expectations.', "
-            "'mitigation': 'Preserve the public foo() signature and add a focused "
-            "regression test documenting the intended clamping behavior.', 'severity': "
-            "'medium'}]; verification_strategy=[{'method': 'pytest tests/test_foo.py -q', "
-            "'expected_outcome': 'The focused foo() regression test passes.'}]."
-        ),
+                "Canonical required section shapes: "
+                'summary={"context":"Fix the foo() regression and prove it with a focused '
+                'unit test","intent":"Clamp foo() index so the regression cannot recur",'
+                '"intent_verb":"improve","scope_items":[{"text":"Add a regression test",'
+                '"category":"test"},{"text":"Modify src/foo.py","category":"file_change"},'
+                '{"text":"Run pytest tests/test_foo.py -q","category":"test"}]}; '
+                'skills_mcp={"skills":["writing-plans"],"mcps":[]}; '
+                'steps=[{"number":1,"title":"Add the foo() regression test","content":'
+                '"Add tests/test_foo.py::test_clamp_handles_out_of_range_index before '
+                'changing production code.","step_type":"file_change","targets":['
+                '{"path":"tests/test_foo.py","action":"modify"}],"depends_on":[],'
+                '"expected_evidence":[{"kind":"test_name","ref":'
+                '"tests/test_foo.py::test_clamp_handles_out_of_range_index"}]}]; '
+                'critical_files={"primary_files":[{"path":"src/foo.py","action":"modify"},'
+                '{"path":"tests/test_foo.py","action":"modify"}],"reference_files":[]}; '
+                'risks_mitigations=[{"risk":"Clamping could hide a caller bug that should '
+                'remain visible in behavior expectations.","mitigation":"Preserve the public '
+                'foo() signature and add a focused regression test documenting the intended '
+                'clamping behavior.","severity":"medium"}]; '
+                'verification_strategy=[{"method":"pytest tests/test_foo.py -q",'
+                '"expected_outcome":"The focused foo() regression test passes."}].'
+            ),
             (
                 "Optional: the bundled `submit-plan-artifact` skill shows the canonical "
                 "required-section shapes and detailed passing plan examples."
@@ -1891,11 +1890,11 @@ def _format_plan_step_edit_error(
             ),
             (
                 "Canonical step-edit envelopes: ralph_insert_plan_step => "
-                "{'index': 2, 'step': {...}}; "
-                "ralph_replace_plan_step => {'step_number': 2, 'step': {...}}; "
-                "ralph_remove_plan_step => {'step_number': 2}; "
-                "ralph_move_plan_step => {'from_step_number': 2, 'to_index': 1}; "
-                "ralph_patch_step => {'step_number': 2, 'step': {...}}."
+                '{"index":2,"step":{...}}; '
+                'ralph_replace_plan_step => {"step_number":2,"step":{...}}; '
+                'ralph_remove_plan_step => {"step_number":2}; '
+                'ralph_move_plan_step => {"from_step_number":2,"to_index":1}; '
+                'ralph_patch_step => {"step_number":2,"step":{...}}.'
             ),
             f"After fixing the payload or step number, retry {tool_name}.",
             (

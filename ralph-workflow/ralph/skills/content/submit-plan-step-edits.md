@@ -175,7 +175,7 @@ the design AC links):
         "intent_verb": "improve",
         "scope_items": [
           {"text": "Add a regression test for the out-of-range foo() index", "category": "test"},
-          {"text": "Modify src/foo.py to clamp the index before lookup", "category": "bugfix"},
+          {"text": "Modify src/foo.py to clamp the index before lookup", "category": "file_change"},
           {"text": "Run pytest tests/test_foo.py -q to prove the regression is fixed", "category": "test"}
         ]
       }
@@ -620,9 +620,9 @@ The 5 step-edit-relevant error strings emitted by
 - `plan envelope has no valid 'content' object` / `plan payload must
   decode to a JSON object` — the `step` argument to a mutation tool
   was not a JSON object (it was a string, list, or scalar). The
-  handler expects `params['step']` to be a dict shaped like
-  `{'title': ..., 'content': ..., 'step_type': ..., 'targets':
-  [...], 'depends_on': [...]}`.
+  handler expects `params["step"]` to be a dict shaped like
+  `{"title":"Clamp the foo() index","content":"Update src/foo.py",
+  "step_type":"file_change","targets":[...],"depends_on":[...]}`.
 
 If the error you received is not in this list, read the
 `## Recovery from a Bad Payload` section of the companion
@@ -699,10 +699,10 @@ If this skill and the format doc ever disagree, the format doc wins.
   finalize.
 - Calling `ralph_finalize_plan` immediately after a step-mutation
   without re-running `ralph_validate_draft` first. The dry-run
-  validator is the only signal you get BEFORE the staged draft is
-  deleted on a successful finalize. Skipping it means a failed
-  finalize leaves the draft already gone; the agent must start over
-  from step 1 of the submission protocol.
+  validator exposes the same cross-section failures before the write
+  path. A failed finalize keeps the staged draft available for repair;
+  a successful finalize writes the final artifact and deletes the
+  staged draft.
 - Ignoring the `dropped_ac_satisfied_by_steps` field in the mutation
   echo. An empty list means no AC references were dropped (good); a
   non-empty list means an AC's `satisfied_by_steps` entries were
