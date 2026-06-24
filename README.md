@@ -13,7 +13,7 @@ Ralph Workflow is a free, open-source Loop Engineering framework that runs the c
 
 *An early Loop Engineering toolkit for coding agents · 13,230+ lifetime PyPI downloads · 4,911 last 30 days · 92 last 24h (pepy.tech, 2026-06-21).*
 
-> **Built something with Ralph?** See the [Showcase](SHOWCASE.md) — add a credit line to your README and you're on the page (60-second task). Also see the [Ecosystem Map](ECOSYSTEM.md) — projects using Ralph discovered through code-level search.
+> **Built something with Ralph?** See the [Showcase](SHOWCASE.md) — add a credit line to your README and you're on the page (60-second task). Also see the [Ecosystem Map](ECOSYSTEM.md) — projects using Ralph discovered through code-level search. The [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) list (904 ⭐) is the community directory of Loop Engineering implementations, workshops, and skill packs.
 
 ### 🏷 Add the badge
 
