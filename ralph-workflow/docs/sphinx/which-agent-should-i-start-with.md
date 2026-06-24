@@ -97,7 +97,7 @@ Verify the install end-to-end with `python -m ralph smoke-interactive-agy`. The 
 - `pi` already works on your machine (see <https://pi.dev> for install and auth)
 - you want a documented headless mode that mirrors the pi.dev `AgentSessionEvent` NDJSON format per <https://pi.dev/docs/latest/json>
 - you want multi-provider flexibility via the documented `pi/<provider>/<model>` shorthand
-- you do not need an MCP wiring path on the agent side - pi.dev has no documented CLI MCP flag, so `pi` is wired as a transport but not as an MCP-capable agent
+- you are comfortable with non-MCP operation on the agent side - pi.dev has no documented CLI MCP flag, so Ralph Workflow runs `pi` without forwarding `RALPH_MCP_ENDPOINT` and uses the prompt-side artifact fallback
 
 Why this is a good first fit:
 

@@ -17,7 +17,6 @@ import pytest
 
 from ralph.agents.invoke import BuildCommandOptions
 from ralph.agents.invoke._command_builders import PiCommandBuilder
-from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._runtime_resolvers import (
     RUNTIME_RESOLVERS,
     PiRuntimeResolver,
@@ -90,9 +89,7 @@ class TestPiCommandBuilder:
             "hello world",
         ]
 
-    def test_session_id_with_spaces_stays_one_argv_element(
-        self, tmp_path: Path
-    ) -> None:
+    def test_session_id_with_spaces_stays_one_argv_element(self, tmp_path: Path) -> None:
         """A session id containing spaces must stay as a single argv value.
 
         Regression test for the analysis feedback: the previous
@@ -107,9 +104,7 @@ class TestPiCommandBuilder:
         cmd = PiCommandBuilder().build(
             _pi_config(),
             prompt_file,
-            options=BuildCommandOptions(
-                session_id="abc def", workspace_path=tmp_path
-            ),
+            options=BuildCommandOptions(session_id="abc def", workspace_path=tmp_path),
         )
 
         assert cmd == [
@@ -129,9 +124,7 @@ class TestPiCommandBuilder:
         assert "abc" not in cmd or cmd.index("abc") == session_idx + 1
         assert "def" not in cmd
 
-    def test_session_id_with_flag_like_value_does_not_inject_flags(
-        self, tmp_path: Path
-    ) -> None:
+    def test_session_id_with_flag_like_value_does_not_inject_flags(self, tmp_path: Path) -> None:
         """A session id that looks like flags must NOT be tokenized into flags.
 
         Regression test for the analysis feedback: with the previous
@@ -144,9 +137,7 @@ class TestPiCommandBuilder:
         cmd = PiCommandBuilder().build(
             _pi_config(),
             prompt_file,
-            options=BuildCommandOptions(
-                session_id="abc --model injected", workspace_path=tmp_path
-            ),
+            options=BuildCommandOptions(session_id="abc --model injected", workspace_path=tmp_path),
         )
 
         # The session id must be one argv element, not three.
@@ -186,9 +177,7 @@ class TestPiCommandBuilder:
         # single argv element.
         assert "--model anthropic/claude-sonnet-4-20250514" not in cmd
 
-    def test_model_flag_with_injected_flags_is_rejected(
-        self, tmp_path: Path
-    ) -> None:
+    def test_model_flag_with_injected_flags_is_rejected(self, tmp_path: Path) -> None:
         """``--model gpt-4 --session injected`` must NOT inject extra argv tokens.
 
         Regression test for the analysis feedback: the prior
@@ -215,9 +204,7 @@ class TestPiCommandBuilder:
             )
         assert "two argv tokens" in str(excinfo.value)
 
-    def test_model_flag_with_three_tokens_is_rejected(
-        self, tmp_path: Path
-    ) -> None:
+    def test_model_flag_with_three_tokens_is_rejected(self, tmp_path: Path) -> None:
         """``--model value extra`` must raise :class:`ValueError`."""
         prompt_file = _make_prompt(tmp_path)
         with pytest.raises(ValueError) as excinfo:
@@ -231,9 +218,7 @@ class TestPiCommandBuilder:
             )
         assert "two argv tokens" in str(excinfo.value)
 
-    def test_model_flag_with_one_token_is_rejected(
-        self, tmp_path: Path
-    ) -> None:
+    def test_model_flag_with_one_token_is_rejected(self, tmp_path: Path) -> None:
         """``--model`` alone (no value) must raise :class:`ValueError`."""
         prompt_file = _make_prompt(tmp_path)
         with pytest.raises(ValueError) as excinfo:
@@ -247,9 +232,7 @@ class TestPiCommandBuilder:
             )
         assert "two argv tokens" in str(excinfo.value)
 
-    def test_model_flag_value_starting_with_dash_is_rejected(
-        self, tmp_path: Path
-    ) -> None:
+    def test_model_flag_value_starting_with_dash_is_rejected(self, tmp_path: Path) -> None:
         """``--model -flag`` must raise :class:`ValueError` (flag-injection guard)."""
         prompt_file = _make_prompt(tmp_path)
         with pytest.raises(ValueError) as excinfo:
@@ -263,9 +246,7 @@ class TestPiCommandBuilder:
             )
         assert "must not itself start with" in str(excinfo.value)
 
-    def test_model_flag_value_with_quoting_spacing_edge_cases(
-        self, tmp_path: Path
-    ) -> None:
+    def test_model_flag_value_with_quoting_spacing_edge_cases(self, tmp_path: Path) -> None:
         """A well-quoted ``--model 'value with spaces'`` must keep the value as one argv token.
 
         Regression test for the analysis feedback: callers can pass
@@ -320,7 +301,7 @@ class TestPiCommandBuilder:
 
 
 class TestPiRuntimeResolver:
-    """Pi has no documented CLI MCP wiring path -> fail closed on any MCP endpoint."""
+    """Pi has no documented CLI MCP wiring path, so Ralph hides MCP env from Pi."""
 
     def test_registered_in_runtime_resolvers(self) -> None:
         assert RUNTIME_RESOLVERS[AgentTransport.PI] is PiRuntimeResolver
@@ -347,23 +328,30 @@ class TestPiRuntimeResolver:
         assert runtime.server_env is None
         assert runtime.mcp_endpoint is None
 
-    def test_mcp_endpoint_in_extra_env_raises(self, tmp_path: Path) -> None:
+    def test_mcp_endpoint_in_extra_env_is_removed(self, tmp_path: Path) -> None:
         config = _pi_config()
-        with pytest.raises(UnsupportedMcpTransportError) as excinfo:
-            PiRuntimeResolver().resolve(
-                config,
-                extra_env={MCP_ENDPOINT_ENV: "http://localhost:9999/mcp"},
-                workspace_path=tmp_path,
-            )
-        assert "pi" in str(excinfo.value).lower()
+        runtime = PiRuntimeResolver().resolve(
+            config,
+            extra_env={
+                str(MCP_ENDPOINT_ENV): "http://localhost:9999/mcp",
+                "FOO": "bar",
+            },
+            workspace_path=tmp_path,
+        )
 
-    def test_mcp_endpoint_in_base_env_raises(self, tmp_path: Path) -> None:
+        assert runtime.agent_env == {"FOO": "bar"}
+        assert runtime.server_env is None
+        assert runtime.mcp_endpoint is None
+
+    def test_mcp_endpoint_in_base_env_is_not_forwarded(self, tmp_path: Path) -> None:
         config = _pi_config()
-        with pytest.raises(UnsupportedMcpTransportError) as excinfo:
-            PiRuntimeResolver().resolve(
-                config,
-                extra_env=None,
-                workspace_path=tmp_path,
-                base_env={MCP_ENDPOINT_ENV: "http://localhost:9999/mcp"},
-            )
-        assert "pi" in str(excinfo.value).lower()
+        runtime = PiRuntimeResolver().resolve(
+            config,
+            extra_env={"FOO": "bar"},
+            workspace_path=tmp_path,
+            base_env={str(MCP_ENDPOINT_ENV): "http://localhost:9999/mcp"},
+        )
+
+        assert runtime.agent_env == {"FOO": "bar"}
+        assert runtime.server_env is None
+        assert runtime.mcp_endpoint is None

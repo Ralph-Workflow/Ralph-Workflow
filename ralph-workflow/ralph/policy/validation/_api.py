@@ -301,7 +301,6 @@ def validate_agent_chains_satisfiable(
 ) -> None:
     """Validate that every chain references known, workflow-compatible agents."""
     unknown_agents: list[str] = []
-    incompatible_agents: list[str] = []
     for chain_name, chain_config in bundle.agents.agent_chains.items():
         for agent_name in chain_config.agents:
             agent_config = agent_registry.get(agent_name)
@@ -311,24 +310,10 @@ def validate_agent_chains_satisfiable(
                 )
                 continue
 
-            transport: object = getattr(agent_config, "transport", "")
-            if str(transport) == "pi":
-                incompatible_agents.append(
-                    f"chain '{chain_name}' references agent '{agent_name}' using transport 'pi'"
-                )
     if unknown_agents:
         raise PolicyValidationError(
             "Agent chains reference unknown agents (check configuration, not PATH): "
             + "; ".join(unknown_agents)
-        )
-    if incompatible_agents:
-        raise PolicyValidationError(
-            "Agent chains reference agents that cannot receive Ralph MCP wiring: "
-            + "; ".join(incompatible_agents)
-            + ". Pi does not expose a documented CLI MCP wiring path, but Ralph-managed "
-            "workflow phases require Ralph MCP for tools and artifact submission. "
-            "Remove pi or pi/<model> entries from [agent_chains] or replace them with "
-            "claude, codex, opencode, nanocoder, or agy."
         )
 
 

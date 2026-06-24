@@ -68,8 +68,8 @@ def test_validate_agent_chains_satisfiable_fails_with_unknown_agent() -> None:
         validate_agent_chains_satisfiable(bundle, registry)
 
 
-def test_validate_agent_chains_satisfiable_rejects_pi_transport() -> None:
-    """Pi cannot run Ralph-managed workflow phases because it cannot receive MCP wiring."""
+def test_validate_agent_chains_satisfiable_accepts_pi_transport() -> None:
+    """Pi can run Ralph-managed workflow phases through the non-MCP fallback path."""
     bundle = _FakeBundle(
         chains={"planning": _FakeChainConfig(agents=["pi/anthropic/claude-sonnet-4"])},
         drains={},
@@ -77,13 +77,7 @@ def test_validate_agent_chains_satisfiable_rejects_pi_transport() -> None:
     )
     registry = AgentRegistry.from_config(UnifiedConfig())
 
-    with pytest.raises(PolicyValidationError) as exc_info:
-        validate_agent_chains_satisfiable(bundle, registry)
-
-    message = str(exc_info.value)
-    assert "transport 'pi'" in message
-    assert "Ralph MCP" in message
-    assert "Remove pi or pi/<model> entries from [agent_chains]" in message
+    validate_agent_chains_satisfiable(bundle, registry)
 
 
 def test_validate_recovery_config_passes_with_valid_config() -> None:

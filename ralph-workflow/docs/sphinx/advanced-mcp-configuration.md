@@ -40,15 +40,15 @@ Common fields:
 - `env`
 
 > **Pi.dev has no documented CLI MCP wiring path.** PiRuntimeResolver (in
-> `ralph/agents/invoke/_runtime_resolvers/__init__.py:339`) raises
-> `UnsupportedMcpTransportError` on any `MCP_ENDPOINT` environment variable,
-> mirroring the `DefaultRuntimeResolver` pattern for `AgentTransport.GENERIC`.
-> This is the documented safety guarantee from
+> `ralph/agents/invoke/_runtime_resolvers/__init__.py`) removes
+> `RALPH_MCP_ENDPOINT` from the Pi subprocess environment rather than wiring
+> MCP into the agent.
+> This follows the documented upstream constraint from
 > [https://pi.dev/docs/latest/usage](https://pi.dev/docs/latest/usage) (Pi
 > keeps the core small — no built-in MCP) and is pinned by
 > `tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py::TestPiRuntimeResolver`
-> (`test_mcp_endpoint_in_extra_env_raises`,
-> `test_mcp_endpoint_in_base_env_raises`). If a future pi.dev release adds a
+> (`test_mcp_endpoint_in_extra_env_is_removed`,
+> `test_mcp_endpoint_in_base_env_is_not_forwarded`). If a future pi.dev release adds a
 > CLI MCP flag, update both the resolver and the test in the same diff.
 
 ### `[web_search]`

@@ -342,10 +342,10 @@ class PiRuntimeResolver:
     Pi has no documented CLI MCP wiring path
     (https://pi.dev/docs/latest/usage: "It intentionally does not include
     built-in MCP, sub-agents, permission popups, plan mode, to-dos, or
-    background bash").  The resolver therefore fails closed on any
-    MCP endpoint, mirroring the DefaultRuntimeResolver pattern for
-    AgentTransport.GENERIC.  When no MCP endpoint is provided, returns a
-    minimal runtime with no server_env and no mcp_endpoint.
+    background bash").  The resolver therefore does not forward Ralph's
+    MCP endpoint into the Pi process.  Pi still runs through its documented
+    NDJSON CLI path, and workflow artifacts complete through the prompt-side
+    file fallback.
     """
 
     def resolve(
@@ -358,13 +358,8 @@ class PiRuntimeResolver:
         system_prompt_file: str | None = None,
         unsafe_mode: bool = False,
     ) -> ResolvedInvocationRuntime:
-        _env = base_env if base_env is not None else cast("Mapping[str, str]", os.environ)
         runtime_env = dict(extra_env or {})
-        endpoint = _get_endpoint(runtime_env, _env)
-
-        if endpoint is not None:
-            msg = "Agent transport 'pi' does not declare how to receive Ralph MCP wiring"
-            raise UnsupportedMcpTransportError(msg)
+        runtime_env.pop(MCP_ENDPOINT_ENV, None)
 
         return ResolvedInvocationRuntime(
             agent_env=runtime_env or None,
