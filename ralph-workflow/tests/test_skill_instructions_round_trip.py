@@ -25,6 +25,7 @@ The tests are fully type-annotated and rely only on the in-process Pydantic
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -106,6 +107,54 @@ def _extract_section_templates(body: str) -> dict[str, object]:
         payloads[section] = payload
         cursor = section_start + block_match.end()
     return payloads
+
+
+def _extract_balanced_literal_at(text: str, start_index: int) -> object:
+    """Extract a Python/JSON literal beginning at ``start_index``."""
+    while text[start_index].isspace():
+        start_index += 1
+    opener = text[start_index]
+    closer = {"{": "}", "[": "]"}[opener]
+    depth = 0
+    in_string = False
+    escape = False
+    for offset, char in enumerate(text[start_index:], start=start_index):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                literal_text = text[start_index : offset + 1]
+                return cast("object", ast.literal_eval(literal_text))
+    pytest.fail("could not extract balanced literal")
+
+
+def _extract_balanced_literal_after(body: str, marker: str, literal_prefix: str) -> object:
+    """Extract a Python/JSON literal following ``literal_prefix`` after ``marker``."""
+    assert marker in body, f"missing marker {marker!r}"
+    section = body.split(marker, maxsplit=1)[1]
+    prefix_index = section.index(literal_prefix) + len(literal_prefix)
+    return _extract_balanced_literal_at(section, prefix_index)
+
+
+def _extract_inline_entries_objects(body: str) -> list[dict[str, object]]:
+    """Extract inline ``{"entries": [...]}`` examples from the skill body."""
+    entries_objects: list[dict[str, object]] = []
+    for match in re.finditer(r'\{"entries":', body):
+        decoded = _extract_balanced_literal_at(body, match.start())
+        assert isinstance(decoded, dict)
+        entries_objects.append(cast("dict[str, object]", decoded))
+    return entries_objects
 
 
 def _canonical_validator_strings() -> tuple[tuple[str, str], ...]:
@@ -251,6 +300,59 @@ def test_skill_documents_validation_warnings_repair_path() -> None:
     assert "validation_warnings" in body
     assert "valid JSON that is not yet" in body
     assert "ralph_validate_draft" in body
+
+
+@pytest.mark.timeout_seconds(10)
+def test_inline_core_flow_tool_call_examples_round_trip(tmp_path: Path) -> None:
+    """Inline Core Flow examples must be accepted by the real handlers."""
+    body = _load_skill_body()
+    workspace = FsWorkspace(tmp_path)
+    session = planning_session()
+
+    summary_content = _extract_balanced_literal_after(
+        body,
+        'ralph_submit_plan_section(section="summary"',
+        "content=",
+    )
+    assert isinstance(summary_content, dict)
+    single_result = handle_submit_plan_section(
+        session,
+        workspace,
+        {
+            "section": "summary",
+            "mode": "replace",
+            "content": cast("dict[str, object]", summary_content),
+        },
+    )
+    assert single_result.is_error is False, _result_text(single_result)
+
+    entries = _extract_balanced_literal_after(
+        body,
+        "ralph_submit_plan_sections(",
+        "entries=",
+    )
+    assert isinstance(entries, list)
+    batch_result = handle_submit_plan_sections(
+        session,
+        workspace,
+        {"entries": cast("list[object]", entries)},
+    )
+    assert batch_result.is_error is False, _result_text(batch_result)
+
+
+@pytest.mark.timeout_seconds(10)
+def test_inline_batch_error_helper_examples_round_trip(tmp_path: Path) -> None:
+    """Inline `{"entries": ...}` helper examples must be handler-valid."""
+    body = _load_skill_body()
+    entries_objects = _extract_inline_entries_objects(body)
+    assert entries_objects, "submit-plan-artifact skill has no inline entries examples"
+    for index, payload in enumerate(entries_objects):
+        workspace = FsWorkspace(tmp_path / f"inline-entries-{index}")
+        session = planning_session()
+        result = handle_submit_plan_sections(session, workspace, payload)
+        assert result.is_error is False, (
+            f"inline entries example {index} failed: {_result_text(result)}"
+        )
 
 
 @pytest.mark.timeout_seconds(10)

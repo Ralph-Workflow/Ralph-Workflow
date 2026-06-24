@@ -129,6 +129,35 @@ def test_patch_step_preserves_unmentioned_fields(tmp_path: Path) -> None:
     assert c_step["depends_on"] == [2]
 
 
+def test_patch_step_repairs_existing_string_step_number(tmp_path: Path) -> None:
+    """patch step accepts a plausible staged draft whose number field is a string."""
+    draft = _three_step_draft()
+    sections = cast("dict[str, object]", draft["sections"])
+    steps = cast("list[dict[str, object]]", sections["steps"])
+    steps[2]["number"] = "3"
+    _write_draft(tmp_path, draft)
+    workspace = FsWorkspace(tmp_path)
+
+    result = handle_patch_step(
+        planning_session(),
+        workspace,
+        {
+            "step_number": 3,
+            "step": {"content": "patched after string-number repair"},
+        },
+    )
+
+    assert result.is_error is False
+    payload = json.loads(_read_response_text(result))
+    assert payload["validation_warnings"] == []
+    updated = _read_draft(tmp_path)
+    updated_sections = cast("dict[str, object]", updated["sections"])
+    updated_steps = cast("list[dict[str, object]]", updated_sections["steps"])
+    patched = next(step for step in updated_steps if step["number"] == 3)
+    assert patched["content"] == "patched after string-number repair"
+    assert [step["number"] for step in updated_steps] == [1, 2, 3]
+
+
 def test_patch_step_overwrite_depends_on_triggers_remap(tmp_path: Path) -> None:
     """patch with {depends_on: [1, 2]} overwrites the depends_on
     and triggers the reindex/AC remap.

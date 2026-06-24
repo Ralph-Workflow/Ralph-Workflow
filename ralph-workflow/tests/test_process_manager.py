@@ -13,6 +13,7 @@ import os
 import sys
 import threading
 import time as _time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
@@ -37,6 +38,8 @@ from ralph.process.manager import (
 from ralph.process.manager import (
     _process_manager as pm_mod,
 )
+from ralph.process.manager._process_manager_runtime import loguru_event_listener
+from ralph.process.manager._process_record import ProcessRecord
 from ralph.testing.fake_process import (
     FakeImmortalPopen,
     FakePopen,
@@ -367,6 +370,40 @@ def test_log_events_false_suppresses_loguru_output() -> None:
         assert len(process_lines_loud) >= 1, (
             f"Expected process log lines with log_events=True, got none. records={records}"
         )
+    finally:
+        logger.remove(sink_id)
+
+
+def test_successful_zombie_reconciliation_logs_below_warning() -> None:
+    """A reaped zombie with rc=0 is cleanup noise, not a verification warning."""
+    records: list[str] = []
+    sink_id = logger.add(
+        lambda msg: records.append(str(msg)),
+        level="WARNING",
+        format="{level}:{message}",
+    )
+    try:
+        record = ProcessRecord(
+            pid=123,
+            pgid=123,
+            command=("python", "-c", "pass"),
+            cwd=None,
+            started_at=datetime.now(tz=UTC),
+            status=ProcessStatus.KILLED,
+            returncode=0,
+            cause="zombie_reconciled",
+            label="test",
+        )
+        event = ProcessEvent(
+            record=record,
+            previous_status=ProcessStatus.RUNNING,
+            new_status=ProcessStatus.KILLED,
+            timestamp=datetime.now(tz=UTC),
+        )
+
+        loguru_event_listener(event)
+
+        assert records == []
     finally:
         logger.remove(sink_id)
 

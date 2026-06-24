@@ -27,4 +27,4 @@ Do not write to `.agent/workers/` paths belonging to other workers.
 
 {{ base_prompt }}
 
-{{ render_artifact_submission('development_result', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{{ render_artifact_submission('development_result', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Implemented the requested fix and verified it.","files_changed":"- src/main.py","plan_items_proven":[{"plan_item":"Step 1: Implement the fix","proof":"Updated src/main.py and ran pytest."}],"analysis_items_addressed":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}

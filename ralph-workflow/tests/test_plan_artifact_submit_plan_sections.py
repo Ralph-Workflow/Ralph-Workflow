@@ -108,6 +108,85 @@ def test_submit_plan_sections_accepts_entries_json_string(tmp_path: Path) -> Non
     assert step["expected_evidence"] == [{"kind": "file", "ref": "x.py"}]
 
 
+def test_submit_plan_sections_repairs_item_wrapped_entries_and_fields(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {
+            "entries": {
+                "item": [
+                    {
+                        "section": "summary",
+                        "content": {
+                            "context": "Repair planner wrapper lists.",
+                            "scope_items": {
+                                "item": [
+                                    {"text": "Write a regression test", "category": "test"},
+                                    {"text": "Normalize item wrappers", "category": "bugfix"},
+                                    {"text": "Run focused MCP tests", "category": "test"},
+                                ]
+                            },
+                        },
+                    },
+                    {
+                        "section": "skills_mcp",
+                        "content": {
+                            "skills": {"item": "test-driven-development"},
+                            "mcps": {"item": []},
+                        },
+                    },
+                ]
+            }
+        },
+    )
+
+    assert result.is_error is False, _read_response_text(result)
+    payload = json.loads(_read_response_text(result))
+    assert payload["submitted"] == ["summary", "skills_mcp"]
+    assert payload["validation_warnings"] == []
+    draft = _read_draft(tmp_path)
+    sections = cast("dict[str, object]", draft["sections"])
+    assert cast("dict[str, object]", sections["skills_mcp"])["skills"] == [
+        "test-driven-development"
+    ]
+
+
+def test_submit_plan_sections_repairs_repeated_item_wrapped_entries_and_fields(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_sections(
+        planning_session(),
+        workspace,
+        {
+            "entries": {
+                "item": {
+                    "item": [
+                        {
+                            "section": "skills_mcp",
+                            "content": {
+                                "skills": {"item": {"item": "test-driven-development"}},
+                                "mcps": {"item": {"item": []}},
+                            },
+                        }
+                    ]
+                }
+            }
+        },
+    )
+
+    assert result.is_error is False, _read_response_text(result)
+    payload = json.loads(_read_response_text(result))
+    assert payload["submitted"] == ["skills_mcp"]
+    assert payload["validation_warnings"] == []
+    draft = _read_draft(tmp_path)
+    sections = cast("dict[str, object]", draft["sections"])
+    assert sections["skills_mcp"] == {"skills": ["test-driven-development"]}
+
+
 def test_submit_plan_sections_all_valid_sections_are_staged(tmp_path: Path) -> None:
     """A batch of [summary, skills_mcp, steps] all valid returns submitted=[...] and the draft
     has all 3 sections."""

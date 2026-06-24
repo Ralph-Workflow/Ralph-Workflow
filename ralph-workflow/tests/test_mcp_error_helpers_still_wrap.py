@@ -17,15 +17,22 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.tools.artifact import (
+    _format_plan_batch_envelope_error,
     _format_plan_section_submission_error,
     _format_plan_step_edit_error,
+    handle_submit_plan_sections,
 )
+from ralph.workspace.fs import FsWorkspace
+from tests.test_artifact_format_docs_mock_session import planning_session
+
+if TYPE_CHECKING:
+    from ralph.mcp.tools.tool_content import ToolContent
 
 
 @pytest.mark.timeout_seconds(5)
@@ -111,13 +118,40 @@ def test_plan_error_helpers_use_json_shaped_retry_examples() -> None:
             backend=DEFAULT_FILE_BACKEND,
             tool_name="ralph_patch_step",
         ),
+        _format_plan_batch_envelope_error(
+            detail="entries: Field required",
+            workspace_root=Path("/tmp"),
+            backend=DEFAULT_FILE_BACKEND,
+        ),
     ]
-    forbidden_fragments = ("{'", "':", "{section:", "{action:", "{valid:", "source: '")
+    forbidden_fragments = ("{'", "':", "{...}", "{section:", "{action:", "{valid:", "source: '")
     for message in messages:
         for fragment in forbidden_fragments:
             assert fragment not in message, (
                 f"plan error helper contains pseudo-JSON fragment {fragment!r}: {message}"
             )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_plan_batch_error_helper_retry_envelope_is_handler_valid(tmp_path: Path) -> None:
+    """The no-skill batch retry guidance must be directly usable."""
+    message = _format_plan_batch_envelope_error(
+        detail="entries: Field required",
+        workspace_root=Path("/tmp"),
+        backend=DEFAULT_FILE_BACKEND,
+    )
+    start = message.index('{"entries"')
+    payload, _end = json.JSONDecoder().raw_decode(message[start:])
+
+    result = handle_submit_plan_sections(
+        planning_session(),
+        FsWorkspace(tmp_path),
+        cast("dict[str, object]", payload),
+    )
+
+    response = json.loads(cast("ToolContent", result.content[0]).text)
+    assert response["submitted"] == ["summary"]
+    assert response["validation_warnings"] == []
 
 
 @pytest.mark.timeout_seconds(5)

@@ -197,9 +197,13 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=SUBMIT_PLAN_SECTIONS_TOOL,
                 description=(
-                    "Batched section staging. Accepts a list of "
-                    '{"section":"summary","content":{...},"mode":"replace"} '
-                    "entries and parses ALL of them BEFORE any merge; if any entry "
+                    "Batched section staging. Accepts an object with an entries array, "
+                    'for example {"entries":[{"section":"summary","mode":"replace",'
+                    '"content":{"context":"Fix '
+                    'foo() index handling","scope_items":[{"text":"Add regression test",'
+                    '"category":"test"},{"text":"Clamp src/foo.py","category":"bugfix"},'
+                    '{"text":"Run pytest tests/test_foo.py -q","category":"test"}]}}]}. '
+                    "It parses ALL entries BEFORE any merge; if any entry "
                     "has malformed JSON, an unknown section, or an impossible mode, "
                     "the entire batch is rejected and the on-disk draft is unchanged. "
                     "Schema-invalid but valid JSON is staged with validation_warnings. "
@@ -207,8 +211,7 @@ def artifact_specs() -> list[ToolSpec]:
                     '{"submitted":["summary"],"staged_sections":["summary"],'
                     '"total_bytes":123,"validation_warnings":[]}. Use this when every entry '
                     "contains complete, analysis-ready section content. content should be "
-                    "the native JSON object/array for that section; obvious wrappers and "
-                    "single list-section objects are repaired. For list sections, "
+                    "the native JSON object/array for that section. For list sections, "
                     "mode='append' accepts either one item object or an array of items. "
                     "The full strict validator still "
                     "runs at validate_draft/finalize_plan; this tool only stages sections. "
@@ -451,7 +454,8 @@ def artifact_specs() -> list[ToolSpec]:
                     " satisfied_by_steps, AC id pattern, non-empty skills_mcp.skills,"
                     " 4 MB size cap) without writing"
                     " plan.json and without deleting the in-progress draft. Returns"
-                    ' {"valid":true} on success or {"valid":false,"errors":[...]} on'
+                    ' {"valid":true} on success or {"valid":false,"errors":'
+                    '["summary: required field is missing"]} on'
                     " failure. If no draft exists, returns valid=false with a named"
                     " missing-draft error. The same checks run at finalize_plan in the write path;"
                     " ralph_validate_draft exposes them in a read-only path so the agent"
@@ -499,7 +503,11 @@ def artifact_specs() -> list[ToolSpec]:
                     " If the in-progress draft is gone (e.g. after a successful finalize"
                     " or a discarded draft) but a finalized plan.json exists on disk,"
                     " returns the finalized plan with source='finalized_plan'. The"
-                    ' response shape is {"staged_sections":[...],"draft":{...},'
+                    ' response shape is {"staged_sections":["summary"],"draft":{"summary":'
+                    '{"context":"Fix foo() out-of-range index handling","scope_items":['
+                    '{"text":"Add regression test","category":"test"},'
+                    '{"text":"Update src/foo.py","category":"bugfix"},'
+                    '{"text":"Run pytest tests/test_foo.py -q","category":"test"}]}}},'
                     '"source":"draft"|"finalized_plan","updated_at":"..."}.'
                 ),
                 input_schema={"type": "object", "properties": {}},
@@ -512,9 +520,13 @@ def artifact_specs() -> list[ToolSpec]:
             metadata=_metadata(
                 name=DISCARD_PLAN_DRAFT_TOOL,
                 description=(
-                    "Delete the staged plan draft to start fresh. "
-                    "No parameters required. Use with caution as this cannot be undone. "
-                    "Example: {} deletes the current draft."
+                    "Delete the staged plan draft only when truly starting over from a "
+                    "blank draft because the current staged plan is unsalvageable. "
+                    "Do not use this to clear ordinary validation_warnings; repair staged "
+                    "sections with ralph_submit_plan_section or ralph_submit_plan_sections, "
+                    "then run ralph_validate_draft. No parameters required. "
+                    "Use with caution as this cannot be undone. Example: {} deletes the "
+                    "current draft."
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,

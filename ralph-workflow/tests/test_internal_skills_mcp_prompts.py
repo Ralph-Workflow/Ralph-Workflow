@@ -27,7 +27,9 @@ from ralph.mcp.tools.artifact import (
     _format_plan_step_edit_error,
     _raise_format_doc_error,
     _raise_index_format_error,
+    prepare_artifact_submission,
 )
+from ralph.mcp.tools.names import RalphToolName
 from ralph.skills._content import BASELINE_SKILL_NAMES
 from tests.test_prompt_template_files import (
     PLANNING_ANALYSIS_CORE_WORKFLOW_GUIDANCE,
@@ -51,6 +53,12 @@ ARTIFACT_SKILL_PATH = SKILL_DIR / "submit-artifact.md"
 COMMIT_MESSAGE_SKILL_PATH = SKILL_DIR / "submit-commit-message-artifact.md"
 DEVELOPMENT_RESULT_SKILL_PATH = SKILL_DIR / "submit-development-result-artifact.md"
 COMMIT_CLEANUP_SKILL_PATH = SKILL_DIR / "submit-commit-cleanup-artifact.md"
+ARTIFACT_SKILL_PATHS = (
+    ARTIFACT_SKILL_PATH,
+    COMMIT_MESSAGE_SKILL_PATH,
+    DEVELOPMENT_RESULT_SKILL_PATH,
+    COMMIT_CLEANUP_SKILL_PATH,
+)
 PLANNING_JINJA = TEMPLATES_DIR / "planning.jinja"
 PLANNING_FALLBACK_JINJA = TEMPLATES_DIR / "planning_fallback.jinja"
 PLANNING_EDIT_JINJA = TEMPLATES_DIR / "planning_edit.jinja"
@@ -81,6 +89,19 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
 
 def _read_skill(path: Path) -> tuple[dict[str, str], str]:
     return _parse_frontmatter(path.read_text(encoding="utf-8"))
+
+
+def _fenced_json_objects(markdown: str) -> list[dict[str, object]]:
+    blocks: list[dict[str, object]] = []
+    for match in re.finditer(r"```json\n(?P<body>.*?)\n```", markdown, re.DOTALL):
+        body = match.group("body")
+        try:
+            decoded = json.loads(body)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, dict):
+            blocks.append(decoded)
+    return blocks
 
 
 # ---------------------------------------------------------------------------
@@ -136,11 +157,22 @@ def test_submit_plan_artifact_skill_blocks_stale_atomic_and_minimal_guidance() -
             f"submit-plan-artifact.md contains stale/minimal plan guidance: {fragment!r}"
         )
 
-    assert "Do not retry plan submission through generic `ralph_submit_artifact`" in body
-    assert "Empty skill lists are invalid for every planning profile" in body
+    assert "Falling back to `ralph_submit_artifact` for plans" in body
+    assert "Empty skill lists are invalid for every planning" in body
+    assert "profile." in body
     assert "A failed `ralph_finalize_plan` preserves the" in body
     assert "staged draft for repair" in body
     assert "lost the staged draft" not in body
+    assert "truly starting over" in body
+    assert "blank draft" in body
+    assert "Do not use discard" in body
+    assert "ordinary `validation_warnings`" in body
+    assert 'serializer wrapper objects such as `{"item": ["writing-plans"]}`' in body
+    assert '"satisfied_by_steps": [1]' in body
+    assert "## Per-section compact payload templates" not in body
+    assert "Concrete outcome" not in body
+    assert "All tests pass" not in body
+    assert body.count("## Dumb-proof checklist (plan-artifact)") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +214,63 @@ def test_submit_artifact_skill_shape() -> None:
     )
     assert "native JSON" in body and "object/array" in body
     assert "Passing an object instead of a JSON string" not in body
+
+
+def test_submit_artifact_development_result_example_matches_validator() -> None:
+    """The skill's concrete development_result example must pass the real normalizer."""
+    _, body = _read_skill(ARTIFACT_SKILL_PATH)
+    examples = [
+        block
+        for block in _fenced_json_objects(body)
+        if block.get("artifact_type") == "development_result"
+        and isinstance(block.get("content"), dict)
+    ]
+    assert examples, "submit-artifact.md must include a native development_result example"
+
+    artifact_type, normalized = prepare_artifact_submission(examples[0])
+
+    assert artifact_type == "development_result"
+    addressed = normalized["analysis_items_addressed"]
+    assert isinstance(addressed, list)
+    assert all(isinstance(item, dict) and "how_to_fix_item" in item for item in addressed)
+    assert "verification" not in normalized
+
+
+def test_packaged_artifact_skills_reference_only_real_mcp_tools() -> None:
+    known_tools = {tool.value for tool in RalphToolName}
+    unknown: dict[str, list[str]] = {}
+    for path in ARTIFACT_SKILL_PATHS:
+        _fm, body = _read_skill(path)
+        referenced = set(re.findall(r"\b(?:ralph_)?[a-z][a-z0-9_]+(?=\()", body))
+        missing = sorted(
+            name
+            for name in referenced
+            if name.startswith("ralph_") and name not in known_tools
+        )
+        if missing:
+            unknown[path.name] = missing
+
+    assert unknown == {}
+
+
+def test_concrete_artifact_skill_examples_match_validators() -> None:
+    placeholder_markers = ("{...", "<exact-", "<type>", "<artifact")
+    validated: list[str] = []
+    for path in ARTIFACT_SKILL_PATHS:
+        _fm, body = _read_skill(path)
+        for block in _fenced_json_objects(body):
+            if "artifact_type" not in block:
+                continue
+            encoded = json.dumps(block)
+            assert not any(marker in encoded for marker in placeholder_markers), (
+                f"{path.name} contains a placeholder JSON artifact example: {encoded}"
+            )
+            prepare_artifact_submission(block)
+            validated.append(f"{path.name}:{block['artifact_type']}")
+
+    assert "submit-artifact.md:commit_message" in validated
+    assert "submit-artifact.md:development_result" in validated
+    assert "submit-commit-message-artifact.md:commit_message" in validated
 
 
 # ---------------------------------------------------------------------------

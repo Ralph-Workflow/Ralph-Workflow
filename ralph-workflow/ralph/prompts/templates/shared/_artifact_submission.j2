@@ -20,7 +20,7 @@
    ever changes so receipts alone satisfy completion, REMOVE step 5 in
    the same change.
 #}
-{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_payload='<inner payload JSON object — see format doc>', write_file_tool_reference='') -%}
+{% macro render_artifact_submission(artifact_type, submit_tool_reference, example_payload, write_file_tool_reference='') -%}
 ## Submit a `{{ artifact_type }}` artifact
 
 **Do steps 1-5 in order. If step 3 is unavailable and the write-file fallback is present, use step 6 instead. Step 5 is mandatory.**
@@ -35,7 +35,7 @@
    is a JSON STRING — escape inner quotes):
 
    ```
-   {"artifact_type": "{{ artifact_type }}", "content": {"...": "inner payload"}}
+   {"artifact_type": "{{ artifact_type }}", "content": {{ example_payload | tojson }}}
    ```
 
 4. **Wait for the tool result.** `Artifact submitted:` is NOT completion.

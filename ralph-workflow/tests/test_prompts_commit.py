@@ -9,6 +9,10 @@ from ralph.prompts.commit import (
 )
 from ralph.prompts.template_registry import TemplateRegistry
 
+VALID_COMMIT_SUBJECT_JSON = (
+    '\\"type\\":\\"commit\\",\\"subject\\":\\"fix(auth): prevent token expiry race\\"'
+)
+
 
 def test_commit_prompt_includes_diff_and_guidance() -> None:
     diff = "diff --git a/app.py b/app.py\n@@ -1 +1 @@\n-foo\n+bar"
@@ -36,7 +40,7 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "artifact submission procedure above is authoritative" in prompt.lower()
     assert "declare_complete" in prompt.lower()
     assert '"type": "commit"' in prompt
-    assert '"subject": "type(scope): description"' in prompt
+    assert '"subject": "fix(auth): prevent token expiry race"' in prompt
     assert '"type": "skip"' in prompt
     assert '"reason": "Reason why no commit is needed"' in prompt
     assert '"files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]' in prompt
@@ -50,7 +54,7 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     # text. The macro is the single source of truth.
     assert "raw inner" in prompt.lower() and "payload json" in prompt.lower()
     assert '"artifact_type":"commit_message"' in prompt
-    assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
+    assert VALID_COMMIT_SUBJECT_JSON in prompt
     assert "do not use `content_path` for this task" in prompt.lower()
     assert "edit the json file on disk" not in prompt.lower()
     assert "use `chore` only for repo maintenance" in prompt.lower()
@@ -99,9 +103,9 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "current worktree vs the last commit" in prompt
     assert "Do not analyze anything" in prompt
     assert "call `ralph_submit_artifact` when it is available" in prompt
-    assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
+    assert VALID_COMMIT_SUBJECT_JSON in prompt
     assert (
-        '{"type":"commit","subject":"type(scope): description",'
+        '{"type":"commit","subject":"fix(auth): prevent token expiry race",'
         '"excluded_files":[{"path":"notes/todo.md","reason":"not_task_related"}]}' in prompt
     )
     assert "json string" in prompt.lower()
@@ -123,7 +127,7 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "raw inner" in prompt and "payload JSON" in prompt
     assert "no outer envelope" in prompt
     assert '"artifact_type":"commit_message"' in prompt
-    assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt
+    assert VALID_COMMIT_SUBJECT_JSON in prompt
     assert "Do not use `content_path` for this task" in prompt
     assert "Use `chore` only for repo maintenance" in prompt
     assert "Omit the scope when the change spans multiple subsystems" in prompt

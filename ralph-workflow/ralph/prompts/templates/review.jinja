@@ -25,7 +25,7 @@ Submit review findings using `artifact_type="issues"`.
 Return a JSON object.
 
 - If the implementation passes review, use `{"status":"no_issues","summary":"<one-sentence summary of the review>","issues":[],"what_came_up_short":[],"how_to_fix":[]}`.
-- If the implementation needs fixes, use `{"status":"issues_found","summary":"...","issues":[...],"what_came_up_short":[...],"how_to_fix":[...]}`.
+- If the implementation needs fixes, use `{"status":"issues_found","summary":"The implementation has a validation gap.","issues":[{"path":"src/foo.py","severity":"high","summary":"Out-of-range indexes are not clamped"}],"what_came_up_short":["Out-of-range index handling is missing"],"how_to_fix":["Clamp the index in src/foo.py and add tests/test_foo.py::test_clamp_handles_out_of_range_index"]}`.
 
 Valid status values are `"no_issues"` and `"issues_found"`.
 
@@ -44,7 +44,7 @@ For any review that finds issues, the following two fields are mandatory and mus
 When `status` is `"no_issues"`, `issues`, `what_came_up_short`, and `how_to_fix` may be empty arrays.
 When `status` is `"issues_found"`, all three arrays must be non-empty.
 
-{{ render_artifact_submission('issues', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{{ render_artifact_submission('issues', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"no_issues","summary":"The implementation is correct and verification passed.","issues":[],"what_came_up_short":[],"how_to_fix":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 Example issues artifact:
 

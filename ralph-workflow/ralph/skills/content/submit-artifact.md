@@ -49,15 +49,20 @@ If you are submitting a plan, this is the wrong skill. Use
    or as a JSON-serialized string. Do NOT wrap it in an outer
    `{"type": ..., "content": ...}` envelope — Ralph Workflow adds artifact
    metadata itself.
-5. Call `ralph_submit_artifact({"artifact_type": "<type>", "content": {...}})`
-   or the equivalent stringified-content envelope.
+5. Call `ralph_submit_artifact` with the concrete envelope for that type,
+   such as the `commit_message` example below, or the equivalent
+   stringified-content envelope.
 
 **Canonical envelope** for `commit_message`:
 
 ```json
 {
   "artifact_type": "commit_message",
-  "content": {"type": "commit", "subject": "type(scope): description"}
+  "content": {
+    "type": "commit",
+    "subject": "fix(auth): prevent token expiry race",
+    "body": "Concurrent refresh requests could invalidate a token while another request was still using it. This change serializes refresh operations per token so callers see a stable credential."
+  }
 }
 ```
 
@@ -82,15 +87,14 @@ If you are submitting a plan, this is the wrong skill. Use
     ],
     "analysis_items_addressed": [
       {
-        "analysis_item": "AC-01",
-        "proof": "Focused regression test covers the out-of-range index."
+        "how_to_fix_item": "Add a focused regression test for the out-of-range index.",
+        "proof": "tests/test_foo.py contains test_clamp_handles_out_of_range_index."
       },
       {
-        "analysis_item": "AC-02",
-        "proof": "Production change prevents the crash and the regression test passes."
+        "how_to_fix_item": "Clamp the index before lookup while preserving foo()'s public signature.",
+        "proof": "src/foo.py prevents the crash and pytest tests/test_foo.py -q passes."
       }
-    ],
-    "verification": [{"command": "pytest tests/test_foo.py -q", "result": "passed"}]
+    ]
   }
 }
 ```
@@ -120,7 +124,18 @@ then:
 ```json
 {
   "artifact_type": "development_result",
-  "content": "{...valid development_result JSON...}"
+  "content": {
+    "status": "completed",
+    "summary": "Added the foo() regression test, clamped the index in src/foo.py, and verified the focused test passes.",
+    "files_changed": "- src/foo.py\n- tests/test_foo.py",
+    "plan_items_proven": [
+      {
+        "plan_item": "Step 1: Add the foo() regression test",
+        "proof": "tests/test_foo.py contains test_clamp_handles_out_of_range_index."
+      }
+    ],
+    "analysis_items_addressed": []
+  }
 }
 ```
 
@@ -129,8 +144,12 @@ then:
 
 ```json
 {
-  "artifact_type": "<exact-type-name-from-index>",
-  "content": "{...valid <type> JSON...}"
+  "artifact_type": "commit_message",
+  "content": {
+    "type": "commit",
+    "subject": "fix(auth): prevent token expiry race",
+    "body": "Use the exact artifact_type from the index, then rebuild content from that type's format doc."
+  }
 }
 ```
 
@@ -153,15 +172,17 @@ If this skill and a format doc ever disagree, the format doc wins.
 - Conflating `submit-artifact` (this skill) with the MCP tool
   `ralph_submit_artifact`. The skill is the passive reference; the MCP tool
   is the active submission entry point.
-- Wrapping the inner payload in an outer `{"type": ..., "content": ...}`
-  envelope. The canonical envelope is `{"artifact_type": "<type>",
-  "content": {...}}` with no outer wrapper.
+- Wrapping the inner payload in an outer `{"type": "commit_message", "content": {"type": "commit"}}`
+  envelope. The canonical envelope is `{"artifact_type": "commit_message",
+  "content": {"type": "commit", "subject": "fix(auth): prevent token expiry race"}}`
+  with no outer wrapper.
 - Using `content_path` instead of `content` for agent-facing artifact
   submissions. Use `content` with a native JSON object or JSON-serialized string;
   `content_path` is reserved for non-agent callers.
 - Treating a native JSON object as invalid. `content` may be a native JSON
-  object/array or a JSON-serialized string; the handler parses both. Keep the
-  envelope as `{"artifact_type": "<type>", "content": ...}` either way.
+  object/array or a JSON-serialized string; the handler parses both. For
+  `commit_message`, keep the envelope as `{"artifact_type": "commit_message",
+  "content": {"type": "commit", "subject": "fix(auth): prevent token expiry race"}}`.
 - Inventing an `artifact_type` value. The closed set lives in the index;
   unknown types are rejected with a pointer to the index.
 - Using the generic `analysis_decision` alias outside an analysis drain.
@@ -185,6 +206,7 @@ If this skill and a format doc ever disagree, the format doc wins.
   STOP. The closed set lives in
   `.agent/artifact-formats/artifact_formats_index.md`; unknown types
   are rejected with a pointer to the index.
-- "I will wrap the inner payload in `{"type": ..., "content": ...}`."
-  STOP. The canonical envelope is `{"artifact_type": "<type>",
-  "content": {...}}` with no outer wrapper.
+- "I will wrap the inner payload in `{"type": "commit_message", "content": {"type": "commit"}}`."
+  STOP. Use the canonical envelope `{"artifact_type": "commit_message",
+  "content": {"type": "commit", "subject": "fix(auth): prevent token expiry race"}}`
+  with no outer wrapper.

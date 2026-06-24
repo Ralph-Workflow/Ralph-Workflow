@@ -335,8 +335,12 @@ def _project_skills_need_install(workspace_root: Path) -> bool:
     canonical = project_skill_root(workspace_root)
     if not canonical.is_dir():
         return True
+    if not _root_metadata_valid(canonical):
+        return True
     for name in BASELINE_SKILL_NAMES:
         if not (canonical / name / "SKILL.md").exists():
+            return True
+        if not _root_skill_marker_valid(canonical, name):
             return True
     for sibling in project_sibling_skill_roots(workspace_root):
         sibling_root = sibling.resolve(workspace_root)
@@ -360,18 +364,23 @@ def _root_metadata_valid(resolved: Path) -> bool:
 
 def _root_skill_marker_valid(resolved: Path, name: str) -> bool:
     marker = resolved / name / _MANAGED_MARKER
-    if not marker.exists():
+    skill_file = resolved / name / "SKILL.md"
+    if not marker.exists() or not skill_file.exists():
         return False
     try:
         recorded_raw: object = json.loads(marker.read_text(encoding="utf-8"))
+        actual_hash = hashlib.sha256(skill_file.read_bytes()).hexdigest()
     except (OSError, json.JSONDecodeError):
         return False
     if not isinstance(recorded_raw, dict):
         return False
     recorded = cast("dict[str, object]", recorded_raw)
-    if recorded.get("managed_by") != "ralph-workflow":
-        return False
-    return recorded.get("installed_content_sha256") == _compute_skill_hash(name)
+    expected_hash = _compute_skill_hash(name)
+    return (
+        recorded.get("managed_by") == "ralph-workflow"
+        and recorded.get("installed_content_sha256") == expected_hash
+        and actual_hash == expected_hash
+    )
 
 
 def check_skills_update_available() -> bool:

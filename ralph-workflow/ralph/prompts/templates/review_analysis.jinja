@@ -222,12 +222,12 @@ Return a JSON object.
   `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
 
 - The review has gaps in coverage or quality:
-  `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
+  `{"status":"request_changes","summary":"The review missed a high-severity validation issue.","what_came_up_short":["The review did not check the new error path"],"how_to_fix":["Re-review src/foo.py and tests/test_foo.py, then submit issues if the error path is still uncovered"]}`
 
 - The review found major incompleteness or an otherwise unusable result; stronger remediation may be needed, including possible redo or starting over from the work phase:
-  `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
+  `{"status":"failed","summary":"The review artifact is unusable because it lacks issue details.","what_came_up_short":["issues_found was submitted without issue objects"],"how_to_fix":["Redo the review and submit each issue with path, severity, summary, and concrete fix guidance"]}`
 
-{{ render_artifact_submission('review_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{{ render_artifact_submission('review_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Review looks good."}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 

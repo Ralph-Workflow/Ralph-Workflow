@@ -90,7 +90,7 @@ from ralph.mcp.tools.coordination import (
     WorkspaceLike,
     require_capability,
 )
-from ralph.mcp.tools.json_repair import JSON_CONTAINER_FIELD_NAMES
+from ralph.mcp.tools.json_repair import JSON_CONTAINER_FIELD_NAMES, JSON_LIST_FIELD_NAMES
 from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
@@ -612,10 +612,10 @@ def handle_validate_plan_draft(
 
     Read-only: does NOT write ``.agent/artifacts/plan.json`` and does NOT
     delete the in-progress draft. Returns ``{"valid": true}`` on success
-    or ``{"valid": false, "errors": [...]}`` on failure. The same checks
-    run at ``finalize_plan`` in the write path; this tool exposes them
-    in a read-only path so the agent can dry-run validation before
-    committing.
+    or ``{"valid": false, "errors": ["summary: required field is missing"]}``
+    on failure. The same checks run at ``finalize_plan`` in the write path;
+    this tool exposes them in a read-only path so the agent can dry-run
+    validation before committing.
     """
     require_capability(session, PLAN_DRAFT_READ_CAPABILITY, "Plan draft validation")
     del params
@@ -980,6 +980,8 @@ def handle_submit_plan_sections(
     entries_obj = params.get("entries")
     if isinstance(entries_obj, str):
         entries_obj = _coerce_json_text_container(entries_obj)
+    else:
+        entries_obj = _coerce_json_list_field(entries_obj)
     if not isinstance(entries_obj, list):
         raise InvalidParamsError(
             _format_plan_batch_envelope_error(
@@ -1518,11 +1520,32 @@ def _coerce_known_container_fields(value: object) -> object:
         return value
     normalized: dict[str, object] = {}
     for key, item in value.items():
-        if key in JSON_CONTAINER_FIELD_NAMES or key in PLAN_SECTION_NAMES:
+        if key in JSON_LIST_FIELD_NAMES:
+            normalized[key] = _coerce_json_list_field(item)
+        elif key in JSON_CONTAINER_FIELD_NAMES or key in PLAN_SECTION_NAMES:
             normalized[key] = _coerce_json_text_container(item)
         else:
             normalized[key] = _coerce_known_container_fields(item)
     return normalized
+
+
+def _coerce_json_list_field(value: object) -> object:
+    """Repair common agent-produced list wrappers without dropping payload data."""
+    item, unwrapped = _coerce_item_chain(value)
+    if unwrapped:
+        if isinstance(item, list):
+            return item
+        return [item]
+    return item
+
+
+def _coerce_item_chain(value: object) -> tuple[object, bool]:
+    normalized = _coerce_json_text_container(value)
+    unwrapped = False
+    while isinstance(normalized, dict) and len(normalized) == 1 and "item" in normalized:
+        unwrapped = True
+        normalized = _coerce_json_text_container(normalized["item"])
+    return normalized, unwrapped
 
 
 def _coerce_artifact_envelope_content(value: object) -> object:
@@ -1550,6 +1573,13 @@ def _normalize_plan_section_payload(
         normalized_dict = cast("dict[str, object]", normalized)
         if len(normalized_dict) == 1 and section in normalized_dict:
             normalized = _coerce_json_text_container(normalized_dict[section])
+    if (
+        (section in PLAN_SECTION_LIST_ITEM_MODELS or section == "work_units")
+        and isinstance(normalized, dict)
+        and len(normalized) == 1
+        and "item" in normalized
+    ):
+        normalized = _coerce_json_list_field(normalized)
     if section in PLAN_SECTION_OBJECT_MODELS and mode == "replace" and isinstance(normalized, str):
         decoded = _coerce_json_text_container(normalized)
         if isinstance(decoded, dict):
@@ -1657,7 +1687,7 @@ def _format_plan_section_submission_error(
             'cannot recur","intent_verb":"improve","scope_items":[{"text":"Add a regression '
             'test","category":"test"},{"text":"Modify src/foo.py","category":"file_change"},'
             '{"text":"Run pytest tests/test_foo.py -q","category":"test"}]}. summary must be a '
-            'JSON object, not {"summary":{...}}.'
+            "JSON object passed directly as content, not wrapped in an outer summary key."
         )
     if section == "critical_files" and "primary_files" in detail and "required" in detail.lower():
         guidance.append(
@@ -1673,7 +1703,7 @@ def _format_plan_section_submission_error(
             '"step_type":"file_change","targets":[{"path":"tests/test_foo.py","action":"modify"}],'
             '"depends_on":[],"expected_evidence":[{"kind":"test_name","ref":'
             '"tests/test_foo.py::test_clamp_handles_out_of_range_index"}]}], not a single '
-            'object and not {"steps":[...]} wrapped under a key.'
+            "object and not wrapped under an outer steps key."
         )
     if section == "steps" and mode == "append" and "object or array of items" in detail:
         guidance.append(
@@ -1723,7 +1753,8 @@ def _format_plan_section_submission_error(
             'Expected shape for section "verification_strategy": [{"method":'
             '"pytest tests/test_foo.py -q","expected_outcome":"The focused foo() regression '
             'test passes.","timeout_seconds":60,"cwd":"ralph-workflow"}]. With mode="replace" '
-            'use a JSON array, not {"verification_strategy":[...]}; with mode="append" use one '
+            "use a JSON array, not an object wrapped under verification_strategy; with "
+            'mode="append" use one '
             "verification object or a JSON array of verification objects."
         )
     if (
@@ -1756,7 +1787,15 @@ def _format_plan_batch_envelope_error(
             f"Fix this by reading '{plan_doc}' inside the workspace.",
             (
                 "Use ralph_submit_plan_sections with the canonical batch envelope "
-                '{"entries":[{"section":"summary","mode":"replace","content":{...}}]}. '
+                '{"entries":[{"section":"summary","mode":"replace","content":{"context":'
+                '"Fix foo() out-of-range index handling after reading src/foo.py and '
+                'tests/test_foo.py","intent":"Clamp foo() indexes and prove the '
+                'regression with a focused test","intent_verb":"fix","scope_items":'
+                '[{"text":"Add tests/test_foo.py::test_clamp_handles_out_of_range_index",'
+                '"category":"test"},{"text":"Update src/foo.py to clamp negative and '
+                'oversized indexes without changing the public foo() signature",'
+                '"category":"bugfix"},{"text":"Run pytest tests/test_foo.py -q to prove the '
+                'regression is fixed","category":"test"}]}}]}. '
                 "The plan format doc section 'Step-wise submission' shows the valid section names, "
                 "content shapes, and mode usage."
             ),
@@ -1835,11 +1874,17 @@ def _format_plan_step_edit_error(
             ),
             (
                 "Canonical step-edit envelopes: ralph_insert_plan_step => "
-                '{"index":2,"step":{...}}; '
-                'ralph_replace_plan_step => {"step_number":2,"step":{...}}; '
+                '{"index":2,"step":{"number":2,"title":"Clamp the foo() index",'
+                '"content":"Update src/foo.py so foo() clamps out-of-range indexes.",'
+                '"step_type":"file_change","targets":[{"path":"src/foo.py","action":"modify"}]}}; '
+                'ralph_replace_plan_step => {"step_number":2,"step":{"number":2,'
+                '"title":"Clamp the foo() index","content":"Update src/foo.py so foo() '
+                'clamps out-of-range indexes.","step_type":"file_change","targets":'
+                '[{"path":"src/foo.py","action":"modify"}]}}; '
                 'ralph_remove_plan_step => {"step_number":2}; '
                 'ralph_move_plan_step => {"from_step_number":2,"to_index":1}; '
-                'ralph_patch_step => {"step_number":2,"step":{...}}.'
+                'ralph_patch_step => {"step_number":2,"step":{"content":"Preserve '
+                "valid-index behavior and add expected evidence.\"}}."
             ),
             f"After fixing the payload or step number, retry {tool_name}.",
             (
@@ -2316,9 +2361,6 @@ def _raise_format_doc_error(
         )
         raise InvalidParamsError(msg) from original_exc
 
-    retry_example = (
-        f'{{"artifact_type":"{artifact_type}","content":"{{...valid {artifact_type} JSON...}}"}}'
-    )
     per_type_sentence = _per_type_skill_pointer_sentence(artifact_type)
     try:
         relative_path = materialize_format_doc(workspace_root, artifact_type, backend=backend)
@@ -2329,7 +2371,8 @@ def _raise_format_doc_error(
                 f"The exact format is documented at '{relative_path}' inside the workspace. "
                 "Read that file and rebuild your submission before retrying. "
                 "Then retry ralph_submit_artifact. "
-                f"Canonical retry envelope: {retry_example}. "
+                "Use artifact_type set to the same value you just submitted and "
+                "content set to a native JSON object or JSON string rebuilt from the format doc. "
                 "Do NOT rely on guesswork; follow the documented shape exactly. "
                 "Optional: the bundled `submit-artifact` skill shows the canonical "
                 "envelope for each non-plan artifact type."
@@ -2343,7 +2386,7 @@ def _raise_format_doc_error(
                 f"read 'ralph/mcp/artifacts/format_docs/{artifact_type}.md' "
                 "in the repo source tree "
                 "instead, rebuild the submission before retrying, then retry "
-                f"ralph_submit_artifact with envelope {retry_example}) "
+                "ralph_submit_artifact with the same artifact_type and rebuilt content.) "
                 "Optional: the bundled `submit-artifact` skill shows the canonical "
                 "envelope for each non-plan artifact type."
                 f"{per_type_sentence}"
@@ -2356,7 +2399,7 @@ def _raise_format_doc_error(
             f"read 'ralph/mcp/artifacts/format_docs/{artifact_type}.md' "
             "in the repo source tree "
             "instead, rebuild the submission before retrying, then retry "
-            f"ralph_submit_artifact with envelope {retry_example}) "
+            "ralph_submit_artifact with the same artifact_type and rebuilt content.) "
             "Optional: the bundled `submit-artifact` skill shows the canonical "
             "envelope for each non-plan artifact type."
             f"{per_type_sentence}"
