@@ -135,7 +135,7 @@ Artifact content JSON examples:
 {"analysis_complete": true, "actions": [{"action": "delete_file", "path": "tmp/debug.log"}, {"action": "add_to_gitignore", "pattern": "tmp/*.log"}]}
 ```
 
-{{ render_artifact_submission('commit_cleanup', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{{ render_artifact_submission('commit_cleanup', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"analysis_complete":true,"actions":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-commit-cleanup-artifact', '.agent/artifact-formats/commit_cleanup.md') }}
 

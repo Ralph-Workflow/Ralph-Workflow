@@ -497,6 +497,144 @@ def test_plan_section_submit_repairs_smart_quote_delimiters(tmp_path: Path) -> N
     assert sections["skills_mcp"] == {"skills": ["writing-plans"]}
 
 
+def test_plan_section_submit_repairs_item_wrapped_summary_lists(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_section(
+        _planning_session(),
+        workspace,
+        {
+            "section": "summary",
+            "content": {
+                "context": "Fix the planner staging loop.",
+                "scope_items": {
+                    "item": [
+                        {"text": "Add a wrapper repair regression test", "category": "test"},
+                        {"text": "Repair MCP JSON list wrappers", "category": "bugfix"},
+                        {"text": "Run focused plan submit tests", "category": "test"},
+                    ]
+                },
+            },
+        },
+    )
+
+    assert result.is_error is False
+    response = cast("dict[str, object]", json.loads(_read_response_text(result)))
+    assert response["validation_warnings"] == []
+    summary = cast("dict[str, object]", _read_draft_sections(tmp_path)["summary"])
+    assert summary["scope_items"] == [
+        {"text": "Add a wrapper repair regression test", "category": "test"},
+        {"text": "Repair MCP JSON list wrappers", "category": "bugfix"},
+        {"text": "Run focused plan submit tests", "category": "test"},
+    ]
+
+
+def test_plan_section_submit_repairs_item_wrapped_skills_mcp_lists(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_section(
+        _planning_session(),
+        workspace,
+        {
+            "section": "skills_mcp",
+            "content": {
+                "skills": {
+                    "item": ["submit-plan-artifact", "test-driven-development"],
+                },
+                "mcps": {"item": "context7"},
+            },
+        },
+    )
+
+    assert result.is_error is False
+    response = cast("dict[str, object]", json.loads(_read_response_text(result)))
+    assert response["validation_warnings"] == []
+    assert _read_draft_sections(tmp_path)["skills_mcp"] == {
+        "skills": ["submit-plan-artifact", "test-driven-development"],
+        "mcps": ["context7"],
+    }
+
+
+def test_plan_section_submit_repairs_repeated_item_wrapped_skills_mcp_lists(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_section(
+        _planning_session(),
+        workspace,
+        {
+            "section": "skills_mcp",
+            "content": {
+                "skills": {"item": {"item": ["submit-plan-artifact"]}},
+                "mcps": {"item": {"item": "context7"}},
+            },
+        },
+    )
+
+    assert result.is_error is False
+    response = cast("dict[str, object]", json.loads(_read_response_text(result)))
+    assert response["validation_warnings"] == []
+    assert _read_draft_sections(tmp_path)["skills_mcp"] == {
+        "skills": ["submit-plan-artifact"],
+        "mcps": ["context7"],
+    }
+
+
+def test_plan_section_submit_repairs_nested_item_wrappers_in_design(
+    tmp_path: Path,
+) -> None:
+    workspace = FsWorkspace(tmp_path)
+    result = handle_submit_plan_section(
+        _planning_session(),
+        workspace,
+        {
+            "section": "design",
+            "content": {
+                "acceptance_criteria": {
+                    "criteria": {
+                        "item": [
+                            {
+                                "id": "AC-01",
+                                "description": "The planner stages wrapped list fields.",
+                                "satisfied_by_steps": {"item": 1},
+                            }
+                        ]
+                    }
+                },
+                "drift_detection": {
+                    "guard_commands": {"item": "pytest tests/test_x.py -q"},
+                    "expected_outputs": {"item": ["1 passed"]},
+                    "sources": {"item": "ci"},
+                    "on_drift_action": "fail-verify",
+                },
+                "testability": {
+                    "must_be_black_box": True,
+                    "required_test_layers": {"item": ["unit", "integration"]},
+                    "clock_injection_required": True,
+                },
+            },
+        },
+    )
+
+    assert result.is_error is False
+    response = cast("dict[str, object]", json.loads(_read_response_text(result)))
+    assert response["validation_warnings"] == []
+    design = cast("dict[str, object]", _read_draft_sections(tmp_path)["design"])
+    acceptance = cast("dict[str, object]", design["acceptance_criteria"])
+    assert acceptance["criteria"] == [
+        {
+            "id": "AC-01",
+            "description": "The planner stages wrapped list fields.",
+            "satisfied_by_steps": [1],
+        }
+    ]
+    drift = cast("dict[str, object]", design["drift_detection"])
+    assert drift["guard_commands"] == ["pytest tests/test_x.py -q"]
+    assert drift["sources"] == ["ci"]
+
+
 def test_plan_section_submit_repairs_python_literal_container_text(
     tmp_path: Path,
 ) -> None:

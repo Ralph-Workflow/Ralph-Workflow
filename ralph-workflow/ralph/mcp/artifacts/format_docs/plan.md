@@ -113,11 +113,11 @@ The five step-mutation tools (`ralph_insert_plan_step`, `ralph_replace_plan_step
 
 ### Net-new read-only tool: `ralph_validate_draft`
 
-`ralph_validate_draft` runs the full `PlanArtifact` cross-section validator (depends_on cycle, intent_verb vs scope_item category, parallel_plan XOR work_units, shell-invocation guard, research/verify steps in AC.satisfied_by_steps, AC id pattern, non-empty `skills_mcp.skills`, 4 MB size cap) without writing `plan.json` and without deleting the in-progress draft. Returns `{"valid":true}` on success or `{"valid":false,"errors":[...]}` on failure. If no draft exists yet, it returns `{"valid":false}` with a named missing-draft error instead of a false-green success. Cross-section invariants only run at `finalize_plan` in the write path; `ralph_validate_draft` exposes the same checks in a read-only path. Capability: `artifact.plan_read`.
+`ralph_validate_draft` runs the full `PlanArtifact` cross-section validator (depends_on cycle, intent_verb vs scope_item category, parallel_plan XOR work_units, shell-invocation guard, research/verify steps in AC.satisfied_by_steps, AC id pattern, non-empty `skills_mcp.skills`, 4 MB size cap) without writing `plan.json` and without deleting the in-progress draft. Returns `{"valid":true}` on success or `{"valid":false,"errors":["summary: required field is missing"]}` on failure. If no draft exists yet, it returns `{"valid":false}` with a named missing-draft error instead of a false-green success. Cross-section invariants only run at `finalize_plan` in the write path; `ralph_validate_draft` exposes the same checks in a read-only path. Capability: `artifact.plan_read`.
 
 ### Net-new batched tool: `ralph_submit_plan_sections`
 
-`ralph_submit_plan_sections` accepts a list of `{"section":"summary","content":{...},"mode":"replace"}` entries and parses ALL of them BEFORE any merge; malformed JSON, unknown sections, and impossible modes reject the batch (`{"submitted":[],"failed_at":1,"error":"..."}`) and leave the draft unchanged. Schema-invalid but valid JSON is staged and returned in `validation_warnings`. On success it returns `{"submitted":["summary"],"staged_sections":["summary"],"total_bytes":123,"validation_warnings":[]}`. Use this when you have built complete, analysis-ready section payloads, then run `ralph_validate_draft`. The full cross-section validator still runs at `validate_draft` / `finalize_plan`. Capability: `artifact.plan_write`.
+`ralph_submit_plan_sections` accepts an object with an `entries` array, like `{"entries":[{"section":"summary","content":{"context":"Fix foo() out-of-range index handling after reading src/foo.py and tests/test_foo.py","intent":"Clamp foo() indexes and prove the regression with a focused test","intent_verb":"fix","scope_items":[{"text":"Add tests/test_foo.py::test_clamp_handles_out_of_range_index","category":"test"},{"text":"Update src/foo.py to clamp negative and oversized indexes without changing the public foo() signature","category":"bugfix"},{"text":"Run pytest tests/test_foo.py -q to prove the regression is fixed","category":"test"}]},"mode":"replace"}]}` and parses ALL entries BEFORE any merge; malformed JSON, unknown sections, and impossible modes reject the batch (`{"submitted":[],"failed_at":1,"error":"..."}`) and leave the draft unchanged. Schema-invalid but valid JSON is staged and returned in `validation_warnings`. On success it returns `{"submitted":["summary"],"staged_sections":["summary"],"total_bytes":123,"validation_warnings":[]}`. Use this when you have built complete, analysis-ready section payloads, then run `ralph_validate_draft`. The full cross-section validator still runs at `validate_draft` / `finalize_plan`. Capability: `artifact.plan_write`.
 
 ### Design sub-section
 
@@ -1092,13 +1092,13 @@ looks like this:
 {
   "section": "summary",
   "content": {
-    "context": "Tweak the config key so the new env var is honored.",
-    "intent": "Tweak the config key.",
-    "intent_verb": "configure",
+    "context": "Fix the foo() out-of-range index regression after reading src/foo.py and tests/test_foo.py.",
+    "intent": "Clamp foo() indexes safely while preserving valid-index behavior.",
+    "intent_verb": "fix",
     "scope_items": [
-      {"text": "Edit config/app.yml", "category": "infra"},
-      {"text": "Verify reload", "category": "infra"},
-      {"text": "Document the change", "category": "infra"}
+      {"text": "Add a focused regression test for negative and oversized foo() indexes", "category": "test"},
+      {"text": "Modify src/foo.py to clamp indexes without changing the public foo() signature", "category": "file_change"},
+      {"text": "Run pytest tests/test_foo.py -q and confirm the focused regression passes", "category": "test"}
     ]
   }
 }

@@ -33,6 +33,18 @@ from .artifact import (
 )
 
 
+def _coerce_step_number(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit() and int(stripped) > 0:
+            return int(stripped)
+    return None
+
+
 def handle_insert_plan_step(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -335,7 +347,7 @@ def handle_patch_step(
     existing_step: dict[str, object] | None = None
     if isinstance(steps_obj, list):
         for step in steps_obj:
-            if isinstance(step, dict) and cast("int", step.get("number")) == step_number:
+            if isinstance(step, dict) and _coerce_step_number(step.get("number")) == step_number:
                 existing_step = step
                 break
     if existing_step is None:

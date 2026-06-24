@@ -79,21 +79,21 @@ MCP REQUIREMENT:
 The only state-changing tools you may call for this task are {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }} and {{ DECLARE_COMPLETE_TOOL_REFERENCE }}.
 If {{ SUBMIT_ARTIFACT_TOOL_REFERENCE }} is unavailable and your tool list includes {{ WRITE_FILE_TOOL_REFERENCE }}, you may use that one write_file call only for the documented fallback file.
 You MUST submit the final result through the documented artifact path: call {{ SUBMIT_ARTIFACT_TOOL_REFERENCE }} when it is available, or use the documented write-file fallback only when that tool is unavailable and your tool list exposes {{ WRITE_FILE_TOOL_REFERENCE }}. The inner payload must match one of these shapes:
-{"type": "commit", "subject": "type(scope): description"}
-{"type": "commit", "subject": "type(scope): description", "body": "Optional multi-line body"}
-{"type": "commit", "subject": "type(scope): description", "body_summary": "Brief summary", "body_details": "Detailed explanation", "body_footer": "Fixes #123"}
-{"type": "commit", "subject": "type(scope): description", "files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]}
-{"type": "commit", "subject": "type(scope): description", "excluded_files": [{"path": "notes/todo.md", "reason": "not_task_related"}]}
+{"type": "commit", "subject": "fix(auth): prevent token expiry race"}
+{"type": "commit", "subject": "fix(auth): prevent token expiry race", "body": "Optional multi-line body"}
+{"type": "commit", "subject": "fix(auth): prevent token expiry race", "body_summary": "Brief summary", "body_details": "Detailed explanation", "body_footer": "Fixes #123"}
+{"type": "commit", "subject": "fix(auth): prevent token expiry race", "files": ["src/auth/token.rs", "tests/auth/token_expiry_test.rs"]}
+{"type": "commit", "subject": "fix(auth): prevent token expiry race", "excluded_files": [{"path": "notes/todo.md", "reason": "not_task_related"}]}
 {"type": "skip", "reason": "Reason why no commit is needed"}.
 
 Submit the MCP arguments in this shape:
-{"artifact_type":"commit_message","content":"{\"type\":\"commit\",\"subject\":\"type(scope): description\"}"}
+{"artifact_type":"commit_message","content":"{\"type\":\"commit\",\"subject\":\"fix(auth): prevent token expiry race\"}"}
 
 Schema rules: use exactly one of commit/skip, use EITHER body OR the detailed body fields, never both, and only include files/excluded_files when you need selective commit scope. `files` must be an array of strings. `excluded_files` must be an array of objects with exactly `path` and `reason` fields. Valid `excluded_files.reason` values: internal_ignore, not_task_related, sensitive, deferred.
 
 Read the diff and decide whether the correct result is a commit artifact or a skip artifact. Then follow the artifact submission procedure below — it is the SINGLE source of truth for steps 1-5.
 
-{{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{{ render_artifact_submission('commit_message', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"type":"commit","subject":"fix(auth): prevent token expiry race"}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-commit-message-artifact', '.agent/artifact-formats/commit_message.md') }}
 

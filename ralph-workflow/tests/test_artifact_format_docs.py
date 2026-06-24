@@ -795,6 +795,15 @@ def test_plan_format_doc_documents_three_new_tools() -> None:
     assert "ralph_submit_plan_sections" in doc
 
 
+def test_plan_format_doc_quickstart_example_is_not_sparse_config_bait() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "Tweak the config key" not in doc
+    assert "Edit config/app.yml" not in doc
+    assert "Add a focused regression test for negative and oversized foo() indexes" in doc
+    assert "Run pytest tests/test_foo.py -q and confirm the focused regression passes" in doc
+
+
 def test_plan_format_doc_high_quality_example_does_not_use_verify_steps_for_ac_satisfaction(
 ) -> None:
     """The high-quality example must not contradict the AC satisfied_by_steps validator."""

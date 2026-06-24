@@ -64,7 +64,7 @@ smoke_test_result, or analysis-decision artifacts, use the companion
    envelope — Ralph Workflow adds artifact metadata itself.
 8. Call
    `ralph_submit_artifact({"artifact_type": "commit_cleanup", "content": {"analysis_complete": true, "actions": []}})`.
-9. After the submit success text, call `ralph_declare_complete(summary="commit_cleanup")`.
+9. After the submit success text, call `declare_complete(summary="commit_cleanup")`.
 
 **Minimal one-shot happy-path envelope** for an empty cleanup:
 

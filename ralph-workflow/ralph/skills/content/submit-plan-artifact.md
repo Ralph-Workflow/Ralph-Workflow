@@ -28,17 +28,19 @@ Use this skill when you are about to call any of:
 - `ralph_insert_plan_step` / `ralph_replace_plan_step` / `ralph_patch_step` /
   `ralph_remove_plan_step` / `ralph_move_plan_step` to edit a staged draft.
 - `ralph_get_plan_draft` to recover the current staged draft (returns
-  `{"staged_sections":[...],"draft":{...},"source":"draft"|"finalized_plan"}`). Use this
+  a JSON object with `staged_sections`, `draft`, and `source`). Use this
   to inspect or resume work after an interruption, after a step-mutation
   echo payload rewrote the step numbers, or when you need to confirm the
   surviving step numbers before issuing another mutation.
 - `ralph_validate_draft` for a read-only dry-run of the cross-section
   validator before finalizing. Returns `{"valid":true}` on success or
-  `{"valid":false,"errors":[...]}` on failure with the same error shape
+  `{"valid":false,"errors":["summary: required field is missing"]}` on failure with the same error shape
   the finalize path returns, so you can fix the offending sections and
   re-run the dry-run before staging again.
 - `ralph_finalize_plan` once every required section is staged and valid.
-- `ralph_discard_plan_draft` only when the staged draft is unsalvageable.
+- `ralph_discard_plan_draft` only when you are truly starting over from a
+  blank draft because the staged plan is unsalvageable. Do not use discard
+  to clear ordinary `validation_warnings`; repair the staged sections instead.
 
 The per-tool retry envelopes and reindex semantics for
 `ralph_insert_plan_step`, `ralph_replace_plan_step`, `ralph_patch_step`,
@@ -57,9 +59,9 @@ companion `submit-artifact` skill for generic artifact submission.
 2. Build an analysis-ready plan with the six required sections (`summary`, `skills_mcp`, `steps`,
    `critical_files`, `risks_mitigations`, `verification_strategy`) and
    optionally `design`, `parallel_plan`, `work_units`, `constraints`.
-3. Stage each section via `ralph_submit_plan_section(section='<name>',
-   mode='replace', content=<section-payload-as-dict>)` OR stage multiple
-   complete sections via `ralph_submit_plan_sections(entries=[...])`.
+3. Stage each section via `ralph_submit_plan_section(section="summary",
+   mode="replace", content={"context":"Fix foo() out-of-range index handling after reading src/foo.py and tests/test_foo.py","intent":"Clamp foo() indexes and prove the regression with a focused test","intent_verb":"fix","scope_items":[{"text":"Add tests/test_foo.py::test_clamp_handles_out_of_range_index","category":"test"},{"text":"Update src/foo.py to clamp negative and oversized indexes without changing the public foo() signature","category":"bugfix"},{"text":"Run pytest tests/test_foo.py -q to prove the regression is fixed","category":"test"}]})` OR stage multiple
+   complete sections via `ralph_submit_plan_sections(entries=[{"section":"summary","mode":"replace","content":{"context":"Fix foo() out-of-range index handling after reading src/foo.py and tests/test_foo.py","intent":"Clamp foo() indexes and prove the regression with a focused test","intent_verb":"fix","scope_items":[{"text":"Add tests/test_foo.py::test_clamp_handles_out_of_range_index","category":"test"},{"text":"Update src/foo.py to clamp negative and oversized indexes without changing the public foo() signature","category":"bugfix"},{"text":"Run pytest tests/test_foo.py -q to prove the regression is fixed","category":"test"}]}}])`.
    Inspect the returned `validation_warnings`; valid JSON that is not yet
    schema-valid is staged, not abandoned.
 4. Run `ralph_validate_draft` for a dry-run check before finalizing. If it
@@ -137,7 +139,8 @@ failure on the `summary` section with `mode='replace'`:
 
 For batch failures, `_format_plan_batch_envelope_error` references
 `ralph_submit_plan_sections` with `{"entries":[{"section":"summary","mode":"replace",
-"content":{...}}, ...]}`. For finalize failures, `_format_plan_finalize_error`
+"content":{"context":"Fix foo() index handling","scope_items":[{"text":"Add regression test","category":"test"},{"text":"Clamp src/foo.py","category":"bugfix"},{"text":"Run pytest tests/test_foo.py -q","category":"test"}]}}]}`.
+For finalize failures, `_format_plan_finalize_error`
 shows the canonical shape of every required section and names
 `ralph_submit_plan_section` / `ralph_submit_plan_sections` as the tools to
 update the draft. For step-edit failures, `_format_plan_step_edit_error`
@@ -171,13 +174,18 @@ If this skill and the format doc ever disagree, the format doc wins.
   `ralph_submit_plan_section` / `ralph_submit_plan_sections` /
   `ralph_finalize_plan`.
 - Submitting `scope_items` with fewer than 3 items or wrapping list sections
-  under a top-level key like `{"steps": [...]}`. List sections with
+  under a top-level `steps` key. List sections with
   `mode='replace'` MUST be a bare JSON array, not a wrapped object.
+- Emitting serializer wrapper objects such as `{"item": ["writing-plans"]}` for list
+  fields. Every list field in the examples is a native JSON array: use
+  `"skills": ["writing-plans"]`, `"mcps": []`, `"scope_items": [{"text":"Add regression test","category":"test"}]`,
+  `"criteria": [{"id":"AC-01","description":"foo() clamps out-of-range indexes","satisfied_by_steps":[1]}]`, and `"satisfied_by_steps": [1]`.
 - Using `step_type: "test"`, `step_type: "check"`, or `step_type: "run"`. The
   closed set is `file_change`, `action`, `research`, `verify`. Use the
   canonical value explicitly.
 - Submitting an empty `skills_mcp.skills` array. A plan must list at least
-  one task-relevant skill.
+  one task-relevant skill. Empty skill lists are invalid for every planning
+  profile.
 - Falling back to `ralph_submit_artifact` for plans. Planning must go through
   `ralph_submit_plan_section` / `ralph_submit_plan_sections` /
   `ralph_finalize_plan`.
@@ -355,138 +363,6 @@ single most common cause of a finalize failure.
 - Did you stage all 6 required sections (`summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, `verification_strategy`) via `ralph_submit_plan_section` or batch them in `ralph_submit_plan_sections`?
 - Does `summary.scope_items` contain at least 3 entries (the validator enforces `min_length=3`)?
 - Does `skills_mcp.skills` contain at least one task-relevant skill name?
-- Is every step's `step_type` one of the closed set `file_change`, `action`, `research`, `verify` (NOT `test`, `check`, `run`, or any ad-hoc label)?
-- Does every `file_change` step declare at least one `targets` entry, and does every `targets[*].action` use one of `create`, `modify`, `delete`, `read`, `reference`?
-- Does every `verify` step set `verify_command` (or `location` for a test file path)?
-- Does `risks_mitigations` contain at least 1 entry, and does `verification_strategy` contain at least 1 entry with a non-empty `method` and `expected_outcome`?
-- Does `critical_files.primary_files` contain at least 1 entry with a valid `path` and `action`?
-- Does your `verification_strategy[*].method` NOT start with `bash -c `, `sh -c `, or `eval ` (the shell-invocation guard rejects those prefixes)?
-- Does your `steps[*].depends_on` graph form a DAG (no cycles)? The cycle guard raises `plan step depends_on cycle detected at step N` on the first cycle it finds.
-- Does your plan declare AT MOST one of `parallel_plan` or `work_units` (the cross-section validator rejects both)?
-- If you included `design.acceptance_criteria.criteria[*].satisfied_by_steps`, does every entry reference an existing step number, and is that step's `step_type` NOT `research` or `verify` (only `file_change` and `action` can satisfy an AC)?
-
-## Canonical validator errors to fix
-
-When `ralph_submit_plan_section`, `ralph_submit_plan_sections`,
-`ralph_validate_draft`, or `ralph_finalize_plan` returns an error, the
-message comes from one of the cross-section validators in
-`ralph/mcp/artifacts/plan/_validation.py` or from the payload decoders
-in the same module. The table below enumerates every literal error
-string the agent will see and the canonical fix. The error strings
-are copied verbatim from the f-strings that raise
-`PlanArtifactValidationError`; do NOT paraphrase them when retrying.
-
-| Error string (verbatim from the validator) | Source location | Fix |
-| --- | --- | --- |
-| `plan step depends_on cycle detected at step N` | `_validation.py` cycle guard (around line 173) | Remove the cycle: edit one `depends_on` entry on the cited step so the graph becomes a DAG. |
-| `plan cannot declare both parallel_plan and work_units; pick one` | `_validation.py` `_validate_step_ac_cross_references` (around line 229) | Pick exactly one parallelization mode. Delete the `work_units` field if you want `parallel_plan`, or vice versa. |
-| `verification method must not invoke a shell interpreter directly; use the executable path` | `_validation.py` shell-invocation guard (around line 239) | Replace `bash -c "..."` / `sh -c "..."` / `eval "..."` with the executable path and pass args as a list. |
-| `skills_mcp.skills must contain at least one skill name` | `_skills_mcp.py` / `_validation.py` skills gate | Add at least one task-relevant skill to `skills_mcp.skills`; empty skill lists are invalid. |
-| `acceptance criterion 'ID' references unknown step number N` | `_validation.py` `_check_satisfied_by_steps_links` (around line 681) | The cited step number must match an existing `step.number` in the staged `steps`. Re-read the draft with `ralph_get_plan_draft` to confirm the current step numbers after a mutation. |
-| `satisfied_by_steps cannot reference a research or verify step; step N is 'TYPE' for criterion 'ID'` | `_validation.py` `_check_research_verify_step_references` (around line 732) | Only `file_change` and `action` steps can satisfy an AC. Remove the cited step from the `satisfied_by_steps` list, or change the step's `step_type` to `file_change` or `action`. |
-| `plan envelope has no valid 'content' object` | Legacy atomic-plan decoder | Do not retry plan submission through generic `ralph_submit_artifact`. Use staged planning tools instead: submit or repair the relevant section with `ralph_submit_plan_section` / `ralph_submit_plan_sections`, then run `ralph_validate_draft` before `ralph_finalize_plan`. |
-| `plan payload must decode to a JSON object` | Legacy atomic-plan decoder | Do not wrap the entire plan as a generic artifact payload. Stage each raw section through the planning tools using the documented section content shapes. |
-| `plan draft is missing a 'sections' object` | `_validation.py` `finalize_plan_draft` (around line 796) | Stage every required section via `ralph_submit_plan_section` (or batch via `ralph_submit_plan_sections`) before calling `ralph_finalize_plan`. The 6 required sections are: `summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, `verification_strategy`. |
-
-If the error message you received is not in this table, it is a
-field-level Pydantic error from `PlanArtifact.model_validate`; in
-that case read the `## Required fields (inside content)` section of
-`.agent/artifact-formats/plan.md` and re-shape the failing field
-against the schema.
-
-## Per-section compact payload templates
-
-The six fenced JSON blocks below are **compact starting payloads**
-that pass `ralph_submit_plan_section(section='<name>', mode='replace',
-content=<payload>)` for each required section. Use them as the
-starting point; enrich the values for your specific task. Each
-block has deliberately small content to show the shape. Do not stop
-there for a real task; add task-specific detail, evidence, and
-software-engineering rationale.
-
-### summary
-
-```json
-{
-  "context": "What is being changed and why",
-  "scope_items": [
-    {"text": "Concrete outcome 1"},
-    {"text": "Concrete outcome 2"},
-    {"text": "Concrete outcome 3"}
-  ]
-}
-```
-
-### skills_mcp
-
-```json
-{
-  "skills": ["writing-plans"],
-  "mcps": []
-}
-```
-
-### steps
-
-```json
-[
-  {
-    "number": 1,
-    "title": "Concrete step title",
-    "content": "Detailed executor instructions",
-    "step_type": "file_change",
-    "targets": [{"path": "path/to/file.py", "action": "modify"}],
-    "depends_on": []
-  }
-]
-```
-
-### critical_files
-
-```json
-{
-  "primary_files": [{"path": "path/to/file.py", "action": "modify"}],
-  "reference_files": []
-}
-```
-
-### risks_mitigations
-
-```json
-[
-  {
-    "risk": "Specific failure mode",
-    "mitigation": "How to avoid it",
-    "severity": "medium"
-  }
-]
-```
-
-### verification_strategy
-
-```json
-[
-  {
-    "method": "pytest tests/test_x.py -q",
-    "expected_outcome": "All tests pass"
-  }
-]
-```
-
-These are the same shapes the no-skill error helper
-`_format_plan_finalize_error` inlines in its repair guidance. After
-fixing the payload, re-run `ralph_validate_draft` (read-only dry-run)
-before calling `ralph_finalize_plan`.
-
-## Dumb-proof checklist (plan-artifact)
-
-Before calling `ralph_finalize_plan`, walk this list. Every bullet
-maps to one cross-section validator rule; missing one bullet is the
-single most common cause of a finalize failure.
-
-- Did you stage all 6 required sections (`summary`, `skills_mcp`, `steps`, `critical_files`, `risks_mitigations`, `verification_strategy`) via `ralph_submit_plan_section` or batch them in `ralph_submit_plan_sections`?
-- Does `summary.scope_items` contain at least 3 entries (the validator enforces `min_length=3`)?
-- Does `skills_mcp.skills` contain at least one task-relevant skill name? Empty skill lists are invalid for every planning profile.
 - Is every step's `step_type` one of the closed set `file_change`, `action`, `research`, `verify` (NOT `test`, `check`, `run`, or any ad-hoc label)?
 - Does every `file_change` step declare at least one `targets` entry, and does every `targets[*].action` use one of `create`, `modify`, `delete`, `read`, `reference`?
 - Does every `verify` step set `verify_command` (or `location` for a test file path)?

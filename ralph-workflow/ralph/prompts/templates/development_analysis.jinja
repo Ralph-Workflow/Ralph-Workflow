@@ -205,12 +205,12 @@ Return a JSON object.
   `{"artifact_type":"development_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
 
 - Falls short in any dimension:
-  `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
+  `{"status":"request_changes","summary":"The implementation still needs a regression test.","what_came_up_short":["No test covers oversized indexes"],"how_to_fix":["Add tests/test_foo.py::test_clamp_handles_out_of_range_index and rerun pytest tests/test_foo.py -q"]}`
 
 - The analysis found major incompleteness or an otherwise unusable result; stronger remediation may be needed, including possible redo or starting over from the work phase:
-  `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
+  `{"status":"failed","summary":"The implementation result is unusable because the required files were not changed.","what_came_up_short":["src/foo.py is unchanged"],"how_to_fix":["Redo the implementation from the accepted plan and submit a new development_result with proof for each step"]}`
 
-{{ render_artifact_submission('development_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{{ render_artifact_submission('development_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Implementation looks correct."}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 

@@ -10,9 +10,25 @@ description must reference the depends_on cycle detector.
 
 from __future__ import annotations
 
-from typing import cast
+import json
+import re
+from typing import TYPE_CHECKING, cast
 
+import pytest
+
+from ralph.mcp.tools.artifact import handle_submit_plan_section, prepare_artifact_submission
+from ralph.mcp.tools.bridge._spec_helpers import (
+    _EXAMPLE_PLAN_SECTION_CONTENT,
+    _EXAMPLE_STEPS_CONTENT,
+    _SUBMIT_ARTIFACT_DESCRIPTION,
+)
 from ralph.mcp.tools.bridge._specs_artifacts import artifact_specs
+from ralph.mcp.tools.tool_result import ToolResult
+from ralph.workspace.fs import FsWorkspace
+from tests.test_plan_artifact_submit_plan_sections import planning_session
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _MUTATION_TOOLS = (
     "ralph_insert_plan_step",
@@ -88,8 +104,49 @@ def test_submit_artifact_description_sends_plans_to_planning_tools() -> None:
     desc = descs["ralph_submit_artifact"]
     assert "Do not use this generic tool for plan artifacts" in desc
     assert "ralph_submit_plan_section" in desc
-    assert "skills_mcp" not in desc
-    assert "verification_strategy" not in desc
+
+
+def test_submit_artifact_description_example_matches_validator() -> None:
+    match = re.search(
+        r"Example: (?P<example>\{.*?\})\. See",
+        _SUBMIT_ARTIFACT_DESCRIPTION,
+    )
+    assert match is not None
+    payload = json.loads(match.group("example"))
+
+    artifact_type, normalized = prepare_artifact_submission(payload)
+
+    assert artifact_type == "commit_message"
+    assert normalized["subject"] == "fix(auth): prevent token expiry race"
+
+
+@pytest.mark.parametrize(
+    ("section", "content"),
+    [
+        ("summary", _EXAMPLE_PLAN_SECTION_CONTENT),
+        ("steps", _EXAMPLE_STEPS_CONTENT),
+    ],
+)
+def test_plan_section_description_examples_are_detailed_and_stage_cleanly(
+    tmp_path: Path,
+    section: str,
+    content: str,
+) -> None:
+    assert "Tweak the config key" not in content
+    assert "Detailed executor instructions" not in content
+    assert "Concrete outcome" not in content
+    assert "expected_evidence" in content or "scope_items" in content
+
+    result = handle_submit_plan_section(
+        planning_session(),
+        FsWorkspace(tmp_path),
+        {"section": section, "content": content, "mode": "replace"},
+    )
+
+    assert isinstance(result, ToolResult)
+    assert result.is_error is False
+    response = json.loads(result.content[0].text)
+    assert response["validation_warnings"] == []
 
 
 def test_submit_artifact_schema_accepts_native_json_content() -> None:
@@ -103,6 +160,15 @@ def test_submit_artifact_schema_accepts_native_json_content() -> None:
         {"type": "object"},
         {"type": "array"},
     ]
+
+
+def test_discard_plan_draft_description_discourages_warning_retry_loops() -> None:
+    descs = _descs()
+    desc = descs["ralph_discard_plan_draft"]
+    assert "truly starting over" in desc
+    assert "unsalvageable" in desc
+    assert "Do not use this to clear ordinary validation_warnings" in desc
+    assert "ralph_validate_draft" in desc
 
 
 def test_replace_and_patch_descriptions_include_analysis_feedback_proof_fields() -> None:

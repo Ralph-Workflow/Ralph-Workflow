@@ -83,6 +83,6 @@ You MUST submit a `development_result` artifact before declaring completion. The
 
 Each `plan_item` and each `how_to_fix_item` must be distinct — duplicate entries will fail validation. Unknown references (ones that don't match an actual plan step, work_unit id, or analysis item) will also fail validation and trigger a re-prompt.
 
-{{ render_artifact_submission('development_result', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{{ render_artifact_submission('development_result', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"Implemented the requested fix and verified it.","files_changed":"- src/main.py","plan_items_proven":[{"plan_item":"Step 1: Implement the fix","proof":"Updated src/main.py and ran pytest."}],"analysis_items_addressed":[]}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-development-result-artifact', '.agent/artifact-formats/development_result.md') }}

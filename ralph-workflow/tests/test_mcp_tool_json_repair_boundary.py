@@ -141,3 +141,181 @@ def test_tool_bridge_repairs_container_fields_declared_with_refs_and_combinators
     assert seen["all_of_payload"] == [
         {"expected_evidence": [{"kind": "file", "ref": "src/foo.py"}]}
     ]
+
+
+def test_tool_bridge_repairs_item_wrappers_for_known_list_fields() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(
+        host_session: object | None,
+        workspace: object | None,
+        params: dict[str, object],
+    ) -> dict[str, object]:
+        del host_session, workspace
+        seen.update(params)
+        return {"ok": True}
+
+    bridge = ToolBridge()
+    bridge.register(
+        ToolMetadata(
+            definition=ToolDefinition(
+                name="wrapped_plan_tool",
+                description="captures wrapped plan params",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "payload": {"type": "object"},
+                    },
+                },
+            ),
+            required_capability="test",
+        ),
+        handler,
+    )
+
+    bridge.dispatch(
+        "wrapped_plan_tool",
+        {
+            "payload": {
+                "scope_items": {"item": [{"text": "a"}, {"text": "b"}, {"text": "c"}]},
+                "skills": {"item": ["submit-plan-artifact", "test-driven-development"]},
+                "mcps": {"item": "context7"},
+                "acceptance_criteria": {
+                    "criteria": {
+                        "item": [
+                            {
+                                "id": "AC-01",
+                                "description": "A concrete acceptance criterion.",
+                                "satisfied_by_steps": {"item": 1},
+                            }
+                        ]
+                    }
+                },
+            }
+        },
+    )
+
+    payload = cast("dict[str, object]", seen["payload"])
+    assert payload["scope_items"] == [{"text": "a"}, {"text": "b"}, {"text": "c"}]
+    assert payload["skills"] == ["submit-plan-artifact", "test-driven-development"]
+    assert payload["mcps"] == ["context7"]
+    acceptance = cast("dict[str, object]", payload["acceptance_criteria"])
+    assert acceptance["criteria"] == [
+        {
+            "id": "AC-01",
+            "description": "A concrete acceptance criterion.",
+            "satisfied_by_steps": [1],
+        }
+    ]
+
+
+def test_tool_bridge_repairs_item_wrappers_for_schema_declared_arrays() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(
+        host_session: object | None,
+        workspace: object | None,
+        params: dict[str, object],
+    ) -> dict[str, object]:
+        del host_session, workspace
+        seen.update(params)
+        return {"ok": True}
+
+    bridge = ToolBridge()
+    bridge.register(
+        ToolMetadata(
+            definition=ToolDefinition(
+                name="array_schema_tool",
+                description="captures schema-declared arrays",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "items": {"type": "array"},
+                        "tags": {"type": ["string", "array"]},
+                    },
+                },
+            ),
+            required_capability="test",
+        ),
+        handler,
+    )
+
+    bridge.dispatch(
+        "array_schema_tool",
+        {
+            "items": {"item": ["one", "two"]},
+            "tags": {"item": "fast-path"},
+        },
+    )
+
+    assert seen["items"] == ["one", "two"]
+    assert seen["tags"] == ["fast-path"]
+
+
+def test_tool_bridge_repairs_repeated_item_wrappers_for_list_fields() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(
+        host_session: object | None,
+        workspace: object | None,
+        params: dict[str, object],
+    ) -> dict[str, object]:
+        del host_session, workspace
+        seen.update(params)
+        return {"ok": True}
+
+    bridge = ToolBridge()
+    bridge.register(
+        ToolMetadata(
+            definition=ToolDefinition(
+                name="repeated_wrapped_plan_tool",
+                description="captures repeatedly wrapped params",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "payload": {"type": "object"},
+                        "items": {"type": "array"},
+                    },
+                },
+            ),
+            required_capability="test",
+        ),
+        handler,
+    )
+
+    bridge.dispatch(
+        "repeated_wrapped_plan_tool",
+        {
+            "items": {"item": {"item": ["a", "b"]}},
+            "payload": {
+                "skills": {"item": {"item": ["submit-plan-artifact"]}},
+                "mcps": {"item": {"item": "context7"}},
+                "acceptance_criteria": {
+                    "criteria": {
+                        "item": {
+                            "item": [
+                                {
+                                    "id": "AC-01",
+                                    "description": "A concrete acceptance criterion.",
+                                    "satisfied_by_steps": {"item": {"item": 1}},
+                                }
+                            ]
+                        }
+                    }
+                },
+            },
+        },
+    )
+
+    payload = cast("dict[str, object]", seen["payload"])
+    assert seen["items"] == ["a", "b"]
+    assert payload["skills"] == ["submit-plan-artifact"]
+    assert payload["mcps"] == ["context7"]
+    acceptance = cast("dict[str, object]", payload["acceptance_criteria"])
+    assert acceptance["criteria"] == [
+        {
+            "id": "AC-01",
+            "description": "A concrete acceptance criterion.",
+            "satisfied_by_steps": [1],
+        }
+    ]

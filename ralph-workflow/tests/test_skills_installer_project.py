@@ -156,6 +156,21 @@ def test_project_skills_need_install_predicate(tmp_path: Path) -> None:
     assert _project_skills_need_install(tmp_path) is True
 
 
+def test_project_skills_need_install_detects_stale_managed_canonical_content(
+    tmp_path: Path,
+) -> None:
+    """A managed project skill with stale content must trigger reinstall."""
+    home = _fake_user_global_home(tmp_path)
+    with patch("pathlib.Path.home", return_value=home):
+        install_project_baseline_skills(tmp_path)
+        assert _project_skills_need_install(tmp_path) is False
+
+    skill_file = tmp_path / ".opencode" / "skills" / "using-superpowers" / "SKILL.md"
+    skill_file.write_text("# stale managed skill copy\n", encoding="utf-8")
+
+    assert _project_skills_need_install(tmp_path) is True
+
+
 def test_project_skills_need_install_noop_when_canonical_and_all_siblings_have_symlinks(
     tmp_path: Path,
 ) -> None:

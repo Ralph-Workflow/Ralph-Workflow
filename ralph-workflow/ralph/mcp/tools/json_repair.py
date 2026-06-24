@@ -47,6 +47,51 @@ JSON_CONTAINER_FIELD_NAMES: frozenset[str] = frozenset(
         "work_units",
     }
 )
+JSON_LIST_FIELD_NAMES: frozenset[str] = frozenset(
+    {
+        "actions",
+        "analysis_items_addressed",
+        "criteria",
+        "depends_on",
+        "evidence_refs",
+        "expected_evidence",
+        "expected_outputs",
+        "forbidden_in_tests",
+        "forbidden_patterns",
+        "goals",
+        "guard_commands",
+        "headless_guide_checks",
+        "how_to_fix",
+        "issues",
+        "mcps",
+        "non_goals",
+        "observed_breaks",
+        "observed_working",
+        "open_questions",
+        "parallel_plan",
+        "plan_items_proven",
+        "preferred_patterns",
+        "primary_files",
+        "product_behavior",
+        "reference_files",
+        "required_test_layers",
+        "risks_mitigations",
+        "satisfied_by_steps",
+        "satisfies",
+        "scope_boundaries",
+        "scope_items",
+        "skills",
+        "sources",
+        "steps",
+        "success_criteria",
+        "targets",
+        "users",
+        "ux_ui_requirements",
+        "verification_strategy",
+        "what_came_up_short",
+        "work_units",
+    }
+)
 _MIN_CODE_FENCE_LINES = 2
 
 
@@ -63,7 +108,9 @@ def repair_json_containers(value: object) -> object:
         return value
     normalized: dict[str, object] = {}
     for key, item in value.items():
-        if key in JSON_CONTAINER_FIELD_NAMES or isinstance(item, (dict, list)):
+        if key in JSON_LIST_FIELD_NAMES:
+            normalized[key] = _repair_json_list_field(item)
+        elif key in JSON_CONTAINER_FIELD_NAMES or isinstance(item, (dict, list)):
             normalized[key] = repair_json_containers(item)
         else:
             normalized[key] = item
@@ -88,13 +135,33 @@ def repair_params_for_schema(
             if isinstance(field_schema_obj, dict)
             else {}
         )
-        if _schema_accepts_container(field_schema, schema) or (
+        if _schema_accepts_array(field_schema, schema):
+            repaired[key] = _repair_json_list_field(value)
+        elif _schema_accepts_container(field_schema, schema) or (
             key not in properties and additional is True and _looks_like_json_container_text(value)
         ):
             repaired[key] = repair_json_containers(value)
         else:
             repaired[key] = value
     return repaired
+
+
+def _repair_json_list_field(value: object) -> object:
+    item, unwrapped = _unwrap_item_chain(value)
+    if unwrapped:
+        if isinstance(item, list):
+            return item
+        return [item]
+    return item
+
+
+def _unwrap_item_chain(value: object) -> tuple[object, bool]:
+    repaired = repair_json_containers(value)
+    unwrapped = False
+    while isinstance(repaired, dict) and len(repaired) == 1 and "item" in repaired:
+        unwrapped = True
+        repaired = repair_json_containers(repaired["item"])
+    return repaired, unwrapped
 
 
 def _decode_container_text(value: str) -> object:
@@ -233,6 +300,39 @@ def _schema_accepts_container(
     return False
 
 
+def _schema_accepts_array(
+    schema: dict[str, object],
+    root_schema: dict[str, object] | None = None,
+    seen_refs: frozenset[str] = frozenset(),
+) -> bool:
+    root = root_schema or schema
+    ref = schema.get("$ref")
+    if isinstance(ref, str):
+        resolved = None if ref in seen_refs else _resolve_local_ref(root, ref)
+        return resolved is not None and _schema_accepts_array(
+            resolved,
+            root,
+            seen_refs | {ref},
+        )
+    schema_type = schema.get("type")
+    if schema_type == "array":
+        return True
+    if isinstance(schema_type, list) and "array" in schema_type:
+        return True
+    for combinator in ("anyOf", "oneOf", "allOf"):
+        variants_obj = schema.get(combinator)
+        if not isinstance(variants_obj, list):
+            continue
+        for variant in variants_obj:
+            if isinstance(variant, dict) and _schema_accepts_array(
+                variant,
+                root,
+                seen_refs,
+            ):
+                return True
+    return False
+
+
 def _resolve_local_ref(root_schema: dict[str, object], ref: str) -> dict[str, object] | None:
     if not ref.startswith("#/"):
         return None
@@ -254,4 +354,9 @@ def _looks_like_json_container_text(value: object) -> bool:
     return stripped.startswith(("{", "[")) or stripped.startswith("```")
 
 
-__all__ = ["JSON_CONTAINER_FIELD_NAMES", "repair_json_containers", "repair_params_for_schema"]
+__all__ = [
+    "JSON_CONTAINER_FIELD_NAMES",
+    "JSON_LIST_FIELD_NAMES",
+    "repair_json_containers",
+    "repair_params_for_schema",
+]

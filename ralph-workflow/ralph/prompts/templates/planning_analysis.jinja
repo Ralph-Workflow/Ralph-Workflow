@@ -284,13 +284,13 @@ Return a JSON object.
   `{"artifact_type":"planning_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
 
 - Falls short in any dimension:
-  `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
+  `{"status":"request_changes","summary":"The plan is missing executor-ready verification.","what_came_up_short":["PA-001 | Dimension: Verification gap | Defect: verification_strategy omits the exact pytest command | Evidence: verification_strategy[0] says run tests | Missing: exact command and expected passing result"],"how_to_fix":["PA-001 | Resubmit verification_strategy with method pytest tests/test_foo.py -q and expected_outcome describing the passing regression test"]}`
 
 - The analysis found major incompleteness or an otherwise unusable result; stronger remediation may
   be needed, including possible redo or start over from the planning phase:
-  `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
+  `{"status":"failed","summary":"The plan is not usable because required sections are missing.","what_came_up_short":["PA-001 | Dimension: Executor readiness | Defect: steps and critical_files are absent | Evidence: staged draft only contains summary | Missing: executable steps and real target files"],"how_to_fix":["PA-001 | Restart planning and stage summary, skills_mcp, steps, critical_files, risks_mitigations, and verification_strategy before finalizing"]}`
 
-{{ render_artifact_submission('planning_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
+{{ render_artifact_submission('planning_analysis_decision', SUBMIT_ARTIFACT_TOOL_REFERENCE, '{"status":"completed","summary":"The plan is executor-ready."}', write_file_tool_reference=WRITE_FILE_TOOL_REFERENCE) }}
 
 {{ render_optional_artifact_skill_pointer('submit-artifact', '.agent/artifact-formats/artifact_formats_index.md') }}
 
@@ -339,14 +339,14 @@ One gap, one fix entry. No grouping multiple gaps under one fix.
   "status": "request_changes",
   "summary": "The plan captures the broad goal but is not yet executor-ready.",
   "what_came_up_short": [
-    "[Executor Readiness] `steps[2]` says to 'update the review flow' but does not name the files, transitions, or artifact contracts to edit.",
-    "[Repository Accuracy] The plan references `tests/test_planning_analysis.py`, but no such file exists and no reference file is named for the intended pattern.",
-    "[Verification Quality] `verification_strategy[0]` says 'run tests' without naming the exact pytest target or expected passing result."
+    "PA-001 | Dimension: Executor readiness | Defect: `steps[2]` says to update the review flow but does not name files, transitions, or artifact contracts | Evidence: `steps[2].content` only says update the review flow | Missing: exact policy, prompt, artifact, and routing edits",
+    "PA-002 | Dimension: Repository reference invalid | Defect: The plan references `tests/test_planning_analysis.py`, but no such file exists | Evidence: repository search finds no `tests/test_planning_analysis.py` | Missing: real target files and an existing test pattern to mirror",
+    "PA-003 | Dimension: Verification gap | Defect: `verification_strategy[0]` says run tests without an exact pytest target | Evidence: `verification_strategy[0].method` is `run tests` | Missing: exact command and expected passing result"
   ],
   "how_to_fix": [
-    "Resubmit `steps` via `ralph_submit_plan_section` so `steps[2]` names the exact policy, prompt, and artifact files the executor must change and the concrete routing behavior to implement.",
-    "Resubmit the affected `steps` or `critical_files` sections so the nonexistent `tests/test_planning_analysis.py` reference is replaced with real target files and an existing test file whose pattern should be mirrored.",
-    "Resubmit `verification_strategy` with exact commands such as `uv run pytest -q tests/test_policy_loader.py tests/test_tool_artifact.py`, then finalize the revised draft only after those planning-analysis regressions are named as required passing evidence."
+    "PA-001 | Resubmit `steps` via `ralph_submit_plan_section` so `steps[2]` names the exact policy, prompt, and artifact files the executor must change and the concrete routing behavior to implement.",
+    "PA-002 | Resubmit the affected `steps` or `critical_files` sections so the nonexistent `tests/test_planning_analysis.py` reference is replaced with real target files and an existing test file whose pattern should be mirrored.",
+    "PA-003 | Resubmit `verification_strategy` with exact commands such as `uv run pytest -q tests/test_policy_loader.py tests/test_tool_artifact.py`, then finalize the revised draft only after those planning-analysis regressions are named as required passing evidence."
   ]
 }
 ```

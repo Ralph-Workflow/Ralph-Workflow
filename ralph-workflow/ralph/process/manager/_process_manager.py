@@ -611,7 +611,10 @@ class ProcessManager:
                     self._reap_async_in_sync_and_mark(record, async_proc, cause="zombie_reconciled")
                 else:
                     self._mark_killed(record, returncode=None, cause="zombie_reconciled")
-                logger.warning(f"Stale zombie entry reconciled: PID {pid} is zombie")
+                if record.returncode == 0:
+                    logger.debug(f"Stale zombie entry reconciled: PID {pid} is zombie")
+                else:
+                    logger.warning(f"Stale zombie entry reconciled: PID {pid} is zombie")
                 reconciled += 1
         return reconciled
 

@@ -24,14 +24,61 @@ unambiguous enough that the agent cannot do that again.
 
 from __future__ import annotations
 
+import json
+import re
 from pathlib import Path
+
+from ralph.mcp.tools.artifact import prepare_artifact_submission
+from ralph.prompts.template_engine import render_template
+from ralph.prompts.template_registry import load_partial_templates, packaged_template_root
 
 TEMPLATES_DIR = Path("ralph/prompts/templates")
 MACRO_PATH = TEMPLATES_DIR / "shared" / "_artifact_submission.j2"
+SINGLE_SHOT_TEMPLATES: tuple[str, ...] = (
+    "commit_cleanup.jinja",
+    "commit_message.jinja",
+    "commit_simplified.jinja",
+    "developer_iteration.jinja",
+    "developer_iteration_continuation.jinja",
+    "development_analysis.jinja",
+    "planning_analysis.jinja",
+    "review.jinja",
+    "review_analysis.jinja",
+    "worker_developer.jinja",
+)
+_RENDER_CALL_RE = re.compile(
+    r"render_artifact_submission\(\s*'(?P<artifact_type>[^']+)'\s*,"
+    r"\s*SUBMIT_ARTIFACT_TOOL_REFERENCE\s*,\s*'(?P<example_payload>[^']+)'",
+    flags=re.MULTILINE,
+)
 
 
 def _read_macro() -> str:
     return MACRO_PATH.read_text(encoding="utf-8")
+
+
+def _render_macro_example(artifact_type: str, example_payload: str) -> dict[str, object]:
+    partials = load_partial_templates((packaged_template_root(),))
+    rendered = render_template(
+        (
+            "{% from 'shared/_artifact_submission.j2' import render_artifact_submission %}"
+            "{{ render_artifact_submission(artifact_type, submit_tool, example_payload) }}"
+        ),
+        {
+            "artifact_type": artifact_type,
+            "submit_tool": "ralph_submit_artifact",
+            "example_payload": example_payload,
+            "DECLARE_COMPLETE_TOOL_REFERENCE": "declare_complete",
+        },
+        partials,
+    )
+    code_blocks = re.findall(
+        r"```\n\s*(?P<body>\{.*?\})\n\s*```",
+        rendered,
+        flags=re.DOTALL,
+    )
+    assert code_blocks, "rendered artifact submission macro must include a JSON call block"
+    return json.loads(code_blocks[0])
 
 
 def test_macro_uses_numbered_procedure_not_buried_prose() -> None:
@@ -78,6 +125,30 @@ def test_macro_includes_a_worked_mcp_call_example() -> None:
         "macro example must render {{ artifact_type }} so cheap models "
         "see the exact value they need to send"
     )
+    assert '{"...": "inner payload"}' not in content, (
+        "macro must not show a fake inner-payload object; every rendered "
+        "example must come from a concrete caller-provided payload"
+    )
+
+
+def test_each_rendered_mcp_call_example_validates_through_canonical_submit() -> None:
+    """Every prompt caller must feed the macro a concrete validator-backed example."""
+    for template_name in SINGLE_SHOT_TEMPLATES:
+        content = (TEMPLATES_DIR / template_name).read_text(encoding="utf-8")
+        calls = list(_RENDER_CALL_RE.finditer(content))
+        assert calls, (
+            f"{template_name} must pass a concrete payload example to "
+            "render_artifact_submission so the rendered MCP call is valid"
+        )
+        for call in calls:
+            artifact_type = call.group("artifact_type")
+            example_payload = call.group("example_payload")
+            rendered_payload = _render_macro_example(artifact_type, example_payload)
+            assert rendered_payload["artifact_type"] == artifact_type
+            assert isinstance(rendered_payload["content"], str)
+            parsed_type, normalized = prepare_artifact_submission(rendered_payload)
+            assert parsed_type == artifact_type
+            assert normalized, f"{template_name} rendered an empty normalized payload"
 
 
 def test_macro_states_post_submit_success_criterion() -> None:

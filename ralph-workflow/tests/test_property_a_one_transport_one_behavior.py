@@ -32,6 +32,7 @@ FORBIDDEN_TOKENS = (
     "anyio.to_thread",
     "FastMCP",
 )
+FORBIDDEN_TOKEN_BYTES = tuple(token.encode("utf-8") for token in FORBIDDEN_TOKENS)
 INCLUDED_SUFFIXES = (".py", ".md")
 
 
@@ -61,9 +62,9 @@ def test_grep_audit_finds_zero_fastmcp_hits_in_ralph() -> None:
     """The file-walk audit must find no hits in ralph/ outside the absence-asserting test."""
     hits: list[str] = []
     for path in _iter_source_files(REPO / "ralph"):
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        for token in FORBIDDEN_TOKENS:
-            if token in text:
+        content = path.read_bytes()
+        for token, token_bytes in zip(FORBIDDEN_TOKENS, FORBIDDEN_TOKEN_BYTES, strict=True):
+            if token_bytes in content:
                 rel = path.relative_to(REPO)
                 hits.append(f"{rel}: contains {token!r}")
     assert not hits, f"file walk should find no FastMCP references in ralph/, got: {hits}"
@@ -192,7 +193,10 @@ def test_grep_audit_finds_zero_fastmcp_hits_in_tests() -> None:
         if path.suffix != ".py":
             continue
         rel = path.relative_to(REPO).as_posix()
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        content = path.read_bytes()
+        if not any(token_bytes in content for token_bytes in FORBIDDEN_TOKEN_BYTES):
+            continue
+        text = content.decode("utf-8", errors="ignore")
         lines = text.splitlines()
         for token in FORBIDDEN_TOKENS:
             for lineno, line in enumerate(lines, start=1):

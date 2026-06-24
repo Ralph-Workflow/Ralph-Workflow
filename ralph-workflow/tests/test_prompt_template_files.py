@@ -3,18 +3,26 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
-from ralph.mcp.tools.artifact import handle_submit_artifact
+from ralph.mcp.tools.artifact import (
+    handle_submit_artifact,
+    handle_submit_plan_sections,
+    handle_validate_plan_draft,
+)
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import render_worker_prompt
+from ralph.workspace.fs import FsWorkspace
+from tests.test_artifact_format_docs_mock_session import planning_session
 from tests.test_prompt_template_files_helper__workspace import _Workspace
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROMPTS_ROOT = REPO_ROOT / "ralph" / "prompts"
 TEMPLATES_ROOT = PROMPTS_ROOT / "templates"
 SHARED_ROOT = TEMPLATES_ROOT / "shared"
+SKILLS_ROOT = REPO_ROOT / "ralph" / "skills" / "content"
 
 
 class _ApprovedSession:
@@ -26,6 +34,40 @@ class _ApprovedSession:
     def check_capability(self, capability: str) -> object:
         assert capability == "artifact.submit"
         return "approved"
+
+
+def _extract_balanced_json_object_at(text: str, start_index: int) -> dict[str, object]:
+    while text[start_index].isspace():
+        start_index += 1
+    assert text[start_index] == "{"
+    depth = 0
+    in_string = False
+    escape = False
+    for offset, char in enumerate(text[start_index:], start=start_index):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                decoded = json.loads(text[start_index : offset + 1])
+                assert isinstance(decoded, dict)
+                return decoded
+    raise AssertionError("could not extract balanced JSON object")
+
+
+def _extract_json_object_after_marker(text: str, marker: str) -> dict[str, object]:
+    marker_index = text.index(marker) + len(marker)
+    return _extract_balanced_json_object_at(text, marker_index)
 
 
 def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
@@ -614,6 +656,69 @@ def test_development_analysis_prompt_taught_variants_submit_successfully(tmp_pat
         assert result.is_error is False, f"payload #{index} should submit successfully"
 
 
+def test_analysis_prompt_inline_examples_submit_successfully(tmp_path: Path) -> None:
+    """Validate the exact JSON examples embedded in analysis prompt templates."""
+    cases = (
+        ("development_analysis.jinja", "development_analysis", "development_analysis_decision"),
+        ("planning_analysis.jinja", "planning_analysis", "planning_analysis_decision"),
+        ("review_analysis.jinja", "review_analysis", "review_analysis_decision"),
+    )
+    for template_name, drain, artifact_type in cases:
+        template = (TEMPLATES_ROOT / template_name).read_text(encoding="utf-8")
+        examples = [
+            json.loads(match)
+            for match in re.findall(r"`(\{[^`\n]*\"status\"[^`\n]*\})`", template)
+            if "{{" not in match
+        ]
+        assert len(examples) >= 3, f"{template_name} must teach completed/change/failed examples"
+        session = _ApprovedSession(drain=drain)
+        workspace = _Workspace(tmp_path / template_name)
+        for index, example in enumerate(examples):
+            payload = (
+                example
+                if "artifact_type" in example
+                else {"artifact_type": artifact_type, "content": json.dumps(example)}
+            )
+            result = handle_submit_artifact(session, workspace, payload)
+            assert result.is_error is False, (
+                f"{template_name} inline example #{index} should submit successfully"
+            )
+
+
+def test_planning_analysis_inline_examples_preserve_pa_ids() -> None:
+    """Planning-analysis examples must match the prompt's stable-ID contract."""
+    template = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
+    examples = [
+        json.loads(match)
+        for match in re.findall(r"`(\{[^`\n]*\"status\"[^`\n]*\})`", template)
+        if "{{" not in match
+    ]
+    examples.extend(
+        json.loads(match)
+        for match in re.findall(r"```json\n(\{.*?\"status\".*?\})\n```", template, re.DOTALL)
+    )
+    non_completed = [
+        example for example in examples if example.get("status") in {"request_changes", "failed"}
+    ]
+    assert non_completed, "planning_analysis.jinja must include non-completed examples"
+    pa_re = re.compile(
+        r"^PA-\d{3} \| Dimension: .+ \| Defect: .+ \| Evidence: .+ \| Missing: .+"
+    )
+    for example in non_completed:
+        findings = example.get("what_came_up_short")
+        fixes = example.get("how_to_fix")
+        assert isinstance(findings, list) and findings
+        assert isinstance(fixes, list) and len(fixes) == len(findings)
+        finding_ids = []
+        for finding in findings:
+            assert isinstance(finding, str)
+            assert pa_re.match(finding), finding
+            finding_ids.append(finding.split(" | ", 1)[0])
+        for expected_id, fix in zip(finding_ids, fixes, strict=True):
+            assert isinstance(fix, str)
+            assert fix.startswith(f"{expected_id} | "), fix
+
+
 def test_review_analysis_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
     session = _ApprovedSession(drain="review_analysis")
     workspace = _Workspace(tmp_path)
@@ -654,16 +759,34 @@ def test_planning_analysis_prompt_taught_variants_submit_successfully(tmp_path: 
             "status": "request_changes",
             "summary": "The plan needs another pass.",
             "what_came_up_short": [
-                "Critical files do not identify the real execution touchpoints."
+                (
+                    "PA-001 | Dimension: Repository reference invalid | Defect: critical_files "
+                    "does not identify real execution touchpoints | Evidence: primary_files "
+                    "only lists placeholder paths | Missing: concrete source and test files"
+                )
             ],
-            "how_to_fix": ["Update critical_files and add exact verification commands."],
+            "how_to_fix": [
+                (
+                    "PA-001 | Update critical_files with concrete source and test files, "
+                    "then add exact verification commands."
+                )
+            ],
         },
         {
             "status": "failed",
             "summary": "The planning analysis could not approve this plan.",
-            "what_came_up_short": ["The plan is missing executable implementation steps."],
+            "what_came_up_short": [
+                (
+                    "PA-001 | Dimension: Executor readiness | Defect: the plan is missing "
+                    "executable implementation steps | Evidence: steps section is empty | "
+                    "Missing: ordered executor-ready file_change and verify steps"
+                )
+            ],
             "how_to_fix": [
-                "Rewrite the steps so a weaker unattended agent can execute them literally."
+                (
+                    "PA-001 | Rewrite the steps so a weaker unattended agent can execute "
+                    "them literally."
+                )
             ],
         },
     ]
@@ -698,6 +821,69 @@ def test_commit_prompt_taught_variants_submit_successfully(tmp_path: Path) -> No
             },
         )
         assert result.is_error is False, f"payload #{index} should submit successfully"
+
+
+def test_commit_prompt_source_examples_submit_successfully(tmp_path: Path) -> None:
+    session = _ApprovedSession(drain="development_commit")
+    workspace = _Workspace(tmp_path)
+    examples = [
+        _extract_json_object_after_marker(
+            (TEMPLATES_ROOT / "commit_message.jinja").read_text(encoding="utf-8"),
+            "Submit the MCP arguments in this shape:\n",
+        ),
+        _extract_json_object_after_marker(
+            (TEMPLATES_ROOT / "commit_simplified.jinja").read_text(encoding="utf-8"),
+            "Use this MCP argument shape: ",
+        ),
+    ]
+
+    for index, payload in enumerate(examples):
+        result = handle_submit_artifact(session, workspace, payload)
+        assert result.is_error is False, (
+            f"commit prompt source example #{index} should submit successfully"
+        )
+
+
+def test_submit_artifact_inline_commit_envelopes_submit_successfully(
+    tmp_path: Path,
+) -> None:
+    session = _ApprovedSession(drain="development_commit")
+    workspace = _Workspace(tmp_path)
+    body = (SKILLS_ROOT / "submit-artifact.md").read_text(encoding="utf-8")
+    examples = [
+        _extract_balanced_json_object_at(body, match.start())
+        for match in re.finditer(r'\{"artifact_type": "commit_message"', body)
+    ]
+
+    assert examples, "submit-artifact.md must contain inline commit_message envelopes"
+    for index, payload in enumerate(examples):
+        result = handle_submit_artifact(session, workspace, payload)
+        assert result.is_error is False, (
+            f"submit-artifact inline envelope #{index} should submit successfully"
+        )
+
+
+def test_per_type_artifact_skill_inline_calls_submit_successfully(
+    tmp_path: Path,
+) -> None:
+    skill_drains = {
+        "submit-commit-message-artifact.md": "development_commit",
+        "submit-development-result-artifact.md": "development",
+        "submit-commit-cleanup-artifact.md": "commit_cleanup",
+    }
+    for filename, drain in skill_drains.items():
+        body = (SKILLS_ROOT / filename).read_text(encoding="utf-8")
+        marker = "ralph_submit_artifact("
+        start = body.index(marker) + len(marker)
+        payload = _extract_balanced_json_object_at(body, start)
+        result = handle_submit_artifact(
+            _ApprovedSession(drain=drain),
+            _Workspace(tmp_path / filename),
+            payload,
+        )
+        assert result.is_error is False, (
+            f"{filename} inline ralph_submit_artifact call should submit successfully"
+        )
 
 
 def test_analysis_templates_define_failed_as_stronger_major_remediation() -> None:
@@ -748,6 +934,21 @@ def test_planning_fallback_requires_skills_mcp_in_required_shapes() -> None:
     )
     assert "Stage `design` for non-trivial plans" in planning_fallback
     assert "Planning quality guidance" in planning_fallback
+
+
+def test_planning_fallback_submit_plan_sections_example_validates(tmp_path: Path) -> None:
+    planning_fallback = (TEMPLATES_ROOT / "planning_fallback.jinja").read_text(encoding="utf-8")
+    match = re.search(r'(?m)^(\{"entries":\[.*\]\})$', planning_fallback)
+    assert match is not None, "planning_fallback.jinja must contain a full entries envelope"
+    payload = json.loads(match.group(1))
+    workspace = FsWorkspace(tmp_path)
+
+    submit_result = handle_submit_plan_sections(planning_session(), workspace, payload)
+    assert submit_result.is_error is False
+    validate_result = handle_validate_plan_draft(planning_session(), workspace, {})
+    validate_payload = json.loads(validate_result.content[0].text)
+    assert validate_payload["valid"] is True
+    assert validate_payload["errors"] == []
 
 
 def test_planning_analysis_uses_canonical_plan_tool_names_in_remediation_flow() -> None:
