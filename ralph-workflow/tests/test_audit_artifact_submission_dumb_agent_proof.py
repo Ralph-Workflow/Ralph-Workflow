@@ -59,11 +59,10 @@ def test_macro_uses_numbered_procedure_not_buried_prose() -> None:
 def test_macro_includes_a_worked_mcp_call_example() -> None:
     """The macro MUST show a concrete MCP call with the EXACT JSON shape.
 
-    A worked example with the exact JSON shape (including escaped quotes
-    inside ``content``) is the single highest-value sentence for cheap
-    models. The example must:
+    A worked example with the exact JSON shape is the single highest-value
+    sentence for cheap models. The example must:
     - show ``artifact_type`` and ``content`` keys explicitly,
-    - use a non-empty ``content`` JSON string in the example (not ``""``),
+    - use a non-empty ``content`` payload in the example,
     - render the canonical ``{{ artifact_type }}`` so each per-type
       render is self-describing.
     """

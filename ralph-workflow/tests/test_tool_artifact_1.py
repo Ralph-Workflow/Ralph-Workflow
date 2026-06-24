@@ -618,7 +618,10 @@ def test_handle_submit_artifact_rejects_plan_without_required_sections(tmp_path:
     message = str(exc_info.value)
     assert "artifact-formats/plan.md" in message
     assert "skills_mcp" in message
-    assert "Read that file and rebuild your submission before retrying" in message
+    assert "Stage or repair the draft with ralph_submit_plan_section" in message
+    assert "ralph_validate_draft" in message
+    assert "ralph_finalize_plan" in message
+    assert "Then retry ralph_submit_artifact" not in message
 
 
 def test_handle_submit_artifact_invalid_development_result_includes_fix_guidance(

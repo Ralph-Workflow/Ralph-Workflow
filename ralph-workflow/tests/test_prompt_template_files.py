@@ -400,9 +400,12 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     assert '"status":"approved"' not in review_analysis
     assert '"status":"rejected"' not in planning_analysis
     assert '"status":"rejected"' not in review_analysis
-    assert "Use `content` for a freshly generated JSON string." in development_analysis
-    assert "Use `content` for a freshly generated JSON string." in planning_analysis
-    assert "Use `content` for a freshly generated JSON string." in review_analysis
+    content_guidance = (
+        "Use `content` for a freshly generated native JSON object or JSON-serialized string."
+    )
+    assert content_guidance in development_analysis
+    assert content_guidance in planning_analysis
+    assert content_guidance in review_analysis
     assert "content_path" not in development_analysis
     assert "content_path" not in planning_analysis
     assert "content_path" not in review_analysis

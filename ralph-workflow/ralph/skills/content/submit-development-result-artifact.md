@@ -64,11 +64,11 @@ artifacts, use the companion `submit-artifact` skill instead.
 5. Build the inner payload as a plain JSON object (e.g.
    `{"status": "completed", "summary": "...", "files_changed": "...",
    "plan_items_proven": [...]}`).
-6. Stringify the inner payload into a JSON string and pass it as the
-   `content` field. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
+6. Pass the inner payload as `content` either as the native JSON object
+   or as a JSON-serialized string. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
    envelope — Ralph Workflow adds artifact metadata itself.
 7. Call
-   `ralph_submit_artifact({"artifact_type": "development_result", "content": "<fresh JSON string>"})`.
+   `ralph_submit_artifact({"artifact_type": "development_result", "content": {"status": "completed", "summary": "...", "files_changed": "..."}})`.
 8. After the submit success text, call `ralph_declare_complete(summary="development_result")`.
 
 **Minimal one-shot happy-path envelope** for a completed development result:
@@ -98,7 +98,7 @@ message points at `.agent/artifact-formats/development_result.md` and names
 
 1. If the helper `_artifact_content_format_error` is raised, your payload
    is missing the `content` field. Re-issue the call with `content` set to
-   a freshly generated JSON string.
+   a native JSON object or JSON-serialized string.
 2. If validation complains about `status`, you supplied something other
    than `"completed"` or `"partial"`. Use one of those two values exactly.
 3. If validation complains about `summary` or `files_changed`, you supplied
@@ -175,10 +175,11 @@ If this skill and the format doc ever disagree, the format doc wins.
   be an object shaped like `{"prior_session_id": "<your-session-id>"}`.
 - Using any `status` value other than `"completed"` or `"partial"`. The
   closed enum has exactly two values.
-- Using `content_path` instead of `content`. Use `content` with a freshly
-  generated JSON string; `content_path` is reserved for non-agent callers.
-- Passing an object instead of a JSON string for `content`. The `content`
-  field must be a stringified JSON object, not the object itself.
+- Using `content_path` instead of `content`. Use `content` with a native JSON object
+  or JSON-serialized string; `content_path` is reserved for non-agent callers.
+- Treating a native JSON object as invalid. `content` may be a native JSON
+  object or a JSON-serialized string; keep the outer
+  `{"artifact_type": "development_result", "content": ...}` envelope either way.
 ## Red Flags - STOP and Start Over
 
 - "I have read the format doc so I do not need the skill." STOP. The

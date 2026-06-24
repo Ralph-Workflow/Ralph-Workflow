@@ -774,6 +774,35 @@ def finalize_plan_draft(draft: PlanArtifactDict) -> PlanArtifactDict:
     return normalize_plan_artifact_content(cast("PlanArtifactDict", sections))
 
 
+def _schema_with_evidence_string_shorthand(schema: dict[str, object]) -> dict[str, object]:
+    """Expose the accepted bare-string evidence shorthand in JSON Schema."""
+    defs_obj = schema.get("$defs")
+    if isinstance(defs_obj, dict):
+        defs = cast("dict[str, object]", defs_obj)
+        plan_step_obj = defs.get("PlanStep")
+        if isinstance(plan_step_obj, dict):
+            plan_step = cast("dict[str, object]", plan_step_obj)
+            properties_obj = plan_step.get("properties")
+            if isinstance(properties_obj, dict):
+                properties = cast("dict[str, object]", properties_obj)
+                expected_evidence_obj = properties.get("expected_evidence")
+                if isinstance(expected_evidence_obj, dict):
+                    expected_evidence = cast("dict[str, object]", expected_evidence_obj)
+                    items_obj = expected_evidence.get("items")
+                    if isinstance(items_obj, dict):
+                        items = cast("dict[str, object]", items_obj)
+                        if "anyOf" not in items:
+                            string_schema: dict[str, object] = {
+                                "type": "string",
+                                "description": (
+                                    "Bare-string shorthand accepted for legacy compatibility; "
+                                    "canonicalized to EvidenceRef(kind='file', ref=value)."
+                                ),
+                            }
+                            expected_evidence["items"] = {"anyOf": [items, string_schema]}
+    return schema
+
+
 def generate_plan_schema() -> dict[str, object]:
     """Return the JSON Schema for ``PlanArtifact`` as a Python dict.
 
@@ -784,7 +813,7 @@ def generate_plan_schema() -> dict[str, object]:
     type-check a plan without round-tripping Pydantic.
     """
     _ensure_plan_artifact_rebuilt()
-    return PlanArtifact.model_json_schema()
+    return _schema_with_evidence_string_shorthand(PlanArtifact.model_json_schema())
 
 
 __all__ = [

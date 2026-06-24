@@ -31,6 +31,53 @@ from ralph.mcp.tools.names import (
 )
 
 
+def _step_payload_properties(*, number_field: str) -> dict[str, object]:
+    """Return the public schema properties for repaired step-edit payloads."""
+    return {
+        number_field: {"anyOf": [{"type": "integer"}, {"type": "string"}]},
+        "step": {
+            "anyOf": [{"type": "object"}, {"type": "string"}],
+            "description": "Native step object or a JSON-serialized step object.",
+        },
+        "title": {"type": "string"},
+        "content": {"type": "string"},
+        "step_type": {"type": "string"},
+        "priority": {"type": "string"},
+        "targets": {"anyOf": [{"type": "array"}, {"type": "object"}, {"type": "string"}]},
+        "depends_on": {
+            "anyOf": [{"type": "array"}, {"type": "integer"}, {"type": "string"}]
+        },
+        "satisfies": {"anyOf": [{"type": "array"}, {"type": "string"}]},
+        "expected_evidence": {
+            "anyOf": [{"type": "array"}, {"type": "object"}, {"type": "string"}]
+        },
+        "verify_command": {"type": "string"},
+        "location": {"type": "string"},
+        "rationale": {"type": "string"},
+    }
+
+
+def _step_payload_alternatives() -> list[dict[str, list[str]]]:
+    """At least one nested or flat step field must be present."""
+    return [
+        {"required": [field]}
+        for field in (
+            "step",
+            "title",
+            "content",
+            "step_type",
+            "priority",
+            "targets",
+            "depends_on",
+            "satisfies",
+            "expected_evidence",
+            "verify_command",
+            "location",
+            "rationale",
+        )
+    ]
+
+
 def artifact_specs() -> list[ToolSpec]:
     """Return tool specs for artifact, coordination, and planning operations."""
     return [
@@ -59,10 +106,10 @@ def artifact_specs() -> list[ToolSpec]:
                             ),
                         },
                         "content": {
-                            "type": "string",
+                            "anyOf": [{"type": "string"}, {"type": "object"}, {"type": "array"}],
                             "description": (
-                                "Artifact payload as a JSON-serialized string "
-                                "(example values: "
+                                "Artifact payload as a native JSON object/array or a "
+                                "JSON-serialized string (example values: "
                                 + '{"type": "commit", "subject": '
                                 + '"fix(auth): prevent token expiry race"}'
                                 + ")."
@@ -236,22 +283,9 @@ def artifact_specs() -> list[ToolSpec]:
                 ),
                 input_schema={
                     "type": "object",
-                    "properties": {
-                        "index": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
-                        "step": {"type": "object"},
-                        "title": {"type": "string"},
-                        "content": {"type": "string"},
-                        "step_type": {"type": "string"},
-                        "priority": {"type": "string"},
-                        "targets": {"type": "array"},
-                        "depends_on": {"type": "array"},
-                        "satisfies": {"type": "array"},
-                        "expected_evidence": {"type": "array"},
-                        "verify_command": {"type": "string"},
-                        "location": {"type": "string"},
-                        "rationale": {"type": "string"},
-                    },
+                    "properties": _step_payload_properties(number_field="index"),
                     "required": ["index"],
+                    "anyOf": _step_payload_alternatives(),
                 },
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
@@ -293,22 +327,9 @@ def artifact_specs() -> list[ToolSpec]:
                 ),
                 input_schema={
                     "type": "object",
-                    "properties": {
-                        "step_number": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
-                        "step": {"type": "object"},
-                        "title": {"type": "string"},
-                        "content": {"type": "string"},
-                        "step_type": {"type": "string"},
-                        "priority": {"type": "string"},
-                        "targets": {"type": "array"},
-                        "depends_on": {"type": "array"},
-                        "satisfies": {"type": "array"},
-                        "expected_evidence": {"type": "array"},
-                        "verify_command": {"type": "string"},
-                        "location": {"type": "string"},
-                        "rationale": {"type": "string"},
-                    },
+                    "properties": _step_payload_properties(number_field="step_number"),
                     "required": ["step_number"],
+                    "anyOf": _step_payload_alternatives(),
                 },
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),
@@ -343,22 +364,9 @@ def artifact_specs() -> list[ToolSpec]:
                 ),
                 input_schema={
                     "type": "object",
-                    "properties": {
-                        "step_number": {"anyOf": [{"type": "integer"}, {"type": "string"}]},
-                        "step": {"type": "object"},
-                        "title": {"type": "string"},
-                        "content": {"type": "string"},
-                        "step_type": {"type": "string"},
-                        "priority": {"type": "string"},
-                        "targets": {"type": "array"},
-                        "depends_on": {"type": "array"},
-                        "satisfies": {"type": "array"},
-                        "expected_evidence": {"type": "array"},
-                        "verify_command": {"type": "string"},
-                        "location": {"type": "string"},
-                        "rationale": {"type": "string"},
-                    },
+                    "properties": _step_payload_properties(number_field="step_number"),
                     "required": ["step_number"],
+                    "anyOf": _step_payload_alternatives(),
                 },
                 required_capability=Capability.ARTIFACT_PLAN_WRITE.value,
             ),

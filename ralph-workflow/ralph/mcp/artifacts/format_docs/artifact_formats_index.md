@@ -8,7 +8,7 @@ You are choosing which type of artifact to submit to Ralph. The artifact type te
 
 Pick the correct `artifact_type` for your case from the list below. Then call `ralph_submit_artifact` with BOTH:
 - `artifact_type` set to the exact type name
-- `content` set to a JSON string with the required fields for that type
+- `content` set to a native JSON object/array or a JSON-serialized string with the required fields for that type
 
 Plan artifacts are the exception: use `ralph_submit_plan_section` or
 `ralph_submit_plan_sections`, then `ralph_finalize_plan`.
@@ -49,7 +49,7 @@ You must always provide:
 
 ## Optional fields
 
-This index does not define optional top-level MCP fields. Every `ralph_submit_artifact` call still requires both `artifact_type` and `content`. The per-type required fields live inside the `content` JSON. Read the specific format doc for your type.
+This index does not define optional top-level MCP fields. Every `ralph_submit_artifact` call still requires both `artifact_type` and `content`. The per-type required fields live inside the `content` payload. Read the specific format doc for your type.
 
 ## Complete example
 
@@ -91,7 +91,7 @@ This example shows the minimum fields needed to submit each type:
 - Did you set `artifact_type` to an exact value from the table above?
 - If you are in an analysis drain and intentionally used the `analysis_decision` alias, did you also read the matching drain-specific format doc before submitting?
 - Did you spell `artifact_type` correctly (check the table for the exact spelling)?
-- Did you put the required fields inside the `content` JSON string?
+- Did you put the required fields inside the `content` payload?
 - Did you use the correct format doc for your artifact type?
-- Did you stringify the content object into a JSON string for the `content` field?
+- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?
 - If you are submitting a plan, did you use the planning tools instead of the generic artifact tool?

@@ -6,7 +6,7 @@ You are telling Ralph what commit message to use for the current changes.
 
 ## How to submit
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `"commit_message"` and `content` set to a JSON string of your commit payload.
+Call the `ralph_submit_artifact` tool with `artifact_type` set to `"commit_message"` and `content` set to either a native JSON object or a JSON-serialized string containing your commit payload.
 
 ```json
 {
@@ -89,8 +89,8 @@ Complex refactors, architecture changes, new features with non-obvious behavior,
 ## Dumb-proof checklist
 
 - Did you set `artifact_type` to `"commit_message"`?
-- Did you put `{"type": "commit", ...}` or `{"type": "skip", ...}` inside the content JSON string?
+- Did you put `{"type": "commit", ...}` or `{"type": "skip", ...}` inside the content payload?
 - Did you use `"subject"` (not `"message"`) for the commit message text?
 - Did you spell the conventional commit prefix in `subject` like `fix(scope):` not just `fix:`?
-- Did you stringify the content object into a JSON string for the `content` field?
+- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?
 - If this is a non-trivial change, did you include a body?

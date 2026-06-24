@@ -175,14 +175,12 @@ def handle_remove_plan_step(
     sub-section to use the new step numbers; the provided
     ``step.number`` is ignored.
 
-    Fails fast with ``PlanArtifactValidationError`` if any other step
-    depends on the removed step. Silently drops AC entries whose
-    ``satisfied_by_steps`` reference the removed step. Returns a JSON
-    echo payload with the removed step number, the reindex map, the
-    list of step numbers whose ``depends_on`` was rewritten, the list
-    of AC ids whose ``satisfied_by_steps`` was rewritten, the list of
-    AC ids whose ``satisfied_by_steps`` entries were dropped, and the
-    new total step count.
+    References to the removed step are preserved as unresolved staged
+    JSON and reported in ``validation_warnings`` so
+    ``ralph_validate_draft`` / ``ralph_finalize_plan`` can reject the
+    final plan without losing data. Returns a JSON echo payload with
+    the removed step number, the reindex map, rewritten reference
+    summaries, ``validation_warnings``, and the new total step count.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan step removal")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS

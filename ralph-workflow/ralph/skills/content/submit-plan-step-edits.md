@@ -630,9 +630,9 @@ mismatches.
 ## Source of Truth Reference
 
 - `.agent/artifact-formats/plan.md` — the canonical schema for the plan
-  artifact, including sections 'Step contract', 'Step-mutation
-  read-after-write echo', 'Cross-section invariants', 'Plan size limits',
-  and 'Cycle guard'. Bundled by Ralph Workflow and materialized into the
+  artifact, including sections 'Tightened step contract', 'Step-mutation
+  read-after-write echo', 'Cross-section invariants', and 'Plan size limits'.
+  Bundled by Ralph Workflow and materialized into the
   workspace on demand. Every field, every per-list cap, and the step↔AC
   reindex contract are defined here.
 - `.agent/artifact-formats/artifact_formats_index.md` — the index that

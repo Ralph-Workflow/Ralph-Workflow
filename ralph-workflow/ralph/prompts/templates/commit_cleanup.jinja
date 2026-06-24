@@ -118,7 +118,7 @@ For files OUTSIDE the Ralph Workflow runtime-artifact allowlist above, recommend
 
 ## OUTPUT FORMAT
 
-Submit a ``commit_cleanup`` artifact. The ``content`` JSON string must decode to:
+Submit a ``commit_cleanup`` artifact. The ``content`` payload must be a native JSON object or JSON-serialized object shaped as:
 - ``analysis_complete`` (boolean) and
 - ``actions`` (array)
 

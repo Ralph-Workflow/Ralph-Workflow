@@ -163,8 +163,8 @@ class PlanStep(RalphBaseModel):
         before-validator handles bare strings). Dedup is case-insensitive
         on ``(kind, ref.lower())`` with last-wins so a later
         ``EvidenceRef`` overrides an earlier one with the same key.
-        The ``_MAX_EVIDENCE_ENTRIES=50`` cap and the per-entry
-        ``max_length=200`` (enforced by ``EvidenceRef``) together bound
+        The ``_MAX_EVIDENCE_ENTRIES=500`` cap and the per-entry
+        ``max_length=1000`` (enforced by ``EvidenceRef``) together bound
         the size of the evidence list.
         """
         if value is None:

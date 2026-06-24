@@ -8,7 +8,7 @@ You can also submit this using `artifact_type: "analysis_decision"` when your se
 
 ## How to submit
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `planning_analysis_decision` and `content` set to a JSON string of your decision payload.
+Call the `ralph_submit_artifact` tool with `artifact_type` set to `planning_analysis_decision` and `content` set to either a native JSON object or a JSON-serialized string containing your decision payload.
 
 After a successful submit, the run-scoped artifact receipt is sufficient completion evidence for the current analysis flow. `declare_complete` remains an explicit signal but is not required just to make the submission count.
 
@@ -62,7 +62,7 @@ If your session drain is `planning_analysis`, the generic alias `artifact_type: 
 
 - Do NOT use any status other than `"completed"`, `"request_changes"`, or `"failed"`
 - Do NOT leave `summary` empty — describe what the analysis found
-- Do NOT submit a plain string as `content` — the content must be a JSON object
+- Do NOT submit a plain non-JSON string as `content` — use a native JSON object or a JSON-serialized object
 - Do NOT omit `what_came_up_short` or `how_to_fix` when status is `"request_changes"` or `"failed"` — these fields are required
 - Do NOT include `what_came_up_short` or `how_to_fix` when status is `"completed"` — these fields are not needed
 - Do NOT confuse this with `development_analysis_decision` or `review_analysis_decision` — use this type for planning analysis sessions
@@ -74,4 +74,4 @@ If your session drain is `planning_analysis`, the generic alias `artifact_type: 
 - Did you write a non-empty `summary`?
 - Did you omit `what_came_up_short` and `how_to_fix` when status is `"completed"`?
 - Did you include `what_came_up_short` and `how_to_fix` when status is `"request_changes"` or `"failed"`?
-- Did you stringify the content object into a JSON string for the `content` field?
+- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?

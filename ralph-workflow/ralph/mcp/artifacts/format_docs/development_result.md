@@ -6,7 +6,7 @@ You are reporting the outcome of a development task: what you did, what changed,
 
 ## How to submit
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `development_result` and `content` set to a JSON string of your result payload.
+Call the `ralph_submit_artifact` tool with `artifact_type` set to `development_result` and `content` set to either a native JSON object or a JSON-serialized string containing your result payload.
 
 ```json
 {
@@ -77,4 +77,4 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `development_r
 - Do the `plan_item` values exactly match canonical refs or assigned work unit ids?
 - Do the `how_to_fix_item` values exactly copy the prior analysis text?
 - If `status` is `"partial"`, did you also include `next_steps` and `continuation`?
-- Did you stringify the content object into a JSON string for the `content` field?
+- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?

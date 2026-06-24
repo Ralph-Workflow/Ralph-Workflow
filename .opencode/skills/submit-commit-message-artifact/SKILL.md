@@ -51,11 +51,11 @@ do not need this skill; the body-less envelope in the format doc is enough.
    `deferred`).
 5. Build the inner payload as a plain JSON object (e.g.
    `{"type": "commit", "subject": "fix(auth): prevent token expiry race"}`).
-6. Stringify the inner payload into a JSON string and pass it as the
-   `content` field. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
+6. Pass the inner payload as `content` either as the native JSON object
+   or as a JSON-serialized string. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
    envelope — Ralph Workflow adds artifact metadata itself.
 7. Call
-   `ralph_submit_artifact({"artifact_type": "commit_message", "content": "<fresh JSON string>"})`.
+   `ralph_submit_artifact({"artifact_type": "commit_message", "content": {"type": "commit", "subject": "type(scope): description"}})`.
 8. After the submit success text, call `ralph_declare_complete(summary="commit_message")`.
 
 ### Conventional-commit subject shape (the contract)
@@ -132,7 +132,7 @@ as the retry tool. Read the message, then:
 
 1. If the helper `_artifact_content_format_error` is raised, your payload is
    missing the `content` field. Re-issue the call with `content` set to a
-   freshly generated JSON string.
+   native JSON object or JSON-serialized string.
 2. If validation complains about `type`, you supplied a conventional-commit
    prefix (`fix`, `feat`, etc.) or the legacy `message` key instead of the
    structured shape. The `type` field MUST be `"commit"` or `"skip"` — the
@@ -211,10 +211,11 @@ If this skill and the format doc ever disagree, the format doc wins.
   closed set is `"commit"` and `"skip"`.
 - Skipping the body for a non-trivial change. Most commits need a body — when
   in doubt, include one.
-- Using `content_path` instead of `content`. Use `content` with a freshly
-  generated JSON string; `content_path` is reserved for non-agent callers.
-- Passing an object instead of a JSON string for `content`. The `content`
-  field must be a stringified JSON object, not the object itself.
+- Using `content_path` instead of `content`. Use `content` with a native JSON object
+  or JSON-serialized string; `content_path` is reserved for non-agent callers.
+- Treating a native JSON object as invalid. `content` may be a native JSON
+  object or a JSON-serialized string; keep the outer
+  `{"artifact_type": "commit_message", "content": ...}` envelope either way.
 - Using `excluded_files[].reason` outside the four-value closed enum. The
   reason must be `internal_ignore`, `not_task_related`, `sensitive`, or
   `deferred`.

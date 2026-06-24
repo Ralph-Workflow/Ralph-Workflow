@@ -138,6 +138,9 @@ def test_submit_plan_artifact_skill_blocks_stale_atomic_and_minimal_guidance() -
 
     assert "Do not retry plan submission through generic `ralph_submit_artifact`" in body
     assert "Empty skill lists are invalid for every planning profile" in body
+    assert "A failed `ralph_finalize_plan` preserves the" in body
+    assert "staged draft for repair" in body
+    assert "lost the staged draft" not in body
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +180,8 @@ def test_submit_artifact_skill_shape() -> None:
     assert "ralph_submit_artifact" in body, (
         "body must mention the ralph_submit_artifact MCP tool"
     )
+    assert "native JSON" in body and "object/array" in body
+    assert "Passing an object instead of a JSON string" not in body
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +244,7 @@ def test_planning_fallback_jinja_skill_pointer_and_invariants() -> None:
     preserved = (
         "## Plan-artifact canonical contract",
         "Plan size limits",
-        "Cycle guard",
+        "Cross-section invariants",
         "ARTIFACT_HISTORY_PATH",
         "ARTIFACT_HISTORY_DIR",
     )

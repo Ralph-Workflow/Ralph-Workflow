@@ -59,11 +59,11 @@ smoke_test_result, or analysis-decision artifacts, use the companion
    deleted; the runtime silently drops such actions.
 6. Build the inner payload as a plain JSON object:
    `{"analysis_complete": <bool>, "actions": [<action>, ...]}`.
-7. Stringify the inner payload into a JSON string and pass it as the
-   `content` field. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
+7. Pass the inner payload as `content` either as the native JSON object
+   or as a JSON-serialized string. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
    envelope — Ralph Workflow adds artifact metadata itself.
 8. Call
-   `ralph_submit_artifact({"artifact_type": "commit_cleanup", "content": "<fresh JSON string>"})`.
+   `ralph_submit_artifact({"artifact_type": "commit_cleanup", "content": {"analysis_complete": true, "actions": []}})`.
 9. After the submit success text, call `ralph_declare_complete(summary="commit_cleanup")`.
 
 **Minimal one-shot happy-path envelope** for an empty cleanup:
@@ -93,7 +93,7 @@ points at `.agent/artifact-formats/commit_cleanup.md` and names
 
 1. If the helper `_artifact_content_format_error` is raised, your payload
    is missing the `content` field. Re-issue the call with `content` set to
-   a freshly generated JSON string.
+   a native JSON object or JSON-serialized string.
 2. If validation complains about the `action` discriminator, you used a
    value other than `"delete_file"`, `"add_to_gitignore"`, or
    `"add_to_git_exclude"`. The closed enum has exactly three values.
@@ -176,12 +176,12 @@ If this skill and the format doc ever disagree, the format doc wins.
 - Using a `path` or `pattern` value with control characters, whitespace
   only, or non-ASCII characters. The `CommitCleanupAction` Pydantic model
   enforces the printable-ASCII contract.
-- Using `content_path` instead of `content`. Use `content` with a freshly
-  generated JSON string; `content_path` is reserved for non-agent
+- Using `content_path` instead of `content`. Use `content` with a native JSON object
+  or JSON-serialized string; `content_path` is reserved for non-agent
   callers.
-- Passing an object instead of a JSON string for `content`. The
-  `content` field must be a stringified JSON object, not the object
-  itself.
+- Treating a native JSON object as invalid. `content` may be a native JSON
+  object or a JSON-serialized string; keep the outer
+  `{"artifact_type": "commit_cleanup", "content": ...}` envelope either way.
 
 ### Runtime-artifact allowlist quick reference
 

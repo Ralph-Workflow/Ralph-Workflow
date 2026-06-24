@@ -22,7 +22,7 @@ EXECUTION:
 
 {% if not (HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)) %}
 ARTIFACT SUBMISSION:
-- Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results with a fresh `content` JSON string
+- Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results with a fresh `content` native JSON object or JSON-serialized string
 {% if SUBMIT_PLAN_SECTION_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage plan sections incrementally{% endif %}
 {% if SUBMIT_PLAN_SECTIONS_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTIONS_TOOL_REFERENCE}} to stage multiple complete plan sections together only after each entry is analysis-ready (validates ALL before any merge; whole batch is rejected on the first failure){% endif %}
 {% if INSERT_PLAN_STEP_TOOL_NAME %}- Use {{INSERT_PLAN_STEP_TOOL_REFERENCE}} to insert a numbered plan step and automatically reindex the steps list{% endif %}

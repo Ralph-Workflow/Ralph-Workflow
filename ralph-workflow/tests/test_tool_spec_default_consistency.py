@@ -76,6 +76,28 @@ def test_read_file_max_bytes_default_matches_handler() -> None:
     assert default == FULL_READ_DEFAULT_MAX_BYTES
 
 
+def test_read_file_schema_matches_mutually_exclusive_selector_groups() -> None:
+    spec = next(
+        spec for spec in file_read_specs() if spec.metadata.definition.name == READ_FILE_TOOL
+    )
+    schema = spec.metadata.definition.input_schema
+    all_of = schema["allOf"]
+    assert isinstance(all_of, list)
+    forbidden_pairs = {
+        tuple(cast_req)
+        for entry in all_of
+        if isinstance(entry, dict)
+        for not_schema in [entry.get("not")]
+        if isinstance(not_schema, dict)
+        for cast_req in [not_schema.get("required")]
+        if isinstance(cast_req, list)
+    }
+    assert ("line_start", "offset") in forbidden_pairs
+    assert ("line_end", "limit") in forbidden_pairs
+    assert ("line_start", "head") in forbidden_pairs
+    assert ("offset", "tail") in forbidden_pairs
+
+
 def test_submit_plan_section_mode_default_matches_handler() -> None:
     default = _prop(artifact_specs(), SUBMIT_PLAN_SECTION_TOOL, "mode")["default"]
     # The handler defaults an absent mode to this value.

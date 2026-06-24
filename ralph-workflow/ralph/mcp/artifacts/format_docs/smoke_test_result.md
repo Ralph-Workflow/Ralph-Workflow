@@ -6,7 +6,7 @@ You are reporting the outcome of a manual runtime smoke test, including what Ral
 
 ## How to submit
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `"smoke_test_result"` and `content` set to a JSON string containing the smoke test result payload.
+Call the `ralph_submit_artifact` tool with `artifact_type` set to `"smoke_test_result"` and `content` set to either a native JSON object or a JSON-serialized string containing the smoke test result payload.
 
 ```json
 {
@@ -17,7 +17,7 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `"smoke_test_r
 
 ## Required fields
 
-Inside the `content` JSON string you must provide:
+Inside the `content` payload you must provide:
 
 - `status` — required string, one of `passed`, `failed`, or `partial`
 - `summary` — required non-empty string summarizing the smoke outcome
@@ -45,12 +45,12 @@ There are no additional optional fields in the normalized smoke test result payl
 - Do NOT report guessed behavior — only record what Ralph actually observed
 - Do NOT omit `headless_guide_checks`; the artifact must state which semantic checks were used
 - Do NOT mark the result as `failed` without listing concrete `observed_breaks`
-- Do NOT submit a plain string; `content` must be a JSON string
+- Do NOT submit a plain non-JSON string; `content` must be a native JSON object or a JSON-serialized object
 
 ## Dumb-proof checklist
 
 - Did you set `artifact_type` to `"smoke_test_result"`?
-- Did you put the payload inside the `content` JSON string?
+- Did you put the payload inside the `content` payload?
 - Did you keep `output_file` under `tmp/`?
 - Did you list concrete observed working signals?
 - If the smoke failed, did you list concrete observed breaks?

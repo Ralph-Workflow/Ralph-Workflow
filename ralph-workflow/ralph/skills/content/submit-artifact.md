@@ -21,7 +21,8 @@ full name `ralph_submit_artifact`.
 ## When to Use
 
 Use this skill when you are about to call `ralph_submit_artifact` with an
-`artifact_type` and a `content` JSON string. It is the right skill for any
+`artifact_type` and `content` as either a native JSON object/array or a
+JSON-serialized string. It is the right skill for any
 artifact type whose format lives under `.agent/artifact-formats/<type>.md`:
 
 - `commit_message`, `commit_cleanup`
@@ -44,18 +45,19 @@ If you are submitting a plan, this is the wrong skill. Use
    required fields, optional fields, and worked examples.
 3. Build the inner payload as a plain JSON object (e.g. `{"type": "commit",
    "subject": "..."}` for `commit_message`).
-4. Stringify the inner payload into a JSON string and pass it as the
-   `content` field. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
-   envelope — Ralph Workflow adds artifact metadata itself.
-5. Call `ralph_submit_artifact({"artifact_type": "<type>", "content":
-   "<fresh JSON string>"})`.
+4. Pass the inner payload as `content` either as that native JSON object/array
+   or as a JSON-serialized string. Do NOT wrap it in an outer
+   `{"type": ..., "content": ...}` envelope — Ralph Workflow adds artifact
+   metadata itself.
+5. Call `ralph_submit_artifact({"artifact_type": "<type>", "content": {...}})`
+   or the equivalent stringified-content envelope.
 
 **Canonical envelope** for `commit_message`:
 
 ```json
 {
   "artifact_type": "commit_message",
-  "content": "{\"type\":\"commit\",\"subject\":\"type(scope): description\"}"
+  "content": {"type": "commit", "subject": "type(scope): description"}
 }
 ```
 
@@ -64,7 +66,32 @@ If you are submitting a plan, this is the wrong skill. Use
 ```json
 {
   "artifact_type": "development_result",
-  "content": "{\"status\":\"completed\",\"summary\":\"Added the foo() regression test, clamped the index in src/foo.py, and verified the focused test passes.\",\"files_changed\":\"- src/foo.py\\n- tests/test_foo.py\",\"plan_items_proven\":[{\"plan_item\":\"Step 1: Add the foo() regression test\",\"proof\":\"tests/test_foo.py contains test_clamp_handles_out_of_range_index.\"},{\"plan_item\":\"Step 2: Clamp the foo() index\",\"proof\":\"src/foo.py clamps the index before lookup while preserving the public foo() signature.\"}],\"analysis_items_addressed\":[{\"analysis_item\":\"AC-01\",\"proof\":\"Focused regression test covers the out-of-range index.\"},{\"analysis_item\":\"AC-02\",\"proof\":\"Production change prevents the crash and the regression test passes.\"}],\"verification\":[{\"command\":\"pytest tests/test_foo.py -q\",\"result\":\"passed\"}]}"
+  "content": {
+    "status": "completed",
+    "summary": "Added the foo() regression test, clamped the index in src/foo.py, and verified the focused test passes.",
+    "files_changed": "- src/foo.py\n- tests/test_foo.py",
+    "plan_items_proven": [
+      {
+        "plan_item": "Step 1: Add the foo() regression test",
+        "proof": "tests/test_foo.py contains test_clamp_handles_out_of_range_index."
+      },
+      {
+        "plan_item": "Step 2: Clamp the foo() index",
+        "proof": "src/foo.py clamps the index before lookup while preserving the public foo() signature."
+      }
+    ],
+    "analysis_items_addressed": [
+      {
+        "analysis_item": "AC-01",
+        "proof": "Focused regression test covers the out-of-range index."
+      },
+      {
+        "analysis_item": "AC-02",
+        "proof": "Production change prevents the crash and the regression test passes."
+      }
+    ],
+    "verification": [{"command": "pytest tests/test_foo.py -q", "result": "passed"}]
+  }
 }
 ```
 
@@ -84,7 +111,7 @@ then:
    for the required fields and retry.
 3. If the helper `_artifact_content_format_error` is raised, your payload
    is missing the `content` field. Re-issue the call with `content` set to a
-   freshly generated JSON string and `artifact_type` set to the exact type
+   native JSON object or JSON-serialized string and `artifact_type` set to the exact type
    name.
 
 **Worked retry envelope** for a `_raise_format_doc_error` style failure on
@@ -128,12 +155,13 @@ If this skill and a format doc ever disagree, the format doc wins.
   is the active submission entry point.
 - Wrapping the inner payload in an outer `{"type": ..., "content": ...}`
   envelope. The canonical envelope is `{"artifact_type": "<type>",
-  "content": "<fresh JSON string>"}` with no outer wrapper.
+  "content": {...}}` with no outer wrapper.
 - Using `content_path` instead of `content` for agent-facing artifact
-  submissions. Use `content` with a freshly generated JSON string;
+  submissions. Use `content` with a native JSON object or JSON-serialized string;
   `content_path` is reserved for non-agent callers.
-- Passing an object instead of a JSON string for `content`. The `content`
-  field must be a stringified JSON object, not the object itself.
+- Treating a native JSON object as invalid. `content` may be a native JSON
+  object/array or a JSON-serialized string; the handler parses both. Keep the
+  envelope as `{"artifact_type": "<type>", "content": ...}` either way.
 - Inventing an `artifact_type` value. The closed set lives in the index;
   unknown types are rejected with a pointer to the index.
 - Using the generic `analysis_decision` alias outside an analysis drain.
@@ -159,4 +187,4 @@ If this skill and a format doc ever disagree, the format doc wins.
   are rejected with a pointer to the index.
 - "I will wrap the inner payload in `{"type": ..., "content": ...}`."
   STOP. The canonical envelope is `{"artifact_type": "<type>",
-  "content": "<fresh JSON string>"}` with no outer wrapper.
+  "content": {...}}` with no outer wrapper.

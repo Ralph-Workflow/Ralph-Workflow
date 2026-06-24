@@ -515,7 +515,7 @@ single most common cause of a finalize failure.
   cross-section validator rejects. Re-read the draft with
   `ralph_get_plan_draft`.
 - "I will skip `ralph_validate_draft` because finalize will validate
-  anyway." STOP. The dry-run validator is the only signal you get before
-  the staged draft is deleted on a successful `ralph_finalize_plan`. If
-  the dry-run fails, you can fix it cheaply; if finalize fails, you have
-  lost the staged draft.
+  anyway." STOP. The dry-run validator gives a cheaper, read-only error
+  before the write path. A failed `ralph_finalize_plan` preserves the
+  staged draft for repair; a successful finalize writes `plan.json` and
+  then deletes the draft.

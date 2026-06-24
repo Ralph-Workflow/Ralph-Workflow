@@ -1631,6 +1631,19 @@ def test_schema_json_file_matches_generate_plan_schema() -> None:
     assert generated == on_disk
 
 
+def test_generated_schema_documents_expected_evidence_string_shorthand() -> None:
+    """Strict validation accepts bare evidence strings; schema must advertise that."""
+    schema = generate_plan_schema()
+    defs = cast("dict[str, object]", schema["$defs"])
+    plan_step = cast("dict[str, object]", defs["PlanStep"])
+    properties = cast("dict[str, object]", plan_step["properties"])
+    expected_evidence = cast("dict[str, object]", properties["expected_evidence"])
+    items = cast("dict[str, object]", expected_evidence["items"])
+    any_of = cast("list[dict[str, object]]", items["anyOf"])
+    assert {"$ref": "#/$defs/EvidenceRef"} in any_of
+    assert any(entry.get("type") == "string" for entry in any_of)
+
+
 def test_plan_artifact_schema_version_field_round_trip() -> None:
     """schema_version uses ``Field(default=0, ge=0)`` (no exclude=True) so the
     field is dropped from the dump only at its default value of 0 and is

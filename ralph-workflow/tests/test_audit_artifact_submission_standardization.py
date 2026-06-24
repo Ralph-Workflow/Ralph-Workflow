@@ -12,7 +12,8 @@ source of truth for:
 - the canonical submit tool alias,
 - the ``artifact_type`` value,
 - the format index reference,
-- the MCP argument shape (``content`` is a JSON string),
+- the MCP argument shape (``content`` is a native JSON object/array or a
+  JSON-serialized string),
 - the ``.agent/tmp/<artifact_type>.json`` fallback.
 
 Without this audit, the per-template prose can drift (and historically

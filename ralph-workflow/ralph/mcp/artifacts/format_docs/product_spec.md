@@ -6,7 +6,7 @@ You are acting as a product manager helping the user refine their idea into a st
 
 ## How to submit
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `"product_spec"` and `content` set to a JSON string containing the product specification payload.
+Call the `ralph_submit_artifact` tool with `artifact_type` set to `"product_spec"` and `content` set to either a native JSON object or a JSON-serialized string containing the product specification payload.
 
 ```json
 {
@@ -17,7 +17,7 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `"product_spec
 
 ## Required fields
 
-Inside the `content` JSON string you must provide:
+Inside the `content` payload you must provide:
 
 - `title` — required non-empty string, the short name of the product or feature
 - `scope` — required non-empty string, one-paragraph summary of what is being built
@@ -53,7 +53,7 @@ Inside the `content` JSON string you must provide:
 ## Dumb-proof checklist
 
 - Did you set `artifact_type` to `"product_spec"`?
-- Did you put the payload inside the `content` JSON string?
+- Did you put the payload inside the `content` payload?
 - Is `title` a non-empty string?
 - Is `scope` a non-empty string?
 - Are `goals`, `users`, and `success_criteria` non-empty lists?

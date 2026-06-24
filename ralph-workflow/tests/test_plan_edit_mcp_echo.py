@@ -1,4 +1,4 @@
-"""Tests for the read-after-write echo payload of the 4 step-mutation MCP tools.
+"""Tests for the read-after-write echo payload of the 5 step-mutation MCP tools.
 
 Each test asserts on the new JSON dict shape (not the old literal string).
 The echo payload is documented in
@@ -6,8 +6,10 @@ The echo payload is documented in
 
 Tests:
 - insert returns {action, new_step_number, reindex_map, rewritten_depends_on,
-  rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, total_steps}.
+  rewritten_ac_satisfied_by_steps, dropped_ac_satisfied_by_steps, validation_warnings,
+  total_steps}.
 - replace returns the same shape with step_number preserved (no new_step_number).
+- patch returns the replace echo shape after preserving unspecified fields.
 - remove returns the same shape with removed_step_number and the new total_steps.
 - move returns the same shape with from_step_number and to_index.
 
@@ -24,6 +26,7 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.tools.plan_draft_edit import (
     handle_insert_plan_step,
     handle_move_plan_step,
+    handle_patch_step,
     handle_remove_plan_step,
     handle_replace_plan_step,
 )
@@ -198,6 +201,41 @@ def test_replace_returns_echo_payload_shape(tmp_path: Path) -> None:
     assert payload["total_steps"] == 3
 
 
+def test_patch_returns_echo_payload_shape(tmp_path: Path) -> None:
+    """patch returns the replace echo shape after preserving omitted fields."""
+    _write_draft(tmp_path, _three_step_draft_with_ac())
+    workspace = FsWorkspace(tmp_path)
+    result = handle_patch_step(
+        planning_session(),
+        workspace,
+        {
+            "step_number": 2,
+            "step": {
+                "expected_evidence": [
+                    {"kind": "command_output", "ref": "pytest tests/test_b.py -q"}
+                ]
+            },
+        },
+    )
+    assert result.is_error is False
+    payload = _read_response_json(result)
+    for key in (
+        "action",
+        "step_number",
+        "reindex_map",
+        "rewritten_depends_on",
+        "rewritten_ac_satisfied_by_steps",
+        "dropped_ac_satisfied_by_steps",
+        "total_steps",
+        "validation_warnings",
+    ):
+        assert key in payload, f"patch echo missing key {key!r}"
+    assert payload["action"] == "replace"
+    assert payload["step_number"] == 2
+    assert payload["total_steps"] == 3
+    assert payload["validation_warnings"] == []
+
+
 def test_remove_returns_echo_payload_shape(tmp_path: Path) -> None:
     """remove returns the same shape with removed_step_number and the new total_steps."""
     _write_draft(tmp_path, _three_step_draft_with_ac())
@@ -253,6 +291,7 @@ def test_move_returns_echo_payload_shape(tmp_path: Path) -> None:
         "rewritten_ac_satisfied_by_steps",
         "dropped_ac_satisfied_by_steps",
         "total_steps",
+        "validation_warnings",
     ):
         assert key in payload, f"move echo missing key {key!r}"
     assert payload["action"] == "move"

@@ -2298,6 +2298,24 @@ def _raise_format_doc_error(
         "Field required; field is required and must be provided",
         "required field is missing",
     )
+    if artifact_type == PLAN_ARTIFACT_TYPE:
+        plan_doc = _plan_format_doc_reference(workspace_root, backend)
+        msg = (
+            f"Artifact '{artifact_type}' failed validation. "
+            f"Validation detail: {detail}. "
+            f"The exact format is documented at '{plan_doc}' inside the workspace. "
+            "Do not retry the generic ralph_submit_artifact path for plans. "
+            "Stage or repair the draft with ralph_submit_plan_section, "
+            "ralph_submit_plan_sections, or the plan step-edit tools; run "
+            "ralph_validate_draft; then retry ralph_finalize_plan. "
+            "Valid JSON that is not yet schema-valid should remain staged with "
+            "validation_warnings so the strict validator can report the remaining "
+            "plan issues without losing data. "
+            "Optional: the bundled `submit-plan-artifact` skill shows the canonical "
+            "section envelopes and detailed passing plan examples."
+        )
+        raise InvalidParamsError(msg) from original_exc
+
     retry_example = (
         f'{{"artifact_type":"{artifact_type}","content":"{{...valid {artifact_type} JSON...}}"}}'
     )

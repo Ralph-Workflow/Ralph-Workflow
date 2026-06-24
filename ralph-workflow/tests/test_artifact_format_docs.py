@@ -735,6 +735,13 @@ def test_plan_format_doc_has_high_quality_model_example() -> None:
     assert '"kind"' in doc and '"ref"' in doc
 
 
+def test_plan_format_doc_documents_expected_evidence_string_shorthand() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    assert "bare string is accepted as a compatibility shorthand" in doc
+    assert 'canonicalized to `{"kind":"file","ref":"..."}`' in doc
+
+
 def test_plan_format_doc_detailed_architecture_example_validates_with_real_plan_logic() -> None:
     """The later detailed architecture example must validate, not just exist as prose."""
     doc = load_bundled_format_doc("plan")

@@ -6,7 +6,7 @@ You are reporting a list of issues found during a review, explaining what is wro
 
 ## How to submit
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `issues` and `content` set to a JSON string of your issues payload.
+Call the `ralph_submit_artifact` tool with `artifact_type` set to `issues` and `content` set to either a native JSON object or a JSON-serialized string containing your issues payload.
 
 ```json
 {
@@ -58,7 +58,7 @@ When the review passes without issues:
 
 - Do NOT make `issues` a flat list of strings — each entry must be a JSON object with `path`, `severity`, and `summary`
 - Do NOT leave `what_came_up_short` or `how_to_fix` as empty arrays if you found real problems
-- Do NOT submit a plain string as `content` — the content must be a JSON object
+- Do NOT submit a plain non-JSON string as `content` — use a native JSON object or a JSON-serialized object
 - Do NOT use non-standard severity values; stick to `"high"`, `"medium"`, or `"low"`
 - Do NOT omit `path` in an issue object — even if the issue is general, use the most relevant file path
 
@@ -71,4 +71,4 @@ When the review passes without issues:
 - Does each issue object have `path`, `severity`, and `summary`?
 - Is `severity` one of: `"high"`, `"medium"`, `"low"`?
 - If `status` is `"issues_found"`: are `what_came_up_short` and `how_to_fix` non-empty?
-- Did you stringify the content object into a JSON string for the `content` field?
+- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?

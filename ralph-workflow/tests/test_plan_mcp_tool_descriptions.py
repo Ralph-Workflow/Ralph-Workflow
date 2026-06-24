@@ -92,6 +92,19 @@ def test_submit_artifact_description_sends_plans_to_planning_tools() -> None:
     assert "verification_strategy" not in desc
 
 
+def test_submit_artifact_schema_accepts_native_json_content() -> None:
+    schema = _schemas()["ralph_submit_artifact"]
+    properties = schema.get("properties")
+    assert isinstance(properties, dict)
+    content_schema = properties["content"]
+    assert isinstance(content_schema, dict)
+    assert content_schema["anyOf"] == [
+        {"type": "string"},
+        {"type": "object"},
+        {"type": "array"},
+    ]
+
+
 def test_replace_and_patch_descriptions_include_analysis_feedback_proof_fields() -> None:
     descs = _descs()
     replace_desc = descs["ralph_replace_plan_step"]
@@ -122,6 +135,31 @@ def test_step_tools_schema_exposes_flat_argument_style() -> None:
         )
         for field in flat_fields:
             assert field in properties, f"{name} schema does not advertise flat field {field!r}"
+        assert {"required": ["step"]} in schema.get("anyOf", [])
+
+
+def test_step_tools_schema_exposes_repaired_container_argument_shapes() -> None:
+    """tools/list must match handler JSON-container repair for step edits."""
+    schemas = _schemas()
+    for name in ("ralph_insert_plan_step", "ralph_replace_plan_step", "ralph_patch_step"):
+        properties = schemas[name].get("properties")
+        assert isinstance(properties, dict)
+        assert properties["step"] == {
+            "anyOf": [{"type": "object"}, {"type": "string"}],
+            "description": "Native step object or a JSON-serialized step object.",
+        }
+        assert properties["targets"] == {
+            "anyOf": [{"type": "array"}, {"type": "object"}, {"type": "string"}]
+        }
+        assert properties["depends_on"] == {
+            "anyOf": [{"type": "array"}, {"type": "integer"}, {"type": "string"}]
+        }
+        assert properties["satisfies"] == {
+            "anyOf": [{"type": "array"}, {"type": "string"}]
+        }
+        assert properties["expected_evidence"] == {
+            "anyOf": [{"type": "array"}, {"type": "object"}, {"type": "string"}]
+        }
 
 
 def test_planning_tool_descriptions_advertise_lenient_staging_and_warnings() -> None:

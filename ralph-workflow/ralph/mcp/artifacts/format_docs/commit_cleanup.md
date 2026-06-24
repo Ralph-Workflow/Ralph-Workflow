@@ -6,7 +6,7 @@ You are analyzing the current git state to identify files that MUST NOT be commi
 
 ## How to submit
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `"commit_cleanup"` and `content` set to a JSON string of your cleanup payload.
+Call the `ralph_submit_artifact` tool with `artifact_type` set to `"commit_cleanup"` and `content` set to either a native JSON object or a JSON-serialized string containing your cleanup payload.
 
 ```json
 {

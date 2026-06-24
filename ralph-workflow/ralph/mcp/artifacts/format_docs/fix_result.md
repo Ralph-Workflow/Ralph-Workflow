@@ -6,7 +6,7 @@ You are reporting the outcome of a fix task: what you fixed and what files chang
 
 ## How to submit
 
-Call the `ralph_submit_artifact` tool with `artifact_type` set to `fix_result` and `content` set to a JSON string of your fix result payload.
+Call the `ralph_submit_artifact` tool with `artifact_type` set to `fix_result` and `content` set to either a native JSON object or a JSON-serialized string containing your fix result payload.
 
 ```json
 {
@@ -37,7 +37,7 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `fix_result` a
 
 - Do NOT leave `summary` empty — describe what was actually fixed
 - Do NOT leave `files_changed` empty — list every file that was modified
-- Do NOT submit a plain string as `content` — the content must be a JSON object
+- Do NOT submit a plain non-JSON string as `content` — use a native JSON object or a JSON-serialized object
 - Do NOT add extra fields that are not listed above
 - Do NOT use `status` — fix_result does not have a status field; just describe the work in `summary`
 
@@ -47,4 +47,4 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `fix_result` a
 - Did you write a non-empty `summary` describing what was fixed?
 - Did you write a non-empty `files_changed` listing every file you modified?
 - Did you NOT add a `status` field (fix_result does not use it)?
-- Did you stringify the content object into a JSON string for the `content` field?
+- Did you provide `content` as either a native JSON object/array or a JSON-serialized string?

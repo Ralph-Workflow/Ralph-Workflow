@@ -25,9 +25,9 @@ _EXAMPLE_STEPS_CONTENT = (
 
 _SUBMIT_ARTIFACT_DESCRIPTION = (
     "Submit a structured artifact. Required: artifact_type (string) and "
-    "content (JSON string). Returns confirmation. "
-    'Example: {"artifact_type": "commit_message", "content": "{\\"type\\":'
-    '\\"commit\\",\\"subject\\":\\"type(scope): description\\"}"}. '
+    "content (native JSON object/array or JSON-serialized string). Returns confirmation. "
+    'Example: {"artifact_type": "commit_message", "content": {"type":'
+    '"commit","subject":"type(scope): description"}}. '
     "See .agent/artifact-formats/<type>.md on error. Validated against the "
     "artifact's Pydantic model; artifact payloads enforce the 4 MB cap where "
     "the format defines one."

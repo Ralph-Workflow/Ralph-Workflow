@@ -42,7 +42,7 @@ The full schema, per-section shapes, per-list caps, and string-length tiers for 
 
 - Plan size limits → `.agent/artifact-formats/plan.md` §`Plan size limits` (4 MB hard cap, per-list caps, `PlanArtifactSizeError` before Pydantic).
 - Planning quality → `.agent/artifact-formats/plan.md` §`Planning quality guidance` (analysis-ready criteria, exact verification, acceptance criteria, evidence, and risk coverage).
-- Cycle guard → `.agent/artifact-formats/plan.md` §`Cycle guard` (`depends_on` DAG contract; diamond-shaped DAGs accepted).
+- Depends-on DAG guard → `.agent/artifact-formats/plan.md` §`Cross-section invariants` (`depends_on` DAG contract; diamond-shaped DAGs accepted).
 
 Native file and shell tools are disabled in this brokered fallback; native orchestration tools remain enabled. Use the plan tools exactly as named below. Step mutation tools echo the new step number(s), the `depends_on` reindex map, and the AC ids whose `satisfied_by_steps` were rewritten.
 
