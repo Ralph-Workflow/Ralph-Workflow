@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ralph-workflow"
 dynamic = ["version"]
-description = "Vendor-neutral AI coding workflow orchestration with unattended execution, recovery, and verification."
+description = "Autonomous coding workflow for Claude Code, Codex & OpenCode — run agents unattended overnight. Composable loop framework with built-in verification, recovery, and multi-agent orchestration. Free, open-source, local-first."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
