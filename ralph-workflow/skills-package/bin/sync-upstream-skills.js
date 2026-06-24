@@ -31,6 +31,14 @@ function resolveOutputDirs() {
 }
 
 async function readSkillContent(skill) {
+  if (skill.source.type === 'package') {
+    const sourcePath = skill.source.path;
+    if (!sourcePath) {
+      throw new Error(`Package source for ${skill.name} must define path`);
+    }
+    return fs.readFileSync(path.join(PACKAGE_DIR, '..', sourcePath), 'utf8');
+  }
+
   if (skill.source.type !== 'upstream') {
     throw new Error(`Unsupported skill source type: ${skill.source.type}`);
   }
@@ -69,8 +77,8 @@ function writeMetadata(outputDirs, manifest) {
         catalog_repo: skill.catalog?.repo || null,
         catalog_ref: skill.catalog?.ref || null,
         catalog_path: skill.catalog?.path || null,
-        repo: skill.source.repo,
-        ref: skill.source.ref,
+        repo: skill.source.repo || null,
+        ref: skill.source.ref || null,
         path: skill.source.path,
       },
     ]),

@@ -982,6 +982,16 @@ def test_design_balanced_profile_only_bias_fills_three() -> None:
         assert absent_key not in design, f"{absent_key} should not be bias-filled by balanced"
 
 
+def test_design_without_planning_profile_does_not_bias_fill_defaults() -> None:
+    plan = {**_valid_plan(), "design": {"outcome": "Preserve foo() behavior."}}
+    normalized = normalize_plan_artifact_content(plan)
+    design = cast("dict[str, object]", normalized["design"])
+
+    assert design == {"outcome": "Preserve foo() behavior."}
+    assert "testability" not in design
+    assert "acceptance_criteria" not in design
+
+
 def test_plan_no_design_baseline_round_trip() -> None:
     plan = _valid_plan()
     plan.pop("design", None)

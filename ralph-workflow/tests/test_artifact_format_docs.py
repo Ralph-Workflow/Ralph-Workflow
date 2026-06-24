@@ -26,10 +26,14 @@ from ralph.mcp.artifacts.plan import normalize_plan_artifact_content
 from ralph.mcp.artifacts.product_spec import normalize_product_spec_content
 from ralph.mcp.artifacts.smoke_test_result import normalize_smoke_test_result_content
 from ralph.mcp.artifacts.typed_artifacts import normalize_commit_cleanup_content
-from ralph.mcp.tools.artifact import handle_submit_artifact
+from ralph.mcp.tools.artifact import (
+    handle_submit_artifact,
+    handle_submit_plan_section,
+    handle_submit_plan_sections,
+)
 from ralph.mcp.tools.coordination import InvalidParamsError
 from tests.test_artifact_format_docs_memory_backend import MemoryBackend
-from tests.test_artifact_format_docs_mock_session import MockSession
+from tests.test_artifact_format_docs_mock_session import MockSession, planning_session
 from tests.test_artifact_format_docs_mock_workspace import MockWorkspace
 
 MIN_CHECKLIST_BULLETS = 3
@@ -69,6 +73,70 @@ def _extract_json_block_after_heading(doc: str, heading: str) -> dict[str, objec
 
 def _extract_fenced_json_blocks(markdown: str) -> list[str]:
     return re.findall(r"```json\s*\n(.*?)\n```", markdown, flags=re.DOTALL)
+
+
+def _extract_fenced_artifact_envelopes(markdown: str) -> list[dict[str, object]]:
+    envelopes: list[dict[str, object]] = []
+    for block in _extract_fenced_json_blocks(markdown):
+        decoded = json.loads(block)
+        if isinstance(decoded, dict) and "artifact_type" in decoded:
+            envelopes.append(cast("dict[str, object]", decoded))
+    return envelopes
+
+
+def _extract_fenced_plan_tool_payloads(
+    markdown: str,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    section_payloads: list[dict[str, object]] = []
+    batch_payloads: list[dict[str, object]] = []
+    for block in _extract_fenced_json_blocks(markdown):
+        decoded = json.loads(block)
+        if not isinstance(decoded, dict):
+            continue
+        payload = cast("dict[str, object]", decoded)
+        if "entries" in payload:
+            batch_payloads.append(payload)
+        elif "section" in payload and "content" in payload:
+            section_payloads.append(payload)
+    return section_payloads, batch_payloads
+
+
+def _extract_inline_json_objects_starting_with(
+    markdown: str,
+    marker: str,
+) -> list[dict[str, object]]:
+    objects: list[dict[str, object]] = []
+    cursor = 0
+    while True:
+        start = markdown.find(marker, cursor)
+        if start == -1:
+            return objects
+        depth = 0
+        in_string = False
+        escape = False
+        for offset, char in enumerate(markdown[start:], start=start):
+            if in_string:
+                if escape:
+                    escape = False
+                elif char == "\\":
+                    escape = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    decoded = json.loads(markdown[start : offset + 1])
+                    assert isinstance(decoded, dict)
+                    objects.append(cast("dict[str, object]", decoded))
+                    cursor = offset + 1
+                    break
+        else:  # pragma: no cover - malformed doc failure path
+            pytest.fail(f"Could not extract inline JSON object starting at {marker!r}")
 
 
 def test_all_supported_artifact_types_have_bundled_markdown() -> None:
@@ -141,6 +209,17 @@ def test_plan_format_doc_is_registered() -> None:
     assert len(scope_items) >= 3
 
 
+def test_plan_format_doc_examples_do_not_use_vague_verification_outcomes() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    vague_fragments = (
+        '"expected_outcome": "All tests pass"',
+        '"expected_outcome":"All tests pass"',
+    )
+    for fragment in vague_fragments:
+        assert fragment not in doc
+
+
 def test_plan_format_doc_documents_lenient_staging_contract() -> None:
     doc = load_bundled_format_doc("plan")
     assert doc is not None
@@ -152,6 +231,48 @@ def test_plan_format_doc_documents_lenient_staging_contract() -> None:
         "silently dropped",
     ):
         assert stale_fragment not in doc
+
+
+def test_plan_format_doc_matches_planning_profile_runtime_defaults() -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    normalized_doc = re.sub(r"\s+", " ", doc)
+
+    assert "If `planning_profile` is omitted, no preset defaults are applied" in normalized_doc
+    assert "The default when no preset is specified is `strict`" not in doc
+    assert "**`strict` (default):**" not in doc
+    assert "strip or replace the sentinel yourself if you want clean AC ids" not in doc
+    assert "Replace it with task-specific acceptance criteria before finalizing" in doc
+
+
+def test_plan_format_doc_planning_tool_payloads_round_trip(tmp_path: Path) -> None:
+    doc = load_bundled_format_doc("plan")
+    assert doc is not None
+    section_payloads, batch_payloads = _extract_fenced_plan_tool_payloads(doc)
+    batch_payloads.extend(_extract_inline_json_objects_starting_with(doc, '{"entries"'))
+
+    assert section_payloads, "plan.md must contain ralph_submit_plan_section payload examples"
+    assert batch_payloads, "plan.md must contain ralph_submit_plan_sections payload examples"
+
+    for index, payload in enumerate(section_payloads):
+        result = handle_submit_plan_section(
+            planning_session(),
+            MockWorkspace(tmp_path / f"plan-section-example-{index}"),
+            payload,
+        )
+        assert result.is_error is False, (
+            f"plan.md section payload #{index} failed: {result.content[0].text}"
+        )
+
+    for index, payload in enumerate(batch_payloads):
+        result = handle_submit_plan_sections(
+            planning_session(),
+            MockWorkspace(tmp_path / f"plan-batch-example-{index}"),
+            payload,
+        )
+        assert result.is_error is False, (
+            f"plan.md batch payload #{index} failed: {result.content[0].text}"
+        )
 
 
 def test_materialize_format_doc_writes_markdown_to_workspace() -> None:
@@ -246,6 +367,36 @@ def test_bundled_examples_validate_through_real_normalizers(tmp_path: Path) -> N
                 },
             )
             assert result.is_error is False
+
+
+def test_all_fenced_format_doc_artifact_envelopes_submit_through_handler(
+    tmp_path: Path,
+) -> None:
+    docs = [load_bundled_format_index()]
+    for artifact_type in FORMAT_DOC_ARTIFACT_TYPES:
+        doc = load_bundled_format_doc(artifact_type)
+        assert doc is not None
+        docs.append(doc)
+
+    envelopes: list[dict[str, object]] = []
+    for doc in docs:
+        envelopes.extend(_extract_fenced_artifact_envelopes(doc))
+
+    assert envelopes, "format docs must contain executable artifact envelope examples"
+    for index, envelope in enumerate(envelopes):
+        artifact_type = envelope.get("artifact_type")
+        if artifact_type == "plan":
+            continue
+        drain = "development_analysis" if artifact_type == "analysis_decision" else "development"
+        result = handle_submit_artifact(
+            MockSession(drain=drain),
+            MockWorkspace(tmp_path / f"format-doc-example-{index}"),
+            envelope,
+        )
+        assert result.is_error is False, (
+            f"format doc artifact envelope #{index} ({artifact_type!r}) failed: "
+            f"{result.content[0].text}"
+        )
 
 
 def test_format_doc_mentions_required_fields() -> None:

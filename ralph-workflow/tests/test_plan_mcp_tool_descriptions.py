@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ralph.mcp.tools.artifact import handle_submit_plan_section, prepare_artifact_submission
+from ralph.mcp.tools.artifact import (
+    handle_submit_plan_section,
+    handle_submit_plan_sections,
+    prepare_artifact_submission,
+)
 from ralph.mcp.tools.bridge._spec_helpers import (
     _EXAMPLE_PLAN_SECTION_CONTENT,
     _EXAMPLE_STEPS_CONTENT,
@@ -48,6 +52,36 @@ def _schemas() -> dict[str, dict[str, object]]:
         s.metadata.definition.name: s.metadata.definition.input_schema
         for s in artifact_specs()
     }
+
+
+def _extract_balanced_json_after(text: str, marker: str) -> dict[str, object]:
+    start = text.index(marker) + len(marker)
+    while text[start].isspace():
+        start += 1
+    assert text[start] == "{"
+    depth = 0
+    in_string = False
+    escape = False
+    for offset, char in enumerate(text[start:], start=start):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                decoded = json.loads(text[start : offset + 1])
+                assert isinstance(decoded, dict)
+                return cast("dict[str, object]", decoded)
+    raise AssertionError(f"could not extract JSON object after {marker!r}")
 
 
 def test_step_mutation_descriptions_contain_reindex_depends_on_satisfied_by_steps() -> None:
@@ -145,6 +179,38 @@ def test_plan_section_description_examples_are_detailed_and_stage_cleanly(
 
     assert isinstance(result, ToolResult)
     assert result.is_error is False
+    response = json.loads(result.content[0].text)
+    assert response["validation_warnings"] == []
+
+
+def test_plan_section_tool_description_example_round_trips(tmp_path: Path) -> None:
+    desc = _descs()["ralph_submit_plan_section"]
+    payload = _extract_balanced_json_after(desc, "Example: ")
+
+    result = handle_submit_plan_section(
+        planning_session(),
+        FsWorkspace(tmp_path),
+        payload,
+    )
+
+    assert isinstance(result, ToolResult)
+    assert result.is_error is False, result.content[0].text
+    response = json.loads(result.content[0].text)
+    assert response["validation_warnings"] == []
+
+
+def test_plan_sections_tool_description_example_round_trips(tmp_path: Path) -> None:
+    desc = _descs()["ralph_submit_plan_sections"]
+    payload = _extract_balanced_json_after(desc, "for example ")
+
+    result = handle_submit_plan_sections(
+        planning_session(),
+        FsWorkspace(tmp_path),
+        payload,
+    )
+
+    assert isinstance(result, ToolResult)
+    assert result.is_error is False, result.content[0].text
     response = json.loads(result.content[0].text)
     assert response["validation_warnings"] == []
 

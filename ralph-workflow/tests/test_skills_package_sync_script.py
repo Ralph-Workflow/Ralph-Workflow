@@ -18,6 +18,17 @@ from ralph.skills._content import BASELINE_SKILL_NAMES
 
 pytestmark = pytest.mark.subprocess_e2e
 
+PACKAGE_OWNED_SKILLS = frozenset(
+    {
+        "submit-plan-artifact",
+        "submit-plan-step-edits",
+        "submit-artifact",
+        "submit-commit-message-artifact",
+        "submit-development-result-artifact",
+        "submit-commit-cleanup-artifact",
+    }
+)
+
 
 def _free_port() -> int:
     with socket.socket() as sock:
@@ -32,14 +43,20 @@ def test_skills_package_prepack_uses_sync_script() -> None:
     assert "cpSync" not in data["scripts"]["prepack"]
 
 
-def test_upstream_manifest_covers_all_shipped_skills_and_has_no_local_sources() -> None:
+def test_upstream_manifest_covers_all_shipped_skills_and_declares_sources() -> None:
     repo_root = Path(__file__).parent.parent
     manifest_path = repo_root / "skills-package" / "upstream-skills.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     bundle_names = tuple(skill["name"] for skill in manifest["skills"])
 
     assert bundle_names == BASELINE_SKILL_NAMES
-    assert all(skill["source"]["type"] == "upstream" for skill in manifest["skills"])
+    for skill in manifest["skills"]:
+        source_type = skill["source"]["type"]
+        if skill["name"] in PACKAGE_OWNED_SKILLS:
+            assert source_type == "package"
+            assert skill["source"]["path"] == f"ralph/skills/content/{skill['name']}.md"
+        else:
+            assert source_type == "upstream"
 
 
 def test_sync_script_fetches_upstream_content(tmp_path: Path) -> None:
@@ -105,3 +122,57 @@ def test_sync_script_fetches_upstream_content(tmp_path: Path) -> None:
     assert metadata["skills"] == ["demo-skill"]
     assert metadata["source_repos"] == ["https://github.com/example/upstream"]
     assert metadata["skill_sources"]["demo-skill"]["repo"] == "https://github.com/example/upstream"
+
+
+def test_sync_script_copies_package_owned_skill_content(tmp_path: Path) -> None:
+    node_binary = which("node")
+    assert node_binary is not None
+
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "source_repo": "multiple",
+                "source_ref": "mixed",
+                "source_version": "mixed",
+                "source_repos": [],
+                "skills": [
+                    {
+                        "name": "submit-artifact",
+                        "bundle": "core-workflow",
+                        "source": {
+                            "type": "package",
+                            "path": "ralph/skills/content/submit-artifact.md",
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output_dir = tmp_path / "output"
+    script = Path(__file__).parent.parent / "skills-package" / "bin" / "sync-upstream-skills.js"
+    env = {
+        **os.environ,
+        "RALPH_SKILLS_MANIFEST": str(manifest_path),
+        "RALPH_SKILLS_OUTPUT_DIRS": str(output_dir),
+        "RALPH_SKILLS_SOURCE_COMMIT": "fixture-commit",
+        "RALPH_SKILLS_MIRRORED_AT": "2026-05-26T00:00:00Z",
+    }
+    subprocess.run([node_binary, str(script)], check=True, env=env)
+
+    expected = (
+        Path(__file__).parent.parent
+        / "ralph"
+        / "skills"
+        / "content"
+        / "submit-artifact.md"
+    ).read_text(encoding="utf-8")
+    assert (output_dir / "submit-artifact.md").read_text(encoding="utf-8") == expected
+    metadata = json.loads((output_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["skills"] == ["submit-artifact"]
+    assert metadata["skill_sources"]["submit-artifact"]["repo"] is None
+    assert metadata["skill_sources"]["submit-artifact"]["path"] == (
+        "ralph/skills/content/submit-artifact.md"
+    )

@@ -363,7 +363,7 @@ This example is the canonical detailed plan. It exercises the full `PlanArtifact
     {"risk": "Public foo() signature changes and breaks callers", "mitigation": "Keep foo() signature stable; only internal lookups move to constructor params.", "severity": "high"}
   ],
   "verification_strategy": [
-    {"method": "pytest tests/test_foo.py -q", "expected_outcome": "All tests pass"}
+    {"method": "pytest tests/test_foo.py -q", "expected_outcome": "tests/test_foo.py::test_foo_uses_injected_dep passes and proves foo() uses the injected dependency seam."}
   ],
   "constraints": {
     "must_not_break": ["public foo() signature", "CLI entry point"],
@@ -709,7 +709,7 @@ The profile table above maps each shape to the right planning depth.
 - Do NOT declare BOTH `parallel_plan` and `work_units` in the same plan — the cross-section validator rejects it. Pick one.
 - Do NOT set `summary.intent_verb` to a verb that does not admit one of the `scope_items[*].category` values — the cross-section validator rejects it. See the `## Cross-section invariants` section.
 - Do NOT use `verification_strategy[*].method` that starts with `bash -c `, `sh -c `, or `eval ` — the shell-invocation guard rejects it. Use the executable path instead.
-- If you set `design.planning_profile = "strict"` and omit `acceptance_criteria`, the preset seeds `PRESET-01` as a placeholder — strip or replace the sentinel yourself if you want clean AC ids.
+- If you set `design.planning_profile = "strict"` and omit `acceptance_criteria`, the preset seeds `PRESET-01` as temporary scaffolding. Replace it with task-specific acceptance criteria before finalizing an analysis-ready plan.
 
 ## Dumb-proof checklist
 
@@ -1008,17 +1008,19 @@ count:
 
 ### Profile-by-profile SE-bias defaults
 
-The `planning_profile` values bias-fill the design sub-sections differently.
-The default when no preset is specified is `strict`.
+The `planning_profile` values bias-fill the design sub-sections only when the
+field is explicitly set. If `planning_profile` is omitted, no preset defaults
+are applied; provide explicit design sub-sections or set a profile.
 
-- **`strict` (default):** every typed sub-section is bias-filled with
+- **`strict`:** every typed sub-section is bias-filled with
   a SE-opinionated default. Use this for multi-file work and refactors
   that must not regress. The preset's defaults include
   `testability.must_be_black_box=true`,
   `dependency_injection.required_for_testability=true`,
-  `refactor_strategy.dead_code_policy="delete-immediately"`, and a
-  sentinel `PRESET-01` acceptance criterion (strip or replace it
-  yourself if you want clean AC ids).
+  `refactor_strategy.dead_code_policy="delete-immediately"`, and temporary
+  `PRESET-01` acceptance-criteria scaffolding. Replace that scaffolding with
+  task-specific AC ids and descriptions before finalizing an analysis-ready
+  plan.
 - **`balanced`:** biases `testability`, `dependency_injection`, and
   `refactor_strategy` but leaves the executor free to choose on `drift_detection`
   and `acceptance_criteria`. Use this for single-file features and
