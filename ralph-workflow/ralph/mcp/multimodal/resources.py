@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from ralph.mcp.multimodal._manifest_entry import ManifestEntry
@@ -21,6 +22,12 @@ _URI_PATTERN = re.compile(
 )
 
 MEDIA_URI_TEMPLATE = "ralph://media/{artifact_id}"
+
+# wt-024 M2: default cap on retained manifest entries.  Matches the
+# shipped-in-production knob documented in the wt-024 plan.  256 is
+# generous for any realistic session; pathological unbounded growth
+# is the only thing this cap prevents.
+_DEFAULT_MAX_ENTRIES = 256
 
 
 def build_media_uri(artifact_id: str) -> str:
@@ -64,8 +71,23 @@ def build_media_identity(
 class MediaManifest:
     """Session-scoped manifest of all multimodal resource references."""
 
-    _entries: dict[str, ManifestEntry] = field(default_factory=dict)
+    # wt-024 M2: bounded retention.  ``_entries`` is an ``OrderedDict``
+    # so we can evict the oldest entry (FIFO) AND refresh an existing
+    # identity's LRU position to the back on re-add.  Callers that
+    # only ever read ``_entries`` continue to work because
+    # ``OrderedDict`` is a ``dict`` subclass.  Typed as
+    # ``OrderedDict`` (not ``dict``) so mypy --strict can verify
+    # ``move_to_end`` and ``popitem(last=...)`` are valid calls.
+    _entries: OrderedDict[str, ManifestEntry] = field(
+        default_factory=OrderedDict,
+    )
     _identity_index: dict[str, str] = field(default_factory=dict)
+    # Maximum number of distinct artifact_ids retained in ``_entries``.
+    # When a NEW identity pushes ``len(_entries) >= max_entries`` we
+    # evict the oldest artifact and clear its mapping from
+    # ``_identity_index``.  Default keeps existing small-fixture
+    # behaviour unchanged.
+    max_entries: int = _DEFAULT_MAX_ENTRIES
 
     def add(
         self,
@@ -103,9 +125,38 @@ class MediaManifest:
             _raw_bytes=raw_bytes,
             _byte_loader=xt.byte_loader,
         )
+        existing = self._entries.get(artifact_id)
         self._entries[artifact_id] = entry
         self._identity_index[resolved_identity] = artifact_id
+        if existing is None and len(self._entries) > self.max_entries:
+            self._evict_oldest()
+        elif existing is not None:
+            # Refresh LRU position: re-adding an existing identity
+            # moves it to the back so the next eviction targets the
+            # actual oldest entry, not the just-touched one.
+            self._entries.move_to_end(artifact_id)
         return entry
+
+    def _evict_oldest(self) -> str | None:
+        """Pop the oldest ``_entries`` key and drop its identity mappings.
+
+        Returns the evicted ``artifact_id`` so callers can log or
+        observe the eviction.  No-op when ``_entries`` is empty.
+        """
+        if not self._entries:
+            return None
+        evicted_id, _ = self._entries.popitem(last=False)
+        # Remove every ``_identity_index`` entry whose value is the
+        # evicted artifact_id so we never serve a stale dedup to a
+        # future ``add()`` of the same identity.
+        stale_identities = [
+            identity
+            for identity, mapped_id in self._identity_index.items()
+            if mapped_id == evicted_id
+        ]
+        for identity in stale_identities:
+            del self._identity_index[identity]
+        return evicted_id
 
     def get(self, artifact_id: str) -> ManifestEntry | None:
         """Retrieve a manifest entry by artifact_id, or None if not found."""

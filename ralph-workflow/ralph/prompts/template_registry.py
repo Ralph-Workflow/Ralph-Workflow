@@ -16,15 +16,75 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
+
+
+def _default_reader(p: Path) -> str:
+    """Default reader: ``Path.read_text`` with utf-8 encoding."""
+    return p.read_text(encoding="utf-8")
+
+
+_DEFAULT_READER: Callable[[Path], str] = _default_reader
+
+
+class _PackagedTemplateCache:
+    """Clearable memoizing loader for the static packaged prompt templates.
+
+    The packaged .jinja templates under ``packaged_template_root()``
+    are immutable for the process lifetime. Reading them on every
+    call (the pre-wt-024 behavior) wasted I/O. The cache holds a
+    dict ``relative_path -> text`` and serves repeat calls from memory.
+
+    ``reader`` is an injectable ``Callable[[Path], str]`` (default:
+    ``Path.read_text``) so tests can count invocations without real
+    disk I/O. ``clear()`` resets the cache for test isolation.
+    """
+
+    def __init__(
+        self,
+        *,
+        reader: Callable[[Path], str] | None = None,
+    ) -> None:
+        self._reader: Callable[[Path], str] = reader or _DEFAULT_READER
+        self._cache: dict[str, str] = {}
+
+    def get(self, relative_path: str, *, root: Path) -> str:
+        """Return the packaged template body for ``relative_path``.
+
+        ``root`` is the packaged templates directory (typically
+        ``packaged_template_root()``); ``relative_path`` is the
+        template path under ``root``. The cache key is the relative
+        path so the same name resolves to the same text across
+        callers.
+        """
+        cached = self._cache.get(relative_path)
+        if cached is not None:
+            return cached
+        text = self._reader(root / relative_path)
+        self._cache[relative_path] = text
+        return text
+
+    def clear(self) -> None:
+        """Drop every cached template body. Used by tests for isolation."""
+        self._cache.clear()
+
+
+_packaged_template_cache = _PackagedTemplateCache()
+"""Process-wide cache for packaged templates; mutable for tests via ``clear()``."""
 
 
 class TemplateRegistry:
     """Registry that holds prompt templates by name."""
 
-    def __init__(self, *, template_dirs: tuple[Path, ...] = ()) -> None:
+    def __init__(
+        self,
+        *,
+        template_dirs: tuple[Path, ...] = (),
+        _read_text: Callable[[Path], str] | None = None,
+    ) -> None:
         self._templates: dict[str, str] = {}
         self._template_dirs = template_dirs
+        self._read_text: Callable[[Path], str] = _read_text or _DEFAULT_READER
 
     def register_template(self, name: str, content: str) -> None:
         """Register or replace a prompt template."""
@@ -48,7 +108,12 @@ class TemplateRegistry:
             for candidate in candidates:
                 path = directory / candidate
                 if path.exists() and path.is_file():
-                    return path.read_text(encoding="utf-8")
+                    text = self._read_text(path)
+                    # Backfill the in-memory cache so subsequent
+                    # get_template calls for this name are served from
+                    # memory without re-reading from disk (wt-024 P3).
+                    self._templates[name] = text
+                    return text
         return None
 
 

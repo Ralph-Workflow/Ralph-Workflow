@@ -18,6 +18,7 @@ from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
     tool_name_prefix_for_transport,
 )
+from ralph.prompts.system_prompt import _prompt_files_differ
 from ralph.prompts.types import SessionCapabilities
 from ralph.workspace import FsWorkspace
 
@@ -136,17 +137,56 @@ def _prompt_changed_since_last_materialization(workspace_root: Path) -> bool:
     ``PROMPT_PATH`` env var is honoured in Pro mode. The materialised
     ``.agent/CURRENT_PROMPT.md`` remains engine-owned and is checked as
     the second operand of the comparison.
+
+    Uses the shared ``_prompt_files_differ`` helper so the comparison
+    short-circuits on (st_size, st_mtime_ns) equality without reading
+    file content. OSError is still caught and converted to ``False``
+    to preserve the pre-existing behaviour.
+
+    When ``current_prompt_path`` does not exist yet (no prior
+    materialisation), this returns ``False`` to preserve the legacy
+    resume semantics: "no materialised prompt to differ from" is
+    treated as "no change", which lets the caller set
+    ``resume_existing_phase=True`` on the first invocation.
     """
     prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
-    if not prompt_path.exists() or not current_prompt_path.exists():
+
+    # Preserve legacy semantics: a missing current_prompt means
+    # "no materialisation has happened yet" -> not changed -> the
+    # caller treats the planning phase as a resume target.  This is
+    # the opposite of what ``_sync_current_prompt_file`` wants
+    # (write source on missing current), so the resume caller must
+    # short-circuit BEFORE delegating to ``_prompt_files_differ``.
+    if not current_prompt_path.exists():
         return False
+
+    def _stat(path: Path) -> tuple[int, int] | None:
+        try:
+            if not path.exists():
+                return None
+            stat = path.stat()
+            return (stat.st_size, stat.st_mtime_ns)
+        except OSError:
+            return None
+
+    def _read(path: Path) -> str:
+        return path.read_text(encoding="utf-8")
+
     try:
-        return prompt_path.read_text(encoding="utf-8") != current_prompt_path.read_text(
-            encoding="utf-8"
+        # read_source is left as None here: this caller only needs the
+        # boolean verdict, not the source text, so we avoid reading the
+        # source file content on the size-mismatch fast path.
+        changed, _ = _prompt_files_differ(
+            prompt_path,
+            current_prompt_path,
+            stat_fn=_stat,
+            read_source=None,
+            read_current=_read,
         )
     except OSError:
         return False
+    return changed
 
 
 def _should_resume_existing_planning_phase_name(
