@@ -397,12 +397,17 @@ class IdleWatchdog:
     # DiscoveryStrategy for output paths and reuses capture instances per
     # worker so only new lines are ingested as first-party evidence.
     # The cache is hard-bounded at ``_MAX_SUBAGENT_OUTPUT_CAPTURES``
-    # (defined in ``_activity_methods``); LRU workers are evicted when
-    # the cap binds. To prevent the evicted workers' stateful captures
-    # from being immediately recreated (which would re-emit historical
-    # lines), evicted worker IDs are recorded in
-    # ``_evicted_worker_tombstones`` and skipped on the next poll. The
-    # tombstone is itself bounded at ``_MAX_EVICTED_TOMBSTONES``.
+    # (private constant in ``_activity_methods``). FIFO workers are
+    # evicted when the cap binds (the OLDEST-INSERTED worker is
+    # dropped first; there is no LRU refresh on poll). To prevent
+    # the evicted workers' stateful captures from being immediately
+    # recreated (which would re-emit historical lines), evicted
+    # worker IDs are recorded in ``_evicted_worker_tombstones`` and
+    # skipped on the next poll. The tombstone is itself bounded at
+    # ``_MAX_EVICTED_TOMBSTONES`` and uses FIFO eviction. Tests
+    # exercise the bound by generating enough workers to trigger the
+    # production cap -- no DI seam is exposed on the public
+    # ``IdleWatchdog`` constructor.
     _subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = field(
         default_factory=OrderedDict, init=False
     )
