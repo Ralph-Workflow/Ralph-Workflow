@@ -3105,6 +3105,21 @@ class ParallelDisplay:
         """Expose console for external renderers."""
         return self._ctx.console
 
+    def drop_unit(self, unit_id: str) -> None:
+        """Release per-unit state so long parallel sessions don't accumulate state across waves.
+
+        Removes the unit's overflow log, overflow-warning flag,
+        drop-warning timestamp, last-emitted tool signature, and
+        propagates the drop to the embedded ``ActivityRouter``. Safe
+        to call for a unit that was never added; missing entries are
+        silently skipped.
+        """
+        self._overflow_logs.pop(unit_id, None)
+        self._overflow_warned.discard(unit_id)
+        self._drop_last_warned.pop(unit_id, None)
+        self._last_emitted_tool_signature.pop(unit_id, None)
+        self._activity_router.drop_unit(unit_id)
+
     def __enter__(self) -> ParallelDisplay:
         self.start()
         return self

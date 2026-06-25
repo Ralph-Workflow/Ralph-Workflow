@@ -22,6 +22,7 @@ from ralph.mcp.multimodal.resources import (
     MediaEntryExtras,
     MediaSource,
     build_media_identity,
+    new_artifact_id,
     parse_media_uri,
 )
 from ralph.mcp.tools.coordination import ToolContent, ToolResult
@@ -341,16 +342,32 @@ def _handle_workspace_media(
         title=title,
         source=MediaSource(source_path=source_path, raw_bytes=raw_bytes),
     )
+    # Compute the artifact_id up-front so we can persist the cache and
+    # pass a byte_loader to ``manifest.add`` at add-time. This lets
+    # ``MediaManifest`` skip retaining the raw_bytes payload (the
+    # loader provides bytes on demand). The pre-assigned artifact_id
+    # is forwarded via ``MediaEntryExtras.artifact_id`` so the
+    # manifest uses the SAME id we used to write the cache file.
+    artifact_id = new_artifact_id()
+    cache_path = _write_durable_media_cache(workspace, artifact_id, raw_bytes)
     entry = manifest.add(
         title=title,
         mime_type=mime_type,
         modality=modality,
         raw_bytes=raw_bytes,
-        extras=MediaEntryExtras(source_path=source_path, identity_key=identity_key),
+        extras=MediaEntryExtras(
+            source_path=source_path,
+            identity_key=identity_key,
+            cache_path=cache_path,
+            byte_loader=_workspace_artifact_loader(workspace, cache_path, source_path),
+            artifact_id=artifact_id,
+        ),
     )
     block, delivery = _make_non_inline_workspace_block(verdict, entry, mime_type, modality, title)
-    artifact_id = entry.uri.rsplit("/", maxsplit=1)[-1]
-    cache_path = _write_durable_media_cache(workspace, artifact_id, raw_bytes)
+    # The byte_loader and cache_path were wired at add-time, but
+    # ``set_replay_source`` also records ``source_path`` on the
+    # entry so downstream readers can recover it without re-walking
+    # the workspace. The loader is the same instance.
     entry.set_replay_source(
         cache_path=cache_path,
         source_path=source_path,

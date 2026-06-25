@@ -371,3 +371,4 @@ ehthumbs.db
 $RECYCLE.BIN/
 /checkpoint.json
 .ralph/run.json
+.ralph/

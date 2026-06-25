@@ -384,3 +384,123 @@ def test_media_manifest_eviction_at_default_cap_with_default_256() -> None:
     assert "item-0" not in titles
     # The last item must be retained.
     assert "item-256" in titles
+
+
+class TestMediaManifestRawBytesRelease:
+    """AC-06 regression: MediaManifest does NOT retain _raw_bytes when a
+    durable replay source (byte_loader or cache_path) is supplied at
+    add-time. The raw payload is rehydratable via the loader so
+    storing both wastes up to 256 x multi-MB of memory.
+    """
+
+    def test_media_manifest_does_not_retain_raw_bytes_when_byte_loader_supplied(
+        self,
+    ) -> None:
+        """A byte_loader at add-time suppresses _raw_bytes retention."""
+        payload = b"a" * 1024
+        loader_calls = {"count": 0}
+
+        def loader() -> bytes:
+            loader_calls["count"] += 1
+            return payload
+
+        manifest = MediaManifest()
+        entry = manifest.add(
+            title="loader-backed",
+            mime_type="image/png",
+            modality="image",
+            raw_bytes=payload,
+            extras=MediaEntryExtras(byte_loader=loader),
+        )
+        assert entry._raw_bytes is None, (
+            f"raw_bytes should be released when byte_loader is supplied"
+            f" at add-time, got _raw_bytes={entry._raw_bytes!r}"
+        )
+        # The loader is still used to rehydrate on demand (no data loss).
+        assert entry.load_bytes() == payload
+        assert loader_calls["count"] == 1
+
+    def test_media_manifest_does_not_retain_raw_bytes_when_cache_path_supplied(
+        self,
+    ) -> None:
+        """A cache_path at add-time also suppresses _raw_bytes retention."""
+        payload = b"cached-payload-bytes"
+        manifest = MediaManifest()
+        entry = manifest.add(
+            title="cache-backed",
+            mime_type="image/png",
+            modality="image",
+            raw_bytes=payload,
+            extras=MediaEntryExtras(cache_path="/tmp/cache-path"),
+        )
+        assert entry._raw_bytes is None, (
+            f"raw_bytes should be released when cache_path is supplied"
+            f" at add-time, got _raw_bytes={entry._raw_bytes!r}"
+        )
+        # cache_path is preserved for later reload via byte_loader.
+        assert entry.cache_path == "/tmp/cache-path"
+
+    def test_media_manifest_retains_raw_bytes_when_no_durable_source(self) -> None:
+        """Without byte_loader or cache_path, raw_bytes IS retained.
+
+        This preserves the in-memory-only contract for legacy callers
+        that pass raw bytes directly without any replay source. The
+        raw_bytes release is opt-in via a durable source, not
+        unconditional (which would silently break legacy callers).
+        """
+        payload = b"in-memory-only-payload"
+        manifest = MediaManifest()
+        entry = manifest.add(
+            title="memory-only",
+            mime_type="image/png",
+            modality="image",
+            raw_bytes=payload,
+        )
+        assert entry._raw_bytes == payload, (
+            f"raw_bytes SHOULD be retained when no durable source is"
+            f" supplied, got _raw_bytes={entry._raw_bytes!r}"
+        )
+
+    def test_media_manifest_loader_backed_dedup_preserves_no_raw_bytes(self) -> None:
+        """Re-adding a loader-backed identity keeps _raw_bytes == None.
+
+        The dedup path must not re-introduce _raw_bytes when the
+        re-added entry was previously created with a byte_loader.
+        """
+        payload = b"shared-loader-payload"
+        loader_calls = {"count": 0}
+
+        def loader() -> bytes:
+            loader_calls["count"] += 1
+            return payload
+
+        manifest = MediaManifest()
+        first = manifest.add(
+            title="shared",
+            mime_type="image/png",
+            modality="image",
+            raw_bytes=payload,
+            extras=MediaEntryExtras(
+                byte_loader=loader,
+                identity_key="identity:shared-loader",
+            ),
+        )
+        assert first._raw_bytes is None
+
+        # Re-add with the SAME identity_key but a different payload.
+        re_added = manifest.add(
+            title="shared",
+            mime_type="image/png",
+            modality="image",
+            raw_bytes=b"a-different-payload-that-should-not-be-stored",
+            extras=MediaEntryExtras(
+                byte_loader=loader,
+                identity_key="identity:shared-loader",
+            ),
+        )
+        assert re_added.artifact_id == first.artifact_id
+        assert re_added._raw_bytes is None, (
+            "re-add of a loader-backed identity MUST keep _raw_bytes None"
+        )
+        assert re_added.load_bytes() == payload
+

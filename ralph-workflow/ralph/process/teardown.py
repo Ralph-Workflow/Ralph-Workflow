@@ -80,6 +80,10 @@ class DefaultProcessTeardown:
 
         deadline = time.monotonic() + (self._kill_escalation_ms / 1000.0)
         gone: set[int] = set()
+        # Adaptive poll interval: starts at 10ms so a small process tree
+        # tears down quickly, lengthens to 25ms after the first sleep so
+        # large trees still finish inside the test budget.
+        poll_interval = 0.01
         while time.monotonic() < deadline:
             for proc in procs:
                 if proc.pid in gone:
@@ -91,7 +95,8 @@ class DefaultProcessTeardown:
                     gone.add(proc.pid)
             if len(gone) >= len(procs):
                 return
-            time.sleep(0.05)
+            time.sleep(poll_interval)
+            poll_interval = min(poll_interval * 1.5, 0.025)
 
         # Second pass: SIGKILL for survivors
         for proc in procs:

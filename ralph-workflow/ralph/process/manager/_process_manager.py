@@ -304,7 +304,15 @@ class ProcessManager:
         """Register a descendant PID under a tracked parent.
 
         When the parent process is terminated, descendants registered
-        here are enumerated and terminated as well.
+        here are enumerated and terminated as well. The registry is
+        SUPPLEMENTAL to the psutil process-tree walk used by the
+        termination paths: callers can register a grandchild that
+        re-sessioned itself (e.g. ``setsid`` + ``fork``) and would
+        otherwise escape the parent process group teardown. The
+        termination path consumes the registry once, so a registered
+        PID is reaped exactly once (defensive cleanup at
+        ``_mark_killed`` / ``_mark_exited`` / ``_mark_termination_failed``
+        is a no-op when the helper has already popped it).
 
         Args:
             parent_pid: The PID of the parent process.
@@ -314,6 +322,87 @@ class ProcessManager:
             self._descendants[parent_pid] = []
         if descendant_pid not in self._descendants[parent_pid]:
             self._descendants[parent_pid].append(descendant_pid)
+
+    def _terminate_registered_descendants(
+        self,
+        record: ProcessRecord,
+        grace_period_s: float,
+    ) -> list[int]:
+        """Terminate PIDs registered via :meth:`register_descendant`.
+
+        Consumes the registry entry for ``record.pid`` (pop with
+        default ``[]``) so the descendants are reaped exactly once
+        and the registry does not grow stale. Each registered
+        descendant is best-effort terminated:
+
+        - When ``psutil_mod`` is injected, we use
+          ``psutil_mod.process_from_pid(descendant_pid)`` and the
+          standard graceful-then-force escalation, mirroring the
+          psutil branch of ``_escalate_termination_sync`` so a
+          grandchild that re-sessioned and would escape
+          ``root.children(recursive=True)`` is still reaped.
+        - When ``psutil_mod`` is ``None`` (no injection), we fall
+          back to ``os.kill(descendant_pid, SIGTERM)`` followed by
+          ``os.kill(descendant_pid, SIGKILL)`` after the grace window
+          so the teardown remains correct on POSIX in the rare
+          no-psutil configuration. Windows has no ``os.kill``
+          equivalent, so the no-psutil branch is a no-op there.
+
+        Every per-descendant step is wrapped in
+        ``contextlib.suppress`` for ``OSError`` /
+        ``ProcessLookupError`` so one unkilled descendant does not
+        strand the rest.
+
+        Returns:
+            The list of PIDs we attempted to terminate (for
+            observability in tests; callers do not need to act on it).
+        """
+        descendant_pids: list[int] = self._descendants.pop(record.pid, [])
+        if not descendant_pids:
+            return []
+        psutil_mod = self._psutil
+        kill_followup = self.policy.kill_followup_timeout_s
+        terminated: list[int] = []
+        for descendant_pid in descendant_pids:
+            if descendant_pid <= 0:
+                continue
+            if psutil_mod is not None:
+                try:
+                    proc = psutil_mod.process_from_pid(descendant_pid)
+                except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                    terminated.append(descendant_pid)
+                    continue
+                try:
+                    with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                        proc.terminate()
+                    with contextlib.suppress(Exception):
+                        psutil_mod.wait_procs([proc], timeout=grace_period_s)
+                    with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
+                        proc.kill()
+                    with contextlib.suppress(Exception):
+                        psutil_mod.wait_procs([proc], timeout=kill_followup)
+                    terminated.append(descendant_pid)
+                except (OSError, ProcessLookupError):
+                    terminated.append(descendant_pid)
+                    continue
+            else:
+                if hasattr(os, "kill"):
+                    try:
+                        os.kill(descendant_pid, signal.SIGTERM)
+                    except (OSError, ProcessLookupError):
+                        terminated.append(descendant_pid)
+                        continue
+                    with contextlib.suppress(Exception):
+                        _time.sleep(max(0.0, grace_period_s))
+                    with contextlib.suppress(OSError, ProcessLookupError):
+                        os.kill(descendant_pid, signal.SIGKILL)
+                terminated.append(descendant_pid)
+        if terminated:
+            logger.debug(
+                f"Process {record.pid}: terminated {len(terminated)} registered "
+                f"descendant(s): {terminated}"
+            )
+        return terminated
 
     def _record_termination_outcome(self, pid: int, stage: str, outcome: str) -> None:
         """Record a termination outcome for a PID."""
@@ -1023,6 +1112,12 @@ class ProcessManager:
                 stage="force_kill",
                 reason="still alive",
             )
+        # wt-024 M3 (AC-03): reap registered descendants BEFORE
+        # _mark_killed because _mark_killed also pops
+        # self._descendants[record.pid] as defensive cleanup. The
+        # helper uses .pop(record.pid, []) to consume the registry
+        # entry, so we must read it first.
+        self._terminate_registered_descendants(record, grace_period_s)
         self._mark_killed(record)
 
     def _escalate_termination_sync(
@@ -1093,6 +1188,12 @@ class ProcessManager:
                 stage="force_kill",
                 reason="still alive",
             )
+        # wt-024 M3 (AC-03): reap any descendants registered via
+        # register_descendant BEFORE _mark_killed because
+        # _mark_killed also pops self._descendants[record.pid] as
+        # defensive cleanup. The helper uses .pop(record.pid, [])
+        # to consume the registry, so we must read it first.
+        self._terminate_registered_descendants(record, grace_period_s)
         self._mark_killed(record, rc)
 
     def _escalate_termination_pty(
@@ -1179,6 +1280,10 @@ class ProcessManager:
                 stage="force_kill",
                 reason="still alive",
             )
+        # wt-024 M3 (AC-03): reap registered descendants BEFORE
+        # _mark_killed because _mark_killed also pops
+        # self._descendants[record.pid] as defensive cleanup.
+        self._terminate_registered_descendants(record, grace_period_s)
         self._mark_killed(record, rc)
 
     def _escalate_with_psutil(
@@ -1227,6 +1332,10 @@ class ProcessManager:
             raise ProcessTerminationError(
                 record.pid, record.pgid, stage="force_kill", reason="still alive"
             )
+        # wt-024 M3 (AC-03): reap registered descendants BEFORE
+        # _mark_killed because _mark_killed also pops
+        # self._descendants[record.pid] as defensive cleanup.
+        self._terminate_registered_descendants(record, grace_period_s)
         self._mark_killed(record, proc.returncode)
 
     def _escalate_without_psutil(self, record: ProcessRecord, proc: _AsyncProcessLike) -> None:
@@ -1236,12 +1345,16 @@ class ProcessManager:
             proc.kill()
         probe_result = verify_process_liveness(record.pid, psutil_mod=None)
         if probe_result == LivenessResult.GONE:
+            # wt-024 M3 (AC-03): no-psutil fallback reap BEFORE mark.
+            self._terminate_registered_descendants(record, grace_period_s=0.0)
             self._mark_killed(record, None)
             return
         if probe_result == LivenessResult.ZOMBIE:
             logger.warning(f"Process {record.pid} is zombie after force kill — parent must reap")
             self._reap_async_in_sync_and_mark(record, proc, cause="zombie_after_kill")
+            self._terminate_registered_descendants(record, grace_period_s=0.0)
             return
+        self._terminate_registered_descendants(record, grace_period_s=0.0)
         self._mark_termination_failed(record, None)
         raise ProcessTerminationError(
             record.pid, record.pgid, stage="force_kill", reason="still alive"

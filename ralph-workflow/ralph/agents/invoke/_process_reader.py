@@ -30,6 +30,7 @@ from ralph.agents.idle_watchdog import (
     WatchdogVerdict,
 )
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
+from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._completion import (
     _check_process_result,
     _CompletionCheckOptions,
@@ -41,6 +42,7 @@ from ralph.agents.invoke._errors import (
     InactivityTimeoutOpts,
     _IdleStreamTimeoutError,
 )
+from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
 from ralph.agents.invoke._session import (
     _EXPLICIT_COMPLETION_MARKER,
     _bounded_output_lines,
@@ -304,7 +306,7 @@ class _ProcessLineReader:
         self._is_waiting_state_provider = ctx.is_waiting_state_provider
         self._clock = clock
         self._workspace_path = ctx.workspace_path
-        self._lines_queue: list[str] = []
+        self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=_MAX_PARSED_OUTPUT_LINES)
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
         self._terminal_counter: list[int] = [0]
@@ -802,7 +804,9 @@ class _ProcessLineReader:
                 is_done = False
                 with self._lines_lock:
                     if self._lines_queue:
-                        queued_line = self._lines_queue.pop(0)
+                        # BoundedLinesQueue exposes O(1) popleft; raw lists
+                        # (used by tests) fall back to O(n) pop(0).
+                        queued_line = _pop_queue_line(self._lines_queue)
                     elif self._reader_done[0]:
                         is_done = True
 

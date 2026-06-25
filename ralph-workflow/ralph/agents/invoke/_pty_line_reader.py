@@ -28,9 +28,11 @@ from ralph.agents.idle_watchdog import (
     WatchdogVerdict,
 )
 from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
+from ralph.agents.invoke._bounded_lines_queue import BoundedLinesQueue
 from ralph.agents.invoke._errors import (
     _IdleStreamTimeoutError,
 )
+from ralph.agents.invoke._lines_queue_helpers import _pop_queue_line
 from ralph.agents.invoke._process_reader import (
     _NON_MEANINGFUL_ACTIVITY_KINDS,
     _TERMINAL_PROCESS_STATUSES,
@@ -154,7 +156,7 @@ class PtyLineReader:
         self._expected_session_id = _extras.expected_session_id
         self._stop_sentinel_path = _extras.stop_sentinel_path
         self._permission_prompt_listener = _extras.permission_prompt_listener
-        self._lines_queue: list[str] = []
+        self._lines_queue: BoundedLinesQueue = BoundedLinesQueue(maxlen=256)
         self._lines_lock = threading.Lock()
         self._lines_event = threading.Event()
         self._monitor_stop = threading.Event()
@@ -1014,7 +1016,8 @@ class PtyLineReader:
                 is_done = False
                 with self._lines_lock:
                     if self._lines_queue:
-                        queued_line = self._lines_queue.pop(0)
+                        # BoundedLinesQueue exposes O(1) popleft; raw lists fall back to pop(0).
+                        queued_line = _pop_queue_line(self._lines_queue)
                     elif self._reader_done[0]:
                         is_done = True
 

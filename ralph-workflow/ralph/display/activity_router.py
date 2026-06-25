@@ -145,6 +145,17 @@ class ActivityRouter:
             self._buffers[unit_id] = self._buffer_factory()
         return self._buffers[unit_id]
 
+    def drop_unit(self, unit_id: str) -> None:
+        """Release per-unit state so long parallel sessions don't accumulate state across waves.
+
+        Removes the unit's ``RingBuffer`` and ``AgentParser`` entries from
+        ``self._buffers`` and ``self._parsers`` so the per-unit memory
+        is released when the unit is no longer needed. Safe to call for
+        a unit that was never added; it just no-ops.
+        """
+        self._buffers.pop(unit_id, None)
+        self._parsers.pop(unit_id, None)
+
     def push_raw_line(
         self,
         unit_id: str,
