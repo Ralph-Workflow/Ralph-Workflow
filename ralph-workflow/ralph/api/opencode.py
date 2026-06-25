@@ -14,12 +14,14 @@ from typing import TYPE_CHECKING, Protocol
 import httpx
 from loguru import logger
 
+from ralph.agents.system_clock import SystemClock
 from ralph.api.model_entry import ModelEntry
 from ralph.executor.process import ProcessRunOptions, run_process
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from ralph.agents.clock import Clock as _ClockProtocol
     from ralph.executor.process import ProcessResult
     from ralph.process.manager import ProcessManager
 
@@ -41,15 +43,28 @@ CATALOG_URL = "https://models.dev/api.json"
 TIMEOUT_SECS = 10
 _LOCAL_COMMAND_TIMEOUT_SECS = 30.0
 
+# wt-024 M6 (AC-03): the catalog is fetched from a remote source and
+# cached for the full process lifetime. A 5-minute TTL triggers a
+# refetch on the next call so a long-running orchestrator does not
+# retain stale data indefinitely. cache_clear() still bypasses the
+# TTL for explicit invalidation.
+_TTL_SECONDS: float = 300.0
+
 
 class _CatalogFetcher:
-    """Callable cache around the OpenCode catalog."""
+    """Callable cache around the OpenCode catalog with a TTL refresh."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, clock: _ClockProtocol | None = None) -> None:
         self._cache: list[ModelEntry] | None = None
+        self._cached_at: float | None = None
+        self._clock: _ClockProtocol = clock if clock is not None else SystemClock()
 
     def __call__(self) -> list[ModelEntry]:
-        if self._cache is not None:
+        if (
+            self._cache is not None
+            and self._cached_at is not None
+            and (self._clock.monotonic() - self._cached_at) < _TTL_SECONDS
+        ):
             return self._cache
 
         logger.debug("Fetching model catalog from {}", CATALOG_URL)
@@ -68,12 +83,14 @@ class _CatalogFetcher:
         models = [ModelEntry.model_validate(entry) for entry in raw]
         logger.debug("Loaded {} models from catalog", len(models))
         self._cache = models
+        self._cached_at = self._clock.monotonic()
         return models
 
     def cache_clear(self) -> None:
         """Clear any cached catalog."""
 
         self._cache = None
+        self._cached_at = None
 
 
 def _parse_catalog_payload(payload: object) -> list[dict[str, object]]:

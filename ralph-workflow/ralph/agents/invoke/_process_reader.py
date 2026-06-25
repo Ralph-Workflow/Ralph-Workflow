@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import shlex
 import subprocess
@@ -47,6 +46,9 @@ from ralph.agents.invoke._session import (
     _EXPLICIT_COMPLETION_MARKER,
     _bounded_output_lines,
     extract_transport_session_id_from_line,
+)
+from ralph.agents.invoke._tool_call_extraction import (
+    extract_tool_call_from_activity_signal as _extract_tool_call_from_activity_signal_impl,
 )
 from ralph.agents.invoke._types import _AgentRunCtx, _ProcessReaderCtx
 from ralph.agents.timeout_clock import Clock, SystemClock
@@ -184,110 +186,14 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
 def _extract_tool_call_from_activity_signal(
     raw: str,
 ) -> tuple[str, dict[str, object]] | None:
-    """Best-effort extract ``(tool_name, tool_args)`` from a TOOL_USE raw line.
+    """Backward-compat alias re-exported from ``_tool_call_extraction``.
 
-    The helper walks a few known envelope shapes so the tool-call
-    circuit breaker (:meth:`RepetitionTracker.mark_tool_call`) sees a
-    stable fingerprint per (tool_name, tool_args) pair regardless of
-    transport.  Returns ``None`` when the line is not recognisably a
-    tool-use line OR the structure is not understood so the watchdog
-    can skip the observation rather than fingerprint a meaningless
-    blob.
-
-    Recognised envelope shapes:
-
-    * ``{"type": "tool_use", "name": "...", "input": {...}}``
-    * ``{"type": "tool_use", "tool_name": "...", "arguments": {...}}``
-    * ``{"type": "stream_event", "event": {"type": "content_block_start",
-      "content_block": {"type": "tool_use", "name": "...", "input": {...}}}}``
-      (Claude content_block_start wrapped in stream_event)
-    * ``{"event": "tool_use", "tool_name": "...", "arguments": {...}}``
-    * ``{"tool": "<name>", "input": {...}}`` (raw provider shorthand)
-    * ``claude tool: <name>`` (plain-text marker from Claude execution strategy)
-    * ``[plain] tool: <name>`` (plain-text marker from GenericParser convention)
-
-    The ``tool_name`` is the literal string after trimming; an empty /
-    missing name falls back to ``"unknown"`` so the fingerprint is
-    always well-formed.  The ``tool_args`` is the dict of input
-    arguments extracted from the envelope; ``None`` is treated as an
-    empty dict inside the tracker.  Plain-text markers carry no
-    arguments, so the fingerprint is ``(name, {})``.
+    The implementation was extracted to
+    :mod:`ralph.agents.invoke._tool_call_extraction` to keep this
+    module under the 1000-line policy cap. The import path is
+    preserved for callers and tests.
     """
-    stripped = raw.strip()
-    if not stripped:
-        return None
-
-    # Plain-text tool markers (e.g. Claude's "claude tool: Bash" or
-    # GenericParser's "[plain] tool: Read") are classified as
-    # ``TOOL_USE`` activity elsewhere in the codebase but do not
-    # contain JSON arguments.  Extract the tool name so the
-    # repetition breaker can still fire on repeated identical
-    # plain-text tool invocations.
-    lower = stripped.lower()
-    for prefix in ("claude tool:", "[plain] tool:"):
-        if lower.startswith(prefix):
-            tool_name = stripped[len(prefix) :].strip()
-            return (tool_name or "unknown"), {}
-
-    try:
-        parsed = cast("object", json.loads(stripped, strict=False))
-    except (json.JSONDecodeError, ValueError):
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    obj = cast("dict[str, object]", parsed)
-
-    # Unwrap stream_event envelopes (Claude wraps tool_use inside
-    # stream_event -> content_block_start -> content_block).
-    if obj.get("type") == "stream_event" or "event" in obj:
-        event = obj.get("event")
-        if isinstance(event, dict):
-            inner_obj = cast("dict[str, object]", event)
-            content_block = inner_obj.get("content_block")
-            if isinstance(content_block, dict):
-                inner_obj = cast("dict[str, object]", content_block)
-            return _extract_tool_call_from_dict(inner_obj)
-
-    return _extract_tool_call_from_dict(obj)
-
-
-def _extract_tool_call_from_dict(
-    obj: dict[str, object],
-) -> tuple[str, dict[str, object]] | None:
-    """Extract ``(tool_name, tool_args)`` from a recognised tool-use dict.
-
-    Internal helper for :func:`_extract_tool_call_from_activity_signal`.
-    Returns ``None`` when the dict does not look like a tool-use.
-    """
-    type_field = obj.get("type")
-    event_field = obj.get("event")
-    is_tool_use = (
-        type_field in {"tool_use", "assistant_tool_use", "mcp_tool_call"}
-        or event_field in {"tool_use", "mcp_tool_call"}
-        or "tool_name" in obj
-    )
-    if not is_tool_use:
-        return None
-
-    tool_name_raw = obj.get("name") or obj.get("tool_name") or obj.get("tool")
-    if tool_name_raw is None:
-        # Recognised tool-use envelope without a name field: fall back
-        # to ``"unknown"`` so the fingerprint is always well-formed
-        # and the breaker still observes the tool_use event.
-        tool_name = "unknown"
-    elif not isinstance(tool_name_raw, str):
-        return None
-    else:
-        tool_name = tool_name_raw.strip() or "unknown"
-
-    args_field = obj.get("input")
-    if not isinstance(args_field, dict):
-        args_field = obj.get("arguments")
-    if not isinstance(args_field, dict):
-        args_field = obj.get("args")
-    if not isinstance(args_field, dict):
-        args_field = {}
-    return tool_name, cast("dict[str, object]", args_field)
+    return _extract_tool_call_from_activity_signal_impl(raw)
 
 
 class _ProcessLineReader:
@@ -448,6 +354,15 @@ class _ProcessLineReader:
                         self._cpu_baselines[pid] = (current_cpu, _now)
                 else:
                     self._cpu_baselines[pid] = (current_cpu, _now)
+            # wt-024 M4 (AC-01): sweep PIDs that are no longer in the
+            # current child list so the baseline map does not retain
+            # entries for descendants that have exited between ticks.
+            # Without this sweep, every distinct PID ever observed
+            # accumulates one entry for the rest of the session, which
+            # is unbounded in long build/test-runner patterns.
+            live_pids = set(child_pids)
+            for stale_pid in list(self._cpu_baselines.keys() - live_pids):
+                self._cpu_baselines.pop(stale_pid, None)
         except Exception:
             pass
         return False

@@ -243,6 +243,7 @@ def _run_patched_smoke_plumbing_import(
 
 
 @pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(10)
 def test_smoke_max_turns_invariant_fires() -> None:
     """_SMOKE_MAX_TURNS < 1 must raise RuntimeError at import time."""
     result = _run_patched_smoke_plumbing_import(max_turns=0)
@@ -252,6 +253,7 @@ def test_smoke_max_turns_invariant_fires() -> None:
 
 
 @pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(10)
 def test_smoke_max_turns_invariant_survives_minus_o() -> None:
     """_SMOKE_MAX_TURNS invariant must survive ``python -O``."""
     result = _run_patched_smoke_plumbing_import(max_turns=0, minus_o=True)
@@ -261,6 +263,7 @@ def test_smoke_max_turns_invariant_survives_minus_o() -> None:
 
 
 @pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(10)
 def test_smoke_idle_timeout_invariant_fires() -> None:
     """_SMOKE_IDLE_TIMEOUT_SECONDS <= 0 must raise RuntimeError at import time."""
     result = _run_patched_smoke_plumbing_import(idle_timeout=0.0)
@@ -270,6 +273,7 @@ def test_smoke_idle_timeout_invariant_fires() -> None:
 
 
 @pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(10)
 def test_smoke_idle_timeout_invariant_survives_minus_o() -> None:
     """_SMOKE_IDLE_TIMEOUT_SECONDS invariant must survive ``python -O``."""
     result = _run_patched_smoke_plumbing_import(idle_timeout=-1.0, minus_o=True)
@@ -279,6 +283,7 @@ def test_smoke_idle_timeout_invariant_survives_minus_o() -> None:
 
 
 @pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(10)
 def test_agy_session_ceiling_invariant_fires() -> None:
     """AGY ceiling <= idle timeout must raise RuntimeError at import time."""
     result = _run_patched_smoke_plumbing_import(agy_ceiling=10.0)
@@ -288,6 +293,7 @@ def test_agy_session_ceiling_invariant_fires() -> None:
 
 
 @pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(10)
 def test_agy_session_ceiling_invariant_survives_minus_o() -> None:
     """AGY ceiling invariant must survive ``python -O``."""
     result = _run_patched_smoke_plumbing_import(agy_ceiling=10.0, minus_o=True)

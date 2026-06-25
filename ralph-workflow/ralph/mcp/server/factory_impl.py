@@ -62,10 +62,27 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
             deps=replace(self._base_deps, reserve_port=self._reserve_unique_port),
         )
         pid = self._bridge_pid(bridge)
+        endpoint = bridge.agent_endpoint_uri()
+        # wt-024 M8 (AC-06): release the endpoint from
+        # ``_allocated_endpoints`` AFTER the server process is down
+        # so the same factory can reuse the port on a later build.
+        # The release happens after ``bridge.shutdown`` so callers
+        # cannot observe a port as available while the underlying
+        # server is still bound. The original ``bridge.shutdown`` is
+        # captured so a subclass override still gets called.
+        original_shutdown = bridge.shutdown
+        endpoint_ref = endpoint
+
+        def _shutdown_and_release() -> None:
+            try:
+                original_shutdown()
+            finally:
+                self._release_endpoint(endpoint_ref)
+
         return McpServerHandle(
-            endpoint=bridge.agent_endpoint_uri(),
+            endpoint=endpoint,
             pid=pid,
-            shutdown=bridge.shutdown,
+            shutdown=_shutdown_and_release,
         )
 
     def _reserve_unique_port(self) -> int:
@@ -77,6 +94,16 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
                     continue
                 self._allocated_endpoints.add(endpoint)
                 return port
+
+    def _release_endpoint(self, endpoint: str) -> None:
+        # wt-024 M8 (AC-06): opposite of ``_reserve_unique_port``.
+        # Called from the wrapped ``shutdown`` so the endpoint is
+        # available for reuse on the next ``build()`` call. The
+        # discard is a no-op if the endpoint was never reserved
+        # (defense in depth: the wrapped shutdown may run more than
+        # once in pathological error paths).
+        with self._allocation_lock:
+            self._allocated_endpoints.discard(endpoint)
 
     @staticmethod
     def _bridge_pid(bridge: SessionBridgeLike) -> int:

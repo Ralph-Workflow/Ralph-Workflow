@@ -7,6 +7,7 @@ import contextlib
 import os
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -41,6 +42,7 @@ from ralph.agents.invoke._process_reader import (
 )
 from ralph.agents.invoke._pty_extras import _PtyExtras
 from ralph.agents.invoke._pty_helpers import (
+    _MAX_TRANSCRIPT_SESSION_IDS,
     _MENU_QUIESCENCE_SECONDS,
     _RECENT_CHOICE_LINES_MAX,
     _extract_choice_menu_state,
@@ -181,8 +183,14 @@ class PtyLineReader:
         self._last_auto_mode_menu_seen_at: float | None = None
         self._pending_permission_prompt_line: str | None = None
         self._pending_permission_prompt_started_at: float | None = None
-        self._recent_choice_lines: list[str] = []
-        self._transcript_session_ids: list[str] = []
+        # wt-024 M9 (AC-07): bounded deques replace the previous
+        # unbounded lists. ``_recent_choice_lines`` was already
+        # hand-capped at 20; the deque(maxlen) conversion makes
+        # the eviction O(1) and removes the manual pop(0)/len()
+        # check. ``_transcript_session_ids`` was unbounded; the
+        # new cap keeps the recent-session dedup window bounded.
+        self._recent_choice_lines: deque[str] = deque(maxlen=_RECENT_CHOICE_LINES_MAX)
+        self._transcript_session_ids: deque[str] = deque(maxlen=_MAX_TRANSCRIPT_SESSION_IDS)
         self._transcript_session_ids_lock = threading.Lock()
         # Captured transport-level session id from the most recent
         # visible-TUI line (or ``expected_session_id`` if no captured
@@ -264,6 +272,15 @@ class PtyLineReader:
                         self._cpu_baselines[pid] = (current_cpu, _now)
                 else:
                     self._cpu_baselines[pid] = (current_cpu, _now)
+            # wt-024 M4 (AC-01): sweep PIDs that are no longer in the
+            # current child list so the baseline map does not retain
+            # entries for descendants that have exited between ticks.
+            # Without this sweep, every distinct PID ever observed
+            # accumulates one entry for the rest of the session, which
+            # is unbounded in long build/test-runner patterns.
+            live_pids = set(child_pids)
+            for stale_pid in list(self._cpu_baselines.keys() - live_pids):
+                self._cpu_baselines.pop(stale_pid, None)
         except Exception:
             pass
         return False
@@ -421,9 +438,17 @@ class PtyLineReader:
         if session_id is None:
             return
         with self._transcript_session_ids_lock:
+            # wt-024 M9 (AC-07): deque-backed dedup. ``remove()`` on
+            # the existing entry is O(n) but n <= _MAX_TRANSCRIPT_SESSION_IDS;
+            # ``appendleft()`` is O(1) and the bounded deque automatically
+            # evicts the oldest session id from the right when full.
+            # ``candidate_ids[0]`` (consumed by ``_transcript_thread``)
+            # MUST be the most-recently-seen session id so the PTY
+            # resume path always prefers the freshest visible TUI
+            # session over an older one.
             if session_id in self._transcript_session_ids:
                 self._transcript_session_ids.remove(session_id)
-            self._transcript_session_ids.insert(0, session_id)
+            self._transcript_session_ids.appendleft(session_id)
         # Mirror the subprocess reader's ``_captured_session_id`` cache so
         # the watchdog-kill -> resume path sees the same id without
         # re-walking the PTY queue. The id flows into
@@ -674,10 +699,9 @@ class PtyLineReader:
 
         # Maintain a sliding window of recent lines so cross-line menu detection
         # can work even when TUI repaint sequences fragment menu options across
-        # individual queued entries.
+        # individual queued entries. wt-024 M9 (AC-07): the deque(maxlen)
+        # cap is enforced automatically on append; no manual pop(0)/len().
         self._recent_choice_lines.append(queued_line)
-        if len(self._recent_choice_lines) > _RECENT_CHOICE_LINES_MAX:
-            self._recent_choice_lines.pop(0)
 
         def _check_menu(screen_text: str) -> bool:
             if _extract_choice_menu_state(screen_text) is not None:

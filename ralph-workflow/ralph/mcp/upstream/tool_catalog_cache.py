@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from ralph.mcp.upstream.client import make_upstream_client
@@ -17,7 +18,14 @@ if TYPE_CHECKING:
 
     from ralph.mcp.upstream.models import UpstreamTool
 
-_CACHE: dict[str, dict[str, list[UpstreamTool]]] = {}
+# wt-024 M5 (AC-02): bound the module-level cache so a session that
+# touches many distinct workspace roots cannot grow the cache
+# unboundedly. FIFO eviction mirrors ProcessManager._terminal_records
+# (ralph/process/manager.py). 32 entries covers typical build/test
+# concurrency without dropping recently-used workspaces.
+_MAX_CACHE_ENTRIES: int = 32
+
+_CACHE: OrderedDict[str, dict[str, list[UpstreamTool]]] = OrderedDict()
 
 
 def _cache_key(workspace_root: Path | None) -> str | None:
@@ -35,6 +43,9 @@ def cache_tool_catalog(
     if key is None:
         return
     _CACHE[key] = {name: list(tools) for name, tools in catalog.items()}
+    _CACHE.move_to_end(key)
+    while len(_CACHE) > _MAX_CACHE_ENTRIES:
+        _CACHE.popitem(last=False)
 
 
 def get_tool_catalog(workspace_root: Path | None) -> dict[str, list[UpstreamTool]]:

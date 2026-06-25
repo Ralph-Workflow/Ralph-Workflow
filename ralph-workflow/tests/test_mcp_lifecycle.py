@@ -243,9 +243,10 @@ def _make_standalone(
     )
 
 
-def test_mcp_restart_policy_default_is_1000() -> None:
+def test_mcp_restart_policy_default_is_bounded() -> None:
+    """AC-08: the default max_restarts is 20 (was 1000; lowered to bound churn)."""
     policy = lifecycle.McpRestartPolicy()
-    assert policy.max_restarts == 1000
+    assert policy.max_restarts == 20
 
 
 def test_restart_aware_bridge_returns_false_when_process_alive() -> None:

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from ralph.mcp.tools._exec_run_deps import ExecRunDeps
 from ralph.mcp.tools.exec import run_command
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+from ralph.process.manager._spawn_options import SpawnOptions
 from ralph.testing.fake_process import (
     FakePsutil,
     FakePsutilProcess,
@@ -84,3 +85,54 @@ def test_reusable_sandbox_does_not_skip_process_cleanup(tmp_path: Path) -> None:
     result = run_command("echo", ["ok"], workspace, 1000)
 
     assert result.returncode == 0
+
+
+def test_shutdown_all_reaps_nested_descendant_tree_on_exit() -> None:
+    """ProcessManager.shutdown_all() reaps the host and every nested descendant.
+
+    Characterization test for the CURRENT_PROMPT.md requirement:
+    "properly killing processes that we spawned" and "gracefully
+    killing all child process when exiting". The pre-fix production
+    code already satisfies this contract (no production change is
+    required); this test pins the behaviour so future refactors
+    cannot silently regress the cleanup semantics.
+
+    The test wires a three-level tree: host (pid 100) -> child
+    (pid 101) -> grandchild (pid 102, ``stubborn=True`` so it
+    survives SIGTERM and requires SIGKILL escalation). The fake
+    psutil's ``children()`` does not auto-recurse, so the host
+    exposes both the child and the grandchild directly in its
+    ``_children`` list. After ``pm.shutdown_all()`` every node must
+    no longer be running, with the grandchild specifically marked
+    ``_killed=True`` to prove SIGTERM->SIGKILL escalation reaches
+    the stubborn descendant rather than bailing at the first
+    survivor.
+    """
+    grandchild = FakePsutilProcess(pid=102, ppid=101, stubborn=True)
+    child = FakePsutilProcess(pid=101, ppid=100)
+    host = FakePsutilProcess(pid=100, ppid=1)
+    # Flatten the tree at the host level because FakePsutilProcess.children
+    # ignores the ``recursive`` flag (the production walk uses
+    # ``children(recursive=True)``).
+    host._children = [child, grandchild]
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {100: host, 101: child, 102: grandchild}
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=make_sync_process_factory(itertools.count(100), returncode=0),
+        psutil=fake_psutil,
+    )
+
+    host_handle = pm.spawn(
+        ["python", "-c", "pass"],
+        SpawnOptions(label="host"),
+    )
+    assert host_handle.record.pid == 100
+
+    pm.shutdown_all()
+
+    assert not host.is_running(), "host process must be reaped on shutdown_all"
+    assert not child.is_running(), "child process must be reaped on shutdown_all"
+    assert grandchild._killed, (
+        "stubborn grandchild must be reaped via SIGKILL escalation on shutdown_all"
+    )

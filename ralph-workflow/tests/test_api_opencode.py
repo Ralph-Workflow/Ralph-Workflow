@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from ralph.agents.timeout_clock import FakeClock
 from ralph.api import opencode
 from ralph.executor.process import ProcessResult
 from tests.test_api_opencode_helper__fakeclient import _FakeClient
@@ -112,6 +113,81 @@ def test_fetch_catalog_caches_result(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert first is second
     assert calls["count"] == 1
+
+
+def test_fetch_catalog_refetches_after_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC-03: the catalog TTL triggers a refetch when stale.
+
+    Wires a ``FakeClock`` so we can advance logical time past
+    ``_TTL_SECONDS`` without any real wall-clock wait. The first
+    call populates the cache at ``t=0``; a call inside the TTL
+    returns the cache without refetching; a call after the TTL
+    triggers a refetch and refreshes ``_cached_at``.
+    """
+    calls = {"count": 0}
+
+    def response_factory() -> _FakeResponse:
+        calls["count"] += 1
+        return _FakeResponse([{"id": "openai/gpt-5", "provider": "openai"}])
+
+    monkeypatch.setattr(
+        opencode.httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_factory),
+    )
+
+    clock = FakeClock(start=0.0)
+    fetcher = opencode._CatalogFetcher(clock=clock)
+    assert calls["count"] == 0
+
+    first = fetcher()
+    assert calls["count"] == 1
+    assert fetcher._cached_at == 0.0
+
+    # Advance inside the TTL — no refetch expected.
+    clock.advance(opencode._TTL_SECONDS - 1.0)
+    second = fetcher()
+    assert calls["count"] == 1
+    assert second is first
+    assert fetcher._cached_at == 0.0
+
+    # Advance past the TTL — refetch expected, _cached_at updated.
+    clock.advance(2.0)
+    third = fetcher()
+    assert calls["count"] == 2
+    assert third is not first
+    assert fetcher._cached_at == opencode._TTL_SECONDS + 1.0
+
+
+def test_fetch_catalog_cache_clear_resets_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+    """cache_clear() resets both the cache and the TTL timestamp."""
+    calls = {"count": 0}
+
+    def response_factory() -> _FakeResponse:
+        calls["count"] += 1
+        return _FakeResponse([{"id": "openai/gpt-5", "provider": "openai"}])
+
+    monkeypatch.setattr(
+        opencode.httpx,
+        "Client",
+        lambda timeout: _FakeClient(response_factory),
+    )
+
+    clock = FakeClock(start=0.0)
+    fetcher = opencode._CatalogFetcher(clock=clock)
+    fetcher()
+    assert fetcher._cached_at == 0.0
+
+    # cache_clear must reset the timestamp; otherwise the next call
+    # would be inside the (now-meaningless) TTL and skip the refetch.
+    clock.advance(10.0)
+    fetcher.cache_clear()
+    assert fetcher._cache is None
+    assert fetcher._cached_at is None
+
+    fetcher()
+    assert calls["count"] == 2
+    assert fetcher._cached_at == 10.0
 
 
 def test_fetch_catalog_reraises_http_errors(monkeypatch: pytest.MonkeyPatch) -> None:
