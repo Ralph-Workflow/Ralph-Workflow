@@ -96,6 +96,11 @@ class ProcessManager:
         # purge_on_init: clear terminal records on startup when policy requests it
         if self.policy.purge_on_init:
             self._terminal_records.clear()
+            # wt-024 M3: symmetric eviction for _termination_outcomes
+            # so a re-instantiated manager with purge_on_init=True
+            # starts with an empty outcomes dict (not stale state
+            # inherited from a previous instance or test fixture).
+            self._termination_outcomes.clear()
 
         # Concurrent shutdown TOCTOU audit:
         # (A) shutdown_all() status filter - SAFE without lock: concurrent callers may both
@@ -1238,11 +1243,23 @@ class ProcessManager:
         limit = max(self.policy.terminal_history_limit, 0)
         if limit == 0:
             self._terminal_records.clear()
+            # wt-024 M3: when the cap is zero every termination must
+            # be discarded entirely, including its outcome record.
+            # Otherwise _termination_outcomes would grow unbounded
+            # for any manager configured with terminal_history_limit=0.
+            self._termination_outcomes.clear()
             return
         self._terminal_records.pop(record.pid, None)
         self._terminal_records[record.pid] = record
         while len(self._terminal_records) > limit:
-            self._terminal_records.popitem(last=False)
+            evicted_pid, _ = self._terminal_records.popitem(last=False)
+            # wt-024 M3: tie _termination_outcomes lifetime to the
+            # _terminal_records FIFO eviction so the outcomes dict
+            # never outlives the cap.  ``pop(..., None)`` keeps the
+            # two structures in sync without KeyError when the
+            # escalation path didn't record an outcome (e.g. clean
+            # exits with returncode=0).
+            self._termination_outcomes.pop(evicted_pid, None)
 
     def _mark_exited(self, record: ProcessRecord, returncode: int | None) -> None:
         with self._status_lock:

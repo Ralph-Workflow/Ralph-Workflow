@@ -7,9 +7,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ralph.pro_support.prompt import resolve_effective_prompt_path
-from ralph.prompts.template_registry import packaged_template_root
+from ralph.prompts.template_registry import _packaged_template_cache, packaged_template_root
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -65,11 +66,29 @@ def _sync_current_prompt_file(
     source_prompt_path = resolve_effective_prompt_path(workspace_root, os.environ)
     current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
     if source_prompt_path.exists():
-        prompt_text = source_prompt_path.read_text(encoding="utf-8")
-        if (
-            not current_prompt_path.exists()
-            or current_prompt_path.read_text(encoding="utf-8") != prompt_text
-        ):
+        # Use the (st_size, st_mtime_ns) fast path to avoid reading
+        # current_prompt_path's content when it is identical to
+        # source_prompt_path (the common case after the first materialise).
+        # The helper also returns the source text when needed.
+        def _stat(path: Path) -> tuple[int, int] | None:
+            if not path.exists():
+                return None
+            stat = path.stat()
+            return (stat.st_size, stat.st_mtime_ns)
+
+        changed, prompt_text = _prompt_files_differ(
+            source_prompt_path,
+            current_prompt_path,
+            stat_fn=_stat,
+            read_source=lambda p: p.read_text(encoding="utf-8"),
+            read_current=lambda p: p.read_text(encoding="utf-8"),
+        )
+        # ``changed`` covers two cases: current is missing (size/mtime
+        # don't match) OR the content actually differs. ``prompt_text``
+        # is None only when sizes differ AND read_source was not
+        # provided -- but we always pass read_source above, so it is
+        # populated when changed is True.
+        if changed and prompt_text is not None:
             current_prompt_path.write_text(prompt_text, encoding="utf-8")
             if worker_namespace is None:
                 _write_prompt_history_snapshot(
@@ -153,6 +172,63 @@ def build_system_prompt(
 
 
 def _unattended_mode_text() -> str:
-    return (packaged_template_root() / "shared" / "_unattended_mode.jinja").read_text(
-        encoding="utf-8"
+    return _packaged_template_cache.get(
+        "shared/_unattended_mode.jinja", root=packaged_template_root()
     )
+
+
+def _prompt_files_differ(
+    source: Path,
+    current: Path,
+    *,
+    stat_fn: Callable[[Path], tuple[int, int] | None],
+    read_source: Callable[[Path], str] | None = None,
+    read_current: Callable[[Path], str] | None = None,
+) -> tuple[bool, str | None]:
+    """Compare two prompt files using a (st_size, st_mtime_ns) fast path.
+
+    Returns ``(changed, source_text_if_read)``. The fast-path rules are:
+
+      - ``current`` does not exist -> ``(True, source_text)``. Source IS
+        read so the caller can write it to ``current``.
+      - ``(src.st_size, src.st_mtime_ns) == (cur.st_size, cur.st_mtime_ns)``
+        -> ``(False, None)``. NO content reads.
+      - sizes differ -> ``(True, source_text_if_read)``. CURRENT is
+        never read; source IS read only if the caller passed
+        ``read_source``.
+      - sizes match but mtime differs -> read both, return
+        ``(src_text != cur_text, src_text)``.
+
+    ``stat_fn`` is an injectable callable returning ``(size, mtime_ns)``
+    or ``None`` if the path does not exist. ``read_source`` /
+    ``read_current`` are optional injectable readers (default
+    ``Path.read_text``). All I/O is funnelled through these seams so
+    tests can run without real disk I/O.
+
+    Used by both ``_sync_current_prompt_file`` (which always needs the
+    source text to rematerialise) and
+    ``pipeline.prompt_prep._prompt_changed_since_last_materialization``
+    (which only needs the boolean verdict).
+    """
+
+    def _default_read(path: Path) -> str:
+        return path.read_text(encoding="utf-8")
+
+    read_source_fn = read_source if read_source is not None else _default_read
+    read_current_fn = read_current if read_current is not None else _default_read
+
+    source_stat = stat_fn(source)
+    current_stat = stat_fn(current)
+    if source_stat is None:
+        return False, None
+    if current_stat is None:
+        return True, read_source_fn(source)
+    src_size, src_mtime = source_stat
+    cur_size, cur_mtime = current_stat
+    if src_size == cur_size and src_mtime == cur_mtime:
+        return False, None
+    if src_size != cur_size:
+        return True, (read_source_fn(source) if read_source is not None else None)
+    src_text = read_source_fn(source)
+    cur_text = read_current_fn(current)
+    return src_text != cur_text, src_text

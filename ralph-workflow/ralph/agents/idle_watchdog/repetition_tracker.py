@@ -45,6 +45,30 @@ if TYPE_CHECKING:
 __all__ = ["RepetitionTracker"]
 
 
+# Safety floor for the per-dimension deque ``maxlen``.  The window
+# rule compares ``_max_fingerprint_count(self._events) >=
+# self._window_count`` so the cap MUST be >= ``window_count`` to
+# preserve behavior.  256 is a generous floor that bounds memory even
+# when ``window_count`` is unset (None -> 0) while leaving plenty of
+# room for normal window-rule windows.
+_MIN_EVENT_DEQUE_CAP = 256
+
+
+def _derive_event_maxlen(window_count: int | None) -> int:
+    """Compute the per-dimension deque ``maxlen`` from ``window_count``.
+
+    Formula: ``max((window_count or 0) * 8, _MIN_EVENT_DEQUE_CAP)``.
+
+    The 8x safety multiple guarantees the cap is comfortably larger
+    than the configured ``window_count`` so the window rule can still
+    trip even when noise interleaves between identical fingerprints
+    (which inflates the deque length past ``window_count``).  The
+    ``_MIN_EVENT_DEQUE_CAP`` floor keeps memory bounded when
+    ``window_count`` is unset or small.
+    """
+    return max((window_count or 0) * 8, _MIN_EVENT_DEQUE_CAP)
+
+
 # Per-occurrence noise patterns, stripped (in this order) during fingerprinting.
 # Applied to the already-lowercased message.
 _ISO_TIMESTAMP = re.compile(
@@ -93,15 +117,33 @@ class RepetitionTracker:
         self._consecutive_threshold = consecutive_threshold
         self._window_count = window_count
         self._window_seconds = window_seconds
+        # wt-024 M1: bound the per-dimension event deques by a cap
+        # derived from ``window_count``.  Previously the deques were
+        # unbounded and ``_prune`` / ``_prune_tool`` returned early
+        # when ``window_seconds`` was None, so they could grow for the
+        # whole watchdog lifetime.  The cap is always >=
+        # ``window_count`` so the window rule still trips.
+        self._event_maxlen: int = _derive_event_maxlen(window_count)
         # Error / cosmetic-progress dimension (existing).
-        self._events: deque[tuple[str, float]] = deque()
+        self._events: deque[tuple[str, float]] = deque(maxlen=self._event_maxlen)
         self._last_fingerprint: str | None = None
         self._consecutive = 0
         # Tool-call dimension (new in this PR).  Tracked independently
         # so a real error-loop and a real tool-call-loop can co-exist.
-        self._tool_events: deque[tuple[str, float]] = deque()
+        self._tool_events: deque[tuple[str, float]] = deque(maxlen=self._event_maxlen)
         self._last_tool_fingerprint: str | None = None
         self._tool_consecutive = 0
+
+    @property
+    def event_buffer_maxlen(self) -> int:
+        """Return the per-dimension deque ``maxlen`` cap.
+
+        Read-only, additive, non-breaking.  Exposes the bound so
+        callers (and tests) can reason about memory usage and
+        assert the cap is in effect.  Both dimensions share the
+        same cap derived from ``window_count``.
+        """
+        return self._event_maxlen
 
     @staticmethod
     def fingerprint(message: str) -> str:

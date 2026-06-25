@@ -285,3 +285,165 @@ def test_error_dimension_takes_precedence_over_tool_dimension() -> None:
     # Both dimensions tripped -> tool dimension is NOT the one that
     # should drive the fire reason (error dimension wins).
     assert not tracker.tripped_tool_dimension()
+
+
+# ---------------------------------------------------------------------------
+# wt-024 M1 — bounded deque memory cap (regression for unbounded growth).
+# ---------------------------------------------------------------------------
+
+
+def test_event_buffer_maxlen_is_derived_from_window_count() -> None:
+    """``event_buffer_maxlen`` reflects the cap derived from ``window_count``.
+
+    The cap is ``max((window_count or 0) * 8, _MIN_EVENT_DEQUE_CAP)`` so it
+    scales with the configured window and is always >= ``_MIN_EVENT_DEQUE_CAP``
+    (256).  This guarantees the window rule can still trip while bounding
+    memory even when ``window_seconds`` is disabled.
+    """
+    clock = FakeClock()
+    # window_count=5 -> cap is max(40, 256) = 256
+    tracker_small = RepetitionTracker(
+        clock,
+        consecutive_threshold=None,
+        window_count=5,
+        window_seconds=None,
+    )
+    assert tracker_small.event_buffer_maxlen == 256
+
+    # window_count=64 -> cap is max(512, 256) = 512
+    tracker_mid = RepetitionTracker(
+        clock,
+        consecutive_threshold=None,
+        window_count=64,
+        window_seconds=None,
+    )
+    assert tracker_mid.event_buffer_maxlen == 512
+
+    # window_count=None -> cap is max(0, 256) = 256 (the safety floor)
+    tracker_disabled = RepetitionTracker(
+        clock,
+        consecutive_threshold=None,
+        window_count=None,
+        window_seconds=None,
+    )
+    assert tracker_disabled.event_buffer_maxlen == 256
+
+
+def test_event_deque_does_not_grow_unbounded_with_window_seconds_disabled() -> None:
+    """With ``window_seconds=None``, the deques MUST stay bounded by
+    ``event_buffer_maxlen`` even after thousands of same-fingerprint
+    observations.  This is the wt-024 M1 regression: previously
+    ``_prune`` returned early when ``window_seconds`` was None so the
+    deques grew for the whole watchdog lifetime.
+    """
+    clock = FakeClock()
+    tracker = RepetitionTracker(
+        clock,
+        consecutive_threshold=None,
+        window_count=5,
+        window_seconds=None,
+    )
+    msg = "MCP error -32001: Request timed out"
+    # Drive way past the cap.
+    for _ in range(5000):
+        tracker.note_error(msg)
+    # Bounded: deque length MUST NOT exceed the cap.
+    assert len(tracker._events) <= tracker.event_buffer_maxlen
+    assert len(tracker._events) == tracker.event_buffer_maxlen, (
+        f"deque should be exactly at cap ({tracker.event_buffer_maxlen})"
+        f" after 5000 appends, got len={len(tracker._events)}"
+    )
+
+
+def test_tool_event_deque_does_not_grow_unbounded_with_window_seconds_disabled() -> None:
+    """Tool-call dimension deque MUST stay bounded by
+    ``event_buffer_maxlen`` even after thousands of identical
+    tool-call observations with the time window disabled.
+    """
+    clock = FakeClock()
+    tracker = RepetitionTracker(
+        clock,
+        consecutive_threshold=None,
+        window_count=5,
+        window_seconds=None,
+    )
+    for _ in range(5000):
+        tracker.mark_tool_call("Bash", {"command": "ls"})
+    assert len(tracker._tool_events) <= tracker.event_buffer_maxlen
+    assert len(tracker._tool_events) == tracker.event_buffer_maxlen, (
+        f"tool-event deque should be at cap ({tracker.event_buffer_maxlen})"
+        f" after 5000 appends, got len={len(tracker._tool_events)}"
+    )
+
+
+def test_consecutive_rule_still_trips_with_window_disabled_and_bounded_deque() -> None:
+    """After 5000 same-fingerprint ``note_error`` calls with the time
+    window disabled, the consecutive rule MUST still fire (the cap
+    must not break the consecutive streak counter).
+
+    This proves the wt-024 M1 fix is behavior-preserving: ``tripped()``
+    still returns True even when the deque is bounded.
+    """
+    clock = FakeClock()
+    # consecutive_threshold=5 -> 5 same-fingerprint calls in a row trip.
+    tracker = RepetitionTracker(
+        clock,
+        consecutive_threshold=5,
+        window_count=5,
+        window_seconds=None,
+    )
+    msg = "MCP error -32001: Request timed out"
+    # 4 calls -> not yet tripped.
+    for _ in range(4):
+        tracker.note_error(msg)
+    assert not tracker.tripped()
+    # 5th call trips.
+    tracker.note_error(msg)
+    assert tracker.tripped()
+    # Drive far past the cap; consecutive rule keeps tripping.
+    for _ in range(5000):
+        tracker.note_error(msg)
+    assert tracker.tripped()
+
+
+def test_window_rule_fires_with_bounded_deque_when_window_enabled() -> None:
+    """When the time window IS enabled, the window rule must still fire
+    on the bounded deque (cap is >= window_count so all window-count
+    occurrences fit).
+    """
+    clock = FakeClock()
+    # consecutive_threshold=None -> only window rule can trip.
+    # window_count=8, window_seconds=600.0 -> 8 occurrences within 600s.
+    tracker = RepetitionTracker(
+        clock,
+        consecutive_threshold=None,
+        window_count=8,
+        window_seconds=600.0,
+    )
+    msg = "MCP error -32001: Request timed out"
+    for _ in range(8):
+        tracker.note_error(msg)
+        clock.advance(10.0)
+    assert tracker.tripped()
+    # Cap is max(8*8, 256) = 256 -> all 8 events fit.
+    assert len(tracker._events) == 8
+
+
+def test_note_progress_clears_bounded_deques() -> None:
+    """``note_progress`` clears both deques; the cap doesn't change
+    (the deque remains bounded but empties).
+    """
+    clock = FakeClock()
+    tracker = RepetitionTracker(
+        clock,
+        consecutive_threshold=None,
+        window_count=5,
+        window_seconds=None,
+    )
+    # Drive past the cap (256) to confirm the deque is bounded.
+    for _ in range(tracker.event_buffer_maxlen + 100):
+        tracker.note_error("MCP error -32001: Request timed out")
+    assert len(tracker._events) == tracker.event_buffer_maxlen
+    tracker.note_progress()
+    assert len(tracker._events) == 0
+    assert tracker.event_buffer_maxlen == 256

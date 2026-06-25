@@ -96,6 +96,72 @@ _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
 )
 
 
+# Module-level cache slot for the self-source AST tree shared by the
+# two import-time invariant functions below. Reading + parsing the
+# controller's own source twice (once per invariant) is wasteful; the
+# helper ``_controller_source_tree`` memoizes the tuple so both
+# invariant calls share a single read+parse per process import.
+# ``_reset_controller_source_tree_cache`` is the test seam: it drops
+# the cached tuple so each test starts from a clean slate. A dict is
+# used (rather than a bare ``Optional`` global) so the cache can be
+# mutated without ``global`` statements (which ruff ``PLW0603``
+# discourages).
+_CONTROLLER_SOURCE_TREE_CACHE: dict[str, tuple[str, ast.Module]] = {}
+
+
+def _controller_source_tree(
+    *,
+    parse_fn: Callable[[str], ast.Module],
+    read_fn: Callable[[], str],
+) -> tuple[str, ast.Module]:
+    """Return ``(source, tree)`` for the controller module, cached.
+
+    Reads ``read_fn()`` and parses it with ``parse_fn`` only on the
+    first invocation (or after ``_reset_controller_source_tree_cache``);
+    subsequent calls return the cached tuple. The two invariant
+    functions call this with ``read_fn=lambda: Path(__file__).read_text(...)``
+    and ``parse_fn=_parse_source`` so the source is read and parsed exactly
+    ONCE per process import instead of twice.
+
+    ``parse_fn`` and ``read_fn`` are injected (no ambient open/
+    Path.read_text) so the helper stays deterministic and testable.
+    ``SyntaxError`` is wrapped in ``RuntimeError`` so the existing
+    import-time invariant contract is preserved verbatim.
+    """
+    if _CONTROLLER_SOURCE_TREE_CACHE:
+        return next(iter(_CONTROLLER_SOURCE_TREE_CACHE.values()))
+    source = read_fn()
+    try:
+        tree = parse_fn(source)
+    except SyntaxError as exc:
+        msg = (
+            "recovery/controller.py failed to parse during the two-state"
+            " invariant check. The controller source is broken; the two-state"
+            " recovery invariant cannot be verified."
+            f" Parser error: {exc}"
+        )
+        raise RuntimeError(msg) from exc
+    _CONTROLLER_SOURCE_TREE_CACHE["source"] = (source, tree)
+    return source, tree
+
+
+def _parse_source(source: str) -> ast.Module:
+    """Thin wrapper around ``ast.parse`` to avoid mypy's overload warnings
+    when passed as a ``Callable[[str], ast.Module]`` argument."""
+    return ast.parse(source)
+
+
+def _reset_controller_source_tree_cache() -> None:
+    """Clear the cached ``(source, tree)`` tuple for tests.
+
+    Production callers should not need to call this: the cache is
+    correct for the whole process lifetime because the controller
+    module is the same source the cache holds. Tests inject custom
+    ``parse_fn``/``read_fn`` and need a fresh slot per case.
+    """
+    _CONTROLLER_SOURCE_TREE_CACHE.clear()
+
+
 def _assert_two_state_invariant() -> None:
     """Verify the two-state recovery invariant is wired into ``RecoveryController``.
 
@@ -113,19 +179,15 @@ def _assert_two_state_invariant() -> None:
     import-time invariant and the test in
     ``tests/recovery/test_two_state_invariant.py`` so the locked contract
     is always in sync with the production code.
+
+    The read+parse is shared with ``_assert_never_exit_invariant`` via
+    ``_controller_source_tree`` so the controller source is read and
+    parsed exactly ONCE per process import (wt-024 P1 perf fix).
     """
-    source_path = Path(__file__).resolve()
-    source = source_path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as exc:
-        msg = (
-            "recovery/controller.py failed to parse during the two-state"
-            " invariant check. The controller source is broken; the two-state"
-            f" recovery invariant cannot be verified. Source: {source_path}."
-            f" Parser error: {exc}"
-        )
-        raise RuntimeError(msg) from exc
+    _source, tree = _controller_source_tree(
+        parse_fn=_parse_source,
+        read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8"),
+    )
     class_node: ast.ClassDef | None = None
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == "RecoveryController":
@@ -253,19 +315,15 @@ def _assert_never_exit_invariant() -> None:
     contains a ``Return`` statement. A future PR that introduces
     a third state that exits the pipeline when all agents are on
     cooldown will fail this check at module import time.
+
+    The read+parse is shared with ``_assert_two_state_invariant`` via
+    ``_controller_source_tree`` so the controller source is read and
+    parsed exactly ONCE per process import (wt-024 P1 perf fix).
     """
-    source_path = Path(__file__).resolve()
-    source = source_path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(source)
-    except SyntaxError as exc:
-        msg = (
-            "recovery/controller.py failed to parse during the never-exit"
-            " invariant check. The controller source is broken; the"
-            f" never-exit invariant cannot be verified. Source: {source_path}."
-            f" Parser error: {exc}"
-        )
-        raise RuntimeError(msg) from exc
+    _source, tree = _controller_source_tree(
+        parse_fn=_parse_source,
+        read_fn=lambda: Path(__file__).resolve().read_text(encoding="utf-8"),
+    )
     class_node: ast.ClassDef | None = None
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == "RecoveryController":

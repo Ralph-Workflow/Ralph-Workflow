@@ -8,6 +8,7 @@ from ralph.prompts.template_engine import TemplateRenderingError, render_templat
 from ralph.prompts.template_registry import (
     TemplateNotFoundError,
     TemplateRegistry,
+    _packaged_template_cache,
     packaged_template_root,
 )
 
@@ -84,4 +85,4 @@ prompt_review = render_review_prompt
 
 
 def _load_packaged_review_template() -> str:
-    return (packaged_template_root() / "review.jinja").read_text(encoding="utf-8")
+    return _packaged_template_cache.get("review.jinja", root=packaged_template_root())

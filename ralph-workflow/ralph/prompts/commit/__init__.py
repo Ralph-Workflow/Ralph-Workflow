@@ -12,6 +12,7 @@ from ..template_engine import render_template
 from ..template_registry import (
     TemplateNotFoundError,
     TemplateRegistry,
+    _packaged_template_cache,
     load_partial_templates,
     packaged_template_root,
 )
@@ -81,7 +82,9 @@ def prompt_commit_message_for_opencode(
     if not diff_content:
         raise ValueError("empty diff provided; cannot build commit prompt")
 
-    template = (packaged_template_root() / "commit_simplified.jinja").read_text(encoding="utf-8")
+    template = _packaged_template_cache.get(
+        "commit_simplified.jinja", root=packaged_template_root()
+    )
     variables = {
         "SUBMIT_ARTIFACT_TOOL_NAME": submit_artifact_tool_name,
         "SUBMIT_ARTIFACT_TOOL_REFERENCE": f"`{submit_artifact_tool_name}`",
@@ -109,7 +112,9 @@ def _select_template(template_registry: TemplateRegistry | None) -> str:
             return template_registry.get_template(DEFAULT_COMMIT_TEMPLATE_NAME)
         except TemplateNotFoundError:
             pass
-    return (packaged_template_root() / "commit_message.jinja").read_text(encoding="utf-8")
+    return _packaged_template_cache.get(
+        "commit_message.jinja", root=packaged_template_root()
+    )
 
 
 def _format_submit_artifact_tool_instructions(tool_names: Sequence[str]) -> str:
