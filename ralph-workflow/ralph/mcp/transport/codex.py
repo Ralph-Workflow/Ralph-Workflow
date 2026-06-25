@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import re
 import shutil
@@ -18,6 +19,24 @@ from ralph.mcp.tools.names import (
 )
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
+
+_allocated_codex_homes: list[str] = []
+
+
+def cleanup_codex_homes() -> None:
+    """Remove every Codex home dir this process allocated.
+
+    Standalone importable function so tests can invoke cleanup
+    directly without depending on ``atexit`` timing. ``ignore_errors``
+    makes the function robust to partial interpreter shutdown and
+    already-removed dirs.
+    """
+    for path in _allocated_codex_homes:
+        shutil.rmtree(path, ignore_errors=True)
+    _allocated_codex_homes.clear()
+
+
+atexit.register(cleanup_codex_homes)
 
 
 def prepare_codex_home(
@@ -153,11 +172,13 @@ def _mirror_codex_home(source_home: Path, codex_root: Path) -> None:
 
 def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
     if workspace_path is None:
-        return Path(tempfile.mkdtemp(prefix="ralph-codex-home-"))
-
-    tmp_root = workspace_path / ".agent" / "tmp"
-    tmp_root.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix="codex-home-", dir=str(tmp_root)))
+        codex_root = Path(tempfile.mkdtemp(prefix="ralph-codex-home-"))
+    else:
+        tmp_root = workspace_path / ".agent" / "tmp"
+        tmp_root.mkdir(parents=True, exist_ok=True)
+        codex_root = Path(tempfile.mkdtemp(prefix="codex-home-", dir=str(tmp_root)))
+    _allocated_codex_homes.append(str(codex_root))
+    return codex_root
 
 
 def _extract_codex_upstream_servers(config_text: str) -> tuple[UpstreamMcpServer, ...]:
@@ -176,6 +197,7 @@ def _extract_codex_upstream_servers(config_text: str) -> tuple[UpstreamMcpServer
 
 
 __all__ = [
+    "cleanup_codex_homes",
     "prepare_codex_home",
     "prepare_codex_home_with_upstreams",
 ]

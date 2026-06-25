@@ -78,6 +78,28 @@ class TestDropUnitCleanup:
         assert unit_id not in display._activity_router._buffers
         assert unit_id not in display._activity_router._parsers
 
+    def test_parallel_display_drop_unit_removes_worker_streaming_state(self) -> None:
+        """drop_unit must evict _last_worker_states, _active_block, and _last_checkpoint_chars.
+
+        These three per-unit dicts grow across parallel waves without
+        any eviction path; release them on drop_unit so long parallel
+        runs do not accumulate state.
+        """
+        ws = Path("/tmp/ralph-drop-unit-streaming-test").resolve()
+        ws.mkdir(parents=True, exist_ok=True)
+        ctx = make_display_context()
+        display = ParallelDisplay(display_context=ctx, workspace_root=ws)
+        unit_id = "unit-streaming"
+        display._last_worker_states[unit_id] = "RUNNING"
+        display._active_block[unit_id] = ("text", ["fragment"])
+        display._last_checkpoint_chars[unit_id] = 42
+
+        display.drop_unit(unit_id)
+
+        assert unit_id not in display._last_worker_states
+        assert unit_id not in display._active_block
+        assert unit_id not in display._last_checkpoint_chars
+
     def test_parallel_display_drop_unit_on_unknown_unit_is_safe(self) -> None:
         ws = Path("/tmp/ralph-drop-unit-safe-test").resolve()
         ws.mkdir(parents=True, exist_ok=True)

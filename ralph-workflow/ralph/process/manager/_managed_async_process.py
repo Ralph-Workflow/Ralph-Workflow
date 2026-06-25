@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from ralph.process.manager._process_status import _TERMINAL_STATUSES
 
 if TYPE_CHECKING:
     import asyncio
+    from types import TracebackType
 
     from ralph.process.manager._process_manager import ProcessManager
     from ralph.process.manager._process_manager_types import _AsyncProcessLike
@@ -74,3 +76,20 @@ class ManagedAsyncProcess:
             else self._manager.policy.default_grace_period_s
         )
         await self._manager._escalate_termination_async(self._record, self._proc, gp)
+
+    async def __aenter__(self) -> ManagedAsyncProcess:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        del exc_type, exc_val, exc_tb
+        if self._record.status not in _TERMINAL_STATUSES:
+            # Suppress termination errors so the CM exit never masks
+            # the original exception (return None so exc_val still
+            # propagates).
+            with contextlib.suppress(Exception):
+                await self.terminate(grace_period_s=2.0)
