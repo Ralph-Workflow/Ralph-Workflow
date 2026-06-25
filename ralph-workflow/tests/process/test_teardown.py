@@ -11,7 +11,7 @@ import pytest
 
 from ralph.process.teardown import DefaultProcessTeardown
 
-pytestmark = pytest.mark.subprocess_e2e
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(10)]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")

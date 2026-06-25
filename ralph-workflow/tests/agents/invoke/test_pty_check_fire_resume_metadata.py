@@ -54,6 +54,7 @@ no real PTY, no real sleep, no real network.
 from __future__ import annotations
 
 import threading
+from collections import deque
 from unittest.mock import MagicMock
 
 from loguru import logger
@@ -129,7 +130,7 @@ def _make_pty_line_reader_with_session_id(
     reader._last_tool_result_excerpt = None
     reader._last_tool_use_name = None
     reader._captured_session_id = session_id
-    reader._transcript_session_ids = [session_id]
+    reader._transcript_session_ids = deque([session_id], maxlen=64)
     reader._transcript_session_ids_lock = threading.Lock()
     watchdog = IdleWatchdog(policy, clock)
     return reader, watchdog, clock

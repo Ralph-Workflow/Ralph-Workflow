@@ -63,6 +63,12 @@ _MENU_APPROVAL_COUNT_THRESHOLD = 2
 _MIN_PREFIX_CHAR_LEN = 4
 _MENU_QUIESCENCE_SECONDS = 0.75
 _RECENT_CHOICE_LINES_MAX = 20
+# wt-024 M9 (AC-07): bound ``_transcript_session_ids`` so the
+# session-dedup list cannot grow unboundedly across a long
+# invocation. 64 covers the dedup window (recent-session correlation)
+# without leaking entries for sessions that have long since rotated
+# out of the watchdog's view.
+_MAX_TRANSCRIPT_SESSION_IDS = 64
 
 
 def _split_complete_vt_lines(text: str) -> tuple[list[str], str]:

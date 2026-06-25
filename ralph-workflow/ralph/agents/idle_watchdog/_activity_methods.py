@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog._evidence_tier import (
@@ -18,6 +19,14 @@ from ralph.process.child_liveness import AliveBy
 
 if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
+
+# wt-024 M7 (AC-04): bound the per-invocation subagent output capture
+# cache so a high-fan-out invocation that sees many distinct worker
+# IDs in a single watchdog tick cannot grow the dict unboundedly.
+# FIFO eviction retains the most recently observed worker captures
+# (which are the ones most likely to be queried on the next tick)
+# while shedding stale workers that no longer produce output.
+_MAX_SUBAGENT_OUTPUT_CAPTURES: int = 128
 
 def record_invocation_start(self: IdleWatchdog) -> None:
     """Record the start of the invocation.
@@ -122,7 +131,7 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._last_workspace_event_at = None
     self._last_workspace_event_weight = 0.0
     self._workspace_kind_counts = {}
-    self._subagent_output_captures = {}
+    self._subagent_output_captures = OrderedDict()
     self._entry_corroboration = None
     self._last_progress_fingerprint = None
     self._classify_quiet_provider = None
@@ -351,6 +360,13 @@ def poll_subagent_output(self: IdleWatchdog, now: float | None = None) -> int:
         else:
             resolved = capture
             self._subagent_output_captures[worker_id] = resolved
+            # wt-024 M7 (AC-04): FIFO-bounded capture cache. move_to_end
+            # refreshes the worker's position so the most recently
+            # observed workers stay at the back; the while-loop
+            # evicts the oldest workers once the cap is exceeded.
+            self._subagent_output_captures.move_to_end(worker_id)
+            while len(self._subagent_output_captures) > _MAX_SUBAGENT_OUTPUT_CAPTURES:
+                self._subagent_output_captures.popitem(last=False)
         try:
             lines = resolved.read_lines(worker_id)
         except Exception:

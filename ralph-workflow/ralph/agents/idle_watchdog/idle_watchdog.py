@@ -81,6 +81,7 @@ See ``_stuck_classifier.py`` for the full contract.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
@@ -395,8 +396,8 @@ class IdleWatchdog:
     # Subagent output capture state. The watchdog polls the injected
     # DiscoveryStrategy for output paths and reuses capture instances per
     # worker so only new lines are ingested as first-party evidence.
-    _subagent_output_captures: dict[str, SubagentOutputCapture] = field(
-        default_factory=dict, init=False
+    _subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = field(
+        default_factory=OrderedDict, init=False
     )
     # Per-kind workspace event counter. The watchdog tracks how many
     # file changes have been observed for each WorkspaceChangeKind
@@ -513,7 +514,7 @@ class IdleWatchdog:
         self._default_subagent_activity_listener: WaitingStatusListener | None = None
         self._subagent_output_count = 0
         self._last_subagent_output_at = None
-        self._subagent_output_captures = {}
+        self._subagent_output_captures = OrderedDict()
         self._workspace_event_count_internal = 0
         self._last_workspace_event_at = None
         self._last_workspace_event_weight = 0.0

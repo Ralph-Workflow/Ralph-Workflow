@@ -528,6 +528,16 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_ProcessReaderCtx",),
         ),
         (
+            "tests/agents/invoke/test_cpu_baseline_pruning.py",
+            "ralph.agents.invoke._process_reader",
+            ("_ProcessLineReader",),
+        ),
+        (
+            "tests/agents/invoke/test_cpu_baseline_pruning.py",
+            "ralph.agents.invoke._types",
+            ("_ProcessReaderCtx",),
+        ),
+        (
             "tests/agents/idle_watchdog/test_non_resumable_end_to_end.py",
             "ralph.agents.invoke._errors",
             ("_IdleStreamTimeoutError",),

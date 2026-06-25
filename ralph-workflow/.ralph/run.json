@@ -1,11 +1,11 @@
 {
-  "pid": 53184,
-  "startTime": 1782357053000,
+  "pid": 60440,
+  "startTime": 1782395035000,
   "workspace": "/Volumes/Crucial X9/ext-Projects/Ralph-Workflow/wt-024-memory-perf/ralph-workflow",
   "productVersion": "",
-  "runId": "ext-eeqkpu",
+  "runId": "ext-ef8ih5",
   "provenance": "external-marker",
   "port": 0,
-  "startedAt": "2026-06-25T03:10:53.000Z",
-  "heartbeatToken": "external:ext-eeqkpu"
+  "startedAt": "2026-06-25T13:43:55.000Z",
+  "heartbeatToken": "external:ext-ef8ih5"
 }
