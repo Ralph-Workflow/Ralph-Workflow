@@ -25,8 +25,26 @@ if TYPE_CHECKING:
 # IDs in a single watchdog tick cannot grow the dict unboundedly.
 # FIFO eviction retains the most recently observed worker captures
 # (which are the ones most likely to be queried on the next tick)
-# while shedding stale workers that no longer produce output.
+# while shedding older workers that have not been refreshed
+# recently. The cap is a HARD bound: when the cache is full and a
+# new worker appears, the LRU worker is evicted regardless of
+# whether it is still live or not.
+#
+# To preserve the no-duplicate-output property of stateful
+# ``SubagentOutputCapture`` implementations (the production
+# ``FileSubagentOutputCapture`` tracks a per-worker byte offset
+# and would otherwise re-read historical lines if recreated from
+# offset 0 after eviction), evicted worker IDs are recorded in a
+# separate bounded ``_evicted_worker_tombstones`` map. Tombstoned
+# workers are skipped for one eviction cycle so the duplicate
+# line bug cannot reappear. The tombstone itself is bounded at
+# ``_MAX_EVICTED_TOMBSTONES`` and uses FIFO eviction, keeping the
+# total memory footprint of the watchdog bounded at
+# ``_MAX_SUBAGENT_OUTPUT_CAPTURES + _MAX_EVICTED_TOMBSTONES``
+# per invocation regardless of how many distinct worker IDs are
+# observed.
 _MAX_SUBAGENT_OUTPUT_CAPTURES: int = 128
+_MAX_EVICTED_TOMBSTONES: int = _MAX_SUBAGENT_OUTPUT_CAPTURES
 
 def record_invocation_start(self: IdleWatchdog) -> None:
     """Record the start of the invocation.
@@ -79,6 +97,9 @@ def record_invocation_start(self: IdleWatchdog) -> None:
         ``_default_subagent_activity_listener``
       * ``_subagent_output_captures`` -- the capture cache is
         per-invocation (each run opens new child PIDs)
+      * ``_evicted_worker_tombstones`` -- the eviction tombstone
+        is per-invocation (a tombstoned worker ID from the prior
+        run would suppress fresh output on the new run)
       * ``_entry_corroboration`` -- the entry corroboration is
         captured at run-start; the previous run's entry is stale
       * ``_last_progress_fingerprint`` -- the progress-repeat
@@ -132,6 +153,7 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._last_workspace_event_weight = 0.0
     self._workspace_kind_counts = {}
     self._subagent_output_captures = OrderedDict()
+    self._evicted_worker_tombstones = OrderedDict()
     self._entry_corroboration = None
     self._last_progress_fingerprint = None
     self._classify_quiet_provider = None
@@ -353,27 +375,75 @@ def poll_subagent_output(self: IdleWatchdog, now: float | None = None) -> int:
         )
         return 0
     total = 0
-    for worker_id, capture in captures.items():
-        existing = self._subagent_output_captures.get(worker_id)
-        if existing is not None:
-            resolved = existing
-        else:
-            resolved = capture
-            self._subagent_output_captures[worker_id] = resolved
-            # wt-024 M7 (AC-04): FIFO-bounded capture cache. move_to_end
-            # refreshes the worker's position so the most recently
-            # observed workers stay at the back; the while-loop
-            # evicts the oldest workers once the cap is exceeded.
-            self._subagent_output_captures.move_to_end(worker_id)
-            while len(self._subagent_output_captures) > _MAX_SUBAGENT_OUTPUT_CAPTURES:
-                self._subagent_output_captures.popitem(last=False)
+    # wt-024 M7 (AC-04): HARD FIFO bound + tombstone.
+    #
+    # The cache is hard-bounded at ``_MAX_SUBAGENT_OUTPUT_CAPTURES``.
+    # When the cap binds (live worker count exceeds cap), the LRU
+    # worker is evicted regardless of whether it is still live.
+    #
+    # To preserve the no-duplicate-output property of stateful
+    # ``SubagentOutputCapture`` implementations (the production
+    # ``FileSubagentOutputCapture`` tracks a per-worker read byte
+    # offset and would re-read every historical line if recreated
+    # from offset 0 after eviction), evicted worker IDs are recorded
+    # in a bounded ``_evicted_worker_tombstones`` map. Tombstoned
+    # workers are skipped for one eviction cycle so they cannot
+    # immediately re-enter the cache and re-emit historical lines.
+    #
+    # The cap is enforced at the END of the polling pass (after all
+    # live workers have been polled) so the public surface still
+    # reports EVERY worker's lines for the current tick (a
+    # high-fan-out tick is not a sampling cap; only the next-tick
+    # cache state is bounded).
+    live_worker_ids = set(captures.keys())
+    # Drop tombstone entries for workers that are no longer in the
+    # discovery result (they have actually exited, so the tombstone
+    # can release its memory). Workers still alive stay tombstoned
+    # so they are skipped on this poll.
+    for tombstoned_worker_id in list(self._evicted_worker_tombstones.keys()):
+        if tombstoned_worker_id not in live_worker_ids:
+            del self._evicted_worker_tombstones[tombstoned_worker_id]
+    for worker_id, fresh_capture in captures.items():
+        # Skip tombstoned workers: their stateful read position was
+        # lost on eviction, so re-adding them now would re-read every
+        # historical line. They will be reconsidered after the
+        # tombstone cycles out (when a still-live worker is evicted
+        # and pushes them out, OR when they are no longer in the
+        # discovery result and the tombstone cleanup releases them).
+        if worker_id in self._evicted_worker_tombstones:
+            continue
+        # Reuse existing capture if present (preserves stateful read
+        # position across polls). Only insert the fresh capture when
+        # the worker is new to the cache.
+        if worker_id not in self._subagent_output_captures:
+            self._subagent_output_captures[worker_id] = fresh_capture
+        # Refresh LRU position (move_to_end makes this the most-recent).
+        self._subagent_output_captures.move_to_end(worker_id)
         try:
-            lines = resolved.read_lines(worker_id)
+            lines = self._subagent_output_captures[worker_id].read_lines(worker_id)
         except Exception:
             self._log.debug("idle watchdog: subagent output capture raised (suppressed)")
             continue
         if lines:
             total += len(lines)
+    # Hard FIFO cap enforcement: evict LRU entries until the cache
+    # is at or below the cap. Evicted worker IDs go into the
+    # bounded tombstone so they cannot be re-added on the next
+    # poll and re-emit historical lines.
+    while len(self._subagent_output_captures) > _MAX_SUBAGENT_OUTPUT_CAPTURES:
+        evicted_worker_id, _ = self._subagent_output_captures.popitem(last=False)
+        self._evicted_worker_tombstones[evicted_worker_id] = None
+    # Bound the tombstone itself so a long-lived watchdog tick that
+    # keeps evicting LRU workers cannot grow it past its cap.
+    while len(self._evicted_worker_tombstones) > _MAX_EVICTED_TOMBSTONES:
+        self._evicted_worker_tombstones.popitem(last=False)
+    # Drop dead-worker entries (workers absent from the latest
+    # discovery result). These workers' captures were never polled
+    # for new lines because they no longer exist; releasing them
+    # here keeps the cache tight for the next tick.
+    for cached_worker_id in list(self._subagent_output_captures.keys()):
+        if cached_worker_id not in live_worker_ids:
+            del self._subagent_output_captures[cached_worker_id]
     if total:
         self.record_subagent_output(total, now=timestamp)
     return total

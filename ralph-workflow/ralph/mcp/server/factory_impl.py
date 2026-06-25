@@ -8,6 +8,7 @@ MCP server subprocess via ``lifecycle.start_mcp_server``, and returns a
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from threading import Lock
 from typing import TYPE_CHECKING, Protocol
@@ -36,6 +37,9 @@ if TYPE_CHECKING:
         ) -> SessionBridgeLike: ...
 
 
+_log = logging.getLogger(__name__)
+
+
 class DynamicBindingMcpServerFactory(McpServerFactory):
     """Build MCP server handles with dynamically allocated localhost endpoints."""
 
@@ -56,13 +60,79 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
 
     def build(self, session: object) -> McpServerHandle:
         agent_session = self._coerce_session(session)
-        bridge = self._start_server(
-            agent_session,
-            self.workspace,
-            deps=replace(self._base_deps, reserve_port=self._reserve_unique_port),
-        )
-        pid = self._bridge_pid(bridge)
-        endpoint = bridge.agent_endpoint_uri()
+        # wt-024 iteration-3: reserve the unique port FIRST so the
+        # reserved endpoint is known up front. If ``_start_server``
+        # raises before returning a bridge (e.g. preflight failure,
+        # port bind race, log FD exhausted), the reserved endpoint
+        # MUST be released in the except path; otherwise it is
+        # stranded in ``_allocated_endpoints`` for the factory's
+        # lifetime. The reserved port is handed back to the
+        # ``_start_server`` via ``deps.reserve_port`` so the bridge
+        # allocates the same port we just reserved (production
+        # ``lifecycle.start_mcp_server`` honors this contract).
+        endpoint_port = self._reserve_unique_port()
+        reserved_endpoint = f"http://127.0.0.1:{endpoint_port}/mcp"
+
+        def _reserve_reserved_port() -> int:
+            # Hand the already-reserved port back to ``_start_server``
+            # so the production ``lifecycle.start_mcp_server`` (which
+            # calls ``deps.reserve_port()`` once and reuses the result
+            # for every restart) allocates the same port we just
+            # reserved, without looping on the collision check.
+            return endpoint_port
+
+        try:
+            bridge = self._start_server(
+                agent_session,
+                self.workspace,
+                deps=replace(
+                    self._base_deps,
+                    reserve_port=_reserve_reserved_port,
+                ),
+            )
+        except Exception:
+            # Startup failure path: the bridge never came up, so no
+            # handle is returned to the caller. Release the reserved
+            # endpoint now so the port is available for the next
+            # ``build()`` call. Re-raise the original exception
+            # unchanged so callers still observe the failure mode.
+            self._release_endpoint(reserved_endpoint)
+            raise
+        # wt-024 iteration-4 (AC-06): every failure path AFTER
+        # ``_start_server`` succeeds must also release the
+        # reserved endpoint. ``_bridge_pid(bridge)`` and
+        # ``bridge.agent_endpoint_uri()`` can both raise in real
+        # deployments (a custom bridge implementation may not
+        # expose ``process.pid``, or the bridge may have torn
+        # itself down between the start_server return and our
+        # access). If we let the endpoint leak here, the factory
+        # loses one port from its pool on every such failure.
+        try:
+            pid = self._bridge_pid(bridge)
+            # Use the bridge's own endpoint so test doubles that ignore
+            # ``deps.reserve_port`` and synthesize their own endpoint are
+            # honored. The reserved endpoint is the source of truth for
+            # release because that is what we added to
+            # ``_allocated_endpoints``; the bridge's endpoint may differ
+            # in test doubles but is what callers see on the handle.
+            endpoint = bridge.agent_endpoint_uri()
+        except Exception:
+            # Post-startup extraction failure: the bridge exists but
+            # we cannot hand a usable handle to the caller. Tear the
+            # server down (best effort) and release the reserved
+            # endpoint so the port returns to the pool. Re-raise the
+            # original exception unchanged so callers still observe
+            # the failure mode.
+            try:
+                bridge.shutdown()
+            except Exception:
+                _log.debug(
+                    "MCP factory: bridge.shutdown raised during post-startup "
+                    "failure recovery (suppressed)",
+                    exc_info=True,
+                )
+            self._release_endpoint(reserved_endpoint)
+            raise
         # wt-024 M8 (AC-06): release the endpoint from
         # ``_allocated_endpoints`` AFTER the server process is down
         # so the same factory can reuse the port on a later build.
@@ -71,7 +141,7 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
         # server is still bound. The original ``bridge.shutdown`` is
         # captured so a subclass override still gets called.
         original_shutdown = bridge.shutdown
-        endpoint_ref = endpoint
+        endpoint_ref = reserved_endpoint
 
         def _shutdown_and_release() -> None:
             try:

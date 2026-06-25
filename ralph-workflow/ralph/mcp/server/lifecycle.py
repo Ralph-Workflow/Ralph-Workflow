@@ -559,7 +559,8 @@ def start_mcp_server(
     """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability.
 
     Returns a :class:`RestartAwareMcpBridge` that can auto-restart the server
-    on crash up to the ``extras.restart_policy`` budget (default: 1000 restarts).
+    on crash up to the ``extras.restart_policy`` budget (default: 20 restarts,
+    defined by :class:`McpRestartPolicy`).
     """
     effective_extras = extras or McpServerExtras()
     lifecycle_deps = deps or _default_lifecycle_deps()

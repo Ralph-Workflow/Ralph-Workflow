@@ -396,7 +396,17 @@ class IdleWatchdog:
     # Subagent output capture state. The watchdog polls the injected
     # DiscoveryStrategy for output paths and reuses capture instances per
     # worker so only new lines are ingested as first-party evidence.
+    # The cache is hard-bounded at ``_MAX_SUBAGENT_OUTPUT_CAPTURES``
+    # (defined in ``_activity_methods``); LRU workers are evicted when
+    # the cap binds. To prevent the evicted workers' stateful captures
+    # from being immediately recreated (which would re-emit historical
+    # lines), evicted worker IDs are recorded in
+    # ``_evicted_worker_tombstones`` and skipped on the next poll. The
+    # tombstone is itself bounded at ``_MAX_EVICTED_TOMBSTONES``.
     _subagent_output_captures: OrderedDict[str, SubagentOutputCapture] = field(
+        default_factory=OrderedDict, init=False
+    )
+    _evicted_worker_tombstones: OrderedDict[str, None] = field(
         default_factory=OrderedDict, init=False
     )
     # Per-kind workspace event counter. The watchdog tracks how many
@@ -515,6 +525,13 @@ class IdleWatchdog:
         self._subagent_output_count = 0
         self._last_subagent_output_at = None
         self._subagent_output_captures = OrderedDict()
+        # wt-024 iteration-4 (AC-04): bounded eviction tombstone
+        # for the hard-FIFO subagent output capture cache. Tracks
+        # recently-evicted worker IDs so they cannot be immediately
+        # re-added (which would re-emit historical lines). See
+        # ``_activity_methods.poll_subagent_output`` for the
+        # eviction policy.
+        self._evicted_worker_tombstones: OrderedDict[str, None] = OrderedDict()
         self._workspace_event_count_internal = 0
         self._last_workspace_event_at = None
         self._last_workspace_event_weight = 0.0

@@ -233,3 +233,186 @@ def test_handle_shutdown_releases_endpoint_even_when_bridge_raises(tmp_path: Pat
         "endpoint MUST be released even when the bridge shutdown raises"
     )
     assert bridges[0].shutdown_calls == 1
+
+
+def test_build_releases_endpoint_when_start_server_raises(tmp_path: Path) -> None:
+    """AC-06 (iteration-3): a startup failure must release the reserved endpoint.
+
+    Without this guard, ``_start_server`` raising before returning
+    a bridge would leave the reserved endpoint stranded in
+    ``_allocated_endpoints`` for the factory's lifetime, exhausting
+    the per-factory port budget on a transient preflight failure.
+    The release must happen in the except path; the next
+    ``build()`` call must then be able to reserve the same port.
+    """
+    counter = {"port": 44200}
+    raised = {"count": 0}
+
+    def fake_reserve_port() -> int:
+        counter["port"] += 1
+        return counter["port"]
+
+    def fake_start_server_raises(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> FakeBridge:
+        del session, workspace
+        # Reserve the port the way the production lifecycle does so
+        # the test exercises the real reserve/release contract even
+        # when startup itself fails. The bridge is never returned.
+        assert deps is not None
+        deps.reserve_port()
+        raised["count"] += 1
+        msg = "preflight failed: tool unreachable"
+        raise RuntimeError(msg)
+
+    factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        reserve_port=fake_reserve_port,
+        start_server=fake_start_server_raises,
+    )
+    session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
+
+    with pytest.raises(RuntimeError, match="preflight failed"):
+        factory.build(session)
+
+    assert not factory._allocated_endpoints, (
+        "startup failure MUST release the reserved endpoint so the next "
+        "build can reuse the port"
+    )
+    assert raised["count"] == 1
+
+    # A subsequent build with a working start_server must succeed and
+    # allocate a fresh port (the previous attempt's port is back in
+    # the pool). The handle's endpoint matches the bridge; the
+    # reserved endpoint matches the port the factory allocated.
+    counter["port"] = 44200
+
+    def fake_start_server_ok(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> FakeBridge:
+        del session, workspace
+        assert deps is not None
+        port = deps.reserve_port()
+        return FakeBridge(endpoint=f"http://127.0.0.1:{port}/mcp", pid=port)
+
+    ok_factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        reserve_port=fake_reserve_port,
+        start_server=fake_start_server_ok,
+    )
+    handle = ok_factory.build(session)
+    assert handle.endpoint == "http://127.0.0.1:44201/mcp"
+    assert handle.pid == 44201
+
+
+def test_build_releases_endpoint_when_post_startup_extraction_fails(
+    tmp_path: Path,
+) -> None:
+    """AC-06 (iteration-4): post-startup extraction failures must release the endpoint.
+
+    If ``_bridge_pid(bridge)`` or ``bridge.agent_endpoint_uri()``
+    raises after ``_start_server`` succeeded, the reserved endpoint
+    was already added to ``_allocated_endpoints``. The factory MUST
+    release it (and tear down the bridge) so the port returns to
+    the pool. Without this guard the factory loses one port from
+    its pool on every such failure, eventually exhausting the
+    per-factory lifetime budget.
+    """
+
+    class _FailingEndpointBridge(FakeBridge):
+        def agent_endpoint_uri(self) -> str:
+            msg = "agent endpoint vanished after startup"
+            raise RuntimeError(msg)
+
+    counter = {"port": 44300}
+
+    def fake_reserve_port() -> int:
+        counter["port"] += 1
+        return counter["port"]
+
+    def fake_start_server(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> _FailingEndpointBridge:
+        del session, workspace
+        assert deps is not None
+        port = deps.reserve_port()
+        return _FailingEndpointBridge(endpoint=f"http://127.0.0.1:{port}/mcp", pid=port)
+
+    factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        reserve_port=fake_reserve_port,
+        start_server=fake_start_server,
+    )
+    session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
+
+    with pytest.raises(RuntimeError, match="agent endpoint vanished after startup"):
+        factory.build(session)
+
+    assert not factory._allocated_endpoints, (
+        "post-startup extraction failure MUST release the reserved endpoint "
+        "so the next build can reuse the port"
+    )
+
+
+def test_build_releases_endpoint_when_bridge_pid_extraction_fails(
+    tmp_path: Path,
+) -> None:
+    """AC-06 (iteration-4): ``_bridge_pid`` failure must release the endpoint.
+
+    ``_bridge_pid`` raises ``TypeError`` when the bridge does not
+    expose ``process.pid`` (e.g. a custom bridge implementation
+    that does not implement the ``_BridgeWithProcess`` protocol).
+    The factory MUST release the reserved endpoint and shut down
+    the bridge so the port returns to the pool.
+    """
+
+    class _BridgeWithoutProcess:
+        def __init__(self, endpoint: str) -> None:
+            self._endpoint = endpoint
+
+        def agent_endpoint_uri(self) -> str:
+            return self._endpoint
+
+        def shutdown(self) -> None:
+            pass
+
+    counter = {"port": 44400}
+
+    def fake_reserve_port() -> int:
+        counter["port"] += 1
+        return counter["port"]
+
+    def fake_start_server(
+        session: object,
+        workspace: object,
+        *,
+        deps: lifecycle.LifecycleDeps | None = None,
+    ) -> _BridgeWithoutProcess:
+        del session, workspace
+        assert deps is not None
+        port = deps.reserve_port()
+        return _BridgeWithoutProcess(endpoint=f"http://127.0.0.1:{port}/mcp")
+
+    factory = DynamicBindingMcpServerFactory(
+        workspace=FsWorkspace(tmp_path),
+        reserve_port=fake_reserve_port,
+        start_server=fake_start_server,
+    )
+    session = AgentSession(session_id="session-1", run_id="run-1", drain="planning")
+
+    with pytest.raises(TypeError, match=r"MCP server bridge must expose process\.pid"):
+        factory.build(session)
+
+    assert not factory._allocated_endpoints, (
+        "_bridge_pid failure MUST release the reserved endpoint so the "
+        "next build can reuse the port"
+    )
