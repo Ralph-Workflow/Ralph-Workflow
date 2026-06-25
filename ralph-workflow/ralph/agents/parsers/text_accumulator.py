@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
+_MAX_RAW_LINES: int = 4096
+
+
 @dataclass(slots=True)
 class TextAccumulator:
     """Shared delta accumulator for paragraph-boundary text flushing."""
@@ -38,6 +41,11 @@ class TextAccumulator:
         """
         self.buffer += text
         self.raw_lines.append(raw)
+        if len(self.raw_lines) > _MAX_RAW_LINES:
+            flushed_raw = "\n".join(self.raw_lines)
+            yield AgentOutputLine(type=kind, content=self.buffer, raw=flushed_raw)
+            self.buffer = ""
+            self.raw_lines = []
         if "\n\n" in self.buffer:
             parts = self.buffer.split("\n\n", 1)
             flushed = parts[0]

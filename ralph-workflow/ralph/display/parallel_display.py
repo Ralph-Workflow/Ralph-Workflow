@@ -178,6 +178,7 @@ _MAX_OVERFLOW_FILE_BYTES: int = DEFAULT_MAX_OVERFLOW_FILE_BYTES
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
 _MAX_RENDERED_UNIT_ID_CHARS = 24
+_MAX_STREAMING_FRAGMENTS: int = 2048
 
 # A tool activity is "repeated" (coalesced with a "xN" count in the live status)
 # starting from the second consecutive identical call.
@@ -361,6 +362,7 @@ class ParallelDisplay:
 
     __slots__ = (
         "_active_block",
+        "_active_block_chars",
         "_activity_router",
         "_clock",
         "_ctx",
@@ -443,6 +445,7 @@ class ParallelDisplay:
         self._last_analysis_signature: tuple[str | None, str | None, str | None] | None = None
         self._last_waiting_signature: str | None = None
         self._active_block: dict[str, tuple[str, list[str]]] = {}
+        self._active_block_chars: dict[str, int] = {}
         self._last_checkpoint_chars: dict[str, int] = {}
         self._emitted_empty_plan: bool = False
         self._emitted_empty_activity: bool = False
@@ -740,6 +743,7 @@ class ParallelDisplay:
         rendered_unit_id = _render_unit_id(unit_id)
         base_tag, accumulated = self._active_block.pop(unit_id)
         self._last_checkpoint_chars.pop(unit_id, None)
+        self._active_block_chars.pop(unit_id, None)
         block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
         if block_tags is None:
             return
@@ -805,6 +809,7 @@ class ParallelDisplay:
         """Open a new streaming block and return (tag, sanitized_override | None)."""
         self._active_block[ctx.unit_id] = (ctx.base_tag, [ctx.content])
         self._last_checkpoint_chars[ctx.unit_id] = 0
+        self._active_block_chars[ctx.unit_id] = len(ctx.content)
         self._update_counters(ctx.kind, is_new_block=True)
         if ctx.kind == "thinking":
             headline = build_headline_or_placeholder(
@@ -818,15 +823,21 @@ class ParallelDisplay:
         ctx: _StreamingCtx,
         accumulated: list[str],
         continue_tag: str,
+        start_tag: str,
     ) -> tuple[str, str | None] | None:
         """Continue an existing streaming block; returns (tag, override) or None for dedup."""
         if self._ctx.streaming_dedup_enabled and accumulated and accumulated[-1] == ctx.content:
             return None
+        if len(accumulated) >= _MAX_STREAMING_FRAGMENTS:
+            self._close_block(ctx.unit_id, ctx.timestamp)
+            return self._handle_new_streaming_block(ctx, start_tag)
         seq = len(accumulated) + 1
         accumulated.append(ctx.content)
+        running_total = self._active_block_chars.get(ctx.unit_id, 0) + len(ctx.content)
+        self._active_block_chars[ctx.unit_id] = running_total
         tag = f"{continue_tag}#{seq}"
         if self._ctx.streaming_checkpoints_enabled:
-            total_chars = sum(len(x) for x in accumulated)
+            total_chars = self._active_block_chars.get(ctx.unit_id, 0)
             last_cp = self._last_checkpoint_chars.get(ctx.unit_id, 0)
             emit_checkpoint = (
                 seq % self._ctx.streaming_checkpoint_fragments == 0
@@ -887,7 +898,7 @@ class ParallelDisplay:
         if existing_base_tag != ctx.base_tag:
             self._close_block(ctx.unit_id, ctx.timestamp)
             return self._handle_new_streaming_block(ctx, start_tag)
-        return self._continue_streaming_block(ctx, accumulated, continue_tag)
+        return self._continue_streaming_block(ctx, accumulated, continue_tag, start_tag)
 
     # -- Snapshot / view (inlined from _PlainLogRendererBase) --------------
 
@@ -3109,15 +3120,20 @@ class ParallelDisplay:
         """Release per-unit state so long parallel sessions don't accumulate state across waves.
 
         Removes the unit's overflow log, overflow-warning flag,
-        drop-warning timestamp, last-emitted tool signature, and
-        propagates the drop to the embedded ``ActivityRouter``. Safe
-        to call for a unit that was never added; missing entries are
-        silently skipped.
+        drop-warning timestamp, last-emitted tool signature, last
+        worker-state snapshot, active streaming block, last
+        checkpoint char count, and propagates the drop to the embedded
+        ``ActivityRouter``. Safe to call for a unit that was never
+        added; missing entries are silently skipped.
         """
         self._overflow_logs.pop(unit_id, None)
         self._overflow_warned.discard(unit_id)
         self._drop_last_warned.pop(unit_id, None)
         self._last_emitted_tool_signature.pop(unit_id, None)
+        self._last_worker_states.pop(unit_id, None)
+        self._active_block.pop(unit_id, None)
+        self._active_block_chars.pop(unit_id, None)
+        self._last_checkpoint_chars.pop(unit_id, None)
         self._activity_router.drop_unit(unit_id)
 
     def __enter__(self) -> ParallelDisplay:
