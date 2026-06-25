@@ -8,7 +8,10 @@ These independent projects implement variations of the Ralph Loop pattern. They 
 
 | Project | Stars | Description |
 |---------|-------|-------------|
+| [Th0rgal/open-ralph-wiggum](https://github.com/Th0rgal/open-ralph-wiggum) | 1,817 ⭐ | CLI Ralph loop for OpenCode, Claude Code, Codex, Copilot — prompt file + status check |
+| [AnandChowdhary/continuous-claude](https://github.com/AnandChowdhary/continuous-claude) | 1,354 ⭐ | Ralph loop with autonomous PR creation, CI check-waiting, and auto-merge |
 | [umputun/ralphex](https://github.com/umputun/ralphex) | 1,296 ⭐ | Multi-provider LLM loop with plan-build-verify cycle |
+| [vercel-labs/ralph-loop-agent](https://github.com/vercel-labs/ralph-loop-agent) | 803 ⭐ | Continuous autonomy for the Vercel AI SDK — production Ralph loop integration |
 | [Gens-ai/autopilot](https://github.com/Gens-ai/autopilot) | 14 ⭐ | Standalone Ralph agent with structured loop execution |
 | [gregorydickson/pickle-rick-claude](https://github.com/gregorydickson/pickle-rick-claude) | 26 ⭐ | Ralph-inspired Claude Code runner with twist characterization |
 | [benikigai/nightshift](https://github.com/benikigai/nightshift) | 14 ⭐ | Lights-out autonomous software work — ship specs, wake up to tested commits |
@@ -71,4 +74,4 @@ Building something with the Ralph Loop pattern? [Open an issue](https://codeberg
 
 ---
 
-*Last updated: 2026-06-20 · [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) · [ghuntley.com/ralph](https://ghuntley.com/ralph)*
+*Last updated: 2026-06-25 · [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) (904 ⭐) · [ghuntley.com/ralph](https://ghuntley.com/ralph)*
