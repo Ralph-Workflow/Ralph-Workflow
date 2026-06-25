@@ -24,11 +24,13 @@ if TYPE_CHECKING:
 # cache so a high-fan-out invocation that sees many distinct worker
 # IDs in a single watchdog tick cannot grow the dict unboundedly.
 # FIFO eviction retains the most recently observed worker captures
-# (which are the ones most likely to be queried on the next tick)
-# while shedding older workers that have not been refreshed
-# recently. The cap is a HARD bound: when the cache is full and a
-# new worker appears, the LRU worker is evicted regardless of
-# whether it is still live or not.
+# (the ones most likely to be queried on the next tick) while
+# shedding older workers in insertion order. The cap is a HARD
+# bound: when the cache is full and a new worker appears, the
+# OLDEST-INSERTED worker is evicted regardless of whether it is
+# still live or not. There is no LRU refresh on poll -- the cache
+# uses pure FIFO eviction so the bound holds across an entire
+# invocation regardless of how many times each worker is polled.
 #
 # To preserve the no-duplicate-output property of stateful
 # ``SubagentOutputCapture`` implementations (the production
@@ -43,6 +45,11 @@ if TYPE_CHECKING:
 # ``_MAX_SUBAGENT_OUTPUT_CAPTURES + _MAX_EVICTED_TOMBSTONES``
 # per invocation regardless of how many distinct worker IDs are
 # observed.
+#
+# These constants are PRIVATE module attributes: the cap is not a
+# user-tunable knob, and tests exercise the bound by generating
+# enough workers to trigger the production cap (no DI seam is
+# exposed on the public ``IdleWatchdog`` constructor).
 _MAX_SUBAGENT_OUTPUT_CAPTURES: int = 128
 _MAX_EVICTED_TOMBSTONES: int = _MAX_SUBAGENT_OUTPUT_CAPTURES
 
@@ -378,8 +385,11 @@ def poll_subagent_output(self: IdleWatchdog, now: float | None = None) -> int:
     # wt-024 M7 (AC-04): HARD FIFO bound + tombstone.
     #
     # The cache is hard-bounded at ``_MAX_SUBAGENT_OUTPUT_CAPTURES``.
-    # When the cap binds (live worker count exceeds cap), the LRU
-    # worker is evicted regardless of whether it is still live.
+    # When the cap binds (live worker count exceeds cap), the
+    # OLDEST-INSERTED worker is evicted regardless of whether it is
+    # still live. There is no LRU refresh on poll -- the cache uses
+    # pure FIFO eviction so the bound holds across an entire
+    # invocation regardless of how many times each worker is polled.
     #
     # To preserve the no-duplicate-output property of stateful
     # ``SubagentOutputCapture`` implementations (the production
@@ -414,11 +424,11 @@ def poll_subagent_output(self: IdleWatchdog, now: float | None = None) -> int:
             continue
         # Reuse existing capture if present (preserves stateful read
         # position across polls). Only insert the fresh capture when
-        # the worker is new to the cache.
+        # the worker is new to the cache. The OrderedDict retains
+        # insertion order so pure FIFO eviction (popitem(last=False))
+        # removes the OLDEST-INSERTED worker when the cap binds.
         if worker_id not in self._subagent_output_captures:
             self._subagent_output_captures[worker_id] = fresh_capture
-        # Refresh LRU position (move_to_end makes this the most-recent).
-        self._subagent_output_captures.move_to_end(worker_id)
         try:
             lines = self._subagent_output_captures[worker_id].read_lines(worker_id)
         except Exception:
@@ -426,15 +436,19 @@ def poll_subagent_output(self: IdleWatchdog, now: float | None = None) -> int:
             continue
         if lines:
             total += len(lines)
-    # Hard FIFO cap enforcement: evict LRU entries until the cache
-    # is at or below the cap. Evicted worker IDs go into the
-    # bounded tombstone so they cannot be re-added on the next
-    # poll and re-emit historical lines.
+    # Hard FIFO cap enforcement: evict the oldest-inserted entries
+    # until the cache is at or below the cap. Evicted worker IDs
+    # go into the bounded tombstone so they cannot be re-added on
+    # the next poll and re-emit historical lines.
     while len(self._subagent_output_captures) > _MAX_SUBAGENT_OUTPUT_CAPTURES:
         evicted_worker_id, _ = self._subagent_output_captures.popitem(last=False)
         self._evicted_worker_tombstones[evicted_worker_id] = None
     # Bound the tombstone itself so a long-lived watchdog tick that
-    # keeps evicting LRU workers cannot grow it past its cap.
+    # keeps evicting FIFO workers cannot grow it past its cap. The
+    # tombstone is also FIFO so the oldest-evicted workers are
+    # dropped first (they have been waiting the longest and a still-
+    # live worker that has been evicted more recently has higher
+    # priority for the cooldown).
     while len(self._evicted_worker_tombstones) > _MAX_EVICTED_TOMBSTONES:
         self._evicted_worker_tombstones.popitem(last=False)
     # Drop dead-worker entries (workers absent from the latest
