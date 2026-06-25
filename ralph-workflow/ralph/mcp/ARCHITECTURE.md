@@ -101,7 +101,7 @@ The bridge treats a server as **unhealthy** when either:
 
 On an unhealthy result, the bridge terminates the stale process via `StandaloneMcpProcess.shutdown()`,
 respawns via `_spawn_mcp_process` (which re-runs full preflight), and increments the bounded
-restart counter up to `McpRestartPolicy.max_restarts` (default: 1000). Once the budget
+restart counter up to `McpRestartPolicy.max_restarts` (default: 20). Once the budget
 is exhausted it raises `McpServerError` so the caller gets a crisp MCP-specific failure rather
 than an opaque agent timeout.
 

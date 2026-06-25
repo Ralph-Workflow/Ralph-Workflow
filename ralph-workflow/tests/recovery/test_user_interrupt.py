@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import os
 import signal as _sig
 from datetime import UTC, datetime
@@ -15,6 +16,7 @@ from ralph.process.manager import (
     ProcessManagerPolicy,
     ProcessRecord,
     ProcessStatus,
+    get_process_manager,
 )
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.testing import FakeConnectivityMonitor
@@ -309,11 +311,26 @@ def test_signal_bridge_pgid_routing_uses_list_active() -> None:
     bridge = SignalBridge()
     loop = _CapturingLoop()
     task = _CancellableTask()
-    install_signal_handlers(loop, task, bridge, dispatcher)
-    with contextlib.suppress(SystemExit):
-        loop._handlers[0]()
-    with contextlib.suppress(SystemExit):
-        loop._handlers[1]()
+    # install_signal_handlers routes ``_shutdown_block`` through
+    # ``get_process_manager().policy.default_grace_period_s`` (the
+    # global singleton, NOT the dispatcher-injected ``pm``). The
+    # production default is 5.0s which would push this single test
+    # to ~5s of wall-clock; the SIGINT-vs-PGID routing assertion
+    # does not depend on the value. Patch the singleton's policy to
+    # a sub-second grace period for this test only so the suite stays
+    # within the 60s combined budget enforced by
+    # ``ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS``.
+    global_pm = get_process_manager()
+    saved_policy = global_pm.policy
+    global_pm.policy = dataclasses.replace(saved_policy, default_grace_period_s=0.05)
+    try:
+        install_signal_handlers(loop, task, bridge, dispatcher)
+        with contextlib.suppress(SystemExit):
+            loop._handlers[0]()
+        with contextlib.suppress(SystemExit):
+            loop._handlers[1]()
+    finally:
+        global_pm.policy = saved_policy
     assert (9999, _sig.SIGKILL) in pm.kill_process_group_calls
     assert not any(call[0] == 42 for call in pm.kill_process_group_calls)
 
