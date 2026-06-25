@@ -10,10 +10,11 @@ from __future__ import annotations
 import contextlib
 import itertools
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 import pytest
@@ -109,6 +110,7 @@ def _apply_runner_stubs(
     effects: list[object],
     *,
     fake_invoke_agent: object,
+    process_teardown: object | None = None,
 ) -> object:
     complete_state = PipelineState(phase="complete")
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
@@ -132,6 +134,7 @@ def _apply_runner_stubs(
         bridge=_FakeBridge(),
         registry_factory=_fake_registry_factory,
         policy_bundle=_mock_bundle,
+        process_teardown=cast("Callable[[], None] | None", process_teardown),
     )
 
     def _execute_agent_effect_wrapper(
@@ -241,7 +244,9 @@ def test_runner_phase_scope_does_not_kill_other_labels(
         ),
     ]
     pipeline_deps = _apply_runner_stubs(
-        monkeypatch, tmp_path, effects, fake_invoke_agent=fake_invoke_agent
+        monkeypatch, tmp_path, effects,
+        fake_invoke_agent=fake_invoke_agent,
+        process_teardown=lambda: None,
     )
 
     initial_state = PipelineState(phase=_TEST_PHASE)
@@ -266,7 +271,10 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     assert phase_record is not None
     assert phase_record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
-    # Bystander should still be running (then we clean it up)
+    # Bystander should still be running because phase scope only kills
+    # phase-labeled records. Session-wide shutdown is bypassed via the
+    # no-op process_teardown injected above; that new teardown contract
+    # has its own dedicated coverage in tests/pipeline/test_run_loop_cleanup_shutdown.py.
     bystander_record = pm.get_record(spawned["bystander"], include_terminal=False)
     assert bystander_record is not None
     assert bystander_record.status == ProcessStatus.RUNNING

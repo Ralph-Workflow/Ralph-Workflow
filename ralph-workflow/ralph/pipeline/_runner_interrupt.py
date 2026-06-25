@@ -107,6 +107,12 @@ def handle_keyboard_interrupt(
         signal_getter=resolved_getter,
         signal_setter=resolved_setter,
     )
+    restore_force_kill_term = install_force_kill_handler(
+        _force_exit,
+        signal_getter=resolved_getter,
+        signal_setter=resolved_setter,
+        signum=signal.SIGTERM,
+    )
     interrupt_thread = threading.Thread(target=_begin_interrupt, daemon=True)
     interrupt_thread.start()
     try:
@@ -115,5 +121,7 @@ def handle_keyboard_interrupt(
     finally:
         with suppress(Exception):
             restore_force_kill()
+        with suppress(Exception):
+            restore_force_kill_term()
     if interrupt_error:
         logger.warning("Interrupt controller raised during KeyboardInterrupt")

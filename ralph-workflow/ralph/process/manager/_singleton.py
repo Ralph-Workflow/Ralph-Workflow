@@ -51,7 +51,24 @@ def get_process_manager(*, policy: ProcessManagerPolicy | None = None) -> Proces
 
 
 def reset_process_manager() -> None:
-    """Replace the singleton with a fresh instance.  Call from test teardown."""
+    """Replace the singleton with a fresh instance.  Call from test teardown.
+
+    The prior instance, if any, is shut down BEFORE the singleton
+    reference is nulled so a dangling tracked record (a real process
+    the previous test started) is reaped instead of being orphaned.
+    Shutting down BEFORE nulling prevents any new caller (including
+    a late shutdown triggered by a child of the prior manager) from
+    seeing the prior instance via ``get_process_manager`` while it is
+    still being torn down.
+
+    Any exception raised by ``shutdown_all`` is swallowed (test
+    teardown must never raise) so a refusing-to-die process cannot
+    break the suite.
+    """
+    prior = _pm_state.instance
+    if prior is not None:
+        with contextlib.suppress(BaseException):
+            prior.shutdown_all(grace_period_s=0.5)
     _pm_state.instance = None
 
 

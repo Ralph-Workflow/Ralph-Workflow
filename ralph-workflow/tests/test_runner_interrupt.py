@@ -331,10 +331,12 @@ def test_handle_keyboard_interrupt_uses_injected_poll_interval_for_polling() -> 
         signal_setter=setter,
         poll_interval_s=_POLL_INTERVAL,
     )
-    assert len(set_calls) == 2
+    assert len(set_calls) == 4
     assert set_calls[0][0] == signal.SIGINT
-    assert set_calls[1][0] == signal.SIGINT
-    assert set_calls[1][1] is previous_handler
+    assert set_calls[1][0] == signal.SIGTERM
+    assert set_calls[2][0] == signal.SIGINT
+    assert set_calls[3][0] == signal.SIGTERM
+    assert set_calls[2][1] is previous_handler
 
 
 def test_handle_keyboard_interrupt_recovers_from_dispatcher_exception() -> None:
@@ -373,10 +375,12 @@ def test_handle_keyboard_interrupt_recovers_from_dispatcher_exception() -> None:
         )
     finally:
         logger.remove(handler_id)
-    assert len(set_calls) == 2
+    assert len(set_calls) == 4
     assert set_calls[0][0] == signal.SIGINT
-    assert set_calls[1][0] == signal.SIGINT
-    assert set_calls[1][1] is previous_handler
+    assert set_calls[1][0] == signal.SIGTERM
+    assert set_calls[2][0] == signal.SIGINT
+    assert set_calls[3][0] == signal.SIGTERM
+    assert set_calls[2][1] is previous_handler
     assert any("Interrupt controller raised" in str(record) for record in sink), sink
 
 
@@ -554,9 +558,12 @@ def test_handle_keyboard_interrupt_propagates_baseexception_from_dispatcher() ->
     finally:
         threading.excepthook = original_excepthook
         logger.remove(handler_id)
-    assert len(set_calls) == 2, set_calls
+    assert len(set_calls) == 4, set_calls
     assert set_calls[0][0] == signal.SIGINT
-    assert set_calls[1][1] is previous_handler, set_calls
+    assert set_calls[1][0] == signal.SIGTERM
+    assert set_calls[2][0] == signal.SIGINT
+    assert set_calls[2][1] is previous_handler, set_calls
+    assert set_calls[3][0] == signal.SIGTERM
     assert captured, (
         "Expected the background _begin_interrupt thread to raise "
         "_NotAnException; threading.excepthook captured nothing. "

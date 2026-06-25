@@ -206,6 +206,7 @@ def make_test_pipeline_deps(
     recovery_controller_factory: RecoveryControllerFactory | None = None,
     marker_watcher_factory: MarkerWatcherFactory | None = None,
     snapshot_registry: SnapshotRegistry | None = None,
+    process_teardown: Callable[[], None] | None = None,
 ) -> PipelineDeps:
     """Build a ``PipelineDeps`` suitable for fast, deterministic tests."""
     deps = PipelineDeps(
@@ -237,6 +238,8 @@ def make_test_pipeline_deps(
         deps = dataclasses.replace(deps, marker_watcher_factory=marker_watcher_factory)
     if snapshot_registry is not None:
         deps = dataclasses.replace(deps, snapshot_registry=snapshot_registry)
+    if process_teardown is not None:
+        deps = dataclasses.replace(deps, process_teardown=process_teardown)
     return deps
 
 

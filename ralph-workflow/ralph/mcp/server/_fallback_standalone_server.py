@@ -70,4 +70,13 @@ class _FallbackStandaloneServer:
             probe_timeout=int(float(os.environ.get("RALPH_MCP_PROBE_TIMEOUT_MS", "5000"))),
             auth=auth_token_set,
         )
-        httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
+        try:
+            httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
+        finally:
+            # Release the listening TCP socket on every exit path
+            # (normal return, exception, external shutdown). Without
+            # this, embedded/long-lived use leaks the FD; one-shot
+            # CLI runs rely on OS-level cleanup at exit but the
+            # deterministic close is the contract this server
+            # advertises (see _fallback_http_server.server_close).
+            httpd.server_close()

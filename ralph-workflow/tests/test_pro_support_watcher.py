@@ -264,3 +264,96 @@ def test_watcher_does_not_emit_bare_json_log_line() -> None:
     text = captured.getvalue()
     for line in text.splitlines():
         assert not _BARE_JSON_LINE.match(line), f"bare JSON log line: {line!r}"
+
+
+# ---------------------------------------------------------------------------
+# wt-024 Step 6: cascade ProMarkerWatcher.stop() to the adopted heartbeat
+# ---------------------------------------------------------------------------
+
+
+def test_watcher_stop_cascades_to_adopted_heartbeat_client() -> None:
+    """wt-024 Step 6: when the watcher adopts a heartbeat client,
+    ``stop()`` MUST also stop the adopted client so the heartbeat
+    drain thread is reaped instead of leaking.
+    """
+    stop_calls: list[None] = []
+    adoption_event = threading.Event()
+
+    class _FakeHeartbeatClient:
+        def stop(self) -> None:
+            stop_calls.append(None)
+
+    def _heartbeat_factory(_payload: dict[str, object]) -> object:
+        adoption_event.set()
+        return _FakeHeartbeatClient()
+
+    def _loader() -> dict[str, object] | None:
+        return {"run_id": "r-cascade", "token": "t-cascade", "port": 7432}
+
+    _sleeper, _sleeps = _make_noop_sleeper()
+
+    watcher = ProMarkerWatcher(
+        sleeper=_sleeper,
+        marker_loader=_loader,
+        heartbeat_factory=_heartbeat_factory,
+        poll_interval_seconds=10.0,
+    )
+    watcher.start()
+    try:
+        _wait_for_event(adoption_event, timeout=2.0, label="adoption")
+    finally:
+        watcher.stop()
+
+    assert len(stop_calls) == 1, (
+        f"adopted heartbeat client.stop() must be called exactly once when "
+        f"watcher.stop() runs; got {stop_calls}"
+    )
+
+
+def test_watcher_stop_does_not_fail_when_no_heartbeat_was_adopted() -> None:
+    """wt-024 Step 6: stop() must remain idempotent and non-raising when
+    the watcher never adopted a heartbeat (marker never appeared)."""
+    _sleeper, _sleeps = _make_noop_sleeper()
+    watcher = ProMarkerWatcher(
+        sleeper=_sleeper,
+        marker_loader=lambda: None,
+        heartbeat_factory=lambda _p: object(),
+        poll_interval_seconds=0.001,
+    )
+    watcher.start()
+    # Sleep briefly so the loop runs once
+    threading.Event().wait(timeout=0.05)
+    # Must not raise even though no heartbeat was adopted
+    watcher.stop()
+
+
+def test_watcher_stop_swallows_heartbeat_stop_exception() -> None:
+    """wt-024 Step 6: a refusing heartbeat client must not break watcher.stop()."""
+
+    class _BrokenHeartbeatClient:
+        def stop(self) -> None:
+            raise RuntimeError("heartbeat stop exploded")
+
+    adoption_event = threading.Event()
+
+    def _heartbeat_factory(_payload: dict[str, object]) -> object:
+        adoption_event.set()
+        return _BrokenHeartbeatClient()
+
+    def _loader() -> dict[str, object] | None:
+        return {"run_id": "r-broken", "token": "t-broken", "port": 7432}
+
+    _sleeper, _sleeps = _make_noop_sleeper()
+
+    watcher = ProMarkerWatcher(
+        sleeper=_sleeper,
+        marker_loader=_loader,
+        heartbeat_factory=_heartbeat_factory,
+        poll_interval_seconds=10.0,
+    )
+    watcher.start()
+    try:
+        _wait_for_event(adoption_event, timeout=2.0, label="adoption")
+    finally:
+        # Must not raise even though _BrokenHeartbeatClient.stop() raises
+        watcher.stop()

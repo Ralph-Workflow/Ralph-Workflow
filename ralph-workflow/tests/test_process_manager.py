@@ -40,12 +40,14 @@ from ralph.process.manager import (
 )
 from ralph.process.manager._process_manager_runtime import loguru_event_listener
 from ralph.process.manager._process_record import ProcessRecord
+from ralph.process.manager._singleton import _pm_state
 from ralph.testing.fake_process import (
     FakeImmortalPopen,
     FakePopen,
     FakePsutil,
     FakePsutilProcess,
     FakeStubbornPopen,
+    ProcessState,
     make_async_process_factory,
     make_sync_process_factory,
 )
@@ -1310,3 +1312,217 @@ async def test_pm_terminate_async_handle_is_idempotent() -> None:
 
 
 _publish_named_process_manager_regressions()
+
+
+# ---------------------------------------------------------------------------
+# wt-024 Step 2: shutdown_all / shutdown_all_for_label resilience
+# ---------------------------------------------------------------------------
+
+
+def test_shutdown_all_continues_when_first_record_raises_termination_error() -> None:
+    """wt-024 Step 2: a ProcessTerminationError on one record must not strand siblings.
+
+    The first spawned record is an immortal process (FakeImmortalPopen)
+    which raises ProcessTerminationError through the no-psutil escalation
+    path. The second spawned record is a regular FakePopen that should
+    be terminated normally. shutdown_all must process BOTH records; the
+    second sibling must reach a terminal status even though the first
+    record's escalation fails.
+
+    ``os.kill`` is monkey-patched so the pre-loop reconcile pass
+    treats both fake PIDs as alive (otherwise the reconcile pass
+    marks them stale before the loop runs, which would mask the
+    regression we are pinning).
+    """
+    alive_pids = {1, 2}
+
+    def _fake_os_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            if pid in alive_pids:
+                return
+            raise ProcessLookupError(pid, sig)
+        if pid in alive_pids:
+            return
+        raise ProcessLookupError(pid, sig)
+
+    call_count = {"value": 0}
+
+    def _alternating_factory(command: object, opts: object) -> object:
+        del command, opts
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return FakeImmortalPopen(pid=1)
+        return FakePopen(pid=2, state=ProcessState())
+
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=_alternating_factory,
+        async_process_factory=make_async_process_factory(itertools.count(100)),
+        psutil=None,
+    )
+
+    first = pm.spawn([sys.executable, "-c", "pass"])
+    second = pm.spawn([sys.executable, "-c", "pass"])
+
+    with (
+        patch("os.kill", side_effect=_fake_os_kill),
+        pytest.raises(ProcessTerminationError),
+    ):
+        pm.shutdown_all(grace_period_s=0.01)
+
+    assert first.record.status == ProcessStatus.FAILED
+    assert second.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED), (
+        f"second sibling stranded with status={second.record.status}"
+    )
+    assert not pm.list_active()
+
+
+# ---------------------------------------------------------------------------
+# wt-024 Step 3: reset_process_manager shuts down the prior manager
+# ---------------------------------------------------------------------------
+
+
+def test_reset_process_manager_shuts_down_prior_instance() -> None:
+    """wt-024 Step 3: reset_process_manager must call shutdown_all on the prior manager.
+
+    A live ProcessManager is wired as the singleton via
+    get_process_manager(); a fake record is spawned under the
+    singleton. reset_process_manager() must terminate the prior
+    instance's tracked record and leave no active records behind,
+    THEN null the singleton reference.
+    """
+    alive_pids = {1}
+
+    def _fake_os_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            if pid in alive_pids:
+                return
+            raise ProcessLookupError(pid, sig)
+        if pid in alive_pids:
+            return
+        raise ProcessLookupError(pid, sig)
+
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=sync_factory,
+        async_process_factory=make_async_process_factory(itertools.count(100)),
+        psutil=None,
+    )
+    _pm_state.instance = pm
+
+    singleton = get_process_manager()
+    assert singleton is pm
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+    assert handle.record.status == ProcessStatus.RUNNING
+
+    with patch("os.kill", side_effect=_fake_os_kill):
+        reset_process_manager()
+
+    assert handle.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
+    assert not pm.list_active()
+    assert _pm_state.instance is None
+
+
+def test_reset_process_manager_swallows_exceptions_during_shutdown() -> None:
+    """wt-024 Step 3: reset_process_manager must never raise, even if shutdown_all raises.
+
+    This guarantees test-teardown never breaks the suite, even if a
+    dangling process refuses to die.
+    """
+    class _RaisingPm:
+        def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
+            raise RuntimeError("boom")
+
+    _pm_state.instance = cast("ProcessManager", _RaisingPm())
+
+    # Must not raise
+    reset_process_manager()
+    assert _pm_state.instance is None
+
+
+
+def test_shutdown_all_stops_zombie_reaper_even_when_loop_raises() -> None:
+    """wt-024 Step 2: _stop_zombie_reaper() must run via finally even when the loop body raises."""
+    alive_pids = {1}
+
+    def _fake_os_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            if pid in alive_pids:
+                return
+            raise ProcessLookupError(pid, sig)
+        if pid in alive_pids:
+            return
+        raise ProcessLookupError(pid, sig)
+
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.01,
+            kill_followup_timeout_s=0.01,
+            log_events=False,
+            enable_zombie_reaper=True,
+        ),
+        sync_process_factory=lambda *a, **kw: FakeImmortalPopen(pid=1),
+        async_process_factory=make_async_process_factory(itertools.count(100)),
+        psutil=None,
+    )
+
+    pm.spawn([sys.executable, "-c", "pass"])
+
+    stop_calls: list[None] = []
+
+    def _stop_recorder(_self: object = None) -> None:
+        stop_calls.append(None)
+
+    with (
+        patch("os.kill", side_effect=_fake_os_kill),
+        patch.object(pm_mod.ProcessManager, "_stop_zombie_reaper", _stop_recorder),
+        pytest.raises(ProcessTerminationError),
+    ):
+        pm.shutdown_all(grace_period_s=0.0)
+
+    assert len(stop_calls) == 1, (
+        f"_stop_zombie_reaper must be invoked once even when the loop body raises; got {stop_calls}"
+    )
+
+
+def test_shutdown_all_for_label_continues_when_first_record_raises() -> None:
+    """wt-024 Step 2: shutdown_all_for_label must also swallow per-record failures."""
+    alive_pids = {1, 2}
+
+    def _fake_os_kill(pid: int, sig: int) -> None:
+        if sig == 0:
+            if pid in alive_pids:
+                return
+            raise ProcessLookupError(pid, sig)
+        if pid in alive_pids:
+            return
+        raise ProcessLookupError(pid, sig)
+
+    call_count = {"value": 0}
+
+    def _alternating_factory(command: object, opts: object) -> object:
+        del command, opts
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            return FakeImmortalPopen(pid=1)
+        return FakePopen(pid=2, state=ProcessState())
+
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=_alternating_factory,
+        async_process_factory=make_async_process_factory(itertools.count(100)),
+        psutil=None,
+    )
+
+    first = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:dev"))
+    second = pm.spawn([sys.executable, "-c", "pass"], SpawnOptions(label="phase:dev"))
+
+    with (
+        patch("os.kill", side_effect=_fake_os_kill),
+        pytest.raises(ProcessTerminationError),
+    ):
+        pm.shutdown_all_for_label("phase:dev", grace_period_s=0.01)
+
+    assert first.record.status == ProcessStatus.FAILED
+    assert second.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)

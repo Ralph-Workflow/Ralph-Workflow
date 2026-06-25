@@ -142,18 +142,28 @@ def install_force_kill_handler(
     *,
     signal_getter: SignalGetter = _DEFAULT_SIGNAL_GETTER,
     signal_setter: SignalSetter = _DEFAULT_SIGNAL_SETTER,
+    signum: int = signal.SIGINT,
 ) -> Callable[[], None]:
-    """Install a temporary SIGINT handler that escalates to forced termination."""
-    previous = signal_getter(signal.SIGINT)
+    """Install a temporary signal handler that escalates to forced termination.
 
-    def _handler(signum: int, frame: FrameType | None) -> None:
-        del signum, frame
+    The optional ``signum`` kwarg defaults to ``signal.SIGINT`` so the
+    existing call sites keep their prior behavior. Passing
+    ``signal.SIGTERM`` installs a parallel handler so a SIGTERM
+    delivered to the engine triggers the same on_force_interrupt
+    closure (the run-loop finally still runs normal cleanup, then a
+    repeated SIGTERM escalates to ``force_exit`` like the second
+    SIGINT).
+    """
+    previous = signal_getter(signum)
+
+    def _handler(received_signum: int, frame: FrameType | None) -> None:
+        del received_signum, frame
         on_force_interrupt()
 
-    signal_setter(signal.SIGINT, _handler)
+    signal_setter(signum, _handler)
 
     def _restore() -> None:
-        signal_setter(signal.SIGINT, previous)
+        signal_setter(signum, previous)
 
     return _restore
 

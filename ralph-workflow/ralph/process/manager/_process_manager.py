@@ -762,60 +762,104 @@ class ProcessManager:
             frontier = set(children_found)
 
     def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
-        """Terminate all active processes."""
+        """Terminate all active processes.
+
+        The per-record loop body is wrapped in try/except so a single
+        failing escalation (e.g. one ProcessTerminationError from an
+        unkilled record) does not strand the remaining siblings. The
+        original exception is re-raised AFTER every record has been
+        processed and the zombie reaper has been stopped, preserving
+        the existing ProcessTerminationError semantics for callers
+        that rely on it for observability.
+        """
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
 
         # Reconcile stale entries before attempting termination
         self._reconcile_stale_entries()
 
-        for pid, record in list(self._records.items()):
-            if record.status not in _TERMINAL_STATUSES:
-                proc = self._sync_procs.get(pid)
-                if proc is not None:
-                    self._escalate_termination_sync(record, proc, gp)
+        first_termination_error: ProcessTerminationError | None = None
+        try:
+            for pid, record in list(self._records.items()):
+                if record.status in _TERMINAL_STATUSES:
                     continue
-                pty_proc = self._pty_procs.get(pid)
-                if pty_proc is not None:
-                    self._escalate_termination_pty(record, pty_proc, gp)
-                    continue
-                async_proc = self._async_procs.get(pid)
-                if async_proc is not None:
-                    self._escalate_async_in_sync_context(record, async_proc, gp)
-                    continue
-                self._terminate_by_pid(record, gp)
-
-        self._stop_zombie_reaper()
+                try:
+                    proc = self._sync_procs.get(pid)
+                    if proc is not None:
+                        self._escalate_termination_sync(record, proc, gp)
+                        continue
+                    pty_proc = self._pty_procs.get(pid)
+                    if pty_proc is not None:
+                        self._escalate_termination_pty(record, pty_proc, gp)
+                        continue
+                    async_proc = self._async_procs.get(pid)
+                    if async_proc is not None:
+                        self._escalate_async_in_sync_context(record, async_proc, gp)
+                        continue
+                    self._terminate_by_pid(record, gp)
+                except ProcessTerminationError as exc:
+                    if first_termination_error is None:
+                        first_termination_error = exc
+                    logger.error(
+                        "shutdown_all: process {} still alive after kill, continuing with siblings",
+                        pid,
+                    )
+        finally:
+            self._stop_zombie_reaper()
+        if first_termination_error is not None:
+            raise first_termination_error
 
     def shutdown_all_for_label(
         self, label_prefix: str, *, grace_period_s: float | None = None
     ) -> None:
-        """Terminate all active processes whose label starts with label_prefix."""
+        """Terminate all active processes whose label starts with label_prefix.
+
+        Mirrors :meth:`shutdown_all` resilience: a single failing
+        escalation does not strand the remaining label-matched siblings.
+        The original ``ProcessTerminationError`` is re-raised AFTER every
+        matched record has been processed and the zombie reaper has
+        been stopped.
+        """
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
 
         # Reconcile stale entries before attempting termination
         self._reconcile_stale_entries()
 
-        for pid, record in list(self._records.items()):
-            if (
-                record.label is not None
-                and record.label.startswith(label_prefix)
-                and record.status not in _TERMINAL_STATUSES
-            ):
-                proc = self._sync_procs.get(pid)
-                if proc is not None:
-                    self._escalate_termination_sync(record, proc, gp)
+        first_termination_error: ProcessTerminationError | None = None
+        try:
+            for pid, record in list(self._records.items()):
+                if (
+                    record.label is None
+                    or not record.label.startswith(label_prefix)
+                    or record.status in _TERMINAL_STATUSES
+                ):
                     continue
-                pty_proc = self._pty_procs.get(pid)
-                if pty_proc is not None:
-                    self._escalate_termination_pty(record, pty_proc, gp)
-                    continue
-                async_proc = self._async_procs.get(pid)
-                if async_proc is not None:
-                    self._escalate_async_in_sync_context(record, async_proc, gp)
-                    continue
-                self._terminate_by_pid(record, gp)
-
-        self._stop_zombie_reaper()
+                try:
+                    proc = self._sync_procs.get(pid)
+                    if proc is not None:
+                        self._escalate_termination_sync(record, proc, gp)
+                        continue
+                    pty_proc = self._pty_procs.get(pid)
+                    if pty_proc is not None:
+                        self._escalate_termination_pty(record, pty_proc, gp)
+                        continue
+                    async_proc = self._async_procs.get(pid)
+                    if async_proc is not None:
+                        self._escalate_async_in_sync_context(record, async_proc, gp)
+                        continue
+                    self._terminate_by_pid(record, gp)
+                except ProcessTerminationError as exc:
+                    if first_termination_error is None:
+                        first_termination_error = exc
+                    logger.error(
+                        "shutdown_all_for_label({}): process {} still alive after kill, "
+                        "continuing with siblings",
+                        label_prefix,
+                        pid,
+                    )
+        finally:
+            self._stop_zombie_reaper()
+        if first_termination_error is not None:
+            raise first_termination_error
 
     # ------------------------------------------------------------------
     # Termination methods (with pre-kill liveness checks)
@@ -1243,11 +1287,18 @@ class ProcessManager:
         limit = max(self.policy.terminal_history_limit, 0)
         if limit == 0:
             self._terminal_records.clear()
-            # wt-024 M3: when the cap is zero every termination must
-            # be discarded entirely, including its outcome record.
-            # Otherwise _termination_outcomes would grow unbounded
-            # for any manager configured with terminal_history_limit=0.
-            self._termination_outcomes.clear()
+            # wt-024 M3: cap-zero means "no terminal history kept".
+            # We must NOT ``clear()`` the whole ``_termination_outcomes``
+            # dict here, because ``_record_termination_outcome`` is
+            # called for a PID BEFORE that PID reaches terminal state
+            # (it records each escalation stage — graceful_terminate /
+            # force_kill — during the live escalation path).  If one
+            # PID's terminal-state call cleared the entire outcomes
+            # dict it would erase the in-flight diagnostics of every
+            # OTHER still-active PID.  Drop only the just-terminal
+            # PID's outcome record (or nothing if no outcome was
+            # ever recorded for it, e.g. clean exit with returncode=0).
+            self._termination_outcomes.pop(record.pid, None)
             return
         self._terminal_records.pop(record.pid, None)
         self._terminal_records[record.pid] = record
@@ -1258,7 +1309,10 @@ class ProcessManager:
             # never outlives the cap.  ``pop(..., None)`` keeps the
             # two structures in sync without KeyError when the
             # escalation path didn't record an outcome (e.g. clean
-            # exits with returncode=0).
+            # exits with returncode=0).  Active PIDs are not in
+            # ``_terminal_records`` (they live in ``_records``) so
+            # they cannot be evicted by this loop — their in-flight
+            # outcomes are preserved.
             self._termination_outcomes.pop(evicted_pid, None)
 
     def _mark_exited(self, record: ProcessRecord, returncode: int | None) -> None:
