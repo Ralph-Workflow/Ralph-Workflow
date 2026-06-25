@@ -11,12 +11,13 @@ The M2 fix:
     for all callers that read it).
   - Adds a ``max_entries`` dataclass field (default 256, preserving
     existing small-fixture behaviour).
-  - On ``add`` of a NEW identity that pushes ``len(_entries) >=
+  - On ``add`` of a NEW identity that pushes ``len(_entries) >
     max_entries``, evicts the oldest ``_entries`` item AND removes every
     ``_identity_index`` mapping whose value is the evicted
-    ``artifact_id``.  Existing identities dedup by overwriting in place
-    and refresh their position to the back of the OrderedDict (LRU
-    semantics).
+    ``artifact_id``.  Re-adding an EXISTING identity dedups in place
+    AND PRESERVES its original insertion position (the observable
+    ``list_entries()`` / ``resources/list`` order must stay stable
+    across duplicate adds per wt-024 analysis feedback).
 
 Tests are pure in-memory (no real disk I/O, no subprocess, no
 ``time.sleep``) and stay well within the 60s combined budget.
@@ -249,54 +250,95 @@ def test_media_manifest_re_add_existing_identity_does_not_grow() -> None:
     )
 
 
-def test_media_manifest_re_add_refreshes_lru_position() -> None:
-    """Re-adding an existing identity MUST refresh its LRU position.
+def test_media_manifest_re_add_preserves_insertion_order() -> None:
+    """Re-adding an EXISTING identity MUST preserve its original
+    insertion position (NOT move it to the back / LRU refresh).
 
-    After a re-add, the entry moves to the back of the OrderedDict.
-    The oldest previously-recent entry is the next eviction target,
-    not the just-refreshed one.
+    The memory-cap fix must not change the observable ordering of
+    ``list_entries()`` for duplicate adds.  ``resources/list`` (in
+    ``ralph/mcp/server/_mcp_server.py``) forwards
+    ``list_entries()`` order directly to MCP clients, so reordering
+    on duplicate add would be an externally visible behavior change
+    that the memory cap did not require (wt-024 analysis feedback).
 
-    Verified via the public surface: after re-add of 'oldest', the
-    next-new identity evicts 'middle' (not 'oldest').
+    Verified via the public surface: after re-adding 'oldest', the
+    list_entries() order is still ['oldest', 'middle']; re-adding
+    'middle' does not move it to the front either.
+    """
+    manifest = MediaManifest(max_entries=3)
+
+    _add_entry(manifest, title="oldest", label="old", identity_key="k:oldest")
+    _add_entry(manifest, title="middle", label="mid", identity_key="k:middle")
+    _add_entry(manifest, title="newest", label="new", identity_key="k:newest")
+
+    baseline_titles = [entry.title for entry in manifest.list_entries()]
+    assert baseline_titles == ["oldest", "middle", "newest"], (
+        f"baseline insertion order should be oldest->middle->newest;"
+        f" got {baseline_titles}"
+    )
+
+    # Re-add "oldest" several times — its position MUST stay at the front.
+    for _ in range(3):
+        _add_entry(manifest, title="oldest", label="old2", identity_key="k:oldest")
+        ordered_titles = [entry.title for entry in manifest.list_entries()]
+        assert ordered_titles == ["oldest", "middle", "newest"], (
+            f"re-adding 'oldest' MUST preserve its original position;"
+            f" got {ordered_titles}"
+        )
+
+    # Re-add "middle" — its position MUST stay in the middle.
+    _add_entry(manifest, title="middle", label="mid2", identity_key="k:middle")
+    ordered_titles = [entry.title for entry in manifest.list_entries()]
+    assert ordered_titles == ["oldest", "middle", "newest"], (
+        f"re-adding 'middle' MUST preserve its original position;"
+        f" got {ordered_titles}"
+    )
+
+    # Re-add "newest" — its position MUST stay at the back.
+    _add_entry(manifest, title="newest", label="new2", identity_key="k:newest")
+    ordered_titles = [entry.title for entry in manifest.list_entries()]
+    assert ordered_titles == ["oldest", "middle", "newest"], (
+        f"re-adding 'newest' MUST preserve its original position;"
+        f" got {ordered_titles}"
+    )
+
+
+def test_media_manifest_re_add_does_not_protect_from_eviction() -> None:
+    """An identity that has been re-added (and so has a 'fresh' payload)
+    is NOT protected from eviction.  The oldest insertion-order entry
+    is the next eviction target, regardless of how many times it has
+    been re-added.  This confirms the M2 fix's FIFO eviction is based
+    on insertion order, not LRU activity.
     """
     manifest = MediaManifest(max_entries=2)
 
     _add_entry(manifest, title="oldest", label="old", identity_key="k:oldest")
     _add_entry(manifest, title="middle", label="mid", identity_key="k:middle")
 
-    # Re-add "oldest" — should refresh its position; it now sits
-    # BEHIND "middle" in insertion order, so the next eviction
-    # would target "middle".
-    _add_entry(manifest, title="oldest", label="old2", identity_key="k:oldest")
+    # Re-add "oldest" many times — its position stays at the front,
+    # so it is still the next eviction target.
+    for _ in range(5):
+        _add_entry(manifest, title="oldest", label="old2", identity_key="k:oldest")
 
-    ordered_titles = [entry.title for entry in manifest.list_entries()]
-    assert ordered_titles[-1] == "oldest", (
-        f"after re-add, 'oldest' should be at the back (LRU); got {ordered_titles}"
-    )
-    assert ordered_titles[0] == "middle", (
-        f"after re-add, 'middle' should be at the front (next to evict);"
-        f" got {ordered_titles}"
-    )
-
-    # Add one more to force eviction of 'middle', keeping 'oldest'.
+    # Adding a 3rd identity evicts 'oldest' (insertion-order oldest).
     _add_entry(manifest, title="newest", label="new", identity_key="k:newest")
 
     final_titles = [entry.title for entry in manifest.list_entries()]
-    assert "middle" not in final_titles, (
-        f"middle should have been evicted after LRU refresh;"
+    assert "oldest" not in final_titles, (
+        f"oldest (in insertion order) should have been evicted;"
         f" got {final_titles}"
     )
-    assert "oldest" in final_titles
+    assert "middle" in final_titles
     assert "newest" in final_titles
 
 
 def test_media_manifest_position_refresh_keeps_identity_index_consistent() -> None:
-    """After a re-add refreshes the LRU position, the ``_identity_index``
-    mapping for the same identity_key MUST still point at the same
-    artifact_id (the dedup contract).
-
-    Verified via ``add()`` return: repeated adds with the same
-    ``identity_key`` MUST return the same ``artifact_id``.
+    """After a re-add, the ``_identity_index`` mapping for the same
+    identity_key MUST still point at the same artifact_id (the dedup
+    contract).  Verified via ``add()`` return: repeated adds with
+    the same ``identity_key`` MUST return the same ``artifact_id``
+    AND ``list_entries()`` MUST still have exactly one entry for
+    that identity_key.
     """
     manifest = MediaManifest(max_entries=3)
 

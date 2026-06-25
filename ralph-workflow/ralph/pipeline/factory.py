@@ -237,6 +237,13 @@ class PipelineDeps:
     # these from its live PipelineState and ConnectivityMonitor.
     connectivity_state_provider: Callable[[], str | None] | None = None
     is_waiting_state_provider: Callable[[], bool] | None = None
+    # Session-wide process teardown invoked from the run-loop's
+    # cleanup finally. Defaults to ``ProcessManager.shutdown_all``
+    # when unset so non-phase-labeled children (invoke:/agent:)
+    # are reaped on every exit (normal, error, SIGINT, SIGTERM).
+    # Wrapped in ``suppress(Exception)`` at the call site so a
+    # refusing-to-die child cannot break the suite.
+    process_teardown: Callable[[], None] | None = None
 
     def __init__(
         self,
@@ -261,6 +268,7 @@ class PipelineDeps:
         recovery_sleep: Callable[[float], None] | None = None,
         connectivity_state_provider: Callable[[], str | None] | None = None,
         is_waiting_state_provider: Callable[[], bool] | None = None,
+        process_teardown: Callable[[], None] | None = None,
     ) -> None:
         core_overrides: dict[str, object] = {}
         if display_context is not _UNSET:
@@ -359,6 +367,7 @@ class PipelineDeps:
         object.__setattr__(self, "recovery_sleep", recovery_sleep)
         object.__setattr__(self, "connectivity_state_provider", connectivity_state_provider)
         object.__setattr__(self, "is_waiting_state_provider", is_waiting_state_provider)
+        object.__setattr__(self, "process_teardown", process_teardown)
 
     @property
     def display_context(self) -> DisplayContext:

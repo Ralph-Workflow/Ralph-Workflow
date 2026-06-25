@@ -538,7 +538,12 @@ def test_submit_plan_sections_append_risks_stages_invalid_item_with_warning(
     assert sections["risks_mitigations"] == ["bad"]
 
 
-def test_submit_plan_sections_wraps_single_step_object_for_replace(tmp_path: Path) -> None:
+def test_submit_plan_sections_rejects_single_step_object_for_replace(tmp_path: Path) -> None:
+    """A single step object (not a list) is rejected with an
+    ``isError=True`` tool result for the ``steps`` section in
+    replace mode because the shape check requires a JSON array,
+    not a single object.
+    """
     workspace = FsWorkspace(tmp_path)
     result = handle_submit_plan_sections(
         planning_session(),
@@ -559,20 +564,13 @@ def test_submit_plan_sections_wraps_single_step_object_for_replace(tmp_path: Pat
         },
     )
 
-    assert result.is_error is False
+    assert result.is_error is True
     payload = json.loads(_read_response_text(result))
-    assert payload["validation_warnings"] == []
-
-    draft = _read_draft(tmp_path)
-    sections = cast("dict[str, object]", draft["sections"])
-    steps = cast("list[dict[str, object]]", sections["steps"])
-    assert steps == [
-        {
-            "number": 1,
-            "title": "One",
-            "content": "single object instead of list",
-        }
-    ]
+    assert payload.get("submitted") == []
+    assert payload.get("failed_at") == 0
+    assert "section 'steps' with mode='replace' must be a JSON array" in payload.get(
+        "error", ""
+    )
 
 
 def test_submit_plan_sections_missing_entries_raises(tmp_path: Path) -> None:

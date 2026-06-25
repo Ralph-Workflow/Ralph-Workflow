@@ -370,3 +370,4 @@ Desktop.ini
 ehthumbs.db
 $RECYCLE.BIN/
 /checkpoint.json
+.ralph/run.json

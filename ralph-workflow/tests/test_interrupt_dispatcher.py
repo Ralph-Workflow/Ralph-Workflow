@@ -54,6 +54,7 @@ _INVOKE_GRACE = 0.1
 _QUICK_BUDGET = 0.05
 _POLL_INTERVAL = 0.01
 _SIGINT = signal.SIGINT
+_SIGTERM = signal.SIGTERM
 _FAKE_DEFAULT_GRACE = 2.5
 
 
@@ -980,10 +981,12 @@ def test_handle_keyboard_interrupt_force_kill_handler_restores_previous() -> Non
         signal_getter=cast("Callable[[int], object]", _fake_getsignal),
         signal_setter=cast("Callable[[int, object], object]", _fake_set),
     )
-    assert len(set_calls) == 2
+    assert len(set_calls) == 4
     assert set_calls[0][0] == _SIGINT
-    assert set_calls[1][0] == _SIGINT
-    assert set_calls[1][1] is previous_handler
+    assert set_calls[1][0] == _SIGTERM
+    assert set_calls[2][0] == _SIGINT
+    assert set_calls[3][0] == _SIGTERM
+    assert set_calls[2][1] is previous_handler
 
 
 class _CancellableTask:
@@ -1107,7 +1110,7 @@ def test_async_first_sigint_propagates_kill_label_to_controller(
     loop = _SyncExecutorHandlerLoop()
     root_task = _CancellableTask()
     install_signal_handlers(loop, root_task, bridge, dispatcher)
-    assert len(loop._handlers) == 1
+    assert len(loop._handlers) == 2
     loop._handlers[0]()
     assert root_task.cancel_calls == 1
     assert manager.shutdown_all_for_label_calls == [("invoke:", _FAKE_DEFAULT_GRACE)]
@@ -1191,7 +1194,7 @@ def test_async_install_signal_handlers_accepts_dispatcher_positionally() -> None
     loop = _HandlerCapturingLoop()
     root_task = _CancellableTask()
     install_signal_handlers(loop, root_task, bridge, dispatcher)
-    assert len(loop._handlers) == 1
+    assert len(loop._handlers) == 2
     assert dispatcher.controller.shutdown_all_for_label is not None
 
 
@@ -1231,12 +1234,14 @@ def test_async_dispatcher_synthesis_threads_kill_process_group_and_hard_exit(
     loop = _SyncExecutorHandlerLoop()
     root_task = _CancellableTask()
     install_signal_handlers(loop, root_task, bridge, controller)
-    assert len(loop._handlers) == 1
-    loop._handlers[0]()
     assert len(loop._handlers) == 2
+    loop._handlers[0]()
+    # Both SIGINT and SIGTERM were escalated to the force-exit
+    # handler — AC-01 mixed-signal contract.
+    assert len(loop._handlers) == 4
     bridge._interrupt_count = 2
     with contextlib.suppress(SystemExit):
-        loop._handlers[1]()
+        loop._handlers[2]()
     assert exit_calls == [(INTERRUPT_EXIT_CODE,)]
     assert os_exit_calls == []
 
@@ -1270,12 +1275,14 @@ def test_async_install_signal_handlers_3arg_call_path_controller_none_branch(
     loop = _SyncExecutorHandlerLoop()
     root_task = _CancellableTask()
     install_signal_handlers(loop, root_task, bridge)
-    assert len(loop._handlers) == 1
-    loop._handlers[0]()
     assert len(loop._handlers) == 2
+    loop._handlers[0]()
+    # Both SIGINT and SIGTERM were escalated to the force-exit
+    # handler — AC-01 mixed-signal contract.
+    assert len(loop._handlers) == 4
     bridge._interrupt_count = 2
     with contextlib.suppress(SystemExit):
-        loop._handlers[1]()
+        loop._handlers[2]()
     assert os_exit_calls == [(INTERRUPT_EXIT_CODE,)]
 
 

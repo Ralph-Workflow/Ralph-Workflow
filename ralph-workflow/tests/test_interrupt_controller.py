@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import signal
+
 from ralph.interrupt.controller import (
     INTERRUPT_EXIT_CODE,
     InterruptController,
@@ -137,3 +139,65 @@ def test_install_force_kill_handler_restores_previous_handler() -> None:
     assert calls[0] == ("get", 2)
     assert calls[2] == ("force", None)
     assert calls[3] == ("set", (2, previous))
+
+
+# ---------------------------------------------------------------------------
+# wt-024 Step 4: SIGTERM handler mirrors SIGINT
+# ---------------------------------------------------------------------------
+
+
+def test_install_force_kill_handler_supports_sigterm() -> None:
+    """wt-024 Step 4: install_force_kill_handler must accept ``signum`` and install SIGTERM too."""
+    calls: list[tuple[str, object]] = []
+    previous_int = object()
+    previous_term = object()
+
+    def fake_getsignal(signum: int) -> object:
+        calls.append(("get", signum))
+        if signum == signal.SIGINT:
+            return previous_int
+        return previous_term
+
+    def fake_signal(signum: int, handler: object) -> object:
+        calls.append(("set", (signum, handler)))
+        return handler
+
+    restore = install_force_kill_handler(
+        lambda: calls.append(("force", None)),
+        signal_getter=fake_getsignal,
+        signal_setter=fake_signal,
+        signum=signal.SIGTERM,
+    )
+    handler = calls[1][1][1]
+    handler(signal.SIGTERM, None)
+    restore()
+
+    assert calls[0] == ("get", signal.SIGTERM)
+    assert calls[2] == ("force", None)
+    assert calls[3] == ("set", (signal.SIGTERM, previous_term))
+
+
+def test_install_force_kill_handler_default_signum_is_sigint() -> None:
+    """Backward-compat: omitting ``signum`` preserves the existing SIGINT behavior."""
+    calls: list[tuple[str, object]] = []
+    previous = object()
+
+    def fake_getsignal(signum: int) -> object:
+        calls.append(("get", signum))
+        return previous
+
+    def fake_signal(signum: int, handler: object) -> object:
+        calls.append(("set", (signum, handler)))
+        return handler
+
+    restore = install_force_kill_handler(
+        lambda: None,
+        signal_getter=fake_getsignal,
+        signal_setter=fake_signal,
+    )
+    restore()
+
+    assert calls[0] == ("get", signal.SIGINT)
+    assert calls[1] == ("set", (signal.SIGINT, calls[1][1][1]))
+    assert calls[2] == ("set", (signal.SIGINT, previous))
+

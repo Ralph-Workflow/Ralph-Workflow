@@ -14,6 +14,18 @@ The M3 fix ties ``_termination_outcomes`` to the already-bounded
 ``_termination_outcomes`` is dropped too.  Active PIDs (still in
 ``_records``) keep their outcome records.
 
+Important caveat (wt-024 analysis feedback): the ``limit == 0``
+branch MUST only drop the just-terminal PID's outcome record.
+``_record_termination_outcome`` is called for a PID BEFORE that PID
+reaches terminal state (it records each escalation stage —
+``graceful_terminate`` / ``force_kill`` — during the live
+escalation path).  If one PID's terminal-state call cleared the
+entire outcomes dict it would erase the in-flight diagnostics of
+every OTHER still-active PID.  The fix uses
+``self._termination_outcomes.pop(record.pid, None)`` (per-PID) in
+the ``limit == 0`` branch instead of ``self._termination_outcomes.clear()``
+(everything).
+
 These tests are pure in-memory: they use ``FakePsutil`` and
 ``make_sync_process_factory`` with ``returncode=None`` so the
 escalation path drives ``_record_termination_outcome`` (clean exits
@@ -129,21 +141,117 @@ def test_termination_outcomes_does_not_evict_active_pid() -> None:
 
 
 def test_termination_outcomes_cleared_when_limit_is_zero() -> None:
-    """When ``terminal_history_limit=0`` every termination record
-    (including outcome records) is cleared on each ``_record_terminal_state``
-    call.  After many terminations, ``list_termination_outcomes()``
-    returns an empty dict (no survivors).
+    """When ``terminal_history_limit=0`` the just-terminal PID's
+    outcome record is dropped (no terminal history kept), but
+    ``_termination_outcomes`` for OTHER PIDs is NOT cleared.  The
+    M3 fix MUST NOT erase in-flight outcomes of still-active PIDs
+    when another PID becomes terminal (wt-024 analysis feedback).
+
+    With one PID active (mid-escalation) and another PID
+    terminating, the active PID's outcome entries must survive the
+    other PID's terminal-state call.  Each PID records its own
+    outcomes during the live escalation path; the limit=0
+    terminal-state call only drops the just-terminal PID's own
+    outcome record, leaving the active PID's outcomes intact.
     """
     pm = _make_pm(terminal_history_limit=0)
 
+    # Drive 3 sequential spawn+terminate cycles.  Each cycle records
+    # outcome stages for the just-spawned PID; when that PID becomes
+    # terminal, only its OWN outcome record is dropped, so no two
+    # cycles ever have overlapping PIDs in ``_termination_outcomes``.
+    # Therefore after all 3 cycles the dict is empty.
     for _ in range(3):
         h = pm.spawn([sys.executable, "-c", "pass"])
         h.terminate(grace_period_s=0.05)
 
     outcomes = pm.list_termination_outcomes()
     assert outcomes == {}, (
-        f"with terminal_history_limit=0, list_termination_outcomes()"
-        f" must be empty after every termination; got {outcomes}"
+        f"with terminal_history_limit=0 and sequential single-PID"
+        f" cycles, list_termination_outcomes() must be empty;"
+        f" got {outcomes}"
+    )
+
+
+def test_termination_outcomes_limit_zero_preserves_in_flight_active_pid() -> None:
+    """Regression test for wt-024 analysis feedback.
+
+    When ``terminal_history_limit=0``, finishing the escalation
+    for PID-A MUST NOT erase the in-flight ``_termination_outcomes``
+    entries of PID-B (a still-active PID whose escalation has
+    already recorded one or more stages).  The M3 fix must
+    preserve outcome records for still-active PIDs across
+    other-PID terminal-state calls.
+
+    Strategy: spawn TWO processes, drive PID-A to terminal via
+    ``handle.terminate``, and assert PID-B's outcome entries
+    survive.  (PID-B's ``_termination_outcomes`` entry is recorded
+    by the escalation path the moment ``handle.terminate`` is
+    called, BEFORE the per-PID terminal-state call.)
+    """
+    pm = _make_pm(terminal_history_limit=0)
+
+    # Spawn two processes.  PID-A=1, PID-B=2 (per itertools.count(1)).
+    handle_a = pm.spawn([sys.executable, "-c", "pass"])
+    handle_b = pm.spawn([sys.executable, "-c", "pass"])
+
+    # Drive PID-B's escalation first — this records outcomes for
+    # PID-B but does NOT yet make PID-B terminal (escalation is in
+    # flight) — actually FakePsutil + returncode=None drives the
+    # synchronous escalation to terminal.  To set up the
+    # "PID-B's outcomes are in _termination_outcomes while
+    # PID-A is still active" scenario we need to keep PID-A alive.
+    # We use a custom sync_process_factory that returns a different
+    # returncode per PID: PID-A is alive (returncode stays None);
+    # PID-B drives to terminal via escalation.
+    # Simpler: directly invoke ``_record_termination_outcome`` for
+    # an ACTIVE PID (a public seam for tests / runtime diagnostics
+    # is not available, so we go through the same public path
+    # escalation uses).
+    # Instead, use the escalation path: terminate PID-B first; this
+    # records PID-B's outcomes AND makes PID-B terminal, dropping
+    # PID-B's outcomes (cap=0).  Then keep PID-A alive and assert
+    # that PID-A's later-recorded outcomes survive any subsequent
+    # unrelated terminal-state call.
+    handle_b.terminate(grace_period_s=0.05)
+
+    # After PID-B is terminal, its outcome key is gone (cap=0).
+    outcomes_after_b = pm.list_termination_outcomes()
+    assert handle_b.pid not in outcomes_after_b, (
+        f"after PID-B terminal, PID-B's outcome key should be dropped;"
+        f" got {outcomes_after_b}"
+    )
+
+    # Now drive PID-A's escalation partway: this records outcome
+    # stages for PID-A.  Because PID-A is mid-escalation (NOT yet
+    # terminal), no terminal-state call fires — so its outcomes
+    # remain in ``_termination_outcomes``.
+    pm._record_termination_outcome(handle_a.pid, "graceful_terminate", "sent")
+    pm._record_termination_outcome(handle_a.pid, "force_kill", "sent")
+
+    # PID-A's outcomes are now in the dict.  Simulate an UNRELATED
+    # terminal-state call for some other PID (e.g. a freshly-spawned
+    # PID-C).  PID-A's outcomes MUST survive.
+    handle_c = pm.spawn([sys.executable, "-c", "pass"])
+    handle_c.terminate(grace_period_s=0.05)
+
+    outcomes = pm.list_termination_outcomes()
+    assert handle_a.pid in outcomes, (
+        f"PID-A's in-flight outcomes MUST survive an unrelated"
+        f" PID-C terminal-state call; outcomes={outcomes},"
+        f" PID-A={handle_a.pid}"
+    )
+    assert outcomes[handle_a.pid] == [
+        {"stage": "graceful_terminate", "outcome": "sent"},
+        {"stage": "force_kill", "outcome": "sent"},
+    ], (
+        f"PID-A's in-flight outcome list must be intact;"
+        f" got {outcomes.get(handle_a.pid)}"
+    )
+    # PID-C is terminal (cap=0), so its own outcome is dropped.
+    assert handle_c.pid not in outcomes, (
+        f"PID-C is terminal under cap=0, its own outcome must be"
+        f" dropped; got {outcomes}"
     )
 
 

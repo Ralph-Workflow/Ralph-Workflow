@@ -875,11 +875,39 @@ def _submit_sections_error_result(index: int, message: str) -> ToolResult:
     )
 
 
+def _plan_section_shape_error(
+    section: str,
+    payload: object,
+    mode: SectionMode,
+) -> PlanArtifactValidationError | None:
+    """Return a shape error (NOT a schema error) for wrong container types.
+
+    Shape errors are NOT eligible for lenient staging: a single dict
+    passed to a list section in replace mode is a structural mistake,
+    not a content-quality issue, so the tool rejects it with
+    ``isError=True`` instead of staging it with a warning. Schema
+    errors (valid shape, wrong field types/values) are still
+    eligible for lenient staging via ``_plan_section_validation_warnings``.
+    """
+    if (
+        (section in PLAN_SECTION_LIST_ITEM_MODELS or section == "work_units")
+        and mode == "replace"
+        and not isinstance(payload, list)
+    ):
+        return PlanArtifactValidationError(
+            f"section '{section}' with mode='replace' must be a JSON array"
+        )
+    return None
+
+
 def _plan_section_validation_warnings(
     section: str,
     payload: object,
     mode: SectionMode,
 ) -> list[str]:
+    shape_error = _plan_section_shape_error(section, payload, mode)
+    if shape_error is not None:
+        raise shape_error
     try:
         validate_plan_section(section, payload, mode=mode)
     except PlanArtifactValidationError as exc:
@@ -1587,9 +1615,11 @@ def _normalize_plan_section_payload(
     if (
         (section in PLAN_SECTION_LIST_ITEM_MODELS or section == "work_units")
         and mode == "replace"
-        and not isinstance(normalized, list)
+        and isinstance(normalized, str)
     ):
-        normalized = [normalized]
+        decoded = _coerce_json_text_container(normalized)
+        if isinstance(decoded, list):
+            normalized = decoded
     return _coerce_known_container_fields(normalized)
 
 

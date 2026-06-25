@@ -25,6 +25,7 @@ from ralph.display.parallel_display import (
 from ralph.onboarding import RUN_COMPLETION_STAR_CTA
 from ralph.pipeline.phase_rendering import VERBOSITY_RANK, normalize_verbosity, verbosity_rank
 from ralph.pipeline.phase_transition import emit_final_summary
+from ralph.process.manager import get_process_manager
 from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry
 from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, ConnectivityState
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
@@ -123,6 +124,12 @@ class _LoopContext:
     snapshot_registry: SnapshotRegistry | None = None
     pipeline_deps: PipelineDeps | None = None
     last_waiting_state_phase: str | None = None
+    # Session-wide process teardown. Defaults to
+    # ``ProcessManager.shutdown_all`` from the run-loop construction
+    # site so non-phase-labeled children are reaped on every exit
+    # (normal, error, SIGINT, SIGTERM). Wired from
+    # ``pipeline_deps.process_teardown`` when provided.
+    process_teardown: Callable[[], None] | None = None
 
 
 def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
@@ -634,7 +641,14 @@ def _cleanup_pipeline(
     display_stop: Callable[[], None],
     state: PipelineState,
 ) -> None:
-    """Run all cleanup steps regardless of how the pipeline exited."""
+    """Run all cleanup steps regardless of how the pipeline exited.
+
+    The session-wide ``process_teardown`` (defaulting to
+    ``get_process_manager().shutdown_all``) runs LAST so every
+    spawned child is reaped on every exit (normal, error, SIGINT,
+    SIGTERM). It is wrapped in ``suppress(Exception)`` so a
+    refusing-to-die process cannot break the suite.
+    """
     with suppress(Exception):
         unsubscribe_bus()
     with suppress(Exception):
@@ -657,6 +671,18 @@ def _cleanup_pipeline(
     )
     with suppress(Exception):
         _runner_module.clear_cycle_baseline(loop_ctx.workspace_scope.root)
+    # Session-wide process teardown: run last so non-phase-labeled
+    # children (invoke:/agent:) are reaped on every exit path. The
+    # teardown is wired through ``loop_ctx.process_teardown`` so
+    # tests can inject a recording callable. When unset, fall back
+    # to ``get_process_manager().shutdown_all`` so production
+    # behavior is unchanged.
+    teardown = loop_ctx.process_teardown
+    if teardown is None:
+        def teardown() -> None:
+            get_process_manager().shutdown_all(grace_period_s=0.5)
+    with suppress(Exception):
+        teardown()
 
 
 def _execute_with_cleanup(
@@ -966,6 +992,7 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         pro_watcher=_pro_watcher,
         snapshot_registry=_effective_snapshot_registry,
         pipeline_deps=pipeline_deps,
+        process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,
     )
     return _execute_with_cleanup(state, loop_ctx, state.phase, _unsubscribe_bus, _display_stop)
 

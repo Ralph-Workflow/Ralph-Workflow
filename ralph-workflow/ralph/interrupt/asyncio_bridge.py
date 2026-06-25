@@ -124,10 +124,31 @@ def install_signal_handlers(
             error_log_message="Interrupt shutdown block raised",
         )
 
+    def _install_force_handlers() -> None:
+        """Swap BOTH SIGINT and SIGTERM to the force-exit handler.
+
+        AC-01 mixed-signal escalation: once a first interrupt has
+        arrived (via either SIGINT or SIGTERM), ANY subsequent
+        interrupt — regardless of which OS signal it carries — must
+        trigger force-exit. Installing the force-exit handler on
+        only the signal that arrived first would leave the other
+        signal still pointing at the first-interrupt (graceful)
+        handler, so a mixed second interrupt would start a fresh
+        graceful shutdown instead of forcing exit.
+        """
+        try:
+            loop.add_signal_handler(signal.SIGINT, _second_sigint)
+        except Exception:
+            logger.debug("add_signal_handler SIGINT failed during escalation")
+        try:
+            loop.add_signal_handler(signal.SIGTERM, _second_sigint)
+        except Exception:
+            logger.debug("add_signal_handler SIGTERM failed during escalation")
+
     def _first_sigint() -> None:
         bridge._interrupt_count += 1
         root_task.cancel()
-        loop.add_signal_handler(signal.SIGINT, _second_sigint)
+        _install_force_handlers()
         future = loop.run_in_executor(None, _shutdown_block)
         future.add_done_callback(
             lambda f: (
@@ -141,7 +162,21 @@ def install_signal_handlers(
         active = list(active_dispatcher.process_manager.list_active())
         active_dispatcher.force_exit(bridge_pgids=[r.pgid for r in active])
 
+    def _first_sigterm() -> None:
+        bridge._interrupt_count += 1
+        root_task.cancel()
+        _install_force_handlers()
+        future = loop.run_in_executor(None, _shutdown_block)
+        future.add_done_callback(
+            lambda f: (
+                logger.warning("interrupt shutdown block failed: {}", f.exception())
+                if not f.cancelled() and f.exception() is not None
+                else None
+            )
+        )
+
     loop.add_signal_handler(signal.SIGINT, _first_sigint)
+    loop.add_signal_handler(signal.SIGTERM, _first_sigterm)
 
     teardown_state = {"done": False}
 
@@ -151,6 +186,10 @@ def install_signal_handlers(
         teardown_state["done"] = True
         try:
             loop.remove_signal_handler(signal.SIGINT)
+        except Exception:
+            logger.debug("remove_signal_handler raised during teardown")
+        try:
+            loop.remove_signal_handler(signal.SIGTERM)
         except Exception:
             logger.debug("remove_signal_handler raised during teardown")
 

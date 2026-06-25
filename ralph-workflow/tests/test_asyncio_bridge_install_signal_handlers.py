@@ -28,7 +28,14 @@ _PID_A = 42
 _PID_B = 1234
 _PID_C = 5678
 _PID_SAFE = 9999
-_EXPECTED_HANDLER_INSTALL_COUNT = 2
+# After install_signal_handlers returns, the loop has 2 handlers
+# (one for SIGINT, one for SIGTERM). After the first handler runs,
+# it escalates by swapping BOTH SIGINT and SIGTERM to the second
+# (force-exit) handler, so the loop has 4 handlers total: 2
+# graceful + 2 force-exit. The previous contract that left the
+# other signal at graceful was a mixed-second-interrupt bug
+# (AC-01); the new contract escalates both signals together.
+_EXPECTED_HANDLER_INSTALL_COUNT = 4
 
 # AC-01 fixtures: pid != pgid so mis-routing is observable.
 _PID_FOR_PGID_TEST = 101
@@ -264,9 +271,14 @@ class TestInstallSignalHandlers:
         root_task = _CancellableTask()
         first_handler = _install_and_get_first_handler(loop, root_task, bridge, dispatcher)
         first_handler()
-        # Second handler must be installed.
-        assert len(loop._handlers) == 2
-        second_handler = loop._handlers[1]
+        # Second handler must be installed on BOTH signals (the
+        # AC-01 mixed-signal escalation contract). The handler
+        # count grows from 2 (initial graceful handlers) to 4
+        # (graceful SIGINT, graceful SIGTERM, force-exit SIGINT,
+        # force-exit SIGTERM). Index 2 is the SIGINT force-exit
+        # handler; index 3 is the SIGTERM force-exit handler.
+        assert len(loop._handlers) == _EXPECTED_HANDLER_INSTALL_COUNT
+        second_handler = loop._handlers[2]
         with contextlib.suppress(SystemExit):
             second_handler()
         killed_pgids = {call[0] for call in manager.kill_process_group_calls}
@@ -322,7 +334,7 @@ class TestInstallSignalHandlers:
         assert ("stop", None) in events
         assert any(event[0] == "shutdown" and event[1] != 0 for event in events)
         assert not any(event[0] == "kill" for event in events)
-        second_handler = loop._handlers[1]
+        second_handler = loop._handlers[2]
         with contextlib.suppress(SystemExit):
             second_handler()
         assert any(event[0] == "kill" and event[1][0] == pid_b_pgid_local for event in events)
@@ -435,16 +447,17 @@ def test_second_sigint_force_kills_uses_pgid_not_pid() -> None:
     install_signal_handlers(loop, root_task, bridge, dispatcher)
 
     # First handler increments count, cancels root_task, and installs
-    # the second-SIGINT handler.
+    # the second-SIGINT handler (and the second-SIGTERM handler too —
+    # the AC-01 mixed-signal escalation contract).
     loop._handlers[0]()
 
-    # Second handler must now be installed.
-    assert len(loop._handlers) == 2
+    # Both second handlers (SIGINT and SIGTERM) must now be installed.
+    assert len(loop._handlers) == _EXPECTED_HANDLER_INSTALL_COUNT
 
-    # Invoke the second handler; suppress the SystemExit raised by
+    # Invoke the second SIGINT handler; suppress the SystemExit raised by
     # hard_exit(130) in the dispatcher's force_exit tail.
     with contextlib.suppress(SystemExit):
-        loop._handlers[1]()
+        loop._handlers[2]()
 
     # The kill list must contain the PGID, not the PID.
     killed_pgids = {call[0] for call in manager.kill_process_group_calls}
@@ -500,8 +513,10 @@ def test_asyncio_first_sigint_cancels_task_before_begin_interrupt_returns() -> N
         f"root_task.cancel() must be invoked synchronously; "
         f"got cancel_calls={root_task.cancel_calls}"
     )
-    # The second-SIGINT handler was installed synchronously.
-    assert len(loop._handlers) == 2
+    # The second-SIGINT handler was installed synchronously
+    # (along with the second-SIGTERM handler — AC-01 mixed-signal
+    # escalation contract).
+    assert len(loop._handlers) == _EXPECTED_HANDLER_INSTALL_COUNT
     # The executor body was dispatched (recorded in _executor_calls).
     assert len(loop._executor_calls) == 1, (
         "first-SIGINT must dispatch begin_interrupt+early-escalation via loop.run_in_executor"
@@ -770,7 +785,9 @@ def test_second_sigint_during_first_sigint_executor_body() -> None:
        returns a done ``_SyncFuture`` so the production code's
        done callback is a no-op.
     2. Invoke the first handler. Assert: ``root_task.cancel_calls
-       == 1``, ``len(loop._handlers) == 2``,
+       == 1``, ``len(loop._handlers) == 4`` (both SIGINT and
+       SIGTERM have been escalated to the force-exit handler per
+       the AC-01 mixed-signal contract),
        ``len(loop._executor_calls) == 1``, the executor body has
        NOT yet been invoked.
     3. Invoke the second handler. Assert: ``hard_exit`` was
@@ -807,16 +824,17 @@ def test_second_sigint_during_first_sigint_executor_body() -> None:
     root_task = _CancellableTask()
     teardown_fn = install_signal_handlers(loop, root_task, bridge, dispatcher)
 
-    # First handler fires: cancel + install second handler + record
-    # executor body (but do NOT invoke it).
+    # First handler fires: cancel + install both force-exit
+    # handlers (SIGINT and SIGTERM, per AC-01) + record executor
+    # body (but do NOT invoke it).
     loop._handlers[0]()
     assert root_task.cancel_calls == 1
-    assert len(loop._handlers) == 2
+    assert len(loop._handlers) == _EXPECTED_HANDLER_INSTALL_COUNT
     assert len(loop._executor_calls) == 1
 
     # Second handler fires while the executor body is still paused.
     with contextlib.suppress(SystemExit):
-        loop._handlers[1]()
+        loop._handlers[2]()
 
     # hard_exit was called exactly once (by the second handler's
     # force_exit).
@@ -851,3 +869,112 @@ def test_second_sigint_during_first_sigint_executor_body() -> None:
     assert teardown_fn is not None
     teardown_fn()
     teardown_fn()
+
+
+# =====================================================================
+# AC-01: mixed-signal second-interrupt escalation
+# =====================================================================
+
+
+def test_first_sigint_then_second_sigterm_force_exits() -> None:
+    """AC-01 mixed-signal escalation: after the first SIGINT
+    escalates, a subsequent SIGTERM MUST trigger force-exit too
+    (not start a fresh graceful shutdown).
+
+    The handler capture order is:
+    * [0] SIGINT first-handler (graceful)
+    * [1] SIGTERM first-handler (graceful)
+    * [2] SIGINT second-handler (force-exit) — installed by first SIGINT
+    * [3] SIGTERM second-handler (force-exit) — installed by first SIGINT
+
+    Invoking ``loop._handlers[0]`` (first SIGINT) swaps both
+    signals to force-exit. Invoking ``loop._handlers[3]``
+    (second SIGTERM) must call ``hard_exit(130)`` exactly once
+    and the manager's force-exit kill path must run. The unfixed
+    code left ``_handlers[1]`` as the graceful handler, so
+    ``loop._handlers[3]`` did not exist (or, in the alternate
+    unfixed path, the call would re-enter the graceful path and
+    start a second shutdown instead of force-exiting).
+    """
+    manager = _FakeProcessManager()
+    manager.add_active(pid=_PID_FOR_PGID_TEST, pgid=_PGID_FOR_PGID_TEST)
+    dispatcher = _build_dispatcher_for_async_bridge(manager)
+
+    bridge = SignalBridge()
+    loop = _HandlerCapturingLoop()
+    root_task = _CancellableTask()
+    install_signal_handlers(loop, root_task, bridge, dispatcher)
+
+    # First SIGINT: cancels root_task and swaps both signals to
+    # the force-exit handler.
+    loop._handlers[0]()
+    assert root_task.cancel_calls == 1
+    assert len(loop._handlers) == _EXPECTED_HANDLER_INSTALL_COUNT
+
+    # Second SIGTERM: the handler at index 3 is now the
+    # force-exit handler (per the AC-01 mixed-signal contract).
+    with contextlib.suppress(SystemExit):
+        loop._handlers[3]()
+
+    # The force-exit kill path was triggered (PGID in kill calls).
+    assert (_PGID_FOR_PGID_TEST, signal.SIGKILL) in manager.kill_process_group_calls, (
+        f"second-SIGTERM must call the force-exit kill path; "
+        f"got kill_process_group_calls={manager.kill_process_group_calls}"
+    )
+
+
+def test_first_sigterm_then_second_sigint_force_exits() -> None:
+    """AC-01 mixed-signal escalation: the mirror case — first
+    SIGTERM escalates, then a subsequent SIGINT MUST also
+    force-exit.
+
+    The handler capture order is identical to the first-SIGINT
+    case (the bridge installs SIGINT and SIGTERM first-handlers
+    in the same order regardless of which signal fires first
+    because the OS delivers the signal that arrived first; the
+    bridge just swaps both signals to force-exit in response).
+    """
+    manager = _FakeProcessManager()
+    manager.add_active(pid=_PID_FOR_PGID_TEST, pgid=_PGID_FOR_PGID_TEST)
+    dispatcher = _build_dispatcher_for_async_bridge(manager)
+
+    bridge = SignalBridge()
+    loop = _HandlerCapturingLoop()
+    root_task = _CancellableTask()
+    install_signal_handlers(loop, root_task, bridge, dispatcher)
+
+    # First SIGTERM (handler index 1).
+    loop._handlers[1]()
+    assert root_task.cancel_calls == 1
+    assert len(loop._handlers) == _EXPECTED_HANDLER_INSTALL_COUNT
+
+    # Second SIGINT: handler at index 2 is the force-exit
+    # handler (per the AC-01 mixed-signal contract).
+    with contextlib.suppress(SystemExit):
+        loop._handlers[2]()
+
+    # The force-exit kill path was triggered (PGID in kill calls).
+    assert (_PGID_FOR_PGID_TEST, signal.SIGKILL) in manager.kill_process_group_calls, (
+        f"second-SIGINT must call the force-exit kill path; "
+        f"got kill_process_group_calls={manager.kill_process_group_calls}"
+    )
+
+
+def test_install_signal_handlers_initial_state_has_two_handlers() -> None:
+    """AC-01 base contract: ``install_signal_handlers`` registers
+    exactly two graceful first-handlers (one per signal). The
+    force-exit handlers are NOT installed at startup; they are
+    installed only after the first interrupt arrives.
+    """
+    manager = _FakeProcessManager()
+    dispatcher = _build_dispatcher_for_async_bridge(manager)
+
+    bridge = SignalBridge()
+    loop = _HandlerCapturingLoop()
+    root_task = _CancellableTask()
+    install_signal_handlers(loop, root_task, bridge, dispatcher)
+
+    # Exactly 2 handlers: SIGINT first + SIGTERM first. The
+    # force-exit handlers are installed only on first-interrupt.
+    assert len(loop._handlers) == 2
+

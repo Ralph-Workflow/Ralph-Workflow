@@ -31,6 +31,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import suppress
 from typing import TYPE_CHECKING, Protocol
 
 from ralph.pro_support.env import is_pro_mode
@@ -186,8 +187,18 @@ class ProMarkerWatcher:
 
         Does NOT join the thread; the thread is a daemon and will
         be torn down with the process.
+
+        If the worker has adopted a heartbeat client (see
+        ``_run_loop``), cascade ``stop()`` to the client so the
+        heartbeat drain thread is reaped. The cascade is wrapped
+        in ``suppress(Exception)`` because teardown must never
+        raise — a refusing heartbeat client cannot block the
+        cleanup path.
         """
         self._stop_event.set()
+        if self._heartbeat_client is not None:
+            with suppress(Exception):
+                self._heartbeat_client.stop()
 
     @property
     def is_running(self) -> bool:

@@ -72,18 +72,20 @@ class MediaManifest:
     """Session-scoped manifest of all multimodal resource references."""
 
     # wt-024 M2: bounded retention.  ``_entries`` is an ``OrderedDict``
-    # so we can evict the oldest entry (FIFO) AND refresh an existing
-    # identity's LRU position to the back on re-add.  Callers that
-    # only ever read ``_entries`` continue to work because
-    # ``OrderedDict`` is a ``dict`` subclass.  Typed as
-    # ``OrderedDict`` (not ``dict``) so mypy --strict can verify
-    # ``move_to_end`` and ``popitem(last=...)`` are valid calls.
+    # so we can evict the oldest entry (FIFO) when a NEW identity
+    # pushes the manifest past ``max_entries``.  Re-adding an
+    # EXISTING identity dedups in place and PRESERVES its original
+    # insertion position so ``list_entries()`` (and the downstream
+    # ``resources/list`` response) keep stable ordering across
+    # duplicate adds.  Typed as ``OrderedDict`` (not ``dict``) so
+    # mypy --strict can verify ``popitem(last=False)`` is a valid
+    # call.
     _entries: OrderedDict[str, ManifestEntry] = field(
         default_factory=OrderedDict,
     )
     _identity_index: dict[str, str] = field(default_factory=dict)
     # Maximum number of distinct artifact_ids retained in ``_entries``.
-    # When a NEW identity pushes ``len(_entries) >= max_entries`` we
+    # When a NEW identity pushes ``len(_entries) > max_entries`` we
     # evict the oldest artifact and clear its mapping from
     # ``_identity_index``.  Default keeps existing small-fixture
     # behaviour unchanged.
@@ -98,7 +100,14 @@ class MediaManifest:
         raw_bytes: bytes,
         extras: MediaEntryExtras | None = None,
     ) -> ManifestEntry:
-        """Add or replace an artifact and return its manifest entry."""
+        """Add or replace an artifact and return its manifest entry.
+
+        Re-adding an EXISTING identity dedups in place and PRESERVES
+        the original insertion order so the ``resources/list`` output
+        order stays stable across duplicate adds (wt-024 analysis
+        feedback: reordering on re-add was an externally visible
+        behavior change that the memory cap did not require).
+        """
         xt = extras or MediaEntryExtras()
         resolved_identity = xt.identity_key or build_media_identity(
             modality=modality,
@@ -130,11 +139,6 @@ class MediaManifest:
         self._identity_index[resolved_identity] = artifact_id
         if existing is None and len(self._entries) > self.max_entries:
             self._evict_oldest()
-        elif existing is not None:
-            # Refresh LRU position: re-adding an existing identity
-            # moves it to the back so the next eviction targets the
-            # actual oldest entry, not the just-touched one.
-            self._entries.move_to_end(artifact_id)
         return entry
 
     def _evict_oldest(self) -> str | None:

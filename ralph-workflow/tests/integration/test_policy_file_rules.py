@@ -123,6 +123,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             ("_handle_keyboard_interrupt", "_LoopContext"),
         ),
         (
+            "tests/pipeline/test_run_loop_cleanup_shutdown.py",
+            "ralph.pipeline.run_loop",
+            ("_cleanup_pipeline", "_LoopContext"),
+        ),
+        (
             "tests/recovery/test_agent_unavailable_tracker.py",
             "ralph.pipeline.run_loop",
             ("_apply_connectivity_check",),
@@ -236,6 +241,11 @@ _LEGACY_PRIVATE_IMPORT_ALLOWLIST: frozenset[tuple[str, str, tuple[str, ...]]] = 
             "tests/test_process_hardening.py",
             "ralph.process.manager._process_manager",
             ("_TERMINAL_STATUSES",),
+        ),
+        (
+            "tests/test_process_manager.py",
+            "ralph.process.manager._singleton",
+            ("_pm_state",),
         ),
         (
             "tests/test_prompt_helper_run.py",
@@ -525,11 +535,11 @@ _LEGACY_BYPASS_COMMENT_ALLOWLIST: frozenset[tuple[str, int]] = frozenset(
         ("ralph/pipeline/plumbing/commit_plumbing.py", 1329),
         ("ralph/pipeline/plumbing/commit_plumbing.py", 1331),
         ("ralph/pipeline/run_loop.py", 308),
-        ("ralph/pipeline/run_loop.py", 391),
+        ("ralph/pipeline/run_loop.py", 398),
         ("ralph/pipeline/run_loop.py", 551),
-        ("ralph/pipeline/run_loop.py", 704),
+        ("ralph/pipeline/run_loop.py", 730),
         ("ralph/pipeline/run_loop.py", 841),
-        ("ralph/pipeline/run_loop.py", 992),
+        ("ralph/pipeline/run_loop.py", 1019),
         ("ralph/pipeline/runner.py", 224),
         ("ralph/pro_support/heartbeat.py", 82),
         ("ralph/prompts/materialize.py", 142),
