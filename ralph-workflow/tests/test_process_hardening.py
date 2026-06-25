@@ -732,6 +732,192 @@ def test_register_descendant_adds_to_registry() -> None:
     assert handle.pid not in pm._descendants
 
 
+class _TrackedDescendant(FakePsutilProcess):
+    """FakePsutilProcess subclass that records every terminate/kill call.
+
+    Used to verify that ProcessManager terminates descendants
+    registered via ``register_descendant`` when their parent is
+    terminated, even if the descendant re-sessioned and is invisible
+    to the psutil children() tree walk.
+    """
+
+    def __init__(self, pid: int) -> None:
+        super().__init__(pid=pid)
+        self.terminate_calls = 0
+        self.kill_calls = 0
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        # Honor the parent's terminate so the next wait_procs poll
+        # resolves immediately.
+        self._terminated = True
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+        self._killed = True
+
+
+def test_register_descendant_terminates_grandchild_hidden_from_psutil_tree() -> None:
+    """A registered descendant is terminated with its parent.
+
+    Reproduces the AC-03 regression scenario: a grandchild
+    re-sessioned (e.g. via ``setsid()`` or a double-fork) so it
+    does NOT appear in the parent's ``children(recursive=True)``
+    psutil tree. Without the registry wiring, this descendant
+    would escape teardown and remain as a leaked child.
+
+    The test:
+
+    1. Builds a ``FakePsutil`` whose parent process has NO psutil
+       children (so the psutil tree walk finds nothing).
+    2. Registers a descendant PID (a ``_TrackedDescendant`` that
+       counts ``terminate()`` / ``kill()`` calls) for the parent.
+    3. Calls ``handle.terminate()`` on the parent.
+    4. Asserts the tracked descendant received BOTH a graceful
+       ``terminate()`` and a force ``kill()`` and that the
+       registry entry was consumed (no stale entries remain).
+    """
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+
+    parent_pid = 1
+    descendant_pid = 99999
+
+    class _NoChildrenRoot(FakePsutilProcess):
+        """A parent that has no psutil children (re-sessioned grandchild)."""
+
+        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+            return []
+
+    parent_proc = _NoChildrenRoot(pid=parent_pid)
+    descendant_proc = _TrackedDescendant(pid=descendant_pid)
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {
+        parent_pid: parent_proc,
+        descendant_pid: descendant_proc,
+    }
+
+    pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
+
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+    handle._record.pid = parent_pid
+
+    # Register the re-sessioned grandchild BEFORE terminating the parent.
+    pm.register_descendant(parent_pid, descendant_pid)
+    assert descendant_pid in pm._descendants.get(parent_pid, [])
+
+    # Sanity: the descendant is INVISIBLE to the psutil tree walk
+    # (this is the scenario the registry has to cover).
+    assert parent_proc.children(recursive=True) == []
+
+    handle.terminate(grace_period_s=0.05)
+
+    # The registered descendant MUST have received graceful terminate
+    # AND force kill — the registry is now wired into termination.
+    assert descendant_proc.terminate_calls >= 1, (
+        f"registered descendant should receive graceful terminate(),"
+        f" got terminate_calls={descendant_proc.terminate_calls}"
+    )
+    assert descendant_proc.kill_calls >= 1, (
+        f"registered descendant should receive force kill(),"
+        f" got kill_calls={descendant_proc.kill_calls}"
+    )
+    # Parent record transitioned to KILLED.
+    assert handle.record.status == ProcessStatus.KILLED
+    # Registry entry consumed (no stale entries remain for parent_pid).
+    assert parent_pid not in pm._descendants
+
+
+def test_register_descendant_registry_consumed_once_on_terminate() -> None:
+    """Calling terminate twice does not re-terminate the same descendants.
+
+    The registry is consumed (``pop(record.pid, [])``) by
+    ``_terminate_registered_descendants`` so a second terminate on
+    the same record cannot re-signal an already-dead descendant.
+    This avoids duplicate SIGTERMs / SIGKILLs to grandchild PIDs
+    and keeps the registry from accumulating stale entries across
+    repeated teardowns.
+    """
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+
+    parent_pid = 1
+    descendant_pid = 88888
+
+    class _NoChildrenRoot2(FakePsutilProcess):
+        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+            return []
+
+    parent_proc = _NoChildrenRoot2(pid=parent_pid)
+    descendant_proc = _TrackedDescendant(pid=descendant_pid)
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {
+        parent_pid: parent_proc,
+        descendant_pid: descendant_proc,
+    }
+
+    pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
+
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+    handle._record.pid = parent_pid
+
+    pm.register_descendant(parent_pid, descendant_pid)
+    handle.terminate(grace_period_s=0.05)
+
+    first_terminate = descendant_proc.terminate_calls
+    first_kill = descendant_proc.kill_calls
+
+    # A second terminate on the same record is a no-op (record is
+    # already in a terminal status) and MUST NOT re-signal the
+    # already-terminated descendant.
+    handle.terminate(grace_period_s=0.05)
+
+    assert descendant_proc.terminate_calls == first_terminate
+    assert descendant_proc.kill_calls == first_kill
+
+
+def test_register_descendant_multiple_descendants_all_terminated() -> None:
+    """All registered descendants are terminated when the parent dies.
+
+    Verifies the loop body reaps every registered PID (not just the
+    first) and that one descendant that is already gone does NOT
+    prevent the rest from being terminated.
+    """
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=None)
+
+    parent_pid = 1
+    descendant_pids = [70001, 70002, 70003]
+
+    class _NoChildrenRoot3(FakePsutilProcess):
+        def children(self, recursive: bool = False) -> list[FakePsutilProcess]:
+            return []
+
+    parent_proc = _NoChildrenRoot3(pid=parent_pid)
+    descendants = [_TrackedDescendant(pid=pid) for pid in descendant_pids]
+    fake_psutil = FakePsutil()
+    fake_psutil._processes = {parent_pid: parent_proc, **{d.pid: d for d in descendants}}
+
+    pm = _make_pm(sync_factory=sync_factory, psutil_mod=fake_psutil)
+
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+    handle._record.pid = parent_pid
+
+    for descendant_pid in descendant_pids:
+        pm.register_descendant(parent_pid, descendant_pid)
+
+    handle.terminate(grace_period_s=0.05)
+
+    # All three registered descendants got graceful terminate AND force kill.
+    for descendant in descendants:
+        assert descendant.terminate_calls >= 1, (
+            f"descendant PID {descendant.pid} should be terminated;"
+            f" terminate_calls={descendant.terminate_calls}"
+        )
+        assert descendant.kill_calls >= 1, (
+            f"descendant PID {descendant.pid} should be killed;"
+            f" kill_calls={descendant.kill_calls}"
+        )
+
+
+
 def test_list_termination_outcomes_returns_dict() -> None:
     """list_termination_outcomes returns a dict (placeholder implementation)."""
     pm = _make_pm()

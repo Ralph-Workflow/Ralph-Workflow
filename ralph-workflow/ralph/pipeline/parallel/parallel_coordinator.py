@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
@@ -431,6 +432,10 @@ async def _run_worker(
                 logger.error(
                     "Failed to terminate agent processes for worker {}: {}", unit.unit_id, exc
                 )
+            with contextlib.suppress(Exception):
+                if isinstance(active_executor, subprocess_executor.SubprocessAgentExecutor):
+                    active_executor.drop_unit(unit.unit_id)
+                display.drop_unit(unit.unit_id)
             if sink_handle is not None:
                 ralph_logging.remove_worker_sink(sink_handle)
             del worker_succeeded

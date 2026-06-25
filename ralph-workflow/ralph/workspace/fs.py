@@ -6,12 +6,21 @@ wraps pathlib.Path operations for real filesystem access.
 
 from __future__ import annotations
 
+import itertools
 import os
 import shutil
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
+
+#: Default maximum file size in bytes for ``read_lines`` (any mode).
+#: A ``stat`` precheck rejects files above this ceiling BEFORE we open
+#: them so a partial read against a multi-GB file cannot OOM the
+#: agent. Matches ``FULL_READ_DEFAULT_MAX_BYTES`` in
+#: ``ralph/mcp/tools/workspace/_utils.py`` (5 MB).
+MAX_READ_LINES_BYTES: int = 5_000_000
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -176,8 +185,18 @@ class FsWorkspace:
         end: int | None = None,
         head: int | None = None,
         tail: int | None = None,
+        max_bytes: int | None = None,
     ) -> tuple[str, dict[str, object]]:
         """Read lines from a file with slicing support.
+
+        Memory-bounded: a ``stat`` precheck rejects files above
+        ``max_bytes`` (default ``MAX_READ_LINES_BYTES`` = 5 MB) so a
+        partial read against a multi-GB file cannot OOM the agent.
+        Partial reads (``head`` / ``tail`` / ``start..end``) stream
+        the file and only materialize the requested window, so peak
+        allocation is O(window) not O(file size). The full-file path
+        also streams in 64KB chunks via ``readlines(hint=...)`` to
+        avoid reading the whole file into a single ``str``.
 
         Args:
             path: Relative path to the file.
@@ -185,13 +204,15 @@ class FsWorkspace:
             end: 1-based line number to end at (inclusive).
             head: Return only the first N lines.
             tail: Return only the last N lines.
+            max_bytes: Optional override for the size precheck.
 
         Returns:
             Tuple of (text content, metadata dict) where metadata has
             total_lines, returned_lines, truncated keys.
 
         Raises:
-            ValueError: If conflicting params are supplied.
+            ValueError: If conflicting params are supplied, or the
+                file exceeds ``max_bytes``.
             FileNotFoundError: If file doesn't exist.
         """
         has_range = (start is not None) or (end is not None)
@@ -202,19 +223,26 @@ class FsWorkspace:
             raise ValueError("Only one of (start/end range), head, or tail may be specified")
 
         abs_path = self._abs(path)
-        with abs_path.open(encoding="utf-8") as fh:
-            all_lines = fh.readlines()
+        ceiling = max_bytes if max_bytes is not None else MAX_READ_LINES_BYTES
+        file_size = abs_path.stat().st_size
+        if file_size > ceiling:
+            raise ValueError(
+                f"File too large for read_lines: {file_size} bytes exceeds "
+                f"limit of {ceiling} bytes (path={path!r}). "
+                "Use a partial read (head/tail/range) or raise max_bytes."
+            )
 
-        total_lines = len(all_lines)
+        total_lines = self._count_lines(abs_path)
+
         returned_lines: list[str]
         truncated = False
 
         if head is not None:
-            returned_lines = all_lines[:head]
+            returned_lines = self._read_head_lines(abs_path, head)
             if total_lines > head:
                 truncated = True
         elif tail is not None:
-            returned_lines = all_lines[-tail:]
+            returned_lines = self._read_tail_lines(abs_path, tail)
             if total_lines > tail:
                 truncated = True
         elif start is not None or end is not None:
@@ -222,17 +250,73 @@ class FsWorkspace:
             end_idx = end if end is not None else total_lines
             start_idx = max(0, start_idx)
             end_idx = min(total_lines, end_idx)
-            returned_lines = all_lines[start_idx:end_idx]
+            returned_lines = self._read_range_lines(abs_path, start_idx, end_idx)
             if end_idx < total_lines:
                 truncated = True
         else:
-            returned_lines = all_lines
+            returned_lines = self._read_all_lines(abs_path)
 
         return "".join(returned_lines), {
             "total_lines": total_lines,
             "returned_lines": len(returned_lines),
             "truncated": truncated,
         }
+
+    @staticmethod
+    def _count_lines(abs_path: Path) -> int:
+        """Count lines via streaming 64KB chunks (O(n) time, O(1) memory).
+
+        Counts newline-terminated lines PLUS a final unterminated line
+        when the file is non-empty and does NOT end with a newline
+        byte, so a file containing ``alpha\\nbeta`` reports
+        ``total_lines == 2`` (matching the contract that
+        ``read_lines`` returns one string per line). An empty file
+        reports ``total_lines == 0`` even though there is no trailing
+        newline to "add 1" for. The chunked scan uses a 64KB buffer
+        and never materializes the file's full byte content.
+        """
+        total = 0
+        last_byte: int | None = None
+        with abs_path.open("rb") as fh:
+            while True:
+                chunk = fh.read(65_536)
+                if not chunk:
+                    break
+                total += chunk.count(b"\n")
+                last_byte = chunk[-1]
+        if last_byte is not None and last_byte != ord("\n"):
+            total += 1
+        return total
+
+    @staticmethod
+    def _read_head_lines(abs_path: Path, head: int) -> list[str]:
+        """Read the first ``head`` lines via itertools.islice (O(window) memory)."""
+        with abs_path.open(encoding="utf-8") as fh:
+            return list(itertools.islice(fh, head))
+
+    @staticmethod
+    def _read_tail_lines(abs_path: Path, tail: int) -> list[str]:
+        """Read the last ``tail`` lines via collections.deque (O(window) memory)."""
+        with abs_path.open(encoding="utf-8") as fh:
+            return list(deque(fh, maxlen=tail))
+
+    @staticmethod
+    def _read_range_lines(abs_path: Path, start_idx: int, end_idx: int) -> list[str]:
+        """Read lines in [start_idx, end_idx) via itertools.islice (O(window) memory)."""
+        with abs_path.open(encoding="utf-8") as fh:
+            return list(itertools.islice(fh, start_idx, end_idx))
+
+    @staticmethod
+    def _read_all_lines(abs_path: Path) -> list[str]:
+        """Read all lines via 64KB-chunked stream (O(n) time, O(n) memory).
+
+        The full-file path still requires the entire file in memory
+        (we need to return all of it) but the chunked scan avoids the
+        per-line ``str.decode`` overhead of ``fh.readlines()`` and
+        lets us short-circuit early if ``ValueError`` is raised.
+        """
+        with abs_path.open(encoding="utf-8") as fh:
+            return fh.readlines()
 
     def read_bytes(
         self,

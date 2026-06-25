@@ -317,3 +317,91 @@ async def test_activity_router_raw_log_is_bounded(
     raw_log = executor._get_raw_log(unit.unit_id)
     assert raw_log.append(payload) is False
     assert log_path.stat().st_size == previous_size
+
+
+@pytest.mark.asyncio
+async def test_drop_unit_releases_raw_log_entry(tmp_path: object) -> None:
+    """``drop_unit(unit_id)`` releases the per-unit raw log state.
+
+    AC-05: long parallel sessions can run thousands of distinct
+    units through the same ``SubprocessAgentExecutor`` instance. If
+    the per-unit ``_raw_logs`` map grew monotonically, each retained
+    ``RawOverflowLog`` would hold up to
+    ``DEFAULT_MAX_OVERFLOW_FILE_BYTES`` of memory. ``drop_unit``
+    pops the entry so the memory is released when the unit is no
+    longer needed (typically on wave completion via the parallel
+    coordinator's worker finally).
+
+    Drives a real subprocess (the file is ``subprocess_e2e``-marked)
+    so the test exercises the production code path that populates
+    ``_raw_logs`` inside ``drain_output()``.
+    """
+    executor = SubprocessAgentExecutor(
+        [sys.executable, "-c", "print('drop-unit-output')"],
+        activity_router=ActivityRouter(),
+        raw_overflow_root=tmp_path,
+    )
+    unit = make_unit("drop-unit-target")
+
+    result = await executor.run(
+        unit,
+        on_output=ignore_output,
+        on_status=ignore_status,
+    )
+
+    assert result.exit_code == 0
+
+    # Sanity: the run populated the per-unit raw log.
+    assert unit.unit_id in executor._raw_logs, (
+        f"run() should populate _raw_logs[{unit.unit_id!r}],"
+        f" got keys={list(executor._raw_logs.keys())}"
+    )
+
+    # drop_unit removes the entry.
+    executor.drop_unit(unit.unit_id)
+    assert unit.unit_id not in executor._raw_logs, (
+        f"drop_unit should remove _raw_logs[{unit.unit_id!r}],"
+        f" got keys={list(executor._raw_logs.keys())}"
+    )
+
+    # Idempotent: calling drop_unit twice is a no-op, no exception.
+    executor.drop_unit(unit.unit_id)
+    assert unit.unit_id not in executor._raw_logs
+
+    # Missing-safe: drop_unit for a unit that was never added does
+    # not raise (pop(..., None) returns None).
+    executor.drop_unit("never-existed-unit")
+
+
+@pytest.mark.asyncio
+async def test_drop_unit_does_not_affect_other_units(tmp_path: object) -> None:
+    """``drop_unit(unit_id)`` MUST NOT remove entries for other units.
+
+    The parallel coordinator calls ``drop_unit`` per unit on wave
+    completion. If drop_unit released the wrong entries, one wave's
+    cleanup would corrupt another wave's state.
+    """
+    executor = SubprocessAgentExecutor(
+        [sys.executable, "-c", "print('multi-unit')"],
+        activity_router=ActivityRouter(),
+        raw_overflow_root=tmp_path,
+    )
+
+    units = [make_unit(f"unit-{idx}") for idx in range(3)]
+    for unit in units:
+        await executor.run(
+            unit,
+            on_output=ignore_output,
+            on_status=ignore_status,
+        )
+
+    for unit in units:
+        assert unit.unit_id in executor._raw_logs
+
+    # Drop only the middle unit.
+    executor.drop_unit(units[1].unit_id)
+
+    assert units[0].unit_id in executor._raw_logs
+    assert units[1].unit_id not in executor._raw_logs
+    assert units[2].unit_id in executor._raw_logs
+

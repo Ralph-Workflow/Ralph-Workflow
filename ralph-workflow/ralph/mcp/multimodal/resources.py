@@ -119,8 +119,23 @@ class MediaManifest:
                 raw_bytes=raw_bytes,
             ),
         )
-        artifact_id = self._identity_index.get(resolved_identity, new_artifact_id())
+        artifact_id = self._identity_index.get(
+            resolved_identity,
+            xt.artifact_id or new_artifact_id(),
+        )
         uri = build_media_uri(artifact_id)
+        # wt-024 M2 follow-up (AC-06): when a durable replay source is
+        # wired at add-time (a byte_loader is supplied), the manifest
+        # must NOT retain the raw payload in memory. The byte_loader
+        # is the canonical source for rehydrating bytes later, so
+        # storing raw_bytes on top of it doubles peak memory per
+        # entry (up to 256 entries x multi-MB each) for no observable
+        # benefit. Raw bytes are only retained when the caller has
+        # no durable replay source — i.e. when neither byte_loader nor
+        # cache_path is supplied — so the in-memory-only contract for
+        # legacy callers is preserved verbatim.
+        retain_raw_bytes = xt.byte_loader is None and not xt.cache_path
+        stored_raw_bytes = raw_bytes if retain_raw_bytes else None
         entry = ManifestEntry(
             artifact_id=artifact_id,
             uri=uri,
@@ -131,7 +146,7 @@ class MediaManifest:
             cache_path=xt.cache_path,
             source_path=xt.source_path,
             source_uri=xt.source_uri,
-            _raw_bytes=raw_bytes,
+            _raw_bytes=stored_raw_bytes,
             _byte_loader=xt.byte_loader,
         )
         existing = self._entries.get(artifact_id)

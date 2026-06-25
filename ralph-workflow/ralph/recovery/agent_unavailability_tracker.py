@@ -142,6 +142,9 @@ class AgentUnavailabilityTracker:
         """
         key = f"{phase}:{agent}"
         current_time_ms = int(self._clock.monotonic() * 1000)
+        # Opportunistically prune expired entries so the dict does
+        # not grow without bound across long parallel runs.
+        self.prune_expired(now_ms=current_time_ms)
         attempt: int = self._backoff_attempts.get(key, 0)
 
         if reason is not None and reason in self._backoff_policy:
@@ -207,6 +210,37 @@ class AgentUnavailabilityTracker:
         self._entries.pop(key, None)
         self._backoff_attempts.pop(key, None)
 
+    def prune_expired(self, now_ms: int | None = None) -> int:
+        """Remove entries whose cooldown has elapsed at ``now_ms``.
+
+        Mirrors the opportunistic-sweep pattern in
+        ``ChildLivenessRegistry.prune_stale``: the tracker is
+        unbounded on the ``_entries`` axis (only ``reset_backoff``
+        ever pops a single key), so a long-lived pipeline that
+        accumulates hundreds of (phase, agent) pairs would retain
+        every expired entry forever. ``prune_expired`` drops the
+        expired entries WITHOUT touching ``_backoff_attempts`` so
+        exponential backoff continues across fail/recover cycles
+        even after pruning.
+
+        Args:
+            now_ms: Current monotonic time in milliseconds. When
+                ``None`` (default), uses the injected clock.
+
+        Returns:
+            Number of entries pruned.
+        """
+        if now_ms is None:
+            now_ms = int(self._clock.monotonic() * 1000)
+        expired_keys = [
+            key
+            for key, entry in self._entries.items()
+            if now_ms >= entry.unavailable_until_ms
+        ]
+        for key in expired_keys:
+            self._entries.pop(key, None)
+        return len(expired_keys)
+
     def snapshot(self) -> dict[str, dict[str, object]]:
         """Return a defensive copy of the internal state."""
         return {
@@ -243,7 +277,9 @@ __all__ = ["AgentUnavailabilityTracker", "UnavailabilityEntry", "UnavailabilityS
 # plan, infrastructure recovers). The check uses ``if/raise RuntimeError``
 # (NOT ``assert``) so it survives ``python -O`` per AGENTS.md.
 
-_ALLOWED_PUBLIC_MUTATORS: frozenset[str] = frozenset({"mark_unavailable", "reset_backoff"})
+_ALLOWED_PUBLIC_MUTATORS: frozenset[str] = frozenset(
+    {"mark_unavailable", "reset_backoff", "prune_expired"}
+)
 _READONLY_PUBLIC_METHODS: frozenset[str] = frozenset(
     {
         "is_available",

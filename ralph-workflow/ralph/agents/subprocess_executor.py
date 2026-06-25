@@ -101,6 +101,16 @@ class SubprocessAgentExecutor:
             )
         return self._raw_logs[unit_id]
 
+    def drop_unit(self, unit_id: str) -> None:
+        """Release per-unit state so long parallel sessions don't accumulate state across waves.
+
+        Removes the unit's raw overflow log entry from ``self._raw_logs``
+        so the memory the log holds (up to ``DEFAULT_MAX_OVERFLOW_FILE_BYTES``
+        per unit) is released when the unit is no longer needed. Safe to
+        call for a unit that was never added; it just no-ops.
+        """
+        self._raw_logs.pop(unit_id, None)
+
     async def run(
         self,
         unit: WorkUnit,
