@@ -109,6 +109,21 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("_runtime_resolvers", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
     # _media_io.py: global state for periodic prune counter (wt-024 AC-10).
     ("_media_io", "PLW0603"),
+    # wt-024 memory-perf: the bounded-accumulator-ok marker must live
+    # on the same physical line as the assignment so the
+    # audit_resource_lifecycle AST marker scan finds it. When the
+    # assignment carries a full type annotation (mypy strict requires
+    # it) + the marker + the policy-compliant type-ignore suffix, the
+    # line exceeds 100 chars. The noqa is narrowly scoped to the
+    # assignment line and does NOT mask any other ruff check.
+    ("idle_watchdog", "E501"),
+    ("ring_buffer", "E501"),
+    ("_process_manager", "E501"),
+    ("codex", "E501"),
+    ("audit_adapter", "E501"),
+    ("_bounded_lines_queue", "E501"),
+    ("repetition_tracker", "E501"),
+    ("_pty_line_reader", "E501"),
     # __init__ modules use lazy imports to avoid circular deps; targeted per-file
     ("__init__", "PLC0415"),
     # __init__ modules intentionally order __all__ for discoverability (e.g.

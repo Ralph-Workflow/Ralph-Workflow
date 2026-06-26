@@ -13,6 +13,8 @@ import pytest
 from ralph.executor import ProcessExecutionError, ProcessResult, run_process, run_process_async
 from ralph.executor.process import ProcessRunOptions
 from ralph.process.manager import ProcessManager, ProcessManagerPolicy, ProcessStatus, SpawnOptions
+from ralph.testing._fake_async_process import FakeAsyncProcess
+from ralph.testing._process_state import ProcessState
 from ralph.testing.fake_process import FakeControllableAsyncProcess, FakeTimeoutPopen
 
 if TYPE_CHECKING:
@@ -354,6 +356,119 @@ def test_run_process_cleans_up_on_non_timeout_communicate_exception(
     assert len(records) == 1
     assert records[0].status == ProcessStatus.KILLED
     assert fake.terminate_calls == 1
+
+
+# ---------------------------------------------------------------------------
+# run_process / run_process_async spawn labels (wt-024 memory-perf AC-03)
+# ---------------------------------------------------------------------------
+#
+# The two unlabeled spawns in the repo are ``run_process`` and
+# ``run_process_async`` (every other spawn site labels its child).
+# Both children are synchronously reaped on every code path (success,
+# timeout, BaseException at process.py:175-194 and :108-127), so the
+# label is CONSISTENCY / OBSERVABILITY only — it changes NO teardown
+# behavior. ``pm.list_records(label_prefix=...)`` and
+# ``pm.cleanup_orphans(label_prefix=...)`` can now target the spawned
+# PID for diagnostics; an orphaned run_process child becomes
+# label-groupable.
+#
+# These tests are black-box over the FakeProcess / FakeAsyncProcess
+# seam: spawn via run_process / run_process_async, then assert the
+# ProcessRecord's ``label`` field equals the documented default.
+# No teardown-behavior change is asserted (there is none).
+
+
+def test_run_process_records_default_label() -> None:
+    """``run_process`` records the default 'executor:run-process' label on the ProcessRecord.
+
+    Uses the FakeTimeoutPopen seam in ``ralph.testing`` to spawn a
+    fake child via run_process. After spawn, asserts the
+    ProcessManager's tracked record carries the documented default
+    label. No real subprocess, no time.sleep; respects the 60s
+    combined test budget.
+    """
+    pm = _make_timeout_pm(partial_stdout=b"hello")
+    result = run_process(
+        "fake-cmd", options=ProcessRunOptions(), _pm=pm
+    )
+    assert result.stdout == "hello"
+    records = pm.list_records(
+        include_active=True, include_terminal=True, label_prefix="executor:run-process"
+    )
+    assert len(records) == 1, (
+        f"expected exactly one executor:run-process record, got {len(records)}"
+    )
+    assert records[0].label == "executor:run-process"
+
+
+@pytest.mark.asyncio
+async def test_run_process_async_records_default_label() -> None:
+    """``run_process_async`` records the default 'executor:run-process' label.
+
+    Mirrors the sync test using the async FakeAsyncProcess seam.
+    """
+    pid_iter = itertools.count(100)
+
+    async def factory(
+        command: object,
+        *,
+        cwd: object,
+        env: object,
+        stdin: object,
+        stdout: object,
+        stderr: object,
+        start_new_session: object,
+    ) -> object:
+        del command, cwd, env, stdin, stdout, stderr, start_new_session
+        return FakeAsyncProcess(next(pid_iter), state=ProcessState(returncode=0))
+
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.5,
+            kill_followup_timeout_s=0.5,
+            log_events=False,
+            enable_zombie_reaper=False,
+        ),
+        async_process_factory=factory,
+    )
+    result = await run_process_async("fake-cmd", _pm=pm)
+    assert result.returncode == 0
+    records = pm.list_records(
+        include_active=True, include_terminal=True, label_prefix="executor:run-process"
+    )
+    assert len(records) == 1, (
+        f"expected exactly one executor:run-process record, got {len(records)}"
+    )
+    assert records[0].label == "executor:run-process"
+
+
+def test_run_process_custom_label_overrides_default() -> None:
+    """A caller-provided label overrides the 'executor:run-process' default.
+
+    The label parameter is a per-call observability knob; the default
+    'executor:run-process' only fires when the caller does not pass
+    one. The seam is the existing ProcessRunOptions (no new kwargs on
+    the public function).
+    """
+    pm = _make_timeout_pm(partial_stdout=b"")
+    custom_label = "executor:test-explicit-label"
+    run_process(
+        "fake-cmd",
+        options=ProcessRunOptions(label=custom_label),
+        _pm=pm,
+    )
+    records = pm.list_records(
+        include_active=True, include_terminal=True, label_prefix=custom_label
+    )
+    assert len(records) == 1
+    assert records[0].label == custom_label
+    # The default-prefix scan must NOT see this record.
+    default_records = pm.list_records(
+        include_active=True, include_terminal=True, label_prefix="executor:run-process"
+    )
+    assert all(r.label != custom_label for r in default_records), (
+        "records with custom label must not appear under the default prefix scan"
+    )
 
 
 @pytest.mark.asyncio

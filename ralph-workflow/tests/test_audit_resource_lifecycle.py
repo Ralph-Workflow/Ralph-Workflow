@@ -267,6 +267,13 @@ def test_default_roots_cover_required_packages() -> None:
     assert any(str(r).endswith("ralph/runtime") for r in roots)
     assert any(str(r).endswith("ralph/pro_support") for r in roots)
     assert any(str(r).endswith("ralph/recovery") for r in roots)
+    # wt-024 memory-perf AC-02: display holds per-unit accumulators
+    # drained by drop_unit (parallel coordinator finally block) and
+    # prompts holds the template registry caches (bounded by the
+    # packaged-template file set). Both MUST be in default roots so a
+    # future leak in either fails make verify before it ships.
+    assert any(str(r).endswith("ralph/display") for r in roots)
+    assert any(str(r).endswith("ralph/prompts") for r in roots)
 
 
 @pytest.mark.timeout_seconds(10)
@@ -342,6 +349,96 @@ def test_unbounded_deque_without_maxlen_flagged(tmp_path: Path) -> None:
     v = _audit(tmp_path, src)
     assert v, "self._q = deque() without maxlen MUST be flagged as unbounded_accumulator"
     assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+def test_deque_with_maxlen_none_is_flagged(tmp_path: Path) -> None:
+    """``deque(maxlen=None)`` MUST be flagged -- maxlen=None is effectively unbounded.
+
+    Regression for the analysis-feedback finding that ``_keyword_present``
+    previously accepted ``deque(maxlen=None)`` because it only checked
+    keyword PRESENCE, not the value. The new ``_keyword_value_is_positive_int``
+    helper rejects None, 0, -1, and non-constant expressions.
+    """
+    src = (
+        "from collections import deque\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._q = deque(maxlen=None)\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "deque(maxlen=None) MUST be flagged -- it defeats the FIFO cap"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_collections_deque_with_maxlen_none_is_flagged(tmp_path: Path) -> None:
+    """``collections.deque(maxlen=None)`` MUST be flagged -- same reasoning."""
+    src = (
+        "import collections\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._q = collections.deque(maxlen=None)\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "collections.deque(maxlen=None) MUST be flagged"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_deque_with_maxlen_zero_is_flagged(tmp_path: Path) -> None:
+    """``deque(maxlen=0)`` MUST be flagged -- non-positive cap (degenerate FIFO)."""
+    src = (
+        "from collections import deque\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._q = deque(maxlen=0)\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "deque(maxlen=0) MUST be flagged -- non-positive cap"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_deque_with_variable_maxlen_is_flagged(tmp_path: Path) -> None:
+    """``deque(maxlen=N)`` (non-constant) MUST be flagged -- cannot be statically resolved.
+
+    Real production bounded deques carry a ``# bounded-accumulator-ok: <reason>``
+    marker so the audit passes; the bare form is surfaced for human review.
+    """
+    src = (
+        "from collections import deque\n"
+        "N = 8\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._q = deque(maxlen=N)\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "deque(maxlen=N) with a non-constant expression MUST be flagged"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_deque_with_attribute_maxlen_is_flagged(tmp_path: Path) -> None:
+    """``deque(maxlen=self.cap)`` MUST be flagged (non-constant value)."""
+    src = (
+        "from collections import deque\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self.cap = 8\n"
+        "        self._q = deque(maxlen=self.cap)\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "deque(maxlen=self.cap) MUST be flagged -- non-constant value"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_deque_with_negative_maxlen_is_flagged(tmp_path: Path) -> None:
+    """``deque(maxlen=-1)`` MUST be flagged -- ``collections.deque`` rejects non-positive maxlen."""
+    src = (
+        "from collections import deque\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._q = deque(maxlen=-1)\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "deque(maxlen=-1) MUST be flagged -- non-positive cap"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
 
 
 def test_deque_with_maxlen_is_not_flagged(tmp_path: Path) -> None:
@@ -454,6 +551,145 @@ def test_dataclass_field_default_factory_not_flagged(tmp_path: Path) -> None:
         "    items: list = field(default_factory=list)\n"
     )
     assert not _audit(tmp_path, src)
+
+
+# ---------------------------------------------------------------------------
+# OrderedDict / defaultdict detection (wt-024 memory-perf AC-01)
+# ---------------------------------------------------------------------------
+#
+# OrderedDict and defaultdict have NO ``maxlen`` kwarg (unlike ``deque``);
+# the FIFO-cap escape hatch is a manual ``popitem(last=False)`` /
+# ``len(...) > cap`` eviction policy in the code itself. The audit MUST
+# flag these as unbounded accumulators so the only escape is an honest
+# ``# bounded-accumulator-ok: <cap>`` marker naming the real cap / drain.
+
+
+def test_ordered_dict_instance_accumulator_flagged(tmp_path: Path) -> None:
+    """``self._x = OrderedDict()`` in __init__ MUST be flagged.
+
+    OrderedDict has no ``maxlen`` kwarg, so the FIFO escape hatch is a
+    manual ``popitem(last=False)`` eviction policy in the code itself.
+    The audit MUST flag the bare assignment; the only escape is an
+    honest ``# bounded-accumulator-ok: <cap>`` marker naming the cap.
+    """
+    src = (
+        "from collections import OrderedDict\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = OrderedDict()\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "self._x = OrderedDict() in __init__ MUST be flagged as unbounded_accumulator"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_collections_ordered_dict_instance_accumulator_flagged(tmp_path: Path) -> None:
+    """``self._x = collections.OrderedDict()`` MUST be flagged.
+
+    Mirrors the ``collections.deque`` alias-resolution test pattern.
+    """
+    src = (
+        "import collections\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = collections.OrderedDict()\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "self._x = collections.OrderedDict() MUST be flagged"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_ordered_dict_module_level_accumulator_flagged(tmp_path: Path) -> None:
+    """Module-level ``_CACHE: OrderedDict = OrderedDict()`` MUST be flagged."""
+    src = (
+        "from collections import OrderedDict\n"
+        "_CACHE: OrderedDict[str, dict] = OrderedDict()\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "module-level OrderedDict() MUST be flagged as unbounded_accumulator"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_defaultdict_instance_accumulator_flagged(tmp_path: Path) -> None:
+    """``self._x = defaultdict()`` MUST be flagged (no maxlen escape hatch).
+
+    Mirrors the OrderedDict test pattern. defaultdict has no size cap;
+    the audit MUST flag the bare assignment.
+    """
+    src = (
+        "from collections import defaultdict\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = defaultdict()\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "self._x = defaultdict() in __init__ MUST be flagged as unbounded_accumulator"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_collections_defaultdict_instance_accumulator_flagged(tmp_path: Path) -> None:
+    """``self._x = collections.defaultdict()`` MUST be flagged."""
+    src = (
+        "import collections\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = collections.defaultdict()\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "self._x = collections.defaultdict() MUST be flagged"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_defaultdict_with_factory_still_flagged(tmp_path: Path) -> None:
+    """``self._x = defaultdict(list)`` MUST still be flagged.
+
+    The factory argument does NOT bound the dict (it only controls the
+    default value for missing keys). The audit treats defaultdict() as
+    unbounded regardless of the factory argument, matching the rule for
+    ``set``/``dict``/``list`` constructors.
+    """
+    src = (
+        "from collections import defaultdict\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = defaultdict(list)\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "defaultdict(list) MUST be flagged -- factory does NOT bound the dict"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_ordered_dict_with_marker_not_flagged(tmp_path: Path) -> None:
+    """``# bounded-accumulator-ok: <cap>`` MUST suppress OrderedDict violations.
+
+    Real production sites that have a manual FIFO cap
+    (``OrderedDict`` + ``popitem(last=False)`` eviction policy in the
+    code) carry an inline marker naming the cap constant. The marker is
+    the only escape for OrderedDict / defaultdict because these types
+    have no built-in ``maxlen`` kwarg.
+    """
+    src = (
+        "from collections import OrderedDict\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = OrderedDict()  # bounded-accumulator-ok: FIFO cap _MAX=32\n"
+    )
+    assert not _audit(tmp_path, src), (
+        "OrderedDict() with # bounded-accumulator-ok marker MUST NOT be flagged"
+    )
+
+
+def test_defaultdict_with_marker_not_flagged(tmp_path: Path) -> None:
+    """``# bounded-accumulator-ok: <cap>`` MUST suppress defaultdict violations."""
+    src = (
+        "from collections import defaultdict\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = defaultdict()  # bounded-accumulator-ok: capped by external eviction\n"
+    )
+    assert not _audit(tmp_path, src), (
+        "defaultdict() with # bounded-accumulator-ok marker MUST NOT be flagged"
+    )
 
 
 # ---------------------------------------------------------------------------

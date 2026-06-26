@@ -21,6 +21,17 @@ if TYPE_CHECKING:
 # Standard unix timeout exit code
 TIMEOUT_EXIT_CODE = 124
 
+# Default per-call observability label for every child spawned through
+# ``run_process`` / ``run_process_async``. Recorded on the
+# ``ProcessRecord`` (NOT a teardown target — these children are
+# synchronously reaped on every code path; the label is purely
+# consistency / observability so ``pm.list_records(label_prefix=...)``
+# and ``pm.cleanup_orphans(label_prefix=...)`` can target the spawned
+# PID for diagnostics). Callers can override per-call via
+# ``ProcessRunOptions(label=...)`` / the ``label=`` kwarg on
+# ``run_process_async``.
+_DEFAULT_RUN_PROCESS_LABEL: Final[str] = "executor:run-process"
+
 # Defense-in-depth bound for the post-terminate pipe drain. The child has
 # already been escalated SIGTERM -> SIGKILL via ``terminate(grace_period_s=0)``,
 # so a healthy OS reaps the pipes within milliseconds. This bound only fires
@@ -88,11 +99,13 @@ async def run_process_async(
     cwd: str | Path | None = None,
     env: Mapping[str, str] | None = None,
     timeout: float | None = None,
+    label: str | None = None,
     _pm: ProcessManager | None = None,
 ) -> ProcessResult:
     """Run a process asynchronously and capture its output."""
     cmd = _normalize_command(command, args)
     pm = _pm if _pm is not None else get_process_manager()
+    effective_label = label if label is not None else _DEFAULT_RUN_PROCESS_LABEL
 
     try:
         handle = await pm.spawn_async(
@@ -102,6 +115,7 @@ async def run_process_async(
                 env=_build_env(env),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                label=effective_label,
             ),
         )
     except OSError as exc:
@@ -160,6 +174,11 @@ def run_process(
     effective_options = options or ProcessRunOptions()
     cmd = _normalize_command(command, args)
     pm = _pm if _pm is not None else get_process_manager()
+    effective_label = (
+        effective_options.label
+        if effective_options.label is not None
+        else _DEFAULT_RUN_PROCESS_LABEL
+    )
 
     pipe = subprocess.PIPE if effective_options.capture_output else None
     try:
@@ -170,6 +189,7 @@ def run_process(
                 env=_build_env(effective_options.env),
                 stdout=pipe,
                 stderr=pipe,
+                label=effective_label,
             ),
         )
     except OSError as exc:

@@ -105,6 +105,18 @@ _HTTP_CLIENT_NAMES: frozenset[str] = frozenset(
 )
 _HTTP_ROOTS: frozenset[str] = frozenset({"httpx", "requests"})
 
+# OrderedDict / defaultdict constructors — these have NO ``maxlen`` kwarg
+# (unlike ``deque``), so the FIFO-cap escape hatch is a manual
+# ``popitem(last=False)`` / ``len(...) > cap`` eviction policy in the
+# code itself. The audit MUST flag them so the only escape is an honest
+# ``# bounded-accumulator-ok: <cap>`` marker naming the real cap / drain.
+_ORDERED_DICT_NAMES: frozenset[str] = frozenset(
+    {"OrderedDict", "collections.OrderedDict"}
+)
+_DEFAULT_DICT_NAMES: frozenset[str] = frozenset(
+    {"defaultdict", "collections.defaultdict"}
+)
+
 # Raw os fd creation — only allowed under ralph/process/ (centralized
 # process lifecycle layer). Outside that allowlist, this is a leak.
 _RAW_OS_FD_NAMES: frozenset[str] = frozenset({"os.open", "os.openpty", "os.pipe"})
@@ -172,8 +184,44 @@ def _keyword_present(node: ast.Call, name: str) -> bool:
     ``deque(maxlen=...)`` call is bounded (maxlen keyword present, any
     numeric value). A deque constructed without ``maxlen=`` is
     unbounded and MUST be flagged (or carry a marker).
+
+    NOTE: this helper only checks keyword PRESENCE; use
+    ``_keyword_value_is_positive_int`` to verify the value is a
+    positive integer literal (rejects ``maxlen=None``, ``maxlen=0``,
+    ``maxlen=-1``, and any non-constant expression). The deque
+    accumulator contract requires BOTH: the keyword must be present
+    AND its value must be a positive integer literal.
     """
     return any(kw.arg == name for kw in node.keywords)
+
+
+def _keyword_value_is_positive_int(node: ast.Call, name: str) -> bool:
+    """Return True iff ``name`` is passed as a keyword with a positive
+    integer literal value.
+
+    Rejects:
+      - ``maxlen=None`` (effectively unbounded, defeats the FIFO cap);
+      - ``maxlen=0`` / ``maxlen=-1`` (non-positive; deque would drop
+        on the next append or refuse construction);
+      - ``maxlen=<name>`` / ``maxlen=<expression>`` (cannot be statically
+        resolved and MUST be surfaced for human review, not silently
+        accepted).
+
+    Accepts only ``maxlen=N`` where ``N`` is a non-zero positive
+    integer literal (``ast.Constant`` with ``int`` value > 0``).
+    """
+    for kw in node.keywords:
+        if kw.arg != name:
+            continue
+        value: ast.expr = kw.value
+        if isinstance(value, ast.Constant):
+            return (
+                isinstance(value.value, int)
+                and not isinstance(value.value, bool)
+                and value.value > 0
+            )
+        return False
+    return False
 
 
 def _dotted_name(node: ast.Call) -> str | None:
@@ -327,14 +375,38 @@ def _classify_unbounded_accumulator_call(
     module_aliases: dict[str, str],
     from_imports: dict[str, str],
 ) -> bool:
-    """Classify a Call expression as an unbounded accumulator or not."""
+    """Classify a Call expression as an unbounded accumulator or not.
+
+    Flagged (treated as unbounded accumulator):
+      - ``set()`` literal (no size kwarg at all);
+      - ``deque()`` / ``collections.deque()`` WITHOUT ``maxlen=`` as a
+        positive integer literal;
+      - bare ``list()`` / ``dict()`` / ``set()`` constructor calls;
+      - ``OrderedDict()`` / ``collections.OrderedDict()`` constructor
+        calls (no maxlen kwarg; the FIFO escape hatch is a manual
+        ``popitem(last=False)`` eviction policy in the code itself);
+      - ``defaultdict()`` / ``collections.defaultdict()`` constructor
+        calls (no size kwarg at all; the factory argument controls
+        the default VALUE for missing keys, not the size).
+
+    NOT flagged (clean by construction):
+      - ``deque(maxlen=N)`` / ``collections.deque(maxlen=N)`` with N
+        a positive integer literal;
+      - constructor calls WITH a documented size argument such as
+        ``list(some_iterable)`` (out of scope; requires dataflow
+        tracking to prove boundedness).
+    """
     if not isinstance(value, ast.Call):
         return False
     canonical = _canonical_name(_dotted_name(value), module_aliases, from_imports)
     if canonical == "set":
         return True
     if canonical in {"deque", "collections.deque"}:
-        return not _keyword_present(value, "maxlen")
+        return not _keyword_value_is_positive_int(value, "maxlen")
+    if canonical in _ORDERED_DICT_NAMES:
+        return True
+    if canonical in _DEFAULT_DICT_NAMES:
+        return True
     return canonical in {"list", "dict"} and not value.args
 
 
@@ -611,7 +683,12 @@ def _default_roots() -> list[Path]:
     allowlist root), ``ralph/pipeline`` (run loop + interrupt threads),
     ``ralph/runtime`` (runtime helper modules),
     ``ralph/pro_support`` (Pro heartbeat client — daemon thread +
-    HTTP client), and ``ralph/recovery`` (recovery control flow).
+    HTTP client), ``ralph/recovery`` (recovery control flow),
+    ``ralph/display`` (per-unit display accumulators drained by
+    ``ParallelDisplay.drop_unit`` / ``ActivityRouter.drop_unit`` from
+    the parallel coordinator finally block), and ``ralph/prompts``
+    (template registry caches bounded by the packaged-template
+    file set).
     """
     package_root = Path(__file__).parent.parent
     return [
@@ -623,6 +700,8 @@ def _default_roots() -> list[Path]:
         package_root / "runtime",
         package_root / "pro_support",
         package_root / "recovery",
+        package_root / "display",
+        package_root / "prompts",
     ]
 
 

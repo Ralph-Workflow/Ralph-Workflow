@@ -175,6 +175,14 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         existing_home=None,
         system_prompt_file=None,
     )
+    # Release the codex home in a finally block: the probe only uses
+    # the home to synthesize a config + run the handshake, and has no
+    # further use for it. Without this release, the in-memory
+    # ``_allocated_codex_homes`` registry grows monotonically across
+    # every probe call and the on-disk directory persists for the
+    # entire interpreter lifetime. The bounded deque in codex.py is
+    # the backstop safety net; this finally block is the
+    # "normal production release path" the registry marker references.
     try:
         codex_home = Path(codex_home_str)
         config_path = codex_home / "config.toml"
@@ -182,7 +190,9 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         # Reuse existing native entries when present; otherwise append the synthetic
         # server so the probe verifies how Ralph would write it.
         parsed = (
-            cast("dict[str, object]", tomllib.loads(config_text)) if config_text.strip() else {}
+            cast("dict[str, object]", tomllib.loads(config_text))
+            if config_text.strip()
+            else {}
         )
         mcp_servers = parsed.get("mcp_servers") if isinstance(parsed, dict) else None
         existing_servers = (
@@ -213,7 +223,13 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         server_handshake(server)
         return AgentProbeReport(transport=AgentTransport.CODEX, server_name=server.name, ok=True)
     finally:
+        # Use ``_codex_transport.release_codex_home`` (not the locally
+        # imported ``release_codex_home``) so a test that monkeypatches
+        # ``ralph.mcp.transport.codex.release_codex_home`` is observed.
+        # ``from ... import x`` creates a local binding that ignores
+        # later module-level ``setattr`` patches.
         _codex_transport.release_codex_home(codex_home_str)
+
 
 
 def _augment_codex_config_with_server(base_config: str, server: UpstreamMcpServer) -> str:

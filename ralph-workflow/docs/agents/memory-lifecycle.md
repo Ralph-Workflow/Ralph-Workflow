@@ -277,7 +277,7 @@ classes of leak in production code:
 | **Daemon-Thread rule** | `threading.Thread(...)` and `Thread(...)` (resolved through import aliases) WITHOUT `daemon=True` | Non-daemon threads can block process exit on the `concurrent.futures` `_python_exit` atexit join |
 | **With-managed HTTP client** | `httpx.Client(...)`, `httpx.AsyncClient(...)`, `requests.Session(...)` constructed OUTSIDE a `with` statement (bare assignment) | Bare construction leaks the underlying HTTP connection pool and is not closed at interpreter exit |
 | **Centralized raw-fd creation** | `os.open(...)`, `os.openpty(...)`, `os.pipe(...)` OUTSIDE `ralph/process/` | Raw fd creation bypasses the centralized process lifecycle; the zombie reaper / terminal records don't see the fd and it leaks across restarts |
-| **Resource accumulators** (wt-024 memory-perf AC-04) | Mutable collection literals (`[]`, `{}`, `set()`) and constructor calls (`list()` / `dict()` / `set()` / `deque()` / `collections.deque()` WITHOUT `maxlen=`) assigned to (a) module-level names OR (b) instance attributes (`self.X`) inside `__init__` bodies | Unbounded accumulators retain heavyweight objects (exceptions, tracebacks, large payloads) across a long unattended run — the exact leak class that produced `BudgetState.failures` and `RalphAuditSinkAdapter._records` |
+| **Resource accumulators** (wt-024 memory-perf AC-04) | Mutable collection literals (`[]`, `{}`, `set()`) and constructor calls (`list()` / `dict()` / `set()` / `deque()` / `collections.deque()` WITHOUT `maxlen=` / `OrderedDict()` / `collections.OrderedDict()` / `defaultdict()` / `collections.defaultdict()`) assigned to (a) module-level names OR (b) instance attributes (`self.X`) inside `__init__` bodies | Unbounded accumulators retain heavyweight objects (exceptions, tracebacks, large payloads) across a long unattended run — the exact leak class that produced `BudgetState.failures` and `RalphAuditSinkAdapter._records`. `OrderedDict` and `defaultdict` are flagged because they have NO `maxlen` kwarg (unlike `deque`); the FIFO escape hatch is a manual `popitem(last=False)` / `len(...) > cap` eviction policy in the code itself, and the `# bounded-accumulator-ok: <cap>` marker is the only audit-recognized escape (it MUST name the cap constant). |
 
 The audit has TWO inline escape hatch markers on the line that
 suppresses the violation:
@@ -321,6 +321,8 @@ Default audit roots (the directories scanned by `make verify`):
 | `ralph/runtime` | Runtime helper modules |
 | `ralph/pro_support` | Pro heartbeat client (daemon thread + HTTP client) |
 | `ralph/recovery` | Recovery control flow |
+| `ralph/display` | Per-unit display accumulators (`ParallelDisplay._active_block` / `_last_worker_states` / `_overflow_logs` / ...) drained by `ParallelDisplay.drop_unit` / `ActivityRouter.drop_unit` (the parallel coordinator finally block is the active drain). `_last_budget_progress` is phase-bounded (replaced wholesale each snapshot), not per-unit. |
+| `ralph/prompts` | Template registry caches (`_cache` / `_templates`) bounded by the immutable packaged-template file set and the workspace `template_dirs` lazily discovered by `_discover_template`. `register_template` has zero production callers so the bound is the file set, not a programmatic registry. |
 
 Intentional exclusions (out of scope, documented to avoid false
 positives):
@@ -399,13 +401,22 @@ HTTP client, file handle, accumulator):
    signal + a bounded join on shutdown. Never rely on GC to reap a
    non-daemon thread (the contract forbids `__del__` / `weakref.finalize`
    finalizers for exactly this reason).
-5. **Accumulators** (lists, deques, dicts, bytes buffers): add a
-   FIFO / size cap aligned with the production default. Mirrors the
-   `ProcessManager.terminal_history_limit = 256` / `BoundedLinesQueue(maxlen=256)`
-   pattern. For long-lived mutable accumulators (module-level OR
-   `self.X` in `__init__`), the audit flags the assignment unless you
-   use `deque(maxlen=...)` / `OrderedDict` + count cap / a justified
+5. **Accumulators** (lists, deques, dicts, `OrderedDict` / `defaultdict`,
+   bytes buffers): add a FIFO / size cap aligned with the production
+   default. Mirrors the `ProcessManager.terminal_history_limit = 256` /
+   `BoundedLinesQueue(maxlen=256)` pattern. For long-lived mutable
+   accumulators (module-level OR `self.X` in `__init__`), the audit
+   flags the assignment unless you use `deque(maxlen=...)` /
+   `OrderedDict` + count cap / a justified
    `# bounded-accumulator-ok: <reason>` marker naming the cap or drain.
+   `OrderedDict` and `defaultdict` have NO `maxlen` kwarg, so the marker
+   is the only audit-recognized escape for legitimately manually-capped
+   sites (the marker MUST name the source-verified cap constant, e.g.
+   `ProcessManagerPolicy.terminal_history_limit`,
+   `_MAX_CACHE_ENTRIES=32`,
+   `_MAX_SUBAGENT_OUTPUT_CAPTURES=128`,
+   `_MAX_EVICTED_TOMBSTONES`,
+   `_DECISION_LOG_MAX=16`, etc.).
 
 If a new resource class is added, extend the
 `audit_resource_lifecycle.py` audit to cover it AND add an inline
