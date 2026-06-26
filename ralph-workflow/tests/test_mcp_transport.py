@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import itertools
 import sys
 from io import BytesIO
 from typing import IO
 
 import pytest
+from loguru import logger as loguru_logger
 
 import ralph.process.manager as _mgr
 from ralph.mcp.protocol.transport import StdioTransport
@@ -136,6 +138,76 @@ async def test_stdio_transport_close_joins_threads() -> None:
     for recorded in writer.join_calls:
         assert recorded is not None, "writer join() called without a timeout"
         assert recorded > 0, f"writer join() called with non-positive timeout: {recorded}"
+
+
+@pytest.mark.asyncio
+async def test_stdio_transport_close_warns_when_thread_still_alive() -> None:
+    """AC-03 warning-path regression: StdioTransport.close() logs a warning when a
+    reader/writer daemon thread is still alive after the bounded ``join()``.
+
+    The plan explicitly required: "a still-alive thread logs a warning but
+    does NOT raise". ``close()`` MUST observe ``is_alive()`` is True and log a
+    warning, but MUST NOT raise — interpreter exit will still reap the daemon
+    thread, so ``close()`` returning cleanly is the correct contract.
+
+    Black-box assertion on the INJECTED thread_factory doubles only. The
+    ``_FakeThread`` double is configured with ``alive_after_join=True`` to
+    simulate a wedged reader/writer; ``is_alive_calls`` proves ``close()``
+    consulted liveness. The loguru output is captured via a string sink so
+    we can deterministically assert the warning text.
+    """
+    captured: list[_FakeThread] = []
+
+    def fake_process_factory(command: list[str], cwd: str | None = None) -> _FakeProcess:
+        del command, cwd
+        return _FakeProcess()
+
+    def fake_thread_factory(target: object, daemon: bool) -> _FakeThread:
+        del target, daemon
+        thread = _FakeThread(
+            label=str(len(captured)),
+            on_start=lambda: None,
+            alive_after_join=True,
+        )
+        captured.append(thread)
+        return thread
+
+    transport = StdioTransport(
+        ["python", "-m", "demo"],
+        cwd="/tmp/demo",
+        process_factory=fake_process_factory,
+        thread_factory=fake_thread_factory,
+    )
+    transport.start()
+
+    assert len(captured) == 2
+
+    sink = io.StringIO()
+    sink_id = loguru_logger.add(
+        sink,
+        format="{level.name}:{message}",
+        level="WARNING",
+        enqueue=False,
+    )
+    try:
+        await transport.close()
+    finally:
+        loguru_logger.remove(sink_id)
+
+    reader, writer = captured[0], captured[1]
+    # Both threads were joined AND still alive — close() consulted is_alive() on each.
+    assert reader.is_alive_calls >= 1, "close() never called is_alive() on the reader thread"
+    assert writer.is_alive_calls >= 1, "close() never called is_alive() on the writer thread"
+    # close() must not raise even when threads are wedged.
+    # loguru text contains the WARNING-level message identifying each thread role.
+    text = sink.getvalue()
+    assert "WARNING" in text, f"no WARNING logged by close(); captured text: {text!r}"
+    assert "_reader_thread" in text, (
+        f"close() did not warn about the still-alive _reader_thread; captured: {text!r}"
+    )
+    assert "_writer_thread" in text, (
+        f"close() did not warn about the still-alive _writer_thread; captured: {text!r}"
+    )
 
 
 @pytest.mark.asyncio

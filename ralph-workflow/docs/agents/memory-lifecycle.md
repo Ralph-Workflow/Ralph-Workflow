@@ -144,11 +144,28 @@ polls `_send_queue.get(timeout=0.1)` and observes `_closed` within
 reaps them. `getattr(self, "_reader_thread", None)` guards the
 un-started case so `close()` on an un-started transport is a no-op.
 
-The regression is pinned by
-`tests/test_mcp_transport.py::test_stdio_transport_close_joins_threads`
-which asserts via the INJECTED `_FakeThread` double only
-(`tests/test_mcp_transport_helper__fakethread.py` records `join()`).
-No production private attributes are read.
+After the bounded `join()`, `close()` consults `thread.is_alive()` and
+emits a WARNING log if the thread is still running — visible
+operator signal that a reader/writer ignored the close signals, but
+`close()` itself stays non-raising (the daemon thread will be reaped
+at interpreter exit). Both the join liveness and the warning path are
+expressed through the widened `ThreadLike` Protocol
+(`join(timeout: float | None)`, `is_alive() -> bool`) so production
+`close()` stays type-safe against the injected `_FakeThread` double.
+
+The regression is pinned by:
+
+- `tests/test_mcp_transport.py::test_stdio_transport_close_joins_threads`
+  — asserts via the INJECTED `_FakeThread` double only
+  (`tests/test_mcp_transport_helper__fakethread.py` records `join()`)
+  that BOTH threads were joined with a non-None positive timeout. No
+  production private attributes are read.
+- `tests/test_mcp_transport.py::test_stdio_transport_close_warns_when_thread_still_alive`
+  — asserts the warning path: when the injected thread stays alive
+  past the bounded join, `close()` MUST log a WARNING naming the
+  thread attribute and MUST NOT raise. Uses `_FakeThread(alive_after_join=True)`
+  and a loguru string sink to capture the warning text
+  deterministically.
 
 ## Executor teardown
 

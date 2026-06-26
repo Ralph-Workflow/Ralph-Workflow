@@ -67,6 +67,7 @@ if TYPE_CHECKING:
 
         def start(self) -> None: ...
         def join(self, timeout: float | None = None) -> None: ...
+        def is_alive(self) -> bool: ...
 
 
 class StdioTransport:
@@ -228,6 +229,9 @@ class StdioTransport:
         # opens/closes transports in tight loops cannot afford to leak
         # dangling daemon threads. ``getattr(self, ..., None)`` guards the
         # un-started case so close() on an un-started transport is a no-op.
+        # A thread that is still alive after the bounded join is logged as a
+        # warning (visibility for ops) but close() remains non-raising —
+        # ``daemon=True`` guarantees interpreter exit will still reap it.
         for thread_attr in ("_reader_thread", "_writer_thread"):
             thread: ThreadLike | None = getattr(self, thread_attr, None)
             if thread is not None:
@@ -237,6 +241,21 @@ class StdioTransport:
                     logger.warning(
                         "Failed to join {} during stdio transport close",
                         thread_attr,
+                    )
+                    continue
+                try:
+                    still_alive = thread.is_alive()
+                except Exception:
+                    logger.warning(
+                        "Failed to read is_alive() on {} during stdio transport close",
+                        thread_attr,
+                    )
+                    continue
+                if still_alive:
+                    logger.warning(
+                        "{} did not exit within {}s; daemon will be reaped at interpreter exit",
+                        thread_attr,
+                        _CLOSE_THREAD_JOIN_SECONDS,
                     )
         logger.info("Closed stdio transport")
 
