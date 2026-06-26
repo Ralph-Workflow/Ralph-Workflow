@@ -90,6 +90,28 @@ _FIRE_REASON_OWNERS: frozenset[str] = frozenset(
         _POST_EXIT_WATCHDOG_OWNER,
     }
 )
+# Canonical owner file for the subagent identity types
+# (``SubagentIdentity`` / ``SubagentPidRegistry``). Both are
+# single-source-of-truth types for R1 (the watchdog's filtered
+# subagent count seam); a future PR MUST NOT introduce a parallel
+# identity type without updating this owner and the watchdog's
+# classification logic. See
+# ``ralph/agents/idle_watchdog/_subagent_identity.py`` for the
+# canonical module.
+_SUBAGENT_COUNTING_OWNER: str = "agents/idle_watchdog/_subagent_identity.py"
+_SUBAGENT_COUNTING_OWNERS: frozenset[str] = frozenset({_SUBAGENT_COUNTING_OWNER})
+# Fast pre-filter substring for the single-owner check. Files
+# without this substring cannot define the canonical types, so the
+# AST pass is skipped. Mirrors the existing
+# ``_FIRE_REASON_MARKER`` pattern.
+_SUBAGENT_COUNTING_MARKER: str = "class Subagent"
+# Names that MUST stay single-sourced at the canonical owner. The
+# audit AST-detects ``class <NAME>:`` top-level definitions outside
+# the canonical owner file.
+_SUBAGENT_COUNTING_TYPES: tuple[str, ...] = (
+    "SubagentIdentity",
+    "SubagentPidRegistry",
+)
 
 # The legacy watchdog file that must NOT exist at the ralph-workflow
 # root.  The basename is constructed at import time from two private
@@ -348,6 +370,75 @@ def _check_watchdog_fire_reason_construction(
     return violations
 
 
+def _file_defines_subagent_counting_class(
+    tree: ast.Module,
+    class_name: str,
+) -> list[ast.ClassDef]:
+    """Return top-level class definitions for the canonical subagent identity types.
+
+    Mirrors :func:`_is_top_level_class` for the ``WatchdogFireReason``
+    single-owner check. The match is exact-name (not substring) so a
+    ``class SubagentIdentityProvider`` does NOT trip the audit; only
+    the exact canonical types do.
+    """
+    return [
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    ]
+
+
+def _check_subagent_counting_outside_owner(
+    package_root: Path,
+) -> list[WatchdogDriftViolation]:
+    """Invariant 5 (R1): the subagent identity types are single-sourced.
+
+    ``SubagentIdentity`` and ``SubagentPidRegistry`` are the canonical
+    owner types for what counts as a "real subagent" (R1 of the
+    Trustworthy Idle Watchdog spec). Both MUST live at
+    ``ralph/agents/idle_watchdog/_subagent_identity.py`` and
+    NOWHERE else — a future PR MUST NOT introduce a parallel identity
+    type without updating this owner and the watchdog's
+    classification logic.
+
+    The detector is AST-driven so a duplicate ``class SubagentIdentity``
+    (or ``SubagentPidRegistry``) outside the canonical owner raises
+    ``subagent_counting_outside_owner`` even when the new type would
+    otherwise look identical. Mirrors the existing
+    ``duplicate_idle_watchdog`` / ``duplicate_post_exit_watchdog``
+    detectors.
+    """
+    violations: list[WatchdogDriftViolation] = []
+    for py_file in _iter_py_files(package_root):
+        rel_path = _rel_posix(py_file, package_root)
+        try:
+            source = py_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if _SUBAGENT_COUNTING_MARKER not in source:
+            continue
+        try:
+            tree = ast.parse(source, filename=str(py_file))
+        except (SyntaxError, ValueError):
+            continue
+        for class_name in _SUBAGENT_COUNTING_TYPES:
+            for cls in _file_defines_subagent_counting_class(tree, class_name):
+                if rel_path == _SUBAGENT_COUNTING_OWNER:
+                    continue
+                violations.append(
+                    WatchdogDriftViolation(
+                        kind="subagent_counting_outside_owner",
+                        file_path=rel_path,
+                        line=cls.lineno,
+                        message=(
+                            f"top-level class {class_name} is only allowed at"
+                            f" {_SUBAGENT_COUNTING_OWNER}; found duplicate here"
+                        ),
+                    )
+                )
+    return violations
+
+
 def audit_watchdog_drift(
     package_root: Path,
     repo_root: Path | None = None,
@@ -377,6 +468,7 @@ def audit_watchdog_drift(
     violations.extend(_check_legacy_root_watchdog(repo_root))
     violations.extend(_check_canonical_class_owners(package_root))
     violations.extend(_check_watchdog_fire_reason_construction(package_root))
+    violations.extend(_check_subagent_counting_outside_owner(package_root))
     return violations
 
 
@@ -404,9 +496,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             " ralph-workflow root, keep exactly one top-level class"
             " IdleWatchdog at ralph/agents/idle_watchdog/idle_watchdog.py,"
             " keep exactly one top-level class PostExitWatchdog at"
-            " ralph/agents/idle_watchdog/_post_exit_watchdog.py, and"
+            " ralph/agents/idle_watchdog/_post_exit_watchdog.py,"
             " construct WatchdogFireReason only from those two canonical"
-            " owner modules."
+            " owner modules, and keep exactly one top-level class"
+            f" SubagentIdentity/SubagentPidRegistry at {_SUBAGENT_COUNTING_OWNER}."
         )
         return 1
 

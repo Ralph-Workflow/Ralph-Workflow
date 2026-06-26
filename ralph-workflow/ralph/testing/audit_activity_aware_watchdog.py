@@ -107,12 +107,43 @@ _INVOKE_ONLY_MARKERS: tuple[str, ...] = (
     "self._handle.terminate",
     "AgentInvocationError",
 )
+# R1 subagent-counting seam (Trustworthy Idle Watchdog spec):
+# readers MUST call ``process_monitor.spawned_subagent_count()``
+# (preferred) or ``process_monitor.live_subagent_count()`` (legacy
+# alias) for the FILTERED subagent count. They MUST NOT use
+# ``self._handle.descendant_snapshot()`` for ``scoped_child_active``
+# because the broader count includes shell helpers like ``npm test`` /
+# ``cargo build`` (the 2365s indefinite deferral bug class).
+_SUBAGENT_COUNTING_SEAM_FILES: frozenset[str] = frozenset(
+    {
+        "agents/invoke/_process_reader.py",
+        "agents/invoke/_pty_line_reader.py",
+    }
+)
+_SUBAGENT_COUNTING_SEAM_FUNCTION: str = "_corroborate"
+# Markers that prove the seam is correct: the reader references
+# the filtered subagent count via ``process_monitor.spawned_subagent_count``
+# or ``process_monitor.live_subagent_count`` (preferred name first).
+_SUBAGENT_COUNTING_SEAM_ACCEPTED: tuple[str, ...] = (
+    "spawned_subagent_count",
+    "live_subagent_count",
+)
+_SUBAGENT_COUNTING_SEAM_REJECTED: str = "descendant_snapshot"
 
 
 def _file_needs_parse(rel_path: str, source: str) -> bool:
     """Return True when the file may contain an audit-relevant construct."""
     if _IDLE_WATCHDOG_MARKER in source or _DEFAULT_MONITOR_MARKER in source:
         return True
+    # R1 subagent-counting seam detector: the two reader files in
+    # ``agents/invoke/`` are parsed when they define ``_corroborate``.
+    # This MUST be checked BEFORE the broader agents/invoke/ marker
+    # list (which gates on different markers) so the seam detector
+    # is reachable even when the reader does not contain the
+    # ``set_on_event`` / ``self._handle.terminate`` / ``AgentInvocationError``
+    # markers the broader detector keys on.
+    if rel_path in _SUBAGENT_COUNTING_SEAM_FILES:
+        return _SUBAGENT_COUNTING_SEAM_FUNCTION in source
     if rel_path.startswith("agents/invoke/"):
         return any(marker in source for marker in _INVOKE_ONLY_MARKERS)
     return False
@@ -414,6 +445,65 @@ class _ModuleVisitor(ast.NodeVisitor):
                 return True
         return False
 
+    def check_subagent_counting_seam(self) -> None:
+        """R1 audit: ``_corroborate`` MUST NOT use ``descendant_snapshot()``.
+
+        Only invoked for files in ``_SUBAGENT_COUNTING_SEAM_FILES``
+        (``agents/invoke/_process_reader.py`` and
+        ``agents/invoke/_pty_line_reader.py``). The detector locates
+        the ``_corroborate`` function definition and walks its body
+        for any reference to ``descendant_snapshot``. When found AND
+        the function does NOT also reference the filtered seam
+        (``spawned_subagent_count`` or ``live_subagent_count``), a
+        ``subagent_counting_seam`` violation is raised.
+
+        The wider tree is parsed only when the file is a seam file
+        AND defines ``_corroborate`` -- mirrors the existing
+        pre-filter pattern in :func:`_file_needs_parse`.
+        """
+        if self.rel_path not in _SUBAGENT_COUNTING_SEAM_FILES:
+            return
+        tree = self._tree if self._tree is not None else ast.parse(self.source)
+        target: ast.FunctionDef | None = None
+        # Walk the FULL module (not just ``tree.body``) so the detector
+        # finds ``_corroborate`` whether it is a top-level function or
+        # a method of a class (the production readers define it as a
+        # method of ``_ProcessLineReader`` / ``PtyLineReader``).
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == _SUBAGENT_COUNTING_SEAM_FUNCTION:
+                target = node
+                break
+        if target is None:
+            return
+        # Walk the body for ``descendant_snapshot`` references. The
+        # narrower check (no descendant_snapshot at all) would NOT
+        # flag a future regression that introduced the broader count;
+        # the test asserts the inverse -- the broader count is
+        # forbidden when present without the filtered seam.
+        # Accepts both ``descendant_snapshot(...)`` as a Name (free
+        # function call) AND ``self._handle.descendant_snapshot()`` as
+        # an Attribute access (member call) -- the production code
+        # uses both patterns.
+        uses_rejected = False
+        uses_accepted = False
+        for child in ast.walk(target):
+            if isinstance(child, ast.Name) and child.id == _SUBAGENT_COUNTING_SEAM_REJECTED:
+                uses_rejected = True
+            elif isinstance(child, ast.Name) and child.id in _SUBAGENT_COUNTING_SEAM_ACCEPTED:
+                uses_accepted = True
+            elif (
+                isinstance(child, ast.Attribute)
+                and child.attr == _SUBAGENT_COUNTING_SEAM_REJECTED
+            ):
+                uses_rejected = True
+            elif (
+                isinstance(child, ast.Attribute)
+                and child.attr in _SUBAGENT_COUNTING_SEAM_ACCEPTED
+            ):
+                uses_accepted = True
+        if uses_rejected and not uses_accepted:
+            self._add("subagent_counting_seam", target.lineno)
+
 
 def audit_reader_file(path: Path) -> list[ActivityAwareWatchdogViolation]:
     """Run detectors 1-5 on a single reader-style file.
@@ -454,6 +544,7 @@ def audit_activity_aware_watchdog(package_root: Path) -> list[ActivityAwareWatch
         visitor.visit(tree)
         if rel_path.startswith("agents/invoke/"):
             visitor.finalize_invoke_file()
+        visitor.check_subagent_counting_seam()
         all_violations.extend(visitor.violations)
 
     return all_violations
@@ -486,7 +577,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "_teardown_subtree_if_pid_available) before raise AgentInvocationError "
             "on error/crash paths, and construct DefaultProcessMonitor with "
             "role_classifier=role_classifier_for_transport(...), discovery_strategy=, "
-            "and subagent_pid_source=."
+            "and subagent_pid_source=. Reader corroborators (_corroborate in "
+            "_process_reader.py / _pty_line_reader.py) MUST read "
+            "process_monitor.spawned_subagent_count() (or the legacy alias "
+            "live_subagent_count()) for scoped_child_active -- the broader "
+            "handle.descendant_snapshot() count must NEVER be used for "
+            "deferral decisions (R1)."
         )
         return 1
 

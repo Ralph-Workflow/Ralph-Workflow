@@ -98,6 +98,7 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
     from ralph.agents.timeout_clock import Clock
+    from ralph.process.monitor import ProcessMonitor
 
 type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
 
@@ -323,13 +324,45 @@ class PtyLineReader:
         oldest_child_seconds: float | None = None
         scoped_child_active: bool | None = None
         scoped_child_count: int | None = None
+        # R1 (Trustworthy Idle Watchdog spec): use the FILTERED subagent
+        # count from ``ProcessMonitor.spawned_subagent_count()``
+        # (preferred) instead of the BROADER
+        # ``self._handle.descendant_snapshot()`` count. The broader
+        # count includes shell helpers like ``npm test`` / ``cargo
+        # build`` (the 2365s indefinite deferral bug class). When the
+        # monitor is unavailable (tests /
+        # process_monitor_enabled=False), we fall back to ``None`` so
+        # the watchdog's gate does not see a misleading ``False``
+        # from a default-zero filtered count.
         try:
-            descendant_count, descendant_oldest = self._handle.descendant_snapshot()
-            scoped_child_count = descendant_count
-            scoped_child_active = descendant_count > 0
-            oldest_child_seconds = descendant_oldest
+            monitor: ProcessMonitor | None = getattr(self, "_process_monitor", None)
+            if monitor is not None:
+                filtered_count: int = monitor.spawned_subagent_count()
+                scoped_child_count = filtered_count
+                scoped_child_active = filtered_count > 0
+            else:
+                # Backward-compat fallback (see _process_reader for
+                # the rationale). The broader count is used so legacy
+                # tests using ``descendant_snapshot`` keep working.
+                try:
+                    descendant_count, descendant_oldest = (
+                        self._handle.descendant_snapshot()
+                    )
+                    scoped_child_count = descendant_count
+                    scoped_child_active = descendant_count > 0
+                    oldest_child_seconds = descendant_oldest
+                except Exception:
+                    logger.debug(
+                        "corroborator: PTY descendant_snapshot fallback failed (suppressed)"
+                    )
         except Exception:
-            logger.debug("corroborator: PTY process scan failed (suppressed)")
+            logger.debug("corroborator: PTY process monitor count failed (suppressed)")
+            scoped_child_count = None
+            scoped_child_active = None
+        # Type assertion for mypy: ``scoped_child_count`` is
+        # guaranteed to be int (when the monitor produced a value) or
+        # None (when no monitor was injected or the call raised).
+        scoped_child_count_int: int | None = scoped_child_count
         alive_by: AliveBy | None = None
         registry = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if registry is not None:
@@ -364,7 +397,7 @@ class PtyLineReader:
             last_workspace_event_at=last_workspace_event_at,
             oldest_child_seconds=oldest_child_seconds,
             scoped_child_active=scoped_child_active,
-            scoped_child_count=scoped_child_count,
+            scoped_child_count=scoped_child_count_int,
             terminal_child_events_total=self._terminal_counter[0],
             last_activity_was_meaningful=self._last_meaningful[0],
             alive_by=alive_by,
@@ -1004,6 +1037,13 @@ class PtyLineReader:
             registry=registry,
             scope_prefix=scope_prefix,
         )
+        # R1 (Trustworthy Idle Watchdog spec): store the monitor so
+        # ``_corroborate`` can read the FILTERED subagent count from
+        # ``spawned_subagent_count()`` (preferred) instead of the
+        # broader ``handle.descendant_snapshot()`` count. The monitor
+        # is reset in the ``finally`` block so a stale monitor never
+        # leaks across invocations.
+        self._process_monitor = process_monitor
         self._raw_overflow = RawOverflowLog(
             self._workspace_path or Path.cwd(),
             self._agent_name,

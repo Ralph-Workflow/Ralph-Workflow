@@ -130,6 +130,60 @@ def _reader_source_with_valid_teardown_subtree() -> str:
     )
 
 
+def _process_reader_source_with_descendant_snapshot() -> str:
+    """Source uses descendant_snapshot (NOT the filtered seam).
+
+    Mirrors the production ``_process_reader._corroborate`` pattern but
+    regresses on the R1 subagent-counting seam (R1 of the Trustworthy
+    Idle Watchdog spec): the reader reads the BROADER descendant count
+    from ``self._handle.descendant_snapshot()`` rather than the FILTERED
+    ``process_monitor.spawned_subagent_count()``. The audit must flag
+    this as a ``subagent_counting_seam`` violation.
+    """
+    return (
+        "from ralph.agents.idle_watchdog.corroboration_snapshot import"
+        " CorroborationSnapshot\n"
+        "\n"
+        "class _ProcessLineReader:\n"
+        "    def _corroborate(self, now, idle_elapsed):\n"
+        "        scoped_active = False\n"
+        "        try:\n"
+        "            desc_count, _oldest = self._handle.descendant_snapshot()\n"
+        "            scoped_active = desc_count > 0\n"
+        "        except Exception:\n"
+        "            pass\n"
+        "        return CorroborationSnapshot(\n"
+        "            scoped_child_active=scoped_active,\n"
+        "            oldest_child_seconds=0.0,\n"
+        "        )\n"
+    )
+
+
+def _process_reader_source_with_spawned_subagent_count() -> str:
+    """Source that uses ``spawned_subagent_count`` (the filtered seam) for ``scoped_child_active``.
+
+    This is the canonical pattern from R1 of the Trustworthy Idle
+    Watchdog spec: the reader reads the FILTERED subagent count from
+    ``process_monitor.spawned_subagent_count()``. The audit MUST NOT
+    flag this as a ``subagent_counting_seam`` violation -- the broader
+    ``descendant_snapshot`` count is NOT consulted.
+    """
+    return (
+        "from ralph.agents.idle_watchdog.corroboration_snapshot import"
+        " CorroborationSnapshot\n"
+        "\n"
+        "class _ProcessLineReader:\n"
+        "    def _corroborate(self, now, idle_elapsed):\n"
+        "        scoped_active = False\n"
+        "        if self._process_monitor is not None:\n"
+        "            scoped_active = self._process_monitor.spawned_subagent_count() > 0\n"
+        "        return CorroborationSnapshot(\n"
+        "            scoped_child_active=scoped_active,\n"
+        "            oldest_child_seconds=0.0,\n"
+        "        )\n"
+    )
+
+
 def _reader_source_fully_wired() -> str:
     """A reader that satisfies all six invoke-file invariants."""
     return (
@@ -395,3 +449,44 @@ def test_audit_flags_completion_error_path_missing_teardown(tmp_path: Path) -> N
     assert "error_path_teardown" in categories, f"got {categories}"
     paths = {v.file_path for v in violations}
     assert "agents/invoke/_completion.py" in paths, f"got {paths}"
+
+
+def test_audit_flags_reader_using_descendant_count_for_scoped_child_active(tmp_path: Path) -> None:
+    """R1 audit: a reader using ``descendant_snapshot()`` without the filtered seam is flagged.
+
+    The Trustworthy Idle Watchdog spec requires the reader's
+    ``_corroborate`` to use ``process_monitor.spawned_subagent_count()``
+    (preferred) or ``live_subagent_count()`` (legacy alias) for the
+    FILTERED subagent count. Using ``self._handle.descendant_snapshot()``
+    is the headline regression that produced the 2365s indefinite
+    deferral bug.
+    """
+    package_root = _write_fake_package(tmp_path)
+    bad_module = package_root / "agents" / "invoke" / "_process_reader.py"
+    bad_module.write_text(_process_reader_source_with_descendant_snapshot(), encoding="utf-8")
+
+    violations = audit.audit_activity_aware_watchdog(package_root)
+
+    kinds = {v.category for v in violations}
+    assert "subagent_counting_seam" in kinds, (
+        f"audit must flag descendant_snapshot usage; got kinds: {sorted(kinds)}"
+    )
+
+
+def test_audit_does_not_flag_reader_using_spawned_subagent_count(tmp_path: Path) -> None:
+    """R1 audit: a reader using ``spawned_subagent_count()`` for the filtered seam is clean.
+
+    The canonical pattern (R1) is to read the FILTERED subagent count
+    via ``process_monitor.spawned_subagent_count()``. The audit MUST
+    NOT flag this as a ``subagent_counting_seam`` violation.
+    """
+    package_root = _write_fake_package(tmp_path)
+    good_module = package_root / "agents" / "invoke" / "_process_reader.py"
+    good_module.write_text(_process_reader_source_with_spawned_subagent_count(), encoding="utf-8")
+
+    violations = audit.audit_activity_aware_watchdog(package_root)
+
+    kinds = {v.category for v in violations}
+    assert "subagent_counting_seam" not in kinds, (
+        f"audit must not flag spawned_subagent_count usage; got kinds: {sorted(kinds)}"
+    )

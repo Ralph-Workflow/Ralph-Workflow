@@ -22,6 +22,72 @@ The pre-fix code had a divergent ``elif`` branch in
 (create a new session with this id) for the interactive-Claude path, silently
 turning the resume path into a fresh session. Routing every builder through
 ``config.session_flag`` makes that divergence structurally impossible.
+
+## Resumable session id threading end-to-end (single source of truth)
+
+This module is the contract surface for the resume-after-watchdog-kill path.
+The seven numbered evidence points below trace the resumable session id from
+the watchdog kill to the recovery controller's ``resume`` action. Any future
+PR that touches ONE of these points MUST keep the others consistent so a
+watchdog kill ALWAYS resumes the existing session and never silently starts
+work over:
+
+  1. ``ralph/agents/idle_watchdog_kill.py`` defines
+     ``IdleWatchdogKilledError(reason, signal, *, evidence_summary=None,
+     child_alive=None, resumable_session_id=None)``. The
+     ``resumable_session_id`` kwarg is the canonical carrier of the
+     captured session id; without it the watchdog kill cannot be resumed.
+
+  2. Both ``ralph/agents/invoke/_process_reader.py:615`` and
+     ``ralph/agents/invoke/_pty_line_reader.py:681`` construct
+     ``IdleWatchdogKilledError(..., resumable_session_id=captured_session_id)``
+     in the fire path. The captured id is sourced from
+     ``self._captured_session_id`` which is populated from the visible-TUI
+     extractor or from the agent's ``--session`` flag at invocation start.
+
+  3. ``_convert_idle_stream_timeout_to_agent_error`` (line 144) propagates
+     ``resumable_session_id`` to :class:`AgentInactivityTimeoutError` via
+     ``InactivityTimeoutOpts(resumable_session_id=captured_session_id or
+     expected_session_id, ...)``. The error class exposes
+     ``AgentInactivityTimeoutError.resumable_session_id`` so the classifier
+     and the controller can both read the captured id end-to-end.
+
+  4. ``ralph/recovery/failure_classifier.py`` lines 751-755 contain the
+     ``resumable_kill`` carve-out: when ``watchdog_reason ==
+     "no_output_at_start"`` AND ``resumable_session_id`` is present, the
+     classifier suppresses ``is_unavailable`` (``base_unavailable and not
+     resumable_kill``). This is the bridge that turns a watchdog kill into
+     a retryable resume instead of a chain advance.
+
+  5. ``ralph/recovery/controller.py`` lines 690-692 sets
+     ``state.last_agent_session_id = failure.resumable_session_id`` when
+     ``retry_in_session and failure.resumable_session_id``. The carve-out
+     is mutually exclusive with ``failure.reset_session`` (a stale-session
+     reset clears ``last_agent_session_id`` instead). The downstream
+     ``_apply_chain_retry`` consumer then calls
+     ``resume_agent_retry_intent(state.last_agent_session_id)``.
+
+  6. ``recovery_action_for_failure_reason('AgentInactivityTimeoutError',
+     has_prior_session=True)`` (this module, lines 109-158) returns
+     ``'resume'``. The mapping is narrow and explicit: ONLY
+     ``AgentInactivityTimeoutError`` and ``OpenCodeResumableExitError``
+     with ``has_prior_session=True`` resume the prior session; every
+     other failure reason with a prior session returns ``'fresh'``.
+
+  7. ``fresh_session_options(opts)`` (this module, lines 31-55) returns
+     ``InvokeOptions(session_id=None)`` for deliberate phase transitions
+     only. The ``prior_session_id`` parameter is accepted for
+     forward-compatibility but is NEVER written back into ``session_id``.
+     Resume (``resolve_resume_session_id``) and fresh
+     (``fresh_session_options``) are FUNCTION-SEPARATE so neither path
+     can silently regress into the other.
+
+Lock-in regression test: ``tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py``
+plus the existing
+``tests/agents/idle_watchdog/test_resume_after_kill_contract.py``,
+``test_resume_after_kill_watchdog_boundary.py``, and
+``test_resume_contract_invariant.py`` exercise the seven points above.
+Any change to the resume path MUST keep all four passing.
 """
 
 from __future__ import annotations

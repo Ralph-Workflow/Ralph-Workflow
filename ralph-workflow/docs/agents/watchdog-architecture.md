@@ -373,3 +373,97 @@ The black-box tests that pin the watchdog invariants:
 - `ralph/recovery/controller.py` for the two-rule implementation.
 - `ralph/agents/idle_watchdog/idle_watchdog.py` for the smart-verdict
   gate.
+
+## Subagent identity contract (R1)
+
+The watchdog defers on the **filtered subagent count**, never on the
+broader descendant count. A process is a real subagent iff:
+
+1. It is a live descendant of the supervised agent PID, AND
+2. It is REGISTERED in the shared `SubagentPidRegistry` by the
+   transport's authoritative `SubagentPidSource`.
+
+The canonical owner of the identity contract is
+`ralph/agents/idle_watchdog/_subagent_identity.py` (single source of
+truth for `SubagentIdentity` and `SubagentPidRegistry`). The audit
+`ralph.testing.audit_watchdog_drift.subagent_counting_outside_owner`
+enforces the single-owner invariant so a future PR cannot introduce a
+parallel identity type without updating this owner.
+
+The filtered count is exposed via
+`ProcessMonitor.spawned_subagent_count()` (preferred) and
+`live_subagent_count()` (legacy alias). Both return the count of
+processes classified as `ProcessRole.SPAWNED_SUBAGENT` in the
+monitor's most recent scan. The readers (`_process_reader._corroborate`
+and `_pty_line_reader._corroborate`) MUST use the filtered seam for
+`scoped_child_active` so a shell helper like `npm test`, `cargo build`,
+or `find /` (which IS a descendant but is NOT registered as a real
+subagent) does not block the watchdog's hard ceilings.
+
+The broader `handle.descendant_snapshot()` count MUST NEVER be used for
+the deferral decision. The audit
+`ralph.testing.audit_activity_aware_watchdog.subagent_counting_seam`
+flags any reader that uses `descendant_snapshot` without also using
+the filtered seam as a regression.
+
+## Hard ceilings
+
+The watchdog's hard ceilings fire in this precedence order
+(highest first):
+
+1. **`SESSION_CEILING_EXCEEDED`** — `MAX_SESSION_SECONDS=3300.0` (default
+   from `ralph/timeout_defaults.py`). Operator-set wall-clock cap on
+   the entire session. Activity cannot reset this ceiling. The only
+   reason that bypasses the smart-verdict gate (see
+   `ralph.agents.idle_watchdog._gate.gate_fire`).
+2. **`CHILDREN_PERSIST_TOO_LONG`** — `MAX_WAITING_ON_CHILD_SECONDS=1800.0`
+   cumulative ceiling across the session. Never decays; fires even
+   when non-subagent helper processes are present in the descendant
+   tree (R3 of the Trustworthy Idle Watchdog spec — the 2365s
+   indefinite deferral bug).
+3. **`NO_OUTPUT_DEADLINE`** (with drain window) — idle deadline since
+   last output. Defers when a non-stdout evidence channel
+   (MCP tool call, subagent work, workspace file change) is fresher
+   than `activity_evidence_ttl_seconds`.
+4. **`PROCESS_EXIT_HANG`** — subprocess closed stdout but did not exit
+   within budget (post-exit only, owned by `PostExitWatchdog`).
+5. **`DESCENDANT_HANG`** — descendant-wait deadline elapsed with
+   persistent `WAITING_ON_CHILD` (post-exit only).
+
+The session ceiling is the hard backstop that prevents the
+2365s indefinite deferral observed in the wild (R3). When a non-
+subagent helper process (a shell helper like `npm test`) is alive
+in the descendant tree, the FILTERED subagent count is 0 and the
+session ceiling fires regardless.
+
+## Resume vs restart
+
+Watchdog-driven kills ALWAYS resume the existing session via
+`resumable_session_id`. Fresh sessions are reserved for deliberate
+phase transitions only. The two paths are function-separate:
+
+- **Resume path** — `resolve_resume_session_id(...)` returns the prior
+  session id when `has_prior_session=True` and `recovery_action ==
+  "resume"`. Threaded end-to-end via
+  `IdleWatchdogKilledError.resumable_session_id` →
+  `_convert_idle_stream_timeout_to_agent_error` →
+  `AgentInactivityTimeoutError.resumable_session_id` →
+  `FailureClassifier.resumable_kill` carve-out →
+  `state.last_agent_session_id` →
+  `recovery_action_for_failure_reason(...)` →
+  `resume_agent_retry_intent(...)`.
+- **Fresh path** — `fresh_session_options(opts)` returns
+  `InvokeOptions(session_id=None)` for deliberate phase transitions.
+  The `prior_session_id` parameter is accepted for forward-
+  compatibility but is NEVER written back.
+
+Lock-in regression tests:
+
+- `tests/agents/idle_watchdog/test_resume_after_kill_contract.py`
+- `tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py`
+- `tests/agents/idle_watchdog/test_resume_contract_invariant.py`
+- `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py`
+- `tests/recovery/test_opencode_resumable_exit_classification.py`
+
+See `ralph/agents/invoke/_session_resume.py` for the end-to-end
+threading contract (7 numbered evidence points).

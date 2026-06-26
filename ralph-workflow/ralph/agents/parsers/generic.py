@@ -67,8 +67,9 @@ class GenericParser(NdjsonParserBase):
 
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
 
-    def __init__(self) -> None:
+    def __init__(self, subagent_pid_registry: object = None) -> None:
         super().__init__()
+        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
         self._text_accumulator: TextAccumulator | None = None
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:

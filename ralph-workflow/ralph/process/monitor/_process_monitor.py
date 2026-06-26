@@ -49,10 +49,60 @@ class ProcessMonitor(Protocol):
     2. What output streams (if any) are observable for those subagents?
 
     Implementations may use psutil, OS-specific APIs, or test fakes.
+
+    Subagent counting contract (R1, Trustworthy Idle Watchdog spec):
+
+        ``spawned_subagent_count()`` (preferred) and the legacy alias
+        ``live_subagent_count()`` BOTH return the FILTERED count of
+        processes classified as :class:`ProcessRole.SPAWNED_SUBAGENT`
+        (the authoritative "real subagent" set, sourced from the
+        ``SubagentPidSource`` registered with the monitor and/or the
+        transport's role classifier).
+
+        The FILTERED count is the ONLY count the watchdog defers on
+        for the ``WAITING_ON_CHILD`` branch and the
+        ``CHILDREN_PERSIST_TOO_LONG`` ceiling. The BROADER descendant
+        count from ``handle.descendant_snapshot()`` (which includes
+        agent-spawned shell helpers like ``npm test``, ``cargo build``,
+        ``find /``, MCP server internals, transport spawns) MUST
+        NEVER be used for the deferral decision -- counting those as
+        ``children`` is the bug that produced the 2365s indefinite
+        deferral in the product spec (R3). See
+        ``ralph/agents/idle_watchdog/_subagent_identity.py`` for the
+        canonical ``SubagentIdentity`` / ``SubagentPidRegistry`` types
+        and the audit
+        ``ralph/testing/audit_activity_aware_watchdog.subagent_counting_seam``
+        that enforces the seam.
     """
 
     def live_subagent_count(self) -> int:
-        """Return the number of currently live spawned subagents."""
+        """Return the number of currently live spawned subagents.
+
+        Deprecated alias for :meth:`spawned_subagent_count`; both
+        methods return the SAME filtered count over
+        ``ProcessRole.SPAWNED_SUBAGENT``. New callers should prefer
+        ``spawned_subagent_count`` for clarity at the call site. The
+        alias is preserved for backward compatibility with existing
+        callers in ``_waiting_branch.py`` and ``_activity_methods.py``
+        that continue to call ``live_subagent_count``.
+        """
+        ...
+
+    def spawned_subagent_count(self) -> int:
+        """Return the number of currently live spawned subagents (FILTERED count).
+
+        Preferred name for the filtered subagent count. Same return
+        value as ``live_subagent_count()`` -- both return the count
+        of processes classified as ``ProcessRole.SPAWNED_SUBAGENT``.
+
+        The readers (``_process_reader._corroborate`` and
+        ``_pty_line_reader._corroborate``) MUST use this name at
+        the call site so the intent -- "count real subagents, not
+        the broader descendant tree" -- is unambiguous. The audit
+        ``ralph.testing.audit_activity_aware_watchdog`` flags any
+        reader that falls back to ``handle.descendant_snapshot()``
+        as a regression.
+        """
         ...
 
     def classified_processes(self) -> tuple[ClassifiedProcess, ...]:

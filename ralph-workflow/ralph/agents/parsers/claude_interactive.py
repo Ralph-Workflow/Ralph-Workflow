@@ -20,11 +20,14 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 
 class ClaudeInteractiveParser:
     """Convert interactive Claude transcript lines into AgentOutputLine events."""
 
-    def __init__(self) -> None:
+    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
+        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
         self._parser = ClaudeInteractiveTranscriptParser()
         self._text_accumulator = TextAccumulator()
         self._thinking_accumulator = TextAccumulator()

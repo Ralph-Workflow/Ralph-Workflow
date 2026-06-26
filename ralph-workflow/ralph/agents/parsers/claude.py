@@ -15,6 +15,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 _CLAUDE_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^claude(?:/[^:\s]+)?(?=[ :]|$)")
 
 _CLAUDE_TOP_LEVEL_LIFECYCLE: Final[frozenset[str]] = frozenset(
@@ -53,8 +55,9 @@ class ClaudeParser(NdjsonParserBase):
         and drives the per-content-block accumulator state.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
         super().__init__()
+        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
         self._text_accumulator: dict[  # bounded-accumulator-ok: drained
     tuple[str, int], TextAccumulator
 ] = {}

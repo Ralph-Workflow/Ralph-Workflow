@@ -603,6 +603,15 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
         # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
         no_progress_quiet_seconds=None,
+        # R1 (Trustworthy Idle Watchdog spec): the filtered subagent
+        # count is the canonical signal, not the broader descendant
+        # count. The handle's ``descendant_count=1`` represents a live
+        # descendant that is NOT registered as a subagent (it is an
+        # INCIDENTAL_HELPER). Disable the process monitor so the
+        # fallback path (which still reads ``descendant_snapshot``)
+        # is the source of ``scoped_child_active`` for this legacy
+        # test of the no-progress ceiling branch.
+        process_monitor_enabled=False,
     )
     clock = FakeClock(start=0.0)
 
@@ -852,6 +861,13 @@ def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() 
         # Disable OS-descendant-only ceiling (its default is larger than max_waiting)
         os_descendant_only_ceiling_seconds=None,
         no_progress_quiet_seconds=None,
+        # R1 (Trustworthy Idle Watchdog spec): disable the process
+        # monitor so the fallback path (which reads ``descendant_snapshot``)
+        # is the source of ``scoped_child_active`` for this legacy
+        # test of the no-progress ceiling branch. See the parallel
+        # change in ``test_no_progress_ceiling_fires_on_stale_child_liveness``
+        # for the full rationale.
+        process_monitor_enabled=False,
     )
     clock = FakeClock(start=0.0)
     _reader_release = threading.Event()

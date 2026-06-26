@@ -134,7 +134,27 @@ class DefaultProcessMonitor(ProcessMonitor):
         self._processes = tuple(classified)
 
     def live_subagent_count(self) -> int:
-        """Return the number of live spawned subagents."""
+        """Return the number of live spawned subagents.
+
+        Deprecated alias for :meth:`spawned_subagent_count`. Both methods
+        return the same FILTERED count over
+        ``ProcessRole.SPAWNED_SUBAGENT``. New callers should prefer
+        ``spawned_subagent_count`` for clarity at the call site.
+        """
+        return self.spawned_subagent_count()
+
+    def spawned_subagent_count(self) -> int:
+        """Return the number of currently live spawned subagents (filtered count).
+
+        Preferred over :meth:`live_subagent_count` for clarity at the
+        call site. Same return value: the count of processes classified
+        as ``ProcessRole.SPAWNED_SUBAGENT`` in the most recent scan.
+        The filtered count is the only count the watchdog defers on
+        for the ``WAITING_ON_CHILD`` branch and the
+        ``CHILDREN_PERSIST_TOO_LONG`` ceiling (R1, Trustworthy Idle
+        Watchdog spec). See ``_process_monitor.ProcessMonitor`` for
+        the full contract.
+        """
         self.refresh()
         return sum(1 for p in self._processes if p.role == ProcessRole.SPAWNED_SUBAGENT)
 

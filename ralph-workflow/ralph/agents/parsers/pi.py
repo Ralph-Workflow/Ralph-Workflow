@@ -646,8 +646,9 @@ class PiParser(NdjsonParserBase):
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
 
-    def __init__(self) -> None:
+    def __init__(self, subagent_pid_registry: object = None) -> None:
         super().__init__()
+        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self.saw_text_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared
         self.saw_thinking_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared

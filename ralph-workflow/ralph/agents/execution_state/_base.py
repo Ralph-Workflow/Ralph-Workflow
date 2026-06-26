@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.child_liveness import ChildLivenessRegistry
     from ralph.process.liveness import LivenessProbe
+    from ralph.process.monitor import SubagentPidSource
 
     from ._live_descendant_handle import _LiveDescendantHandle
 
@@ -52,9 +53,23 @@ class BaseExecutionStrategy:
         *,
         label_scope: str | None = None,
         registry: ChildLivenessRegistry | None = None,
+        subagent_pid_source: SubagentPidSource | None = None,
     ) -> None:
         self._label_scope = label_scope
         self._registry = registry
+        # Optional injected SubagentPidSource (the FILTERED PID source
+        # from the watchdog's perspective -- ``known_subagent_pids()``
+        # returns the set of REAL subagents, NOT the broader
+        # ``descendant_snapshot()`` count). When ``self._registry`` is
+        # set (OpenCode path), the registry wins. When ``self._registry``
+        # is None but ``self._subagent_pid_source`` is set, this is a
+        # registry-aware non-OpenCode transport (Claude / Pi / Codex /
+        # Gemini / Generic / Agy / Claude-interactive); the filtered
+        # count is the canonical signal. When neither is set, the
+        # legacy ``_LiveDescendantHandle.has_live_descendants()``
+        # fallback wins for backward compatibility with non-instrumented
+        # tests.
+        self._subagent_pid_source = subagent_pid_source
 
     def observe_line(self, line: str) -> None:
         """Observe a raw provider line and route child signals to the subagent sink.
@@ -111,6 +126,38 @@ class BaseExecutionStrategy:
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         del liveness_probe
+        # OpenCode path: when a ChildLivenessRegistry is wired into the
+        # strategy, the registry is the authoritative real-subagent
+        # signal (the registry is updated from OpenCode's structured
+        # child lifecycle events). Preserve existing behavior so the
+        # existing OpenCode regression tests keep passing.
+        if self._registry is not None:
+            if hasattr(handle, "has_live_descendants"):
+                try:
+                    if bool(handle.has_live_descendants()):
+                        return AgentExecutionState.WAITING_ON_CHILD
+                except Exception:
+                    pass
+            return AgentExecutionState.ACTIVE
+        # Non-OpenCode, registry-aware path: when a SubagentPidSource is
+        # injected (e.g. via the per-transport factory helpers from
+        # ``ralph.process.monitor._subagent_pid_source_providers``), the
+        # FILTERED count is the canonical signal. The source returns
+        # the set of REAL subagent PIDs -- never the broader
+        # ``descendant_snapshot()`` count which includes shell helpers
+        # like ``npm test`` / ``cargo build`` (the 2365s indefinite
+        # deferral bug from the product spec).
+        if self._subagent_pid_source is not None:
+            try:
+                pids = self._subagent_pid_source.known_subagent_pids()
+            except Exception:
+                pids = set()
+            if pids:
+                return AgentExecutionState.WAITING_ON_CHILD
+            return AgentExecutionState.ACTIVE
+        # Legacy fallback (no registry, no injected source): keep the
+        # previous ``has_live_descendants()`` behavior for
+        # backward-compatible tests that pre-date the registry seam.
         if hasattr(handle, "has_live_descendants"):
             try:
                 if bool(handle.has_live_descendants()):

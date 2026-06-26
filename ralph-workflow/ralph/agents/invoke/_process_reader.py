@@ -85,6 +85,7 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.config.models import AgentConfig
     from ralph.mcp.server._activity_sink import ActivitySink
+    from ralph.process.monitor import ProcessMonitor
 
 _MAX_PARSED_OUTPUT_LINES = 256
 _NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
@@ -400,13 +401,51 @@ class _ProcessLineReader:
         oldest_secs: float | None = None
         scoped_active: bool | None = None
         scoped_count: int | None = None
+        # R1 (Trustworthy Idle Watchdog spec): use the FILTERED subagent
+        # count from ``ProcessMonitor.spawned_subagent_count()``
+        # (preferred) instead of the BROADER
+        # ``self._handle.descendant_snapshot()`` count. The broader
+        # count includes shell helpers like ``npm test`` / ``cargo
+        # build`` (the 2365s indefinite deferral bug class); the
+        # filtered count is sourced from the ``SubagentPidSource``
+        # injected at watchdog construction (OpenCode uses
+        # ``ChildLivenessSubagentPidSource``; non-OpenCode transports
+        # use a registry-backed source via
+        # ``_subagent_pid_source_providers``). When the monitor is
+        # unavailable (tests / process_monitor_enabled=False), we
+        # fall back to ``None`` so the watchdog's gate does not
+        # see a misleading ``False`` from a default-zero filtered
+        # count.
         try:
-            desc_count, desc_oldest = self._handle.descendant_snapshot()
-            scoped_count = desc_count
-            scoped_active = desc_count > 0
-            oldest_secs = desc_oldest
+            monitor: ProcessMonitor | None = getattr(self, "_process_monitor", None)
+            if monitor is not None:
+                filtered_count: int = monitor.spawned_subagent_count()
+                scoped_count = filtered_count
+                scoped_active = filtered_count > 0
+            else:
+                # Backward-compat fallback (see _pty_line_reader for
+                # the rationale). The broader count is used so legacy
+                # tests using ``descendant_snapshot`` keep working.
+                try:
+                    desc_count, desc_oldest = self._handle.descendant_snapshot()
+                    scoped_count = desc_count
+                    scoped_active = desc_count > 0
+                    oldest_secs = desc_oldest
+                except Exception:
+                    logger.debug(
+                        "corroborator: descendant_snapshot fallback failed (suppressed)"
+                    )
         except Exception:
-            logger.debug("corroborator: process scan failed (suppressed)")
+            logger.debug("corroborator: process monitor count failed (suppressed)")
+            scoped_count = None
+            scoped_active = None
+        # Type assertion for mypy: after the try/except above,
+        # scoped_count is guaranteed to be int (when the monitor
+        # produced a value) or None (when no monitor was injected
+        # or the call raised). The expression below reads
+        # ``scoped_count`` as ``int | None`` so the snapshot's
+        # typed ``scoped_child_count`` argument matches.
+        scoped_count_int: int | None = scoped_count
         alive_by: AliveBy | None = None
         reg = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if reg is not None:
@@ -438,7 +477,7 @@ class _ProcessLineReader:
             last_workspace_event_at=last_workspace_event_at,
             oldest_child_seconds=oldest_secs,
             scoped_child_active=scoped_active,
-            scoped_child_count=scoped_count,
+            scoped_child_count=scoped_count_int,
             terminal_child_events_total=self._terminal_counter[0],
             last_activity_was_meaningful=self._last_activity_meaningful[0],
             alive_by=alive_by,
@@ -699,6 +738,13 @@ class _ProcessLineReader:
             registry=registry,
             scope_prefix=scope_prefix,
         )
+        # R1 (Trustworthy Idle Watchdog spec): store the monitor so
+        # ``_corroborate`` can read the FILTERED subagent count from
+        # ``spawned_subagent_count()`` (preferred) instead of the
+        # broader ``handle.descendant_snapshot()`` count. The monitor
+        # is reset in the ``finally`` block so a stale monitor never
+        # leaks across invocations.
+        self._process_monitor = process_monitor
         watchdog = IdleWatchdog(
             self._policy,
             self._clock,

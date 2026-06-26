@@ -67,8 +67,9 @@ class AgyParser(NdjsonParserBase):
     :class:`TextAccumulator` into coherent blocks.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, subagent_pid_registry: object = None) -> None:
         super().__init__()
+        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
         self._text_accumulator: TextAccumulator | None = None
         self._has_prior_text_line: bool = False
 
