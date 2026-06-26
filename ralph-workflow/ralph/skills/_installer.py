@@ -315,9 +315,39 @@ def install_project_baseline_skills(
           (``sibling-conflict-*`` / ``sibling-materialize-failed-*``) is
           appended to a flat ``failures`` list.
 
+    CONTAINMENT GATE: a pre-flight ``_project_root_outside_workspace``
+    check runs FIRST (before any conflict detection, materialize, or
+    sibling fan-out). When the canonical (``.opencode/skills``) or any
+    sibling root resolves OUTSIDE ``workspace_root`` (e.g. the user
+    pre-created ``./.agents`` as a symlink to an external directory),
+    the install returns ``NEEDS_REPAIR`` with a single
+    ``skills-outside-workspace-<segment>`` failure code and DOES NOT
+    touch the filesystem. The user must manually remove the misdirected
+    symlink before the install can run safely. This prevents the
+    pre-pipeline sync from silently writing skill files into a
+    directory outside the project workspace.
+
     Returns ``(CapabilityEntry, failures)`` — the failures list is NEVER a
-    mix of canonical and sibling codes.
+    mix of canonical and sibling codes (the containment gate uses its
+    own dedicated code family).
     """
+    # Containment gate (analyzed bug): fail closed BEFORE any filesystem
+    # mutation when a pre-existing project skill root (canonical OR
+    # sibling) resolves outside ``workspace_root``. A symlink at
+    # ``workspace_root/.opencode`` (or any sibling root) pointing to an
+    # external directory would otherwise cause the install to silently
+    # write skill files into that external directory and return
+    # INSTALLED_HEALTHY. The user must manually remove the misdirected
+    # symlink before this function can run safely.
+    containment_failure = _project_root_outside_workspace(workspace_root)
+    if containment_failure is not None:
+        return (
+            CapabilityEntry(
+                status=CapabilityStatus.NEEDS_REPAIR,
+                last_check_fail_iso=_now_iso(),
+            ),
+            [containment_failure],
+        )
     canonical = project_skill_root(workspace_root)
     canonical_failures = _find_conflicts(canonical)
     if canonical_failures:
@@ -408,6 +438,57 @@ def self_improving_skills_hook(*, workspace_root: Path, canonical_root: Path) ->
     return None
 
 
+def _resolve_within_workspace(path: Path, workspace_root: Path) -> Path | None:
+    """Resolve ``path`` and verify it stays within ``workspace_root``.
+
+    Returns the resolved path when containment holds; ``None`` when
+    ``path`` resolves to a location outside ``workspace_root`` (e.g. a
+    pre-existing project skill root is a symlink to an external directory,
+    or the workspace_root itself cannot be resolved).
+
+    Uses ``Path.resolve(strict=False)`` on BOTH sides so macOS
+    ``/tmp`` -> ``/private/tmp`` symlink indirection is normalized
+    before the comparison. Returns ``None`` on ``OSError`` so a broken
+    state never propagates and silently bypasses the safety check.
+    """
+    try:
+        workspace_resolved = workspace_root.resolve(strict=False)
+        path_resolved = path.resolve(strict=False)
+    except OSError:
+        return None
+    if path_resolved == workspace_resolved:
+        return path_resolved
+    try:
+        path_resolved.relative_to(workspace_resolved)
+    except ValueError:
+        return None
+    return path_resolved
+
+
+def _project_root_outside_workspace(
+    workspace_root: Path,
+) -> str | None:
+    """Return a failure code when a project skill root resolves outside the workspace.
+
+    Iterates the canonical (``.opencode/skills``) AND every sibling root
+    (``project_sibling_skill_roots``) and returns the first
+    ``skills-outside-workspace-<segment>`` code it finds. Returns ``None``
+    when every root resolves within the workspace. Used by BOTH
+    ``install_project_baseline_skills`` (to fail-closed before any
+    filesystem mutation) and ``_project_skills_need_install`` (to surface
+    the misdirected tree as needing repair).
+    """
+    canonical = project_skill_root(workspace_root)
+    if _resolve_within_workspace(canonical, workspace_root) is None:
+        return "skills-outside-workspace-canonical"
+    for sibling in project_sibling_skill_roots(workspace_root):
+        sibling_root = sibling.resolve(workspace_root)
+        if _resolve_within_workspace(sibling_root, workspace_root) is None:
+            segment = "/".join(sibling.path_segments)
+            return f"skills-outside-workspace-{segment}"
+    return None
+
+
 def _project_skills_need_install(workspace_root: Path) -> bool:
     """Return True when the project-scope install should run.
 
@@ -415,25 +496,65 @@ def _project_skills_need_install(workspace_root: Path) -> bool:
     (PA-005: an ``is_dir()`` check explicitly guards the silent-misclassification
     case where a regular file sits at the canonical path), every baseline
     skill must have a SKILL.md under the canonical, and every baseline
-    skill must be a symlink under every project sibling.
+    skill must be a symlink under every project sibling AND that
+    symlink must point to the canonical skill entry for the same skill.
+
+    Two NEW containment / target checks added for the external-symlink
+    and wrong-target regression coverage (analysis feedback):
+
+      1. CONTAINMENT (analyzed bug): every project skill root
+         (``.opencode/skills`` AND every sibling) MUST resolve within
+         ``workspace_root``. A pre-existing symlink that points outside
+         the workspace is treated as 'install needed' so the repair
+         path fires and the symlink can be replaced. Mirrored by
+         ``install_project_baseline_skills`` which fails closed as
+         NEEDS_REPAIR (the user must manually fix the misdirected
+         symlink before the install can run safely).
+
+      2. WRONG-TARGET (analyzed bug): every sibling skill symlink MUST
+         resolve to the canonical skill entry for the same skill name.
+         A sibling symlink pointing at a wrong canonical (e.g. a stale
+         or malicious target) is treated as 'install needed' so the
+         repair path re-creates the symlink.
     """
+    reasons: list[str] = []
+    _collect_project_skills_reasons(workspace_root, reasons)
+    return bool(reasons)
+
+
+def _collect_project_skills_reasons(workspace_root: Path, reasons: list[str]) -> None:
+    """Append a reason string for every predicate miss in ``_project_skills_need_install``.
+
+    The predicate is 'install needed when at least one reason is present'.
+    Splitting collection from the boolean return keeps the per-check
+    semantics clear and lets the caller surface a list of missing pieces
+    for diagnostics without duplicating the iteration logic.
+    """
+    if _project_root_outside_workspace(workspace_root) is not None:
+        reasons.append("root-outside-workspace")
     canonical = project_skill_root(workspace_root)
     if not canonical.is_dir():
-        return True
+        reasons.append("canonical-not-directory")
+        return
     if not _root_metadata_valid(canonical):
-        return True
+        reasons.append("canonical-metadata-invalid")
     for name in BASELINE_SKILL_NAMES:
         if not (canonical / name / "SKILL.md").exists():
-            return True
+            reasons.append(f"canonical-skill-missing-{name}")
+            continue
         if not _root_skill_marker_valid(canonical, name):
-            return True
+            reasons.append(f"canonical-marker-invalid-{name}")
+    canonical_resolved = canonical.resolve()
     for sibling in project_sibling_skill_roots(workspace_root):
         sibling_root = sibling.resolve(workspace_root)
         for name in BASELINE_SKILL_NAMES:
             sibling_dir = sibling_root / name
             if not sibling_dir.is_symlink():
-                return True
-    return False
+                reasons.append(f"sibling-not-symlink-{sibling.agent}-{name}")
+                continue
+            canonical_target = (canonical_resolved / name).resolve()
+            if sibling_dir.resolve() != canonical_target:
+                reasons.append(f"sibling-wrong-target-{sibling.agent}-{name}")
 
 
 def _root_metadata_valid(resolved: Path) -> bool:
@@ -490,9 +611,12 @@ def check_skills_update_available() -> bool:
 
 
 __all__ = [
+    "_collect_project_skills_reasons",
     "_mirror_baseline_skills_to_siblings",
     "_mirror_skill_to_sibling_root",
+    "_project_root_outside_workspace",
     "_project_skills_need_install",
+    "_resolve_within_workspace",
     "check_skills_update_available",
     "install_baseline_skills",
     "install_project_baseline_skills",
