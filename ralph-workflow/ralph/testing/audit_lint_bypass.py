@@ -107,6 +107,8 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("pydantic_validation_errors", "PLR0911"),
     ("_command_builders", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
     ("_runtime_resolvers", "PLC0415"),  # lazy import enables test monkeypatching of invoke module
+    # _media_io.py: global state for periodic prune counter (wt-024 AC-10).
+    ("_media_io", "PLW0603"),
     # __init__ modules use lazy imports to avoid circular deps; targeted per-file
     ("__init__", "PLC0415"),
     # __init__ modules intentionally order __all__ for discoverability (e.g.

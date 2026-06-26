@@ -803,6 +803,17 @@ class PtyLineReader:
         self._monitor_stop.set()
         with contextlib.suppress(Exception):
             self._handle.close()
+        # Mirrors the watchdog-fire path at _check_fire (lines 571-574):
+        # terminate the child gracefully and tear down its descendant tree
+        # so a Ctrl-C / BaseException does not leave child agents running.
+        # All calls are idempotent and wrapped in suppress() so a wedged
+        # close/terminate cannot leak the teardown.
+        with contextlib.suppress(Exception):
+            self._handle.terminate(grace_period_s=0.5)
+        pid = cast("int | None", getattr(self._handle, "pid", None))
+        if pid is not None:
+            with contextlib.suppress(Exception):
+                teardown_subtree(pid)
 
     def _cleanup(
         self,

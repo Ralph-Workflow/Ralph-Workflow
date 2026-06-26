@@ -16,10 +16,12 @@ from typing import cast
 
 import pytest
 
+import ralph.mcp.server._saturated_dispatch as _saturated_dispatch_mod
 from ralph.mcp.server import _saturated_dispatch
 from ralph.mcp.server._mcp_restart_policy import McpRestartPolicy
 from ralph.mcp.server._mcp_server_error import McpServerError
 from ralph.mcp.server.lifecycle import RestartAwareMcpBridge
+from ralph.mcp.websearch import _bounded_sdk_call
 
 
 class _FakeProcess:
@@ -208,3 +210,100 @@ def test_saturated_dispatch_overflow_returns_saturation_response() -> None:
         assert result.message == _saturated_dispatch.SATURATION_MESSAGE
     finally:
         isolated.shutdown()
+
+
+def test_singleton_atexit_shutdown_calls_executor_shutdown() -> None:
+    """The atexit hook for the saturated-dispatch singleton must call
+    ``executor.shutdown(wait=False)`` on the CURRENT singleton so a
+    wedged worker cannot stall interpreter exit (AC-03).
+
+    We do not want the production hook to fire during the test
+    (it would tear down the singleton and break subsequent tests).
+    Instead we call the registered hook callback directly via the
+    module-level ``atexit.register`` symbol.
+    """
+    shutdown_calls: list[bool] = []
+
+    class _RecordingExecutor:
+        _max_workers: int = 1
+
+        def shutdown(self, wait: bool = True) -> None:
+            shutdown_calls.append(wait)
+
+    # Force the singleton to install a real executor first.
+    _saturated_dispatch.submit(lambda: 1)
+    # Then swap in a recording executor that tracks the shutdown args.
+    recording = _RecordingExecutor()
+    _saturated_dispatch._default_dispatch.install_executor(
+        cast("concurrent.futures.ThreadPoolExecutor", recording)
+    )
+
+    # Invoke the registered atexit hook directly.
+    assert callable(_saturated_dispatch._atexit_shutdown)
+    _saturated_dispatch._atexit_shutdown()
+
+    # The recording executor must have been shut down with wait=False.
+    assert shutdown_calls == [False], (
+        f"atexit hook must call executor.shutdown(wait=False); got {shutdown_calls!r}"
+    )
+
+    # Restore the singleton so subsequent tests see a fresh executor.
+    _saturated_dispatch.reset_default()
+
+
+def test_bounded_sdk_call_singleton_atexit_shutdown() -> None:
+    """The atexit hook for the bounded-sdk-call singleton must call
+    ``executor.shutdown(wait=False)`` on the CURRENT singleton.
+    """
+    shutdown_calls: list[bool] = []
+
+    class _RecordingExecutor:
+        _max_workers: int = 1
+
+        def shutdown(self, wait: bool = True) -> None:
+            shutdown_calls.append(wait)
+
+    # The bounded-sdk-call singleton is lazy — trigger materialization
+    # by running a single submit with a non-None timeout.
+    _bounded_sdk_call.with_timeout(lambda: 1, 5.0)
+    recording = _RecordingExecutor()
+    _bounded_sdk_call._default_call.install_executor(
+        cast("concurrent.futures.ThreadPoolExecutor", recording)
+    )
+
+    assert callable(_bounded_sdk_call._atexit_shutdown)
+    _bounded_sdk_call._atexit_shutdown()
+
+    assert shutdown_calls == [False], (
+        f"atexit hook must call executor.shutdown(wait=False); got {shutdown_calls!r}"
+    )
+
+    _bounded_sdk_call.reset_default()
+
+
+def test_singleton_atexit_uses_current_singleton_not_captured() -> None:
+    """The atexit hook must look up the CURRENT singleton at call time
+    (not capture it at registration) so test-driven install_executor swaps
+    are respected on interpreter exit (AC-03 acceptance criterion).
+    """
+    shutdown_calls: list[bool] = []
+
+    class _RecordingExecutor:
+        _max_workers: int = 1
+
+        def shutdown(self, wait: bool = True) -> None:
+            shutdown_calls.append(wait)
+
+    recording = _RecordingExecutor()
+    fresh = _saturated_dispatch._SaturatedDispatch(max_workers=1)
+    fresh.install_executor(cast("concurrent.futures.ThreadPoolExecutor", recording))
+    _saturated_dispatch_mod._default_dispatch = fresh
+
+    try:
+        _saturated_dispatch._atexit_shutdown()
+        assert shutdown_calls == [False], (
+            f"atexit hook must use current singleton; got {shutdown_calls!r}"
+        )
+    finally:
+        _saturated_dispatch.reset_default()
+        _saturated_dispatch_mod._default_dispatch = _saturated_dispatch._SaturatedDispatch()

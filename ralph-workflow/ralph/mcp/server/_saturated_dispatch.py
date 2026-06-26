@@ -29,7 +29,9 @@ The helper exposes two free functions:
 
 from __future__ import annotations
 
+import atexit
 import concurrent.futures
+import contextlib
 import logging
 import threading
 from dataclasses import dataclass
@@ -147,6 +149,33 @@ class _SaturatedDispatch:
 
 
 _default_dispatch = _SaturatedDispatch()
+
+#: Guard flag for the atexit hook. Set True after the first
+#: ``atexit.register`` call so a re-import does not stack duplicate
+#: hooks (mirrors the pattern at ralph/process/manager/_singleton.py).
+_atexit_registered: bool = False
+
+
+def _atexit_shutdown() -> None:
+    """Interpreter-exit hook: shut down the CURRENT singleton executor.
+
+    Uses ``wait=False`` so a wedged worker cannot stall interpreter
+    exit (AC-03). Looks up the current ``_default_dispatch`` at call
+    time (NOT at registration) so test-driven ``install_executor``
+    swaps are respected on interpreter exit.
+
+    Mirrors the pattern at ``ralph/process/manager/_singleton.py``:
+    the hook is registered lazily via a guarded ``_atexit_registered``
+    flag set True after the first ``atexit.register`` call so a
+    re-import does not stack duplicate hooks.
+    """
+    with contextlib.suppress(BaseException):
+        _default_dispatch.shutdown(wait=False)
+
+
+if not _atexit_registered:
+    atexit.register(_atexit_shutdown)
+    _atexit_registered = True
 
 
 def submit[T](callable_: Callable[[], T]) -> T | SaturatedResponse:

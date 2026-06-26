@@ -88,6 +88,11 @@ _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
     ("_factory", "misc"),
     ("_factory", "attr-defined"),
     ("__init__", "misc"),
+    # _managed_async_process.py: stdin/stdout/stderr transport close on
+    # a dynamically-loaded proc object (the protocol type narrows to
+    # StreamReader/StreamWriter at the boundary but pipe is typed as
+    # object for the defensive close loop).
+    ("_managed_async_process", "attr-defined"),
 }
 
 # Policy-compliant reason markers (must appear on the same logical line

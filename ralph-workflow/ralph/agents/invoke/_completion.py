@@ -25,6 +25,42 @@ from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.teardown import teardown_subtree
 from ralph.recovery.failure_classifier import FailureClassifier
 
+#: Hard upper bound on the bytes captured from the subprocess stderr pipe on
+#: a non-zero exit. A crashing agent that spews megabytes of traceback to
+#: stderr otherwise OOMs the parent. 64 KiB is generous for any human-readable
+#: error frame and matches typical subprocess ``stderr=capture`` defaults in
+#: the Python ecosystem. When the pipe holds more than this, the captured
+#: string is truncated and a ``[stderr truncated: <N> more bytes]`` marker
+#: is appended so an operator can still see the truncation (AC-05).
+_MAX_STDERR_CAPTURE_BYTES: int = 64 * 1024
+
+
+def _truncation_marker(capped_bytes: int) -> str:
+    """Return the canonical truncation marker used when the stderr pipe holds
+    more bytes than the cap."""
+    return f"\n[stderr truncated: more than {capped_bytes} bytes]"
+
+
+def _bounded_read(pipe: IO[str]) -> str:
+    """Read at most ``_MAX_STDERR_CAPTURE_BYTES`` from ``pipe`` and append a
+    truncation marker if more was available.
+
+    The pipe's ``read(size)`` MUST be passed a positive int — calling
+    ``read()`` or ``read(-1)`` would be unbounded. The probe for "more was
+    available" is a single 1-byte peek AFTER the cap is reached: if it
+    succeeds, the pipe is non-empty and we append the marker; otherwise the
+    cap read was the entire payload.
+    """
+    chunk = pipe.read(_MAX_STDERR_CAPTURE_BYTES)
+    if len(chunk) >= _MAX_STDERR_CAPTURE_BYTES:
+        # Probe one more byte: a successful 1-byte read means the pipe
+        # held more than the cap; a 0-byte read means the cap was exact.
+        probe = pipe.read(1)
+        if probe:
+            chunk = chunk + _truncation_marker(_MAX_STDERR_CAPTURE_BYTES)
+    return chunk
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
@@ -224,7 +260,11 @@ def _check_process_result(
     returncode = int(handle.returncode or 0)
     if returncode != 0:
         stderr_pipe = cast("IO[str] | None", getattr(handle, "stderr", None))
-        stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
+        stderr = (
+            _bounded_read(stderr_pipe)
+            if stderr_pipe is not None
+            else "(unable to read stderr)"
+        )
         exc = AgentInvocationError(
             agent_name,
             returncode,

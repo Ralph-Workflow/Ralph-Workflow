@@ -379,9 +379,26 @@ class TestHandleReadMedia:
         assert sum(path.stat().st_size for path in cache_files) <= 32
 
         registry_path = tmp_path / ".agent" / "tmp" / "media_registry.json"
+
+        # The registry is pruned periodically (every _MEDIA_PRUNE_INTERVAL=32
+        # adds) rather than on every add to avoid O(N^2) maintenance cost.
+        # Drive enough additional adds to trigger the prune tick, then
+        # verify the stale "a.pdf" entry has been dropped from the
+        # registry artifact list (semantics preserved exactly).
+        for i in range(media_io._MEDIA_PRUNE_INTERVAL):
+            extra_path = tmp_path / f"extra_{i}.pdf"
+            extra_path.write_bytes(b"x" * 20 + i.to_bytes(1, "big"))
+            handle_read_media(session, ws, {"path": f"extra_{i}.pdf"})
+
         registry = json.loads(registry_path.read_text(encoding="utf-8"))
         artifacts = registry["artifacts"]
-        assert [artifact["title"] for artifact in artifacts] == ["b.pdf"]
+        titles = [artifact["title"] for artifact in artifacts]
+        assert "a.pdf" not in titles, (
+            f"periodic prune should drop the stale a.pdf entry; got titles={titles!r}"
+        )
+        assert any(t.startswith("extra_") for t in titles), (
+            f"recent extra_N.pdf entries must remain after prune; got titles={titles!r}"
+        )
 
     def test_resource_reference_repeated_same_file_replaces_live_session_entry(
         self, tmp_path: Path

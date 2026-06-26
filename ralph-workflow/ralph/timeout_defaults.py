@@ -114,6 +114,17 @@ REPEATED_ERROR_WINDOW_SECONDS: float | None = 600.0
 #: vendor submodules). The process tree is killed on expiry.
 GIT_SUBPROCESS_TIMEOUT_SECONDS: float = 120.0
 
+#: Default cap (bytes) on git stdout/stderr captured by
+#: ``ralph.git.subprocess_runner.run_git`` when a caller does not opt into a
+#: custom value via ``GitRunOptions.output_limit_bytes``. A massive
+#: ``git log`` / ``git diff`` / ``git status`` against a huge vendor submodule
+#: would otherwise buffer the entire payload in memory. 10 MiB matches the
+#: existing ``SPILL_OUTPUT_LIMIT_BYTES`` precedent at
+#: ``ralph/mcp/tools/_exec_output_spill.py:33`` and is well above any
+#: realistic single-file diff. Callers that need to opt OUT can pass
+#: ``output_limit_bytes=None`` to preserve the unbounded legacy behavior.
+GIT_OUTPUT_LIMIT_BYTES: int = 10 * 1024 * 1024
+
 #: Default per-call timeout for the exec MCP tool family (exec/unsafe_exec). Set
 #: above the 60s combined ``make verify`` budget so an agent running verification
 #: (or a slow git op) through exec does not time out on every call. This is the one
