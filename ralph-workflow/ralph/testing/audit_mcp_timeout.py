@@ -9,16 +9,22 @@ Flagged (a contract violation that fails ``make verify``):
   - ``subprocess.run/call/check_call/check_output(...)`` without a ``timeout=``
     keyword (resolved through import aliases, so ``import subprocess as sp;
     sp.run(...)`` and ``from subprocess import run; run(...)`` are also caught).
+    An explicit ``timeout=None`` is also flagged: keyword presence alone is not
+    enough because the underlying call honors the documented "no timeout"
+    semantics when ``timeout is None``.
   - ``subprocess.getoutput``/``getstatusoutput`` and ``os.system`` — these take
     no timeout at all, so they are always flagged unless marked.
   - any ``.communicate(...)`` / ``.communicate_and_cleanup(...)`` without a
     ``timeout=`` keyword (the first positional argument is ``input``, NOT a
-    timeout).
-  - any ``.wait(...)`` without a timeout (``wait``'s first positional IS the
-    timeout, so ``.wait(5)`` and ``.wait(timeout=5)`` are both fine).
+    timeout). An explicit ``timeout=None`` is also flagged.
+  - any ``.wait(...)`` without a bounded timeout (``wait``'s first positional
+    IS the timeout, so ``.wait(5)`` and ``.wait(timeout=5)`` are both fine).
+    Both ``.wait()`` (no arg) and explicit ``.wait(None)`` / ``.wait(timeout=None)``
+    are flagged.
   - network calls (``httpx.*`` / ``requests.*`` request methods + clients,
     ``urllib.request.urlopen``, ``socket.create_connection``) without
-    ``timeout=`` (also resolved through import aliases).
+    ``timeout=`` (also resolved through import aliases). An explicit
+    ``timeout=None`` is also flagged.
 
 NOT flagged (Python semantics — they take no ``timeout=``): ``subprocess.Popen``
 construction, ``socket.socket(...)``, ``socket.getaddrinfo`` (bound via
@@ -98,6 +104,47 @@ class McpTimeoutViolation:
 
 def _has_keyword(node: ast.Call, name: str) -> bool:
     return any(kw.arg == name for kw in node.keywords)
+
+
+def _is_none_expr(node: ast.expr) -> bool:
+    """Return True if ``node`` is an AST representation of the ``None`` singleton.
+
+    Covers both ``Constant(value=None)`` (the literal form) and ``Name(id='None')``
+    (the qualified form ``None`` evaluates to the same singleton). Anything
+    else — variables, attributes, calls — is treated as "value unknown, possibly
+    bounded" and is out of scope (dataflow tracking would be required to prove
+    the variable resolves to ``None``).
+    """
+    return (
+        (isinstance(node, ast.Constant) and node.value is None)
+        or (isinstance(node, ast.Name) and node.id == "None")
+    )
+
+
+def _has_bounded_timeout_keyword(node: ast.Call) -> bool:
+    """Return True if ``node`` carries a ``timeout=`` keyword with a NON-None value.
+
+    A ``timeout=None`` keyword is treated as unbounded because the underlying
+    call honors the documented "no timeout" semantics when ``timeout is None``
+    (verified at runtime against CPython's subprocess / httpx / socket
+    implementations). The audit is AST-based, so it can only flag explicit
+    ``None`` literals — a variable that resolves to ``None`` at runtime is out
+    of scope and would require dataflow tracking.
+    """
+    return any(
+        kw.arg == "timeout" and not _is_none_expr(kw.value) for kw in node.keywords
+    )
+
+
+def _first_positional_is_bounded_timeout(node: ast.Call) -> bool:
+    """Return True if ``node`` has a first positional arg that is NOT ``None``.
+
+    Used for ``.wait(timeout)`` whose first positional IS the timeout.
+    ``.wait()`` and ``.wait(None)`` are both treated as unbounded.
+    """
+    if not node.args:
+        return False
+    return not _is_none_expr(node.args[0])
 
 
 def _dotted_name(node: ast.Call) -> str | None:
@@ -219,18 +266,26 @@ class McpTimeoutAuditor(ast.NodeVisitor):
         # would miss).
         if isinstance(node.func, ast.Attribute):
             attr = node.func.attr
-            if attr in _TIMEOUT_KEYWORD_METHODS and not _has_keyword(node, "timeout"):
-                self._add(node, "communicate", f".{attr}() without timeout=")
-            elif attr == "wait" and not node.args and not _has_keyword(node, "timeout"):
-                self._add(node, "wait", ".wait() without a timeout")
+            if attr in _TIMEOUT_KEYWORD_METHODS and not _has_bounded_timeout_keyword(node):
+                self._add(node, "communicate", f".{attr}() without bounded timeout=")
+            elif attr == "wait":
+                # ``wait()``'s first positional IS the timeout, so we accept
+                # either a non-None first positional OR a non-None ``timeout=``
+                # keyword. Both ``.wait()`` and ``.wait(None)`` are flagged.
+                bounded = (
+                    _first_positional_is_bounded_timeout(node)
+                    or _has_bounded_timeout_keyword(node)
+                )
+                if not bounded:
+                    self._add(node, "wait", ".wait() without a bounded timeout")
 
         name = self._canonical_name(_dotted_name(node))
         if name in _ALWAYS_UNBOUNDED:
             self._add(node, "unbounded_call", f"{name}() is unbounded (takes no timeout)")
-        elif _is_subprocess_timeout_func(name) and not _has_keyword(node, "timeout"):
-            self._add(node, "subprocess_run", f"{name}() without timeout=")
-        elif _is_network_call(name) and not _has_keyword(node, "timeout"):
-            self._add(node, "network", f"{name}() without timeout=")
+        elif _is_subprocess_timeout_func(name) and not _has_bounded_timeout_keyword(node):
+            self._add(node, "subprocess_run", f"{name}() without bounded timeout=")
+        elif _is_network_call(name) and not _has_bounded_timeout_keyword(node):
+            self._add(node, "network", f"{name}() without bounded timeout=")
 
         self.generic_visit(node)
 

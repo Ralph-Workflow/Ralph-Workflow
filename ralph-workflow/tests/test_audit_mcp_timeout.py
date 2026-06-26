@@ -193,6 +193,107 @@ def test_inline_marker_suppresses_violation(tmp_path: Path) -> None:
     assert not _audit(tmp_path, src)
 
 
+# --- explicit timeout=None loophole -----------------------------------------
+#
+# Regression tests for the bounded-timeout policy: an explicit ``timeout=None``
+# keyword (or an explicit ``None`` positional to ``.wait()``) is treated as
+# UNBOUNDED because the underlying CPython call honors the documented "no
+# timeout" semantics when ``timeout is None``. A future refactor that restores
+# keyword-presence-only checking would silently re-open this loophole and let
+# explicitly-unbounded calls pass ``make verify``. The samples here are the
+# canonical regressions called out by the development-analysis feedback.
+
+
+def test_subprocess_run_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import subprocess\nsubprocess.run(['x'], timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "subprocess_run"
+
+
+def test_subprocess_check_output_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import subprocess\nsubprocess.check_output(['x'], timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "subprocess_run"
+
+
+def test_subprocess_call_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import subprocess\nsubprocess.call(['x'], timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "subprocess_run"
+
+
+def test_aliased_subprocess_run_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import subprocess as sp\nsp.run(['x'], timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "subprocess_run"
+
+
+def test_wait_with_timeout_none_keyword_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "proc.wait(timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "wait"
+
+
+def test_wait_with_none_positional_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "proc.wait(None)\n")
+    assert len(v) == 1
+    assert v[0].category == "wait"
+
+
+def test_communicate_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "proc.communicate(timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "communicate"
+
+
+def test_communicate_and_cleanup_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "proc.communicate_and_cleanup(timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "communicate"
+
+
+def test_httpx_get_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import httpx\nhttpx.get('http://x', timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "network"
+
+
+def test_httpx_post_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import httpx\nhttpx.post('http://x', timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "network"
+
+
+def test_aliased_httpx_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import httpx as hx\nhx.get('http://x', timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "network"
+
+
+def test_requests_session_get_with_timeout_none_is_flagged(tmp_path: Path) -> None:
+    v = _audit(tmp_path, "import requests\nrequests.get('http://x', timeout=None)\n")
+    assert len(v) == 1
+    assert v[0].category == "network"
+
+
+def test_marker_suppresses_timeout_none(tmp_path: Path) -> None:
+    # An explicit ``# mcp-timeout-ok`` marker still wins, even when the
+    # ``timeout=None`` keyword is present (escape hatch for genuinely unbounded
+    # callers, e.g. ``socket.create_connection`` in some startup paths).
+    src = (
+        "proc.wait(timeout=None)  # mcp-timeout-ok: bounded by outer "
+        "watchdog with explicit kill switch\n"
+    )
+    assert not _audit(tmp_path, src)
+
+
+def test_variable_timeout_is_out_of_scope(tmp_path: Path) -> None:
+    # A variable that COULD be None at runtime is out of scope (dataflow
+    # tracking would be required to prove the variable resolves to ``None``).
+    # The audit accepts this as bounded by default.
+    assert not _audit(tmp_path, "timeout = compute_timeout()\nproc.wait(timeout=timeout)\n")
+
+
 # --- directory scan + main --------------------------------------------------
 
 

@@ -63,7 +63,13 @@ justified `# mcp-timeout-ok: <reason>` marker) — see
 production code may call `subprocess.run(...)`,
 `handle.communicate(...)`, `handle.wait(...)`,
 `urllib.request.urlopen(...)`, `httpx.<verb>(...)`, or
-`socket.create_connection(...)` without a timeout.
+`socket.create_connection(...)` without a timeout. An explicit
+`timeout=None` (or `.wait(None)`) is treated as UNBOUNDED by the
+audit: keyword presence alone is not enough because the underlying
+CPython call honors the documented "no timeout" semantics when
+`timeout is None`. Only a non-None literal value is accepted; a
+variable that resolves to `None` at runtime is out of scope (dataflow
+tracking would be required to prove it).
 
 All background threads are `daemon=True`, gated by a stop event
 (`threading.Event`), and explicitly joined on shutdown. The audit
@@ -77,17 +83,27 @@ The `ralph.testing.audit_mcp_timeout` AST-based audit enforces:
 
 - `subprocess.run(...)` / `subprocess.call(...)` /
   `subprocess.check_call(...)` / `subprocess.check_output(...)` with
-  `timeout=`
-- `.communicate(...)` / `.communicate_and_cleanup(...)` with
-  `timeout=` (first positional is `input`, NOT a timeout)
-- `.wait(...)` with a timeout (positional or keyword)
+  a **non-None** `timeout=` keyword
+- `.communicate(...)` / `.communicate_and_cleanup(...)` with a
+  **non-None** `timeout=` keyword (first positional is `input`, NOT
+  a timeout)
+- `.wait(...)` with a **non-None** timeout (positional or keyword).
+  `.wait()`, `.wait(None)`, and `.wait(timeout=None)` are all flagged.
 - Network calls (`httpx.*`, `requests.*`, `urllib.request.urlopen`,
-  `socket.create_connection`) with `timeout=`
+  `socket.create_connection`) with a **non-None** `timeout=`
 - No `for line in proc.stdout:` style unbounded stream iteration (the
   reader must be interruptible)
 - No `subprocess.getoutput` / `subprocess.getstatusoutput` /
   `os.system` (no timeout at all; require explicit
   `# mcp-timeout-ok` marker)
+
+The audit is AST-based and can only flag **literal** `None` values
+(`ast.Constant(value=None)` and `ast.Name(id='None')`). A variable
+that resolves to `None` at runtime is out of scope (would require
+dataflow tracking) and is treated as bounded by default. The
+explicit-None rejection is regression-pinned by
+`tests/test_audit_mcp_timeout.py::test_*_with_timeout_none_is_flagged`
+(the canonical regressions for the bounded-timeout loophole).
 
 Audit roots (the directories scanned by default):
 
