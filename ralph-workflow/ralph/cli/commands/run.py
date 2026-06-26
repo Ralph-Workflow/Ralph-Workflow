@@ -588,6 +588,19 @@ def _sync_shipped_skills_on_pipeline_run(workspace_root: Path | None = None) -> 
         auto_seed_default_git_exclude(target_root)
     except Exception as exc:  # gitignore / git exclude auto-seed is best-effort
         logger.debug("Project .gitignore/.git/info/exclude auto-seed failed (non-fatal): {}", exc)
+    # Deterministic skill-update auto-commit (wt-025): runs AFTER the
+    # project-scope install AND the gitignore/exclude auto-seed so the
+    # auto-commit diff is purely skill content (no gitignore noise).
+    # Lazy-imported to avoid coupling this module to git at import time.
+    try:
+        from ralph.git.operations import create_commit
+        from ralph.skills._auto_commit import commit_skill_updates
+
+        sha = commit_skill_updates(target_root, create_commit)
+        if sha:
+            logger.info("Auto-committed skill updates: {}", sha[:8])
+    except Exception as exc:  # auto-commit is best-effort; never break the pipeline
+        logger.debug("Skill auto-commit failed (non-fatal): {}", exc)
 
 
 sync_shipped_skills_on_pipeline_run = _sync_shipped_skills_on_pipeline_run

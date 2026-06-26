@@ -8,12 +8,17 @@ indirection safely (PA-007).
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import patch
+
+import pytest
 
 from ralph.skills._capability_status import CapabilityStatus
 from ralph.skills._content import BASELINE_SKILL_NAMES, get_skill_content
 from ralph.skills._installer import (
+    _materialize_canonical_skill,
     _project_skills_need_install,
     install_project_baseline_skills,
     self_improving_skills_hook,
@@ -250,3 +255,116 @@ def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_co
         f"Expected skills-conflict-using-superpowers, got {result[1]}"
     )
     hook_mock.assert_not_called()
+
+
+@pytest.mark.timeout_seconds(5)
+def test_install_overwrites_stale_canonical_skill(tmp_path: Path) -> None:
+    """PA-002 closure: project-scope bundle-update path overwrites stale canonical content.
+
+    The locked conflict-resolution policy for the project-scope branch
+    (driven by ``_sync_shipped_skills_on_pipeline_run``) is: bundled content
+    always wins for hash-divergent canonical entries, even when the existing
+    managed marker matches the on-disk stale sha. The pre-existing
+    ``materialize_skills_to_claude_dir`` user-edit preservation contract
+    only preserves a skill whose ``stored_sha`` DOES NOT match the on-disk
+    sha (i.e. the user manually edited it after install).
+
+    This test pre-stages a stale canonical SKILL.md with a managed marker
+    whose ``installed_content_sha256`` matches the on-disk stale sha, so
+    ``materialize_skills_to_claude_dir`` will overwrite it anyway (no
+    user-edit preservation triggered) AND ``_materialize_canonical_skill``
+    runs as a defensive no-op once the on-disk hash already matches the
+    bundled sha after the materialize pass. The combined install must
+    leave the canonical SKILL.md byte-for-byte identical to the bundled
+    content.
+    """
+    home = _fake_user_global_home(tmp_path)
+    canonical = tmp_path / ".opencode" / "skills"
+    name = BASELINE_SKILL_NAMES[0]
+    canonical.mkdir(parents=True, exist_ok=True)
+    skill_dir = canonical / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_dir.joinpath("SKILL.md").write_text("# stale version\n", encoding="utf-8")
+    stale_sha = hashlib.sha256(b"# stale version\n").hexdigest()
+    skill_dir.joinpath(".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "installed_content_sha256": stale_sha,
+                "skill_name": name,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=home):
+        result = install_project_baseline_skills(tmp_path)
+
+    assert result[1] == [], f"Expected empty failures, got {result[1]!r}"
+    post_md = (canonical / name / "SKILL.md").read_text(encoding="utf-8")
+    assert post_md == get_skill_content(name), (
+        "Stale canonical SKILL.md was NOT overwritten with bundled content"
+    )
+    post_marker = json.loads(
+        (canonical / name / ".ralph-managed.json").read_text(encoding="utf-8")
+    )
+    bundled_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
+    assert post_marker.get("installed_content_sha256") == bundled_sha, (
+        f"Managed marker sha must equal bundled sha after install; "
+        f"got {post_marker.get('installed_content_sha256')!r}"
+    )
+    assert _materialize_canonical_skill(canonical, name) is False, (
+        "Helper must be a no-op when the on-disk hash already matches the bundled sha"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_install_preserves_user_edited_canonical_skill(tmp_path: Path) -> None:
+    """PA-002 closure: user-edit preservation contract survives the new overwrite branch.
+
+    When the on-disk SKILL.md hash DOES NOT match the marker-stored sha (the
+    signal for a user-edited skill), ``materialize_skills_to_claude_dir``
+    preserves it. ``_materialize_canonical_skill`` THEN overwrites it because
+    the on-disk hash still differs from the bundled sha after materialize.
+
+    This test pins the half of the conflict-resolution rule that says:
+    user-edited skills are NOT preserved when bundled content has refreshed.
+    The skill's content is replaced with the bundled content, and the
+    managed marker is updated to the new bundled sha.
+    """
+    home = _fake_user_global_home(tmp_path)
+    canonical = tmp_path / ".opencode" / "skills"
+    name = BASELINE_SKILL_NAMES[0]
+    canonical.mkdir(parents=True, exist_ok=True)
+    skill_dir = canonical / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    user_edited_content = (
+        f"# user-edited version of {name}\n"  # NOT the bundled content
+    )
+    skill_dir.joinpath("SKILL.md").write_text(user_edited_content, encoding="utf-8")
+    user_edited_sha = hashlib.sha256(user_edited_content.encode("utf-8")).hexdigest()
+    skill_dir.joinpath(".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "installed_content_sha256": user_edited_sha,  # matches on-disk user edit
+                "skill_name": name,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=home):
+        result = install_project_baseline_skills(tmp_path)
+
+    assert result[1] == [], f"Expected empty failures, got {result[1]!r}"
+    post_md = (canonical / name / "SKILL.md").read_text(encoding="utf-8")
+    assert post_md == get_skill_content(name), (
+        "Project-scope reconcile must overwrite user-edited SKILL.md "
+        "with bundled content (per locked conflict-resolution policy)"
+    )
+    post_marker = json.loads(
+        (canonical / name / ".ralph-managed.json").read_text(encoding="utf-8")
+    )
+    bundled_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
+    assert post_marker.get("installed_content_sha256") == bundled_sha

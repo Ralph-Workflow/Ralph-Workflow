@@ -96,6 +96,7 @@ _EXCLUDED: dict[str, str] = {
     "testing.audit_agent_registry_sync": "test infrastructure, not public API",
     "testing.audit_agent_module_state": "test infrastructure, not public API",
     "testing.audit_agent_internal_paths": "test infrastructure, not public API",
+    "testing.audit_skill_auto_commit": "test infrastructure, not public API",
     "test_suites": "internal test runner helper, not public API",
 }
 

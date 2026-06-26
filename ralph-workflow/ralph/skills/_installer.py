@@ -22,6 +22,7 @@ from ralph.skills._content import (
     _MANAGED_MARKER,
     BASELINE_SKILL_NAMES,
     get_skill_content,
+    managed_skill_marker,
     materialize_skills_to_claude_dir,
 )
 
@@ -219,6 +220,74 @@ def _materialize_project_sibling_dir(
     return None
 
 
+def _materialize_canonical_skill(canonical: Path, skill_name: str) -> bool:
+    """Overwrite a single project-scope canonical skill with the bundled content.
+
+    Project-scope pre-pipeline sync (driven by ``_sync_shipped_skills_on_pipeline_run``)
+    requires a deterministic, single-pass overwrite of stale bundled content so the
+    auto-commit helper has exactly one diff to commit. This helper honours the
+    user-edit preservation contract as follows:
+
+      (1) First call ``materialize_skills_to_claude_dir(canonical)`` so every
+          skill whose stored ``.ralph-managed.json`` sha matches the on-disk
+          sha (i.e. the user has not edited it since install) is rewritten
+          with the bundled content. Skills whose stored sha DOES NOT match
+          the on-disk sha are preserved as user-edited (the existing contract
+          from ``materialize_skills_to_claude_dir``).
+      (2) Then for THIS ``skill_name`` specifically, compare the on-disk
+          ``SKILL.md`` hash against the bundled
+          ``hashlib.sha256(get_skill_content(skill_name).encode()).hexdigest()``.
+          If they still differ (meaning ``materialize_skills_to_claude_dir``
+          preserved the skill as user-edited, OR the bundled content has since
+          been refreshed and the on-disk copy is older), overwrite the
+          ``SKILL.md`` and the managed marker with the bundled content. This
+          reconciles the prompt's explicit rule 'If there is a conflict,
+          simply replace the old skill with new skill' with the existing
+          user-edit preservation contract: the user-global path remains
+          signal-only (see ``install_baseline_skills`` / ``SkillManager``),
+          but the project-scope pre-pipeline sync always wins for the
+          bundled SKILL.md content vs on-disk hash mismatch.
+
+    Args:
+        canonical: Resolved project-canonical skill directory
+            (e.g. ``workspace_root / '.opencode' / 'skills'``).
+        skill_name: Name of the skill whose canonical entry to overwrite.
+
+    Returns:
+        True when at least one of ``SKILL.md`` or the managed marker was
+        overwritten with bundled content; False when the on-disk content
+        already matches the bundled hash.
+
+    The helper is fail-closed: any ``OSError`` during read/write returns
+    False so the caller can treat overwrite failures as 'no change' and
+    still proceed with the rest of the install / auto-commit pipeline.
+    """
+    try:
+        materialize_skills_to_claude_dir(canonical)
+        bundled_content = get_skill_content(skill_name)
+        bundled_sha = hashlib.sha256(bundled_content.encode("utf-8")).hexdigest()
+        skill_dir = canonical / skill_name
+        skill_file = skill_dir / "SKILL.md"
+        marker_file = skill_dir / _MANAGED_MARKER
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        on_disk_hash = (
+            hashlib.sha256(skill_file.read_bytes()).hexdigest()
+            if skill_file.exists()
+            else ""
+        )
+        if on_disk_hash == bundled_sha:
+            return False
+        skill_file.write_text(bundled_content, encoding="utf-8")
+        marker_file.write_text(
+            json.dumps(managed_skill_marker(skill_name, installed_sha256=bundled_sha), indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        return True
+    except OSError:
+        return False
+
+
 def install_project_baseline_skills(
     workspace_root: Path,
 ) -> tuple[CapabilityEntry, list[str]]:
@@ -233,8 +302,16 @@ def install_project_baseline_skills(
           into the project-canonical root. On ``OSError`` during materialize,
           return ``NEEDS_REPAIR`` with ``["skills-materialize-failed"]`` and
           DO NOT touch any sibling.
-      (3) If canonical materialize succeeds, fan out the canonical to the
-          3 project-scope siblings (claude, codex, agy). Any sibling failure
+      (3) If canonical materialize succeeds, OVERWRITE any REMAINING
+          hash-divergent skill with the bundled content via
+          ``_materialize_canonical_skill`` so the auto-commit has exactly
+          one diff to commit. This implements the project-scope branch of
+          the locked conflict-resolution policy: bundled content always
+          wins for project-scope pre-pipeline sync (the user-global path
+          remains signal-only per ``install_baseline_skills`` /
+          ``SkillManager.check_skills_for_updates``).
+      (4) Fan out the canonical to the 3 project-scope siblings (claude,
+          codex, agy). Any sibling failure
           (``sibling-conflict-*`` / ``sibling-materialize-failed-*``) is
           appended to a flat ``failures`` list.
 
@@ -261,6 +338,14 @@ def install_project_baseline_skills(
             ),
             ["skills-materialize-failed"],
         )
+    # Project-scope bundle-update reconciliation (wt-025): after the
+    # user-edit-preserving materialize pass, overwrite any REMAINING
+    # hash-divergent skill with the bundled content so the auto-commit
+    # has exactly one diff to commit. The user-global path
+    # (install_baseline_skills) intentionally remains signal-only per
+    # the locked conflict-resolution policy.
+    for skill_name in BASELINE_SKILL_NAMES:
+        _materialize_canonical_skill(canonical, skill_name)
     sibling_failures: list[str] = []
     siblings: tuple[ProjectAgentSkillRoot, ...] = project_sibling_skill_roots(workspace_root)
     for sibling in siblings:
