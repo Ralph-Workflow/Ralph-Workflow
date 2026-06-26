@@ -36,9 +36,16 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import ralph.agents.invoke
+from ralph.agents.invoke import invoke_agent
+from ralph.agents.invoke._types import InvokeOptions
+from ralph.config.enums import AgentTransport
+from ralph.config.models import AgentConfig
+from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
 from ralph.mcp.protocol.startup import PreflightError
 from ralph.mcp.transport import codex as codex_module
 from ralph.mcp.transport.codex import (
+    _all_allocated_codex_homes,
     _allocate_codex_home_dir,
     _allocated_codex_homes,
     cleanup_codex_homes,
@@ -154,13 +161,24 @@ def test_release_codex_home_rmtrees_after_eviction_from_registry(
     hook (release_codex_home + unconditional rmtree) STILL rmtree's
     the on-disk directory.
 
-    ``release_codex_home`` by itself returns False for an evicted path
-    (the home is no longer in the registry). That is the documented
-    registry-only semantic. The ``ResolvedInvocationRuntime.cleanup``
-    hook therefore pairs ``release_codex_home`` with an unconditional
-    ``shutil.rmtree(home, ignore_errors=True)`` so on-disk cleanup
-    happens regardless of registry membership. This test proves that
-    pairing works.
+    ``release_codex_home`` returns False for an evicted path (the
+    home is no longer in the bounded deque), but it now ALSO rmtree's
+    the on-disk directory because the active-home invariant from
+    round 2 made ``_allocate_codex_home_dir`` keep the directory on
+    FIFO eviction. As of wt-024 round 3, ``release_codex_home``
+    itself is idempotent and unified: it discards from BOTH
+    ``_all_allocated_codex_homes`` (the lifetime tracking set) and
+    ``_allocated_codex_homes`` (the bounded deque), and it rmtree's
+    with ``ignore_errors=True`` so a second call is a no-op.
+
+    The ``ResolvedInvocationRuntime.cleanup`` hook therefore still
+    pairs ``release_codex_home`` with an unconditional
+    ``shutil.rmtree(home, ignore_errors=True)`` for historical
+    symmetry, but the explicit ``rmtree`` is now redundant (the
+    call is idempotent). The production cleanup hook semantics
+    remain: the on-disk directory is always cleaned up by the time
+    the owning agent finishes, regardless of whether the home was
+    FIFO-evicted from the bookkeeping deque.
 
     This proves the on-disk bound is preserved even though
     ``_allocate_codex_home_dir`` no longer rmtree's on eviction: the
@@ -173,7 +191,9 @@ def test_release_codex_home_rmtrees_after_eviction_from_registry(
     # deque with a smaller-maxlen one. We restore the original in finally.
     small_cap = 4
     original_deque = codex_module._allocated_codex_homes
+    original_set = codex_module._all_allocated_codex_homes
     codex_module._allocated_codex_homes = collections.deque(maxlen=small_cap)
+    codex_module._all_allocated_codex_homes = set()
     try:
         # Allocate cap + 1 entries; dirs[0] will be evicted from registry.
         dirs: list = []
@@ -187,35 +207,39 @@ def test_release_codex_home_rmtrees_after_eviction_from_registry(
             "eviction must not delete the directory (active-home invariant)"
         )
 
-        # release_codex_home is the documented registry release path;
-        # for an evicted-but-not-yet-released home it returns False
-        # (the home is not in the registry). This is the existing
-        # contract and is preserved by this fix.
+        # release_codex_home is the documented registry release path.
+        # For an evicted-but-not-yet-released home it returns False
+        # (the home is no longer in the bounded deque). This is the
+        # documented semantic and is preserved. As of round 3 the
+        # function ALSO rmtree's the on-disk directory with
+        # ``ignore_errors=True`` so the production cleanup hook no
+        # longer needs to call shutil.rmtree explicitly.
         released = release_codex_home(str(evicted_dir))
         assert released is False, (
             "release_codex_home returns False for evicted paths "
             "(registry-only semantic, preserved)"
         )
-        assert evicted_dir.exists(), (
-            "release_codex_home does NOT rmtree on its own for an "
-            "evicted path; the cleanup hook MUST rmtree unconditionally"
-        )
-
-        # The production cleanup hook pairs release_codex_home with
-        # shutil.rmtree(..., ignore_errors=True). Simulate that here
-        # and confirm the on-disk cleanup succeeds.
-        release_codex_home(str(evicted_dir))
-        shutil.rmtree(str(evicted_dir), ignore_errors=True)
-
         assert not evicted_dir.exists(), (
-            "production cleanup hook (release_codex_home + rmtree) "
-            "must rmtree the on-disk directory even after eviction"
+            "release_codex_home MUST rmtree the on-disk directory "
+            "even for evicted paths (round 3 invariant: the atexit net "
+            "relies on this to reap FIFO-evicted orphans)"
         )
+        assert str(evicted_dir) not in codex_module._all_allocated_codex_homes, (
+            "release_codex_home MUST discard from _all_allocated_codex_homes "
+            "so the atexit net does not double-rrmtree the path"
+        )
+
+        # Idempotency: a second call after release must not raise
+        # and must remain a no-op (release_codex_home returns False,
+        # rmtree with ignore_errors=True is a no-op on missing paths).
+        second = release_codex_home(str(evicted_dir))
+        assert second is False, "second release_codex_home returns False (idempotent)"
     finally:
         # Clean up any remaining on-disk dirs before restoring
         cleanup_codex_homes()
         # Restore the production deque (with original cap)
         codex_module._allocated_codex_homes = original_deque
+        codex_module._all_allocated_codex_homes = original_set
 
 
 def test_active_codex_homes_not_evicted_from_disk(tmp_path: Path) -> None:
@@ -236,7 +260,9 @@ def test_active_codex_homes_not_evicted_from_disk(tmp_path: Path) -> None:
     # deque with a smaller-maxlen one. We restore the original in finally.
     small_cap = 4
     original_deque = codex_module._allocated_codex_homes
+    original_set = codex_module._all_allocated_codex_homes
     codex_module._allocated_codex_homes = collections.deque(maxlen=small_cap)
+    codex_module._all_allocated_codex_homes = set()
     try:
         # Allocate cap + 2 entries (i.e., the registry wraps around the
         # original cap, evicting two of the earlier homes). Each
@@ -281,7 +307,10 @@ def test_active_codex_homes_not_evicted_from_disk(tmp_path: Path) -> None:
             )
 
         # Now release the FIRST home via its captured cleanup hook.
-        # Only that home must be rmtree'd.
+        # Only that home must be rmtree'd. As of round 3,
+        # ``release_codex_home`` itself rmtree's the on-disk dir for
+        # evicted paths; the explicit ``shutil.rmtree`` in the fake
+        # cleanup hook is now redundant but harmless.
         cleanups[0]()
 
         assert not dirs[0].exists(), (
@@ -299,6 +328,7 @@ def test_active_codex_homes_not_evicted_from_disk(tmp_path: Path) -> None:
         cleanup_codex_homes()
         # Restore the production deque (with original cap)
         codex_module._allocated_codex_homes = original_deque
+        codex_module._all_allocated_codex_homes = original_set
 
 
 def test_probe_codex_releases_home_in_normal_flow(tmp_path: Path) -> None:
@@ -362,3 +392,81 @@ def test_probe_codex_registry_does_not_grow_across_repeated_calls(
 
     # Final invariant: after N iterations, registry is empty
     assert len(_allocated_codex_homes) == 0
+
+
+def test_invoke_agent_setup_failure_releases_codex_home(tmp_path: Path) -> None:
+    """Regression for analysis-feedback wt-024 round 3:
+
+    When ``invoke_agent`` is invoked for the Codex transport and a
+    pre-execution setup step raises (e.g. ``_build_command``), the
+    per-invocation ``CODEX_HOME`` tempdir allocated by
+    ``CodexRuntimeResolver`` MUST still be rmtree'd.
+
+    An earlier version of ``invoke_agent`` only invoked
+    ``runtime.cleanup`` in the ``finally`` block that wrapped the
+    actual subprocess execution. The setup steps that ran AFTER
+    ``resolve_invocation_runtime`` but BEFORE the try block (e.g.
+    command construction, monitor setup) were unprotected: any
+    exception in that window bypassed the cleanup hook and leaked
+    the CODEX_HOME directory until ``cleanup_codex_homes`` ran at
+    interpreter shutdown.
+
+    The fix moves the try/finally boundary to start IMMEDIATELY after
+    ``resolve_invocation_runtime``. This test forces a setup failure
+    via a monkeypatched ``_build_command`` and asserts the allocated
+    home directory is removed by the time ``invoke_agent`` returns.
+
+    Proof: before the fix the test fails (the home survives on disk
+    because the cleanup hook was never invoked); after the fix the
+    test passes (the outer try/finally invokes ``runtime.cleanup``
+    on the pre-execution exception).
+    """
+    # Reset registry + lifetime set so we count only this test's
+    # allocations.
+    _allocated_codex_homes.clear()
+    _all_allocated_codex_homes.clear()
+
+    config = AgentConfig(cmd="codex", transport=AgentTransport.CODEX)
+    options = InvokeOptions(
+        workspace_path=tmp_path,
+        system_prompt_file=None,
+        extra_env={str(MCP_ENDPOINT_ENV): "http://127.0.0.1:1/mcp"},
+    )
+
+    # Force a pre-execution setup failure by making ``_build_command``
+    # raise. ``invoke_agent`` resolves the runtime (allocates CODEX_HOME)
+    # BEFORE calling ``_build_command``, so the cleanup hook MUST fire.
+    inv = ralph.agents.invoke
+
+    def boom(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("boom")
+
+    original_build_command = inv._build_command
+    inv._build_command = boom
+    try:
+        with pytest.raises(RuntimeError, match="boom"):
+            list(invoke_agent(config, "/tmp/never-read.md", options=options))
+    finally:
+        inv._build_command = original_build_command
+
+    # The allocated CODEX_HOME directory MUST have been rmtree'd by
+    # the cleanup hook (the new outer try/finally). The registry and
+    # lifetime set must both be empty (release_codex_home discards
+    # from both).
+    agent_tmp = tmp_path / ".agent" / "tmp"
+    stray = (
+        sorted(p.name for p in agent_tmp.iterdir() if p.name.startswith("codex-home-"))
+        if agent_tmp.exists()
+        else []
+    )
+    assert stray == [], (
+        f"invoke_agent setup failure leaked {len(stray)} codex-home dirs: {stray} "
+        f"(round 3 regression: cleanup hook must run on pre-execution setup "
+        f"failure)"
+    )
+    assert list(_allocated_codex_homes) == [], (
+        f"registry must be drained after setup failure; got {_allocated_codex_homes}"
+    )
+    assert _all_allocated_codex_homes == set(), (
+        f"lifetime set must be drained after setup failure; got {_all_allocated_codex_homes}"
+    )

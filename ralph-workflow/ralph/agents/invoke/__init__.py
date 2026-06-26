@@ -275,70 +275,91 @@ def invoke_agent(
         system_prompt_file=base_opts.system_prompt_file,
         unsafe_mode=base_opts.unsafe_mode,
     )
-    opts = _prepare_interactive_claude_options(base_opts, config)
-    runtime_env = runtime.agent_env
-    mcp_endpoint = runtime.mcp_endpoint
-    allowed_mcp_tool_names = provider_allowed_mcp_tool_names(config, mcp_endpoint)
-    cmd = _build_command(
-        config,
-        prompt_file,
-        options=_BuildCommandOptions(
-            model_flag=opts.model_flag,
-            session_id=opts.session_id,
-            verbose=opts.verbose,
-            pure=opts.pure,
-            mcp_endpoint=mcp_endpoint,
-            allowed_mcp_tool_names=allowed_mcp_tool_names,
-            unsafe_mode=opts.unsafe_mode,
-            system_prompt_file=opts.system_prompt_file,
-            workspace_path=opts.workspace_path,
-            initial_session_id=opts.initial_session_id,
-            settings_json=opts.settings_json,
-            stop_sentinel_path=opts.stop_sentinel_path,
-        ),
-    )
-    logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
-
-    label_scope = None
-    if runtime_env is not None:
-        label_scope = runtime_env.get(str(AGENT_LABEL_SCOPE_ENV))
-    registry = _make_child_registry(opts)
-    execution_strategy = strategy_for_command(
-        config.cmd,
-        _agent_transport(config),
-        label_scope=label_scope,
-        registry=registry,
-    )
-    liveness_probe = DefaultLivenessProbe(registry=registry)
-    monitor = _start_workspace_monitor(
-        opts.workspace_path,
-        classifier=WorkspaceChangeClassifier(
-            weights=_normalize_workspace_change_weights(opts.workspace_change_weights)
-        )
-        if opts.workspace_path is not None
-        else None,
-    )
-    policy = _policy_from_options(opts)
-
-    ctx = _AgentRunCtx(
-        config=config,
-        show_progress=opts.show_progress,
-        extra_env=runtime_env,
-        workspace_path=opts.workspace_path,
-        policy=policy,
-        execution_strategy=execution_strategy,
-        liveness_probe=liveness_probe,
-        waiting_listener=opts.waiting_listener,
-        pre_output_listener=opts.pre_output_listener,
-        monitor=monitor,
-        required_artifact=opts.required_artifact,
-        clock=_clock,
-        evaluate_completion_fn=evaluate_completion,
-        connectivity_state_provider=opts.connectivity_state_provider,
-        is_waiting_state_provider=opts.is_waiting_state_provider,
-    )
-    ctx = replace(ctx, expected_session_id=opts.session_id)
+    # The try/finally boundary starts IMMEDIATELY after
+    # ``resolve_invocation_runtime`` (which can allocate per-invocation
+    # transport resources, e.g. a Codex ``CODEX_HOME`` tempdir) so that
+    # ANY subsequent setup failure — command construction, monitor
+    # setup, ``_log_workspace_completion`` instrumentation, etc. — still
+    # invokes the per-invocation ``cleanup`` hook. An earlier version of
+    # this function only started the ``try`` block around the actual
+    # subprocess execution, leaving the window between runtime resolution
+    # and subprocess launch unprotected; a ``_build_command`` failure or
+    # any other pre-launch setup exception would leak the allocated
+    # ``CODEX_HOME`` directory because the ``cleanup`` hook was never
+    # invoked (analysis feedback wt-024 round 3).
+    #
+    # ``runtime.cleanup`` is idempotent (``release_codex_home`` returns
+    # ``False`` on a second call without raising;
+    # ``shutil.rmtree(..., ignore_errors=True)`` is a no-op on missing
+    # paths), so invoking it twice (once from a pre-launch exception,
+    # once on interpreter shutdown via ``cleanup_codex_homes``'s atexit
+    # net) is safe.
+    monitor: WorkspaceMonitor | None = None
     try:
+        opts = _prepare_interactive_claude_options(base_opts, config)
+        runtime_env = runtime.agent_env
+        mcp_endpoint = runtime.mcp_endpoint
+        allowed_mcp_tool_names = provider_allowed_mcp_tool_names(config, mcp_endpoint)
+        cmd = _build_command(
+            config,
+            prompt_file,
+            options=_BuildCommandOptions(
+                model_flag=opts.model_flag,
+                session_id=opts.session_id,
+                verbose=opts.verbose,
+                pure=opts.pure,
+                mcp_endpoint=mcp_endpoint,
+                allowed_mcp_tool_names=allowed_mcp_tool_names,
+                unsafe_mode=opts.unsafe_mode,
+                system_prompt_file=opts.system_prompt_file,
+                workspace_path=opts.workspace_path,
+                initial_session_id=opts.initial_session_id,
+                settings_json=opts.settings_json,
+                stop_sentinel_path=opts.stop_sentinel_path,
+            ),
+        )
+        logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
+
+        label_scope = None
+        if runtime_env is not None:
+            label_scope = runtime_env.get(str(AGENT_LABEL_SCOPE_ENV))
+        registry = _make_child_registry(opts)
+        execution_strategy = strategy_for_command(
+            config.cmd,
+            _agent_transport(config),
+            label_scope=label_scope,
+            registry=registry,
+        )
+        liveness_probe = DefaultLivenessProbe(registry=registry)
+        monitor = _start_workspace_monitor(
+            opts.workspace_path,
+            classifier=WorkspaceChangeClassifier(
+                weights=_normalize_workspace_change_weights(opts.workspace_change_weights)
+            )
+            if opts.workspace_path is not None
+            else None,
+        )
+        policy = _policy_from_options(opts)
+
+        ctx = _AgentRunCtx(
+            config=config,
+            show_progress=opts.show_progress,
+            extra_env=runtime_env,
+            workspace_path=opts.workspace_path,
+            policy=policy,
+            execution_strategy=execution_strategy,
+            liveness_probe=liveness_probe,
+            waiting_listener=opts.waiting_listener,
+            pre_output_listener=opts.pre_output_listener,
+            monitor=monitor,
+            required_artifact=opts.required_artifact,
+            clock=_clock,
+            evaluate_completion_fn=evaluate_completion,
+            connectivity_state_provider=opts.connectivity_state_provider,
+            is_waiting_state_provider=opts.is_waiting_state_provider,
+        )
+        ctx = replace(ctx, expected_session_id=opts.session_id)
+
         transport = _agent_transport(config)
         support = default_catalog().get(config.cmd)
         requires_pty = False
@@ -387,7 +408,9 @@ def invoke_agent(
         # resolvers that allocate nothing per-invocation; the conditional
         # guard is a no-op in that case. release_codex_home is idempotent
         # (returns False on a second call) so a duplicate invocation from
-        # a future caller is harmless.
+        # a future caller is harmless. The try/finally boundary now
+        # wraps the ENTIRE post-resolution body so any pre-launch setup
+        # failure also releases transport-allocated resources.
         if runtime.cleanup is not None:
             runtime.cleanup()
         _stop_workspace_monitor(monitor)
