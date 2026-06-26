@@ -278,4 +278,10 @@ def _default_process_factory(command: list[str], cwd: str | None) -> ManagedProc
 
 
 def _default_thread_factory(target: Callable[[], None], daemon: bool) -> threading.Thread:
-    return threading.Thread(target=target, daemon=daemon)
+    # factory; daemon-ness is bound by the sole callers (StdioTransport.start:
+    # _thread_factory(..., True) for both reader and writer). The audit cannot
+    # statically resolve the parameter, so the inline marker below documents
+    # the bounded lifecycle.
+    return threading.Thread(  # resource-lifecycle-ok: bounded-daemon factory
+        target=target, daemon=daemon  # callers pass daemon=True
+    )

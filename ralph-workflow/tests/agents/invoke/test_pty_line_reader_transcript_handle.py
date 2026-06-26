@@ -33,7 +33,6 @@ I/O is the injected fake open() call (no real files opened).
 from __future__ import annotations
 
 import threading
-import time
 
 import pytest
 
@@ -70,11 +69,18 @@ class _RaisingReadlineFile:
 class _RecordingFakeFile:
     """A fake transcript file whose ``readline()`` returns lines then EOF."""
 
-    def __init__(self, lines: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        lines: tuple[str, ...],
+        opened_signal: threading.Event | None = None,
+    ) -> None:
         self._lines = list(lines)
         self.close_called = 0
+        self._opened_signal = opened_signal
 
     def readline(self) -> str:
+        if self._opened_signal is not None:
+            self._opened_signal.set()
         if not self._lines:
             return ""
         return self._lines.pop(0)
@@ -239,7 +245,8 @@ def test_transcript_thread_normal_completion_closes_exactly_once(
     """
     session_id = "transcript-normal-session"
     transcript_line = '{"type":"user","message":{"role":"user","content":"hello"}}\n'
-    fake_file = _RecordingFakeFile((transcript_line, ""))
+    opened_signal = threading.Event()
+    fake_file = _RecordingFakeFile((transcript_line, ""), opened_signal=opened_signal)
     fake_path = _FakeTranscriptPath(fake_file)
 
     def _return_path(_candidates: object) -> tuple[object, str]:
@@ -248,11 +255,17 @@ def test_transcript_thread_normal_completion_closes_exactly_once(
     monkeypatch.setattr(_pty_module, "find_claude_transcript_entry", _return_path)
     reader = _make_minimal_reader(expected_session_id=session_id)
 
-    # Start the thread, then signal stop after the open branch fired.
+    # Start the thread, then deterministically wait for the open branch
+    # to fire before signaling stop. ``readline()`` is called only AFTER
+    # ``transcript_path.open(...)`` has returned, so the signal is the
+    # strict post-open barrier — no wall-clock wait is needed and no
+    # real I/O is performed.
     thread = threading.Thread(target=reader._transcript_thread, daemon=True)
     thread.start()
-    # 200ms is plenty for a local fake-open that does no I/O.
-    time.sleep(0.1)
+    assert opened_signal.wait(timeout=2.0), (
+        "test setup: fake transcript file's readline() was not entered; "
+        "_transcript_thread did not reach the open branch"
+    )
     reader._monitor_stop.set()
     thread.join(timeout=2.0)
 

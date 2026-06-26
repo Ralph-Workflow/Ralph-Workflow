@@ -194,6 +194,13 @@ async def test_shutdown_all_releases_terminate_executor(
 
     await handle.terminate(grace_period_s=0.01)
 
+    # Mirror what the production ``_get_terminate_executor`` seam does
+    # on its lazy-allocate branch: populate the field so the
+    # ``shutdown_all`` release-path guard ``if self._terminate_executor
+    # is not None`` fires on this executor (the production code would
+    # have set this field on first seam call).
+    pm._terminate_executor = recording
+
     # Sanity: no shutdown yet (the terminate path itself doesn't release).
     assert recording.shutdown_calls == [], (
         f"the dedicated executor MUST NOT be released by terminate; "
@@ -207,4 +214,75 @@ async def test_shutdown_all_releases_terminate_executor(
         f"shutdown_all MUST release the dedicated terminate executor via "
         f"shutdown(wait=False) (does NOT block on in-flight workers). "
         f"Got shutdown calls: {recording.shutdown_calls!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_shutdown_all_does_not_allocate_terminate_executor_on_unused_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC-02 lazy-allocation regression: ``shutdown_all`` MUST NOT allocate the
+    dedicated terminate executor when no async termination was ever performed.
+
+    The dedicated ``ThreadPoolExecutor`` is created lazily on first
+    async-termination use so managers that only ever spawn sync / PTY
+    processes never allocate the worker pool (and never spin up its
+    threads). A previous version of ``shutdown_all`` invoked
+    ``self._get_terminate_executor()`` unconditionally in its finally
+    block, which allocated a fresh ``ThreadPoolExecutor`` on every
+    fresh manager and then immediately shut it down — defeating the
+    lazy-allocation contract.
+
+    This test instantiates a fresh ``ProcessManager`` (no
+    ``spawn_async``, no async termination), spies on the
+    ``_get_terminate_executor`` seam, calls ``shutdown_all``, and
+    asserts the seam was NEVER touched and ``self._terminate_executor``
+    remains ``None`` throughout.
+    """
+    pm = ProcessManager(
+        policy=_FAST_POLICY,
+        sync_process_factory=make_sync_process_factory(itertools.count(100)),
+        async_process_factory=make_async_process_factory(itertools.count(1)),
+        psutil=FakePsutil(),
+    )
+
+    assert pm._terminate_executor is None, (
+        "fresh ProcessManager MUST start with _terminate_executor=None "
+        "(lazy allocation; no async work has been done)"
+    )
+
+    # Spy on the seam: record call count AND fail loudly if it is
+    # ever called. The seam is the canonical injection point used by
+    # AC-02's tests; counting its invocations proves whether the
+    # release path lazily allocates an executor or guards on the
+    # existing field.
+    seam_calls: list[object] = []
+
+    def _spy_seam() -> ThreadPoolExecutor:
+        seam_calls.append(object())
+        # Forward to the real seam so the rest of the contract still
+        # works if the field IS already populated (it should not be
+        # in this test, but keep behaviour observable).
+        return pm._terminate_executor if pm._terminate_executor is not None else (
+            ThreadPoolExecutor(
+                max_workers=ProcessManager._TERMINATE_EXECUTOR_MAX_WORKERS,
+                thread_name_prefix="ralph-terminate",
+            )
+        )
+
+    monkeypatch.setattr(pm, "_get_terminate_executor", _spy_seam)
+
+    pm.shutdown_all(grace_period_s=0.01)
+
+    assert seam_calls == [], (
+        f"shutdown_all MUST NOT call ``_get_terminate_executor`` on a "
+        f"manager that never performed async termination. Lazy "
+        f"allocation is the contract: a fresh manager that never "
+        f"spawned an async process must not create the dedicated "
+        f"ThreadPoolExecutor, even during teardown. Got {len(seam_calls)} "
+        f"unwanted seam call(s)."
+    )
+    assert pm._terminate_executor is None, (
+        f"after shutdown_all on an unused manager, _terminate_executor "
+        f"MUST remain None (lazy-allocation contract). Got {pm._terminate_executor!r}"
     )

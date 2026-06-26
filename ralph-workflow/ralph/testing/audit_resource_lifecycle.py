@@ -105,8 +105,38 @@ class ResourceLifecycleViolation:
         return f"{self.file_path}:{self.line}: [{self.category}] {self.detail}"
 
 
-def _has_keyword(node: ast.Call, name: str) -> bool:
-    return any(kw.arg == name for kw in node.keywords)
+def _keyword_truthy(node: ast.Call, name: str) -> bool:
+    """Return True iff ``name=True`` is passed as an explicit boolean keyword.
+
+    The ``daemon=True`` rule for ``threading.Thread`` must require the
+    explicit ``True`` value — ``daemon=False``, ``daemon=1``,
+    ``daemon="yes"``, or any non-boolean expression does NOT satisfy
+    the contract because:
+
+    - ``daemon=False`` is the same lifecycle hazard as omitting the
+      argument (a non-daemon thread blocks interpreter exit);
+    - ``daemon=1`` / ``daemon=0`` / ``daemon="yes"`` are truthy but
+      ``threading.Thread.__init__`` rejects non-bool ``daemon`` values
+      at runtime (``TypeError: daemon must be explicitly set to True``
+      in Python 3.13+), so the call would already crash — flagging
+      it at audit time surfaces the latent bug before it ships;
+    - ``daemon=expr`` (any non-constant expression) cannot be
+      statically resolved and MUST be flagged for human review.
+
+    Only the literal ``True`` constant (``ast.Constant(value=True)``)
+    is accepted. Everything else — ``False``, ``1``, ``0``,
+    expressions, calls, names — is treated as "not explicitly
+    daemon=True" so the violation is surfaced rather than silently
+    accepted.
+    """
+    for kw in node.keywords:
+        if kw.arg != name:
+            continue
+        value: ast.expr = kw.value
+        if isinstance(value, ast.Constant):
+            return value.value is True
+        return False
+    return False
 
 
 def _dotted_name(node: ast.Call) -> str | None:
@@ -165,13 +195,15 @@ def _canonical_name(
 def _is_in_with(node: ast.Call, tree: ast.Module) -> bool:
     """Return True if ``node`` is the context-manager expression of a with statement.
 
-    We walk the AST tree to find a ``with`` statement whose
-    ``items[0].context_expr`` is the same call node. Bare assignment
-    (``client = httpx.Client()``) is the violation; ``with httpx.Client()
-    as client:`` is the legitimate pattern.
+    Both ``with httpx.Client() as client:`` (sync) and ``async with
+    httpx.AsyncClient() as client:`` (async) are legitimate patterns
+    and must NOT be flagged. Bare assignment (``client = httpx.Client()``
+    or ``client = httpx.AsyncClient()``) is the violation. We walk
+    the AST tree and accept either ``ast.With`` or ``ast.AsyncWith``
+    whose ``items[i].context_expr`` is the same call node.
     """
     for parent in ast.walk(tree):
-        if isinstance(parent, ast.With):
+        if isinstance(parent, (ast.With, ast.AsyncWith)):
             for item in parent.items:
                 if item.context_expr is node:
                     return True
@@ -230,7 +262,7 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
             _dotted_name(node), self._module_aliases, self._from_imports
         )
 
-        if canonical in _THREAD_NAMES and not _has_keyword(node, "daemon"):
+        if canonical in _THREAD_NAMES and not _keyword_truthy(node, "daemon"):
             self._add(
                 node,
                 "non_daemon_thread",
@@ -353,16 +385,24 @@ def _default_roots() -> list[Path]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the resource-lifecycle audit and return an exit code."""
-    args = argv if argv is not None else sys.argv[1:]
-    roots = [Path(args[0])] if args else _default_roots()
+    """Run the resource-lifecycle audit and return an exit code.
 
-    all_violations: list[ResourceLifecycleViolation] = []
-    total_files = 0
+    When ``argv`` (or ``sys.argv[1:]``) is empty, audit the default
+    production roots. When explicit roots are provided, audit EVERY
+    one of them — a missing root short-circuits to exit 2 before any
+    audit work, so a partial-pass output cannot hide a violating root.
+    """
+    args = argv if argv is not None else sys.argv[1:]
+    roots = [Path(a) for a in args] if args else _default_roots()
+
     for root in roots:
         if not root.is_dir():
             print(f"Error: audit root not found: {root}", file=sys.stderr)
             return 2
+
+    all_violations: list[ResourceLifecycleViolation] = []
+    total_files = 0
+    for root in roots:
         print(f"Auditing resource-lifecycle contract in: {root}")
         violations, files_checked = audit_resource_lifecycle_directory(root)
         all_violations.extend(violations)

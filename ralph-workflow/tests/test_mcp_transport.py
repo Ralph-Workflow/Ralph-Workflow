@@ -61,6 +61,7 @@ def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
     """StdioTransport accepts custom process and thread factories for testing."""
     created: dict[str, object] = {}
     events: list[str] = []
+    daemon_args: list[bool] = []
     seq: list[int] = [0]
 
     def fake_process_factory(command: list[str], cwd: str | None = None) -> _FakeProcess:
@@ -69,10 +70,16 @@ def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
         return _FakeProcess()
 
     def fake_thread_factory(target: object, daemon: bool) -> _FakeThread:
+        del target
+        daemon_args.append(daemon)
         seq[0] += 1
         label = str(seq[0])
         events.append(f"create:{label}")
-        return _FakeThread(label, on_start=lambda: events.append(f"start:{label}"))
+        return _FakeThread(
+            label,
+            on_start=lambda: events.append(f"start:{label}"),
+            daemon=daemon,
+        )
 
     transport = StdioTransport(
         ["python", "-m", "demo"],
@@ -86,6 +93,15 @@ def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
     assert created["command"] == ["python", "-m", "demo"]
     assert created["cwd"] == "/tmp/demo"
     assert events == ["create:1", "create:2", "start:1", "start:2"]
+    # Resource-lifecycle precondition: BOTH reader and writer threads
+    # MUST be requested with daemon=True so the ``# resource-lifecycle-ok:
+    # bounded-daemon factory`` marker on ``_default_thread_factory`` holds.
+    # If start() ever stops passing daemon=True, the audit's escape-hatch
+    # would silently mask a real non-daemon thread leak.
+    assert daemon_args == [True, True], (
+        f"StdioTransport.start() must request daemon=True for both threads; "
+        f"observed daemon args: {daemon_args}"
+    )
 
 
 @pytest.mark.asyncio
@@ -110,8 +126,8 @@ async def test_stdio_transport_close_joins_threads() -> None:
         return _FakeProcess()
 
     def fake_thread_factory(target: object, daemon: bool) -> _FakeThread:
-        del target, daemon
-        thread = _FakeThread(label=str(len(captured)), on_start=lambda: None)
+        del target
+        thread = _FakeThread(label=str(len(captured)), on_start=lambda: None, daemon=daemon)
         captured.append(thread)
         return thread
 
@@ -138,6 +154,18 @@ async def test_stdio_transport_close_joins_threads() -> None:
     for recorded in writer.join_calls:
         assert recorded is not None, "writer join() called without a timeout"
         assert recorded > 0, f"writer join() called with non-positive timeout: {recorded}"
+    # Resource-lifecycle precondition: BOTH threads MUST have been requested
+    # as daemon threads. This is the precondition for the
+    # ``# resource-lifecycle-ok: bounded-daemon factory`` marker on
+    # ``_default_thread_factory``. If start() ever stops passing daemon=True,
+    # close()'s bounded join would no longer be the only safety net against
+    # process-exit-blocking non-daemon threads.
+    assert reader.daemon_arg is True, (
+        f"reader thread MUST be requested with daemon=True; got {reader.daemon_arg!r}"
+    )
+    assert writer.daemon_arg is True, (
+        f"writer thread MUST be requested with daemon=True; got {writer.daemon_arg!r}"
+    )
 
 
 @pytest.mark.asyncio
@@ -163,11 +191,12 @@ async def test_stdio_transport_close_warns_when_thread_still_alive() -> None:
         return _FakeProcess()
 
     def fake_thread_factory(target: object, daemon: bool) -> _FakeThread:
-        del target, daemon
+        del target
         thread = _FakeThread(
             label=str(len(captured)),
             on_start=lambda: None,
             alive_after_join=True,
+            daemon=daemon,
         )
         captured.append(thread)
         return thread
@@ -207,6 +236,16 @@ async def test_stdio_transport_close_warns_when_thread_still_alive() -> None:
     )
     assert "_writer_thread" in text, (
         f"close() did not warn about the still-alive _writer_thread; captured: {text!r}"
+    )
+    # Resource-lifecycle precondition: BOTH threads MUST have been requested
+    # as daemon threads, even when they will eventually wedge (the daemon-ness
+    # is the safety net that lets interpreter exit still reap them when the
+    # bounded join returns with is_alive()=True).
+    assert reader.daemon_arg is True, (
+        f"reader thread MUST be requested with daemon=True; got {reader.daemon_arg!r}"
+    )
+    assert writer.daemon_arg is True, (
+        f"writer thread MUST be requested with daemon=True; got {writer.daemon_arg!r}"
     )
 
 

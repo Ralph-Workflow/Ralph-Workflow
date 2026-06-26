@@ -290,6 +290,156 @@ def test_real_production_tree_has_zero_violations() -> None:
         )
 
 
+# ---------------------------------------------------------------------------
+# Contract-strictness regressions (analysis-feedback closures)
+# ---------------------------------------------------------------------------
+
+
+def test_daemon_false_is_flagged(tmp_path: Path) -> None:
+    """``daemon=False`` MUST be flagged — it is the same lifecycle hazard
+    as omitting ``daemon`` entirely (a non-daemon thread that blocks the
+    interpreter shutdown atexit join). Mere keyword presence is not enough;
+    the contract requires ``daemon=True``.
+    """
+    v = _audit(
+        tmp_path,
+        "import threading\nthreading.Thread(target=lambda: None, daemon=False)\n",
+    )
+    assert v, "threading.Thread(target=..., daemon=False) MUST be flagged"
+    assert any(_category(vh) == "non_daemon_thread" for vh in v)
+
+
+def test_daemon_one_int_is_flagged(tmp_path: Path) -> None:
+    """``daemon=1`` MUST be flagged — int is truthy but ``threading.Thread``
+    rejects non-bool ``daemon`` at runtime in Python 3.13+ with
+    ``TypeError: daemon must be explicitly set to True``. The audit
+    must NOT accept arbitrary truthy constants: only the literal
+    ``True`` boolean satisfies the contract. Regression for the
+    analysis-feedback finding that ``_keyword_truthy()`` previously
+    accepted ``daemon=1`` because ``bool(1) is True``.
+    """
+    v = _audit(
+        tmp_path,
+        "import threading\nthreading.Thread(target=lambda: None, daemon=1)\n",
+    )
+    assert v, "threading.Thread(target=..., daemon=1) MUST be flagged"
+    assert any(_category(vh) == "non_daemon_thread" for vh in v)
+
+
+def test_daemon_zero_int_is_flagged(tmp_path: Path) -> None:
+    """``daemon=0`` MUST be flagged — falsy non-bool int is the same
+    hazard as ``daemon=False`` (and would crash ``Thread.__init__`` on
+    Python 3.13+). Pins the boolean-only rule.
+    """
+    v = _audit(
+        tmp_path,
+        "import threading\nthreading.Thread(target=lambda: None, daemon=0)\n",
+    )
+    assert v, "threading.Thread(target=..., daemon=0) MUST be flagged"
+    assert any(_category(vh) == "non_daemon_thread" for vh in v)
+
+
+def test_daemon_string_is_flagged(tmp_path: Path) -> None:
+    """``daemon=\"yes\"`` MUST be flagged — string is truthy but is not a
+    boolean and would crash ``Thread.__init__``. Only the literal
+    ``True`` boolean passes the audit.
+    """
+    v = _audit(
+        tmp_path,
+        "import threading\nthreading.Thread(target=lambda: None, daemon=\"yes\")\n",
+    )
+    assert v, "threading.Thread(target=..., daemon='yes') MUST be flagged"
+    assert any(_category(vh) == "non_daemon_thread" for vh in v)
+
+
+def test_daemon_none_is_flagged(tmp_path: Path) -> None:
+    """``daemon=None`` MUST be flagged — None is not the explicit
+    ``True`` boolean the contract requires.
+    """
+    v = _audit(
+        tmp_path,
+        "import threading\nthreading.Thread(target=lambda: None, daemon=None)\n",
+    )
+    assert v, "threading.Thread(target=..., daemon=None) MUST be flagged"
+    assert any(_category(vh) == "non_daemon_thread" for vh in v)
+
+
+def test_daemon_name_is_flagged(tmp_path: Path) -> None:
+    """``daemon=some_var`` MUST be flagged — non-constant expression
+    cannot be statically resolved; the audit must surface it for
+    human review rather than silently accept it.
+    """
+    v = _audit(
+        tmp_path,
+        "import threading\n"
+        "is_daemon = True\n"
+        "threading.Thread(target=lambda: None, daemon=is_daemon)\n",
+    )
+    assert v, "threading.Thread(target=..., daemon=is_daemon) MUST be flagged"
+    assert any(_category(vh) == "non_daemon_thread" for vh in v)
+
+
+def test_async_with_httpx_async_client_is_not_flagged(tmp_path: Path) -> None:
+    """``async with httpx.AsyncClient() as client:`` is a legitimate
+    context-manager usage and MUST NOT be flagged. The audit must
+    recognize ``ast.AsyncWith`` in addition to ``ast.With`` —
+    otherwise legitimate async-client usage is falsely reported as a
+    leak and forces spurious ``# resource-lifecycle-ok`` markers.
+    """
+    src = (
+        "import httpx\n"
+        "async def f():\n"
+        "    async with httpx.AsyncClient() as client:\n"
+        "        response = await client.get('http://x')\n"
+    )
+    assert not _audit(tmp_path, src), (
+        "async with httpx.AsyncClient() as client MUST be accepted; "
+        "the audit must recognize ast.AsyncWith"
+    )
+
+
+def test_main_audits_every_explicit_root(tmp_path: Path) -> None:
+    """``main([clean, bad])`` MUST audit BOTH roots and return non-zero
+    when any one of them violates — a single-root short-circuit would
+    silently ignore a violating root and produce a false-clean exit.
+    """
+    clean_dir = tmp_path / "clean"
+    clean_dir.mkdir()
+    (clean_dir / "c.py").write_text(
+        "import threading\n"
+        "threading.Thread(target=lambda: None, daemon=True)\n",
+        encoding="utf-8",
+    )
+    bad_dir = tmp_path / "bad"
+    bad_dir.mkdir()
+    (bad_dir / "b.py").write_text(
+        "import threading\nthreading.Thread(target=lambda: None)\n",
+        encoding="utf-8",
+    )
+    assert main([str(clean_dir), str(bad_dir)]) == 1, (
+        "main() must audit EVERY explicit root and surface violations "
+        "from any of them — a single-root short-circuit is a bug"
+    )
+
+
+def test_main_audits_three_explicit_roots(tmp_path: Path) -> None:
+    """Three-root regression: ``main([a, b, c])`` audits all three.
+
+    Catches a partial-fix regression where only the last root is
+    iterated but a missing-root short-circuit on a middle root masks
+    the violating tail.
+    """
+    roots = []
+    for idx, has_violation in enumerate((False, True, False)):
+        d = tmp_path / f"root{idx}"
+        d.mkdir()
+        daemon_kw = "" if has_violation else ", daemon=True"
+        src = f"import threading\nthreading.Thread(target=lambda: None{daemon_kw})\n"
+        (d / "m.py").write_text(src, encoding="utf-8")
+        roots.append(str(d))
+    assert main(roots) == 1
+
+
 def _category(violation: ResourceLifecycleViolation) -> str:
     """Return the violation category; helper for assertions across tests."""
     return violation.category

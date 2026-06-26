@@ -952,12 +952,18 @@ class ProcessManager:
             # ``grace_period_s + kill_followup_timeout_s`` and is reaped
             # by ``concurrent.futures``' own ``_python_exit`` atexit join
             # so no orphaned termination worker blocks process exit.
-            # We go through ``_get_terminate_executor()`` so the release
-            # path uses the same injectable seam the termination path
-            # does (tests can swap the seam to observe the release).
+            #
+            # GUARD on ``self._terminate_executor is not None`` first:
+            # the executor is created LAZILY by ``_get_terminate_executor``
+            # only on first async-termination use, and a fresh manager
+            # that never spawned an async process must not allocate one
+            # during teardown. Calling ``_get_terminate_executor()``
+            # unconditionally here would defeat the lazy-allocation
+            # contract and force every ``shutdown_all`` to spin up a
+            # worker pool it never needed.
             with contextlib.suppress(Exception):
-                executor = self._get_terminate_executor()
-                executor.shutdown(wait=False)
+                if self._terminate_executor is not None:
+                    self._terminate_executor.shutdown(wait=False)
             self._terminate_executor = None
         if first_termination_error is not None:
             raise first_termination_error
