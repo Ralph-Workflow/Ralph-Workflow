@@ -2,7 +2,7 @@
 
 > Mirror of [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — star/issues/discussion on Codeberg.
 
-**An early, production-grade Loop Engineering toolkit for coding agents.** Hand your coding agents a spec. Walk away. Come back to reviewable, tested commits. One of 27+ independent projects implementing the Ralph Loop pattern (see [USERS.md](USERS.md)).
+**An early, production-grade Loop Engineering toolkit for coding agents.** Hand your coding agents a spec. Walk away. Come back to reviewable, tested commits. One of 27+ independent projects implementing the Ralph Loop pattern (see [USERS.md](USERS.md)). New to the concept? [What is Loop Engineering?](https://ralphworkflow.com/blog/what-is-loop-engineering-2026)
 
 Ralph Workflow is a free, open-source Loop Engineering framework that runs the coding agents you already use — Claude Code, Codex, or OpenCode — on your own machine. Simple at the center, powerful in composition.
 
@@ -194,6 +194,7 @@ Questions, ideas, or something not working? Open an issue — the Codeberg track
 - **[Ask a question](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=question)** — anything from "will this work for my stack?" to feature ideas
 - **[PMF survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey)** (60 seconds) — the one signal we get since Ralph collects zero telemetry
 - **[See who's building with Ralph](USERS.md)** — 27+ projects and 15+ adopters
+- 🆕 **[What is Loop Engineering?](https://ralphworkflow.com/blog/what-is-loop-engineering-2026)** — the category defined: how AI coding agents iterate unattended, why 30+ projects converged on the same pattern, and why it's the next step after one-shot code generation
 - 🆕 **[23 Projects Reinvented the Same AI Coding Loop](https://ralphworkflow.com/blog/ralph-loop-ecosystem-convergent-evolution-2026)** — how the pattern is converging across 23+ independent projects, what JPMorganChase and AI-infra builders are doing with it
 - 📰 **[Microsoft Is Ending Claude Code Access — Why Vendor-Neutral AI Coding Matters Now](https://ralphworkflow.com/blog/microsoft-claude-code-migration-vendor-neutral-2026)** — the real-world vendor-lock event that validates the Loop Engineering argument
 - 📋 **[How to Migrate Off Claude Code — Practical Guide](https://ralphworkflow.com/blog/claude-code-migration-practical-guide-2026)** — step-by-step: pipx install → write spec → run overnight. For the June 30 deadline
