@@ -31,6 +31,7 @@ These tests verify:
 from __future__ import annotations
 
 import collections
+import shutil
 from typing import TYPE_CHECKING
 
 import pytest
@@ -91,11 +92,20 @@ def test_release_codex_home_is_idempotent_per_home(tmp_path: Path) -> None:
     assert release_codex_home(str(d)) is False
 
 
-def test_allocate_past_cap_evicts_oldest_with_disk_cleanup(tmp_path: Path) -> None:
+def test_allocate_past_cap_evicts_oldest_from_registry_keeps_disk(
+    tmp_path: Path,
+) -> None:
     """When the FIFO deque is at cap, the next allocation evicts the oldest
-    entry AND rmtree's its on-disk directory. This is the in-memory +
-    on-disk bound that makes ``_allocated_codex_homes`` a true bounded
-    accumulator (not just the previous atexit-only marker).
+    entry from the in-memory registry but PRESERVES its on-disk directory.
+
+    This is the active-home invariant introduced in wt-024 round 2
+    (analysis feedback): a home that is still in use by a live Codex
+    subprocess must not be deleted out from under the running agent just
+    because the bounded registry reached its cap. The on-disk bound is
+    now provided by ``release_codex_home`` (production release path via
+    the ``ResolvedInvocationRuntime.cleanup`` hook) and
+    ``cleanup_codex_homes`` (atexit net for orphans); see
+    ``_allocate_codex_home_dir`` for the rationale.
     """
     # Shrink the cap for a fast deterministic test by swapping the
     # deque with a smaller-maxlen one. We restore the original in finally.
@@ -109,19 +119,181 @@ def test_allocate_past_cap_evicts_oldest_with_disk_cleanup(tmp_path: Path) -> No
             d = _allocate_codex_home_dir(workspace_path=tmp_path)
             dirs.append(d)
 
-        # Registry must be bounded at the cap
+        # Registry must be bounded at the cap (FIFO eviction happened)
         assert len(codex_module._allocated_codex_homes) == small_cap, (
             f"registry must be capped at {small_cap}; "
             f"got {len(codex_module._allocated_codex_homes)}"
         )
 
-        # The OLDEST entry must be evicted (and its on-disk dir rmtree'd)
-        assert not dirs[0].exists(), (
-            f"oldest allocation {dirs[0]} must have been rmtree'd on FIFO eviction"
+        # The OLDEST entry must be EVICTED FROM THE REGISTRY...
+        assert str(dirs[0]) not in codex_module._allocated_codex_homes, (
+            f"oldest allocation {dirs[0]} must have been evicted from the registry"
         )
-        # The newest entries must still exist
+        # ...but its on-disk directory MUST still exist (the eviction is
+        # registry-only; the active-home invariant prevents deleting a
+        # home that may still be referenced by a live Codex subprocess).
+        assert dirs[0].exists(), (
+            f"oldest allocation {dirs[0]} must STILL exist on disk "
+            f"(eviction must be registry-only, not on-disk)"
+        )
+        # The newest entries must exist (both in registry and on disk).
         for d in dirs[1:]:
+            assert str(d) in codex_module._allocated_codex_homes
             assert d.exists(), f"recent allocation {d} must still exist on disk"
+    finally:
+        # Clean up any remaining on-disk dirs before restoring
+        cleanup_codex_homes()
+        # Restore the production deque (with original cap)
+        codex_module._allocated_codex_homes = original_deque
+
+
+def test_release_codex_home_rmtrees_after_eviction_from_registry(
+    tmp_path: Path,
+) -> None:
+    """After the registry evicts the oldest entry, the production cleanup
+    hook (release_codex_home + unconditional rmtree) STILL rmtree's
+    the on-disk directory.
+
+    ``release_codex_home`` by itself returns False for an evicted path
+    (the home is no longer in the registry). That is the documented
+    registry-only semantic. The ``ResolvedInvocationRuntime.cleanup``
+    hook therefore pairs ``release_codex_home`` with an unconditional
+    ``shutil.rmtree(home, ignore_errors=True)`` so on-disk cleanup
+    happens regardless of registry membership. This test proves that
+    pairing works.
+
+    This proves the on-disk bound is preserved even though
+    ``_allocate_codex_home_dir`` no longer rmtree's on eviction: the
+    owning agent's ``ResolvedInvocationRuntime.cleanup`` hook can
+    always release the directory. The eviction only loses the
+    registry entry (the bookkeeping), not the ability to clean up
+    the actual directory.
+    """
+    # Shrink the cap for a fast deterministic test by swapping the
+    # deque with a smaller-maxlen one. We restore the original in finally.
+    small_cap = 4
+    original_deque = codex_module._allocated_codex_homes
+    codex_module._allocated_codex_homes = collections.deque(maxlen=small_cap)
+    try:
+        # Allocate cap + 1 entries; dirs[0] will be evicted from registry.
+        dirs: list = []
+        for _ in range(small_cap + 1):
+            d = _allocate_codex_home_dir(workspace_path=tmp_path)
+            dirs.append(d)
+
+        evicted_dir = dirs[0]
+        assert str(evicted_dir) not in codex_module._allocated_codex_homes
+        assert evicted_dir.exists(), (
+            "eviction must not delete the directory (active-home invariant)"
+        )
+
+        # release_codex_home is the documented registry release path;
+        # for an evicted-but-not-yet-released home it returns False
+        # (the home is not in the registry). This is the existing
+        # contract and is preserved by this fix.
+        released = release_codex_home(str(evicted_dir))
+        assert released is False, (
+            "release_codex_home returns False for evicted paths "
+            "(registry-only semantic, preserved)"
+        )
+        assert evicted_dir.exists(), (
+            "release_codex_home does NOT rmtree on its own for an "
+            "evicted path; the cleanup hook MUST rmtree unconditionally"
+        )
+
+        # The production cleanup hook pairs release_codex_home with
+        # shutil.rmtree(..., ignore_errors=True). Simulate that here
+        # and confirm the on-disk cleanup succeeds.
+        release_codex_home(str(evicted_dir))
+        shutil.rmtree(str(evicted_dir), ignore_errors=True)
+
+        assert not evicted_dir.exists(), (
+            "production cleanup hook (release_codex_home + rmtree) "
+            "must rmtree the on-disk directory even after eviction"
+        )
+    finally:
+        # Clean up any remaining on-disk dirs before restoring
+        cleanup_codex_homes()
+        # Restore the production deque (with original cap)
+        codex_module._allocated_codex_homes = original_deque
+
+
+def test_active_codex_homes_not_evicted_from_disk(tmp_path: Path) -> None:
+    """Regression for analysis-feedback wt-024 round 2: the active-home
+    invariant must hold when more than ``_DEFAULT_CODEX_HOME_CAP``
+    live Codex invocations exist.
+
+    Scenario: simulate the real bug. Allocate N > cap "active" Codex
+    homes (each represented by a still-alive ``ResolvedInvocationRuntime``
+    holding a cleanup hook). Assert that NONE of the previously-allocated
+    homes have been rmtree'd even after the registry has wrapped around
+    past them. Then release the FIRST home via its captured cleanup
+    hook (release_codex_home + unconditional rmtree, mirroring
+    CodexRuntimeResolver) and confirm only that one was rmtree'd; the
+    rest must still exist (each cleanup hook only releases its own home).
+    """
+    # Shrink the cap for a fast deterministic test by swapping the
+    # deque with a smaller-maxlen one. We restore the original in finally.
+    small_cap = 4
+    original_deque = codex_module._allocated_codex_homes
+    codex_module._allocated_codex_homes = collections.deque(maxlen=small_cap)
+    try:
+        # Allocate cap + 2 entries (i.e., the registry wraps around the
+        # original cap, evicting two of the earlier homes). Each
+        # allocation is paired with a "live" cleanup hook representing
+        # an outstanding ResolvedInvocationRuntime.cleanup.
+        n_active = small_cap + 2
+        dirs: list = []
+        cleanups: list = []
+        for _ in range(n_active):
+            d = _allocate_codex_home_dir(workspace_path=tmp_path)
+            dirs.append(d)
+            # Capture the home path in a closure as a fake cleanup hook.
+            # Mirrors CodexRuntimeResolver: release_codex_home (registry
+            # cleanup) + unconditional shutil.rmtree (on-disk cleanup,
+            # needed because the registry may have FIFO-evicted the
+            # entry before this owning agent finishes).
+            captured = str(d)
+
+            def _make_cleanup(home: str) -> object:
+                def _cleanup() -> None:
+                    release_codex_home(home)
+                    shutil.rmtree(home, ignore_errors=True)
+                return _cleanup
+
+            cleanups.append(_make_cleanup(captured))
+
+        # Registry is bounded at the cap (n_active - small_cap oldest
+        # entries were evicted from the registry).
+        assert len(codex_module._allocated_codex_homes) == small_cap
+        # The first two entries should no longer be in the registry.
+        assert str(dirs[0]) not in codex_module._allocated_codex_homes
+        assert str(dirs[1]) not in codex_module._allocated_codex_homes
+
+        # CRITICAL INVARIANT: every "active" home (every home that has
+        # a live owner holding a cleanup hook) MUST STILL EXIST on
+        # disk, including the ones evicted from the registry.
+        for d in dirs:
+            assert d.exists(), (
+                f"active home {d} MUST still exist on disk even after "
+                f"registry eviction (analysis-feedback wt-024 round 2 "
+                f"regression guard)"
+            )
+
+        # Now release the FIRST home via its captured cleanup hook.
+        # Only that home must be rmtree'd.
+        cleanups[0]()
+
+        assert not dirs[0].exists(), (
+            "released home must be rmtree'd by its cleanup hook"
+        )
+        # All OTHER homes must STILL exist (each cleanup only releases
+        # its own home; nobody else's).
+        for d in dirs[1:]:
+            assert d.exists(), (
+                f"unrelated active home {d} must NOT have been rmtree'd "
+                f"by another home's cleanup hook"
+            )
     finally:
         # Clean up any remaining on-disk dirs before restoring
         cleanup_codex_homes()
