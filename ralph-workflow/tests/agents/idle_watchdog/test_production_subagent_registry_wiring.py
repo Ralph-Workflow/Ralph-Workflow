@@ -41,11 +41,13 @@ plumbing now wires the registry through every layer.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
+from ralph.agents import invoke as ralph_invoke
 from ralph.agents.catalog import default_catalog
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -61,10 +63,11 @@ from ralph.agents.parsers import (
     GeminiParser,
     GenericParser,
     PiParser,
+    get_parser,
 )
 from ralph.agents.registry import AgentRegistry
-from ralph.config.enums import AgentTransport
-from ralph.config.models import UnifiedConfig
+from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import FakeLivenessProbe
 from ralph.process.monitor import SubagentPidSource
@@ -388,3 +391,203 @@ def test_catalog_default_seeded_transports_have_subagent_pid_registry_factory() 
         registry, source = agent_registry.build_subagent_pid_registry(transport)
         assert isinstance(registry, SubagentPidRegistry)
         assert isinstance(source, SubagentPidSource)
+
+
+# ---------------------------------------------------------------------------
+# Parser registration hook (R5 production wiring)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("transport_label", "parser_cls"),
+    [
+        ("claude", ClaudeParser),
+        ("codex", CodexParser),
+        ("pi", PiParser),
+        ("agy", AgyParser),
+        ("gemini", GeminiParser),
+        ("generic", GenericParser),
+    ],
+)
+def test_parser_registers_pid_from_structured_event_when_registry_wired(
+    transport_label: str,
+    parser_cls: type[AgentParser],
+) -> None:
+    """Structured event carrying a PID MUST register it into the shared registry.
+
+    The R5 production wiring requires the parser's ``_dispatch_json_object``
+    path to call the registry registration hook for every observed
+    structured event. When an event carries an embedded PID, the parser
+    registers it via ``SubagentPidRegistry.register``. When the event
+    has no PID, the hook is a no-op (and the registry stays empty).
+    """
+    registry = SubagentPidRegistry()
+    parser = parser_cls(
+        subagent_pid_registry=registry,
+        subagent_source_label=transport_label,
+    )
+    # Pre-condition: empty registry.
+    assert len(registry) == 0
+
+    # Drive an event that carries a PID at the top level.
+    pid = 55555
+    line_with_pid = '{"type": "child_progress", "pid": ' + str(pid) + ', "content": "x"}'
+    events = list(parser.parse(iter([line_with_pid])))
+    # Parser still emits the same typed event (registry is a side-effect hook).
+    assert events, "parser MUST still emit an event for child_progress line"
+    assert pid in registry.known_pids()
+    identity = next(iter(registry.snapshot()))
+    assert identity.source == transport_label
+
+    # Drive an event with no PID -> no-op for the registry.
+    line_without_pid = '{"type": "text", "content": "hello"}'
+    events2 = list(parser.parse(iter([line_without_pid])))
+    assert events2
+    # No new PIDs registered.
+    assert len(registry) == 1
+
+
+def test_parser_registration_hook_no_op_when_registry_none() -> None:
+    """The registration hook is a no-op when no registry was provided.
+
+    The legacy zero-arg ``parser_factory()`` call MUST continue to work
+    without raising on PID-less events or PID-carrying events. The
+    hook silently skips when ``_subagent_pid_registry`` is ``None``.
+    """
+    parser = CodexParser()  # zero-arg legacy call
+    line = '{"type": "child_progress", "pid": 99999}'
+    events = list(parser.parse(iter([line])))
+    assert events  # parser still emits
+    assert getattr(parser, "_subagent_pid_registry", None) is None
+
+
+def test_parser_registration_hook_no_op_when_source_label_none() -> None:
+    """The registration hook is a no-op when no source label was provided.
+
+    A parser constructed with a registry but no source label (e.g. via
+    a legacy caller that passes only the registry kwarg) MUST NOT
+    register PIDs -- the source label is what attributes a PID to the
+    right transport for the per-transport ``SubagentPidSource`` filter.
+    Without the label the registration could leak cross-transport.
+    """
+    registry = SubagentPidRegistry()
+    parser = CodexParser(subagent_pid_registry=registry)
+    assert parser._subagent_source_label is None
+    line = '{"type": "child_progress", "pid": 12345}'
+    list(parser.parse(iter([line])))
+    # No registration happened because no source label was provided.
+    assert 12345 not in registry.known_pids()
+
+
+# ---------------------------------------------------------------------------
+# get_parser production wiring
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("parser_key", "transport_label"),
+    [
+        ("claude", "claude"),
+        ("codex", "codex"),
+        ("pi", "pi"),
+        ("agy", "agy"),
+        ("gemini", "gemini"),
+        ("generic", "generic"),
+    ],
+)
+def test_get_parser_threads_registry_and_source_label(
+    parser_key: str,
+    transport_label: str,
+) -> None:
+    """``get_parser(parser_key, subagent_pid_registry=..., subagent_source_label=...)`` wires both.
+
+    The previous pass silently instantiated parsers as ``parser_cls()``
+    with no registry. The fix: ``get_parser`` MUST accept and forward
+    the registry + source label kwargs so the parser's registration
+    hook fires for PID-carrying events.
+    """
+    registry = SubagentPidRegistry()
+    parser = get_parser(
+        parser_key,
+        subagent_pid_registry=registry,
+        subagent_source_label=transport_label,
+    )
+    assert parser._subagent_pid_registry is registry
+    assert parser._subagent_source_label == transport_label
+
+
+def test_get_parser_default_kwargs_keep_registry_none() -> None:
+    """Legacy zero-arg ``get_parser(parser_key)`` MUST keep the registry and source label ``None``.
+
+    The fix MUST NOT regress the legacy ``get_parser('claude')``
+    zero-arg call used by the smoke and commit plumbing.
+    """
+    parser = get_parser("claude")
+    assert getattr(parser, "_subagent_pid_registry", None) is None
+    assert getattr(parser, "_subagent_source_label", None) is None
+
+
+# ---------------------------------------------------------------------------
+# Production invocation flow wires the SubagentPidSource into the strategy
+# ---------------------------------------------------------------------------
+
+
+def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``invoke_agent`` MUST thread ``subagent_pid_source=`` into ``strategy_for_command``.
+
+    This is the integration test for the production wiring path the
+    analysis flagged as missing: ``invoke_agent`` constructs a
+    per-invocation shared ``SubagentPidRegistry`` +
+    ``SubagentPidSource`` from ``AgentRegistry.build_subagent_pid_registry``
+    and threads the source into ``strategy_for_command(...)`` so
+    ``BaseExecutionStrategy.classify_quiet`` uses the FILTERED signal.
+
+    The test inspects the ``strategy_for_command`` call site directly
+    via monkeypatch so no real subprocess is launched and no wall-clock
+    sleep is required. The argument-recording monkeypatch captures the
+    kwargs passed in and the test asserts ``subagent_pid_source`` is a
+    non-``None`` ``SubagentPidSource`` instance -- proving the wiring
+    is live end-to-end.
+    """
+    captured: dict[str, object] = {}
+
+    def _spy(*args: object, **kwargs: object) -> BaseExecutionStrategy:
+        captured.update(kwargs)
+        return BaseExecutionStrategy(
+            label_scope=cast("str | None", kwargs.get("label_scope")),
+            registry=cast("ChildLivenessRegistry | None", kwargs.get("registry")),
+            subagent_pid_source=cast(
+                "SubagentPidSource | None", kwargs.get("subagent_pid_source")
+            ),
+        )
+
+    # ``strategy_for_command`` is imported into ``invoke`` at module
+    # load via ``from ralph.agents.execution_state import strategy_for_command``,
+    # so the canonical patch target is the ``invoke`` module's own
+    # reference (NOT the source module -- rebinding the source has no
+    # effect on the already-imported name). The pytest ``monkeypatch``
+    # fixture handles the cleanup automatically on teardown so this
+    # test file remains free of any suppression markers.
+    monkeypatch.setattr(ralph_invoke, "strategy_for_command", _spy)
+
+    # Build a minimal AgentConfig and InvokeOptions so the
+    # ``invoke_agent`` flow reaches the ``strategy_for_command``
+    # call site. The test only inspects the captured kwargs; any
+    # downstream failure is acceptable (we monkeypatch the call).
+    config = AgentConfig(
+        cmd="claude -p",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    with contextlib.suppress(Exception):
+        list(ralph_invoke.invoke_agent(config, "PROMPT.md"))
+
+    assert "subagent_pid_source" in captured, (
+        "invoke_agent MUST pass subagent_pid_source= into strategy_for_command"
+    )
+    source = captured["subagent_pid_source"]
+    assert isinstance(source, SubagentPidSource), (
+        f"subagent_pid_source must be a SubagentPidSource instance, got {type(source).__name__}"
+    )

@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from ralph.agents.catalog import _ParserRegistryEntry
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
 
 __all__ = [
     "_CUSTOM_COMMAND_REGISTRY",
@@ -189,12 +190,28 @@ def resolve_parser_key(
     return str(json_parser)
 
 
-def get_parser(parser_type: str) -> AgentParser:
+def get_parser(
+    parser_type: str,
+    *,
+    subagent_pid_registry: SubagentPidRegistry | None = None,
+    subagent_source_label: str | None = None,
+) -> AgentParser:
     """Get parser instance by type name or by a registered custom command.
 
     Args:
         parser_type: Parser type name (claude, codex, gemini, opencode, generic)
             or the full executable command of a custom-registered agent.
+        subagent_pid_registry: Optional R5 (Trustworthy Idle Watchdog)
+            per-invocation shared :class:`SubagentPidRegistry`. When
+            provided AND ``subagent_source_label`` is also provided, the
+            parser will register any PID discovered in structured
+            child-lifecycle events into the shared registry. Both
+            kwargs default to ``None`` for full backward-compat with
+            the legacy zero-arg ``parser_factory()`` call.
+        subagent_source_label: Per-transport source label (e.g.
+            ``"claude"``, ``"codex"``) used by the parser when
+            registering PIDs into the shared registry. ``None`` keeps
+            the registration hook no-op.
 
     Returns:
         Parser instance implementing AgentParser protocol.
@@ -204,13 +221,27 @@ def get_parser(parser_type: str) -> AgentParser:
     """
     parser_cls = _view("_PARSER_REGISTRY").get(parser_type.lower())
     if parser_cls is not None:
-        return parser_cls()
+        return parser_cls(
+            subagent_pid_registry=subagent_pid_registry,
+            subagent_source_label=subagent_source_label,
+        )
     custom_entry = _view("_CUSTOM_COMMAND_REGISTRY").get(parser_type.lower())
     from ralph.agents.catalog import (  # noqa: PLC0415  # reason: lazy import breaks catalog<->parsers cycle
         _ParserRegistryEntry,
     )
 
     if isinstance(custom_entry, _ParserRegistryEntry):
-        return custom_entry.parser_factory()
+        # Custom-command parser factories are stored as class refs (the
+        # ``BuiltinAgentSpec.parser_factory`` typed as ``Callable[[], AgentParser]``).
+        # The registered classes accept the registry kwargs by
+        # contract; passing them is safe (legacy zero-arg classes that
+        # ignore the kwargs continue to work because the kwargs are
+        # keyword-only with defaults). The entry's ``__call__`` method
+        # carries the typed kwargs signature; calling ``parser_factory``
+        # directly would reject the kwargs at type-check time.
+        return custom_entry(
+            subagent_pid_registry=subagent_pid_registry,
+            subagent_source_label=subagent_source_label,
+        )
     msg = f"Unknown parser type: {parser_type}"
     raise ValueError(msg)

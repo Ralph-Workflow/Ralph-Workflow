@@ -69,16 +69,18 @@ class AgyParser(NdjsonParserBase):
     :class:`TextAccumulator` into coherent blocks.
     """
 
-    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
         super().__init__()
-        # Store the registry (forward-compat; AGY's --print plain-text
-        # stream does not currently carry embedded PIDs). The stored
-        # reference lets future code paths register a discovered child
-        # PID into the shared registry without re-plumbing the
-        # constructor signature.
-        self._subagent_pid_registry: SubagentPidRegistry | None = (
-            subagent_pid_registry
-        )
+        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
+        # source label. AGY's --print plain-text stream does not currently
+        # carry embedded PIDs; this is forward-compat for the
+        # per-transport SubagentPidSource seam.
+        self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
+        self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
         self._has_prior_text_line: bool = False
 

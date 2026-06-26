@@ -255,15 +255,20 @@ class CodexParser(NdjsonParserBase):
         {"turn.completed", "message_stop", "done", "stop", "response.completed"}
     )
 
-    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
         super().__init__()
-        # Store the registry (forward-compat; Codex's NDJSON events do
-        # not currently carry embedded PIDs). The stored reference lets
-        # future code paths register a discovered child PID into the
-        # shared registry without re-plumbing the constructor signature.
-        self._subagent_pid_registry: SubagentPidRegistry | None = (
-            subagent_pid_registry
-        )
+        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
+        # source label. The base's ``_try_register_subagent_pid_from_obj``
+        # hook fires for every structured child-lifecycle event observed
+        # by the parser (Codex's NDJSON shape does not currently carry
+        # embedded ``pid`` fields; this is forward-compat for the
+        # per-transport SubagentPidSource seam).
+        self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
+        self._subagent_source_label: str | None = subagent_source_label
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self._current_response_id: str | None = None
         self._stream_counter = 0
@@ -274,6 +279,7 @@ class CodexParser(NdjsonParserBase):
         obj: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
+        # R5 registration hook is centralised in NdjsonParserBase.
         yield from self._dispatcher.dispatch(obj, raw)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:

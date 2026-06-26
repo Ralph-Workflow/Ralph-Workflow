@@ -648,13 +648,18 @@ class PiParser(NdjsonParserBase):
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
 
-    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
         super().__init__()
-        # Store the registry (forward-compat; pi's NDJSON events do
-        # not currently carry embedded PIDs). The stored reference lets
-        # future code paths register a discovered child PID into the
-        # shared registry without re-plumbing the constructor signature.
+        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
+        # source label. Pi's documented ``AgentSessionEvent`` union does
+        # not currently include a ``pid`` field; this is forward-compat
+        # for the per-transport SubagentPidSource seam.
         self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
+        self._subagent_source_label: str | None = subagent_source_label
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self.saw_text_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared
         self.saw_thinking_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared
@@ -698,6 +703,9 @@ class PiParser(NdjsonParserBase):
         obj: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
+        # R5: register any embedded PID into the shared registry BEFORE
+        # the dispatcher routes the event.
+        self._try_register_subagent_pid_from_obj(obj)
         yield from self._dispatcher.dispatch(obj, raw)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:

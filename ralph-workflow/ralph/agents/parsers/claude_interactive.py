@@ -26,15 +26,17 @@ if TYPE_CHECKING:
 class ClaudeInteractiveParser:
     """Convert interactive Claude transcript lines into AgentOutputLine events."""
 
-    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
-        # Store the registry (forward-compat; interactive Claude's
-        # transcript events do not currently carry embedded PIDs). The
-        # stored reference lets future code paths register a discovered
-        # child PID into the shared registry without re-plumbing the
-        # constructor signature.
-        self._subagent_pid_registry: SubagentPidRegistry | None = (
-            subagent_pid_registry
-        )
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
+        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
+        # source label. Interactive Claude's transcript events do not
+        # currently carry embedded PIDs; this is forward-compat for the
+        # per-transport SubagentPidSource seam.
+        self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
+        self._subagent_source_label: str | None = subagent_source_label
         self._parser = ClaudeInteractiveTranscriptParser()
         self._text_accumulator = TextAccumulator()
         self._thinking_accumulator = TextAccumulator()

@@ -74,8 +74,54 @@ class _ParserRegistryEntry:
     strategy_factory: "StrategyFactory"
     transport: "AgentTransport"
 
-    def __call__(self) -> "AgentParser":
-        return self.parser_factory()
+    def __call__(
+        self,
+        *,
+        subagent_pid_registry: object | None = None,
+        subagent_source_label: str | None = None,
+    ) -> "AgentParser":
+        # Fast-path: no kwargs (the default for non-R5 callers).
+        if subagent_pid_registry is None and subagent_source_label is None:
+            return self.parser_factory()
+        # R5 production wiring kwargs flow through ``__call__`` to the
+        # underlying ``parser_factory``. The runtime probe preserves
+        # backward-compat with legacy zero-arg factories declared as
+        # ``Callable[[], AgentParser]`` in :class:`AgentSupport`: any
+        # legacy factory that rejects the kwargs raises ``TypeError``
+        # and we fall back to the zero-arg call. The local
+        # ``flexible`` alias widens the callable signature to satisfy
+        # strict mypy without an ``Any``-typed expression at the
+        # function boundary.
+        flexible = _FlexibleFactory(self.parser_factory)
+        return flexible(
+            subagent_pid_registry=subagent_pid_registry,
+            subagent_source_label=subagent_source_label,
+        )
+
+
+class _FlexibleFactory:
+    """Thin wrapper that lets a zero-arg callable accept kwargs at the type level.
+
+    The wrapper carries no runtime state; it only widens the callable's
+    static type from ``Callable[[], AgentParser]`` to
+    ``Callable[..., AgentParser]`` so the R5 production wiring kwargs
+    can flow through without an explicit ``Any`` annotation. The
+    runtime probe in :meth:`_ParserRegistryEntry.__call__` (which
+    catches ``TypeError`` from the legacy zero-arg path) keeps the
+    backward-compat contract. The wrapper preserves a single typed
+    alias without leaking Any into the wider codebase.
+    """
+
+    __slots__ = ("_factory",)
+
+    def __init__(self, factory: Callable[[], "AgentParser"]) -> None:
+        self._factory = factory
+
+    def __call__(self, **kwargs: object) -> "AgentParser":
+        try:
+            return self._factory(**kwargs)
+        except TypeError:
+            return self._factory()
 
 
 class _CatalogBackedMapping(Mapping[K, V]):
