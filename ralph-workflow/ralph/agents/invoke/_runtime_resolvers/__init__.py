@@ -7,12 +7,14 @@ dictionary that maps every AgentTransport value to its corresponding RuntimeReso
 from __future__ import annotations
 
 import os
+import shutil
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.agents.invoke._errors import UnsupportedMcpTransportError
 from ralph.agents.invoke._resolved_invocation_runtime import ResolvedInvocationRuntime
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV
+from ralph.mcp.transport.codex import release_codex_home
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -211,10 +213,36 @@ class CodexRuntimeResolver:
 
         _apply_upstream_env(upstreams, workspace_path, runtime_env, server_env)
 
+        # Per-invocation cleanup hook: ``prepare_codex_home_with_upstreams``
+        # always allocates a fresh ``tempfile.mkdtemp`` under
+        # ``workspace_path/.agent/tmp`` (or the system tempdir). Without
+        # a release hook the on-disk directory would persist for the
+        # entire interpreter lifetime, and the in-memory registry in
+        # ``ralph.mcp.transport.codex._allocated_codex_homes`` could
+        # never distinguish an active home from a finished one. The
+        # ``invoke_agent`` finally block invokes this hook after the
+        # Codex subprocess finishes (success, failure, or
+        # cancellation) so each per-invocation home is rmtree'd at the
+        # right time.
+        #
+        # The hook unconditionally rmtree's the on-disk directory
+        # because the owning agent captured ``codex_home`` at
+        # allocation time. The registry may have already FIFO-evicted
+        # this entry (analysis-feedback wt-024 round 2 active-home
+        # invariant) before the owning agent finished, in which case
+        # ``release_codex_home`` would return False (no-op) but the
+        # directory still needs cleanup. ``release_codex_home`` is
+        # itself idempotent (returns False on a second call) so a
+        # duplicate invocation is harmless.
+        def _release() -> None:
+            release_codex_home(codex_home)
+            shutil.rmtree(codex_home, ignore_errors=True)
+
         return ResolvedInvocationRuntime(
             agent_env=runtime_env or None,
             server_env=server_env or None,
             mcp_endpoint=endpoint,
+            cleanup=_release,
         )
 
 

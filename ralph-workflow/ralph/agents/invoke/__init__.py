@@ -379,6 +379,17 @@ def invoke_agent(
 
         _log_workspace_completion(monitor)
     finally:
+        # Per-invocation cleanup hook (see ResolvedInvocationRuntime.cleanup):
+        # releases transport-specific resources allocated during resolve(),
+        # e.g. the per-invocation Codex CODEX_HOME tempdir. Must be invoked
+        # in the finally block (not before _log_workspace_completion) so a
+        # subprocess crash still releases the home. The hook is None for
+        # resolvers that allocate nothing per-invocation; the conditional
+        # guard is a no-op in that case. release_codex_home is idempotent
+        # (returns False on a second call) so a duplicate invocation from
+        # a future caller is harmless.
+        if runtime.cleanup is not None:
+            runtime.cleanup()
         _stop_workspace_monitor(monitor)
 
 
