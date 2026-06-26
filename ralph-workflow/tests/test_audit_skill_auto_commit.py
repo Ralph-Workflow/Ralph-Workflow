@@ -159,3 +159,69 @@ def test_audit_blocks_regression_when_commit_cleanup_skip_removed(
         f"Audit must exit 1 when the early-skip literal is removed; got rc={rc}"
     )
     assert cleanup_path in captured.out
+
+
+def test_audit_blocks_regression_when_failure_path_log_removed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Removing the ``Skill auto-commit failed (non-fatal)`` debug log literal from
+    ``cli/commands/run.py`` triggers rc=1 -- pins the failure-path invariant.
+
+    The plan (step 12) requires the audit to pin the run-path contract
+    INCLUDING the failure-path debug-log literal and the surrounding
+    try/except so a future refactor that silently drops the failure
+    handler is caught at audit time.
+    """
+    real_read = audit_module._read
+    run_path = "cli/commands/run.py"
+
+    def _read_with_failure_log_removed(rel_path: str) -> str:
+        content = real_read(rel_path)
+        if rel_path == run_path:
+            return content.replace(
+                "Skill auto-commit failed (non-fatal): {}",
+                "removed failure-path debug log",
+            )
+        return content
+
+    monkeypatch.setattr(audit_module, "_read", _read_with_failure_log_removed)
+    rc = audit_main([])
+    captured = capsys.readouterr()
+    assert rc == 1, (
+        f"Audit must exit 1 when the failure-path debug log is removed from run.py; "
+        f"got rc={rc}"
+    )
+    assert run_path in captured.out
+    assert "missing required literal" in captured.out
+
+
+def test_audit_blocks_regression_when_failure_path_try_except_removed(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Removing the try/except wrapper around ``commit_skill_updates`` in
+    ``cli/commands/run.py`` triggers rc=1 -- pins the fail-closed contract.
+
+    A future refactor that drops the try/except could let a transient
+    git error break the pipeline, defeating the best-effort contract
+    pinned by ``test_auto_commit_fails_closed_on_git_lock``.
+    """
+    real_read = audit_module._read
+    run_path = "cli/commands/run.py"
+
+    def _read_with_try_except_removed(rel_path: str) -> str:
+        content = real_read(rel_path)
+        if rel_path == run_path:
+            return content.replace(
+                "except Exception as exc:  # auto-commit is best-effort; never break the pipeline",
+                "REMOVED_TRY_EXCEPT_MARKER",
+            )
+        return content
+
+    monkeypatch.setattr(audit_module, "_read", _read_with_try_except_removed)
+    rc = audit_main([])
+    captured = capsys.readouterr()
+    assert rc == 1, (
+        f"Audit must exit 1 when the try/except wrapping commit_skill_updates is removed; "
+        f"got rc={rc}"
+    )
+    assert run_path in captured.out

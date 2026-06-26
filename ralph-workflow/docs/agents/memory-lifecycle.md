@@ -336,8 +336,9 @@ positives):
   — bounded shutdown block owned by the asyncio bridge (different
   lifecycle), not a thread leak.
 
-The audit is wired into `make verify` as the LAST `_VERIFY_STEPS`
-entry (step 17). It is NOT a budget-tracked step, so adding it does
+The audit is wired into `make verify` as a non-last `_VERIFY_STEPS`
+entry (step 17, with the deterministic skill auto-commit audit
+appended as step 18). It is NOT a budget-tracked step, so adding it does
 NOT increase the 60-second combined test budget; it does NOT trip
 the `audit_mcp_timeout`-containment import-time invariant. Adding a
 NEW violation in any audited root fails `make verify` on this step.
