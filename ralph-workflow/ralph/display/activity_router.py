@@ -23,7 +23,8 @@ if TYPE_CHECKING:
 # Parser imports are deferred: ``ralph.agents.parsers`` pulls in
 # ``ralph.display.vt_normalizer`` -> ``ralph.display`` -> ``ralph.display.parallel_display``
 # -> this module, so the eager import below would close a cycle.
-PARSERS: dict[ActivityProvider, type[AgentParser]] = {}
+# bounded-accumulator-ok: fixed dispatch table keyed by ActivityProvider enum
+PARSERS: dict[ActivityProvider, type[AgentParser]] = {}  # bounded-accumulator-ok
 
 
 def _build_parsers() -> dict[ActivityProvider, type[AgentParser]]:
@@ -135,8 +136,9 @@ class ActivityRouter:
         self._buffer_factory = buffer_factory or (
             lambda: RingBuffer(maxsize=PARALLEL_DISPLAY_BUFFER_SIZE)
         )
-        self._parsers: dict[str, AgentParser] = {}
-        self._buffers: dict[str, RingBuffer] = {}
+        # bounded-accumulator-ok: per-unit; drained by ActivityRouter.drop_unit(unit_id)
+        self._parsers: dict[str, AgentParser] = {}  # bounded-accumulator-ok: drop_unit
+        self._buffers: dict[str, RingBuffer] = {}  # bounded-accumulator-ok: drop_unit
         self._on_event = on_event
         self._raw_overflow_callback = raw_overflow_callback
 

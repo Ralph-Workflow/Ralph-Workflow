@@ -46,7 +46,8 @@ class _PackagedTemplateCache:
         reader: Callable[[Path], str] | None = None,
     ) -> None:
         self._reader: Callable[[Path], str] = reader or _DEFAULT_READER
-        self._cache: dict[str, str] = {}
+        # bounded-accumulator-ok: bounded by immutable packaged-template file set
+        self._cache: dict[str, str] = {}  # bounded-accumulator-ok: packaged templates
 
     def get(self, relative_path: str, *, root: Path) -> str:
         """Return the packaged template body for ``relative_path``.
@@ -82,7 +83,10 @@ class TemplateRegistry:
         template_dirs: tuple[Path, ...] = (),
         _read_text: Callable[[Path], str] | None = None,
     ) -> None:
-        self._templates: dict[str, str] = {}
+        # bounded-accumulator-ok: bounded by template_dirs file set
+        # (packaged + workspace), lazily discovered via _discover_template;
+        # register_template has zero production callers
+        self._templates: dict[str, str] = {}  # bounded-accumulator-ok: template_dirs
         self._template_dirs = template_dirs
         self._read_text: Callable[[Path], str] = _read_text or _DEFAULT_READER
 

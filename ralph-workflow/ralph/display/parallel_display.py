@@ -425,8 +425,10 @@ class ParallelDisplay:
         # that previously lived on a separate renderer instance. Documented in
         # __slots__ above so the existing __slots__ discipline is preserved.
         self._last_phase: str | None = None
-        self._last_budget_progress: dict[str, int] = {}
-        self._last_worker_states: dict[str, str] = {}
+        # phase-bounded: replaced wholesale each snapshot (NOT per-unit accumulated)
+        self._last_budget_progress: dict[str, int] = {}  # bounded-accumulator-ok: phase-bounded
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._last_worker_states: dict[str, str] = {}  # bounded-accumulator-ok: drop_unit
         self._last_plan_signature: tuple[str | None, tuple[str, ...], int] | None = None
         self._last_activity_signature: (
             tuple[
@@ -444,9 +446,10 @@ class ParallelDisplay:
         ) = None
         self._last_analysis_signature: tuple[str | None, str | None, str | None] | None = None
         self._last_waiting_signature: str | None = None
-        self._active_block: dict[str, tuple[str, list[str]]] = {}
-        self._active_block_chars: dict[str, int] = {}
-        self._last_checkpoint_chars: dict[str, int] = {}
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._active_block: dict[str, tuple[str, list[str]]] = {}  # bounded-accumulator-ok
+        self._active_block_chars: dict[str, int] = {}  # bounded-accumulator-ok: drop_unit
+        self._last_checkpoint_chars: dict[str, int] = {}  # bounded-accumulator-ok: drop_unit
         self._emitted_empty_plan: bool = False
         self._emitted_empty_activity: bool = False
         self._emitted_empty_decision_log: bool = False
@@ -457,16 +460,19 @@ class ParallelDisplay:
         self._phase_close_emitted: bool = False
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
-        self._last_emitted_tool_signature: dict[str, tuple[str, str]] = {}
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._last_emitted_tool_signature: dict[str, tuple[str, str]] = {}  # bounded-accumulator-ok
 
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
         # Per-unit raw overflow logs, lazy-created on first oversized emit
-        self._overflow_logs: dict[str, RawOverflowLog] = {}
+        # Per-unit raw overflow logs, lazy-created on first oversized emit
+        # per-unit; drained by drop_unit(unit_id) in the parallel coordinator finally
+        self._overflow_logs: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: drop_unit
         # Track units where the 50 MB guard WARN was already emitted
-        self._overflow_warned: set[str] = set()
+        self._overflow_warned: set[str] = set()  # bounded-accumulator-ok: drop_unit
         # Per-unit last drop-warning timestamp; _NEVER_WARNED means never warned yet
-        self._drop_last_warned: dict[str, float] = {}
+        self._drop_last_warned: dict[str, float] = {}  # bounded-accumulator-ok: drop_unit
 
         self._activity_router: ActivityRouter = ActivityRouter(
             on_event=self._emit_activity_event,

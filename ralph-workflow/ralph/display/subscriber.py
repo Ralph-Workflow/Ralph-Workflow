@@ -210,7 +210,9 @@ class PipelineSubscriber:
         self._analysis_phase: str | None = None
         self._analysis_decision: str | None = None
         self._analysis_reason: str | None = None
-        self._decision_log: list[tuple[str, str, str, str]] = []
+        # bounded-accumulator-ok: manual FIFO cap _DECISION_LOG_MAX=16
+        # (truncated in _append_decision_log_locked)
+        self._decision_log: list[tuple[str, str, str, str]] = []  # bounded-accumulator-ok
         self._mcp_restart_count: int = 0
         self._last_state: PipelineState | None = None
         self._snapshot_cache_state: PipelineState | None = None

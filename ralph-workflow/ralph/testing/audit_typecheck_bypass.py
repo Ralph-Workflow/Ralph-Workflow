@@ -93,6 +93,25 @@ _TYPE_IGNORE_ALLOWLIST: set[tuple[str, str]] = {
     # StreamReader/StreamWriter at the boundary but pipe is typed as
     # object for the defensive close loop).
     ("_managed_async_process", "attr-defined"),
+    # wt-024 memory-perf: the bounded-accumulator-ok marker must live
+    # on the same physical line as the assignment so the
+    # audit_resource_lifecycle AST marker scan finds it. The line is
+    # then too long for ruff E501 if the explicit type annotation is
+    # also on that line. ``# type: ignore[var-annotated]`` lets the
+    # marker live on the assignment line without losing the explicit
+    # annotation in the source -- the annotation is documented in the
+    # class-level / module-level type declaration above the __init__
+    # body (or in the dataclass ``field(default_factory=...)`` for
+    # ``idle_watchdog``). Mypy still resolves the attribute type from
+    # the dataclass / class-level annotation.
+    ("idle_watchdog", "var-annotated"),
+    ("ring_buffer", "var-annotated"),
+    ("_process_manager", "var-annotated"),
+    ("codex", "var-annotated"),
+    ("audit_adapter", "var-annotated"),
+    ("_bounded_lines_queue", "var-annotated"),
+    ("repetition_tracker", "var-annotated"),
+    ("_pty_line_reader", "var-annotated"),
 }
 
 # Policy-compliant reason markers (must appear on the same logical line

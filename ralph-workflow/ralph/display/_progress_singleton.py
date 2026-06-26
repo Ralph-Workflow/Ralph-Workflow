@@ -23,7 +23,9 @@ class ProgressSingleton:
         by console identity) yield separate RalphProgress instances.
     """
 
-    instances: ClassVar[dict[int, RalphProgress]] = {}
+    # bounded-accumulator-ok: keyed by id(console); bounded by live
+    # console count (1 in practice)
+    instances: ClassVar[dict[int, RalphProgress]] = {}  # bounded-accumulator-ok: id(console)
     _factory: ClassVar[_ProgressFactory | None] = None
 
     @classmethod

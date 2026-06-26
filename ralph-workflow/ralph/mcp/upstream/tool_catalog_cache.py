@@ -25,7 +25,9 @@ if TYPE_CHECKING:
 # concurrency without dropping recently-used workspaces.
 _MAX_CACHE_ENTRIES: int = 32
 
-_CACHE: OrderedDict[str, dict[str, list[UpstreamTool]]] = OrderedDict()
+# bounded-accumulator-ok: FIFO LRU cap _MAX_CACHE_ENTRIES=32
+# (OrderedDict.popitem(last=False) eviction in cache_tool_catalog)
+_CACHE: OrderedDict[str, dict[str, list[UpstreamTool]]] = OrderedDict()  # bounded-accumulator-ok
 
 
 def _cache_key(workspace_root: Path | None) -> str | None:
