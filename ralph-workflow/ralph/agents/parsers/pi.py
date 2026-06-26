@@ -648,9 +648,9 @@ class PiParser(NdjsonParserBase):
 
     def __init__(self) -> None:
         super().__init__()
-        self._accumulators: dict[str, TextAccumulator] = {}
-        self.saw_text_end_by_index: set[int] = set()
-        self.saw_thinking_end_by_index: set[int] = set()
+        self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
+        self.saw_text_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared
+        self.saw_thinking_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared
         self._dispatcher = _PiDispatch(self)
 
     def reset_emission_flags(self) -> None:

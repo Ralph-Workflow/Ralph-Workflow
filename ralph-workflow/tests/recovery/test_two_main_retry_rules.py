@@ -380,7 +380,7 @@ def test_recovery_chain_exhaustion_only_when_no_budget_remaining() -> None:
       - state.recovery_cycle_count is incremented by 1.
       - The state is NOT in the wait state (is_waiting_state is False).
     """
-    exhausted = BudgetState(max_retries=2, consumed=2, failures=())
+    exhausted = BudgetState(max_retries=2, consumed=2)
     registry = AgentBudgetRegistry(
         budgets={
             ("development", "claude"): exhausted,

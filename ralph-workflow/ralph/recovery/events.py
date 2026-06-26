@@ -21,7 +21,7 @@ class FailureEventBus:
     """Simple publish/subscribe bus for failure and fallover events."""
 
     def __init__(self) -> None:
-        self._listeners: list[_AnyListener] = []
+        self._listeners: list[_AnyListener] = []  # bounded-accumulator-ok: drained
 
     def publish(self, evt: FailureEvent | FalloverEvent) -> None:
         if isinstance(evt, FailureEvent):

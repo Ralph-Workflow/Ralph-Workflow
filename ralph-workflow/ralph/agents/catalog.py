@@ -489,7 +489,7 @@ def _seed_default_catalog(catalog: AgentCatalog) -> None:
     catalog._state.strategies.update(catalog._DEFAULT_STRATEGIES)
 
 
-_catalog_holder: list[AgentCatalog] = []
+_catalog_holder: list[AgentCatalog] = []  # bounded-accumulator-ok: singleton
 
 
 def default_catalog() -> AgentCatalog:

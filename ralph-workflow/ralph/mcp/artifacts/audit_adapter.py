@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 from threading import Lock
 from typing import TYPE_CHECKING, Protocol
 
@@ -107,15 +108,47 @@ def to_ralph_record(record: McpAuditRecord) -> RalphAuditRecord:
     )
 
 
-class RalphAuditSinkAdapter:
-    """Adapter that buffers Ralph audit records produced by MCP."""
+# Default cap for ``RalphAuditSinkAdapter.__init__``. 4096 is generous
+# for any realistic single-session audit volume; it matches the FIFO
+# ring-buffer pattern used by ``BoundedLinesQueue`` /
+# ``execution_history`` and the cap-policy documented in
+# ``ralph-workflow/docs/agents/memory-lifecycle.md``. Defined at
+# module load order BEFORE ``RalphAuditSinkAdapter`` so the default
+# argument reference is resolved at class-definition time.
+_DEFAULT_AUDIT_RECORD_CAP: int = 4096
 
-    def __init__(self) -> None:
-        self._records: list[RalphAuditRecord] = []
+
+class RalphAuditSinkAdapter:
+    """Adapter that buffers Ralph audit records produced by MCP.
+
+    wt-024 memory-perf AC-02: the ``_records`` buffer is bounded by a
+    constructor-injected ``cap`` (default ``_DEFAULT_AUDIT_RECORD_CAP =
+    4096``) using ``collections.deque(maxlen=cap)``. ``deque.append``
+    honors ``maxlen`` by evicting the OLDEST record FIFO — the same
+    pattern already used by ``BoundedLinesQueue``,
+    ``execution_history``, and other production ring buffers in this
+    codebase. The cap is exposed as a constructor parameter for DI /
+    testability; existing no-arg callers
+    (``tests/test_audit_adapter.py:49,69`` and any production wiring)
+    keep working unchanged because ``cap`` defaults to the production
+    cap.
+
+    ``flush()`` is now Protocol-correct: it returns ``None`` (per the
+    ``AuditSink`` Protocol ``def flush(self) -> None: ...``) AND clears
+    the buffer so the buffered memory is released. The previous
+    "documented no-op" was a latent leak enabler — buffered records
+    could be retained until a ``drain_records()`` call without any
+    production caller calling ``drain_records()`` periodically.
+    """
+
+    def __init__(self, cap: int = _DEFAULT_AUDIT_RECORD_CAP) -> None:
+        if not isinstance(cap, int) or cap <= 0:
+            raise ValueError(f"cap must be a positive int, got {cap!r}")
+        self._records: collections.deque[RalphAuditRecord] = collections.deque(maxlen=cap)
         self._lock = Lock()
 
     def emit(self, record: McpAuditRecord) -> None:
-        """Store a converted audit record in the buffer."""
+        """Store a converted audit record in the buffer (FIFO-evicting)."""
 
         with self._lock:
             self._records.append(to_ralph_record(record))
@@ -129,7 +162,15 @@ class RalphAuditSinkAdapter:
         return drained
 
     def flush(self) -> None:
-        """No-op flush since records are held in memory."""
+        """Release buffered records (returns ``None`` per the ``AuditSink`` Protocol).
+
+        Clears the FIFO buffer so buffered memory is released without
+        requiring a caller to first ``drain_records()``. Returns
+        ``None`` (does NOT return records — that would violate the
+        Protocol's ``def flush(self) -> None`` signature).
+        """
+        with self._lock:
+            self._records.clear()
 
 
 __all__ = [

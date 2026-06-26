@@ -200,7 +200,7 @@ class WorkspaceMonitor:
         self._workspace = workspace_path
         self._observer: _HasStop | None = None
         self._event_count = 0
-        self._seen_files: dict[str, None] = {}
+        self._seen_files: dict[str, None] = {}  # bounded-accumulator-ok: bounded
         self._now: Callable[[], float] = now if now is not None else time.monotonic
         self._last_event_at: float | None = None
         if on_event is not None:

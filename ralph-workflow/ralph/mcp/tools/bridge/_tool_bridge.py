@@ -31,7 +31,7 @@ class ToolBridge:
     """Registry for MCP tools and dispatcher for tool invocations."""
 
     def __init__(self, session: object | None = None) -> None:
-        self._tools: dict[str, RegisteredTool] = {}
+        self._tools: dict[str, RegisteredTool] = {}  # bounded-accumulator-ok: bounded
         self._session = session
         self._client_capabilities: set[str] | None = None
 

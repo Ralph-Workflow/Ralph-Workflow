@@ -269,6 +269,7 @@ def test_default_roots_cover_required_packages() -> None:
     assert any(str(r).endswith("ralph/recovery") for r in roots)
 
 
+@pytest.mark.timeout_seconds(10)
 def test_real_production_tree_has_zero_violations() -> None:
     """The real production ``ralph/`` tree MUST be clean (zero violations).
 
@@ -288,6 +289,171 @@ def test_real_production_tree_has_zero_violations() -> None:
             f"Production tree has {len(violations)} resource-lifecycle violation(s); "
             f"the contract MUST hold today:\n{formatted}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Resource accumulator contract (wt-024 memory-perf AC-04)
+# ---------------------------------------------------------------------------
+#
+# The 4th contract flags long-lived mutable accumulators (list / dict /
+# set / deque) without a FIFO/size cap or a bounded-accumulator-ok
+# marker. Detection scope:
+#   - module-level names (Name targets);
+#   - instance attributes (self.X in __init__ bodies).
+#
+# Excluded by design:
+#   - ``__all__`` (Python re-export convention);
+#   - dataclass field defaults (``field(default_factory=...)``);
+#   - local variables inside non-__init__ functions;
+#   - single-element list literals ``[X]`` (Python's mutable-closure
+#     idiom for counter / flag / None sentinels);
+#   - dict / set literals with all-static keys (dispatch tables).
+
+
+def test_unbounded_instance_accumulator_flagged(tmp_path: Path) -> None:
+    """``self._x = {}`` in __init__ MUST be flagged (instance attr accumulator)."""
+    src = (
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = {}\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "self._x = {} in __init__ MUST be flagged as unbounded_accumulator"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_unbounded_module_level_accumulator_flagged(tmp_path: Path) -> None:
+    """Module-level ``_x: dict = {}`` MUST be flagged (module-level accumulator)."""
+    src = "_x: dict = {}\n"
+    v = _audit(tmp_path, src)
+    assert v, "module-level '_x: dict = {}' MUST be flagged as unbounded_accumulator"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_unbounded_deque_without_maxlen_flagged(tmp_path: Path) -> None:
+    """``self._q = deque()`` (no maxlen) MUST be flagged — a deque without
+    maxlen is unbounded by construction."""
+    src = (
+        "from collections import deque\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._q = deque()\n"
+    )
+    v = _audit(tmp_path, src)
+    assert v, "self._q = deque() without maxlen MUST be flagged as unbounded_accumulator"
+    assert any(_category(vh) == "unbounded_accumulator" for vh in v)
+
+
+def test_deque_with_maxlen_is_not_flagged(tmp_path: Path) -> None:
+    """``self._q = deque(maxlen=8)`` is bounded by construction — NOT flagged."""
+    src = (
+        "from collections import deque\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._q = deque(maxlen=8)\n"
+    )
+    assert not _audit(tmp_path, src), (
+        "deque(maxlen=...) MUST NOT be flagged — it is bounded by construction"
+    )
+
+
+def test_collections_deque_with_maxlen_is_not_flagged(tmp_path: Path) -> None:
+    """``self._q = collections.deque(maxlen=8)`` is bounded — NOT flagged.
+    Verifies the import-alias resolution works for the accumulator contract
+    (matches the daemon-thread / http-client alias-resolution test pattern).
+    """
+    src = (
+        "import collections\n"
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._q = collections.deque(maxlen=8)\n"
+    )
+    assert not _audit(tmp_path, src)
+
+
+def test_bounded_accumulator_marker_suppresses(tmp_path: Path) -> None:
+    """``# bounded-accumulator-ok: <reason>`` MUST suppress the violation."""
+    src = (
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = {}  # bounded-accumulator-ok: per-process, drained\n"
+    )
+    assert not _audit(tmp_path, src)
+
+
+def test_resource_lifecycle_marker_still_works_with_accumulator(tmp_path: Path) -> None:
+    """The original ``# resource-lifecycle-ok`` marker also suppresses
+    (backward compatibility: both markers are part of the marker SET,
+    so existing markers on accumulator-bearing lines keep working).
+    """
+    src = (
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._x = {}  # resource-lifecycle-ok: legacy marker, still suppresses\n"
+    )
+    assert not _audit(tmp_path, src)
+
+
+def test_single_element_list_sentinel_not_flagged(tmp_path: Path) -> None:
+    """``[X]`` (single-element list literal) is the Python mutable-closure
+    idiom for a counter / flag / None sentinel — NOT an accumulator.
+    Skipped to avoid false positives on common streaming-reader patterns.
+    """
+    src = (
+        "class C:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._counter = [0]\n"
+        "        self._flag = [False]\n"
+        "        self._last = [None]\n"
+    )
+    assert not _audit(tmp_path, src), (
+        "single-element list literals (mutable-closure idiom) MUST NOT be "
+        "flagged as unbounded_accumulator"
+    )
+
+
+def test_static_dispatch_table_with_string_keys_not_flagged(tmp_path: Path) -> None:
+    """Dict literal with all-string keys is a static — skipped."""
+    src = (
+        "HANDLERS = {\n"
+        "    'session': handle_session,\n"
+        "    'message_end': handle_message_end,\n"
+        "}\n"
+    )
+    assert not _audit(tmp_path, src)
+
+
+def test_all_dunder_is_not_flagged(tmp_path: Path) -> None:
+    """``__all__`` (Python re-export convention) is excluded from the
+    accumulator contract — it is a static list of exported symbol names,
+    never mutated across a session.
+    """
+    src = '__all__ = ["Foo", "Bar", "Baz"]\n'
+    assert not _audit(tmp_path, src)
+
+
+def test_empty_list_in_non_init_function_not_flagged(tmp_path: Path) -> None:
+    """Local ``x = []`` inside a non-__init__ function is out of scope
+    (higher false-positive rate; the BudgetState.failures leak class
+    was closed by dropping the field + the tracemalloc test, not by this AST contract).
+    """
+    src = (
+        "def helper():\n"
+        "    x = []\n"
+        "    x.append(1)\n"
+    )
+    assert not _audit(tmp_path, src)
+
+
+def test_dataclass_field_default_factory_not_flagged(tmp_path: Path) -> None:
+    """``field(default_factory=list)`` in a dataclass is excluded."""
+    src = (
+        "from dataclasses import dataclass, field\n"
+        "@dataclass\n"
+        "class C:\n"
+        "    items: list = field(default_factory=list)\n"
+    )
+    assert not _audit(tmp_path, src)
 
 
 # ---------------------------------------------------------------------------

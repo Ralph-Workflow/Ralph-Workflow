@@ -112,7 +112,7 @@ class AgentUnavailabilityTracker:
             backoff_policy if backoff_policy is not None else DEFAULT_UNAVAILABILITY_BACKOFF_POLICY
         )
         self._entries: dict[str, UnavailabilityEntry] = dict(initial_entries or {})
-        self._backoff_attempts: dict[str, int] = {}
+        self._backoff_attempts: dict[str, int] = {}  # bounded-accumulator-ok: drained on cleanup
 
         if initial_timeouts:
             for key, timeout_ms in initial_timeouts.items():

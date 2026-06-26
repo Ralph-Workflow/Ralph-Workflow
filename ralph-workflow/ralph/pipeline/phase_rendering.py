@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ralph.config.enums import Verbosity
 
-VERBOSITY_RANK: dict[Verbosity, int] = {
+VERBOSITY_RANK = {  # bounded-accumulator-ok: static enum-keyed rank table, never mutated
     Verbosity.QUIET: 0,
     Verbosity.NORMAL: 1,
     Verbosity.VERBOSE: 2,

@@ -101,7 +101,7 @@ _SMOKE_MAX_SESSION_SECONDS = 120.0
 # Per-agent session ceiling overrides. AGY's default --print-timeout is 5m
 # (measured in tmp/agy-source-of-truth.txt); give it a 6m ceiling so the smoke
 # harness does not kill a run that AGY still considers active.
-_AGENT_SESSION_CEILINGS: dict[str, float] = {
+_AGENT_SESSION_CEILINGS = {  # bounded-accumulator-ok: static per-agent ceiling map, never mutated
     "claude": 120.0,
     "agy": 360.0,
 }

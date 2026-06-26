@@ -220,7 +220,7 @@ class ParserTemplateBase:
     _accumulators: dict[str, TextAccumulator]
 
     def __init__(self) -> None:
-        self._accumulators = {}
+        self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
 
     def emit_subagent_activity(
         self,

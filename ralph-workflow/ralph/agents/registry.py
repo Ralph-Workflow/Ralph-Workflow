@@ -119,7 +119,7 @@ class AgentRegistry:
         catalog: AgentCatalog | None = None,
     ) -> None:
         """Initialize an empty agent registry."""
-        self.agents: dict[str, AgentConfig] = {}
+        self.agents: dict[str, AgentConfig] = {}  # bounded-accumulator-ok: bounded
         self._ccs_defaults = ccs_defaults or CcsConfig()
         if catalog is not None:
             self._catalog = catalog

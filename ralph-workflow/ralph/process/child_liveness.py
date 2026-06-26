@@ -159,7 +159,7 @@ class ChildLivenessRegistry:
         self._stale_label_ttl = stale_label_ttl
         self._exit_reconcile = exit_reconcile
         self._now = now
-        self._records: dict[str, MutableRecord] = {}
+        self._records: dict[str, MutableRecord] = {}  # bounded-accumulator-ok: drained on reap
 
     def register_child(
         self,

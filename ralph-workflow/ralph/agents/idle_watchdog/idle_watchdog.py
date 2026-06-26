@@ -508,9 +508,9 @@ class IdleWatchdog:
         self._drain_started_at = None
         self._last_fire_reason = None
         self._last_deferred_kind = None
-        self._last_deferred_log_at = {}
-        self._last_any_deferred_log_at = {}
-        self._last_evidence_deferral_log_at = {}
+        self._last_deferred_log_at = {}  # bounded-accumulator-ok: drained on removal
+        self._last_any_deferred_log_at = {}  # bounded-accumulator-ok: drained on removal
+        self._last_evidence_deferral_log_at = {}  # bounded-accumulator-ok: drained on removal
         self._last_waiting_status_at = None
         self._suspicion_announced_for_run = False
         self._last_tool_result_at = None
@@ -540,7 +540,7 @@ class IdleWatchdog:
         self._workspace_event_count_internal = 0
         self._last_workspace_event_at = None
         self._last_workspace_event_weight = 0.0
-        self._workspace_kind_counts = {}
+        self._workspace_kind_counts = {}  # bounded-accumulator-ok: drained on removal
         self._entry_corroboration: CorroborationSnapshot | None = None
         self._repetition_tracker = RepetitionTracker(
             clock,

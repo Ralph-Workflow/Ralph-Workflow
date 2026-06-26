@@ -84,12 +84,22 @@ class ProcessManager:
         clock: Callable[[], float] | None = None,
     ) -> None:
         self.policy = policy or ProcessManagerPolicy()
-        self._records: dict[int, ProcessRecord] = {}
+        # All ProcessManager dicts are bounded by the centralized process
+        # lifecycle: ``_records`` is evicted via the terminal_history_limit
+        # FIFO (default 256), ``_listeners`` via max_listeners (default 64),
+        # ``_termination_outcomes`` is cleared on shutdown, and the per-PID
+        # maps (``_sync_procs`` / ``_pty_procs`` / ``_descendants``) shrink
+        # as each ProcessRecord completes via ``_mark_exited`` /
+        # ``_mark_killed`` / ``_mark_unreaped``. None of these grow
+        # monotonically across the manager's lifetime.
+        self._records: dict[int, ProcessRecord] = {}  # bounded-accumulator-ok: FIFO eviction
         self._terminal_records: OrderedDict[int, ProcessRecord] = OrderedDict()
-        self._sync_procs: dict[int, _SyncProcessLike] = {}
-        self._pty_procs: dict[int, _PtyProcessLike] = {}
-        self._descendants: dict[int, list[int]] = {}
-        self._termination_outcomes: dict[int, list[dict[str, str]]] = {}
+        self._sync_procs: dict[int, _SyncProcessLike] = {}  # bounded-accumulator-ok: per-PID
+        self._pty_procs: dict[int, _PtyProcessLike] = {}  # bounded-accumulator-ok: per-PID
+        self._descendants: dict[int, list[int]] = {}  # bounded-accumulator-ok: per-PID
+        self._termination_outcomes: dict[  # bounded-accumulator-ok: cleared
+    int, list[dict[str, str]]
+] = {}
         self._clock: Callable[[], float] = clock if clock is not None else _time.monotonic
         self._stop_event: threading.Event = threading.Event()
         self._reaper_thread: threading.Thread | None = None
@@ -113,8 +123,10 @@ class ProcessManager:
         #     prevent deadlock from listeners that call back into ProcessManager.
         self._status_lock = threading.Lock()
 
-        self._async_procs: dict[int, _AsyncProcessLike] = {}
-        self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
+        self._async_procs: dict[int, _AsyncProcessLike] = {}  # bounded-accumulator-ok: per-PID
+        self._listeners: dict[  # bounded-accumulator-ok: bounded
+    int, Callable[[ProcessEvent], None]
+] = {}
         self._listener_counter = 0
         # wt-024 memory-perf AC-02: dedicated bounded ThreadPoolExecutor
         # for async process termination. ``_escalate_termination_async``

@@ -97,9 +97,11 @@ FIFO/size cap. The current inventory:
 |---|---|---|---|
 | ProcessManager terminal records | 256 | `ProcessManagerPolicy.terminal_history_limit` | FIFO eviction via `OrderedDict` |
 | ProcessManager event listeners | 64 | `ProcessManager` (private) | FIFO eviction when the cap is hit |
-| MediaManifest entries | 256 | `ralph/display/media_manifest.py` | LRU/byte-cap eviction |
+| MediaManifest entries | 256 | `ralph/mcp/multimodal/resources.py` | count cap `_DEFAULT_MAX_ENTRIES=256` + FIFO eviction (`OrderedDict.popitem(last=False)` via `_evict_oldest()`) + wt-024 M2 `retain_raw_bytes` (drops `_raw_bytes` when `byte_loader` or `cache_path` is supplied) |
 | Tool catalog cache | 32 | `ralph/mcp/...` (catalog layer) | LRU eviction |
 | ActivityRouter per-unit buffers | bounded | `ActivityRouter` | bounded by policy |
+| `BudgetState.failures` (recovery) | none | `ralph/recovery/budget_state.py` | field DROPPED in wt-024 memory-perf AC-01 (was an unbounded `tuple[ClassifiedFailure, ...]` accumulator never read for any decision; the failures tuple retained heavyweight `ClassifiedFailure` objects across a long run — closed by dropping the field + adding `tests/integration/test_recovery_budget_memory_regression.py`) |
+| `RalphAuditSinkAdapter._records` | 4096 | `ralph/mcp/artifacts/audit_adapter.py` | constructor-injected cap (`__init__(cap=_DEFAULT_AUDIT_RECORD_CAP)`) backed by `collections.deque(maxlen=cap)` FIFO eviction; `flush()` returns `None` per the `AuditSink` Protocol and CLEARS the buffer (no longer a documented no-op); `drain_records()` returns + clears |
 
 Every blocking I/O call MUST carry a `timeout=` keyword (or a
 justified `# mcp-timeout-ok: <reason>` marker) — see
@@ -267,7 +269,7 @@ finally block is a safety net, not a mandatory kill.
 ## Resource-lifecycle audit
 
 `ralph/testing/audit_resource_lifecycle.py` is the AST-based audit that
-keeps the contract structurally hard to regress. It enforces three
+keeps the contract structurally hard to regress. It enforces four
 classes of leak in production code:
 
 | Contract | What it flags | Why it matters |
@@ -275,10 +277,37 @@ classes of leak in production code:
 | **Daemon-Thread rule** | `threading.Thread(...)` and `Thread(...)` (resolved through import aliases) WITHOUT `daemon=True` | Non-daemon threads can block process exit on the `concurrent.futures` `_python_exit` atexit join |
 | **With-managed HTTP client** | `httpx.Client(...)`, `httpx.AsyncClient(...)`, `requests.Session(...)` constructed OUTSIDE a `with` statement (bare assignment) | Bare construction leaks the underlying HTTP connection pool and is not closed at interpreter exit |
 | **Centralized raw-fd creation** | `os.open(...)`, `os.openpty(...)`, `os.pipe(...)` OUTSIDE `ralph/process/` | Raw fd creation bypasses the centralized process lifecycle; the zombie reaper / terminal records don't see the fd and it leaks across restarts |
+| **Resource accumulators** (wt-024 memory-perf AC-04) | Mutable collection literals (`[]`, `{}`, `set()`) and constructor calls (`list()` / `dict()` / `set()` / `deque()` / `collections.deque()` WITHOUT `maxlen=`) assigned to (a) module-level names OR (b) instance attributes (`self.X`) inside `__init__` bodies | Unbounded accumulators retain heavyweight objects (exceptions, tracebacks, large payloads) across a long unattended run — the exact leak class that produced `BudgetState.failures` and `RalphAuditSinkAdapter._records` |
 
-The audit has one inline escape hatch: a `# resource-lifecycle-ok:
-<reason>` marker on the call's line suppresses the violation. The
-marker is the only allowlist mechanism — keep it rare and justified.
+The audit has TWO inline escape hatch markers on the line that
+suppresses the violation:
+
+- `# resource-lifecycle-ok: <reason>` — applies to contracts 1-3
+  (daemon-Thread, HTTP client, raw-fd);
+- `# bounded-accumulator-ok: <reason>` — applies to contract 4
+  (resource accumulators).
+
+Both markers are part of a single marker SET in
+`audit_resource_lifecycle.py` so they coexist without disrupting
+each other (a future contract can opt in by adding to the set). The
+markers are the only allowlist mechanism — keep them rare and
+justified (name the cap / drain).
+
+Exclusions for the accumulator contract (intentional, documented
+to avoid false positives):
+
+- `__all__` (Python re-export convention; static list of exported
+  symbol names never mutated after class load).
+- Single-element list literals `[X]` (Python's mutable-closure idiom
+  for capturing a counter / flag / None sentinel — the list itself is
+  NOT an accumulator; `lst[0] = ...` mutates in place).
+- Dict / set literals whose keys / elements are all static (strings,
+  names, attribute accesses) — static dispatch / handler / config
+  tables populated once at construction.
+- Local variables inside non-`__init__` functions (higher false-
+  positive rate; the `BudgetState.failures` leak class was closed by
+  dropping the field + the tracemalloc test, not by this AST contract).
+- Dataclass field defaults (`field(default_factory=...)`).
 
 Default audit roots (the directories scanned by `make verify`):
 
@@ -373,13 +402,17 @@ HTTP client, file handle, accumulator):
 5. **Accumulators** (lists, deques, dicts, bytes buffers): add a
    FIFO / size cap aligned with the production default. Mirrors the
    `ProcessManager.terminal_history_limit = 256` / `BoundedLinesQueue(maxlen=256)`
-   pattern.
+   pattern. For long-lived mutable accumulators (module-level OR
+   `self.X` in `__init__`), the audit flags the assignment unless you
+   use `deque(maxlen=...)` / `OrderedDict` + count cap / a justified
+   `# bounded-accumulator-ok: <reason>` marker naming the cap or drain.
 
 If a new resource class is added, extend the
 `audit_resource_lifecycle.py` audit to cover it AND add an inline
-marker style (`# resource-lifecycle-ok: <reason>`). The audit exists
-to make a future leak fail `make verify` BEFORE it ships, not after
-a long-running session shows OOM in production.
+marker style (`# resource-lifecycle-ok: <reason>` for contracts 1-3
+or `# bounded-accumulator-ok: <reason>` for contract 4). The audit
+exists to make a future leak fail `make verify` BEFORE it ships, not
+after a long-running session shows OOM in production.
 
 ## See also
 

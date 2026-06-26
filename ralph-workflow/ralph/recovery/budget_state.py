@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ralph.recovery.classifier import ClassifiedFailure
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class BudgetState:
-    """Immutable budget state for a single (phase, agent) pair."""
+    """Immutable budget state for a single (phase, agent) pair.
+
+    ``max_retries`` and ``consumed`` are the only counters needed to
+    drive every budget decision (exhausted / remaining). A previous
+    ``failures: tuple[ClassifiedFailure, ...]`` accumulator was
+    removed in wt-024 memory-perf AC-01: it was appended on every
+    debit, never read for any decision, and retained heavyweight
+    ``ClassifiedFailure`` objects (original_exception + traceback
+    frames) across an entire run. Repo-wide grep confirmed zero
+    readers.
+    """
 
     max_retries: int
     consumed: int = 0
-    failures: tuple[ClassifiedFailure, ...] = field(default_factory=tuple)
 
     @property
     def exhausted(self) -> bool:

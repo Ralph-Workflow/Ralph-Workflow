@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-_sync_cell: list[_SyncProcessFactory] = []
-_async_cell: list[_AsyncProcessFactory] = []
-_pty_cell: list[_PtyProcessFactory] = []
+_sync_cell: list[_SyncProcessFactory] = []  # bounded-accumulator-ok: slice-replaced singleton
+_async_cell: list[_AsyncProcessFactory] = []  # bounded-accumulator-ok: slice-replaced singleton
+_pty_cell: list[_PtyProcessFactory] = []  # bounded-accumulator-ok: slice-replaced singleton
 
 
 def _set_defaults(

@@ -428,3 +428,130 @@ def test_integration_per_test_timeout_invariant_survives_minus_o() -> None:
     )
     assert "RuntimeError" in result.stderr
     assert "_INTEGRATION_PER_TEST_TIMEOUT_SECONDS must be 1.0" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# audit_resource_lifecycle containment invariant tests (wt-024 memory-perf AC-05)
+# ---------------------------------------------------------------------------
+
+
+def _run_resource_lifecycle_patched_import(
+    *,
+    drop_step: bool = False,
+    minus_o: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run a subprocess that patches verify.py to remove the
+    ``audit_resource_lifecycle`` step label from ``_VERIFY_STEPS`` and
+    imports it. Mirrors the pattern at
+    ``_run_label_patched_import`` (the per-step label tests above)
+    but specifically targets the audit_resource_lifecycle
+    containment invariant added in step 8.
+
+    The patch is surgical: the ``resource lifecycle audit`` tuple
+    (the only step whose label contains ``audit_resource_lifecycle``)
+    is replaced with a label whose ``audit_resource_lifecycle`` substring
+    is removed (``"resource lifecycle audit (REMOVED)"``). The
+    invariant then fires because no remaining step carries the
+    ``audit_resource_lifecycle`` substring.
+
+    The other invariants (_BUDGET_TRACKED_STEPS, _KNOWN_TEST_STEP_LABELS,
+    audit_mcp_timeout) are NOT affected because they check different
+    subsets of the step labels and the tuple shape is unchanged.
+    """
+    verify_path = _get_verify_path()
+    repo_root = str(Path(verify_path).parent.parent)
+    original = Path(verify_path).read_text(encoding="utf-8")
+
+    if drop_step:
+        # Replace the resource-lifecycle step's label so the
+        # ``audit_resource_lifecycle`` substring is removed. Keep the
+        # rest of the tuple (command, args, timeout) intact.
+        patched = original.replace(
+            '"resource lifecycle audit (audit_resource_lifecycle)"',
+            '"resource lifecycle audit (REMOVED)"',
+        )
+        if patched == original:
+            raise AssertionError(
+                "patch could not find the resource-lifecycle step label; "
+                "verify.py may have changed"
+            )
+    else:
+        patched = original
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", prefix="verify_patched_", delete=False
+    ) as f:
+        f.write(patched)
+        f.flush()
+        tmp_path = f.name
+
+    try:
+        runner = (
+            "import sys\n"
+            f"sys.path.insert(0, {repo_root!r})\n"
+            f"import importlib.util\n"
+            f"spec = importlib.util.spec_from_file_location('ralph.verify', {tmp_path!r})\n"
+            f"mod = importlib.util.module_from_spec(spec)\n"
+            f"spec.loader.exec_module(mod)\n"
+            "print('OK')\n"
+        )
+
+        cmd = [sys.executable]
+        if minus_o:
+            cmd.append("-O")
+        cmd.extend(["-c", runner])
+
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(Path(verify_path).parent.parent),
+            check=False,
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            Path(tmp_path).unlink()
+
+
+def test_audit_resource_lifecycle_step_must_be_present() -> None:
+    """Removing the ``audit_resource_lifecycle`` step label MUST raise
+    RuntimeError — the contract cannot be silently dropped.
+
+    Mirrors the audit_mcp_timeout containment invariant added at
+    verify.py:317, this guards against a future commit that drops
+    the resource-lifecycle step from ``_VERIFY_STEPS`` and reopens
+    the unbounded-accumulator / non-daemon-thread / bare-HTTP-client
+    leak class.
+    """
+    result = _run_resource_lifecycle_patched_import(drop_step=True)
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "audit_resource_lifecycle" in result.stderr
+    assert "must be present" in result.stderr
+
+
+def test_audit_resource_lifecycle_invariant_survives_minus_o() -> None:
+    """The audit_resource_lifecycle containment invariant must survive
+    python -O (if/raise RuntimeError, NOT assert).
+    """
+    result = _run_resource_lifecycle_patched_import(
+        drop_step=True,
+        minus_o=True,
+    )
+    assert result.returncode != 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "RuntimeError" in result.stderr
+    assert "audit_resource_lifecycle" in result.stderr
+
+
+def test_audit_resource_lifecycle_step_present_passes() -> None:
+    """Sanity: when the step is NOT removed, the import succeeds cleanly."""
+    result = _run_resource_lifecycle_patched_import(drop_step=False)
+    assert result.returncode == 0, (
+        f"rc={result.returncode} stdout={result.stdout} stderr={result.stderr}"
+    )
+    assert "OK" in result.stdout

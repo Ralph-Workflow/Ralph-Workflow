@@ -37,7 +37,7 @@ class _CodexDispatch:
 
     def __init__(self, owner: CodexParser | None = None) -> None:
         self._owner = owner
-        self._accumulators: dict[str, TextAccumulator] = {}
+        self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self._current_response_id: str | None = None
         self._stream_counter = 0
 
@@ -255,7 +255,7 @@ class CodexParser(NdjsonParserBase):
 
     def __init__(self) -> None:
         super().__init__()
-        self._accumulators: dict[str, TextAccumulator] = {}
+        self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self._current_response_id: str | None = None
         self._stream_counter = 0
         self._dispatcher = _CodexDispatch(self)

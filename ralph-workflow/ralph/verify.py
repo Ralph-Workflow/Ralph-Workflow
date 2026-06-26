@@ -320,6 +320,20 @@ if not any("audit_mcp_timeout" in label for label, *_rest in _VERIFY_STEPS):
         "(the bounded-subprocess contract cannot be silently dropped)"
     )
 
+# (e) The resource-lifecycle audit step must be present. This guards the
+# accumulator / daemon-thread / HTTP-client / raw-fd contract: without it,
+# unbounded long-lived mutable accumulators (the leak class that produced
+# ``BudgetState.failures`` and ``RalphAuditSinkAdapter._records``) could be
+# reintroduced and ``make verify`` would no longer catch them. Mirrors the
+# existing audit_mcp_timeout containment invariant (if/raise RuntimeError,
+# survives ``python -O``).
+if not any("audit_resource_lifecycle" in label for label, *_rest in _VERIFY_STEPS):
+    raise RuntimeError(
+        "A verify step running 'audit_resource_lifecycle' must be present in "
+        "_VERIFY_STEPS (the resource-lifecycle / accumulator contract cannot be "
+        "silently dropped)"
+    )
+
 
 def _default_runner(
     command: str,

@@ -171,8 +171,8 @@ class PtyLineReader:
         self._last_tool_result_at: float | None = None
         self._last_tool_result_excerpt: str | None = None
         self._reader_done: list[bool] = [False]
-        self._cpu_baselines: dict[int, tuple[float, float]] = {}
-        self._log_growth_state: dict[str, tuple[int, float]] = {}
+        self._cpu_baselines: dict[int, tuple[float, float]] = {}  # bounded-accumulator-ok: drained
+        self._log_growth_state: dict[str, tuple[int, float]] = {}  # bounded-accumulator-ok: drained
         self._raw_overflow: RawOverflowLog | None = None
         self._input_writer_fd = os.dup(handle.master_fd)
         self._input_writer_lock = threading.Lock()

@@ -55,7 +55,7 @@ class DynamicBindingMcpServerFactory(McpServerFactory):
         self._start_server = start_server
         self._base_deps = lifecycle_deps or lifecycle._default_lifecycle_deps()
         self._reserve_port = reserve_port or self._base_deps.reserve_port
-        self._allocated_endpoints: set[str] = set()
+        self._allocated_endpoints: set[str] = set()  # bounded-accumulator-ok: drained
         self._allocation_lock = Lock()
 
     def build(self, session: object) -> McpServerHandle:

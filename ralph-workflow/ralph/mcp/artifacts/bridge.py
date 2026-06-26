@@ -54,7 +54,7 @@ class MCPBridge:
             config: Bridge configuration.
         """
         self._config = config
-        self._tools: dict[str, MCPTool] = {}
+        self._tools: dict[str, MCPTool] = {}  # bounded-accumulator-ok: bounded
         self._transport = config.transport or StdioTransport(["echo", "noop"])
         self._running = False
 

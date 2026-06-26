@@ -15,7 +15,10 @@ if TYPE_CHECKING:
 class AgentBudgetRegistry:
     """Registry mapping (phase, agent_name) -> BudgetState.
 
-    Immutable-value-returning: debit/reset return new registry instances.
+    Immutable-value-returning: ``debit`` returns a new registry instance.
+    The previous ``reset`` method was removed in wt-024 memory-perf
+    AC-01: it had zero callers (repo-wide grep) and violated the
+    AGENTS.md "Absolutely Zero Dead code" rule.
     """
 
     def __init__(self, budgets: dict[tuple[str, str], BudgetState] | None = None) -> None:
@@ -31,26 +34,25 @@ class AgentBudgetRegistry:
         return AgentBudgetRegistry(new)
 
     def debit(self, phase: str, agent: str, failure: ClassifiedFailure) -> AgentBudgetRegistry:
-        """Return a new registry with the failure debited for (phase, agent)."""
+        """Return a new registry with the failure debited for (phase, agent).
+
+        The previous ``failures=(*current.failures, failure)`` accumulator
+        was removed in wt-024 memory-perf AC-01: the failures tuple was
+        appended on every debit and never read for any decision, while
+        retaining heavyweight ``ClassifiedFailure`` objects
+        (original_exception + traceback frames) for the lifetime of the
+        registry. Only ``consumed`` is needed to drive the
+        exhausted / remaining decisions.
+        """
         if not failure.counts_against_budget:
             return self
         current = self._budgets.get((phase, agent), BudgetState(max_retries=3))
         new_state = BudgetState(
             max_retries=current.max_retries,
             consumed=current.consumed + 1,
-            failures=(*current.failures, failure),
         )
         new = dict(self._budgets)
         new[(phase, agent)] = new_state
-        return AgentBudgetRegistry(new)
-
-    def reset(self, phase: str, agent: str) -> AgentBudgetRegistry:
-        """Return a new registry with the budget for (phase, agent) reset."""
-        current = self._budgets.get((phase, agent))
-        if current is None:
-            return self
-        new = dict(self._budgets)
-        new[(phase, agent)] = BudgetState(max_retries=current.max_retries)
         return AgentBudgetRegistry(new)
 
     def is_exhausted(self, phase: str, agent: str) -> bool:

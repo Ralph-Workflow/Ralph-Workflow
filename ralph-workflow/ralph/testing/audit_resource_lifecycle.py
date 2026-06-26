@@ -17,15 +17,29 @@ Enforces the resource-lifecycle contract documented in
    lifecycle layer). Outside that allowlist, raw fd creation is a
    leak: it bypasses the centralized fd ownership policy and is not
    tracked by the zombie reaper.
+4. Long-lived mutable accumulators (``list``, ``dict``, ``set``,
+   ``deque``) assigned to module-level names OR instance attributes
+   (``self.X``) inside ``__init__`` bodies MUST carry a FIFO/size cap
+   (deque ``(maxlen=...)``, ``OrderedDict`` + count cap, or carry a
+   ``# bounded-accumulator-ok: <reason>`` marker). A ``deque()`` /
+   ``collections.deque()`` call WITHOUT ``maxlen=`` is treated as
+   unbounded. Mutable collection LITERALS (``[]``, ``{}``, ``set()``)
+   assigned to a module-level name or ``self.X`` are flagged — they
+   have no cap and grow monotonically across a long session.
 
 The audit resolves ``import x as y`` / ``from x import y [as z]``
 bindings so an aliased call cannot evade detection (``import httpx as
 hx; hx.Client()`` and ``from httpx import Client; Client()`` are both
-caught).
+caught). The same alias resolution applies to the accumulator
+contract (``import collections as c; c.deque()`` is caught; ``from
+collections import deque; deque()`` is caught).
 
-Escape hatch: an inline ``# resource-lifecycle-ok: <reason>`` marker
-on the call's line suppresses the violation (the only allowlist
-mechanism — keep it rare and justified).
+Escape hatch: an inline marker on the call's line suppresses the
+violation. The single-string ``_ALLOW_MARKER`` has been generalized to
+a marker SET (``_ALLOW_MARKERS``) so the resource-lifecycle-ok
+(contracts 1-3) and bounded-accumulator-ok (contract 4) markers
+coexist and a future contract (contract 5+) can opt in without
+disrupting existing markers. Keep markers rare and justified.
 
 Scope and exclusions (intentional, documented):
 
@@ -36,6 +50,13 @@ Scope and exclusions (intentional, documented):
 - ``loop.run_in_executor(None, ...)`` in ``ralph/interrupt/asyncio_bridge.py``
   is intentionally NOT covered — it is a bounded shutdown block
   owned by the asyncio bridge (different lifecycle), not a thread leak.
+- The accumulator contract covers module-level and ``self.X`` (in
+  ``__init__`` body) mutable literals + constructors WITHOUT
+  ``maxlen``. ``deque(maxlen=...)`` is clean by construction.
+  Dataclass field defaults (``field(default_factory=...)``) and
+  local-function variables are out of scope (higher false-positive
+  rate; the ``BudgetState.failures`` leak class is closed by dropping
+  the field + the tracemalloc test, not by this AST contract).
 - The audit is AST-based and can only flag literal-name calls.
   Deliberate-obfuscation indirection (``getattr``, ``importlib``) is
   out of scope (would require dataflow tracking).
@@ -66,8 +87,13 @@ _SKIP_DIRS: frozenset[str] = frozenset(
     }
 )
 
-# Inline marker that suppresses a violation (only escape hatch).
-_ALLOW_MARKER = "resource-lifecycle-ok"
+# Inline marker set that suppresses a violation (the only escape hatch).
+# Generalize to a SET so the resource-lifecycle-ok (contracts 1-3) and
+# bounded-accumulator-ok (contract 4) markers coexist; a future contract
+# can opt in without disrupting existing markers.
+_ALLOW_MARKERS: frozenset[str] = frozenset(
+    {"resource-lifecycle-ok", "bounded-accumulator-ok"}
+)
 
 # threading.Thread / Thread constructors — these must carry daemon=True.
 _THREAD_NAMES: frozenset[str] = frozenset({"threading.Thread", "Thread"})
@@ -137,6 +163,17 @@ def _keyword_truthy(node: ast.Call, name: str) -> bool:
             return value.value is True
         return False
     return False
+
+
+def _keyword_present(node: ast.Call, name: str) -> bool:
+    """Return True iff ``name`` is passed as a keyword (any value).
+
+    Used by the accumulator contract to decide whether a
+    ``deque(maxlen=...)`` call is bounded (maxlen keyword present, any
+    numeric value). A deque constructed without ``maxlen=`` is
+    unbounded and MUST be flagged (or carry a marker).
+    """
+    return any(kw.arg == name for kw in node.keywords)
 
 
 def _dotted_name(node: ast.Call) -> str | None:
@@ -210,6 +247,145 @@ def _is_in_with(node: ast.Call, tree: ast.Module) -> bool:
     return False
 
 
+def _is_static_dict_key(node: ast.expr) -> bool:
+    """Return True iff ``node`` is a static dict key (not a dynamic expression).
+
+    Static keys are string constants, name references, attribute
+    accesses (e.g. ``McpCapability.X``), or subscripts (e.g.
+    ``dicts[X]``). Dict literals whose keys are ALL static are
+    populated once at construction and never mutated thereafter, so
+    they are dispatch / handler / config tables — NOT accumulators.
+    """
+    return isinstance(node, (ast.Constant, ast.Name, ast.Attribute, ast.Subscript))
+
+
+def _is_unbounded_accumulator_value(
+    value: ast.expr,
+    module_aliases: dict[str, str],
+    from_imports: dict[str, str],
+) -> bool:
+    """Return True iff ``value`` is an unbounded mutable accumulator
+    initializer.
+
+    Flagged (treated as unbounded accumulator):
+      - empty ``[]`` list literal (multi-element list literals are
+        excluded — see "NOT flagged" below);
+      - empty ``{}`` dict literal (dict literals with all-static keys
+        are excluded — see "NOT flagged" below);
+      - ``set()`` literal whose elements are NOT all static;
+      - bare ``list()`` / ``dict()`` / ``set()`` constructor call;
+      - ``deque()`` / ``collections.deque()`` constructor call WITHOUT
+        a ``maxlen=`` keyword.
+
+    NOT flagged (clean by construction / static patterns):
+      - ``deque(maxlen=N)`` / ``collections.deque(maxlen=N)``;
+      - constructor calls WITH a documented size argument such as
+        ``list(some_iterable)`` (out of scope; requires dataflow
+        tracking to prove boundedness);
+      - single-element list literal ``[X]`` (Python's mutable-closure
+        idiom for capturing a counter / flag / None sentinel — the
+        list itself is NOT an accumulator);
+      - dict literal where EVERY key is static (string constants,
+        names, attributes, or subscripts) — populated once at
+        construction and never mutated thereafter (dispatch /
+        handler / config tables);
+      - set literal where EVERY element is static — populated once
+        at construction and never mutated thereafter.
+    """
+    if isinstance(value, ast.List):
+        # Single-element list literals are Python's mutable-closure
+        # idiom (counter / flag / sentinel) — they hold ONE element
+        # and the .append() / [0] = ... pattern mutates in place. They
+        # are not accumulators; flagging them produces massive false
+        # positives on common streaming-reader patterns.
+        return len(value.elts) != 1
+    return _classify_unbounded_accumulator_call_or_collection(value, module_aliases, from_imports)
+
+
+def _classify_unbounded_accumulator_call_or_collection(
+    value: ast.expr,
+    module_aliases: dict[str, str],
+    from_imports: dict[str, str],
+) -> bool:
+    """Continue classification for dict/set/call literals (extracted
+    to keep the top-level function below PLR0911).
+    """
+    if isinstance(value, ast.Dict):
+        if value.keys is None or not value.keys:
+            return True  # empty {} is flagged (starts an unbounded accumulator)
+        keys: list[ast.expr | None] = value.keys
+        return not all(_is_static_dict_key(k) for k in keys if k is not None)
+    if isinstance(value, ast.Set):
+        if not value.elts:
+            return True
+        return not all(_is_static_dict_key(e) for e in value.elts)
+    return _classify_unbounded_accumulator_call(value, module_aliases, from_imports)
+
+
+def _classify_unbounded_accumulator_call(
+    value: ast.expr,
+    module_aliases: dict[str, str],
+    from_imports: dict[str, str],
+) -> bool:
+    """Classify a Call expression as an unbounded accumulator or not."""
+    if not isinstance(value, ast.Call):
+        return False
+    canonical = _canonical_name(_dotted_name(value), module_aliases, from_imports)
+    if canonical == "set":
+        return True
+    if canonical in {"deque", "collections.deque"}:
+        return not _keyword_present(value, "maxlen")
+    return canonical in {"list", "dict"} and not value.args
+
+
+def _is_module_level_or_self_init(
+    targets: list[ast.expr],
+    enclosing_function: ast.FunctionDef | ast.AsyncFunctionDef | None,
+) -> bool:
+    """Return True iff the assignment targets are a module-level name
+    OR an instance attribute (``self.X``) inside an ``__init__`` body.
+
+    The accumulator contract deliberately limits its scope to these two
+    locations because that is where long-lived accumulators live (a
+    module-level singleton or an instance attribute initialized in
+    ``__init__``). Local variables inside non-``__init__`` functions
+    are out of scope (higher false-positive rate; the
+    ``BudgetState.failures`` leak class is closed by dropping the
+    field + the tracemalloc test, not by this AST contract).
+
+    Returns False for targets that are:
+      - bare ``Name`` not at module level (i.e., enclosing function is
+        not None and the name is not a global declaration);
+      - ``Attribute`` whose ``value`` is not ``self``;
+      - ``Subscript`` / ``Starred`` / ``Tuple`` targets.
+
+    Excludes ``__all__`` (the Python re-export convention). ``__all__``
+    is a static list of exported symbol names set at class load and
+    never mutated across a session; treating it as an accumulator
+    would force spurious ``# bounded-accumulator-ok`` markers on every
+    package's ``__init__.py`` for no leak-prevention benefit. The
+    contract applies to ``__all__``-SHAPED lists too (so it is
+    documented here), but the audit intentionally skips them.
+    """
+    is_module_level = enclosing_function is None
+    is_init = (
+        enclosing_function is not None and enclosing_function.name == "__init__"
+    )
+    if not (is_module_level or is_init):
+        return False
+    for target in targets:
+        if isinstance(target, ast.Name) and is_module_level:
+            if target.id == "__all__":
+                return False
+            continue
+        if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+            if target.value.id == "self" and is_init:
+                continue
+            return False
+        return False
+    return True
+
+
 class ResourceLifecycleAuditor(ast.NodeVisitor):
     """AST visitor that detects resource-lifecycle contract violations."""
 
@@ -229,12 +405,16 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         self.violations: list[ResourceLifecycleViolation] = []
         self._module_aliases = module_aliases or {}
         self._from_imports = from_imports or {}
+        self._enclosing_function: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+        self._enclosing_class: ast.ClassDef | None = None
 
     def _allowed(self, node: ast.AST) -> bool:
         lineno: int = getattr(node, "lineno", 0)
-        if 1 <= lineno <= len(self.source_lines):
-            return _ALLOW_MARKER in self.source_lines[lineno - 1]
-        return False
+        if not (1 <= lineno <= len(self.source_lines)):
+            return False
+        return any(
+            marker in self.source_lines[lineno - 1] for marker in _ALLOW_MARKERS
+        )
 
     def _add(self, node: ast.AST, category: str, detail: str) -> None:
         if self._allowed(node):
@@ -256,6 +436,68 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         # tree on every call.
         self.tree = node
         self.generic_visit(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        # Track the enclosing class so ``__init__`` bodies are detected
+        # for the accumulator contract. Module-level assignments to
+        # a class body Name do NOT trigger the accumulator contract
+        # (class-level Names are class attributes, not module-level
+        # singletons); the contract deliberately targets only module-
+        # level Names and ``self.X`` in ``__init__``.
+        previous_class = self._enclosing_class
+        self._enclosing_class = node
+        self.generic_visit(node)
+        self._enclosing_class = previous_class
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        previous_function = self._enclosing_function
+        self._enclosing_function = node
+        self.generic_visit(node)
+        self._enclosing_function = previous_function
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        previous_function = self._enclosing_function
+        self._enclosing_function = node
+        self.generic_visit(node)
+        self._enclosing_function = previous_function
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self._check_accumulator_assignment(node.value, node.targets, node)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self._check_accumulator_assignment(node.value, [node.target], node)
+        self.generic_visit(node)
+
+    def _check_accumulator_assignment(
+        self,
+        value: ast.expr,
+        targets: list[ast.expr],
+        anchor: ast.AST,
+    ) -> None:
+        """Apply the 4th contract to a single assignment.
+
+        Flags unbounded mutable accumulators assigned to module-level
+        names or ``self.X`` in ``__init__`` bodies. Skipped when the
+        value is NOT an unbounded accumulator (e.g., ``deque(maxlen=8)``
+        or a non-collection expression).
+        """
+        if not _is_unbounded_accumulator_value(
+            value, self._module_aliases, self._from_imports
+        ):
+            return
+        if not _is_module_level_or_self_init(targets, self._enclosing_function):
+            return
+        rendered_targets = ", ".join(ast.unparse(t) for t in targets)
+        rendered_value = ast.unparse(value)
+        self._add(
+            anchor,
+            "unbounded_accumulator",
+            f"{rendered_targets} = {rendered_value} — long-lived mutable "
+            "accumulator without a FIFO/size cap; use deque(maxlen=...), "
+            "OrderedDict + count cap, or carry # bounded-accumulator-ok: <reason>",
+        )
 
     def visit_Call(self, node: ast.Call) -> None:
         canonical = _canonical_name(
@@ -420,8 +662,11 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print(
             "Production code MUST use daemon=True threads, with-managed HTTP "
-            "clients, and raw os fd creation only under ralph/process/. Add an "
-            "inline '# resource-lifecycle-ok: <reason>' marker if the call is "
+            "clients, raw os fd creation only under ralph/process/, and "
+            "long-lived mutable accumulators must carry a FIFO/size cap "
+            "(deque(maxlen=...), OrderedDict + count cap) or a "
+            "# bounded-accumulator-ok: <reason> marker. Add an inline "
+            "# resource-lifecycle-ok: <reason> marker if the call is "
             "genuinely bounded by a try/finally lifecycle (rare — keep it "
             "justified)."
         )

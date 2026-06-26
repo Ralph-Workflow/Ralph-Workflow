@@ -106,7 +106,9 @@ _REQUIRED_TWO_STATE_METHODS: frozenset[str] = frozenset(
 # used (rather than a bare ``Optional`` global) so the cache can be
 # mutated without ``global`` statements (which ruff ``PLW0603``
 # discourages).
-_CONTROLLER_SOURCE_TREE_CACHE: dict[str, tuple[str, ast.Module]] = {}
+_CONTROLLER_SOURCE_TREE_CACHE: dict[  # bounded-accumulator-ok: cleared
+    str, tuple[str, ast.Module]
+] = {}
 
 
 def _controller_source_tree(

@@ -63,7 +63,7 @@ class ReasonBackoffPolicy:
             raise ValueError(msg)
 
 
-DEFAULT_UNAVAILABILITY_BACKOFF_POLICY: dict[UnavailabilityReason, ReasonBackoffPolicy] = {
+DEFAULT_UNAVAILABILITY_BACKOFF_POLICY = {  # bounded-accumulator-ok: static
     UnavailabilityReason.OUT_OF_CREDITS: ReasonBackoffPolicy(
         base_backoff_ms=60_000,
         max_backoff_ms=1_800_000,

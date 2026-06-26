@@ -219,8 +219,8 @@ class _ProcessLineReader:
         self._last_activity_meaningful: list[bool] = [False]
         self._last_hard_stop: list[WaitingStatusEvent | None] = [None]
         self._reader_done: list[bool] = [False]
-        self._cpu_baselines: dict[int, tuple[float, float]] = {}
-        self._log_growth_state: dict[str, tuple[int, float]] = {}
+        self._cpu_baselines: dict[int, tuple[float, float]] = {}  # bounded-accumulator-ok: drained
+        self._log_growth_state: dict[str, tuple[int, float]] = {}  # bounded-accumulator-ok: drained
         self._raw_overflow = RawOverflowLog(
             self._workspace_path or Path.cwd(),
             _agent_command_name(self._config),

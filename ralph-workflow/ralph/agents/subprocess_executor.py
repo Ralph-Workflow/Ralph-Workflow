@@ -88,7 +88,7 @@ class SubprocessAgentExecutor:
         # without relying on tests to install the sink manually.
         self._subagent_sink = subagent_sink
         self._subagent_sink_token: Token[Callable[[str], None] | None] | None = None
-        self._raw_logs: dict[str, RawOverflowLog] = {}
+        self._raw_logs: dict[str, RawOverflowLog] = {}  # bounded-accumulator-ok: drained
         self._pm = _pm
 
     def _get_raw_log(self, unit_id: str) -> RawOverflowLog:

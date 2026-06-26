@@ -20,7 +20,7 @@ from ralph.mcp.tools.names import (
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
-_allocated_codex_homes: list[str] = []
+_allocated_codex_homes: list[str] = []  # bounded-accumulator-ok: bounded
 
 
 def cleanup_codex_homes() -> None:

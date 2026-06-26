@@ -55,12 +55,16 @@ class ClaudeParser(NdjsonParserBase):
 
     def __init__(self) -> None:
         super().__init__()
-        self._text_accumulator: dict[tuple[str, int], TextAccumulator] = {}
-        self._thinking_accumulator: dict[tuple[str, int], TextAccumulator] = {}
+        self._text_accumulator: dict[  # bounded-accumulator-ok: drained
+    tuple[str, int], TextAccumulator
+] = {}
+        self._thinking_accumulator: dict[  # bounded-accumulator-ok: drained
+    tuple[str, int], TextAccumulator
+] = {}
         self._fallback_accumulator: TextAccumulator | None = None
         self._fallback_thinking_accumulator: TextAccumulator | None = None
         self._current_message_id: str | None = None
-        self._seen_content_blocks: set[tuple[str, int]] = set()
+        self._seen_content_blocks: set[tuple[str, int]] = set()  # bounded-accumulator-ok: cleared
 
     def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
         """Classify a single raw NDJSON line.

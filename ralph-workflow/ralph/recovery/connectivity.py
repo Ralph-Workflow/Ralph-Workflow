@@ -13,7 +13,7 @@ from ralph.recovery.connectivity_state import ConnectivityState
 __all__ = ["ConnectivityEvent", "ConnectivityMonitor", "ConnectivityState"]
 
 # Default probe targets: DNS resolvers over TCP
-_DEFAULT_PROBE_TARGETS: list[tuple[str, int]] = [
+_DEFAULT_PROBE_TARGETS = [  # bounded-accumulator-ok: static
     ("1.1.1.1", 53),
     ("8.8.8.8", 53),
 ]
@@ -61,7 +61,7 @@ class ConnectivityMonitor:
         self._timeout = probe_timeout_s
         self._probe = probe or _default_probe
         self._current_state: ConnectivityState = ConnectivityState.UNKNOWN
-        self._listeners: list[ListenerCallable] = []
+        self._listeners: list[ListenerCallable] = []  # bounded-accumulator-ok: drained
         self._task: asyncio.Task[None] | None = None
         self._online_event: asyncio.Event = asyncio.Event()
         self._stopped: bool = False

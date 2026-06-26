@@ -204,7 +204,7 @@ def _reduce_phase_failure(
     return _handle_phase_failure(state, event, policy=pipeline_policy)
 
 
-_EVENT_HANDLERS: dict[
+_EVENT_HANDLERS: dict[  # bounded-accumulator-ok: static
     PipelineEvent,
     Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
 ] = {}

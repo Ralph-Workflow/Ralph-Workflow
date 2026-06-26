@@ -216,7 +216,7 @@ class OpenCodeParser(NdjsonParserBase):
 
     def __init__(self) -> None:
         super().__init__()
-        self._accumulators: dict[str, TextAccumulator] = {}
+        self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self._current_part_id: str | None = None
         self._stream_counter = 0
         self._dispatcher = _OpenCodeDispatch(self)
