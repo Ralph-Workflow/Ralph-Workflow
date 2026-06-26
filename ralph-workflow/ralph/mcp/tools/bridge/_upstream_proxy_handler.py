@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from ralph.mcp.tools.bridge._types import JsonObject
     from ralph.mcp.upstream.client import HasMediaManifest
     from ralph.mcp.upstream.registry import UpstreamRegistry
+    from ralph.workspace.protocol import Workspace
 
 
 class UpstreamProxyHandler:
@@ -38,6 +39,7 @@ class UpstreamProxyHandler:
             self._alias,
             params,
             session=cast("HasMediaManifest | None", host_session),
+            workspace=cast("Workspace | None", workspace),
         )
         if workspace is not None and host_session is not None and isinstance(result, dict):
             mod = import_module("ralph.mcp.tools.workspace")

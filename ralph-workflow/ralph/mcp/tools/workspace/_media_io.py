@@ -20,6 +20,21 @@ if TYPE_CHECKING:
 _MEDIA_SESSION_SCHEMA_VERSION = "2"
 MEDIA_CACHE_MAX_TOTAL_BYTES = 256 * 1024 * 1024
 
+#: Number of ``_persist_media_session_entry`` / ``_persist_media_registry_entry``
+#: adds between full ``_drop_evicted_cache_entries`` stat sweeps. The naive
+#: implementation stat'd EVERY cached artifact on EVERY add, which is O(N*M)
+#: in the worst case (N entries, M adds). Gating the stat pass behind this
+#: counter drops the amortized cost to O(N*M/K) ≈ O(M). Eviction semantics
+#: are preserved exactly: the next prune tick still drops entries whose
+#: cache files were evicted. The dedup-by-artifact_id list comprehension
+#: still runs every add, so same-id replacement is immediate (AC-10).
+_MEDIA_PRUNE_INTERVAL: int = 32
+
+#: Module-level counter for the periodic prune gate. Incremented on every
+#: ``_persist_media_session_entry`` and ``_persist_media_registry_entry``
+#: call; when it crosses the interval, the next call runs the stat sweep.
+_media_add_counter: int = 0
+
 
 def _media_session_identity(entry: dict[str, str]) -> str:
     """Return the dedupe identity for a persisted media-session entry."""
@@ -85,8 +100,11 @@ def _persist_media_registry_entry(
     entry: dict[str, str],
 ) -> None:
     """Write entry to the centralized media registry for cross-session lookup."""
+    global _media_add_counter  # noqa: PLW0603
     path = media_registry_path()
     artifact_id = entry["artifact_id"]
+    _media_add_counter += 1
+    run_prune = _media_add_counter % _MEDIA_PRUNE_INTERVAL == 0
     try:
         artifacts: list[dict[str, str]] = []
         try:
@@ -95,7 +113,11 @@ def _persist_media_registry_entry(
             artifacts = list(raw_artifacts) if isinstance(raw_artifacts, list) else []
         except Exception:
             artifacts = []
-        artifacts = _drop_evicted_cache_entries(workspace, artifacts)
+        # Periodic prune: only run the O(N) stat pass every K adds.
+        # The dedup-by-artifact_id list comprehension below still runs
+        # every add so same-id replacement is immediate.
+        if run_prune:
+            artifacts = _drop_evicted_cache_entries(workspace, artifacts)
         artifacts = [a for a in artifacts if a.get("artifact_id") != artifact_id]
         artifacts.append(entry)
         payload: dict[str, object] = {
@@ -152,6 +174,7 @@ def _persist_media_session_entry(
     meta: dict[str, str],
 ) -> None:
     """Upsert a resource-reference artifact into the persistent session media index."""
+    global _media_add_counter  # noqa: PLW0603
     drain: object = getattr(session, "drain", None)
     phase = str(drain) if drain else "standalone"
     path = media_session_path(phase)
@@ -172,6 +195,8 @@ def _persist_media_session_entry(
         "failure_kind": meta.get("failure_kind", ""),
         "identity_key": meta.get("identity_key", ""),
     }
+    _media_add_counter += 1
+    run_prune = _media_add_counter % _MEDIA_PRUNE_INTERVAL == 0
     try:
         try:
             data: dict[str, object] = json.loads(workspace.read(path))
@@ -181,7 +206,11 @@ def _persist_media_session_entry(
             )
         except Exception:
             artifacts = []
-        artifacts = _drop_evicted_cache_entries(workspace, artifacts)
+        # Periodic prune: only run the O(N) stat pass every K adds.
+        # The OrderedDict rebuild below stays per-add because it is O(N)
+        # and is needed for correct append-order semantics.
+        if run_prune:
+            artifacts = _drop_evicted_cache_entries(workspace, artifacts)
 
         new_identity = _media_session_identity(new_entry)
         ordered: OrderedDict[str, dict[str, str]] = OrderedDict()

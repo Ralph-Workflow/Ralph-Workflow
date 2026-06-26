@@ -96,7 +96,7 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
                     f"claude stop: result=API Error: 500 {api_error}\n",
                 ]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 1
 
         def __enter__(self) -> FakeProcess:
@@ -165,7 +165,7 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -279,7 +279,7 @@ def test_invoke_agent_merges_existing_opencode_config_content(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -350,7 +350,7 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -461,7 +461,7 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
             self.stdout = iter(
                 ["Task declared complete: session_id=test, summary=done, timestamp=1\n"]
             )
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -597,7 +597,7 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
 
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -661,7 +661,7 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
 
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -735,7 +735,7 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
 
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -807,7 +807,7 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
 
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:
@@ -872,7 +872,7 @@ def test_invoke_agent_preserves_existing_codex_home_state(
 
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
+            self.stderr = SimpleNamespace(read=lambda _size=-1: "")
             self.returncode = 0
 
         def __enter__(self) -> FakeProcess:

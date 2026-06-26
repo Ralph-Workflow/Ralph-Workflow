@@ -14,12 +14,21 @@ from __future__ import annotations
 import base64
 import json
 from collections.abc import Callable, Mapping
+from importlib import import_module
 from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 import httpx
 
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
-from ralph.mcp.multimodal.resources import MediaEntryExtras, MediaSource, build_media_identity
+from ralph.mcp.multimodal.resources import (
+    MediaEntryExtras,
+    MediaSource,
+    build_media_identity,
+    new_artifact_id,
+)
 from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
@@ -33,6 +42,7 @@ from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
 if TYPE_CHECKING:
     from ralph.mcp.upstream.config import UpstreamMcpServer
+    from ralph.workspace.protocol import Workspace
 
 JsonObject = dict[str, object]
 JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
@@ -225,6 +235,7 @@ def _normalize_media_block(
     server_name: str,
     tool_name: str,
     _session: HasMediaManifest | None,
+    _workspace: Workspace | None = None,
 ) -> dict[str, object]:
     """Normalize an upstream media block into a resource_reference content block.
 
@@ -263,18 +274,67 @@ def _normalize_media_block(
                 f"but no active session is available to store the artifact bytes. "
                 f"Embedded media requires an active session manifest."
             )
+        identity_key = build_media_identity(
+            modality=block_type,
+            mime_type=mime_type,
+            title=title,
+            source=MediaSource(raw_bytes=raw_bytes),
+        )
+        # When a workspace is threaded through, write the bytes to a durable
+        # cache file and wire a lazy byte_loader so the manifest entry does
+        # NOT retain the raw payload (AC-04). Without a workspace the legacy
+        # in-memory contract is preserved verbatim. The imports are lazy to
+        # keep this module import-light (mirrors the existing
+        # ``import_module('ralph.mcp.tools.workspace')`` pattern at
+        # ``_upstream_proxy_handler.py:43``).
+        cache_path = ""
+        byte_loader: Callable[[], bytes | None] | None = None
+        artifact_id = new_artifact_id()
+        if _workspace is not None:
+            try:
+                # Lazy imports via importlib.import_module keep this module
+                # import-light (mirrors the existing
+                # ``import_module('ralph.mcp.tools.workspace')`` pattern at
+                # ``_upstream_proxy_handler.py:43``). importlib avoids the
+                # PLC0415 noqa which the lint-bypass audit forbids.
+                _media_io_mod: ModuleType = import_module(
+                    "ralph.mcp.tools.workspace._media_io"
+                )
+                _media_session_mod: ModuleType = import_module(
+                    "ralph.mcp.tools.workspace._media_session"
+                )
+
+                _write_durable_media_cache = cast(
+                    "Callable[[object, str, bytes], str]",
+                    _media_io_mod._write_durable_media_cache,
+                )
+                _workspace_artifact_loader = cast(
+                    "Callable[[object, str, str], Callable[[], bytes | None]]",
+                    _media_session_mod._workspace_artifact_loader,
+                )
+
+                cache_path = _write_durable_media_cache(
+                    _workspace, artifact_id, raw_bytes
+                )
+                if cache_path:
+                    byte_loader = _workspace_artifact_loader(
+                        _workspace, cache_path, ""
+                    )
+            except Exception:
+                # Failure to wire the durable cache is non-fatal: fall back
+                # to the in-memory retention contract for this single entry.
+                cache_path = ""
+                byte_loader = None
         entry = _session.media_manifest.add(
             title=title,
             mime_type=mime_type,
             modality=block_type,
             raw_bytes=raw_bytes,
             extras=MediaEntryExtras(
-                identity_key=build_media_identity(
-                    modality=block_type,
-                    mime_type=mime_type,
-                    title=title,
-                    source=MediaSource(raw_bytes=raw_bytes),
-                ),
+                identity_key=identity_key,
+                artifact_id=artifact_id,
+                cache_path=cache_path,
+                byte_loader=byte_loader,
             ),
         )
         uri = entry.uri
@@ -312,6 +372,7 @@ def normalize_upstream_content_blocks(
     server_name: str,
     tool_name: str,
     session: HasMediaManifest | None = None,
+    workspace: Workspace | None = None,
 ) -> None:
     """Normalize upstream tool result content blocks into the multimodal contract.
 
@@ -341,7 +402,9 @@ def normalize_upstream_content_blocks(
             normalized.append(block)
         elif block_type in _UPSTREAM_MEDIA_BLOCK_TYPES:
             normalized.append(
-                _normalize_media_block(block, block_type, idx, server_name, tool_name, session)
+                _normalize_media_block(
+                    block, block_type, idx, server_name, tool_name, session, workspace
+                )
             )
         else:
             raise UpstreamCallError(

@@ -378,6 +378,7 @@ class _FakeUpstreamRegistry:
         alias: str,
         arguments: dict[str, object],
         session: object | None = None,
+        workspace: object | None = None,
     ) -> object:
         self.calls.append((alias, arguments, session))
         if self._exc is not None:

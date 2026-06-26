@@ -28,12 +28,17 @@ class _FakeProc:
         self.returncode: int | None = 0
         self._proc: object = object()
         self.recorded_timeout: float | None = -1.0
+        self.recorded_kwargs: dict[str, object] = {}
 
     def communicate_and_cleanup(
-        self, timeout: float | None = None, cleanup_grace_period_s: float = 0.0
+        self,
+        timeout: float | None = None,
+        cleanup_grace_period_s: float = 0.0,
+        output_limit_bytes: int | None = None,
     ) -> tuple[bytes, bytes]:
-        del cleanup_grace_period_s
         self.recorded_timeout = timeout
+        self.recorded_kwargs["output_limit_bytes"] = output_limit_bytes
+        del cleanup_grace_period_s
         return (b"", b"")
 
     def poll(self) -> int:

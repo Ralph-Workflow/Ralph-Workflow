@@ -89,6 +89,19 @@ _RESET_WRAPUP_TIMEOUT_S: float = 2.0
 if not _RESET_WRAPUP_TIMEOUT_S > 0:
     raise RuntimeError(f"_RESET_WRAPUP_TIMEOUT_S must be positive (got {_RESET_WRAPUP_TIMEOUT_S})")
 
+#: Hard upper bound (bytes) on a single ``response.read()`` call in this
+#: module. Both the reset_session_budget path (which discards the body) and
+#: the ``_http_tools_list_names`` path (which parses the body as JSON) cap
+#: the read at this value so a misbehaving upstream that streams an
+#: unbounded response body cannot OOM the parent. 1 MiB is well above any
+#: realistic ``tools/list`` JSON payload and matches the size budget an
+#: operator would expect for a discardable wrap-up response (AC-08).
+_LIFECYCLE_MAX_RESPONSE_BYTES: int = 1 * 1024 * 1024
+if not _LIFECYCLE_MAX_RESPONSE_BYTES > 0:
+    raise RuntimeError(
+        f"_LIFECYCLE_MAX_RESPONSE_BYTES must be positive (got {_LIFECYCLE_MAX_RESPONSE_BYTES})"
+    )
+
 # Canonical tool name whose alias is verified after every
 # ``reset_tool_registry()`` call. ``read_file`` is the most common
 # wedge surface: a regression that strips the alias from the
@@ -457,7 +470,11 @@ class RestartAwareMcpBridge:
                     urllib.request.urlopen(request, timeout=_RESET_WRAPUP_TIMEOUT_S),
                 )
                 try:
-                    response_data = response.read()
+                    # Bound the read so a misbehaving upstream cannot OOM the
+                    # parent by streaming an unbounded response body (AC-08).
+                    # The body is opaque here and discarded, so truncation is
+                    # harmless.
+                    response_data = response.read(_LIFECYCLE_MAX_RESPONSE_BYTES)
                 finally:
                     response.close()
                 _ = response_data  # payload is opaque; the wire-level seam
@@ -500,7 +517,10 @@ def _http_tools_list_names(endpoint: str, *, timeout: float) -> list[str]:
     )
     response = cast("IO[bytes]", urllib.request.urlopen(request, timeout=timeout))
     try:
-        response_data = response.read()
+        # Bound the read so a misbehaving upstream cannot OOM the parent by
+        # streaming an unbounded response body (AC-08). 1 MiB is well above
+        # any realistic ``tools/list`` JSON payload.
+        response_data = response.read(_LIFECYCLE_MAX_RESPONSE_BYTES)
     finally:
         response.close()
     raw = response_data.decode("utf-8", errors="replace")

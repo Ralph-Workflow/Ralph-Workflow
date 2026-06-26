@@ -9,7 +9,7 @@ use by the MCP bridge. Alias collisions raise ``RegistryCollisionError`` immedia
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
@@ -27,6 +27,9 @@ from ralph.mcp.upstream.client import (
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.mcp.upstream.validation import UpstreamValidationError
+
+if TYPE_CHECKING:
+    from ralph.workspace.protocol import Workspace
 
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
 UpstreamClientFactory = Callable[[UpstreamMcpServer], _AnyUpstreamClient]
@@ -130,6 +133,7 @@ class UpstreamRegistry:
         alias: str,
         arguments: JsonObject,
         session: HasMediaManifest | None = None,
+        workspace: Workspace | None = None,
     ) -> object:
         if alias not in self._alias_map:
             raise UpstreamCallError(f"proxied tool '{alias}' not found in upstream registry")
@@ -139,7 +143,7 @@ class UpstreamRegistry:
         if isinstance(raw_result, dict):
             result: JsonObject = raw_result
             normalize_upstream_content_blocks(
-                result, proxied.server_name, proxied.tool.name, session
+                result, proxied.server_name, proxied.tool.name, session, workspace
             )
             return result
         return raw_result

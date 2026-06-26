@@ -82,8 +82,10 @@ class _FakeStderr:
     def __init__(self, text: str) -> None:
         self._text = text
 
-    def read(self) -> str:
-        return self._text
+    def read(self, size: int | None = None) -> str:
+        if size is None or size < 0:
+            return self._text
+        return self._text[:size]  # truncate; no marker (test asserts behavior below cap)
 
 
 class _CompletionEnforcingStrategy:

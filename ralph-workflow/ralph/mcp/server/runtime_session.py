@@ -64,6 +64,16 @@ class FileBackedSession:
         self._env_getter = env_getter if env_getter is not None else os.environ.get
         self._media_manifest = MediaManifest()
         self._created_at = time.time()
+        # wt-024 M3 (AC-06): parsed-payload cache keyed on (st_mtime_ns,
+        # st_size). The 17 session-view accessors all call _load() so the
+        # previous implementation re-read + re-parsed the JSON on every
+        # property access. With the cache, only the first access in a
+        # generation pays the parse cost; subsequent accessors reuse the
+        # cached dict. The parent writes via atomic temp+rename so both
+        # st_mtime_ns and st_size change on every update — the cache can
+        # never serve a stale payload in production.
+        self._cache_key: tuple[int, int] | None = None
+        self._cached_payload: dict[str, object] | None = None
         # Streaming surface mirroring AgentSession: the exec SSE path swaps the
         # atomic (owner thread, sink) entry per request and the exec handler
         # captures it via current_thread_tool_output_sink. Production servers
@@ -84,7 +94,27 @@ class FileBackedSession:
         return None
 
     def _load(self) -> dict[str, object]:
-        return self._loader(self._path)
+        """Return the cached parsed payload when (mtime_ns, size) is unchanged.
+
+        Otherwise re-invoke ``self._loader`` and refresh the cache. If the
+        stat() call fails (file missing or unreadable), the cache is
+        discarded and the loader is invoked directly so the calling
+        accessor surfaces a normal FileNotFoundError rather than a stale
+        cached payload.
+        """
+        try:
+            stat = self._path.stat()
+            key = (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            self._cache_key = None
+            self._cached_payload = None
+            return self._loader(self._path)
+        if self._cache_key == key and self._cached_payload is not None:
+            return self._cached_payload
+        payload = self._loader(self._path)
+        self._cache_key = key
+        self._cached_payload = payload
+        return payload
 
     @property
     def _workspace_root(self) -> Path:

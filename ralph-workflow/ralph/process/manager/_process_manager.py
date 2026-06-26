@@ -290,6 +290,15 @@ class ProcessManager:
         lid = self._listener_counter
         self._listener_counter += 1
         self._listeners[lid] = callback
+        # wt-024 M8 (AC-09): FIFO eviction on cap. ``self._listeners``
+        # preserves insertion order; evicting the OLDEST listener keeps
+        # the leak surface bounded if a caller leaks a subscription
+        # (forgot to call the returned unsubscribe callable). Steady-state
+        # count is ~3 (loguru_event_listener + PTY reader + process
+        # reader); the default cap of 64 is well above that.
+        while len(self._listeners) > self.policy.max_listeners:
+            oldest = next(iter(self._listeners))
+            self._listeners.pop(oldest, None)
 
         def unsubscribe() -> None:
             self._listeners.pop(lid, None)

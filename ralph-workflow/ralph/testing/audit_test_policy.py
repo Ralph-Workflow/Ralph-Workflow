@@ -55,6 +55,20 @@ _IO_ALLOWLIST: set[str] = {
     # a fake workspace would measure a DIFFERENT code path and produce
     # meaningless regression assertions. This is a legitimate allowlist entry.
     "test_multimodal_session_memory_regression",
+    # Upstream-media memory regression test. Drives
+    # normalize_upstream_content_blocks() repeatedly with N embedded-data
+    # blocks AND a workspace argument; the cache_path/byte_loader seam
+    # requires real FsWorkspace for the same reasons as the existing
+    # multimodal regression test (memory accounting through the real
+    # _write_durable_media_cache call path).
+    "test_upstream_media_memory_regression",
+    # FileBackedSession caching test. Writes a real session JSON file
+    # to tmp_path and triggers the (mtime_ns, size)-keyed cache; the
+    # caching is the unit under test and the production loader calls
+    # path.read_text() which the audit flags as real I/O. Switching
+    # to a fake Path would defeat the regression assertion (which
+    # specifically tests the on-disk change-detection contract).
+    "test_mcp_file_backed_session_caching",
     # Template rendering tests that read Jinja2 template files from the repo.
     # These tests verify template logic against real template content; mocking
     # the file reads would test nothing meaningful.
