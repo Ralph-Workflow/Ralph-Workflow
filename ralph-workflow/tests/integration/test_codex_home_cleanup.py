@@ -41,7 +41,7 @@ def test_codex_home_tempdirs_cleaned_up(tmp_path: Path) -> None:
 
     assert not d1.exists(), f"tempdir {d1} should have been removed"
     assert not d2.exists(), f"tempdir {d2} should have been removed"
-    assert _allocated_codex_homes == [], "registration list should be empty after cleanup"
+    assert list(_allocated_codex_homes) == [], "registration should be empty after cleanup"
 
 
 def test_cleanup_codex_homes_is_idempotent(tmp_path: Path) -> None:
@@ -56,7 +56,7 @@ def test_cleanup_codex_homes_is_idempotent(tmp_path: Path) -> None:
     cleanup_codex_homes()
 
     assert not d.exists()
-    assert _allocated_codex_homes == []
+    assert list(_allocated_codex_homes) == []
 
 
 def test_cleanup_codex_homes_robust_to_missing_dirs(tmp_path: Path) -> None:
@@ -73,4 +73,4 @@ def test_cleanup_codex_homes_robust_to_missing_dirs(tmp_path: Path) -> None:
     # Should NOT raise (ignore_errors=True)
     cleanup_codex_homes()
 
-    assert _allocated_codex_homes == []
+    assert list(_allocated_codex_homes) == []

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import tomllib
-from typing import TYPE_CHECKING, cast
+from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -12,6 +13,7 @@ from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import RetryablePreflightError
 from ralph.mcp.transport.agy import agy_mcp_config as real_agy_mcp_config
 from ralph.mcp.transport.claude import claude_mcp_config as real_claude_config
+from ralph.mcp.transport.codex import release_codex_home as real_release_codex_home
 from ralph.mcp.transport.opencode import (
     build_opencode_provider_config as real_opencode,
 )
@@ -22,9 +24,6 @@ from ralph.mcp.upstream.agent_probe import (
     probe_agent_transports,
 )
 from ralph.mcp.upstream.config import UpstreamMcpServer
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _http_server(
@@ -101,6 +100,19 @@ def test_probe_emits_codex_config_toml_with_mcp_servers_table(
     _stub_server_handshake_pass(monkeypatch)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
 
+    captured_configs: list[str] = []
+
+    def capture_config_then_release(home: str) -> bool:
+        config_path = Path(home) / "config.toml"
+        if config_path.exists():
+            captured_configs.append(config_path.read_text(encoding="utf-8"))
+        return real_release_codex_home(home)
+
+    monkeypatch.setattr(
+        "ralph.mcp.transport.codex.release_codex_home",
+        capture_config_then_release,
+    )
+
     reports = probe_agent_transports(
         [server], transports=(AgentTransport.CODEX,), workspace_path=tmp_path
     )
@@ -108,14 +120,12 @@ def test_probe_emits_codex_config_toml_with_mcp_servers_table(
     assert len(reports) == 1
     assert reports[0].ok is True
 
-    # The synthesized config.toml lives under .agent/tmp/codex-home-*/config.toml
-    candidates = list((tmp_path / ".agent" / "tmp").glob("codex-home-*/config.toml"))
-    assert candidates, "Codex prepare did not write config.toml"
-    parsed = tomllib.loads(candidates[0].read_text(encoding="utf-8"))
+    assert captured_configs, "Codex prepare did not write config.toml before release"
+    parsed = tomllib.loads(captured_configs[0])
     # The probe augments the TOML in-memory; verify _prepare_codex_home produced
     # baseline output, and that the augmented copy parses with the server entry.
     # Re-augment from the probe internals to assert that table shape.
-    augmented = augment_codex_config_with_server(candidates[0].read_text(encoding="utf-8"), server)
+    augmented = augment_codex_config_with_server(captured_configs[0], server)
     parsed_augmented = tomllib.loads(augmented)
     assert "docs" in parsed_augmented["mcp_servers"]
     assert parsed_augmented["mcp_servers"]["docs"]["url"] == server.url

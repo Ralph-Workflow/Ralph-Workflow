@@ -98,8 +98,8 @@ class ProcessManager:
         self._pty_procs: dict[int, _PtyProcessLike] = {}  # bounded-accumulator-ok: per-PID
         self._descendants: dict[int, list[int]] = {}  # bounded-accumulator-ok: per-PID
         self._termination_outcomes: dict[  # bounded-accumulator-ok: cleared
-    int, list[dict[str, str]]
-] = {}
+            int, list[dict[str, str]]
+        ] = {}
         self._clock: Callable[[], float] = clock if clock is not None else _time.monotonic
         self._stop_event: threading.Event = threading.Event()
         self._reaper_thread: threading.Thread | None = None
@@ -125,8 +125,8 @@ class ProcessManager:
 
         self._async_procs: dict[int, _AsyncProcessLike] = {}  # bounded-accumulator-ok: per-PID
         self._listeners: dict[  # bounded-accumulator-ok: bounded
-    int, Callable[[ProcessEvent], None]
-] = {}
+            int, Callable[[ProcessEvent], None]
+        ] = {}
         self._listener_counter = 0
         # wt-024 memory-perf AC-02: dedicated bounded ThreadPoolExecutor
         # for async process termination. ``_escalate_termination_async``
@@ -1352,9 +1352,7 @@ class ProcessManager:
             # atexit join that ``concurrent.futures`` registers. The
             # dedicated executor is released by ``shutdown_all``'s
             # finally block via ``shutdown(wait=False)``.
-            still_alive = await loop.run_in_executor(
-                self._get_terminate_executor(), _do_terminate
-            )
+            still_alive = await loop.run_in_executor(self._get_terminate_executor(), _do_terminate)
         except PermissionError:
             self._raise_access_denied_termination(record, proc.returncode)
         rc = proc.returncode

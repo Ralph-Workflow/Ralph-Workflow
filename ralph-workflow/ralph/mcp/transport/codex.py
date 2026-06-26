@@ -8,6 +8,7 @@ import re
 import shutil
 import tempfile
 import tomllib
+from collections import deque
 from pathlib import Path
 from typing import cast
 
@@ -20,7 +21,9 @@ from ralph.mcp.tools.names import (
 from ralph.mcp.transport.common import merge_existing_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_servers
 
-_allocated_codex_homes: list[str] = []  # bounded-accumulator-ok: bounded
+_DEFAULT_CODEX_HOME_CAP = 256
+
+_allocated_codex_homes: deque[str] = deque(maxlen=_DEFAULT_CODEX_HOME_CAP)
 
 
 def cleanup_codex_homes() -> None:
@@ -37,6 +40,16 @@ def cleanup_codex_homes() -> None:
 
 
 atexit.register(cleanup_codex_homes)
+
+
+def release_codex_home(home: str) -> bool:
+    """Release one registered Codex home directory before interpreter shutdown."""
+    try:
+        _allocated_codex_homes.remove(home)
+    except ValueError:
+        return False
+    shutil.rmtree(home, ignore_errors=True)
+    return True
 
 
 def prepare_codex_home(
@@ -177,7 +190,15 @@ def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
         tmp_root = workspace_path / ".agent" / "tmp"
         tmp_root.mkdir(parents=True, exist_ok=True)
         codex_root = Path(tempfile.mkdtemp(prefix="codex-home-", dir=str(tmp_root)))
+    evicted = (
+        _allocated_codex_homes[0]
+        if _allocated_codex_homes.maxlen is not None
+        and len(_allocated_codex_homes) >= _allocated_codex_homes.maxlen
+        else None
+    )
     _allocated_codex_homes.append(str(codex_root))
+    if evicted is not None and evicted not in _allocated_codex_homes:
+        shutil.rmtree(evicted, ignore_errors=True)
     return codex_root
 
 
@@ -200,4 +221,5 @@ __all__ = [
     "cleanup_codex_homes",
     "prepare_codex_home",
     "prepare_codex_home_with_upstreams",
+    "release_codex_home",
 ]

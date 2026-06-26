@@ -175,38 +175,45 @@ def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> Agen
         existing_home=None,
         system_prompt_file=None,
     )
-    codex_home = Path(codex_home_str)
-    config_path = codex_home / "config.toml"
-    config_text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
-    # Reuse existing native entries when present; otherwise append the synthetic
-    # server so the probe verifies how Ralph would write it.
-    parsed = cast("dict[str, object]", tomllib.loads(config_text)) if config_text.strip() else {}
-    mcp_servers = parsed.get("mcp_servers") if isinstance(parsed, dict) else None
-    existing_servers = (
-        cast("dict[str, object]", mcp_servers) if isinstance(mcp_servers, dict) else None
-    )
-    if existing_servers is None or server.name not in existing_servers:
-        config_text = _augment_codex_config_with_server(config_text, server)
-        parsed = cast("dict[str, object]", tomllib.loads(config_text))
-    mcp_servers = parsed.get("mcp_servers")
-    if not isinstance(mcp_servers, dict):
-        raise AgentTransportProbeError(
-            "Codex config.toml missing [mcp_servers] table after probe synthesis"
+    try:
+        codex_home = Path(codex_home_str)
+        config_path = codex_home / "config.toml"
+        config_text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+        # Reuse existing native entries when present; otherwise append the synthetic
+        # server so the probe verifies how Ralph would write it.
+        parsed = (
+            cast("dict[str, object]", tomllib.loads(config_text)) if config_text.strip() else {}
         )
-    raw_entry = cast("dict[str, object]", mcp_servers).get(server.name)
-    if not isinstance(raw_entry, dict):
-        raise AgentTransportProbeError(
-            f"Codex config.toml missing [mcp_servers.{server.name}] table"
+        mcp_servers = parsed.get("mcp_servers") if isinstance(parsed, dict) else None
+        existing_servers = (
+            cast("dict[str, object]", mcp_servers) if isinstance(mcp_servers, dict) else None
         )
-    entry = cast("dict[str, object]", raw_entry)
-    if server.transport == "http" and entry.get("url") != server.url:
-        raise AgentTransportProbeError(f"Codex config.toml mcp_servers.{server.name}.url mismatch")
-    if server.transport == "stdio" and entry.get("command") != server.command:
-        raise AgentTransportProbeError(
-            f"Codex config.toml mcp_servers.{server.name}.command mismatch"
-        )
-    server_handshake(server)
-    return AgentProbeReport(transport=AgentTransport.CODEX, server_name=server.name, ok=True)
+        if existing_servers is None or server.name not in existing_servers:
+            config_text = _augment_codex_config_with_server(config_text, server)
+            parsed = cast("dict[str, object]", tomllib.loads(config_text))
+        mcp_servers = parsed.get("mcp_servers")
+        if not isinstance(mcp_servers, dict):
+            raise AgentTransportProbeError(
+                "Codex config.toml missing [mcp_servers] table after probe synthesis"
+            )
+        raw_entry = cast("dict[str, object]", mcp_servers).get(server.name)
+        if not isinstance(raw_entry, dict):
+            raise AgentTransportProbeError(
+                f"Codex config.toml missing [mcp_servers.{server.name}] table"
+            )
+        entry = cast("dict[str, object]", raw_entry)
+        if server.transport == "http" and entry.get("url") != server.url:
+            raise AgentTransportProbeError(
+                f"Codex config.toml mcp_servers.{server.name}.url mismatch"
+            )
+        if server.transport == "stdio" and entry.get("command") != server.command:
+            raise AgentTransportProbeError(
+                f"Codex config.toml mcp_servers.{server.name}.command mismatch"
+            )
+        server_handshake(server)
+        return AgentProbeReport(transport=AgentTransport.CODEX, server_name=server.name, ok=True)
+    finally:
+        _codex_transport.release_codex_home(codex_home_str)
 
 
 def _augment_codex_config_with_server(base_config: str, server: UpstreamMcpServer) -> str:
