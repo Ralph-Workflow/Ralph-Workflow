@@ -319,18 +319,20 @@ def test_install_overwrites_stale_canonical_skill(tmp_path: Path) -> None:
 
 
 @pytest.mark.timeout_seconds(5)
-def test_install_preserves_user_edited_canonical_skill(tmp_path: Path) -> None:
-    """PA-002 closure: user-edit preservation contract survives the new overwrite branch.
+def test_install_overwrites_user_edited_canonical_skill(tmp_path: Path) -> None:
+    """PA-002 closure: project-scope conflict-resolution OVERWRITES user-edited content.
 
-    When the on-disk SKILL.md hash DOES NOT match the marker-stored sha (the
-    signal for a user-edited skill), ``materialize_skills_to_claude_dir``
-    preserves it. ``_materialize_canonical_skill`` THEN overwrites it because
-    the on-disk hash still differs from the bundled sha after materialize.
+    The locked conflict-resolution policy for the project-scope branch
+    (driven by ``_sync_shipped_skills_on_pipeline_run``) is: bundled content
+    always wins for hash-divergent canonical entries. ``_materialize_canonical_skill``
+    overwrites a user-edited canonical SKILL.md whenever the on-disk hash
+    differs from the bundled sha, replacing the content with the bundled
+    content and updating the managed marker to the new bundled sha.
 
-    This test pins the half of the conflict-resolution rule that says:
-    user-edited skills are NOT preserved when bundled content has refreshed.
-    The skill's content is replaced with the bundled content, and the
-    managed marker is updated to the new bundled sha.
+    This is the OVERWRITE branch of the conflict-resolution rule -- the
+    user-edit preservation contract is honored on the USER-GLOBAL path
+    (via ``materialize_skills_to_claude_dir``) but NOT on the PROJECT-SCOPE
+    pre-pipeline sync path, where bundled content always wins.
     """
     home = _fake_user_global_home(tmp_path)
     canonical = tmp_path / ".opencode" / "skills"

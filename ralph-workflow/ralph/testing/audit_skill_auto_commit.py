@@ -149,13 +149,21 @@ _INVARIANTS: tuple[Invariant, ...] = (
         ),
     ),
     # The CLI wiring in run.py MUST call commit_skill_updates inside
-    # _sync_shipped_skills_on_pipeline_run.
+    # _sync_shipped_skills_on_pipeline_run. The run-path literals pin the
+    # success path; the failure-path literals pin the best-effort
+    # fail-closed contract so a future refactor that silently drops the
+    # try/except handler is caught at audit time. Per plan step 12.
     Invariant(
         rel_path="cli/commands/run.py",
         present=(
             "from ralph.skills._auto_commit import commit_skill_updates",
             "commit_skill_updates(target_root, create_commit)",
             "Auto-committed skill updates",
+            # Failure-path invariants: the best-effort contract
+            # requires both the try/except wrapper AND the debug log
+            # line so a broken git state cannot block the pipeline.
+            "except Exception as exc:  # auto-commit is best-effort; never break the pipeline",
+            "Skill auto-commit failed (non-fatal): {}",
         ),
     ),
     # The new helper overwrites stale canonical content in the installer
