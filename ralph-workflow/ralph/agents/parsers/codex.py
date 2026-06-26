@@ -12,6 +12,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 
 def _parse_codex_object(
     obj: dict[str, object],
@@ -253,9 +255,15 @@ class CodexParser(NdjsonParserBase):
         {"turn.completed", "message_stop", "done", "stop", "response.completed"}
     )
 
-    def __init__(self, subagent_pid_registry: object = None) -> None:
+    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
         super().__init__()
-        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
+        # Store the registry (forward-compat; Codex's NDJSON events do
+        # not currently carry embedded PIDs). The stored reference lets
+        # future code paths register a discovered child PID into the
+        # shared registry without re-plumbing the constructor signature.
+        self._subagent_pid_registry: SubagentPidRegistry | None = (
+            subagent_pid_registry
+        )
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self._current_response_id: str | None = None
         self._stream_counter = 0

@@ -77,6 +77,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 
 _TEXT_KIND = "text"
 _THINKING_KIND = "thinking"
@@ -646,9 +648,13 @@ class PiParser(NdjsonParserBase):
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset()
 
-    def __init__(self, subagent_pid_registry: object = None) -> None:
+    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
         super().__init__()
-        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
+        # Store the registry (forward-compat; pi's NDJSON events do
+        # not currently carry embedded PIDs). The stored reference lets
+        # future code paths register a discovered child PID into the
+        # shared registry without re-plumbing the constructor signature.
+        self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self.saw_text_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared
         self.saw_thinking_end_by_index: set[int] = set()  # bounded-accumulator-ok: cleared

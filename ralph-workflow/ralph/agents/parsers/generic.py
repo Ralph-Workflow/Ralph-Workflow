@@ -21,6 +21,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 
 _SHORT_CONTENT_THRESHOLD = 200
 
@@ -67,9 +69,16 @@ class GenericParser(NdjsonParserBase):
 
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
 
-    def __init__(self, subagent_pid_registry: object = None) -> None:
+    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
         super().__init__()
-        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
+        # Store the registry (forward-compat; the generic NDJSON shape
+        # does not currently carry embedded PIDs). The stored reference
+        # lets future code paths register a discovered child PID into
+        # the shared registry without re-plumbing the constructor
+        # signature.
+        self._subagent_pid_registry: SubagentPidRegistry | None = (
+            subagent_pid_registry
+        )
         self._text_accumulator: TextAccumulator | None = None
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:

@@ -20,6 +20,8 @@ JsonDict = dict[str, JsonValue]
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 
 class _GeminiDispatch:
     """Per-event-type dispatch for GeminiParser.
@@ -213,9 +215,16 @@ class GeminiParser(NdjsonParserBase):
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"done", "stop", "message_end"})
 
-    def __init__(self, subagent_pid_registry: object = None) -> None:
+    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
         super().__init__()
-        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
+        # Store the registry (forward-compat; Gemini's SSE+JSON events
+        # do not currently carry embedded PIDs). The stored reference
+        # lets future code paths register a discovered child PID into
+        # the shared registry without re-plumbing the constructor
+        # signature.
+        self._subagent_pid_registry: SubagentPidRegistry | None = (
+            subagent_pid_registry
+        )
         self._text_accumulator: TextAccumulator | None = None
         self._dispatcher = _GeminiDispatch(self)
 

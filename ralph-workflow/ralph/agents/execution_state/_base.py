@@ -126,27 +126,16 @@ class BaseExecutionStrategy:
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         del liveness_probe
-        # OpenCode path: when a ChildLivenessRegistry is wired into the
-        # strategy, the registry is the authoritative real-subagent
-        # signal (the registry is updated from OpenCode's structured
-        # child lifecycle events). Preserve existing behavior so the
-        # existing OpenCode regression tests keep passing.
-        if self._registry is not None:
-            if hasattr(handle, "has_live_descendants"):
-                try:
-                    if bool(handle.has_live_descendants()):
-                        return AgentExecutionState.WAITING_ON_CHILD
-                except Exception:
-                    pass
-            return AgentExecutionState.ACTIVE
-        # Non-OpenCode, registry-aware path: when a SubagentPidSource is
-        # injected (e.g. via the per-transport factory helpers from
-        # ``ralph.process.monitor._subagent_pid_source_providers``), the
-        # FILTERED count is the canonical signal. The source returns
-        # the set of REAL subagent PIDs -- never the broader
+        # R1 (Trustworthy Idle Watchdog spec): when a SubagentPidSource
+        # is injected (the per-transport factory helpers in
+        # ``ralph.process.monitor._subagent_pid_source_providers`` wire
+        # this from a ``SubagentPidRegistry``), it is the FILTERED
+        # signal -- the set of REAL subagent PIDs, never the broader
         # ``descendant_snapshot()`` count which includes shell helpers
         # like ``npm test`` / ``cargo build`` (the 2365s indefinite
-        # deferral bug from the product spec).
+        # deferral bug from the product spec). The source MUST take
+        # precedence over both the registry and the descendant handle
+        # because it is the canonical owner of the real-subagent set.
         if self._subagent_pid_source is not None:
             try:
                 pids = self._subagent_pid_source.known_subagent_pids()
@@ -154,6 +143,27 @@ class BaseExecutionStrategy:
                 pids = set()
             if pids:
                 return AgentExecutionState.WAITING_ON_CHILD
+            return AgentExecutionState.ACTIVE
+        # OpenCode path (ChildLivenessRegistry wired by the strategy
+        # factory): use the registry's filtered signal
+        # (``len(self._registry.snapshot())``) instead of falling back
+        # to ``handle.has_live_descendants()`` -- the registry is the
+        # authoritative real-subagent set updated from OpenCode's
+        # structured child lifecycle events. The BROADER descendant
+        # count is the bug class from the product spec; we MUST NOT
+        # use it when a registry is injected.
+        if self._registry is not None:
+            try:
+                # ``snapshot`` returns a ``ChildActivitySnapshot``;
+                # count via ``active_count`` (the filtered live-child
+                # signal). Empty prefix matches every record so a
+                # generic registry without a label scope still
+                # produces a meaningful filtered count.
+                reg_snapshot = self._registry.snapshot("")
+                if reg_snapshot.active_count > 0:
+                    return AgentExecutionState.WAITING_ON_CHILD
+            except Exception:
+                pass
             return AgentExecutionState.ACTIVE
         # Legacy fallback (no registry, no injected source): keep the
         # previous ``has_live_descendants()`` behavior for

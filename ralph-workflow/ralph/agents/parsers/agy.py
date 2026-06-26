@@ -50,6 +50,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
     from .agent_output_line import AgentOutputLine
 
 
@@ -67,9 +69,16 @@ class AgyParser(NdjsonParserBase):
     :class:`TextAccumulator` into coherent blocks.
     """
 
-    def __init__(self, subagent_pid_registry: object = None) -> None:
+    def __init__(self, subagent_pid_registry: SubagentPidRegistry | None = None) -> None:
         super().__init__()
-        del subagent_pid_registry  # accepted for forward-compat; no embedded PIDs today
+        # Store the registry (forward-compat; AGY's --print plain-text
+        # stream does not currently carry embedded PIDs). The stored
+        # reference lets future code paths register a discovered child
+        # PID into the shared registry without re-plumbing the
+        # constructor signature.
+        self._subagent_pid_registry: SubagentPidRegistry | None = (
+            subagent_pid_registry
+        )
         self._text_accumulator: TextAccumulator | None = None
         self._has_prior_text_line: bool = False
 

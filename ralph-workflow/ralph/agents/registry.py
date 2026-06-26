@@ -14,15 +14,28 @@ from loguru import logger
 
 from ralph.agents.builtin import builtin_supports
 from ralph.agents.catalog import AgentCatalog, default_catalog
+from ralph.agents.idle_watchdog import SubagentPidRegistry
 from ralph.agents.registration import register_agent_support_to_catalog
 from ralph.agents.spec import AgentSpec
 from ralph.agents.support import AgentSupport
 from ralph.config.ccs_config import CcsAliasConfig, CcsConfig
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.process.monitor import (
+    make_agy_subagent_pid_source,
+    make_claude_interactive_subagent_pid_source,
+    make_claude_subagent_pid_source,
+    make_codex_subagent_pid_source,
+    make_gemini_subagent_pid_source,
+    make_generic_subagent_pid_source,
+    make_opencode_subagent_pid_source,
+    make_pi_subagent_pid_source,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from ralph.process.monitor import SubagentPidSource
 
 _MIN_OPENCODE_SEGMENTS = 2
 _MIN_NANOCODER_PROVIDER_SEGMENTS = 2
@@ -163,6 +176,59 @@ class AgentRegistry:
 
         logger.debug("Loaded {} agents from config", len(registry.agents))
         return registry
+
+    def build_subagent_pid_registry(
+        self,
+        transport: AgentTransport | str,
+    ) -> tuple[SubagentPidRegistry, SubagentPidSource]:
+        """Construct a per-invocation ``SubagentPidRegistry`` + ``SubagentPidSource``.
+
+        R1 (Trustworthy Idle Watchdog spec): a single shared
+        ``SubagentPidRegistry`` is created per invocation and threaded
+        into both the execution strategy (via
+        ``subagent_pid_source=``) and the parser (via
+        ``subagent_pid_registry=``) so any PID registered by either
+        layer becomes visible to ``ProcessMonitor.spawned_subagent_count()``.
+
+        The per-transport factory helpers in
+        ``ralph.process.monitor._subagent_pid_source_providers`` wrap
+        the shared registry to expose a ``SubagentPidSource`` that
+        filters by transport source label. OpenCode's
+        ``ChildLivenessSubagentPidSource`` continues to use its own
+        ``ChildLivenessRegistry`` (the registry is shared but the
+        source adapter is transport-specific).
+
+        Returns:
+            A ``(registry, source)`` tuple. The registry is the single
+            source of truth (FIFO-bounded at 1024 entries); the source
+            is the per-transport adapter the watchdog consumes.
+        """
+        registry = SubagentPidRegistry()
+        if isinstance(transport, AgentTransport):
+            transport_name: str = transport.value
+        else:
+            transport_name = transport
+        factory_map: dict[str, Callable[[SubagentPidRegistry], SubagentPidSource]] = {
+            "opencode": make_opencode_subagent_pid_source,
+            "claude": make_claude_subagent_pid_source,
+            "pi": make_pi_subagent_pid_source,
+            "agy": make_agy_subagent_pid_source,
+            "claude_interactive": make_claude_interactive_subagent_pid_source,
+            "codex": make_codex_subagent_pid_source,
+            "gemini": make_gemini_subagent_pid_source,
+            "generic": make_generic_subagent_pid_source,
+            # Nanocoder uses the generic wire format and the generic
+            # SubagentPidSource adapter (no per-transport specific events).
+            "nanocoder": make_generic_subagent_pid_source,
+        }
+        factory = factory_map.get(transport_name)
+        if factory is None:
+            msg = (
+                f"no SubagentPidSource factory for transport {transport!r}; expected one of"
+                f" {sorted(factory_map)}"
+            )
+            raise ValueError(msg)
+        return registry, factory(registry)
 
     def register(self, name: str, config: AgentConfig) -> None:
         """Register an agent with the registry.
