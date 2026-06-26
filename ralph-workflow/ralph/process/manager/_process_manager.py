@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time as _time
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -115,6 +116,20 @@ class ProcessManager:
         self._async_procs: dict[int, _AsyncProcessLike] = {}
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
+        # wt-024 memory-perf AC-02: dedicated bounded ThreadPoolExecutor
+        # for async process termination. ``_escalate_termination_async``
+        # passes this to ``loop.run_in_executor`` instead of the event
+        # loop's default executor (which ProcessManager does not own
+        # or release). Created lazily on first async-termination use
+        # so tests that never spawn an async process never create it.
+        # Released by ``shutdown_all``'s finally block via
+        # ``shutdown(wait=False)`` so it does NOT block shutdown on
+        # in-flight workers; in-flight workers complete within
+        # ``grace_period_s + kill_followup_timeout_s`` (bounded
+        # ``psutil.wait_procs`` calls inside ``_do_terminate``) and are
+        # reaped by ``concurrent.futures``' own ``_python_exit`` atexit
+        # join, so no orphaned termination worker blocks process exit.
+        self._terminate_executor: ThreadPoolExecutor | None = None
         sf = (
             sync_process_factory
             if sync_process_factory is not None
@@ -158,6 +173,33 @@ class ProcessManager:
         except RuntimeError:
             return False
         return True
+
+    # wt-024 memory-perf AC-02: dedicated bounded terminate executor.
+    # 4 workers is enough headroom for the small concurrency of async
+    # process termination (typically a handful of in-flight teardowns);
+    # the ceiling exists to make unbounded thread growth structurally
+    # impossible, NOT to be tuned for peak throughput. The cap is a
+    # SAFETY invariant, not a perf invariant.
+    _TERMINATE_EXECUTOR_MAX_WORKERS: int = 4
+
+    def _get_terminate_executor(self) -> ThreadPoolExecutor:
+        """Return the ProcessManager-owned bounded ``ThreadPoolExecutor`` for
+        async process termination.
+
+        Created lazily on first async-termination use so tests that
+        never spawn an async process never allocate one. The same
+        instance is returned across calls and is released by
+        ``shutdown_all`` via ``shutdown(wait=False)`` (does NOT
+        block on in-flight workers; in-flight termination workers
+        complete within ``grace_period_s + kill_followup_timeout_s``
+        and are reaped by ``concurrent.futures``' own atexit join).
+        """
+        if self._terminate_executor is None:
+            self._terminate_executor = ThreadPoolExecutor(
+                max_workers=self._TERMINATE_EXECUTOR_MAX_WORKERS,
+                thread_name_prefix="ralph-terminate",
+            )
+        return self._terminate_executor
 
     def _reap_sync_and_mark(
         self,
@@ -903,6 +945,20 @@ class ProcessManager:
                     )
         finally:
             self._stop_zombie_reaper()
+            # wt-024 AC-02: release the dedicated bounded terminate
+            # executor alongside the zombie reaper. ``shutdown(wait=False)``
+            # does NOT block on in-flight termination workers; any
+            # in-flight worker completes within
+            # ``grace_period_s + kill_followup_timeout_s`` and is reaped
+            # by ``concurrent.futures``' own ``_python_exit`` atexit join
+            # so no orphaned termination worker blocks process exit.
+            # We go through ``_get_terminate_executor()`` so the release
+            # path uses the same injectable seam the termination path
+            # does (tests can swap the seam to observe the release).
+            with contextlib.suppress(Exception):
+                executor = self._get_terminate_executor()
+                executor.shutdown(wait=False)
+            self._terminate_executor = None
         if first_termination_error is not None:
             raise first_termination_error
 
@@ -1270,7 +1326,17 @@ class ProcessManager:
 
         loop = asyncio.get_running_loop()
         try:
-            still_alive = await loop.run_in_executor(None, _do_terminate)
+            # wt-024 AC-02: pass the ProcessManager-owned bounded
+            # executor (NOT the event-loop default ``None`` executor).
+            # The default executor is not owned by ProcessManager and
+            # is not released on shutdown; a stuck default-executor
+            # termination worker can block process exit on the
+            # atexit join that ``concurrent.futures`` registers. The
+            # dedicated executor is released by ``shutdown_all``'s
+            # finally block via ``shutdown(wait=False)``.
+            still_alive = await loop.run_in_executor(
+                self._get_terminate_executor(), _do_terminate
+            )
         except PermissionError:
             self._raise_access_denied_termination(record, proc.returncode)
         rc = proc.returncode

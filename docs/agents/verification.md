@@ -26,9 +26,11 @@ make verify
 12. Artifact-submission canonical-path audit (`ralph/testing/audit_artifact_submission_canonical_path.py`) — enforces the single-writer contract for artifact submission (see `docs/agents/artifact-submission-contract.md`)
 13. Agent registry sync audit (`ralph/testing/audit_agent_registry_sync.py`) — enforces that built-in agent declarations, registry seeding, docs, parser exports, and dispatch tables stay synchronized
 14. Agent module state audit (`ralph/testing/audit_agent_module_state.py`) — enforces that agent catalog/registry modules stay import-safe and do not grow mutable module-level state outside the approved declarations
-15. Social-proof gate (`scripts/verify_social_proof.py`) — detects unverifiable public-facing adoption, credit, usage, or stats claims
+15. Agent internal paths audit (`ralph/testing/audit_agent_internal_paths.py`) — enforces that agent internals live at canonical paths and that cross-references stay in sync
+16. Social-proof gate (`scripts/verify_social_proof.py`) — detects unverifiable public-facing adoption, credit, usage, or stats claims
+17. Resource lifecycle audit (`ralph/testing/audit_resource_lifecycle.py`) — enforces the resource-lifecycle contract documented in `ralph-workflow/docs/agents/memory-lifecycle.md`: every `threading.Thread(...)` call has `daemon=True`, every `httpx.Client(...)` / `httpx.AsyncClient(...)` / `requests.Session(...)` is constructed inside a `with` statement, and raw `os.open` / `os.openpty` / `os.pipe` calls are confined to `ralph/process/` (with an inline `# resource-lifecycle-ok: <reason>` escape hatch for genuinely bounded-by-design call sites). Alias resolution is honored so `import httpx as hx; hx.Client()` cannot evade detection
 
-All 15 steps run sequentially under `make verify`. Steps 1, 2, 4-15 each use a per-step timeout (`_VERIFY_STEP_TIMEOUT_SECONDS`); step 3 (`make test`) uses the 60-second combined budget. The full ordered list of step labels is the canonical `_VERIFY_STEPS` tuple in `ralph-workflow/ralph/verify.py`; this doc lists the user-facing name for each step and is the single source of truth for what `make verify` actually runs.
+All 17 steps run sequentially under `make verify`. Steps 1, 2, 4-17 each use a per-step timeout (`_VERIFY_STEP_TIMEOUT_SECONDS`); step 3 (`make test`) uses the 60-second combined budget. The full ordered list of step labels is the canonical `_VERIFY_STEPS` tuple in `ralph-workflow/ralph/verify.py`; this doc lists the user-facing name for each step and is the single source of truth for what `make verify` actually runs.
 
 ### Bounded-subprocess contract — every MCP and git operation is bounded
 

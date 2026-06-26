@@ -3126,6 +3126,13 @@ ralph.testing.audit_parallelization_dormant
    :members:
    :show-inheritance:
 
+ralph.testing.audit_resource_lifecycle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.audit_resource_lifecycle
+   :members:
+   :show-inheritance:
+
 ralph.testing.audit_watchdog_drift
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

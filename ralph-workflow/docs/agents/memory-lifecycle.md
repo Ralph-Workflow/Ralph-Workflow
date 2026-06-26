@@ -6,6 +6,50 @@ understand. The audit at `ralph/testing/audit_mcp_timeout.py` and its
 expansion (this document) make unbounded blocking calls structurally
 hard to reintroduce in the paths that matter.
 
+## Performance profile
+
+The prompt's "optimize performance" requirement is closed by the same
+work that closes the memory half of the contract: the hot-path hotspots
+that produce unbounded CPU, latency, or memory growth ARE the leaks this
+contract prevents. The closure map below documents where each perf risk
+is bounded and where the contract deliberately does NOT optimize.
+
+| Hotspot | Risk class | Bounded by | Source-of-truth file/line |
+|---|---|---|---|
+| `_transcript_thread` transcript fd | Unbounded fd growth on the hot PTY-read path when readline/parse raises mid-loop | `try/finally` close in `PtyLineReader._transcript_thread` | `ralph/agents/invoke/_pty_line_reader.py` |
+| Async-termination default-executor borrowing | Unbounded thread growth in teardown when many concurrent async terminates are dispatched | Dedicated bounded `ThreadPoolExecutor` owned by `ProcessManager`, released by `shutdown_all(wait=False)` | `ralph/process/manager/_process_manager.py` |
+| Background threads | Non-daemon threads blocking process exit | `daemon=True` on every `threading.Thread` (enforced by `audit_resource_lifecycle.py`) | `ralph/testing/audit_resource_lifecycle.py` |
+| HTTP client construction | Leaked httpx/requests clients holding connections open | `with`-context-manager usage (enforced by `audit_resource_lifecycle.py`) | `ralph/testing/audit_resource_lifecycle.py` |
+| Raw `os` fd creation | Untracked fds outside the centralized process layer | Centralized under `ralph/process/` (enforced by `audit_resource_lifecycle.py`) | `ralph/testing/audit_resource_lifecycle.py` |
+
+Why this is the entire closure map:
+
+1. The two genuine unbounded-growth hotspots on the perf-critical paths
+   (the read path and the teardown path) are the ONLY classes of
+   perf-degrading leak the audit detects, and both are fixed in this
+   contract. No separate CPU/latency hot-path performance work remains
+   in scope — every read-path allocation that survives a long session
+   has a bounded registry (terminal records cap 256, listeners cap 64,
+   bounded `BoundedLinesQueue`, FIFO evictions on every collection).
+
+2. The structural-prevention audit (`audit_resource_lifecycle.py`,
+   wired into `make verify`) programmatically re-confirms that no
+   other non-daemon-thread, leaked-client, or raw-fd growth exists
+   today, and that any future regression in these classes fails
+   `make verify`.
+
+3. The deliberate non-reversals documented under
+   [Known limitations](#known-limitations) are the remaining performance
+   trade-offs the contract accepts: the per-call stdio upstream spawn
+   (simplicity over latency; explicitly out of scope here) and the
+   absence of `__del__` / `weakref.finalize` finalizers (rejected on
+   determinism grounds). No other perf trade-off exists by design.
+
+The contract's stance: **if a future commit grows a new unbounded
+allocation on the hot path, it is caught by the audit (or the next
+audit extension) BEFORE it ships, not after a long-running session
+shows OOM in production**.
+
 ## Single teardown path
 
 Every spawned child flows through `ProcessManager`
@@ -219,6 +263,123 @@ finally block is a safety net, not a mandatory kill.
   effects is caught by the watchdog's `CHILDREN_PERSIST_TOO_LONG`
   ceiling (default 600s) via the `os_descendant_only_*` tunables, not
   by a hard wait_for.
+
+## Resource-lifecycle audit
+
+`ralph/testing/audit_resource_lifecycle.py` is the AST-based audit that
+keeps the contract structurally hard to regress. It enforces three
+classes of leak in production code:
+
+| Contract | What it flags | Why it matters |
+|---|---|---|
+| **Daemon-Thread rule** | `threading.Thread(...)` and `Thread(...)` (resolved through import aliases) WITHOUT `daemon=True` | Non-daemon threads can block process exit on the `concurrent.futures` `_python_exit` atexit join |
+| **With-managed HTTP client** | `httpx.Client(...)`, `httpx.AsyncClient(...)`, `requests.Session(...)` constructed OUTSIDE a `with` statement (bare assignment) | Bare construction leaks the underlying HTTP connection pool and is not closed at interpreter exit |
+| **Centralized raw-fd creation** | `os.open(...)`, `os.openpty(...)`, `os.pipe(...)` OUTSIDE `ralph/process/` | Raw fd creation bypasses the centralized process lifecycle; the zombie reaper / terminal records don't see the fd and it leaks across restarts |
+
+The audit has one inline escape hatch: a `# resource-lifecycle-ok:
+<reason>` marker on the call's line suppresses the violation. The
+marker is the only allowlist mechanism — keep it rare and justified.
+
+Default audit roots (the directories scanned by `make verify`):
+
+| Root | Why it's covered |
+|---|---|
+| `ralph/mcp` | HTTP client + daemon threads (the SSE/HTTP request surface) |
+| `ralph/agents` | Subprocess agent executor + daemon threads |
+| `ralph/executor` | Sync + async process runners |
+| `ralph/process` | Centralized process lifecycle (the raw-fd allowlist root) |
+| `ralph/pipeline` | Run loop + interrupt threads |
+| `ralph/runtime` | Runtime helper modules |
+| `ralph/pro_support` | Pro heartbeat client (daemon thread + HTTP client) |
+| `ralph/recovery` | Recovery control flow |
+
+Intentional exclusions (out of scope, documented to avoid false
+positives):
+
+- `ThreadPoolExecutor` — has its own `.shutdown()` lifecycle owned by
+  the caller.
+- Bare `open()` — governed by `audit_di_seam` (composition-root
+  env/open reads), not this audit.
+- `loop.run_in_executor(None, ...)` in `ralph/interrupt/asyncio_bridge.py`
+  — bounded shutdown block owned by the asyncio bridge (different
+  lifecycle), not a thread leak.
+
+The audit is wired into `make verify` as the LAST `_VERIFY_STEPS`
+entry (step 17). It is NOT a budget-tracked step, so adding it does
+NOT increase the 60-second combined test budget; it does NOT trip
+the `audit_mcp_timeout`-containment import-time invariant. Adding a
+NEW violation in any audited root fails `make verify` on this step.
+
+## File-handle ownership
+
+Production code MUST use `with` or `try/finally` for file handles.
+A file handle opened in the body of a function MUST be closed on
+every exit path — normal return, raised exception, swallowed
+exception, and any re-raise path. The canonical example of the
+exception-safety failure this rule prevents:
+
+```python
+# WRONG — leaks the fd on any readline/parse raise
+file_obj = path.open(...)
+while not stop.is_set():
+    line = file_obj.readline()      # raises here → fd leaks
+    process(line)
+if file_obj is not None:
+    file_obj.close()                # never reached on the raise path
+```
+
+```python
+# RIGHT — try/finally guarantees close on every exit path
+file_obj = path.open(...)
+try:
+    while not stop.is_set():
+        line = file_obj.readline()
+        process(line)
+finally:
+    if file_obj is not None:
+        file_obj.close()
+        file_obj = None              # belt-and-suspenders; the
+                                     # post-loop close (if any) is
+                                     # a no-op on the closed handle
+```
+
+This is exactly the fix applied to `PtyLineReader._transcript_thread`
+in this contract — the loop body is wrapped in `try/finally` so a
+mid-loop raise (e.g. `transcript_lines_from_event` parse error)
+closes the handle before propagating. The fix is regression-pinned by
+`tests/agents/invoke/test_pty_line_reader_transcript_handle.py`.
+
+## How to add a new resource safely
+
+A short checklist for any new long-lived resource (process, thread,
+HTTP client, file handle, accumulator):
+
+1. **Processes**: flow through `ProcessManager`. Use the factory
+   methods (`pm.spawn`, `pm.spawn_pty`, `pm.spawn_async`); never call
+   `subprocess.Popen` directly. Register in `pm` so the atexit /
+   signal-handler / label-prefix teardown path can find and reap it.
+2. **File handles**: `with` for one-shot reads, `try/finally` for
+   hot-loop / repeated reads. The `_transcript_thread` pattern is the
+   canonical reference.
+3. **HTTP clients**: `with httpx.Client(...) as client:` for
+   request-scoped clients. For long-lived singletons, manage via an
+   explicit close in a `finally` block AND add a
+   `# resource-lifecycle-ok: <reason>` marker so the audit's
+   production-tree scan stays green.
+4. **Background threads**: `daemon=True` + a `threading.Event` stop
+   signal + a bounded join on shutdown. Never rely on GC to reap a
+   non-daemon thread (the contract forbids `__del__` / `weakref.finalize`
+   finalizers for exactly this reason).
+5. **Accumulators** (lists, deques, dicts, bytes buffers): add a
+   FIFO / size cap aligned with the production default. Mirrors the
+   `ProcessManager.terminal_history_limit = 256` / `BoundedLinesQueue(maxlen=256)`
+   pattern.
+
+If a new resource class is added, extend the
+`audit_resource_lifecycle.py` audit to cover it AND add an inline
+marker style (`# resource-lifecycle-ok: <reason>`). The audit exists
+to make a future leak fail `make verify` BEFORE it ships, not after
+a long-running session shows OOM in production.
 
 ## See also
 

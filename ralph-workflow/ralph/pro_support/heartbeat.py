@@ -85,7 +85,7 @@ def _default_httpx_client_factory() -> _HttpxClientLike:
     # can never block the daemon thread at the connection layer; the
     # per-request timeout is still applied via ``timeout=self._timeout``
     # in ``_post_once``.
-    return httpx.Client(timeout=5.0)
+    return httpx.Client(timeout=5.0)  # resource-lifecycle-ok: closed in _post_once finally
 
 
 def _default_clock() -> float:

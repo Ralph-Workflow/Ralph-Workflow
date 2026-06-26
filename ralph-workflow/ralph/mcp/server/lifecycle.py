@@ -738,7 +738,11 @@ def _spawn_process(
     # no trace anywhere while the client hung to its request timeout (-32001).
     log_dir = cwd / ".agent" / "tmp"
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_fd = os.open(log_dir / "mcp-server.log", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    log_fd = os.open(  # resource-lifecycle-ok: closed in finally
+        log_dir / "mcp-server.log",
+        os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+        0o644,
+    )
     try:
         spawn_fn = spawn if spawn is not None else get_process_manager().spawn
         return spawn_fn(

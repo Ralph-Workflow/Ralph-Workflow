@@ -207,6 +207,21 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("../scripts/verify_social_proof.py",),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # wt-024 memory-perf AC-03 / AC-04: AST audit that enforces
+        # the resource-lifecycle contract documented in
+        # ralph-workflow/docs/agents/memory-lifecycle.md (daemon=True
+        # threads, with-managed HTTP clients, raw os fd creation only
+        # under ralph/process/). Appended LAST so the index-based
+        # timeout assertions in tests/test_verify.py are not shifted
+        # and the new step does NOT trip the import-time
+        # audit_mcp_timeout containment invariant. NOT a budget-tracked
+        # step: it does NOT count against _TOTAL_TEST_BUDGET_SECONDS.
+        "resource lifecycle audit (audit_resource_lifecycle)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

@@ -467,41 +467,54 @@ class PtyLineReader:
         transcript_session_id: str | None = None
         file_obj = None
         transcript_parser = ClaudeInteractiveTranscriptParser()
-        while not self._monitor_stop.is_set():
-            candidate_ids = self._transcript_session_id_candidates()
-            if transcript_path is None or (
-                candidate_ids
-                and transcript_session_id is not None
-                and candidate_ids[0] != transcript_session_id
-            ):
-                entry = find_claude_transcript_entry(candidate_ids)
-                if entry is None and self._workspace_path is not None:
-                    entry = find_latest_claude_transcript_entry(
-                        self._workspace_path,
-                        min_mtime=self._started_at_wall_clock,
-                    )
-                if entry is None:
+        # wt-024 AC-01: wrap the loop body in try/finally so the
+        # transcript file handle is closed on ANY exception path
+        # (readline/parse raises). The previous shape only closed
+        # at the bottom of the function, so a mid-loop raise leaked
+        # the fd. The finally block closes+nulls file_obj on the
+        # exception path AND re-raises (do NOT swallow — the
+        # existing thread error handling owns propagation). The
+        # existing reopen-close and post-loop close paths are
+        # preserved unchanged on the normal path; the counter-test
+        # asserts normal completion closes the handle exactly once.
+        try:
+            while not self._monitor_stop.is_set():
+                candidate_ids = self._transcript_session_id_candidates()
+                if transcript_path is None or (
+                    candidate_ids
+                    and transcript_session_id is not None
+                    and candidate_ids[0] != transcript_session_id
+                ):
+                    entry = find_claude_transcript_entry(candidate_ids)
+                    if entry is None and self._workspace_path is not None:
+                        entry = find_latest_claude_transcript_entry(
+                            self._workspace_path,
+                            min_mtime=self._started_at_wall_clock,
+                        )
+                    if entry is None:
+                        self._monitor_stop.wait(0.1)
+                        continue
+                    next_path, matched_session_id = entry
+                    if transcript_path != next_path:
+                        if file_obj is not None:
+                            file_obj.close()
+                        transcript_path = next_path
+                        file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
+                    transcript_session_id = matched_session_id
+                assert file_obj is not None
+                line = file_obj.readline()
+                if not line:
                     self._monitor_stop.wait(0.1)
                     continue
-                next_path, matched_session_id = entry
-                if transcript_path != next_path:
-                    if file_obj is not None:
-                        file_obj.close()
-                    transcript_path = next_path
-                    file_obj = transcript_path.open("r", encoding="utf-8", errors="replace")
-                transcript_session_id = matched_session_id
-            assert file_obj is not None
-            line = file_obj.readline()
-            if not line:
-                self._monitor_stop.wait(0.1)
-                continue
-            emitted_lines = transcript_lines_from_event(line, parser=transcript_parser)
-            if emitted_lines:
-                with self._lines_lock:
-                    self._lines_queue.extend(emitted_lines)
-                    self._lines_event.set()
-        if file_obj is not None:
-            file_obj.close()
+                emitted_lines = transcript_lines_from_event(line, parser=transcript_parser)
+                if emitted_lines:
+                    with self._lines_lock:
+                        self._lines_queue.extend(emitted_lines)
+                        self._lines_event.set()
+        finally:
+            if file_obj is not None:
+                file_obj.close()
+                file_obj = None
 
     def _sentinel_thread(self) -> None:
         if self._stop_sentinel_path is None:
