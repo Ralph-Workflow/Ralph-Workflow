@@ -180,7 +180,17 @@ class SubprocessAgentExecutor:
         try:
             try:
                 assert handle is not None
-                await asyncio.gather(drain_output(), handle.wait())
+                # The handle.wait() inside the gather is bounded by the
+                # activity-aware idle watchdog teardown (see
+                # audit_activity_aware_watchdog.py — teardown_subtree is
+                # enforced on every fire path) and the surrounding finally
+                # block always terminates a non-terminal handle, so a
+                # healthy-but-slow agent is not killed by a hard ceiling.
+                # The drain_output() coroutine exits on stdout EOF.
+                await asyncio.gather(
+                    drain_output(),
+                    handle.wait(),  # mcp-timeout-ok: idle-wd-bounded
+                )
             except asyncio.CancelledError:
                 assert handle is not None
                 await handle.terminate(grace_period_s=0)
@@ -194,7 +204,7 @@ class SubprocessAgentExecutor:
                 with contextlib.suppress(Exception):
                     await handle.terminate(grace_period_s=0)
                 with contextlib.suppress(Exception):
-                    await asyncio.wait_for(handle.wait(), timeout=0.5)
+                    await asyncio.wait_for(handle.wait(), timeout=0.5)  # mcp-timeout-ok: wf-bounded
 
         duration_ms = int((time.monotonic() - start_time) * 1000)
         exit_code = handle.returncode if handle.returncode is not None else 0

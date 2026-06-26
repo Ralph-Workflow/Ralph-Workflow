@@ -87,6 +87,58 @@ def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stdio_transport_close_joins_threads() -> None:
+    """AC-03 regression: StdioTransport.close() joins reader/writer threads.
+
+    The close() must call join(timeout=_CLOSE_THREAD_JOIN_SECONDS) on both
+    the reader and writer thread doubles with a NON-None timeout. Black-box
+    assertion on the INJECTED thread_factory doubles only: never reads
+    production private attributes. The ``_FakeThread`` double
+    (``tests/test_mcp_transport_helper__fakethread.py``) records every
+    ``join(timeout=...)`` call so we can assert deterministically.
+
+    Why this matters: a long-lived MCP client process that opens/closes
+    transports in tight loops would otherwise leak dangling daemon threads,
+    defeating the bounded-resource contract.
+    """
+    captured: list[_FakeThread] = []
+
+    def fake_process_factory(command: list[str], cwd: str | None = None) -> _FakeProcess:
+        del command, cwd
+        return _FakeProcess()
+
+    def fake_thread_factory(target: object, daemon: bool) -> _FakeThread:
+        del target, daemon
+        thread = _FakeThread(label=str(len(captured)), on_start=lambda: None)
+        captured.append(thread)
+        return thread
+
+    transport = StdioTransport(
+        ["python", "-m", "demo"],
+        cwd="/tmp/demo",
+        process_factory=fake_process_factory,
+        thread_factory=fake_thread_factory,
+    )
+    transport.start()
+
+    assert len(captured) == 2, "start() should create exactly 2 threads"
+
+    await transport.close()
+
+    # Black-box: assert against the captured thread_factory doubles only.
+    # Both reader and writer MUST have been joined with a NON-None timeout.
+    reader, writer = captured[0], captured[1]
+    assert len(reader.join_calls) >= 1, "reader thread was never joined"
+    assert len(writer.join_calls) >= 1, "writer thread was never joined"
+    for recorded in reader.join_calls:
+        assert recorded is not None, "reader join() called without a timeout"
+        assert recorded > 0, f"reader join() called with non-positive timeout: {recorded}"
+    for recorded in writer.join_calls:
+        assert recorded is not None, "writer join() called without a timeout"
+        assert recorded > 0, f"writer join() called with non-positive timeout: {recorded}"
+
+
+@pytest.mark.asyncio
 async def test_stdio_transport_default_factory_tracks_process_in_manager() -> None:
     """StdioTransport default factory registers the spawned process with ProcessManager.
 

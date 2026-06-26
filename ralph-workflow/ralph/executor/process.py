@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import os
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ralph.executor._process_error_details import ProcessErrorDetails
 from ralph.executor._process_result import ProcessResult
@@ -20,6 +20,13 @@ if TYPE_CHECKING:
 
 # Standard unix timeout exit code
 TIMEOUT_EXIT_CODE = 124
+
+# Defense-in-depth bound for the post-terminate pipe drain. The child has
+# already been escalated SIGTERM -> SIGKILL via ``terminate(grace_period_s=0)``,
+# so a healthy OS reaps the pipes within milliseconds. This bound only fires
+# for a wedged (e.g. uninterruptible D-state) child that ignores SIGKILL; we
+# must not hang the caller forever in that pathological case.
+_POST_TERMINATE_DRAIN_SECONDS: Final[float] = 5.0
 
 
 class ProcessExecutionError(RuntimeError):
@@ -101,7 +108,7 @@ async def run_process_async(
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
     communicate_task: asyncio.Task[tuple[bytes, bytes]]
-    communicate_task = asyncio.create_task(handle.communicate())
+    communicate_task = asyncio.create_task(handle.communicate())  # mcp-timeout-ok: wait-bounded
 
     try:
         done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
@@ -125,7 +132,7 @@ async def run_process_async(
             with contextlib.suppress(Exception):
                 await handle.terminate(grace_period_s=0)
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(handle.wait(), timeout=0)
+                await asyncio.wait_for(handle.wait(), timeout=0)  # mcp-timeout-ok: wait_for-bounded
         raise
 
     rc = handle.returncode if handle.returncode is not None else -1
@@ -172,7 +179,17 @@ def run_process(
         stdout_bytes, stderr_bytes = handle.communicate(timeout=effective_options.timeout)
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
-        stdout_bytes, stderr_bytes = handle.communicate()
+        # Bound the post-terminate drain so a wedged child (one that ignores
+        # SIGKILL, e.g. uninterruptible D-state) cannot hang the caller. The
+        # child has already been escalated to SIGKILL above, so a healthy OS
+        # closes the pipes within milliseconds; the bound only fires in the
+        # pathological case where the OS never reaps the child.
+        try:
+            stdout_bytes, stderr_bytes = handle.communicate(
+                timeout=_POST_TERMINATE_DRAIN_SECONDS
+            )
+        except subprocess.TimeoutExpired:
+            stdout_bytes, stderr_bytes = b"", b""
         # Return exit code TIMEOUT_EXIT_CODE on timeout (standard unix timeout exit code)
         # instead of raising an exception, so callers can handle it gracefully
         return ProcessResult(
@@ -186,7 +203,7 @@ def run_process(
             with contextlib.suppress(Exception):
                 handle.terminate(grace_period_s=0)
             with contextlib.suppress(Exception):
-                handle.wait(timeout=0)
+                handle.wait(timeout=0)  # mcp-timeout-ok: bounded
         raise
 
     rc = handle.returncode if handle.returncode is not None else -1

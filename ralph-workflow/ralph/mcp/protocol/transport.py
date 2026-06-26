@@ -12,7 +12,7 @@ import subprocess
 import threading
 from queue import Empty, Queue
 from subprocess import PIPE as _SUBPROCESS_PIPE
-from typing import IO, TYPE_CHECKING, Protocol, cast
+from typing import IO, TYPE_CHECKING, Final, Protocol, cast
 
 from loguru import logger
 
@@ -31,6 +31,16 @@ __all__ = [
     "StdioTransport",
     "TransportError",
 ]
+
+# Defense-in-depth bound for the StdioTransport reader/writer thread
+# teardown. The reader exits promptly when ``close()`` terminates the child
+# and closes stdout (EOF on the ``for raw_line in proc.stdout`` loop). The
+# writer polls ``_send_queue.get(timeout=0.1)`` and observes ``_closed``
+# within ~0.1s. A wedged reader/writer that ignores these signals MUST NOT
+# block ``close()`` forever — interpreter exit will still reap the daemon
+# threads, but a long-lived process that opens/closes transports in tight
+# loops cannot afford to leak dangling daemon threads.
+_CLOSE_THREAD_JOIN_SECONDS: Final[float] = 2.0
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -56,6 +66,7 @@ if TYPE_CHECKING:
         """Minimal threading.Thread interface required by StdioTransport."""
 
         def start(self) -> None: ...
+        def join(self, timeout: float | None = None) -> None: ...
 
 
 class StdioTransport:
@@ -207,6 +218,26 @@ class StdioTransport:
                     proc.kill()
                     with contextlib.suppress(subprocess.TimeoutExpired):
                         proc.wait(timeout=5.0)
+        # Deterministically join the reader/writer daemon threads with a
+        # bounded timeout. The reader exits promptly when the child is
+        # terminated and stdout is closed (EOF on the ``for raw_line in
+        # proc.stdout`` loop); the writer polls ``_send_queue.get`` and
+        # observes ``_closed`` within ~0.1s. A wedged thread that ignores
+        # these signals MUST NOT block close() forever — interpreter exit
+        # will still reap the daemon threads, but a long-lived process that
+        # opens/closes transports in tight loops cannot afford to leak
+        # dangling daemon threads. ``getattr(self, ..., None)`` guards the
+        # un-started case so close() on an un-started transport is a no-op.
+        for thread_attr in ("_reader_thread", "_writer_thread"):
+            thread: ThreadLike | None = getattr(self, thread_attr, None)
+            if thread is not None:
+                try:
+                    thread.join(timeout=_CLOSE_THREAD_JOIN_SECONDS)
+                except Exception:
+                    logger.warning(
+                        "Failed to join {} during stdio transport close",
+                        thread_attr,
+                    )
         logger.info("Closed stdio transport")
 
 

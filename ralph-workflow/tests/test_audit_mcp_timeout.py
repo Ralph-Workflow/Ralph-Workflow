@@ -247,3 +247,27 @@ def test_default_roots_includes_pro_support() -> None:
     assert any(str(r).endswith("ralph/pro_support") for r in roots), (
         f"_default_roots() must include ralph/pro_support; got {roots}"
     )
+
+
+def test_default_roots_cover_executor_agents_process() -> None:
+    """``_default_roots()`` MUST cover ralph/executor, ralph/agents, and ralph/process.
+
+    Step-5 regression: the bounded-subprocess audit was extended to cover
+    the executor/agents/process trees so an unbounded blocking call in any
+    of them fails ``make verify``. A future refactor that drops any of
+    these entries would silently re-open the unbounded-call loophole this
+    audit was created to close.
+
+    Mirrors the style of ``test_default_roots_includes_pro_support``.
+    """
+    roots = _default_roots()
+    assert any(str(r).endswith("ralph/executor") for r in roots), (
+        f"_default_roots() must include ralph/executor; got {roots}"
+    )
+    assert any(str(r).endswith("ralph/agents") for r in roots), (
+        f"_default_roots() must include ralph/agents; got {roots}"
+    )
+    assert any(str(r).endswith("ralph/process") for r in roots), (
+        f"_default_roots() must include ralph/process (broadened from "
+        f"ralph/process/manager); got {roots}"
+    )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import subprocess
 import sys
 from typing import TYPE_CHECKING
 
@@ -160,6 +161,106 @@ def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
     assert result.succeeded is False
     assert result.stdout.strip() == "before-timeout"
     assert result.command == ("fake-cmd",)
+
+
+class _RecordingPostTerminatePopen:
+    """Recording double for the post-terminate communicate() drain.
+
+    Implements the FakeTimeoutPopen contract on communicate(): the FIRST
+    call with a non-None ``timeout`` raises ``subprocess.TimeoutExpired``
+    (mimicking the happy-path timeout branch in ``run_process``), then
+    the SECOND call records the timeout argument it was invoked with so
+    the test can assert the drain is bounded.
+
+    All other methods are minimal no-ops sufficient for ProcessManager.
+    """
+
+    def __init__(self, pid: int) -> None:
+        self.pid = pid
+        self._returncode: int | None = None
+        self._communicate_count = 0
+        self.communicate_timeouts: list[float | None] = []
+        self.terminate_calls = 0
+        self.stdin: object = None
+        self.stdout: object = None
+        self.stderr: object = None
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+    def poll(self) -> int | None:
+        return self._returncode
+
+    def wait(self, timeout: float | None = None) -> int:
+        del timeout
+        return self._returncode if self._returncode is not None else 0
+
+    def communicate(
+        self,
+        input: bytes | None = None,
+        timeout: float | None = None,
+    ) -> tuple[bytes, bytes]:
+        del input
+        self.communicate_timeouts.append(timeout)
+        self._communicate_count += 1
+        if self._communicate_count == 1 and timeout is not None:
+            raise subprocess.TimeoutExpired(
+                cmd="fake-recording",
+                timeout=timeout,
+                output=b"",
+                stderr=b"",
+            )
+        return b"", b""
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        self._returncode = -15
+
+    def kill(self) -> None:
+        self._returncode = -9
+
+
+def test_run_process_post_terminate_drain_is_bounded(tmp_path: Path) -> None:
+    """The post-terminate communicate() drain MUST be bounded.
+
+    AC-01 regression: ``run_process()`` invokes
+    ``handle.communicate(timeout=_POST_TERMINATE_DRAIN_SECONDS)`` for the
+    second drain after ``terminate(grace_period_s=0)``. If a child wedges
+    in uninterruptible D-state and ignores SIGKILL, an UNBOUNDED drain
+    hangs the caller forever.
+
+    Asserts on the recording fake's ``communicate_timeouts`` list:
+      * len == 2 (the happy-path call + the post-terminate drain),
+      * the FIRST entry is the user-supplied ``TIMEOUT_S`` (the happy path
+        that triggers the timeout branch),
+      * the SECOND entry is a non-None float (the bounded drain bound).
+
+    Black-box: only ``_pm`` is injected; the test never reads production
+    private attributes and never uses real subprocess / sleep.
+    """
+    fake = _RecordingPostTerminatePopen(pid=1)
+
+    def factory(command: object, opts: SpawnOptions) -> object:
+        del command, opts
+        return fake
+
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=factory)
+
+    result = run_process(
+        "fake-cmd",
+        options=ProcessRunOptions(cwd=tmp_path, timeout=TIMEOUT_S),
+        _pm=pm,
+    )
+
+    assert result.returncode == 124  # TIMEOUT_EXIT_CODE
+    assert len(fake.communicate_timeouts) == 2
+    # Happy-path call uses the caller-supplied timeout and triggered TimeoutExpired.
+    assert fake.communicate_timeouts[0] == TIMEOUT_S
+    # Post-terminate drain MUST be bounded (the regression: it used to be None).
+    assert fake.communicate_timeouts[1] is not None
+    assert isinstance(fake.communicate_timeouts[1], float)
+    assert fake.communicate_timeouts[1] > 0
 
 
 @pytest.mark.asyncio
