@@ -283,8 +283,8 @@ reindex map from any prior mutation may have rewritten them.
 {}
 ```
 
-The echoed payload has the shape `{"staged_sections": [...], "draft":
-{...sections...}, "source": "draft"}`. The current step numbers
+The echoed payload is a JSON object with `staged_sections`, `draft`,
+and `source`. The current step numbers
 live at `draft.steps[*].number`; the example draft above
 contains `[1, 2]`.
 
@@ -323,8 +323,8 @@ read-only; it does NOT delete the staged draft on success or failure.
 {}
 ```
 
-A successful dry-run returns `{"valid": true, ...}`; a failed one
-returns `{"valid": false, "errors": [...]}` with the literal
+A successful dry-run returns `{"valid": true}`; a failed one
+returns `{"valid": false, "errors": ["summary: required field is missing"]}` with the literal
 validator message and the offending field path.
 
 **Call 5 — `ralph_finalize_plan`** (no parameters) to write
@@ -620,7 +620,7 @@ The 5 step-edit-relevant error strings emitted by
   was not a JSON object (it was a string, list, or scalar). The
   handler expects `params["step"]` to be a dict shaped like
   `{"title":"Clamp the foo() index","content":"Update src/foo.py",
-  "step_type":"file_change","targets":[...],"depends_on":[...]}`.
+  "step_type":"file_change","targets":[{"path":"src/foo.py","action":"modify"}],"depends_on":[1]}`.
 
 If the error you received is not in this list, read the
 `## Recovery from a Bad Payload` section of the companion

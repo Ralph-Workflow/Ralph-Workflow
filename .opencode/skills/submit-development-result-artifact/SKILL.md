@@ -61,15 +61,14 @@ artifacts, use the companion `submit-artifact` skill instead.
    - `next_steps` — describes what still needs to be done.
    - `continuation` — an object like `{"prior_session_id": "<current-session-id>"}`
      so the next agent knows which session to continue from.
-5. Build the inner payload as a plain JSON object (e.g.
-   `{"status": "completed", "summary": "...", "files_changed": "...",
-   "plan_items_proven": [...]}`).
+5. Build the inner payload as a plain JSON object, for example:
+   `{"status": "completed", "summary": "Implemented the requested fix and verified it.", "files_changed": "- src/main.py", "plan_items_proven": [{"plan_item": "Step 1: Implement the fix", "proof": "Updated src/main.py and ran pytest."}], "analysis_items_addressed": []}`.
 6. Pass the inner payload as `content` either as the native JSON object
    or as a JSON-serialized string. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
    envelope — Ralph Workflow adds artifact metadata itself.
 7. Call
-   `ralph_submit_artifact({"artifact_type": "development_result", "content": {"status": "completed", "summary": "...", "files_changed": "..."}})`.
-8. After the submit success text, call `ralph_declare_complete(summary="development_result")`.
+   `ralph_submit_artifact({"artifact_type": "development_result", "content": {"status": "completed", "summary": "Implemented the requested fix and verified it.", "files_changed": "- src/main.py", "plan_items_proven": [{"plan_item": "Step 1: Implement the fix", "proof": "Updated src/main.py and ran pytest."}], "analysis_items_addressed": []}})`.
+8. After the submit success text, call `declare_complete(summary="development_result")`.
 
 **Minimal one-shot happy-path envelope** for a completed development result:
 

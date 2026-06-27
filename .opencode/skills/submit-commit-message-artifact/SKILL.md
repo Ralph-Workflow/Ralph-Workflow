@@ -55,8 +55,8 @@ do not need this skill; the body-less envelope in the format doc is enough.
    or as a JSON-serialized string. Do NOT wrap it in an outer `{"type": ..., "content": ...}`
    envelope — Ralph Workflow adds artifact metadata itself.
 7. Call
-   `ralph_submit_artifact({"artifact_type": "commit_message", "content": {"type": "commit", "subject": "type(scope): description"}})`.
-8. After the submit success text, call `ralph_declare_complete(summary="commit_message")`.
+   `ralph_submit_artifact({"artifact_type": "commit_message", "content": {"type": "commit", "subject": "fix(auth): prevent token expiry race"}})`.
+8. After the submit success text, call `declare_complete(summary="commit_message")`.
 
 ### Conventional-commit subject shape (the contract)
 
