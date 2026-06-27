@@ -98,6 +98,7 @@ if TYPE_CHECKING:
     from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
     from ralph.agents.invoke._agent_run_ctx import _AgentRunCtx
     from ralph.agents.timeout_clock import Clock
+    from ralph.process.monitor import ProcessMonitor
 
 type _MergedDiagType = "dict[str, str | int | float | bool | list[object]] | None"
 
@@ -323,13 +324,59 @@ class PtyLineReader:
         oldest_child_seconds: float | None = None
         scoped_child_active: bool | None = None
         scoped_child_count: int | None = None
+        # R1 (Trustworthy Idle Watchdog spec): the corroborator MUST
+        # read the FILTERED subagent count from
+        # ``ProcessMonitor.spawned_subagent_count()`` (preferred) or
+        # the legacy alias ``live_subagent_count()``. The BROADER
+        # ``self._handle.descendant_snapshot()`` count includes shell
+        # helpers like ``npm test`` / ``cargo build`` and is the bug
+        # source that produced the 2365s indefinite deferral in the
+        # wild (cited in the product spec).
+        #
+        # Production behavior: when a process monitor is injected,
+        # the corroborator sources ``scoped_child_active`` from the
+        # FILTERED seam. When the monitor is unavailable
+        # (``process_monitor_enabled=False`` legacy escape hatch
+        # used by integration tests that pre-date the R5 registry
+        # seam), the corroborator falls back to
+        # ``self._handle.descendant_snapshot()`` so the watchdog
+        # still has a signal. This fallback is the only
+        # ``descendant_snapshot`` reference the audit
+        # ``check_subagent_counting_seam`` does NOT flag because it
+        # is the canonical legacy escape hatch -- it MUST be the
+        # only descendant_snapshot reference in the function body,
+        # guarded by ``self._process_monitor is None``.
         try:
-            descendant_count, descendant_oldest = self._handle.descendant_snapshot()
-            scoped_child_count = descendant_count
-            scoped_child_active = descendant_count > 0
-            oldest_child_seconds = descendant_oldest
+            monitor: ProcessMonitor | None = getattr(self, "_process_monitor", None)
+            if monitor is not None:
+                filtered_count: int = monitor.spawned_subagent_count()
+                scoped_child_count = filtered_count
+                scoped_child_active = filtered_count > 0
+            else:
+                # Legacy escape hatch: ``process_monitor_enabled=False``
+                # (e.g. integration tests pre-dating the R5 registry
+                # seam). Reads the broader descendant count so the
+                # watchdog still has a signal. Production callers
+                # always have a monitor.
+                try:
+                    descendant_count, descendant_oldest = (
+                        self._handle.descendant_snapshot()
+                    )
+                    scoped_child_count = descendant_count
+                    scoped_child_active = descendant_count > 0
+                    oldest_child_seconds = descendant_oldest
+                except Exception:
+                    logger.debug(
+                        "corroborator: PTY legacy descendant_snapshot fallback failed (suppressed)"
+                    )
         except Exception:
-            logger.debug("corroborator: PTY process scan failed (suppressed)")
+            logger.debug("corroborator: PTY process monitor count failed (suppressed)")
+            scoped_child_count = None
+            scoped_child_active = None
+        # Type assertion for mypy: ``scoped_child_count`` is
+        # guaranteed to be int (when the monitor produced a value) or
+        # None (when no monitor was injected or the call raised).
+        scoped_child_count_int: int | None = scoped_child_count
         alive_by: AliveBy | None = None
         registry = cast("ChildLivenessRegistry | None", getattr(self._strategy, "_registry", None))
         if registry is not None:
@@ -364,7 +411,7 @@ class PtyLineReader:
             last_workspace_event_at=last_workspace_event_at,
             oldest_child_seconds=oldest_child_seconds,
             scoped_child_active=scoped_child_active,
-            scoped_child_count=scoped_child_count,
+            scoped_child_count=scoped_child_count_int,
             terminal_child_events_total=self._terminal_counter[0],
             last_activity_was_meaningful=self._last_meaningful[0],
             alive_by=alive_by,
@@ -1004,6 +1051,13 @@ class PtyLineReader:
             registry=registry,
             scope_prefix=scope_prefix,
         )
+        # R1 (Trustworthy Idle Watchdog spec): store the monitor so
+        # ``_corroborate`` can read the FILTERED subagent count from
+        # ``spawned_subagent_count()`` (preferred) instead of the
+        # broader ``handle.descendant_snapshot()`` count. The monitor
+        # is reset in the ``finally`` block so a stale monitor never
+        # leaks across invocations.
+        self._process_monitor = process_monitor
         self._raw_overflow = RawOverflowLog(
             self._workspace_path or Path.cwd(),
             self._agent_name,

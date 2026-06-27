@@ -38,6 +38,64 @@ from .base import extract_error_message
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from typing import Literal
+
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
+    # Per-transport source tokens accepted by
+    # :class:`SubagentPidRegistry.register`. The registry enforces this
+    # Literal at runtime; the parser narrows the same set here so a
+    # misconfigured parser is caught by the type checker.
+    _SubagentSourceLabel = Literal[
+        "opencode",
+        "claude",
+        "pi",
+        "agy",
+        "generic",
+        "claude_interactive",
+        "codex",
+        "gemini",
+    ]
+
+
+def _extract_pid_from_obj(obj: dict[str, object]) -> int | None:
+    """Return the integer PID carried in obj or any nested metadata/part/state dict.
+
+    Inspects, in order:
+
+      * top-level ``pid``
+      * top-level ``child_pid`` / ``subagent_pid``
+      * nested ``metadata.pid`` (when ``metadata`` is a dict)
+      * nested ``part.state.pid`` (when both ``part`` and ``state`` are dicts)
+
+    Returns ``None`` when no integer-ish PID is present so the caller
+    falls through to no-op registration. Used by the
+    :meth:`NdjsonParserBase._try_register_subagent_pid_from_obj` hook
+    to register any PID emitted by an agent's structured child-lifecycle
+    event into the shared :class:`SubagentPidRegistry`.
+    """
+    for key in ("pid", "child_pid", "subagent_pid"):
+        raw = obj.get(key)
+        if isinstance(raw, bool):
+            continue
+        if isinstance(raw, int):
+            return raw
+        if isinstance(raw, float) and raw.is_integer():
+            return int(raw)
+    nested_meta = obj.get("metadata")
+    if isinstance(nested_meta, dict):
+        nested_pid = _extract_pid_from_obj(cast("dict[str, object]", nested_meta))
+        if nested_pid is not None:
+            return nested_pid
+    part = obj.get("part")
+    if isinstance(part, dict):
+        state = cast("dict[str, object]", part).get("state")
+        if isinstance(state, dict):
+            state_pid = _extract_pid_from_obj(cast("dict[str, object]", state))
+            if state_pid is not None:
+                return state_pid
+    return None
+
 
 __all__ = ["NdjsonParserBase"]
 
@@ -54,6 +112,60 @@ class NdjsonParserBase(ParserTemplateBase):
     the subclass hook runs, so subclass code never has to re-implement
     :func:`is_lifecycle_event` filtering or :func:`extract_error_message`.
     """
+
+    def __init__(self) -> None:
+        super().__init__()
+        # R5 (Trustworthy Idle Watchdog spec): the per-invocation
+        # ``SubagentPidRegistry`` is the FILTERED source of truth
+        # (``spawned_subagent_count`` over ``descendant_snapshot``).
+        # Subclasses that observe structured child-lifecycle events
+        # with embedded PIDs MUST register them via
+        # :meth:`_try_register_subagent_pid_from_obj` so the registry
+        # reaches the watchdog's deferral decision. ``None`` keeps the
+        # legacy zero-arg ``parser_factory()`` call working.
+        self._subagent_pid_registry: SubagentPidRegistry | None = None
+        # Per-transport source label registered alongside each PID so
+        # the watchdog's per-transport ``SubagentPidSource`` filter
+        # (see ``ralph.process.monitor._subagent_pid_source_providers``)
+        # only observes PIDs emitted by the matching transport.
+        self._subagent_source_label: str | None = None
+
+    def _try_register_subagent_pid_from_obj(self, obj: dict[str, object]) -> None:
+        """Register any embedded PID in ``obj`` into the shared registry.
+
+        No-op when the parser was constructed without a registry, when
+        no source label was bound, or when the event carries no PID
+        field. The registry is the FILTER (R1); the broader psutil
+        descendant count is NEVER consulted here. This is the parser
+        side of the per-transport SubagentPidSource seam from
+        :mod:`ralph.process.monitor._subagent_pid_source_providers`.
+        """
+        registry = self._subagent_pid_registry
+        if registry is None:
+            return
+        if self._subagent_source_label is None:
+            return
+        pid = _extract_pid_from_obj(obj)
+        if pid is None or pid <= 0:
+            return
+        try:
+            # The registry's ``source`` parameter is typed as a narrow
+            # Literal in ``SubagentPidRegistry.register``. The parser
+            # stores the label as ``str`` (the runtime carrier) and
+            # trusts the SubagentPidRegistry source validation in
+            # ``register`` to reject unknown source labels at the
+            # registry seam. ``cast`` is safe because the registry's
+            # constructor already validates the source against the
+            # canonical Literal set on every ``register`` call.
+            registry.register(
+                pid,
+                source=cast("_SubagentSourceLabel", self._subagent_source_label),
+            )
+        except Exception:
+            # Forward-compat: a future SubagentPidRegistry validation
+            # tightening (e.g. transport label enforcement) MUST NOT
+            # break the parser's primary event-emission path.
+            return
 
     def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
         """Classify a single raw NDJSON line.
@@ -105,6 +217,16 @@ class NdjsonParserBase(ParserTemplateBase):
             return
 
         obj = cast("dict[str, object]", parsed)
+
+        # R5 (Trustworthy Idle Watchdog spec): the shared
+        # ``SubagentPidRegistry`` MUST see every observed structured
+        # event BEFORE the lifecycle / error short-circuits so a
+        # PID-carrying ``child_progress`` / ``subagent_pid`` event is
+        # registered even when the event is also flagged as an error
+        # or lifecycle (defense-in-depth against a future transport that
+        # dual-tags events). The hook is a no-op when no registry is
+        # wired or when no PID field is present.
+        self._try_register_subagent_pid_from_obj(obj)
 
         if "error" in obj:
             error_msg = extract_error_message(obj)

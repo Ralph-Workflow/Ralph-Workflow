@@ -50,6 +50,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
     from .agent_output_line import AgentOutputLine
 
 
@@ -67,8 +69,18 @@ class AgyParser(NdjsonParserBase):
     :class:`TextAccumulator` into coherent blocks.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
         super().__init__()
+        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
+        # source label. AGY's --print plain-text stream does not currently
+        # carry embedded PIDs; this is forward-compat for the
+        # per-transport SubagentPidSource seam.
+        self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
+        self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
         self._has_prior_text_line: bool = False
 

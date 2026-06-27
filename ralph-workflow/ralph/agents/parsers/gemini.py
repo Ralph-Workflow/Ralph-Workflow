@@ -20,6 +20,8 @@ JsonDict = dict[str, JsonValue]
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 
 class _GeminiDispatch:
     """Per-event-type dispatch for GeminiParser.
@@ -213,8 +215,18 @@ class GeminiParser(NdjsonParserBase):
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"done", "stop", "message_end"})
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
         super().__init__()
+        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
+        # source label. Gemini's SSE+JSON events do not currently carry
+        # embedded PIDs; this is forward-compat for the per-transport
+        # SubagentPidSource seam.
+        self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
+        self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
         self._dispatcher = _GeminiDispatch(self)
 
@@ -223,6 +235,9 @@ class GeminiParser(NdjsonParserBase):
         obj: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
+        # R5: register any embedded PID into the shared registry BEFORE
+        # the dispatcher routes the event.
+        self._try_register_subagent_pid_from_obj(obj)
         yield from self._dispatcher.dispatch(obj, raw)
 
     def flush_accumulators(self) -> Iterator[AgentOutputLine]:

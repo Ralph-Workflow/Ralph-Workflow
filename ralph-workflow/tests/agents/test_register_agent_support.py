@@ -104,9 +104,11 @@ class KwargsAwareStrategy(BaseExecutionStrategy):
         *,
         label_scope: str | None = None,
         registry: object | None = None,
+        subagent_pid_source: object = None,
     ) -> None:
         self.received_label_scope = label_scope
         self.received_registry = registry
+        self.received_subagent_pid_source = subagent_pid_source
 
 
 class TestRegisterAgentSupport:
@@ -538,9 +540,16 @@ class TestRegistrationRegressionCases:
             registry=fake_registry,
         )
         assert isinstance(strategy, _AnyKwargsStrategy)
+        # ``subagent_pid_source`` is forwarded by the canonical
+        # ``strategy_for_command`` / ``strategy_for_transport`` path
+        # (Trustworthy Idle Watchdog R4). The kwarg is added to
+        # the var-keyword forwarding dict even when the test does
+        # not pass one explicitly (the canonical pipeline defaults
+        # it to None).
         assert strategy.received_kwargs == {
             "label_scope": "scope-x",
             "registry": fake_registry,
+            "subagent_pid_source": None,
         }
 
     def test_custom_command_does_not_collide_with_builtin_claude_family(self) -> None:

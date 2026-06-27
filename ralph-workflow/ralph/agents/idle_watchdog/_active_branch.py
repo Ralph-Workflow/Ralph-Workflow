@@ -478,11 +478,23 @@ def handle_drain_window(
 
     drain_elapsed = now - self._drain_started_at
     if drain_elapsed < self._config.drain_window_seconds:
-        self._log.debug(
-            "idle watchdog: drain window active drain_elapsed={}s window={}s",
-            round(drain_elapsed, 3),
-            self._config.drain_window_seconds,
-        )
+        # Throttle the drain-window DEBUG emission via the existing
+        # ``maybe_log_any_deferred`` helper. The PROMPT log showed the
+        # bare ``_log.debug(...)`` here firing every tick (e.g.
+        # ``idle watchdog: drain window active drain_elapsed=0.1s``
+        # every 0.1s) which is log spam. The throttle caps emissions
+        # to at most one per ``watchdog_log_throttle_seconds`` (30s
+        # default) using the SESSION_CEILING_EXCEEDED key (drain
+        # windows are entered when a session ceiling is being
+        # approached). The single-tick pre-amble is not informative
+        # to an operator; a periodic heartbeat that names the elapsed
+        # drain time is the human-readable signal.
+        if self._maybe_log_any_deferred(WatchdogFireReason.SESSION_CEILING_EXCEEDED, now):
+            self._log.debug(
+                "idle watchdog: drain window active drain_elapsed={}s window={}s",
+                round(drain_elapsed, 3),
+                self._config.drain_window_seconds,
+            )
         return WatchdogVerdict.CONTINUE
 
     idle_elapsed = now - self._last_activity

@@ -21,6 +21,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 
 _SHORT_CONTENT_THRESHOLD = 200
 
@@ -67,8 +69,18 @@ class GenericParser(NdjsonParserBase):
 
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
         super().__init__()
+        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
+        # source label. The generic NDJSON shape does not currently carry
+        # embedded PIDs; this is forward-compat for the per-transport
+        # SubagentPidSource seam.
+        self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
+        self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: TextAccumulator | None = None
 
     def _classify_non_json_line(self, stripped: str) -> Iterator[AgentOutputLine]:
@@ -91,6 +103,9 @@ class GenericParser(NdjsonParserBase):
         obj: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
+        # R5: register any embedded PID into the shared registry BEFORE
+        # the per-event classification.
+        self._try_register_subagent_pid_from_obj(obj)
         yield from self._classify_parsed_json(obj, raw)
 
     def _classify_parsed_json(

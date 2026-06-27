@@ -287,6 +287,69 @@ def test_audit_does_not_flag_comparison_reference_to_watchdog_fire_reason() -> N
         )
 
 
+def test_audit_flags_subagent_counting_outside_owner() -> None:
+    """R1 audit: a duplicate ``class SubagentIdentity`` outside the canonical owner is flagged.
+
+    The canonical owner for ``SubagentIdentity`` and
+    ``SubagentPidRegistry`` is
+    ``ralph/agents/idle_watchdog/_subagent_identity.py``. A future
+    PR MUST NOT introduce a parallel identity type without updating
+    the owner and the watchdog's classification logic. The audit
+    flags any ``class SubagentIdentity`` or ``class SubagentPidRegistry``
+    top-level definition outside the canonical owner.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        tmp_path = Path(td)
+        package_root, repo_root = _write_fake_repo(tmp_path)
+        (package_root / "agents" / "duplicate_subagent_identity.py").write_text(
+            "from dataclasses import dataclass\n"
+            "\n"
+            "@dataclass(frozen=True)\n"
+            "class SubagentIdentity:\n"
+            "    pid: int\n"
+            "    source: str\n",
+            encoding="utf-8",
+        )
+
+        violations = audit.audit_watchdog_drift(package_root, repo_root=repo_root)
+
+        kinds = {v.kind for v in violations}
+        assert "subagent_counting_outside_owner" in kinds, (
+            f"audit must flag duplicate SubagentIdentity; got kinds: {sorted(kinds)}"
+        )
+
+
+def test_audit_does_not_flag_canonical_owner_subagent_counting() -> None:
+    """R1 audit: the canonical owner file is NEVER flagged.
+
+    The canonical owner ``ralph/agents/idle_watchdog/_subagent_identity.py``
+    defines the canonical ``SubagentIdentity`` and ``SubagentPidRegistry``
+    classes. The audit MUST NOT flag the canonical owner itself.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        tmp_path = Path(td)
+        package_root, repo_root = _write_fake_repo(tmp_path)
+        # Write the canonical owner file with the canonical types.
+        (package_root / "agents" / "idle_watchdog" / "_subagent_identity.py").write_text(
+            "from dataclasses import dataclass\n"
+            "\n"
+            "@dataclass(frozen=True)\n"
+            "class SubagentIdentity:\n"
+            "    pid: int\n"
+            "\n"
+            "class SubagentPidRegistry:\n"
+            "    pass\n",
+            encoding="utf-8",
+        )
+
+        violations = audit.audit_watchdog_drift(package_root, repo_root=repo_root)
+
+        kinds = {v.kind for v in violations}
+        assert "subagent_counting_outside_owner" not in kinds, (
+            f"audit must not flag canonical owner; got kinds: {sorted(kinds)}"
+        )
+
+
 def test_audit_clean_tree_passes() -> None:
     """Run the audit against the actual ralph-workflow tree and assert zero violations.
 

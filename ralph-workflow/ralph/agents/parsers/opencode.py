@@ -12,6 +12,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 
 class _OpenCodeDispatch:
     """Per-event-type dispatch for OpenCodeParser.
@@ -214,8 +216,21 @@ class OpenCodeParser(NdjsonParserBase):
 
     _STOP_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
         super().__init__()
+        # R5: bind the per-invocation shared SubagentPidRegistry + per-transport
+        # source label. OpenCode emits structured child-lifecycle events
+        # (child_started/child_progress/child_heartbeat/child_complete)
+        # that the OpenCode strategy ingests into a ChildLivenessRegistry;
+        # the parser-side registry hook is forward-compat for events that
+        # carry an embedded PID. OpenCode's PID stream flows through the
+        # ChildLivenessSubagentPidSource adapter on the OpenCode path.
+        self._subagent_pid_registry = subagent_pid_registry
+        self._subagent_source_label = subagent_source_label
         self._accumulators: dict[str, TextAccumulator] = {}  # bounded-accumulator-ok: drained
         self._current_part_id: str | None = None
         self._stream_counter = 0

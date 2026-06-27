@@ -20,6 +20,7 @@ from ralph.agents.system_clock import SystemClock
 if TYPE_CHECKING:
     from ralph.agents.execution_state._base import BaseExecutionStrategy
     from ralph.process.child_liveness import ChildLivenessRegistry
+    from ralph.process.monitor import SubagentPidSource
 
 
 __all__ = ["AgentParser", "Clock", "StrategyFactory", "SystemClock"]
@@ -33,4 +34,5 @@ class StrategyFactory(Protocol):
         *,
         label_scope: str | None,
         registry: ChildLivenessRegistry | None,
+        subagent_pid_source: SubagentPidSource | None = None,
     ) -> BaseExecutionStrategy: ...

@@ -373,3 +373,199 @@ The black-box tests that pin the watchdog invariants:
 - `ralph/recovery/controller.py` for the two-rule implementation.
 - `ralph/agents/idle_watchdog/idle_watchdog.py` for the smart-verdict
   gate.
+
+## Subagent identity contract (R1)
+
+The watchdog defers on the **filtered subagent count**, never on the
+broader descendant count. A process is a real subagent iff:
+
+1. It is a live descendant of the supervised agent PID, AND
+2. It is REGISTERED in the shared `SubagentPidRegistry` by the
+   transport's authoritative `SubagentPidSource`.
+
+The canonical owner of the identity contract is
+`ralph/agents/idle_watchdog/_subagent_identity.py` (single source of
+truth for `SubagentIdentity` and `SubagentPidRegistry`). The audit
+`ralph.testing.audit_watchdog_drift.subagent_counting_outside_owner`
+enforces the single-owner invariant so a future PR cannot introduce a
+parallel identity type without updating this owner.
+
+The filtered count is exposed via
+`ProcessMonitor.spawned_subagent_count()` (preferred) and
+`live_subagent_count()` (legacy alias). Both return the count of
+processes classified as `ProcessRole.SPAWNED_SUBAGENT` in the
+monitor's most recent scan. The readers (`_process_reader._corroborate`
+and `_pty_line_reader._corroborate`) MUST use the filtered seam for
+`scoped_child_active` so a shell helper like `npm test`, `cargo build`,
+or `find /` (which IS a descendant but is NOT registered as a real
+subagent) does not block the watchdog's hard ceilings.
+
+The broader `handle.descendant_snapshot()` count MUST NEVER be used for
+the deferral decision. The audit
+`ralph.testing.audit_activity_aware_watchdog.subagent_counting_seam`
+flags any reader that uses `descendant_snapshot` without also using
+the filtered seam as a regression.
+
+## Hard ceilings
+
+The watchdog's hard ceilings fire in this precedence order
+(highest first):
+
+1. **`SESSION_CEILING_EXCEEDED`** — `MAX_SESSION_SECONDS=3300.0` (default
+   from `ralph/timeout_defaults.py`). Operator-set wall-clock cap on
+   the entire session. Activity cannot reset this ceiling. The only
+   reason that bypasses the smart-verdict gate (see
+   `ralph.agents.idle_watchdog._gate.gate_fire`).
+2. **`CHILDREN_PERSIST_TOO_LONG`** — `MAX_WAITING_ON_CHILD_SECONDS=1800.0`
+   cumulative ceiling across the session. Never decays; fires even
+   when non-subagent helper processes are present in the descendant
+   tree (R3 of the Trustworthy Idle Watchdog spec — the 2365s
+   indefinite deferral bug).
+3. **`NO_OUTPUT_DEADLINE`** (with drain window) — idle deadline since
+   last output. Defers when a non-stdout evidence channel
+   (MCP tool call, subagent work, workspace file change) is fresher
+   than `activity_evidence_ttl_seconds`.
+4. **`PROCESS_EXIT_HANG`** — subprocess closed stdout but did not exit
+   within budget (post-exit only, owned by `PostExitWatchdog`).
+5. **`DESCENDANT_HANG`** — descendant-wait deadline elapsed with
+   persistent `WAITING_ON_CHILD` (post-exit only).
+
+The session ceiling is the hard backstop that prevents the
+2365s indefinite deferral observed in the wild (R3). When a non-
+subagent helper process (a shell helper like `npm test`) is alive
+in the descendant tree, the FILTERED subagent count is 0 and the
+session ceiling fires regardless.
+
+## Resume vs restart
+
+Watchdog-driven kills ALWAYS resume the existing session via
+`resumable_session_id`. Fresh sessions are reserved for deliberate
+phase transitions only. The two paths are function-separate:
+
+- **Resume path** — `resolve_resume_session_id(...)` returns the prior
+  session id when `has_prior_session=True` and `recovery_action ==
+  "resume"`. Threaded end-to-end via
+  `IdleWatchdogKilledError.resumable_session_id` →
+  `_convert_idle_stream_timeout_to_agent_error` →
+  `AgentInactivityTimeoutError.resumable_session_id` →
+  `FailureClassifier.resumable_kill` carve-out →
+  `state.last_agent_session_id` →
+  `recovery_action_for_failure_reason(...)` →
+  `resume_agent_retry_intent(...)`.
+- **Fresh path** — `fresh_session_options(opts)` returns
+  `InvokeOptions(session_id=None)` for deliberate phase transitions.
+  The `prior_session_id` parameter is accepted for forward-
+  compatibility but is NEVER written back.
+
+Lock-in regression tests:
+
+- `tests/agents/idle_watchdog/test_resume_after_kill_contract.py`
+- `tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py`
+- `tests/agents/idle_watchdog/test_resume_contract_invariant.py`
+- `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py`
+- `tests/recovery/test_opencode_resumable_exit_classification.py`
+
+See `ralph/agents/invoke/_session_resume.py` for the end-to-end
+threading contract (7 numbered evidence points).
+
+## Trustworthy Idle Watchdog spec coverage (wt-021)
+
+The Trustworthy Idle Watchdog product spec
+(`.agent/CURRENT_PROMPT.md`) defines eight acceptance criteria. Each
+criterion is pinned by a dedicated black-box test file and the
+consolidated spec test
+(`tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`)
+asserts one concrete invariant per criterion against its dedicated
+pin. The matrix below is the canonical record; the spec test pins
+every row.
+
+1. **R1 — Child-process monitors count only real subagents.** A
+   process is a real subagent iff it is a live descendant of the
+   supervised agent PID AND it is REGISTERED in the shared
+   `SubagentPidRegistry`. The filtered count is exposed via
+   `ProcessMonitor.spawned_subagent_count()` (preferred) and
+   `live_subagent_count()` (legacy alias). Pin:
+   `tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py`.
+   Invariant: a monitor that only sees helper PIDs returns 0 from
+   BOTH seam names; the alias is faithful (both names return the
+   same filtered value). [wt-021 R1 / Trustworthy Idle Watchdog R1]
+
+2. **R2 — No false positives.** The watchdog does NOT kill while
+   activity is recent or a real subagent is working. The
+   `classify_stuck` function maps `WAITING_ON_CHILD` → `LOADING`,
+   `RESUMABLE_CONTINUE` → `TRANSITIONING`, and `is_waiting_state=True`
+   → `DUPLICATE_KILL`; the smart-verdict gate returns `CONTINUE`
+   for every non-`STUCK` kind. Pins:
+   `tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py`
+   (single MCP tool-call + quiet with fresh corroborator does NOT
+   fire) + `tests/agents/idle_watchdog/test_stuck_classifier.py`
+   (verdict priority). [wt-021 R2 / Trustworthy Idle Watchdog R2]
+
+3. **R3 — No false negatives.** Every genuine hang fires within a
+   bounded ceiling, even when a non-subagent helper process looks
+   like a lingering child. The hard ceilings are checked against
+   the FILTERED subagent count; a helpers-only monitor returns 0
+   and the ceiling fires. Pin:
+   `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
+   (session / cumulative / idle ceilings all fire with helpers
+   alive). [wt-021 R3 / Trustworthy Idle Watchdog R3]
+
+4. **R4 — Watchdog-driven kills resume the existing session.** The
+   resume path (`AgentInactivityTimeoutError` /
+   `OpenCodeResumableExitError` with a prior session) returns
+   `recovery_action='resume'` via
+   `recovery_action_for_failure_reason`; the fresh path is
+   function-separate via `fresh_session_options`. Pin:
+   `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py`
+   (8 evidence points end-to-end) +
+   `tests/recovery/test_opencode_resumable_exit_classification.py`.
+   [wt-021 R4 / Trustworthy Idle Watchdog R4]
+
+5. **R5 — Real-time subagent visibility for all supported agents.**
+   `record_subagent_work(description=line)` populates
+   `last_subagent_progress_description` so every supported
+   `AgentTransport`'s real extracted progress surfaces through the
+   watchdog. Pin:
+   `tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py`
+   (8 transports × 5 signal shapes; OpenCode additionally routes
+   per-child `RegistryBackedSubagentOutputCapture` lines).
+   [wt-021 R5 / Trustworthy Idle Watchdog R5]
+
+6. **R6 — Quiet, meaningful output.** `_gate_fire` emissions are
+   throttled by a COMBINED coarse per-`fire_reason` map
+   (`_last_any_deferred_log_at` keyed on `fire_reason.value`
+   alone) PLUS a per-tuple map (`_last_deferred_log_at` keyed on
+   `(fire_reason, deferred_kind)`). The coarse throttle caps
+   emissions to one DEBUG record per `watchdog_log_throttle_seconds`
+   per `fire_reason` REGARDLESS of how the deferred_kind cycles.
+   Pin: `tests/agents/idle_watchdog/test_log_spam_throttle.py` (per-
+   tuple + coarse single-key + refresh-window cases).
+   [wt-021 R6 / Trustworthy Idle Watchdog R6]
+
+7. **R7 — Ambiguous rc=0 exits classified deterministically.**
+   `OpenCodeResumableExitError` classifies as
+   `FailureCategory.AGENT` BEFORE the broader
+   `AgentInvocationError` branch; the exception NEVER falls through
+   to `FailureCategory.AMBIGUOUS`. Pin:
+   `tests/recovery/test_opencode_resumable_exit_classification.py`
+   (every instance, including `session_id=None`, classifies as
+   `AGENT`). [wt-021 R7 / Trustworthy Idle Watchdog R7]
+
+8. **R8 — Clean, black-box-testable architecture.** Every watchdog
+   test file uses `FakeClock` (`ralph/agents/timeout_clock.py`) + a
+   tiny `@dataclass` satisfying the `ProcessMonitor` Protocol. No
+   real sleep, no real subprocess, no real filesystem. Enforced
+   structurally by the AST-level audit
+   `ralph/testing/audit_test_policy.py` (wired into `make verify`).
+   Pin: `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`
+   (8 ordinary test methods, one per R1-R8, asserting one concrete
+   invariant each). [wt-021 R8 / Trustworthy Idle Watchdog R8]
+
+Consolidated AC summary test:
+
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py` —
+  single black-box module with a `TestTrustworthyIdleWatchdogSpec`
+  class containing 8 ordinary test methods (`test_r1` through
+  `test_r8`, no `@pytest.mark.parametrize`). Each method asserts one
+  concrete invariant and references its dedicated pin test in the
+  docstring. Target wall-clock: <2 seconds for the whole file.

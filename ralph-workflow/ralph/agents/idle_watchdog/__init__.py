@@ -28,6 +28,7 @@ from ralph.process.child_liveness import AliveBy
 from ._post_exit_verdict import PostExitVerdict
 from ._post_exit_watchdog import PostExitWatchdog
 from ._stuck_classifier import StuckKind, classify_stuck
+from ._subagent_identity import SubagentIdentity, SubagentPidRegistry
 from .corroboration_snapshot import (
     ChannelEvidenceSummary,
     CorroborationSnapshot,
@@ -48,6 +49,8 @@ __all__ = [
     "PostExitVerdict",
     "PostExitWatchdog",
     "StuckKind",
+    "SubagentIdentity",
+    "SubagentPidRegistry",
     "TimeoutPolicy",
     "WaitingCorroborator",
     "WaitingStatusEvent",

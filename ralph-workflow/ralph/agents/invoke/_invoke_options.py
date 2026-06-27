@@ -9,8 +9,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from ralph.agents.idle_watchdog import WaitingStatusListener
+    from ralph.agents.idle_watchdog import SubagentPidRegistry, WaitingStatusListener
     from ralph.phases.required_artifacts import RequiredArtifact
+    from ralph.process.monitor import SubagentPidSource
 
 
 @dataclass(frozen=True)
@@ -75,3 +76,24 @@ class InvokeOptions:
     # falls back to "no live signal" when they are None.
     connectivity_state_provider: Callable[[], str | None] | None = None
     is_waiting_state_provider: Callable[[], bool] | None = None
+    # R1 / R5 (Trustworthy Idle Watchdog spec): when the orchestrator
+    # pre-builds a per-invocation ``SubagentPidRegistry`` and its
+    # per-transport ``SubagentPidSource``, it threads them through
+    # here so the SAME registry reaches both the strategy layer
+    # (``strategy_for_command(..., subagent_pid_source=...)``) and
+    # the parser layer (``stream_parsed_agent_activity(...
+    # subagent_pid_registry=...)``). Without these fields, the
+    # strategy layer builds a FRESH registry internally and the
+    # parser-registered PIDs never reach the strategy's filtered
+    # count -- the watchdog-visible filtered subagent count is
+    # desynchronized from the parser's authoritative registration
+    # set. The shared-registry contract is documented at
+    # ``ralph/agents/registry.py:build_subagent_pid_registry``.
+    #
+    # Both fields default to ``None`` so the legacy direct-call
+    # signature ``invoke_agent(config, prompt_file, options=...)``
+    # still works (the strategy layer builds a fresh registry
+    # internally for backward compat with test fakes that pre-date
+    # the R5 cross-transport wiring).
+    subagent_pid_registry: SubagentPidRegistry | None = None
+    subagent_pid_source: SubagentPidSource | None = None

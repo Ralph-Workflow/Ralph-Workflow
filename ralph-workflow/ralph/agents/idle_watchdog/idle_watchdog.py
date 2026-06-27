@@ -949,6 +949,38 @@ class IdleWatchdog:
     def _subagent_liveness_summary(self, now: float) -> ChannelEvidenceSummary:
         return subagent_liveness_summary(self, now)
 
+    def _subagent_count_for_heartbeat(self) -> int:
+        """Return the FILTERED subagent count for the waiting heartbeat.
+
+        Used by ``_waiting_branch.handle_waiting_branch`` to surface the
+        live subagent count in the human-readable heartbeat (R6, Trustworthy
+        Idle Watchdog spec). Prefers ``ProcessMonitor.spawned_subagent_count()``
+        (preferred name) and falls back to ``live_subagent_count()`` for
+        duck-typed monitors in legacy tests that pre-date the alias.
+        Returns 0 when no monitor is injected or when the call raises.
+
+        The filtered count is the canonical signal: a process in
+        ``psutil.children(recursive=True)`` but NOT in the
+        ``SubagentPidRegistry`` (e.g. a shell helper like ``npm test``)
+        MUST NOT contribute to this count.
+        """
+        monitor: ProcessMonitor | None = self._process_monitor
+        if monitor is None:
+            return 0
+        # Prefer the canonical name; fall back to the legacy alias so
+        # existing duck-typed test fakes keep working without forcing
+        # every monitor to add the new method.
+        for getter_name in ("spawned_subagent_count", "live_subagent_count"):
+            getter: Callable[[], int] | None = getattr(monitor, getter_name, None)
+            if getter is None:
+                continue
+            try:
+                result: int = getter()
+                return int(result)
+            except Exception:
+                continue
+        return 0
+
     @staticmethod
     def _channel_summary(
         channel_name: ChannelName,

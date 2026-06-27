@@ -15,6 +15,8 @@ from .text_accumulator import TextAccumulator
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
+
 _CLAUDE_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^claude(?:/[^:\s]+)?(?=[ :]|$)")
 
 _CLAUDE_TOP_LEVEL_LIFECYCLE: Final[frozenset[str]] = frozenset(
@@ -53,8 +55,26 @@ class ClaudeParser(NdjsonParserBase):
         and drives the per-content-block accumulator state.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        subagent_pid_registry: SubagentPidRegistry | None = None,
+        subagent_source_label: str | None = None,
+    ) -> None:
         super().__init__()
+        # R5 (Trustworthy Idle Watchdog spec): bind the per-invocation
+        # shared SubagentPidRegistry. The base's
+        # ``_try_register_subagent_pid_from_obj`` hook fires for every
+        # structured child-lifecycle event observed by the parser; for
+        # Claude's NDJSON shape the standard events do not currently
+        # carry an embedded ``pid`` field, so this hook is mostly
+        # forward-compat. The constructor signature stays backward-compat
+        # (the registry kwarg defaults to ``None``).
+        self._subagent_pid_registry: SubagentPidRegistry | None = subagent_pid_registry
+        # Bind the per-transport source label so any registered PID is
+        # attributed to ``claude`` (the canonical registry source token).
+        # ``None`` keeps the hook no-op when the parser is constructed
+        # without a registry.
+        self._subagent_source_label: str | None = subagent_source_label
         self._text_accumulator: dict[  # bounded-accumulator-ok: drained
     tuple[str, int], TextAccumulator
 ] = {}
@@ -149,6 +169,12 @@ class ClaudeParser(NdjsonParserBase):
         raw: str,
     ) -> Iterator[AgentOutputLine]:
         event_type = str(obj.get("type", "unknown"))
+
+        # R5: register any embedded PID into the shared registry BEFORE
+        # the per-event dispatch returns. The hook is a no-op when the
+        # parser was constructed without a registry or when the event
+        # does not carry a PID field.
+        self._try_register_subagent_pid_from_obj(obj)
 
         if event_type == "stream_event":
             event = obj.get("event")

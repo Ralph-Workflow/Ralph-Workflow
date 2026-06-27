@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading as _threading
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -573,6 +573,42 @@ def _consume_attempt_output(
     )
     get_heartbeat = pipeline_deps.heartbeat_policy_from_env_fn
 
+    # R1 / R5 (Trustworthy Idle Watchdog spec): build the per-invocation
+    # ``SubagentPidRegistry`` once at the orchestrator level so the
+    # SAME registry reaches BOTH the strategy layer
+    # (``invoke_agent`` -> ``strategy_for_command``) AND the parser
+    # layer (``stream_parsed_agent_activity`` -> ``_resolve_parser``
+    # -> ``get_parser`` -> ``parser._subagent_pid_registry``). The
+    # registry is threaded into ``InvokeOptions`` via the new
+    # ``subagent_pid_registry`` / ``subagent_pid_source`` fields so
+    # ``invoke_agent`` consumes the SAME registry instead of
+    # building a fresh one internally. Without this wiring, the
+    # parser's structured-event registration hook fires into one
+    # registry but the strategy layer's filtered seam sees a
+    # DIFFERENT registry -- the watchdog-visible filtered
+    # subagent count is desynchronized from the parser's
+    # authoritative registration set, and the R1 filtered count
+    # contract is silently violated.
+    _raw_transport: object = getattr(ctx.agent_config, "transport", None)
+    _agent_config_transport: AgentTransport = (
+        _raw_transport if isinstance(_raw_transport, AgentTransport) else AgentTransport.GENERIC
+    )
+    _agent_registry = AgentRegistry()
+    _subagent_pid_registry, _subagent_pid_source = (
+        _agent_registry.build_subagent_pid_registry(_agent_config_transport)
+    )
+    _subagent_source_label = _agent_config_transport.value
+    # Thread the shared registry + per-transport source through
+    # ``InvokeOptions`` so ``invoke_agent`` consumes the SAME
+    # registry instance. ``replace`` produces a fresh InvokeOptions
+    # (the dataclass is frozen=True) without mutating the caller's
+    # copy.
+    options = replace(
+        options,
+        subagent_pid_registry=_subagent_pid_registry,
+        subagent_pid_source=_subagent_pid_source,
+    )
+
     def _run_invocation() -> None:
         output_lines = ctx.deps.invoke_agent(ctx.agent_config, attempt_prompt_file, options=options)
         if verbosity_rank(ctx.verbosity) >= VERBOSITY_RANK[Verbosity.NORMAL]:
@@ -587,6 +623,8 @@ def _consume_attempt_output(
                 rendered_output_sink=rendered_output,
                 session_id_sink=capture_session_id,
                 agent_config=ctx.agent_config,
+                subagent_pid_registry=_subagent_pid_registry,
+                subagent_source_label=_subagent_source_label,
             )
             return
         for line in output_lines:

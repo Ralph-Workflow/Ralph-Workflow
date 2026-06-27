@@ -314,10 +314,25 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
         _ceiling_lbl = self._effective_ceiling_label(current_corr, effective_ceiling)
         corr_diag_pr["effective_ceiling"] = effective_ceiling
         corr_diag_pr["effective_ceiling_label"] = _ceiling_lbl
+        # Human-readable heartbeat (R6, Trustworthy Idle Watchdog spec).
+        # The previous format was the terse ``cumulative={}s ceiling={}s``
+        # line which was informative to a tool but opaque to a human.
+        # The new format names: (a) what is happening -- the agent is
+        # WAITING on a real subagent; (b) the live subagent count from
+        # the filtered monitor (R1 -- never the broader
+        # ``descendant_snapshot()`` count); (c) the elapsed seconds;
+        # (d) the hard ceiling before action is taken. The throttle at
+        # this branch is governed by ``waiting_status_interval_seconds``
+        # (default 30s); the first emission happens at WAITING_ON_CHILD
+        # entry, then at each interval boundary. The throttle is
+        # unchanged -- only the human-readable payload.
+        heartbeat_count = self._subagent_count_for_heartbeat()
         self._log.info(
-            "idle watchdog: WAITING_ON_CHILD progress cumulative={}s ceiling={}s",
-            round(candidate_total, 1),
-            round(effective_ceiling, 1),
+            "idle watchdog: agent waiting on subagent ({} alive) for {}s"
+            " - hard ceiling at {}s",
+            heartbeat_count,
+            round(candidate_total, 0),
+            round(effective_ceiling, 0),
         )
         self._emit(
             WaitingStatusKind.PROGRESS,

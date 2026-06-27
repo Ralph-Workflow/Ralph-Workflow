@@ -190,3 +190,35 @@ error message by substring.
 - [Parallel Mode](parallel-mode.md) — recovery behavior in same-workspace parallel runs
 - [Developer Reference](developer-reference.md) — deeper implementation detail
 - [MCP Architecture](mcp-architecture.md) — MCP server, tool registry, and dual-alias exposure
+
+## Deterministic rc=0 classification
+
+The `OpenCodeResumableExitError` (a clean `rc=0` exit with no
+artifact, no `declare_complete` — see
+`ralph.agents.invoke._open_code_resumable_exit_error`) is classified
+deterministically as `FailureCategory.AGENT` by the explicit
+typed-cause branch in `ralph/recovery/failure_classifier.py:_categorize_exc`
+(lines 859-869). This branch precedes the broader
+`AgentInvocationError` branch, so the exception NEVER falls to
+`FailureCategory.AMBIGUOUS` and the operator never sees the noisy
+`flagged_for_review=true` warning that the pre-fix code emitted.
+
+The recovery action is decided by
+`recovery_action_for_failure_reason(...)` in
+`ralph/agents/invoke/_session_resume.py`:
+
+- `has_prior_session=True` → returns `"resume"`. The recovery controller
+  threads the captured `resumable_session_id` from the typed exception
+  into `state.last_agent_session_id` (see
+  `ralph/recovery/controller.py:690-692`), and the next attempt uses
+  the per-transport resume flag (`--session <id>` for OpenCode,
+  `--resume <id>` for Claude Code, etc.) to continue the existing
+  session.
+- `has_prior_session=False` → returns `"fresh"`. The next attempt
+  starts a brand-new session via `fresh_session_options(opts)` which
+  clears `session_id` to `None`.
+
+Lock-in regression test: `tests/recovery/test_opencode_resumable_exit_classification.py`
+covers the deterministic classification, the propagation of
+`resumable_session_id` from the typed exception, and the resume/fresh
+recovery action mapping.
