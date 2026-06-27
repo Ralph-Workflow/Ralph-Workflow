@@ -114,6 +114,22 @@ If one of these describes you, you're the reason Ralph Workflow exists:
 
 **Ralph Workflow is not for** one-line fixes, vague prompts, or repos without tests. It's for **ambitious, well-specified work** you'd trust a capable colleague to do unattended. A repo without guardrails will produce results that reflect that.
 
+## What builders say
+
+> "I actually have a working implementation on my fork that converged on the same two primitives (`progress.json` + a wake-up file)."
+>
+> — **[CY Hsieh](https://github.com/Martingale42/superpowers/tree/main/skills/orchestrator-driven-development)**, building orchestrator-driven development on Ralph Workflow
+
+> "I was missing: a system not primped on one language or framework, a straightforward repeatable workflow (plan → implement → record), a permanent spec-library, a system that keeps asking me instead of making assumptions."
+>
+> — **[Marco Nae](https://codeberg.org/RalphWorkflow/Ralph-Workflow)**, star-gazer, speq-skill maintainer
+
+> "A Claude Code skill for running Claude unattended on a planned work track — overnight, day-trip, multi-hour meeting block."
+>
+> — **[endario](https://github.com/endario/unattended-loop)**, unattended-loop, a derivative Ralph skill
+
+[Star Ralph Workflow on Codeberg →](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
+
 ## Before you hand off a run
 
 Ralph Workflow depends on good engineering practice — it doesn't replace it. A run is only as good as what you give it:
