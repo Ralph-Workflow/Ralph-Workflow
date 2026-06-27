@@ -141,6 +141,7 @@ R5 section below and the per-transport parametrize at
 - `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
 - `tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py`
 - `tests/agents/idle_watchdog/test_session_ceiling_no_resume.py`
+- `tests/agents/idle_watchdog/test_pure_stall_wedge.py`
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r3`
 
 ---
@@ -206,6 +207,7 @@ R5 section below and the per-transport parametrize at
 - `tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py`
 - `tests/agents/idle_watchdog/test_resume_session_id_threading.py`
 - `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py`
+- `tests/agents/idle_watchdog/test_resume_contract_invariant.py`
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r4`
 
 ---
@@ -274,6 +276,7 @@ parametrized per-transport pin test at
   `WaitingStatusEvent` dataclass) for every supported transport.
 - `tests/agents/idle_watchdog/test_subagent_progress_surface.py`
 - `tests/agents/idle_watchdog/test_waiting_subagent_progress.py`
+- `tests/process/monitor/test_dispatch_all_transports.py`
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r5`
   — the consolidated surface test; exercises all three R5 fields on
   the watchdog public surface AND on emitted `WaitingStatusEvent`
@@ -338,7 +341,7 @@ human-readable template naming:
   * **the hard ceiling seconds** (rounded).
 
 The exact loguru INFO message template, emitted at
-`ralph/agents/idle_watchdog/_waiting_branch.py:329-336`, is:
+`ralph/agents/idle_watchdog/_waiting_branch.py:330-336`, is:
 
 ```
 idle watchdog: agent waiting on subagent ({} alive) for {}s - hard ceiling at {}s
@@ -355,7 +358,7 @@ window rather than the per-tick debug spam the prompt's evidence
 exhibit described.
 
 The WAITING entry log emitted at
-`ralph/agents/idle_watchdog/_waiting_branch.py:123-128` is a
+`ralph/agents/idle_watchdog/_waiting_branch.py:122-126` is a
 SEPARATE loguru INFO record from the heartbeat:
 
 ```

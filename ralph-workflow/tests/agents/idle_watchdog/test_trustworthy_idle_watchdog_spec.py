@@ -110,15 +110,18 @@ RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     "tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py",
     "tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py",
     "tests/agents/idle_watchdog/test_session_ceiling_no_resume.py",
+    "tests/agents/idle_watchdog/test_pure_stall_wedge.py",
     # R4 - Resume on watchdog kill, never restart.
     "tests/agents/idle_watchdog/test_resume_after_kill_contract.py",
     "tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py",
     "tests/agents/idle_watchdog/test_resume_session_id_threading.py",
     "tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py",
+    "tests/agents/idle_watchdog/test_resume_contract_invariant.py",
     # R5 - Real-time subagent visibility for all supported agents.
     "tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py",
     "tests/agents/idle_watchdog/test_subagent_progress_surface.py",
     "tests/agents/idle_watchdog/test_waiting_subagent_progress.py",
+    "tests/process/monitor/test_dispatch_all_transports.py",
     # R6 - Quiet, meaningful output.
     "tests/agents/idle_watchdog/test_log_spam_throttle.py",
     "tests/agents/idle_watchdog/test_evidence_deferral_throttle.py",
