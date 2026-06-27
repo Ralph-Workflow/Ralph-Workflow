@@ -319,6 +319,59 @@ parametrized per-transport pin test at
 - `tests/agents/idle_watchdog/test_evidence_deferral_throttle.py`
 - `tests/agents/idle_watchdog/test_invocation_start_full_reset.py`
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r6`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r6_heartbeat`
+
+### Heartbeat UX (chosen)
+
+The prompt names either "a single updating line OR a low-frequency
+heartbeat" as acceptable R6 UX. The watchdog implementation chose the
+**low-frequency heartbeat**. While the watchdog is in
+`WAITING_ON_CHILD` deferral, it emits a single periodic loguru INFO
+record per `evaluate()` call whose cadence gate passes, with a
+human-readable template naming:
+
+  * **what is happening** — the agent is WAITING on a subagent,
+  * **the live subagent count** from the FILTERED process monitor
+    (R1 — the audit-enforced seam `spawned_subagent_count()`; the
+    broader `descendant_snapshot()` count is NEVER used here),
+  * **elapsed seconds** (rounded), and
+  * **the hard ceiling seconds** (rounded).
+
+The exact loguru INFO message template, emitted at
+`ralph/agents/idle_watchdog/_waiting_branch.py:329-336`, is:
+
+```
+idle watchdog: agent waiting on subagent ({} alive) for {}s - hard ceiling at {}s
+```
+
+The cadence knob is
+`TimeoutPolicy.waiting_status_interval_seconds`
+(`ralph/agents/idle_watchdog/timeout_policy.py:140`), defaulting to
+the constant `WAITING_STATUS_INTERVAL_SECONDS` (30s). The heartbeat
+fires on every `evaluate()` call whose gate
+`now - _last_waiting_status_at >= waiting_status_interval_seconds`
+is satisfied, so the operator sees one updating line per cadence
+window rather than the per-tick debug spam the prompt's evidence
+exhibit described.
+
+The WAITING entry log emitted at
+`ralph/agents/idle_watchdog/_waiting_branch.py:123-128` is a
+SEPARATE loguru INFO record from the heartbeat:
+
+```
+idle watchdog: entering WAITING_ON_CHILD deferral idle_elapsed={}s cumulative={}s
+```
+
+The entry log fires ONCE on the first `evaluate()` call when
+`WAITING_ON_CHILD` is entered; the heartbeat fires periodically
+afterwards at the cadence knob's interval. The two records are
+distinguished by disjoint substrings: 'entering WAITING_ON_CHILD
+deferral' (entry log) vs 'agent waiting on subagent' (heartbeat).
+The consolidated `test_r6_heartbeat` post-filters captured INFO
+records to the heartbeat substring before asserting cadence and
+message fields, so the post-filter cleanly excludes the entry log.
+
+Verify cited line numbers after touching the cited files.
 
 ---
 

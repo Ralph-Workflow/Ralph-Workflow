@@ -44,10 +44,12 @@ Test isolation guarantees:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+import loguru
 import pytest
 from loguru import logger
 
@@ -817,6 +819,206 @@ class TestTrustworthyIdleWatchdogSpec:
                 f" kind-cycles; got {len(matching)} records for 1000"
                 f" calls in the same throttle window."
                 f" Records (first 3): {matching[:3]}"
+            )
+        finally:
+            logger.remove(handler_id)
+
+    def test_r6_heartbeat(self) -> None:
+        """R6: human-readable waiting heartbeat cadence and payload.
+
+        Pins the LOW-FREQUENCY HEARTBEAT chosen for R6: the watchdog
+        emits a single periodic INFO record per ``evaluate()`` call
+        whose gate passes, with a human-readable template naming
+        (a) what is happening (waiting on subagent), (b) the live
+        subagent count from the FILTERED process monitor (R1),
+        (c) elapsed seconds, and (d) the hard ceiling seconds. The
+        WAITING entry log emitted at ``_waiting_branch.py:122`` is a
+        SEPARATE loguru INFO record -- it fires ONCE on the first
+        ``evaluate()`` call when ``WAITING_ON_CHILD`` is entered; the
+        heartbeat fires on every subsequent ``evaluate()`` call whose
+        cadence gate ``now - _last_waiting_status_at >=
+        waiting_status_interval_seconds`` is satisfied.
+
+        Captures both INFO records via a loguru sink filtered on
+        ``component='idle_watchdog'`` (the same filter shape as
+        ``test_r6``) and post-filters the captured records to the
+        heartbeat template BEFORE asserting cadence and message
+        fields. The substring 'agent waiting on subagent' is the
+        canonical heartbeat distinguisher -- the WAITING entry log
+        uses 'entering WAITING_ON_CHILD deferral' instead, so the
+        post-filter cleanly separates the two.
+
+        Cadence math (5 calls, 1.0s advance between each, with
+        ``waiting_status_interval_seconds=1.0``):
+
+          * Call 1 (clock=1.0): WAITING entered, entry log fires,
+            ``_last_waiting_status_at=1.0``, cadence gate
+            ``(1.0-1.0)=0.0 >= 1.0`` is False, NO heartbeat.
+          * Call 2 (clock=2.0): cadence gate ``(2.0-1.0)=1.0 >= 1.0``
+            True, heartbeat fires (elapsed=1.0).
+          * Call 3 (clock=3.0): cadence gate ``(3.0-2.0)=1.0 >= 1.0``
+            True, heartbeat fires (elapsed=2.0).
+          * Call 4 (clock=4.0): cadence gate ``(4.0-3.0)=1.0 >= 1.0``
+            True, heartbeat fires (elapsed=3.0).
+          * Call 5 (clock=5.0): cadence gate ``(5.0-4.0)=1.0 >= 1.0``
+            True, heartbeat fires (elapsed=4.0).
+
+        Total INFO records: 1 entry log + 4 heartbeats = 5. Post-
+        filtered heartbeat records: 4. The 5-record total asserts the
+        entry log was NOT silently dropped by the post-filter.
+
+        The test uses ``idle_timeout_seconds=0.5`` (small enough to
+        enter WAITING_ON_CHILD on every call) and disables every
+        other fire path so the watchdog ONLY exercises the WAITING
+        branch (no_output_at_start=None, no_progress_quiet=None,
+        max_waiting_on_child_no_progress_seconds=None,
+        suspect_waiting_on_child_seconds=None,
+        activity_evidence_ttl_seconds=0.0). The 1.0s advance between
+        calls keeps ``candidate_total < max_waiting_on_child_seconds``
+        so CHILDREN_PERSIST_TOO_LONG never fires.
+        """
+        # (1) Attach a loguru sink filtered on INFO records emitted
+        # from the watchdog's ``self._log`` (component='idle_watchdog').
+        # The filter receives the loguru record dict; the
+        # ``record['extra'].get('component')`` access matches the
+        # established pattern in ``test_r6`` (line 723).
+        records: list[loguru.Message] = []
+
+        def _sink(message: loguru.Message) -> None:
+            records.append(message)
+
+        handler_id = logger.add(
+            _sink,
+            level="INFO",
+            format="{message}",
+            filter=lambda record: "idle_watchdog"
+            in (record["extra"].get("component") or ""),
+        )
+        try:
+            # (2) Build a watchdog with a small idle_timeout_seconds
+            # (0.5) so every evaluate() call enters the WAITING branch.
+            # All other fire paths are disabled via None so the
+            # watchdog ONLY exercises the WAITING_ON_CHILD branch.
+            clock = FakeClock(start=0.0)
+            policy = TimeoutPolicy(
+                idle_timeout_seconds=0.5,
+                max_waiting_on_child_seconds=600.0,
+                no_output_at_start_seconds=None,
+                no_progress_quiet_seconds=None,
+                max_waiting_on_child_no_progress_seconds=None,
+                suspect_waiting_on_child_seconds=None,
+                waiting_status_interval_seconds=1.0,
+                watchdog_log_throttle_seconds=30.0,
+                activity_evidence_ttl_seconds=0.0,
+            )
+            watchdog = _make_idle_watchdog(
+                process_monitor=_HelpersOnlyMonitor(),
+                policy=policy,
+                clock=clock,
+            )
+
+            # (3) ``record_invocation_start`` resets the per-invocation
+            # baseline so ``_last_activity = clock.monotonic()`` and
+            # ``_session_started_at = clock.monotonic()`` (both = 0.0).
+            watchdog.record_invocation_start()
+
+            # (4) The execution strategy reports WAITING_ON_CHILD on
+            # every call so the WAITING branch is taken on every call.
+            def _waiting() -> AgentExecutionState:
+                return AgentExecutionState.WAITING_ON_CHILD
+
+            # (5) Drive 5 calls. Advance BEFORE each call so the
+            # call times are 1.0, 2.0, 3.0, 4.0, 5.0 -- the first
+            # call at clock=1.0 has ``idle_elapsed=1.0 >= 0.5`` and
+            # therefore enters the WAITING branch and emits the
+            # entry log.
+            for _ in range(5):
+                clock.advance(1.0)
+                watchdog.evaluate(classify_quiet=_waiting)
+
+            # (6) Post-filter captured INFO records to the heartbeat
+            # template BEFORE asserting cadence and message fields.
+            # The WAITING entry log uses 'entering WAITING_ON_CHILD
+            # deferral' (a disjoint substring); the heartbeat uses
+            # 'agent waiting on subagent' (the canonical heartbeat
+            # substring). Post-filtering is the canonical
+            # distinguisher -- the entry log must NOT appear in the
+            # heartbeat_records list.
+            heartbeat_records = [
+                r for r in records if "agent waiting on subagent" in str(r.record["message"])
+            ]
+
+            # (7a) Cadence assertion: 4 heartbeat records. Math: the
+            # WAITING entry log sets ``_last_waiting_status_at = now``
+            # BEFORE the heartbeat gate runs (line 124 in
+            # ``_waiting_branch.py``), so on call 1 the gate
+            # ``(1.0-1.0)=0.0 >= 1.0`` is False (no heartbeat). On
+            # calls 2-5 the gate ``(N - (N-1)) = 1.0 >= 1.0`` is True
+            # and the heartbeat fires.
+            assert len(heartbeat_records) == 4, (
+                f"heartbeat cadence MUST emit one INFO record per"
+                f" evaluate() call whose cadence gate passes"
+                f" (waiting_status_interval_seconds=1.0); got"
+                f" {len(heartbeat_records)} heartbeat records for"
+                f" 5 evaluate() calls. Records: {[str(r.record['message']) for r in records]}"
+            )
+
+            # (7b) Total-records assertion: 1 entry log + 4 heartbeats
+            # = 5 INFO records. Proves the post-filter is the actual
+            # distinguisher and the WAITING entry log was NOT silently
+            # dropped from the captured records.
+            assert len(records) >= 5, (
+                f"capture MUST contain at least 5 INFO records"
+                f" (1 WAITING entry log + 4 heartbeat PROGRESS logs);"
+                f" got {len(records)}. Records:"
+                f" {[str(r.record['message']) for r in records]}"
+            )
+
+            # (7c) Every heartbeat record MUST carry all four
+            # human-readable fields: the literal substring 'waiting',
+            # the literal substring 'subagent', a regex match of
+            # ``\\d+s`` for the elapsed-seconds field, and the literal
+            # substring 'ceiling' followed by a regex match of
+            # ``\\d+s`` for the hard-ceiling field.
+            heartbeat_substring = "agent waiting on subagent"
+            elapsed_seconds_pattern = re.compile(r"\d+s")
+            ceiling_seconds_pattern = re.compile(r"\d+s")
+            for record in heartbeat_records:
+                message = str(record.record["message"])
+                assert heartbeat_substring in message, (
+                    f"heartbeat MUST contain '{heartbeat_substring}'"
+                    f" (R6 chosen UX); got {message!r}"
+                )
+                assert "subagent" in message, (
+                    f"heartbeat MUST contain 'subagent'; got {message!r}"
+                )
+                assert elapsed_seconds_pattern.search(message) is not None, (
+                    f"heartbeat MUST carry an elapsed-seconds field"
+                    f" matching \\d+s; got {message!r}"
+                )
+                assert "ceiling" in message, (
+                    f"heartbeat MUST carry the literal 'ceiling'"
+                    f" label; got {message!r}"
+                )
+                ceiling_tail = message.split("ceiling", 1)[1]
+                assert ceiling_seconds_pattern.search(ceiling_tail) is not None, (
+                    f"heartbeat MUST carry a hard-ceiling-seconds field"
+                    f" matching \\d+s after 'ceiling'; got"
+                    f" ceiling_tail={ceiling_tail!r}"
+                )
+
+            # (7d) Sanity check: the post-filter cleanly excludes
+            # the WAITING entry log. The substring
+            # 'entering WAITING_ON_CHILD deferral' must NOT appear in
+            # any heartbeat record.
+            assert not any(
+                "entering WAITING_ON_CHILD deferral" in str(r.record["message"])
+                for r in heartbeat_records
+            ), (
+                "post-filter MUST exclude the WAITING entry log;"
+                " substring 'entering WAITING_ON_CHILD deferral'"
+                " leaked into a heartbeat record:"
+                f" {[str(r.record['message']) for r in heartbeat_records]}"
             )
         finally:
             logger.remove(handler_id)
