@@ -336,19 +336,32 @@ def invoke_agent(
         # any future parser-side PID registration a single source of
         # truth (the cross-transport authoritative set).
         transport_for_registry = _agent_transport(config)
-        # R1 / R5 (Trustworthy Idle Watchdog spec): the
-        # orchestrator (``stream_parsed_agent_activity`` call site in
-        # effect_executor) MAY pass a pre-built (registry,
-        # source_label) pair so the same registry reaches both the
-        # strategy (here, via ``subagent_pid_source``) and the parser
-        # (via ``stream_parsed_agent_activity``). When the caller
-        # does not thread a registry, build one locally and let the
-        # orchestrator's parser construction see a fresh registry
-        # (legacy behavior, NOT the production wiring).
-        (
-            _subagent_pid_registry,
-            subagent_pid_source,
-        ) = AgentRegistry().build_subagent_pid_registry(transport_for_registry)
+        # R1 / R5 (Trustworthy Idle Watchdog spec): the orchestrator
+        # (``stream_parsed_agent_activity`` call site in
+        # ``effect_executor._consume_attempt_output``) MAY pass a
+        # pre-built ``SubagentPidRegistry`` and per-transport
+        # ``SubagentPidSource`` via ``opts.subagent_pid_registry`` /
+        # ``opts.subagent_pid_source`` so the SAME registry reaches
+        # both the strategy (here, via ``subagent_pid_source``) and
+        # the parser (via ``stream_parsed_agent_activity``). This
+        # is the canonical shared-registry contract documented at
+        # ``ralph/agents/registry.py:build_subagent_pid_registry``.
+        # Without threading the registry through these fields, the
+        # strategy layer would build a FRESH registry internally and
+        # the parser-registered PIDs would never reach the
+        # strategy's filtered count -- the watchdog-visible filtered
+        # subagent count would be desynchronized from the parser's
+        # authoritative registration set. When the caller does not
+        # thread a registry (legacy direct call), build one locally
+        # so the strategy layer has a filtered seam.
+        if opts.subagent_pid_registry is not None and opts.subagent_pid_source is not None:
+            subagent_pid_source = opts.subagent_pid_source
+            _subagent_pid_registry = opts.subagent_pid_registry
+        else:
+            (
+                _subagent_pid_registry,
+                subagent_pid_source,
+            ) = AgentRegistry().build_subagent_pid_registry(transport_for_registry)
         execution_strategy = strategy_for_command(
             config.cmd,
             transport_for_registry,

@@ -656,25 +656,48 @@ class FailureClassifier:
             category = FailureCategory.AGENT
             counts = True
 
-        # Walk the ``__cause__`` chain to find the typed
-        # ``IdleWatchdogKilledError`` and read the ``child_alive`` field.
-        # The watchdog attaches the typed exception to
-        # ``_IdleStreamTimeoutError.__cause__`` (see
-        # ``_process_reader.py`` and ``_pty_line_reader.py``) so the
-        # classifier can read the live-child signal end-to-end. The
-        # walk is shallow (``__cause__`` only — the watchdog attaches
-        # the typed exception directly to the wrapper) because the
-        # chain is already validated by ``_find_typed_watchdog_cause``
-        # in the categorization pass above; here we only need the
-        # direct cause for the ``child_alive`` field.
+        # Walk the full ``__cause__`` / ``__context__`` chain to find the
+        # typed ``IdleWatchdogKilledError`` and read the ``child_alive``
+        # and ``resumable_session_id`` fields. The watchdog fires into
+        # ``_IdleStreamTimeoutError`` (the line-reader wrapper) whose
+        # ``__cause__`` is the typed ``IdleWatchdogKilledError``, and
+        # the recovery layer wraps ``_IdleStreamTimeoutError`` into
+        # ``AgentInactivityTimeoutError`` via ``raise X from exc``. The
+        # production chain is therefore TWO hops deep, not one:
+        #
+        #     AgentInactivityTimeoutError
+        #         \u2191 __cause__
+        #         _IdleStreamTimeoutError
+        #             \u2191 __cause__
+        #             IdleWatchdogKilledError (typed)
+        #
+        # Pre-fix bug: the classifier walked ``exc_obj.__cause__``
+        # directly (one hop only), hit ``_IdleStreamTimeoutError``
+        # (NOT ``IdleWatchdogKilledError``), and lost the typed cause.
+        # The live-child signal collapsed to the conservative
+        # ``child_alive=None`` path, which falsely routes a live-child
+        # ``NO_PROGRESS_QUIET`` (defense-in-depth Rule 1) to Rule 2
+        # (exponential backoff). The captured ``resumable_session_id``
+        # also fell through to ``None``, so the resumable-kill
+        # carve-out did not fire and the recovery controller started a
+        # fresh session instead of resuming the killed one.
+        #
+        # The fix: reuse ``self._find_typed_watchdog_cause`` (which
+        # already walks the full chain via ``__cause__`` /
+        # ``__context__`` with a visited-set cycle guard) so the typed
+        # cause is reachable at ANY chain depth. The categorization
+        # pass above already calls this helper, so the typed-cause
+        # walk is a no-op for the second invocation but the
+        # correctness guarantee (reaching the typed cause at two hops
+        # deep) is preserved end-to-end.
         child_alive: bool | None = None
         resumable_session_id: str | None = None
         if exc_obj is not None:
-            direct_cause = cast("BaseException | None", getattr(exc_obj, "__cause__", None))
-            if isinstance(direct_cause, IdleWatchdogKilledError):
-                child_alive = direct_cause.child_alive
+            typed_cause = self._find_typed_watchdog_cause(exc_obj)
+            if isinstance(typed_cause, IdleWatchdogKilledError):
+                child_alive = typed_cause.child_alive
                 cause_session_id: str | None = getattr(
-                    direct_cause, "resumable_session_id", None
+                    typed_cause, "resumable_session_id", None
                 )
                 if isinstance(cause_session_id, str) and cause_session_id:
                     resumable_session_id = cause_session_id
@@ -737,6 +760,19 @@ class FailureClassifier:
                         exc_obj is None
                         or type(exc_obj).__name__
                         in {"AgentInvocationError", "AgentInactivityTimeoutError"}
+                    )
+                    # Suppress the text-based fallback when the watchdog
+                    # provided a typed ``child_alive=True`` signal for a
+                    # ``no_progress_quiet`` fire: the typed signal is
+                    # authoritative (live child = defense-in-depth;
+                    # ``is_unavailable=False`` per
+                    # ``_classify_unavailability_reason``), so allowing
+                    # the text fallback to flip it to ``True`` would
+                    # collapse the typed Rule 1 path back to the
+                    # text-based Rule 2 path the gate refinement was
+                    # designed to avoid.
+                    and not (
+                        watchdog_reason == "no_progress_quiet" and child_alive is True
                     )
                     and (
                         _is_unavailable_agent_message(raw_message)

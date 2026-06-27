@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading as _threading
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -575,19 +575,20 @@ def _consume_attempt_output(
 
     # R1 / R5 (Trustworthy Idle Watchdog spec): build the per-invocation
     # ``SubagentPidRegistry`` once at the orchestrator level so the
-    # SAME registry reaches the parser layer
-    # (``stream_parsed_agent_activity`` -> ``_resolve_parser`` ->
-    # ``get_parser`` -> ``parser._subagent_pid_registry``). The
-    # strategy layer (``invoke_agent`` -> ``strategy_for_command``)
-    # builds its own registry internally for backward compat with
-    # test fakes that use the canonical ``invoke_agent(config,
-    # prompt_file, options=...)`` signature; the parser-side
-    # registration hook is the new addition wired by this change.
-    # Without the parser-side wiring, the parser's structured-event
-    # registration hook fires but the registrations never reach the
-    # watchdog's filtered count -- the watchdog either undercounts
-    # (no parser registrations reach the strategy) or miscounts
-    # (the parser registers into an orphan registry).
+    # SAME registry reaches BOTH the strategy layer
+    # (``invoke_agent`` -> ``strategy_for_command``) AND the parser
+    # layer (``stream_parsed_agent_activity`` -> ``_resolve_parser``
+    # -> ``get_parser`` -> ``parser._subagent_pid_registry``). The
+    # registry is threaded into ``InvokeOptions`` via the new
+    # ``subagent_pid_registry`` / ``subagent_pid_source`` fields so
+    # ``invoke_agent`` consumes the SAME registry instead of
+    # building a fresh one internally. Without this wiring, the
+    # parser's structured-event registration hook fires into one
+    # registry but the strategy layer's filtered seam sees a
+    # DIFFERENT registry -- the watchdog-visible filtered
+    # subagent count is desynchronized from the parser's
+    # authoritative registration set, and the R1 filtered count
+    # contract is silently violated.
     _raw_transport: object = getattr(ctx.agent_config, "transport", None)
     _agent_config_transport: AgentTransport = (
         _raw_transport if isinstance(_raw_transport, AgentTransport) else AgentTransport.GENERIC
@@ -597,6 +598,16 @@ def _consume_attempt_output(
         _agent_registry.build_subagent_pid_registry(_agent_config_transport)
     )
     _subagent_source_label = _agent_config_transport.value
+    # Thread the shared registry + per-transport source through
+    # ``InvokeOptions`` so ``invoke_agent`` consumes the SAME
+    # registry instance. ``replace`` produces a fresh InvokeOptions
+    # (the dataclass is frozen=True) without mutating the caller's
+    # copy.
+    options = replace(
+        options,
+        subagent_pid_registry=_subagent_pid_registry,
+        subagent_pid_source=_subagent_pid_source,
+    )
 
     def _run_invocation() -> None:
         output_lines = ctx.deps.invoke_agent(ctx.agent_config, attempt_prompt_file, options=options)
