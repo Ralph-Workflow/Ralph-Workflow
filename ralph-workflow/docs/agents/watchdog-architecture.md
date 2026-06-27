@@ -86,7 +86,7 @@ the recovery controller marks the agent on cooldown via
 available agent in the chain (cyclic, `wrap=True` re-arming). The
 controller's `_handle_retry_progression` enters the
 `next_available_index is not None` branch at
-`controller.py:934-989`.
+`controller.py:931-986`.
 
 The pipeline NEVER exits because of unavailability. When all agents
 in the chain are on cooldown, the controller enters the wait state
@@ -95,13 +95,13 @@ in the chain are on cooldown, the controller enters the wait state
 ## Never-exit invariant
 
 The recovery controller's `_handle_retry_progression` has the
-all-agents-unavailable branch at `controller.py:991-1024` that sets
+all-agents-unavailable branch at `controller.py:989-1020` that sets
 `state.is_waiting_state=True` and
 `state.last_retry_delay_ms=<earliest_cooldown>` and does NOT call
 `_enter_phase_failed`. The run loop (`ralph/pipeline/run_loop.py`)
 sleeps on `last_retry_delay_ms` and re-enters the same phase. The
 `wrap=True` re-arming in `_next_available_agent_index`
-(`controller.py:1038-1058`) reconsiders earlier agents whose cooldown
+(`controller.py:1031-1058`) reconsiders earlier agents whose cooldown
 has expired.
 
 NO agent is permanently skipped. Every agent is recoverable via
@@ -111,7 +111,7 @@ THEN RETRY with the agent that comes off cooldown."
 
 The pipeline may exit ONLY via the BUDGET-EXHAUSTED path — when an
 agent's budget is exhausted AND no other agent is available. This
-is the only path to `_enter_phase_failed` (`controller.py:1027`).
+is the only path to `_enter_phase_failed` (`controller.py:1021`).
 
 The never-exit invariant is now also enforced at import time by
 `_assert_never_exit_invariant` in `ralph/recovery/controller.py`
