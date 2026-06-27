@@ -224,6 +224,38 @@ def sibling_agent_skill_roots() -> tuple[AgentSkillRoot, ...]:
 
 _PROJECT_CANONICAL_DIR_SEGMENTS: tuple[str, ...] = (".opencode", "skills")
 
+# Canonical FIVE project-scope skill-root prefix strings.
+#
+# This is the single source of truth consumed by:
+#   * ralph.skills._auto_commit.commit_skill_updates -- restrictive allowlist
+#     for the auto-commit diff so the agent's own commit never inherits
+#     skill-tree changes (the "invisible to the agent" property).
+#   * ralph.git.commit_cleanup.untrack_engine_internal_files -- early-skip
+#     optimization for the symlink-WARNING noise on tracked skill symlinks.
+#   * ralph.testing.audit_skill_auto_commit -- AST regression pin.
+#
+# The five roots are EXACTLY the project-scope discovery roots documented in
+# the upstream skills-configuration doc (the FIVE canonical + project-scope
+# pair):
+#   * .opencode/skills/            -- canonical project-scope root
+#   * .agents/skills/              -- pi project-scope root (PA-007)
+#   * .claude/skills/              -- Claude Code project-scope root
+#   * .codex/skills/               -- Codex project-scope root
+#   * .gemini/antigravity-cli/skills/ -- AGY project-scope root
+#
+# Adding or removing a root MUST update this constant AND
+# ralph.testing.audit_skill_auto_commit in the same commit -- the audit
+# pins the literal-string equality of this set.
+_SKILL_ROOT_PREFIXES: frozenset[str] = frozenset(
+    {
+        ".opencode/skills/",
+        ".agents/skills/",
+        ".claude/skills/",
+        ".codex/skills/",
+        ".gemini/antigravity-cli/skills/",
+    }
+)
+
 
 def project_skill_root(workspace_root: Path) -> Path:
     """Return the project-canonical skill directory for the given workspace.
@@ -304,6 +336,7 @@ def project_sibling_skill_roots(
 
 __all__ = [
     "AGENT_SKILL_ROOTS",
+    "_SKILL_ROOT_PREFIXES",
     "AgentSkillRoot",
     "ProjectAgentSkillRoot",
     "agent_skill_roots",

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from git import GitCommandError, Repo
+from loguru import logger
 
 from ralph.git import commit_cleanup as cc_module
 from ralph.git import operations as ops
@@ -1002,4 +1003,204 @@ def test_untrack_engine_internal_files_handles_non_git_directory(tmp_path: Path)
     assert untracked == [], (
         f"Helper must return [] for a non-git directory, got: {untracked!r}"
     )
+
+
+@pytest.mark.timeout_seconds(5)
+def test_untrack_engine_internal_files_skills_silent(
+    tmp_git_repo: Path,
+) -> None:
+    """wt-025 / AC-03 leaf contract: tracked skill symlinks under the FIVE roots
+    are early-skipped BEFORE the symlink-WARNING block, so the helper emits
+    ZERO WARNING-level log lines when the only ``.agent/``-ish tracked paths
+    are intentional project-scope skill symlinks.
+
+    Pre-stages a tracked ``.agents/skills/<name>`` symlink (intentional by
+    design; see commit ``e4b47d2fb``) and asserts:
+
+      * the helper returns ``[]`` (the symlink is NOT untracked),
+      * no WARNING-level log message was emitted, and
+      * the symlink is STILL in ``git ls-files --cached`` (early-skip
+        preserved the entry).
+    """
+    canonical_skill = tmp_git_repo / ".opencode" / "skills" / "brainstorming"
+    canonical_skill.mkdir(parents=True, exist_ok=True)
+    canonical_skill.joinpath("SKILL.md").write_text(
+        "# brainstorming skill\n", encoding="utf-8"
+    )
+    sibling_skill = tmp_git_repo / ".agents" / "skills" / "brainstorming"
+    sibling_skill.parent.mkdir(parents=True, exist_ok=True)
+    sibling_skill.symlink_to(canonical_skill, target_is_directory=True)
+
+    _track_and_commit(tmp_git_repo, ".opencode/skills/brainstorming/SKILL.md")
+    _track_and_commit(tmp_git_repo, ".agents/skills/brainstorming")
+
+    captured_warnings: list[str] = []
+    sink_id = logger.add(
+        captured_warnings.append, level="WARNING", format="{message}"
+    )
+    try:
+        # Predicate accepts ONLY the .agents/skills/* path (which is the
+        # one that would historically fire the symlink-WARNING). The test
+        # pins that the skill-root early-skip runs BEFORE the predicate gate,
+        # not after.
+        def _engine_path(p: str) -> bool:
+            return p == ".agents/skills/brainstorming"
+
+        untracked = untrack_engine_internal_files(tmp_git_repo, _engine_path)
+    finally:
+        logger.remove(sink_id)
+
+    assert untracked == [], (
+        f"Skill symlinks must NOT be untracked; got: {untracked!r}"
+    )
+    assert captured_warnings == [], (
+        f"No WARNING should be emitted for tracked skill-root paths; "
+        f"got: {captured_warnings!r}"
+    )
+
+    repo = Repo(tmp_git_repo)
+    try:
+        cached = set(repo.git.ls_files("--cached").splitlines())
+        assert ".agents/skills/brainstorming" in cached, (
+            "Tracked skill-root symlink MUST remain in git ls-files --cached "
+            "after the early-skip"
+        )
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(10)
+def test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks(
+    tmp_git_repo: Path,
+) -> None:
+    """wt-025 / AC-03 / PROMPT.md: ZERO WARNING lines for tracked skill symlinks.
+
+    PROMPT.md logs a wall of WARNING lines:
+
+        WARNING | ralph.git.commit_cleanup:untrack_engine_internal_files:183
+        - Refusing to git rm --cached symlink under tracked engine-internal path: ...
+
+    This test pins the FIX at the unit-test layer: when the helper is
+    invoked with a mixed index containing TWO tracked project-scope skill
+    symlinks (under TWO different FIVE-roots) AND a tracked engine-internal
+    file under ``.agent/PROMPT.md``, the helper must
+
+      (1) NOT emit any WARNING message matching
+          ``Refusing to git rm --cached symlink under tracked engine-internal path``
+          -- the early-skip block runs BEFORE the symlink-WARNING block, so
+          the skill symlinks never reach the WARNING branch.
+
+      (2) emit AT LEAST ONE DEBUG message containing
+          ``Skipping tracked skill-root path`` -- proves the early-skip
+          actually fired for one of the FIVE roots. A WARNING-level loguru
+          sink would silently drop this DEBUG message (the PA-005 bug),
+          so this test installs a SINGLE DEBUG-level sink.
+
+      (3) preserve the TWO FIVE-root symlinks in ``git ls-files --cached``
+          AND remove the engine-internal ``.agent/PROMPT.md`` path.
+
+    The DEBUG sink is essential: the existing WARNING-sink test
+    ``test_untrack_engine_internal_files_skills_silent`` only proves the
+    absence of WARNING lines but cannot prove the early-skip fired (a
+    WARNING sink discards DEBUG messages). The combined contract
+    (WARNING-absent AND DEBUG-present) is the canonical structural pin.
+    """
+    # Stage TWO tracked project-scope skill symlinks under TWO different FIVE roots.
+    canonical_a = tmp_git_repo / ".opencode" / "skills" / "coding-standards"
+    canonical_a.mkdir(parents=True, exist_ok=True)
+    canonical_a.joinpath("SKILL.md").write_text(
+        "# coding-standards skill\n", encoding="utf-8"
+    )
+    sibling_a = tmp_git_repo / ".agents" / "skills" / "coding-standards"
+    sibling_a.parent.mkdir(parents=True, exist_ok=True)
+    sibling_a.symlink_to(canonical_a, target_is_directory=True)
+
+    canonical_b = tmp_git_repo / ".opencode" / "skills" / "brainstorming"
+    canonical_b.mkdir(parents=True, exist_ok=True)
+    canonical_b.joinpath("SKILL.md").write_text(
+        "# brainstorming skill\n", encoding="utf-8"
+    )
+    # The second FIVE-root sibling is the canonical itself (not a sibling symlink),
+    # which exercises the ``_SKILL_ROOT_PREFIXES`` early-skip on a non-symlink entry too.
+    # This is the broader case the audit pins: ANY path under a FIVE root gets skipped.
+
+    _track_and_commit(tmp_git_repo, ".opencode/skills/coding-standards/SKILL.md")
+    _track_and_commit(tmp_git_repo, ".agents/skills/coding-standards")
+    _track_and_commit(tmp_git_repo, ".opencode/skills/brainstorming/SKILL.md")
+
+    # Stage ONE tracked engine-internal file so the helper has a real
+    # ``git rm --cached`` target -- this pins that the helper still runs
+    # the engine-internal removal branch on the SAME invocation that
+    # skipped the skill symlinks.
+    prompt_path = tmp_git_repo / ".agent" / "PROMPT.md"
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text("# prompt\n", encoding="utf-8")
+    _track_and_commit(tmp_git_repo, ".agent/PROMPT.md")
+
+    # Install a SINGLE DEBUG-level sink (NOT WARNING -- a WARNING sink would
+    # silently drop the DEBUG-level 'Skipping tracked skill-root path'
+    # message and the positive assertion would be vacuous). The
+    # ``format='{message}'`` keeps the captured list as bare strings.
+    captured: list[str] = []
+    sink_id = logger.add(captured.append, level="DEBUG", format="{message}")
+    try:
+        def _engine_path(p: str) -> bool:
+            return p == ".agent/PROMPT.md"
+
+        untracked = untrack_engine_internal_files(tmp_git_repo, _engine_path)
+    finally:
+        logger.remove(sink_id)
+
+    # Assertion (1): NO captured message matches the WARNING line from PROMPT.md.
+    offending = [
+        msg
+        for msg in captured
+        if "Refusing to git rm --cached symlink under tracked engine-internal path" in msg
+    ]
+    assert offending == [], (
+        f"Helper must NOT emit the WARNING line for tracked skill symlinks; "
+        f"got: {offending!r}"
+    )
+
+    # Assertion (2): AT LEAST ONE captured DEBUG message contains the early-skip
+    # substring -- proves the early-skip block fired. Without a DEBUG sink,
+    # this assertion would be vacuous (the WARNING sink would discard DEBUGs).
+    early_skip_messages = [
+        msg for msg in captured if "Skipping tracked skill-root path" in msg
+    ]
+    assert early_skip_messages, (
+        f"Early-skip block MUST emit at least one DEBUG message containing "
+        f"'Skipping tracked skill-root path'; captured: {captured!r}"
+    )
+
+    # Assertion (3): the helper still removed the engine-internal path on the
+    # SAME invocation that skipped the skill symlinks (no over-correction).
+    assert untracked == [".agent/PROMPT.md"], (
+        f"Engine-internal ``.agent/PROMPT.md`` MUST be untracked; got: {untracked!r}"
+    )
+
+    # Assertion (4): the FIVE-root symlinks remain in the index AND the
+    # engine-internal path is gone. Use ``git ls-files --cached`` (the
+    # canonical contract) -- not ``Repo.index.entries`` with a bare-path
+    # lookup, which can drop the entry on macOS symlink indirection.
+    repo = Repo(tmp_git_repo)
+    try:
+        cached_paths = set(repo.git.ls_files("--cached").splitlines())
+        assert ".agents/skills/coding-standards" in cached_paths, (
+            "Tracked FIVE-root symlink MUST remain in git ls-files --cached; "
+            f"got: {cached_paths!r}"
+        )
+        assert ".opencode/skills/coding-standards/SKILL.md" in cached_paths, (
+            "Tracked FIVE-root canonical file MUST remain in git ls-files --cached; "
+            f"got: {cached_paths!r}"
+        )
+        assert ".opencode/skills/brainstorming/SKILL.md" in cached_paths, (
+            "Tracked FIVE-root canonical file MUST remain in git ls-files --cached; "
+            f"got: {cached_paths!r}"
+        )
+        assert ".agent/PROMPT.md" not in cached_paths, (
+            "Tracked engine-internal file MUST be removed from git ls-files --cached"
+        )
+    finally:
+        repo.close()
 

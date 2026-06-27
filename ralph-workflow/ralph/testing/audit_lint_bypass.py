@@ -150,6 +150,15 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     # audit_agent_module_state.py: SIM103 inlined the boolean, no leftover.
     # test_audit_agent_module_state.py: lazy import keeps the test self-contained.
     ("test_audit_agent_module_state", "PLC0415"),
+    # wt-025 auto-commit skill: lazy import of git.Repo and stage_files
+    # defers the import until a real call (mirrors the existing
+    # commit_cleanup / runner pattern; both are in this allowlist).
+    ("_auto_commit", "PLC0415"),
+    # wt-025 auto-commit audit: AST walker over the untrack_engine_internal_files
+    # function has 15+ branches because of the nested search for the
+    # early-skip block AND the WARNING block; the AST walk is inherently
+    # branchy and refactoring it would obscure the placement check.
+    ("audit_skill_auto_commit", "PLR0912"),
 }
 
 # Files to skip entirely (test fixtures, generated code, etc.).

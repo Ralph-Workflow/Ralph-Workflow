@@ -178,6 +178,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="resource lifecycle audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_skill_auto_commit"),
+                returncode=0,
+                stdout="skill auto-commit audit ok\n",
+            ),
         }
     )
 
@@ -203,6 +209,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("uv", ("run", "python", "-m", "ralph.testing.audit_agent_internal_paths")),
         ("python3", _SOCIAL_PROOF_ARGS),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")),
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -221,6 +228,7 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[14][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[15][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[16][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[17][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
@@ -422,6 +430,12 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="resource lifecycle audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_skill_auto_commit"),
+                returncode=0,
+                stdout="skill auto-commit audit ok\n",
+            ),
         }
     )
 
@@ -431,7 +445,7 @@ def test_run_verify_single_step_within_budget(
     # 10=parallelization_dormant audit, 11=artifact_submission_canonical_path audit,
     # 12=agent_registry_sync audit, 13=agent_module_state audit,
     # 14=agent_internal_paths audit, 15=social-proof gate,
-    # 16=resource_lifecycle audit).
+    # 16=resource_lifecycle audit, 17=skill_auto_commit audit).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
     # all other steps take 0s.
     times = [
@@ -440,6 +454,8 @@ def test_run_verify_single_step_within_budget(
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -721,12 +737,19 @@ def test_run_verify_non_test_steps_not_counted(
                 returncode=0,
                 stdout="resource lifecycle audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_skill_auto_commit"),
+                returncode=0,
+                stdout="skill auto-commit audit ok\n",
+            ),
         }
     )
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
     # Seventeen steps (ruff, mypy, make test, twelve audits, social-proof gate,
-    # resource_lifecycle audit) x 2 monotonic calls per step = 34 entries.
+    # resource_lifecycle audit, skill_auto_commit audit) x 2 monotonic calls per
+    # step = 36 entries.
     times = [
         0.0,
         100.0,
@@ -762,6 +785,9 @@ def test_run_verify_non_test_steps_not_counted(
         1600.0,
         1600.0,
         1700.0,
+        1700.0,
+        1800.0,
+        1800.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 

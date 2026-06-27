@@ -222,6 +222,21 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # wt-025 / AC-01, AC-04, AC-05: AST + literal-string audit that
+        # pins the deterministic skill-update auto-commit contract
+        # (``chore(skills): sync baseline bundle`` subject, the FIVE
+        # skill-root prefixes, AST placement of the early-skip in
+        # commit_cleanup.py, existence of the new helper module).
+        # Appended LAST so the index-based timeout assertions in
+        # tests/test_verify.py are not shifted; NOT a budget-tracked
+        # step (it does NOT count against _TOTAL_TEST_BUDGET_SECONDS --
+        # the immutable 60-second combined budget is preserved).
+        "skill auto-commit audit (audit_skill_auto_commit)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

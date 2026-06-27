@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from git import Repo
+from loguru import logger
 
 from ralph.config import bootstrap
 from ralph.mcp.artifacts._commit_cleanup import CommitCleanup
@@ -2906,4 +2907,69 @@ def test_auto_seed_atomic_append_handles_symlinked_target(
     assert len(resulting) >= 0, (
         f"Helper must produce SOME bytes (either replaced target or via the "
         f"symlink); got: {resulting!r}"
+    )
+
+
+@pytest.mark.timeout_seconds(10)
+def test_handle_commit_cleanup_phase_silent_on_tracked_skill_symlinks(
+    tmp_git_repo: Path,
+) -> None:
+    """PA-003 closure / AC-03 phase-level contract.
+
+    The leaf-level WARNING-free test pins the helper directly. This test
+    pins the SAME contract at the production-phase boundary
+    (``handle_commit_cleanup_phase``) -- which means the production log
+    is WARNING-free end-to-end, not only at the leaf.
+
+    Setup:
+      * materialize one baseline skill under
+        ``.opencode/skills/brainstorming/SKILL.md`` (canonical)
+      * create ``.agents/skills/brainstorming`` as a symlink to the
+        canonical (project-scope sibling)
+      * track and commit BOTH entries via per-test git operations
+      * attach a loguru WARNING-level sink to capture any WARNING emitted
+        during the phase call
+
+    Asserts:
+      * the phase returns ``[PipelineEvent.AGENT_SUCCESS]`` (no failure)
+      * ``captured_warnings`` is EMPTY -- zero WARNING-level log lines
+        fired during the phase (the early-skip consumed the skill-root
+        path before any WARNING could be logged)
+    """
+    loguru_logger = logger
+
+    canonical_skill = tmp_git_repo / ".opencode" / "skills" / "brainstorming"
+    canonical_skill.mkdir(parents=True, exist_ok=True)
+    canonical_skill.joinpath("SKILL.md").write_text(
+        "# brainstorming skill\n", encoding="utf-8"
+    )
+    sibling_skill = tmp_git_repo / ".agents" / "skills" / "brainstorming"
+    sibling_skill.parent.mkdir(parents=True, exist_ok=True)
+    sibling_skill.symlink_to(canonical_skill, target_is_directory=True)
+
+    _track_and_commit(tmp_git_repo, ".opencode/skills/brainstorming/SKILL.md")
+    _track_and_commit(tmp_git_repo, ".agents/skills/brainstorming")
+
+    captured_warnings: list[str] = []
+    sink_id = loguru_logger.add(
+        captured_warnings.append, level="WARNING", format="{message}"
+    )
+    try:
+        result = _invoke_cleanup(
+            FsWorkspace(tmp_git_repo),
+            {
+                "analysis_complete": True,
+                "actions": [],
+            },
+        )
+    finally:
+        loguru_logger.remove(sink_id)
+
+    assert result == [PipelineEvent.AGENT_SUCCESS], (
+        f"Phase must succeed when only skill-root symlinks are tracked; got: {result!r}"
+    )
+    assert captured_warnings == [], (
+        f"Zero WARNING-level log lines expected from handle_commit_cleanup_phase "
+        f"when the only tracked engine-internal-ish paths are skill symlinks; "
+        f"got: {captured_warnings!r}"
     )

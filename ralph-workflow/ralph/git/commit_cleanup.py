@@ -128,6 +128,15 @@ def untrack_engine_internal_files(
       ``Path(repo_root / path).is_symlink()``. ``git rm`` follows
       symlinks, so a symlink under ``.agent/`` could stage the
       symlink target (which may live outside the repo).
+    * The FIVE canonical project-scope skill-root prefixes
+      (``.opencode/skills/``, ``.agents/skills/``, ``.claude/skills/``,
+      ``.codex/skills/``, ``.gemini/antigravity-cli/skills/``) are
+      early-skipped BEFORE the symlink-WARNING block. Skills are tracked
+      by design (see commit ``e4b47d2fb``), so a symlink under any of
+      those roots is intentional and the WARNING is noise. This does
+      NOT widen the safety surface: the canonical
+      ``is_agent_internal_path`` predicate is unchanged and
+      ``is_internal_path`` still gates the ``git rm --cached`` call.
     * ``Repo`` is opened in a ``try/finally`` and closed on every
       exit path, mirroring ``delete_file_from_repo``.
     * Per-path failures are wrapped in ``try/except Exception`` so a
@@ -172,12 +181,29 @@ def untrack_engine_internal_files(
 
     untracked: list[str] = []
     try:
+        # Lazy import to avoid circular dependency; mirrors the pattern in
+        # ``ralph.phases._agent_internal_paths``. The FIVE canonical skill
+        # roots are tracked by design (see commit ``e4b47d2fb``), so we
+        # early-skip them BEFORE the symlink-WARNING block: a tracked
+        # ``.agents/skills/<name>`` symlink is intentional, not a leak.
+        from ralph.skills._agent_paths import (  # noqa: PLC0415
+            _SKILL_ROOT_PREFIXES,
+        )
+
         for entry_key in list(repo.index.entries.keys()):
             entry_path = entry_key[0] if isinstance(entry_key, tuple) else entry_key
             entry_path_str = str(entry_path)
             try:
                 working_tree_path = repo_root_path / entry_path_str
             except TypeError:
+                continue
+            if any(
+                entry_path_str.startswith(prefix) for prefix in _SKILL_ROOT_PREFIXES
+            ):
+                logger.debug(
+                    "Skipping tracked skill-root path (canonical project-scope skills): {}",
+                    entry_path_str,
+                )
                 continue
             if working_tree_path.is_symlink():
                 logger.warning(
