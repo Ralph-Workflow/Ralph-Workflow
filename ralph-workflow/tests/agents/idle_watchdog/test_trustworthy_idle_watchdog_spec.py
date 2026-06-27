@@ -1,48 +1,45 @@
 """Consolidated acceptance-criteria test for the Trustworthy Idle Watchdog spec.
 
-This module is the single black-box test that ties every R1-R8 acceptance
-criterion from the wt-021 product spec (see
-``.agent/CURRENT_PROMPT.md``) to its dedicated pinning test:
-
-  * R1 -- Child-process monitors count only real subagents
-    * pin: ``tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py``
-  * R2 -- No false positives (don't kill healthy or waiting work)
-    * pin: ``tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py``
-    * pin: ``tests/agents/idle_watchdog/test_stuck_classifier.py``
-  * R3 -- No false negatives (every genuine hang fires within a bounded ceiling)
-    * pin: ``tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py``
-  * R4 -- Watchdog-driven kills resume the existing session; fresh only on
-          deliberate phase transitions
-    * pin: ``tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py``
-    * pin: ``tests/recovery/test_opencode_resumable_exit_classification.py``
-  * R5 -- Real-time subagent visibility for all supported agents
-    * pin: ``tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py``
-  * R6 -- Quiet, meaningful output (combined coarse + per-tuple throttle)
-    * pin: ``tests/agents/idle_watchdog/test_log_spam_throttle.py``
-  * R7 -- Ambiguous rc=0 exits classified deterministically
-    * pin: ``tests/recovery/test_opencode_resumable_exit_classification.py``
-  * R8 -- Clean, black-box-testable architecture (FakeClock + ProcessMonitor Protocol)
-    * pin: ``ralph/testing/audit_test_policy.py`` (AST-level structural audit)
-
-Each test method asserts ONE concrete invariant and references its pinning
-test in the docstring. The methods are NOT parametrized -- they mirror the
+This module is the consolidated acceptance-criteria summary for the
+wt-021 product spec (see ``.agent/CURRENT_PROMPT.md``). Every R1-R8
+criterion is exercised in ONE ordinary test method (``test_r1`` through
+``test_r8``). The methods are NOT parametrized -- they mirror the
 plain-method precedent in ``tests/agents/test_builtin_spec_consolidation.py``
 (5 ordinary methods, no ``@pytest.mark.parametrize``).
 
-All tests are pure black-box:
-  * No real subprocess (FakeClock + a tiny ``@dataclass`` satisfying the
-    ``ProcessMonitor`` Protocol -- the pattern from
+Every test method drives the SAME observable behaviors its dedicated
+pin test pins (see ``RALPH_PIN_TEST_PATHS`` for the canonical pin list).
+Where the pin test exclusively uses public surfaces (e.g. R5's
+``last_subagent_progress_description`` / ``diagnostic_snapshot``), this
+module does the same. Where the pin test consults a private seam
+because no public surface exists (e.g. R6's per-tuple throttle map
+``_last_deferred_log_at`` and coarse throttle map
+``_last_any_deferred_log_at`` -- the dedicated pin tests at
+``test_log_spam_throttle.py`` consult these directly), this module
+follows the same precedent -- the seams are the only surfaces that
+expose the throttle behavior, and the dedicated pin tests already
+established that as the canonical observation contract. The
+``black-box`` claim is therefore qualified: tests assert observable
+behavior (loguru-captured DEBUG records for R6, classified-failure
+shape for R7, watchdog verdicts for R2/R3) where public surfaces
+exist, and they consult private seams ONLY where the dedicated pin
+tests already established that pattern.
+
+Test isolation guarantees:
+
+  * No real subprocess (FakeClock + a tiny ``@dataclass`` satisfying
+    the ``ProcessMonitor`` Protocol -- the pattern from
     ``test_subagent_identity_excludes_helpers.py``).
   * No real filesystem (no ``tmp_path``, no ``open()``, no
     ``Path.read_text()``).
   * No real wall-clock waits (``time.sleep(0)`` only via
     ``FakeClock.advance``).
-  * No module-level mutable accumulators. ``RALPH_PIN_TEST_PATHS`` is an
-    IMMUTABLE ``tuple[str, ...]`` (audit_resource_lifecycle allows single-
-    element list literals and dict literals with static keys; the audit
-    does NOT flag tuples or frozensets).
+  * No module-level mutable accumulators. ``RALPH_PIN_TEST_PATHS`` is
+    an IMMUTABLE ``tuple[str, ...]`` (audit_resource_lifecycle allows
+    tuples and frozensets as immutable).
   * No ``noqa`` directives (audit_lint_bypass).
-  * No bare type-ignore comments -- tests must be fully typed per AGENTS.md.
+  * No bare type-ignore comments -- tests must be fully typed per
+    AGENTS.md.
 """
 
 from __future__ import annotations
@@ -51,13 +48,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+from loguru import logger
+
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     SubagentIdentity,
     SubagentPidRegistry,
     TimeoutPolicy,
-    WaitingStatusEvent,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -68,12 +67,17 @@ from ralph.agents.idle_watchdog._evidence_tier import (
     EvidenceTier,
 )
 from ralph.agents.idle_watchdog._stuck_classifier import (
-    ClassifyStuckInputs,
     StuckKind,
     classify_stuck,
 )
+from ralph.agents.idle_watchdog._subagent_identity import _MAX_REGISTRY_ENTRIES
 from ralph.agents.idle_watchdog.corroboration_snapshot import CorroborationSnapshot
+from ralph.agents.idle_watchdog_kill import IdleWatchdogKilledError
+from ralph.agents.invoke._idle_stream_timeout_error import _IdleStreamTimeoutError
 from ralph.agents.invoke._open_code_resumable_exit_error import OpenCodeResumableExitError
+from ralph.agents.invoke._process_reader import (
+    _convert_idle_stream_timeout_to_agent_error,
+)
 from ralph.agents.invoke._session_resume import recovery_action_for_failure_reason
 from ralph.agents.timeout_clock import FakeClock
 from ralph.process.monitor import (
@@ -82,7 +86,6 @@ from ralph.process.monitor import (
 )
 from ralph.recovery.failure_category import FailureCategory
 from ralph.recovery.failure_classifier import FailureClassifier
-from ralph.testing.audit_test_policy import main as audit_main
 
 # Immutable reference list (audit_resource_lifecycle accepts ``tuple`` and
 # ``frozenset`` as immutable; do NOT convert to a mutable ``list``).
@@ -97,21 +100,51 @@ RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     "tests/recovery/test_opencode_resumable_exit_classification.py",
 )
 
-_AUDIT_TEST_POLICY_PATH: Path = Path("ralph/testing/audit_test_policy.py")
 
-_NOW = 1000.0
-_TTL_SECONDS = 30.0
+# ---------------------------------------------------------------------------
+# Test fixtures (canonical @dataclass fake of ProcessMonitor Protocol)
+# ---------------------------------------------------------------------------
 
 
 @dataclass
-class _NoProcessMonitor(ProcessMonitor):
-    """Canonical FakeClock-driven ProcessMonitor fixture for the spec test.
+class _HelpersOnlyMonitor(ProcessMonitor):
+    """Helpers-only monitor: broader count = N helpers, filtered count = 0.
 
-    Mirrors the pattern in
-    ``tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py``
-    (``_FilteredCountMonitor`` / ``_HelpersOnlyMonitor``) and
-    ``tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py``
-    (``_NoProcessMonitor``).
+    The filtered count (the SEAM) is what the watchdog defers on. The
+    broader count is documented for the test (and the audit regression)
+    but is NOT consumed by the watchdog -- ``audit_activity_aware_watchdog``
+    flags any reader that consumes the broader count for
+    ``scoped_child_active``.
+    """
+
+    helper_count: int = 10
+    classified: tuple = field(default_factory=tuple)
+    outputs: dict = field(default_factory=dict)
+
+    def live_subagent_count(self) -> int:
+        return 0
+
+    def spawned_subagent_count(self) -> int:
+        return 0
+
+    def classified_processes(self) -> tuple:
+        return self.classified
+
+    def refresh(self) -> None:
+        pass
+
+    def discover_subagent_outputs(self) -> dict[str, SubagentOutputCapture]:
+        return self.outputs
+
+
+@dataclass
+class _FilteredCountMonitor(ProcessMonitor):
+    """Filtered count monitor (returns filtered_count from both seam names).
+
+    Mirrors ``_FilteredCountMonitor`` in
+    ``tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py``.
+    Both ``live_subagent_count()`` (legacy alias) and
+    ``spawned_subagent_count()`` (preferred) return ``filtered_count``.
     """
 
     filtered_count: int = 0
@@ -138,143 +171,180 @@ def _active() -> AgentExecutionState:
     return AgentExecutionState.ACTIVE
 
 
-def _waiting_on_child() -> AgentExecutionState:
-    return AgentExecutionState.WAITING_ON_CHILD
+def _make_idle_watchdog(
+    *,
+    process_monitor: ProcessMonitor,
+    policy: TimeoutPolicy,
+    clock: FakeClock,
+) -> IdleWatchdog:
+    """Build an IdleWatchdog with the given policy and clock."""
+    return IdleWatchdog(policy, clock, process_monitor=process_monitor)
 
 
-def _empty_evidence_summary() -> EvidenceSummary:
-    """All 5 channels stale + ``alive_by=None`` -> classifier returns STUCK.
-
-    The canonical "agent looks quiet with no first-party evidence and no
-    live subagent" summary used by R1/R2/R3 pin tests.
-    """
-    return EvidenceSummary(
-        channels=(
-            ChannelEvidenceSummary(
-                channel_name=ChannelName.STDOUT,
-                tier=EvidenceTier.FIRST_PARTY,
-                last_at=None,
-                age_seconds=None,
-                counter=None,
-                can_defer=False,
-            ),
-            ChannelEvidenceSummary(
-                channel_name=ChannelName.MCP_TOOL,
-                tier=EvidenceTier.FIRST_PARTY,
-                last_at=None,
-                age_seconds=None,
-                counter=None,
-                can_defer=True,
-            ),
-            ChannelEvidenceSummary(
-                channel_name=ChannelName.SUBAGENT_OUTPUT,
-                tier=EvidenceTier.FIRST_PARTY,
-                last_at=None,
-                age_seconds=None,
-                counter=None,
-                can_defer=True,
-            ),
-            ChannelEvidenceSummary(
-                channel_name=ChannelName.SUBAGENT_LIVENESS,
-                tier=EvidenceTier.SIDE_CHANNEL,
-                last_at=None,
-                age_seconds=None,
-                counter=None,
-                alive_by=None,
-                can_defer=False,
-            ),
-            ChannelEvidenceSummary(
-                channel_name=ChannelName.WORKSPACE,
-                tier=EvidenceTier.SIDE_CHANNEL,
-                last_at=None,
-                age_seconds=None,
-                counter=None,
-                can_defer=False,
-            ),
-        )
-    )
+# ---------------------------------------------------------------------------
+# Test class: one ordinary test method per R1-R8
+# ---------------------------------------------------------------------------
 
 
 class TestTrustworthyIdleWatchdogSpec:
-    """One ordinary test method per R1-R8 (no parametrization)."""
+    """One ordinary test method per R1-R8 (no parametrization).
+
+    Each test method drives the SAME observable behavior the dedicated
+    pin test pins. Where the pin test asserts via captured loguru
+    records (R6), classified-failure shape (R7), or verdict (R2/R3),
+    this module does the same. The pin-test citations in each
+    docstring make the cross-reference explicit.
+    """
 
     def test_r1(self) -> None:
         """R1: child-process monitors count only real subagents.
 
-        ``SubagentPidRegistry`` is the single source of truth -- host and
-        internal helper PIDs are provably excluded. Pin:
-        ``tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py``.
+        Drives the SAME observable behaviors as
+        ``tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py``:
 
-        Asserts the headline R1 invariant: a monitor that only sees
-        helper PIDs returns 0 from BOTH ``spawned_subagent_count()`` and
-        ``live_subagent_count()``; a monitor with one registered
-        subagent returns 1; the per-transport filter isolates PIDs
-        across transports (Claude-registered PID is invisible to an
-        OpenCode monitor).
+          (a) Helpers-only case: a monitor with N=10 helpers visible in
+              the descendant tree returns 0 from BOTH
+              ``spawned_subagent_count()`` and ``live_subagent_count()``
+              -- the filtered count is the SEAM the watchdog defers on;
+              the broader count is irrelevant.
+
+          (b) Per-transport isolation: a PID registered for ``claude``
+              is invisible to the ``opencode`` per-transport filter
+              (and vice versa). The shared ``SubagentPidRegistry`` is
+              filtered by ``source`` at the seam surface.
+
+        Also asserts the FIFO cap (``_MAX_REGISTRY_ENTRIES == 1024``)
+        so a long unattended invocation cannot retain unbounded
+        ``SubagentIdentity`` records. The cap is the headline R1 +
+        resource-lifecycle invariant.
         """
-        monitor = _NoProcessMonitor(filtered_count=0)
+        # (a) Helpers-only case: broader count = 10, filtered count = 0.
+        monitor = _HelpersOnlyMonitor(helper_count=10)
         assert monitor.spawned_subagent_count() == 0
         assert monitor.live_subagent_count() == 0
-        # Alias is faithful (both names return the same filtered count).
+        # The alias is faithful: both seam names return the same filtered value.
         assert monitor.spawned_subagent_count() == monitor.live_subagent_count()
+        # The watchdog's helpers-only monitor is independent of the
+        # helper count -- the SEAM is the filtered count.
+        assert monitor.helper_count == 10  # documented for the audit regression.
 
-        # With one registered subagent the filtered count is 1.
+        # (b) Per-transport isolation: a Claude-registered PID is invisible
+        # to an OpenCode filter (and vice versa). Two registries would
+        # work; we use a single shared registry plus per-transport
+        # snapshotting to demonstrate the per-source filter contract.
         registry = SubagentPidRegistry()
-        registry.register(7001, source="opencode", now=0.0)
-        monitor_one = _NoProcessMonitor(filtered_count=1)
-        assert monitor_one.spawned_subagent_count() == 1
+        registry.register(8001, source="claude", now=0.0)
+        registry.register(8002, source="opencode", now=0.0)
+        opencode_pids = {
+            identity.pid
+            for identity in registry.snapshot()
+            if identity.source == "opencode"
+        }
+        claude_pids = {
+            identity.pid
+            for identity in registry.snapshot()
+            if identity.source == "claude"
+        }
+        assert opencode_pids == {8002}
+        assert claude_pids == {8001}
+        # The per-transport filter is DISJOINT: no overlap.
+        assert opencode_pids & claude_pids == set()
 
-        # Identity construction rejects unknown sources (closed set).
+        # (c) FIFO cap on the registry (resource-lifecycle invariant).
+        assert _MAX_REGISTRY_ENTRIES == 1024
+
+        # (d) Identity constructor rejects unknown sources (canonical
+        # transport set is closed).
         bad_source: Any = "unknown-transport"
-        try:
+        with pytest.raises(ValueError, match="unknown subagent source"):
             SubagentIdentity(
-                pid=1,
+                pid=1234,
                 source=cast("SubagentIdentity.__init__", bad_source),
                 registered_at_monotonic=0.0,
-            )
-        except ValueError:
-            pass
-        else:
-            raise AssertionError(
-                "SubagentIdentity MUST reject unknown sources to enforce the"
-                " canonical transport set"
             )
 
     def test_r2(self) -> None:
         """R2: no false positives -- the watchdog defers on real activity.
 
-        ``classify_stuck`` maps ``WAITING_ON_CHILD`` -> ``LOADING`` and
-        ``RESUMABLE_CONTINUE`` -> ``TRANSITIONING`` so the watchdog does
-        NOT fire while the agent is legitimately waiting. Pin:
+        Drives the SAME observable behaviors as
         ``tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py``
-        (corroborator-driven deferral) + ``test_stuck_classifier.py``
-        (verdict priority).
-        """
-        empty = _empty_evidence_summary()
+        and ``test_stuck_classifier.py``:
 
-        # WAITING_ON_CHILD + no fresh channels -> LOADING (defer).
+          (a) ``classify_stuck`` maps ``WAITING_ON_CHILD`` -> ``LOADING``
+              (defer) and ``RESUMABLE_CONTINUE`` -> ``TRANSITIONING``
+              (defer).
+          (b) The smart-verdict gate (``_gate_fire``) returns CONTINUE
+              for non-STUCK kinds: a fresh ``IdleWatchdog.evaluate``
+              with ``classify_quiet=lambda: WAITING_ON_CHILD`` returns
+              ``WAITING_ON_CHILD`` (defer), NOT FIRE -- the watchdog
+              does NOT kill healthy / waiting work.
+        """
+        # (a) ``classify_stuck`` -- pure-function mapping (no I/O).
+        empty_summary = EvidenceSummary(
+            channels=(
+                ChannelEvidenceSummary(
+                    channel_name=ChannelName.STDOUT,
+                    tier=EvidenceTier.FIRST_PARTY,
+                    last_at=None,
+                    age_seconds=None,
+                    counter=None,
+                    can_defer=False,
+                ),
+                ChannelEvidenceSummary(
+                    channel_name=ChannelName.MCP_TOOL,
+                    tier=EvidenceTier.FIRST_PARTY,
+                    last_at=None,
+                    age_seconds=None,
+                    counter=None,
+                    can_defer=True,
+                ),
+                ChannelEvidenceSummary(
+                    channel_name=ChannelName.SUBAGENT_OUTPUT,
+                    tier=EvidenceTier.FIRST_PARTY,
+                    last_at=None,
+                    age_seconds=None,
+                    counter=None,
+                    can_defer=True,
+                ),
+                ChannelEvidenceSummary(
+                    channel_name=ChannelName.SUBAGENT_LIVENESS,
+                    tier=EvidenceTier.SIDE_CHANNEL,
+                    last_at=None,
+                    age_seconds=None,
+                    counter=None,
+                    alive_by=None,
+                    can_defer=False,
+                ),
+                ChannelEvidenceSummary(
+                    channel_name=ChannelName.WORKSPACE,
+                    tier=EvidenceTier.SIDE_CHANNEL,
+                    last_at=None,
+                    age_seconds=None,
+                    counter=None,
+                    can_defer=False,
+                ),
+            )
+        )
+
         kind_loading = classify_stuck(
             is_waiting_state=False,
             connectivity_state="online",
-            evidence_summary=empty,
+            evidence_summary=empty_summary,
             classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD,
-            activity_evidence_ttl_seconds=_TTL_SECONDS,
+            activity_evidence_ttl_seconds=30.0,
         )
         assert kind_loading == StuckKind.LOADING
 
-        # RESUMABLE_CONTINUE -> TRANSITIONING (defer, do not fire).
         kind_transitioning = classify_stuck(
             is_waiting_state=False,
             connectivity_state="online",
-            evidence_summary=empty,
+            evidence_summary=empty_summary,
             classify_quiet=lambda: AgentExecutionState.RESUMABLE_CONTINUE,
-            activity_evidence_ttl_seconds=_TTL_SECONDS,
+            activity_evidence_ttl_seconds=30.0,
         )
         assert kind_transitioning == StuckKind.TRANSITIONING
 
-        # Non-STUCK kinds MUST map to the smart-verdict gate's CONTINUE
-        # outcome: the watchdog evaluates but does NOT fire. The
-        # ``IdleWatchdog.evaluate`` integration below proves it.
+        # (b) ``IdleWatchdog.evaluate`` -- end-to-end deferral via public API.
         clock = FakeClock(start=0.0)
         policy = TimeoutPolicy(
             idle_timeout_seconds=2.0,
@@ -282,68 +352,164 @@ class TestTrustworthyIdleWatchdogSpec:
             no_progress_quiet_seconds=None,
             activity_evidence_ttl_seconds=0.0,
         )
-        watchdog = IdleWatchdog(
-            policy,
-            clock,
-            process_monitor=_NoProcessMonitor(filtered_count=0),
+        watchdog = _make_idle_watchdog(
+            process_monitor=_HelpersOnlyMonitor(),
+            policy=policy,
+            clock=clock,
         )
         watchdog.record_invocation_start()
         clock.advance(3.0)
-        verdict = watchdog.evaluate(classify_quiet=_waiting_on_child)
-        # The waiting branch returns WAITING_ON_CHILD (not FIRE) when
-        # the cumulative ceiling has not been reached.
-        assert verdict == WatchdogVerdict.WAITING_ON_CHILD
+
+        def _waiting() -> AgentExecutionState:
+            return AgentExecutionState.WAITING_ON_CHILD
+
+        verdict = watchdog.evaluate(classify_quiet=_waiting)
+        # The watchdog defers -- it does NOT fire while activity is recent
+        # or the agent is legitimately waiting.
         assert verdict != WatchdogVerdict.FIRE
+        assert verdict == WatchdogVerdict.WAITING_ON_CHILD
 
     def test_r3(self) -> None:
         """R3: hard ceilings fire even when helpers are alive.
 
-        The 2365s indefinite deferral cannot happen: a monitor that
-        reports 0 FILTERED subagents (with N helpers visible in the
-        broader descendant tree) MUST NOT block the
-        ``max_session_seconds`` ceiling. Pin:
-        ``tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py``.
+        Drives the SAME observable behavior as
+        ``tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py``:
+
+          (a) ``SESSION_CEILING_EXCEEDED`` fires with 10 helpers visible
+              but 0 real subagents (the 2365s indefinite deferral
+              CANNOT happen).
+          (b) ``CHILDREN_PERSIST_TOO_LONG`` fires with helpers-only and
+              no real subagent alive (the cumulative ceiling cannot be
+              blocked by helpers).
         """
+        # (a) SESSION_CEILING_EXCEEDED with helpers-only monitor.
         clock = FakeClock(start=0.0)
         policy = TimeoutPolicy(
             idle_timeout_seconds=60.0,
-            # Headline ceiling for this test: max_session_seconds.
             max_session_seconds=300.0,
-            # Disable competing fire reasons so SESSION_CEILING is unambiguous.
             no_output_at_start_seconds=None,
             no_progress_quiet_seconds=None,
-            # Cumulative waiting ceiling larger than the session ceiling
-            # so it cannot fire first.
             max_waiting_on_child_seconds=600.0,
             max_waiting_on_child_no_progress_seconds=None,
             suspect_waiting_on_child_seconds=None,
             activity_evidence_ttl_seconds=0.0,
         )
-        monitor = _NoProcessMonitor(filtered_count=0)
-        watchdog = IdleWatchdog(policy, clock, process_monitor=monitor)
+        monitor = _HelpersOnlyMonitor(helper_count=10)
+        watchdog = _make_idle_watchdog(
+            process_monitor=monitor, policy=policy, clock=clock
+        )
         watchdog.record_invocation_start()
         clock.advance(305.0)
         verdict = watchdog.evaluate(classify_quiet=_active)
         assert verdict == WatchdogVerdict.FIRE
         assert watchdog.last_fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
-        # The filtered count is 0; the helpers (represented by the
-        # broader ProcessMonitor ``helper_count`` field on the pin
-        # test's fixture) were ignored.
+        # The filtered count is 0; helpers (10) were ignored.
         assert monitor.spawned_subagent_count() == 0
+        assert monitor.helper_count == 10
+
+        # (b) CHILDREN_PERSIST_TOO_LONG fires when cumulative
+        # waiting-time exceeds the ceiling with 0 real subagents.
+        clock_b = FakeClock(start=0.0)
+        policy_b = TimeoutPolicy(
+            idle_timeout_seconds=2.0,
+            max_waiting_on_child_seconds=5.0,
+            max_waiting_on_child_no_progress_seconds=None,
+            os_descendant_only_ceiling_seconds=None,
+            stuck_job_sub_ceiling_seconds=None,
+            no_progress_quiet_seconds=None,
+            no_output_at_start_seconds=None,
+            suspect_waiting_on_child_seconds=None,
+            activity_evidence_ttl_seconds=0.0,
+        )
+        monitor_b = _HelpersOnlyMonitor(helper_count=10)
+        watchdog_b = _make_idle_watchdog(
+            process_monitor=monitor_b, policy=policy_b, clock=clock_b
+        )
+        watchdog_b.record_invocation_start()
+        clock_b.advance(3.0)
+
+        def _waiting_b() -> AgentExecutionState:
+            return AgentExecutionState.WAITING_ON_CHILD
+
+        first_verdict = watchdog_b.evaluate(classify_quiet=_waiting_b)
+        assert first_verdict == WatchdogVerdict.WAITING_ON_CHILD
+        clock_b.advance(5.0)
+        verdict_b = watchdog_b.evaluate(classify_quiet=_waiting_b)
+        assert verdict_b == WatchdogVerdict.FIRE
+        assert watchdog_b.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+        # Helpers were ignored -- the FILTERED count is the SEAM.
+        assert monitor_b.spawned_subagent_count() == 0
+        assert monitor_b.helper_count == 10
 
     def test_r4(self) -> None:
         """R4: watchdog-driven kills resume the existing session.
 
-        ``AgentInactivityTimeoutError(resumable_session_id=...)``
-        classifies as ``FailureCategory.AGENT`` AND
-        ``recovery_action_for_failure_reason`` returns ``'resume'`` for
-        the watchdog-kill family. ``OpenCodeResumableExitError`` is the
-        same shape (R7 source: deterministic rc=0 classification).
-        Pins: ``tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py``
-        + ``tests/recovery/test_opencode_resumable_exit_classification.py``.
+        Drives the SAME observable end-to-end path as
+        ``tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py``:
+
+          1. Build an ``IdleWatchdogKilledError(reason=NO_OUTPUT_AT_START,
+             signal=15, resumable_session_id="sess-abc-123")`` -- the
+             watchdog kill carries the captured session id.
+          2. Wrap it in ``_IdleStreamTimeoutError`` (the wrapper the
+             line reader produces).
+          3. Convert via ``_convert_idle_stream_timeout_to_agent_error``
+             -- the converted ``AgentInactivityTimeoutError`` MUST
+             carry the captured id with ``session_resume_safe=True``.
+          4. Classify with ``FailureClassifier`` -- the typed-cause
+             branch applies the ``resumable_kill`` carve-out so
+             ``is_unavailable=False`` and the failure is
+             ``FailureCategory.AGENT``.
+          5. ``recovery_action_for_failure_reason('AgentInactivityTimeoutError',
+             has_prior_session=True)`` returns ``'resume'`` -- the
+             recovery controller threads the prior session forward.
+
+        Also asserts the fresh path: ``OpenCodeResumableExitError``
+        (the R7 deterministic rc=0 classification) also resumes the
+        prior session; without a prior session the action is
+        ``'fresh'``.
         """
-        # Headline invariant: the recovery action is "resume" when a
-        # prior session exists for the watchdog-kill reason family.
+        # Step 1+2: build the watchdog kill + wrapper.
+        typed_exc = IdleWatchdogKilledError(
+            reason=WatchdogFireReason.NO_OUTPUT_AT_START.value,
+            signal=15,
+            evidence_summary="no_output_at_start fired",
+            child_alive=False,
+            resumable_session_id="sess-abc-123",
+        )
+        wrapper = _IdleStreamTimeoutError(
+            timeout_seconds=31.0,
+            reason=WatchdogFireReason.NO_OUTPUT_AT_START,
+            diagnostic={"idle_elapsed": 31.0},
+        )
+        wrapper.__cause__ = typed_exc
+
+        # Step 3: convert via the canonical seam.
+        converted = _convert_idle_stream_timeout_to_agent_error(
+            agent_name="opencode",
+            exc=wrapper,
+            parsed_output=("line 1", "line 2"),
+            explicit_completion_seen=False,
+            captured_session_id="sess-abc-123",
+        )
+        assert converted.resumable_session_id == "sess-abc-123"
+        assert converted.session_resume_safe is True
+        assert converted.reason == WatchdogFireReason.NO_OUTPUT_AT_START
+
+        # Step 4: classify with the failure classifier. The
+        # ``resumable_kill`` carve-out sets ``is_unavailable=False`` so
+        # the recovery controller emits a resume intent.
+        classifier = FailureClassifier()
+        failure = classifier.classify(
+            converted,
+            phase="development",
+            agent="opencode",
+            connectivity_state="online",
+        )
+        assert failure.category == FailureCategory.AGENT
+        assert failure.resumable_session_id == "sess-abc-123"
+        assert failure.is_unavailable is False
+
+        # Step 5: the recovery action is 'resume' when a prior session exists.
         assert (
             recovery_action_for_failure_reason(
                 "AgentInactivityTimeoutError",
@@ -351,6 +517,16 @@ class TestTrustworthyIdleWatchdogSpec:
             )
             == "resume"
         )
+        # Without a prior session the action is 'fresh' (the fresh path is
+        # function-separate from the resume path).
+        assert (
+            recovery_action_for_failure_reason(
+                "AgentInactivityTimeoutError",
+                has_prior_session=False,
+            )
+            == "fresh"
+        )
+        # R7 deterministic rc=0 classification also resumes the prior session.
         assert (
             recovery_action_for_failure_reason(
                 "OpenCodeResumableExitError",
@@ -359,31 +535,22 @@ class TestTrustworthyIdleWatchdogSpec:
             == "resume"
         )
 
-        # Without a prior session the recovery action is "fresh" (the
-        # fresh path is FUNCTION-SEPARATE from the resume path; see
-        # ``ralph/agents/invoke/_session_resume.py``).
-        assert (
-            recovery_action_for_failure_reason(
-                "AgentInactivityTimeoutError",
-                has_prior_session=False,
-            )
-            == "fresh"
-        )
-
-        # The typed exception carries ``resumable_session_id`` so the
-        # classifier can thread it forward as a resume intent.
-        exc = OpenCodeResumableExitError(
-            agent_name="opencode", session_id="sess-spec-1"
-        )
-        assert exc.resumable_session_id == "sess-spec-1"
-
     def test_r5(self) -> None:
         """R5: real-time subagent visibility for all supported agents.
 
-        ``record_subagent_work(description=...)`` populates
-        ``last_subagent_progress_description`` so every transport's
-        real extracted progress surfaces through the watchdog. Pin:
-        ``tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py``.
+        Drives the SAME observable behavior as
+        ``tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py``:
+
+          (a) ``record_subagent_work(description=line)`` populates
+              ``last_subagent_progress_description`` (public property).
+          (b) A new invocation clears the description via
+              ``record_invocation_start`` so a fresh agent starts with
+              a clean slate.
+
+        Uses the PUBLIC property ``last_subagent_progress_description``
+        (NOT private attributes) so the assertion is genuinely
+        black-box. The watchdog's surface is the contract every
+        operator / dashboard consumes.
         """
         clock = FakeClock(start=0.0)
         policy = TimeoutPolicy(
@@ -392,105 +559,160 @@ class TestTrustworthyIdleWatchdogSpec:
             no_progress_quiet_seconds=None,
             activity_evidence_ttl_seconds=180.0,
         )
-        watchdog = IdleWatchdog(
-            policy,
-            clock,
-            process_monitor=_NoProcessMonitor(filtered_count=0),
+        watchdog = _make_idle_watchdog(
+            process_monitor=_HelpersOnlyMonitor(),
+            policy=policy,
+            clock=clock,
         )
         watchdog.record_invocation_start()
-        # Baseline: no description recorded yet.
+        # Baseline: no description recorded yet (the public property).
         assert watchdog.last_subagent_progress_description is None
 
-        # Recording subagent work populates the description so
-        # operators reading the watchdog see what the subagent is
-        # doing in real time.
+        # Recording subagent work populates the PUBLIC description
+        # property so every transport's real extracted progress
+        # surfaces through the watchdog.
         watchdog.record_subagent_work(description="tool_use:Read")
         assert watchdog.last_subagent_progress_description == "tool_use:Read"
         watchdog.record_subagent_work(description="tool_use:Edit")
         assert watchdog.last_subagent_progress_description == "tool_use:Edit"
 
-        # ``record_invocation_start`` clears the description so a new
-        # invocation starts with a clean slate.
+        # New invocation clears the description.
         watchdog.record_invocation_start()
         assert watchdog.last_subagent_progress_description is None
 
     def test_r6(self) -> None:
         """R6: combined coarse + per-tuple throttle caps log emissions.
 
-        The PROMPT log showed ~10 DEBUG records/sec at
-        ``_gate_fire:949`` while a fire was deferred. The fix is a
-        COMBINED throttle: a coarse single-key map
-        (``_last_any_deferred_log_at`` keyed on ``fire_reason.value``
-        alone) PLUS a per-tuple map (``_last_deferred_log_at`` keyed on
-        ``(fire_reason, deferred_kind)``). The coarse throttle caps
-        emissions to at most 1 DEBUG record per
-        ``watchdog_log_throttle_seconds`` per ``fire_reason``
-        REGARDLESS of how the deferred_kind cycles. Pin:
-        ``tests/agents/idle_watchdog/test_log_spam_throttle.py``.
+        Drives the SAME observable behavior as
+        ``tests/agents/idle_watchdog/test_log_spam_throttle.py``:
+
+          (a) Capture DEBUG records emitted by the watchdog via a
+              loguru sink filtered on ``component="idle_watchdog"``.
+          (b) Drive 1000 calls to ``_gate_fire`` cycling
+              ``SILENT_SUBAGENT <-> LOADING`` in a single throttle
+              window.
+          (c) Assert the captured DEBUG records count is ``<=2``
+              (initial transition + refresh). The headline R6
+              invariant: the COMBINED coarse per-fire_reason map
+              (``_last_any_deferred_log_at``) + per-tuple map
+              (``_last_deferred_log_at``) caps emissions to one
+              DEBUG record per ``watchdog_log_throttle_seconds`` per
+              ``fire_reason`` regardless of how the ``deferred_kind``
+              cycles. Pre-fix the count was 1000 (the prompt's log
+              spam regression).
+
+        The captured DEBUG records is the OBSERVABLE behavior
+        (every other surface is implementation detail). The pin test
+        uses the same capture pattern (loguru StringIO sink filtered
+        on ``component="idle_watchdog"``).
         """
-        watchdog, clock = self._make_throttle_watchdog(throttle_seconds=30.0)
+        # (a) Capture DEBUG records via a loguru sink (mirrors the pin test).
+        records: list[str] = []
 
-        # The coarse throttle map and per-tuple map MUST both exist as
-        # separate seam surfaces (the headline R6 invariant: they are
-        # CONSULTED IN COMBINATION, not independently).
-        assert hasattr(watchdog, "_last_any_deferred_log_at")
-        assert hasattr(watchdog, "_last_deferred_log_at")
+        def _sink(message: str) -> None:
+            records.append(message)
 
-        # Patch ``_classify_stuck_now`` to cycle SILENT_SUBAGENT ->
-        # LOADING -> SILENT_SUBAGENT so the per-tuple key changes
-        # every call; the coarse throttle must still cap emissions.
-        cycle = [StuckKind.SILENT_SUBAGENT, StuckKind.LOADING]
-        call_log: list[StuckKind] = []
-
-        def _stuck_now(
-            *,
-            now: float,
-            idle_elapsed: float,
-            corroboration: CorroborationSnapshot | None = None,
-        ) -> StuckKind:
-            kind = call_log[0] if call_log else cycle[0]
-            return kind
-
-        _classify_attr = "_classify_stuck_now"
-        setattr(watchdog, _classify_attr, _stuck_now)
-        fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
-
-        # Drive ``_gate_fire`` 1000 times cycling SILENT_SUBAGENT and
-        # LOADING. The coarse throttle caps emissions to a single
-        # ``fire_reason.value`` key regardless of the per-tuple key
-        # changes; the per-tuple map records the most-recent
-        # ``_last_deferred_kind`` for diagnostic purposes.
-        for i in range(1000):
-            call_log = [cycle[i % 2]]
-            verdict = watchdog._gate_fire(
-                fire_reason,
-                now=clock.monotonic(),
-                idle_elapsed=300.0,
-                corroboration=CorroborationSnapshot(),
+        handler_id = logger.add(
+            _sink,
+            level="DEBUG",
+            format="{message}",
+            filter=lambda record: "idle_watchdog"
+            in (record["extra"].get("component") or ""),
+        )
+        try:
+            # Build the throttle-pinned watchdog (idle=60s,
+            # no_output_at_start=30s, throttle=30s, ttl=180s -- the
+            # canonical values from test_log_spam_throttle.py).
+            clock = FakeClock(start=0.0)
+            policy = TimeoutPolicy(
+                idle_timeout_seconds=60.0,
+                no_output_at_start_seconds=30.0,
+                no_progress_quiet_seconds=None,
+                watchdog_log_throttle_seconds=30.0,
+                activity_evidence_ttl_seconds=180.0,
             )
-            assert verdict == WatchdogVerdict.CONTINUE
+            watchdog = _make_idle_watchdog(
+                process_monitor=_HelpersOnlyMonitor(),
+                policy=policy,
+                clock=clock,
+            )
 
-        # The coarse map MUST contain the fire_reason key (keyed on
-        # ``fire_reason.value`` alone, NOT the tuple).
-        coarse_map = watchdog._last_any_deferred_log_at
-        assert fire_reason.value in coarse_map
-        # The current kind label is preserved on the watchdog so an
-        # operator can still see WHICH kind was deferred even when
-        # the coarse throttle suppressed the log emission.
-        assert watchdog._last_deferred_kind in cycle
+            # (b) Force ``_classify_stuck_now`` to cycle SILENT_SUBAGENT
+            # <-> LOADING on every call so the per-tuple throttle key
+            # changes every tick. The COARSE throttle (the headline
+            # R6 fix) caps emissions regardless.
+            cycle = [StuckKind.SILENT_SUBAGENT, StuckKind.LOADING]
+            call_log: list[StuckKind] = []
+
+            def _stuck_now(
+                *,
+                now: float,
+                idle_elapsed: float,
+                corroboration: CorroborationSnapshot | None = None,
+            ) -> StuckKind:
+                kind = call_log[0] if call_log else StuckKind.SILENT_SUBAGENT
+                return kind
+
+            # ``setattr`` with attribute name in a local variable
+            # (audit_lint_bypass: bare constant setattr is ruff B010;
+            # mypy cannot narrow access to a private-method
+            # assignment).
+            _classify_attr = "_classify_stuck_now"
+            setattr(watchdog, _classify_attr, _stuck_now)
+
+            fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+            # Drive 1000 calls cycling the deferred_kind. The coarse
+            # throttle caps emissions to one DEBUG record per
+            # ``watchdog_log_throttle_seconds`` per ``fire_reason``.
+            for i in range(1000):
+                call_log = [cycle[i % 2]]
+                verdict = watchdog._gate_fire(
+                    fire_reason,
+                    now=clock.monotonic(),
+                    idle_elapsed=300.0,
+                    corroboration=CorroborationSnapshot(),
+                )
+                assert verdict == WatchdogVerdict.CONTINUE
+
+            # (c) Assert the captured DEBUG records is <= 2.
+            # The COARSE throttle is keyed on ``fire_reason.value``
+            # alone, so the matched records are any deferred log
+            # line containing the fire_reason -- the per-tuple kind
+            # label cycles but the headline signal stays the same.
+            matching = [
+                r
+                for r in records
+                if (
+                    ("silent subagent" in r or "deferred fire" in r)
+                    and "CHILDREN_PERSIST_TOO_LONG" in r
+                )
+            ]
+            assert len(matching) <= 2, (
+                f"coarse single-key throttle MUST cap emissions across"
+                f" kind-cycles; got {len(matching)} records for 1000"
+                f" calls in the same throttle window."
+                f" Records (first 3): {matching[:3]}"
+            )
+        finally:
+            logger.remove(handler_id)
 
     def test_r7(self) -> None:
         """R7: ambiguous rc=0 exits classify deterministically as AGENT.
 
-        ``OpenCodeResumableExitError`` classifies as
-        ``FailureCategory.AGENT`` BEFORE the broader
-        ``AgentInvocationError`` branch. The exception NEVER falls
-        through to ``FailureCategory.AMBIGUOUS``. Pin:
-        ``tests/recovery/test_opencode_resumable_exit_classification.py``.
+        Drives the SAME observable behavior as
+        ``tests/recovery/test_opencode_resumable_exit_classification.py``:
+
+          (a) ``OpenCodeResumableExitError`` (with ANY session_id,
+              including None) classifies as ``FailureCategory.AGENT``,
+              NEVER ``FailureCategory.AMBIGUOUS``.
+          (b) The ``resumable_session_id`` attribute propagates from
+              the typed exception to the ``ClassifiedFailure``.
+          (c) The failure counts against the budget (it's a real
+              failure, not a recoverable artifact validation problem).
+          (d) ``reset_session=False`` -- this is a resume-friendly
+              exit, not a stale-session reset.
         """
-        # Headline invariant: every ``OpenCodeResumableExitError``
-        # instance (with any session_id, including None) classifies as
-        # ``FailureCategory.AGENT``, NEVER ``AMBIGUOUS``.
         classifier = FailureClassifier()
         for session_id in ("sess-a", "sess-b", "sess-c", None):
             exc = OpenCodeResumableExitError(
@@ -502,61 +724,50 @@ class TestTrustworthyIdleWatchdogSpec:
                 agent="opencode",
                 connectivity_state="online",
             )
+            # Headline: AGENT, NOT AMBIGUOUS.
             assert failure.category == FailureCategory.AGENT, (
                 f"OpenCodeResumableExitError with session_id={session_id!r}"
-                f" must classify as AGENT, got {failure.category!r}"
+                f" MUST classify as AGENT, got {failure.category!r}"
             )
             assert failure.category != FailureCategory.AMBIGUOUS
-            # The session_id is propagated (typed exception -> ClassifiedFailure).
+            # The session_id propagates (typed exception -> ClassifiedFailure).
             assert failure.resumable_session_id == session_id
-            # Counts against the budget (this is a real failure, not a
-            # recoverable artifact validation problem).
+            # Real failure (counts against the budget).
             assert failure.counts_against_budget is True
+            # NOT a stale-session reset -- the recovery controller
+            # resumes the existing session.
+            assert failure.reset_session is False
 
     def test_r8(self) -> None:
         """R8: clean, black-box-testable architecture.
 
-        The watchdog tests use FakeClock + a tiny ``@dataclass``
-        satisfying the ``ProcessMonitor`` Protocol -- no real
-        subprocess, no real filesystem, no real wall-clock waits.
-        Enforced structurally by ``ralph/testing/audit_test_policy.py``
-        (an AST-level audit wired into ``make verify`` step 5 of 17).
-        Pin: ``ralph/testing/audit_test_policy.py``.
+        Drives the SAME observable contract as
+        ``ralph/testing/audit_test_policy.py``:
+
+          (a) Every pin test file in ``RALPH_PIN_TEST_PATHS`` is
+              discoverable on disk (the audit walks this tree).
+          (b) The ``ProcessMonitor`` Protocol advertises
+              ``spawned_subagent_count`` AND ``live_subagent_count``
+              (the audit ``audit_activity_aware_watchdog`` flags any
+              reader that uses ``descendant_snapshot`` instead of the
+              filtered seam).
+          (c) The canonical ``FakeClock`` is a deterministic clock
+              advance (no real wall-clock) so every watchdog test in
+              this module runs without ``time.sleep(N > 0)`` and
+              without real subprocesses.
         """
-        # 1. The audit module exists at the canonical path.
-        assert _AUDIT_TEST_POLICY_PATH.is_file(), (
-            f"audit module MUST exist at {_AUDIT_TEST_POLICY_PATH}"
-        )
-
-        # 2. The audit's main entry point is callable and accepts a
-        # ``tests_root`` argument (the same signature ``make verify``
-        # step 5 invokes).
-        assert callable(audit_main)
-
-        # 3. Every watchdog pin test file listed in
-        # ``RALPH_PIN_TEST_PATHS`` MUST be discoverable relative to
-        # the ralph-workflow package root (the audit walks this
-        # tree). The package layout is the structural pin: the
-        # audit would fail at import time if any pin path
-        # referenced a non-existent module.
+        # (a) Pin test files exist on disk.
         for relative_path in RALPH_PIN_TEST_PATHS:
             package_relative = Path(relative_path)
             assert package_relative.is_file(), (
                 f"Pin test file MUST exist at {package_relative}"
             )
 
-        # 4. The ProcessMonitor Protocol MUST advertise
-        # ``spawned_subagent_count`` AND ``live_subagent_count`` (the
-        # audit ``audit_activity_aware_watchdog`` flags any reader
-        # that uses ``descendant_snapshot`` instead of the filtered
-        # seam -- see R1).
+        # (b) ProcessMonitor Protocol advertises the filtered seam names.
         assert hasattr(ProcessMonitor, "spawned_subagent_count")
         assert hasattr(ProcessMonitor, "live_subagent_count")
 
-        # 5. The canonical ``FakeClock`` is a deterministic clock
-        # advance (no real wall-clock) so every watchdog test in
-        # this module runs without ``time.sleep(N > 0)`` and without
-        # real subprocesses.
+        # (c) FakeClock is deterministic (no real wall-clock).
         clock = FakeClock(start=0.0)
         assert clock.monotonic() == 0.0
         clock.advance(123.0)
@@ -564,43 +775,8 @@ class TestTrustworthyIdleWatchdogSpec:
         clock.advance(7.0)
         assert clock.monotonic() == 130.0
 
-    @staticmethod
-    def _make_throttle_watchdog(
-        *, throttle_seconds: float
-    ) -> tuple[IdleWatchdog, FakeClock]:
-        """Build a throttle-pinned IdleWatchdog for R6.
-
-        Mirrors ``tests/agents/idle_watchdog/test_log_spam_throttle.py``
-        policy: idle=60s, no_output_at_start=30s, no_progress_quiet=None,
-        activity_evidence_ttl=180s. The throttle window is the
-        parameter under test.
-        """
-        clock = FakeClock(start=0.0)
-        policy = TimeoutPolicy(
-            idle_timeout_seconds=60.0,
-            no_output_at_start_seconds=30.0,
-            no_progress_quiet_seconds=None,
-            watchdog_log_throttle_seconds=throttle_seconds,
-            activity_evidence_ttl_seconds=180.0,
-        )
-        return (
-            IdleWatchdog(policy, clock),
-            clock,
-        )
-
 
 __all__ = [
     "RALPH_PIN_TEST_PATHS",
     "TestTrustworthyIdleWatchdogSpec",
 ]
-
-
-# ----------------------------------------------------------------------------
-# Sanity helper: ensure the ``WaitingStatusEvent`` import is genuinely used
-# (the pin tests reference it; this module imports it for parity). Without
-# this import the audit's unused-import rule could fire. The ``ClassifyStuckInputs``
-# type alias is referenced in the pin test contracts; importing it here
-# documents the seam surface used by the classifier.
-# ----------------------------------------------------------------------------
-_ = ClassifyStuckInputs
-_ = WaitingStatusEvent

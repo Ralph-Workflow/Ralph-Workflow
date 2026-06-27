@@ -488,7 +488,7 @@ every row.
    `tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py`.
    Invariant: a monitor that only sees helper PIDs returns 0 from
    BOTH seam names; the alias is faithful (both names return the
-   same filtered value).
+   same filtered value). [wt-021 R1 / Trustworthy Idle Watchdog R1]
 
 2. **R2 — No false positives.** The watchdog does NOT kill while
    activity is recent or a real subagent is working. The
@@ -499,7 +499,7 @@ every row.
    `tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py`
    (single MCP tool-call + quiet with fresh corroborator does NOT
    fire) + `tests/agents/idle_watchdog/test_stuck_classifier.py`
-   (verdict priority).
+   (verdict priority). [wt-021 R2 / Trustworthy Idle Watchdog R2]
 
 3. **R3 — No false negatives.** Every genuine hang fires within a
    bounded ceiling, even when a non-subagent helper process looks
@@ -508,7 +508,7 @@ every row.
    and the ceiling fires. Pin:
    `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
    (session / cumulative / idle ceilings all fire with helpers
-   alive).
+   alive). [wt-021 R3 / Trustworthy Idle Watchdog R3]
 
 4. **R4 — Watchdog-driven kills resume the existing session.** The
    resume path (`AgentInactivityTimeoutError` /
@@ -519,6 +519,7 @@ every row.
    `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py`
    (8 evidence points end-to-end) +
    `tests/recovery/test_opencode_resumable_exit_classification.py`.
+   [wt-021 R4 / Trustworthy Idle Watchdog R4]
 
 5. **R5 — Real-time subagent visibility for all supported agents.**
    `record_subagent_work(description=line)` populates
@@ -528,6 +529,7 @@ every row.
    `tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py`
    (8 transports × 5 signal shapes; OpenCode additionally routes
    per-child `RegistryBackedSubagentOutputCapture` lines).
+   [wt-021 R5 / Trustworthy Idle Watchdog R5]
 
 6. **R6 — Quiet, meaningful output.** `_gate_fire` emissions are
    throttled by a COMBINED coarse per-`fire_reason` map
@@ -538,6 +540,7 @@ every row.
    per `fire_reason` REGARDLESS of how the deferred_kind cycles.
    Pin: `tests/agents/idle_watchdog/test_log_spam_throttle.py` (per-
    tuple + coarse single-key + refresh-window cases).
+   [wt-021 R6 / Trustworthy Idle Watchdog R6]
 
 7. **R7 — Ambiguous rc=0 exits classified deterministically.**
    `OpenCodeResumableExitError` classifies as
@@ -546,7 +549,7 @@ every row.
    to `FailureCategory.AMBIGUOUS`. Pin:
    `tests/recovery/test_opencode_resumable_exit_classification.py`
    (every instance, including `session_id=None`, classifies as
-   `AGENT`).
+   `AGENT`). [wt-021 R7 / Trustworthy Idle Watchdog R7]
 
 8. **R8 — Clean, black-box-testable architecture.** Every watchdog
    test file uses `FakeClock` (`ralph/agents/timeout_clock.py`) + a
@@ -556,7 +559,7 @@ every row.
    `ralph/testing/audit_test_policy.py` (wired into `make verify`).
    Pin: `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`
    (8 ordinary test methods, one per R1-R8, asserting one concrete
-   invariant each).
+   invariant each). [wt-021 R8 / Trustworthy Idle Watchdog R8]
 
 Consolidated AC summary test:
 
