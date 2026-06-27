@@ -75,10 +75,16 @@ def record_invocation_start(self: IdleWatchdog) -> None:
       * ``_last_fire_reason`` / ``_last_deferred_kind`` /
         ``_last_alive_by`` -- the fire history belongs to the
         previous run, NOT the new invocation
-      * ``_last_deferred_log_at`` / ``_last_evidence_deferral_log_at``
-        -- the per-key log throttle MUST survive long-lived
-        WAITING runs but MUST NOT carry state across invocations
-        (different run = different operator-relevant history)
+      * ``_last_deferred_log_at`` /
+        ``_last_any_deferred_log_at`` /
+        ``_last_evidence_deferral_log_at`` -- the per-key log
+        throttle maps MUST survive long-lived WAITING runs but
+        MUST NOT carry state across invocations (different run =
+        different operator-relevant history); the coarse
+        per-``fire_reason`` map (``_last_any_deferred_log_at``)
+        shares the per-invocation reset semantics with the
+        per-tuple map (``_last_deferred_log_at``) and the
+        per-channel evidence map (``_last_evidence_deferral_log_at``)
       * ``_last_waiting_status_at`` /
         ``_suspicion_announced_for_run`` -- the suspicion /
         status emit cadence is per-invocation
@@ -133,11 +139,19 @@ def record_invocation_start(self: IdleWatchdog) -> None:
     self._last_alive_by = None
     self._last_subagent_progress_description = None
     self._default_subagent_activity_listener = None
-    # Reset the per-key log throttle so a new invocation starts with an
-    # empty map. The throttle MUST survive long-lived WAITING runs but
-    # MUST NOT carry state across invocations (different run = different
-    # operator-relevant history).
+    # Reset the per-key log throttle maps so a new invocation starts
+    # with empty maps. The throttle MUST survive long-lived WAITING
+    # runs but MUST NOT carry state across invocations (different
+    # run = different operator-relevant history). The coarse
+    # per-``fire_reason`` map (``_last_any_deferred_log_at``) is
+    # reset here alongside the per-tuple map
+    # (``_last_deferred_log_at``) and the per-channel evidence map
+    # (``_last_evidence_deferral_log_at``); without this reset, a
+    # fresh invocation can inherit the prior run's coarse throttle
+    # timestamps and incorrectly suppress its first human-visible
+    # deferred-status log (R6 per-invocation semantics).
     self._last_deferred_log_at = {}
+    self._last_any_deferred_log_at = {}
     self._last_evidence_deferral_log_at = {}
     self._last_waiting_status_at = None
     self._suspicion_announced_for_run = False

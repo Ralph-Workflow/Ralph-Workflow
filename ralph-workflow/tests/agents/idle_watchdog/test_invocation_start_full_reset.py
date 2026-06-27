@@ -123,6 +123,7 @@ def _per_invocation_fields() -> dict[str, object]:
         "_last_deferred_kind": None,
         "_last_progress_fingerprint": None,
         "_last_deferred_log_at": {},
+        "_last_any_deferred_log_at": {},
         "_last_evidence_deferral_log_at": {},
         "_entry_corroboration": None,
         "_waiting_on_child_started_at": None,
@@ -249,6 +250,37 @@ def test_record_invocation_start_resets_cumulative_waiting() -> None:
     )
 
 
+def test_record_invocation_start_resets_coarse_any_deferred_log_at() -> None:
+    """``_last_any_deferred_log_at`` MUST be cleared on invocation_start.
+
+    Pin for R6 per-invocation semantics: the coarse per-``fire_reason``
+    throttle map shares the per-invocation reset semantics with the
+    per-tuple map (``_last_deferred_log_at``) and the per-channel
+    evidence map (``_last_evidence_deferral_log_at``). A coarse-map
+    leak across invocations lets a fresh invocation inherit the
+    previous run's coarse throttle timestamps and incorrectly
+    suppress its first human-visible deferred-status log.
+
+    Pre-fix the coarse map survived across invocations (only the
+    per-tuple map and per-channel map were reset); the pin test at
+    :mod:`test_log_spam_throttle` proves the coarse map is populated
+    by ``_gate_fire`` but had no companion test for the reset path.
+    """
+    watchdog, _clock = _make_watchdog()
+    watchdog._last_any_deferred_log_at = {
+        "no_output_at_start": 1234.0,
+        "idle_timeout": 5678.0,
+    }
+    assert len(watchdog._last_any_deferred_log_at) == 2, (
+        "precondition: the coarse throttle map MUST be populated"
+    )
+    watchdog.record_invocation_start()
+    assert watchdog._last_any_deferred_log_at == {}, (
+        f"record_invocation_start MUST reset _last_any_deferred_log_at;"
+        f" got {watchdog._last_any_deferred_log_at!r}"
+    )
+
+
 def test_second_invocation_starts_from_clean_baseline_no_stale_throttle() -> None:
     """A second invocation MUST NOT inherit the first invocation's throttle state.
 
@@ -280,6 +312,10 @@ def test_second_invocation_starts_from_clean_baseline_no_stale_throttle() -> Non
     assert watchdog._last_deferred_log_at == {}, (
         f"record_invocation_start MUST reset _last_deferred_log_at;"
         f" got {watchdog._last_deferred_log_at!r}"
+    )
+    assert watchdog._last_any_deferred_log_at == {}, (
+        f"record_invocation_start MUST reset _last_any_deferred_log_at;"
+        f" got {watchdog._last_any_deferred_log_at!r}"
     )
 
 
