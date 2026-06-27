@@ -158,8 +158,15 @@ def gate_fire(
         self._last_deferred_kind = kind
         # Coarse single-key throttle: caps emissions to one DEBUG
         # record per ``watchdog_log_throttle_seconds`` per fire_reason
-        # regardless of how the deferred_kind cycles (SILENT_SUBAGENT
-        # -> LOADING -> SILENT_SUBAGENT was the prompt's spam loop).
+        # regardless of how the deferred_kind cycles (e.g.
+        # SILENT_SUBAGENT -> DUPLICATE_KILL -> SILENT_SUBAGENT, the
+        # kind-cycle scenario pinned by
+        # ``test_log_spam_throttle_public_surface_kind_cycle_via_public_surface``).
+        # The PROMPT's observed spam was IDENTICAL SILENT_SUBAGENT
+        # messages (the per-tuple throttle handles that case); the
+        # coarse throttle is the defense for hypothetical regressions
+        # that cause the deferred_kind to cycle, where the per-tuple
+        # throttle would MISS because the key changes on every call.
         # The per-tuple throttle (``_maybe_log_deferred``) is
         # consulted FIRST so the kind label is preserved in the
         # ``_last_deferred_log_at`` map; the coarse throttle ONLY
@@ -235,13 +242,18 @@ def maybe_log_any_deferred(
     """Coarse single-key throttle for ``_gate_fire`` deferred emissions.
 
     The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949``
-    even AFTER the per-(fire_reason, deferred_kind) throttle
-    (``_maybe_log_deferred``) was added, because the ``deferred_kind``
-    cycles (e.g. SILENT_SUBAGENT -> LOADING -> SILENT_SUBAGENT) and
-    the per-tuple throttle key changes between cycles -- the
-    per-tuple throttle MISSES the duplicate because the key is
-    new, but the duplicate emission IS still a duplicate from
-    the operator's perspective.
+    with IDENTICAL ``SILENT_SUBAGENT`` deferred_kind messages. The
+    per-tuple throttle alone caps those emissions at one per
+    throttle window per ``(fire_reason, deferred_kind)`` tuple.
+    The coarse single-key throttle is the defense for HYPOTHETICAL
+    regressions where the deferred_kind cycles between calls
+    (e.g. ``SILENT_SUBAGENT`` -> ``DUPLICATE_KILL`` ->
+    ``SILENT_SUBAGENT``, the kind-cycle scenario pinned by
+    ``test_log_spam_throttle_public_surface_kind_cycle_via_public_surface``):
+    when the deferred_kind changes, the per-tuple throttle key
+    changes too, so the per-tuple throttle MISSES the duplicate
+    emission -- the duplicate IS still a duplicate from the
+    operator's perspective, and the coarse throttle catches it.
 
     This helper is the COARSE single-key throttle: it caps
     emissions to AT MOST one DEBUG record per

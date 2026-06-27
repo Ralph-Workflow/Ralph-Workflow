@@ -21,16 +21,32 @@ The headline R6 regression was ~10 DEBUG records/sec emitted at
 SUB-ceiling block at ``_waiting_branch.py:184-237``). The fix added a
 per-(fire_reason, deferred_kind) throttle plus a coarse single-key
 throttle so the throttle holds even when the deferred_kind cycles
-(SILENT_SUBAGENT -> LOADING -> SILENT_SUBAGENT).
+between calls.
 
-This module exercises the SAME deferred-fire branch via the PUBLIC
-surface: ``watchdog.evaluate(classify_quiet=...)`` driven in a
-configuration that causes the SUB-ceiling block to call
-``self._gate_fire(...)`` on every evaluate() call. The classifier returns
-``SILENT_SUBAGENT`` via the PUBLIC evidence summary (a stale
-``subagent_output`` channel seeded by ``record_subagent_work``), so each
-evaluate() call enters the deferred-fire branch without ``setattr`` on
-``_classify_stuck_now`` or any other private seam.
+Three tests prove the R6 invariant from public observables:
+
+  1. ``test_log_spam_throttle_public_surface_reaches_deferred_fire_branch``:
+     identical-SILENT_SUBAGENT scenario -- 1000 evaluate() calls in
+     the same throttle window with the same SILENT_SUBAGENT
+     deferred_kind return <= 2 DEBUG records.
+  2. ``test_log_spam_throttle_public_surface_deferred_fire_throttle_window``:
+     secondary throttle-window refresh witness with a 0.05s
+     ``watchdog_log_throttle_seconds`` (proves the per-tuple
+     refresh boundary holds in public surface too).
+  3. ``test_log_spam_throttle_public_surface_kind_cycle_via_public_surface``:
+     kind-cycle scenario -- 1000 evaluate() calls alternating the
+     classifier's ``is_waiting_state`` input between False
+     (SILENT_SUBAGENT) and True (DUPLICATE_KILL) via the PUBLIC
+     ``watchdog.set_is_waiting_state(bool)`` method, proving the
+     COARSE single-key throttle caps emissions across the
+     deferred_kind cycle that the per-tuple throttle MISSED pre-fix.
+
+Test 3 mirrors the private-seam
+``tests/agents/idle_watchdog/test_log_spam_throttle.py::test_coarse_single_key_throttle_caps_emissions_across_kind_cycles``
+exactly -- the public-surface proof for the same deferred_kind cycle
+(SILENT_SUBAGENT <-> DUPLICATE_KILL, with the cycle driven by the
+run-loop-facing ``set_is_waiting_state`` method instead of a
+``setattr`` on ``_classify_stuck_now``).
 
 The module is black-box: ``FakeClock`` + Protocol-typed
 ``@dataclass _HelpersOnlyMonitor`` fake; no real subprocess, no real
@@ -67,6 +83,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "test_log_spam_throttle_public_surface_deferred_fire_throttle_window",
+    "test_log_spam_throttle_public_surface_kind_cycle_via_public_surface",
     "test_log_spam_throttle_public_surface_reaches_deferred_fire_branch",
 ]
 
@@ -538,4 +555,219 @@ def test_log_spam_throttle_public_surface_deferred_fire_throttle_window(
     assert len(deferred_fire_records) >= 1, (
         f"loguru sink MUST capture the deferred-fire DEBUG log;"
         f" got {len(deferred_fire_records)} records."
+    )
+
+
+def test_log_spam_throttle_public_surface_kind_cycle_via_public_surface(
+    captured_log_records: tuple[io.StringIO, list[str]],
+) -> None:
+    """R6 deferred-kind cycle proof via PUBLIC surface.
+
+    Coarse throttle holds across ``SILENT_SUBAGENT`` <-> ``DUPLICATE_KILL``.
+
+    The PROMPT log showed ~10 DEBUG records/sec at ``_gate_fire:949``
+    while a fire was deferred. The fix added a per-``(fire_reason,
+    deferred_kind)`` throttle plus a COARSE single-key throttle keyed
+    on ``fire_reason.value`` alone so the throttle holds even when
+    the ``deferred_kind`` cycles between calls.
+
+    Pre-fix the per-tuple throttle MISSED the duplicate emission
+    whenever the ``deferred_kind`` changed (e.g.
+    ``SILENT_SUBAGENT`` -> ``LOADING`` -> ``SILENT_SUBAGENT``) because
+    the per-tuple key changed on every cycle. The coarse throttle
+    solves this by keying on ``fire_reason.value`` alone, capping
+    emissions to at most one DEBUG record per ``watchdog_log_throttle_seconds``
+    per ``fire_reason`` regardless of how the ``deferred_kind`` cycles.
+
+    This test drives ``watchdog.evaluate(classify_quiet=...)`` 1000
+    times in the same FakeClock second, alternating the deferred-kind
+    value between ``SILENT_SUBAGENT`` and ``DUPLICATE_KILL`` via the
+    PUBLIC ``watchdog.set_is_waiting_state(bool)`` method -- the
+    pipeline-facing surface that the run loop uses to mirror
+    ``state.is_waiting_state``. No ``setattr`` on
+    ``_classify_stuck_now`` and no direct call to ``_gate_fire``; the
+    classifier's verdict is driven entirely by the public state.
+
+    The cycle scenario:
+
+      * ``set_is_waiting_state(False)``: classifier falls through to
+        branch 7 (``SILENT_SUBAGENT``) because the
+        ``subagent_output`` channel is seeded (counter=1, age=5.1s,
+        5.1 >= ``silent_subagent_seconds=1.0``) AND
+        ``subagent_liveness`` has ``alive_by=None`` (the
+        ``_HelpersOnlyMonitor`` returns ``live_subagent_count()=0``
+        so the process-monitor live-subagent signal is absent). Gate
+        emits the ``idle watchdog: silent subagent (deferred) ...``
+        DEBUG record.
+      * ``set_is_waiting_state(True)``: classifier returns
+        ``DUPLICATE_KILL`` immediately on branch 1 (the highest-
+        priority branch). Gate emits the
+        ``idle watchdog: deferred fire reason=CHILDREN_PERSIST_TOO_LONG
+        kind=duplicate_kill ...`` DEBUG record.
+
+    Both deferred-fire DEBUG records share the same
+    ``fire_reason`` key (``CHILDREN_PERSIST_TOO_LONG``); the coarse
+    single-key throttle (``_maybe_log_any_deferred``) suppresses
+    emissions after the first one in the same throttle window
+    regardless of which ``deferred_kind`` the classifier returned.
+
+    The test asserts ``len(deferred_fire_records) <= 2`` (one initial
+    transition + one per-tuple refresh edge case -- the same bound the
+    private-seam
+    ``test_log_spam_throttle.py::test_coarse_single_key_throttle_caps_emissions_across_kind_cycles``
+    test asserts). Pre-fix the count is ~500 because the per-tuple
+    throttle MISSED on every cycle (different key per call); post-fix
+    the coarse throttle caps emissions to <= 2 records.
+
+    The ``>= 1`` lower bound guards against a zero-sink bypass: if
+    the ``component='idle_watchdog'`` loguru bind is silently
+    renamed in a future refactor, the sink would capture zero
+    records and the bound would lose its meaning.
+    """
+    _buf, log_records = captured_log_records
+    captured_events: list[WaitingStatusEvent] = []
+
+    def _listener(event: WaitingStatusEvent) -> None:
+        captured_events.append(event)
+
+    clock = FakeClock(start=0.0)
+    watchdog = _build_deferred_fire_watchdog(
+        listener=_listener,
+        clock=clock,
+    )
+
+    watchdog.set_is_waiting_state(False)
+    watchdog.record_invocation_start()
+    watchdog.record_subagent_work(now=0.0, description="phase-1")
+    clock.advance(3.0)
+    watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD)
+    clock.advance(5.1)
+
+    # Drive 1000 evaluate() calls in the SAME 30s throttle window
+    # (no further clock advance). Alternate ``set_is_waiting_state``
+    # between False (classifier falls through to SILENT_SUBAGENT
+    # via branch 7) and True (classifier returns DUPLICATE_KILL on
+    # branch 1 immediately). The gate's classifier call sees a
+    # different ``deferred_kind`` on every other call -- exactly the
+    # ``SILENT_SUBAGENT`` -> ``DUPLICATE_KILL`` -> ``SILENT_SUBAGENT``
+    # -> ... cycle the coarse single-key throttle is designed to
+    # suppress. Without the coarse throttle the per-tuple throttle
+    # would MISS on every other call (different
+    # ``(fire_reason, deferred_kind)`` tuple) and the gate would log
+    # ~500 DEBUG records.
+    for i in range(1000):
+        # PUBLIC: drive the classifier's ``is_waiting_state`` input
+        # via the canonical run-loop-facing method. Even i ->
+        # is_waiting_state=False (classifier branch 7 SILENT_SUBAGENT),
+        # odd i -> is_waiting_state=True (classifier branch 1
+        # DUPLICATE_KILL).
+        watchdog.set_is_waiting_state(i % 2 == 1)
+        verdict = watchdog.evaluate(
+            classify_quiet=lambda: AgentExecutionState.WAITING_ON_CHILD
+        )
+        assert verdict in (
+            WatchdogVerdict.WAITING_ON_CHILD,
+            WatchdogVerdict.CONTINUE,
+        ), (
+            f"evaluate() #{i} MUST stay in deferral (CONTINUE or"
+            f" WAITING_ON_CHILD); got {verdict!r}"
+        )
+
+    # ASSERTION 1 (the headline R6 invariant across kind-cycles):
+    # the coarse single-key throttle MUST cap DEBUG emissions to
+    # <= 2 records per ``watchdog_log_throttle_seconds`` per
+    # ``fire_reason`` REGARDLESS of how the ``deferred_kind``
+    # cycles. The filter captures BOTH the
+    # ``silent subagent (deferred)`` log (SILENT_SUBAGENT branch
+    # of ``_gate_fire``) AND the generic ``deferred fire reason=...
+    # kind=...`` log (DUPLICATE_KILL branch -- and any other
+    # non-STUCK, non-SILENT_SUBAGENT deferred kind).
+    deferred_fire_records = [
+        r
+        for r in log_records
+        if (
+            ("silent subagent" in r or "deferred fire" in r)
+            and "children_persist_too_long" in r
+        )
+    ]
+    assert len(deferred_fire_records) <= 2, (
+        f"R6 coarse single-key throttle MUST cap emissions across"
+        f" SILENT_SUBAGENT <-> DUPLICATE_KILL kind-cycles; got"
+        f" {len(deferred_fire_records)} deferred-fire DEBUG records"
+        f" for 1000 evaluate() calls in the same throttle window."
+        f" Records: {deferred_fire_records[:3]}"
+    )
+
+    # ASSERTION 2: the sink is REAL (not trivially empty). The
+    # FIRST evaluate() with a new ``deferred_kind`` MUST emit a
+    # DEBUG record (the initial transition is never throttled).
+    # A zero-sink bypass would silently capture zero records and
+    # the upper bound would be vacuously satisfied.
+    assert len(deferred_fire_records) >= 1, (
+        f"loguru sink filtered on component='idle_watchdog' MUST"
+        f" capture the first deferred-fire DEBUG log; got"
+        f" {len(deferred_fire_records)} records (a zero-sink bypass"
+        f" would make the throttle bound meaningless)."
+    )
+
+    # ASSERTION 3: the watchdog's PUBLIC ``last_deferred_kind``
+    # surface reports BOTH kinds across the cycle (operators can
+    # see WHY each fire was deferred even when the coarse throttle
+    # suppressed the log emission -- the kind label is preserved
+    # on ``_last_deferred_kind`` regardless of throttle state).
+    # The 1000-call cycle ENDS with i=999 (odd), so
+    # ``is_waiting_state=True`` was set just before the last
+    # evaluate(); the classifier returned DUPLICATE_KILL on that
+    # last call.
+    assert watchdog.last_deferred_kind in (
+        StuckKind.SILENT_SUBAGENT,
+        StuckKind.DUPLICATE_KILL,
+    ), (
+        f"watchdog.last_deferred_kind (PUBLIC property) MUST be"
+        f" SILENT_SUBAGENT or DUPLICATE_KILL after 1000 cycle"
+        f" iterations; got {watchdog.last_deferred_kind!r}"
+    )
+
+    # ASSERTION 4: PROGRESS-kind WaitingStatusEvent emissions are
+    # also bounded by the cadence gate
+    # (``waiting_status_interval_seconds`` = 10_000.0s, so the
+    # cadence gate is closed for the entire 1000-call cycle).
+    # The throttle on deferred-fire DEBUG logs and the cadence on
+    # WaitingStatusEvent emissions are two distinct spam-suppression
+    # mechanisms; both must hold for R6.
+    progress_events = [
+        e for e in captured_events if e.kind == WaitingStatusKind.PROGRESS
+    ]
+    assert len(progress_events) <= 2, (
+        f"R6 PROGRESS-event cadence MUST cap emissions to <= 2"
+        f" per cadence window; got {len(progress_events)} PROGRESS"
+        f" events across 1000 evaluate() calls."
+    )
+
+    # ASSERTION 5: ENTERED event fires EXACTLY once (on first
+    # WAITING entry). This is a public-surface witness that the
+    # WAITING branch was actually entered -- a missing ENTERED
+    # would imply the watchdog never deferred, which would make
+    # the throttle invariant trivially true (a zero-sink bypass).
+    entered_events = [
+        e for e in captured_events if e.kind == WaitingStatusKind.ENTERED
+    ]
+    assert len(entered_events) == 1, (
+        f"R6 ENTERED event MUST fire exactly once on first WAITING"
+        f" entry; got {len(entered_events)} ENTERED events."
+    )
+
+    # ASSERTION 6: no HARD_STOP emission -- the deferred-fire
+    # branch returns CONTINUE on every call (the gate's CONTINUE
+    # response signals the SUB-ceiling block to stay in deferral).
+    # HARD_STOP only fires when ``_gate_fire`` returns FIRE (the
+    # cumulative ceiling path or the post-deferral fire path),
+    # which never happens in this configuration.
+    hard_stop_events = [
+        e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP
+    ]
+    assert not hard_stop_events, (
+        f"R6 deferred-fire branch MUST NOT emit HARD_STOP events"
+        f" while _gate_fire returns CONTINUE (defer); got"
+        f" {len(hard_stop_events)} HARD_STOP events."
     )
