@@ -6,7 +6,7 @@ implementing module + pin test that enforces it. It is intentionally
 tutorial-free: no code, no implementation walkthrough — only the
 per-AC linkage. Drift between this document and the codebase is caught
 by the consolidated pin test
-`tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r8`
+`tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r8`
 (whose `RALPH_PIN_TEST_PATHS` references every dedicated pin test file
 listed below); if a file is renamed or moved, `test_r8` fails and the
 doc must be updated to match.
@@ -57,7 +57,7 @@ R5 section below and the per-transport parametrize at
 - `tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py`
 - `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
 - `tests/agents/idle_watchdog/test_shared_subagent_pid_registry.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r1`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r1`
 
 ---
 
@@ -97,7 +97,7 @@ R5 section below and the per-transport parametrize at
 - `tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py`
 - `tests/agents/idle_watchdog/test_stuck_classifier.py`
 - `tests/agents/idle_watchdog/test_no_output_at_start_loading.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r2`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r2`
 
 ---
 
@@ -141,7 +141,7 @@ R5 section below and the per-transport parametrize at
 - `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
 - `tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py`
 - `tests/agents/idle_watchdog/test_session_ceiling_no_resume.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r3`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r3`
 
 ---
 
@@ -206,7 +206,7 @@ R5 section below and the per-transport parametrize at
 - `tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py`
 - `tests/agents/idle_watchdog/test_resume_session_id_threading.py`
 - `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r4`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r4`
 
 ---
 
@@ -274,7 +274,7 @@ parametrized per-transport pin test at
   `WaitingStatusEvent` dataclass) for every supported transport.
 - `tests/agents/idle_watchdog/test_subagent_progress_surface.py`
 - `tests/agents/idle_watchdog/test_waiting_subagent_progress.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r5`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r5`
   — the consolidated surface test; exercises all three R5 fields on
   the watchdog public surface AND on emitted `WaitingStatusEvent`
   instances for a single-watcher scenario.
@@ -318,7 +318,7 @@ parametrized per-transport pin test at
 - `tests/agents/idle_watchdog/test_log_spam_throttle.py`
 - `tests/agents/idle_watchdog/test_evidence_deferral_throttle.py`
 - `tests/agents/idle_watchdog/test_invocation_start_full_reset.py`
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r6`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r6`
 
 ---
 
@@ -353,7 +353,7 @@ parametrized per-transport pin test at
   (5 tests) — proves the `FailureClassifier._categorize_exc` branch
   threads `resumable_session_id` through to the recovery controller.
   Together with the file above, 11 tests pin the R7 invariant.
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r7`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r7`
 
 ---
 
@@ -393,6 +393,6 @@ parametrized per-transport pin test at
   `FakeClock` + a `@dataclass` `ProcessMonitor` Protocol fake (no real
   sleep, no real subprocess, no real filesystem).
 - `ralph/testing/audit_test_policy.py` (run via `make verify`).
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r8`
+- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r8`
   — the consolidated AC-08 assertion that the entire watchdog test
   suite passes the black-box testability contract.
