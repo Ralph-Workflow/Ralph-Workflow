@@ -105,6 +105,7 @@ RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     "tests/agents/idle_watchdog/test_stuck_classifier.py",
     "tests/agents/idle_watchdog/test_no_output_at_start_loading.py",
     # R3 - No false negatives.
+    "tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py",
     "tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py",
     "tests/agents/idle_watchdog/test_session_ceiling_no_resume.py",
     # R4 - Resume on watchdog kill, never restart.
