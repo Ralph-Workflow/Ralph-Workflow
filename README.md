@@ -163,7 +163,19 @@ Ralph Workflow is one of 27+ independent implementations of the Ralph Loop patte
 | Workflow as Code | 1 | YAML/DSL-declared pipelines |
 | Developer Experience | 1 | CLI tools, IDE helpers |
 
-Built something with Ralph Workflow? Add a credit line to your README and you're on the [Showcase](SHOWCASE.md). [See all 27+ projects →](USERS.md) · [Explore the ecosystem →](ECOSYSTEM.md)
+Built something with Ralph Workflow? Add a credit line to your README and you're on the [Showcase](SHOWCASE.md).
+
+### Independent validators
+
+The pattern is emerging independently. These projects ship loop-engineered agent runners — no affiliation, same architecture:
+
+| Project | Stars | Approach |
+|---------|-------|----------|
+| [SantanderAI/ralph](https://github.com/SantanderAI/ralph) | 77 ⭐ | Bash/PowerShell — fresh-session Claude Code, Codex, and Gemini CLI loop | (verify: gh)
+| [rxdt/py_ralph_frame](https://github.com/rxdt/py_ralph_frame) | 5 ⭐ | Python harness — lightweight spec-driven loop, `uvx`-installable | (verify: gh)
+| [anthropics/ralph-loop plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-loop) | official | Anthropic's Claude Code plugin implementing the Ralph Loop pattern |
+
+Ralph Workflow is the feature-complete orchestrator above these — composable phase routing, cost arbitrage, checkpoint/resume, and repo-based agent handoff. The validators each explore a different corner of the same loop-engineering space. [See all 27+ projects →](USERS.md) · [Explore the ecosystem →](ECOSYSTEM.md)
 
 ## Documentation
 
