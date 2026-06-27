@@ -331,7 +331,17 @@ parametrized per-transport pin test at
 
 - `ralph/agents/invoke/_open_code_resumable_exit_error.py:73` —
   `class OpenCodeResumableExitError(AgentInvocationError)`; the
-  typed exception carrying `resumable_session_id` and the
+  typed exception that carries a single attribute —
+  `resumable_session_id` (the captured transport-level session id).
+  The exception's diagnostic message text (`"(no artifact, no
+  declare_complete)"`) is the root-cause signature produced by
+  `ralph/agents/completion_signals.py::find_declare_complete_marker`
+  in `ralph/agents/invoke/_completion.py` when an agent subprocess
+  exits cleanly (rc=0) WITHOUT a completion artifact AND WITHOUT
+  the `declare_complete` marker. The historical `flagged_for_review=true`
+  log line was the ambiguous-warning path that the deterministic
+  classification introduced here explicitly removes; no current
+  attribute or method of `OpenCodeResumableExitError` carries the
   `flagged_for_review` flag.
 - `ralph/recovery/failure_classifier.py:597` —
   `class FailureClassifier`; the typed-cause classification
@@ -389,10 +399,63 @@ parametrized per-transport pin test at
 
 ### Pin tests
 
-- The entire `tests/agents/idle_watchdog/` suite — every test uses
-  `FakeClock` + a `@dataclass` `ProcessMonitor` Protocol fake (no real
-  sleep, no real subprocess, no real filesystem).
-- `ralph/testing/audit_test_policy.py` (run via `make verify`).
+- The **canonical RALPH pin-test set** (the entries of
+  `RALPH_PIN_TEST_PATHS` in
+  `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`)
+  — every entry uses `FakeClock` from `ralph.agents.timeout_clock`
+  plus a local `@dataclass` `ProcessMonitor` Protocol fake (no real
+  `time.sleep`, no real `subprocess.run`, no real `tmp_path` or
+  `Path.read_text()`). This set is the canonical R8 audit target and
+  the surface that `test_r8` enforces.
+- `ralph/testing/audit_test_policy.py` (run via `make verify`) — the
+  AST-level audit module that enforces the no-real-sleep / no-real-
+  subprocess / no-real-file-IO contract on every non-`subprocess_e2e`
+  test file across the whole `tests/` tree.
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r8`
-  — the consolidated AC-08 assertion that the entire watchdog test
-  suite passes the black-box testability contract.
+  — the consolidated AC-08 assertion that the canonical RALPH
+  pin-test set exists on disk, that the `ProcessMonitor` Protocol
+  advertises both seam names (`spawned_subagent_count` and
+  `live_subagent_count`), and that `FakeClock.advance(N)` is
+  deterministic.
+
+### Broader test-suite composition (NOT covered by the R8 black-box claim)
+
+The directory `tests/agents/idle_watchdog/` contains three test
+styles that are distinct from the canonical RALPH pin-test set. The
+R8 black-box claim is **scoped to the canonical pin-test set above**;
+these additional test styles are listed here for completeness and are
+governed by their own contracts:
+
+1. **End-to-end integration tests** (marked with
+   `pytest.mark.subprocess_e2e`) — exercise real subprocess, real
+   filesystem, and real wall-clock time by design. Example:
+   `tests/agents/idle_watchdog/test_e2e_activity_aware.py`. These
+   tests are explicitly excluded from
+   `ralph/testing/audit_test_policy.py` enforcement and are the only
+   path that verifies the production `DefaultProcessMonitor`
+   against a real descendant tree.
+
+2. **AST/source contract tests** — read the source via
+   `Path.read_text()` to pin structural invariants that black-box
+   tests cannot observe (e.g. "no `sys.exit` in the watchdog
+   modules", "`WatchdogFireReason` is constructed only by the two
+   canonical owner classes"). Examples:
+   `tests/agents/idle_watchdog/test_watchdog_recovery_contract.py`,
+   `tests/agents/idle_watchdog/test_diagnostic_snapshot.py`. The
+   `Path.read_text()` call is part of the watchdog contract
+   verification path, not a test artefact; the test asserts on the
+   parsed AST structure, not on file contents.
+
+3. **Runtime-facing seam tests** — drive the line-reader layer (the
+   place where the runtime actually emits
+   `AgentInactivityTimeoutError`) via a synthesized invoke flow with
+   temporary workspaces. Example:
+   `tests/agents/idle_watchdog/test_runtime_session_resume_safe_mapping.py`.
+   These tests use `tmp_path` because the runtime seam emits to a
+   real workspace; the contract they pin is the canonical
+   `WatchdogFireReason -> session_resume_safe` mapping at the line
+   reader layer.
+
+The consolidated `test_r8` does NOT assert these broader test styles
+use `FakeClock` / no real I/O — it asserts only the canonical RALPH
+pin-test set satisfies the black-box contract.
