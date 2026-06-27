@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import KW_ONLY, dataclass, field, replace
 from typing import IO, TYPE_CHECKING, cast
 
 from loguru import logger
@@ -121,12 +121,17 @@ class _CompletionCheckOptions:
     # and forwarded to ``OpenCodeResumableExitError`` at the raise
     # site at line 368 below so the diagnostic payload surfaces the
     # captured watchdog state at the moment of the rc=0 exit. The
-    # fields are keyword-only with default ``None`` / ``()`` so
-    # existing call sites that do not opt in remain unaffected --
-    # only the watchdog-firing path (where step 6 populates the
+    # ``KW_ONLY`` sentinel below makes these four fields
+    # keyword-only at the dataclass level (Python 3.10+ ``@dataclass``
+    # feature) so positional construction of the diagnostic
+    # surface is a ``TypeError`` -- callers MUST pass these by
+    # keyword. Defaults ``None`` / ``()`` preserve backward
+    # compatibility for the original nine fields; only the
+    # watchdog-firing path (where the line-reader layer populates
     # ``opts``) carries the diagnostic context. See
     # ``ralph/agents/invoke/_open_code_resumable_exit_error.py`` for
     # the R7 root-cause triage contract.
+    _: KW_ONLY
     last_observed_tool_call: str | None = None
     last_evidence_summary: str | None = None
     elapsed_seconds: float | None = None

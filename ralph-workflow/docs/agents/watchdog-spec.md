@@ -436,9 +436,14 @@ Verify cited line numbers after touching the cited files.
   `@dataclass(frozen=True) class _CompletionCheckOptions`; the
   in-process dataclass that threads the four R7 diagnostic
   fields from the line-reader layer to the
-  `OpenCodeResumableExitError` raise site at line 368.
-  Keyword-only with default `None` / `()` so existing call
-  sites that do not opt in remain unaffected.
+  `OpenCodeResumableExitError` raise site at line 368. The
+  four R7 diagnostic fields are enforced keyword-only via a
+  Python `dataclasses.KW_ONLY` sentinel (Python 3.10+): a
+  positional constructor call that targets the R7 surface
+  raises `TypeError`. Defaults `None` / `()` preserve
+  backward compatibility for the original nine positional
+  fields. The dataclass is otherwise frozen; field types and
+  defaults are stable.
 - `ralph/agents/invoke/_completion.py:368` — the
   `raise OpenCodeResumableExitError(agent_name, session_id=..., ...)`
   site that forwards the four diagnostic fields from `opts` to
