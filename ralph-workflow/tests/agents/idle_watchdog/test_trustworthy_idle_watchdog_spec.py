@@ -129,6 +129,7 @@ RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     # R7 - Explain and handle the "mysterious" rc=0 exits.
     "tests/recovery/test_opencode_resumable_exit_classification.py",
     "tests/recovery/test_opencode_resumable_exit_classifier.py",
+    "tests/recovery/test_opencode_resumable_exit_producer_path.py",
 )
 
 

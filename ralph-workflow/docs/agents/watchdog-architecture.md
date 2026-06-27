@@ -51,7 +51,7 @@ chain's `retries` counter and re-invokes the same agent. The
 failure is classified as `failure.counts_against_budget=True` and
 `failure.is_unavailable=False`; the controller's
 `_handle_retry_progression` enters the
-`should_retry_in_chain` branch at `controller.py:555-562` and
+`should_retry_in_chain` branch at `controller.py:919-928` and
 returns `_apply_chain_retry(state, phase, chain, ...)`. The pipeline
 does not advance to the next agent and does not mark the current
 agent on cooldown.
@@ -86,7 +86,7 @@ the recovery controller marks the agent on cooldown via
 available agent in the chain (cyclic, `wrap=True` re-arming). The
 controller's `_handle_retry_progression` enters the
 `next_available_index is not None` branch at
-`controller.py:563-603`.
+`controller.py:934-989`.
 
 The pipeline NEVER exits because of unavailability. When all agents
 in the chain are on cooldown, the controller enters the wait state
@@ -95,13 +95,13 @@ in the chain are on cooldown, the controller enters the wait state
 ## Never-exit invariant
 
 The recovery controller's `_handle_retry_progression` has the
-all-agents-unavailable branch at `controller.py:606-637` that sets
+all-agents-unavailable branch at `controller.py:991-1024` that sets
 `state.is_waiting_state=True` and
 `state.last_retry_delay_ms=<earliest_cooldown>` and does NOT call
 `_enter_phase_failed`. The run loop (`ralph/pipeline/run_loop.py`)
 sleeps on `last_retry_delay_ms` and re-enters the same phase. The
 `wrap=True` re-arming in `_next_available_agent_index`
-(`controller.py:653-674`) reconsiders earlier agents whose cooldown
+(`controller.py:1038-1058`) reconsiders earlier agents whose cooldown
 has expired.
 
 NO agent is permanently skipped. Every agent is recoverable via
@@ -111,7 +111,7 @@ THEN RETRY with the agent that comes off cooldown."
 
 The pipeline may exit ONLY via the BUDGET-EXHAUSTED path — when an
 agent's budget is exhausted AND no other agent is available. This
-is the only path to `_enter_phase_failed` (`controller.py:641-643`).
+is the only path to `_enter_phase_failed` (`controller.py:1027`).
 
 The never-exit invariant is now also enforced at import time by
 `_assert_never_exit_invariant` in `ralph/recovery/controller.py`
@@ -129,14 +129,14 @@ pin.
 ## Smart-verdict gate
 
 Every non-absolute `IdleWatchdog` fire candidate is routed through
-`_gate_fire` (`ralph/agents/idle_watchdog/idle_watchdog.py:471-499`),
+`_gate_fire` (`ralph/agents/idle_watchdog/idle_watchdog.py:691-703`),
 which consults the pure `classify_stuck` function (in
 `ralph/agents/idle_watchdog/_stuck_classifier.py`). The classifier
 returns one of six `StuckKind` values; the gate only allows FIRE
 when the classifier returns `STUCK`.
 
 The ONLY reason that bypasses the gate is
-`SESSION_CEILING_EXCEEDED` (`idle_watchdog.py:494-495`) — the
+`SESSION_CEILING_EXCEEDED` (`ralph/agents/idle_watchdog/_gate.py:141`) — the
 operator-set session wall-clock cap, which is not a stuck-detection
 signal.
 
@@ -150,7 +150,7 @@ killed.
 ## Why the gate uses a noop classify_quiet
 
 The gate's StuckClassifier (`_classify_stuck_now`,
-`idle_watchdog.py:411-471`) does NOT consult the live
+`idle_watchdog.py:680-690`) does NOT consult the live
 `classify_quiet` callable because doing so would always return
 `LOADING` during `WAITING_ON_CHILD` and deadlock the gate (the
 watchdog entered `WAITING_ON_CHILD` BECAUSE `classify_quiet`
@@ -160,7 +160,7 @@ the gate would always defer the ceiling fire).
 The `subagent_liveness` side-channel (the real process-monitor
 live signal) is the canonical signal for "live child"; it is
 consulted BEFORE the `classify_quiet` branches in the classifier
-(`_stuck_classifier.py:227-229`). The classifier checks the
+(`_stuck_classifier.py:353`). The classifier checks the
 side-channel via `_subagent_liveness_fresh` which respects
 `can_defer=True` — the gate defers only for real liveness signals
 from a process monitor that has confirmed at least one live
