@@ -56,11 +56,12 @@ R7 root-cause diagnostic surface (NEW):
 
     In addition to ``resumable_session_id`` (the resume hook), the
     exception carries four NEW keyword-only diagnostic attributes
-    that surface the captured watchdog state at the moment of the
-    rc=0 exit. The diagnostic surface lets an on-call operator read
-    a logged traceback and immediately understand WHAT the agent was
-    doing at the moment of the exit -- without needing to walk the
-    exception chain or re-invoke the watchdog.
+    that capture the watchdog state at the moment of the rc=0 exit.
+    The four attributes are preserved on the exception for
+    programmatic access (an on-call operator reads them via
+    ``exc.last_observed_tool_call``, ``exc.last_evidence_summary``,
+    ``exc.elapsed_seconds``, ``exc.transcript_tail``) without
+    walking the exception chain or re-invoking the watchdog.
 
     Diagnostic attributes (all keyword-only with default ``None`` /
     ``()`` so legacy two-arg callers are unaffected):
@@ -68,23 +69,31 @@ R7 root-cause diagnostic surface (NEW):
       * ``last_observed_tool_call``: ``str | None`` -- the most recent
         parsed tool-call verb (e.g. ``"read_file"``,
         ``"tool_use:Edit"``) from the line reader layer. ``None`` if
-        no tool call was recorded.
+        no tool call was recorded. SURFACED IN MESSAGE.
       * ``last_evidence_summary``: ``str | None`` -- the watchdog's
         ``last_evidence_summary(now).to_dict_list()`` str-coerced
         payload (the per-channel evidence summary at the moment
         of the exit). ``None`` if no evidence summary was captured.
+        PROGRAMMATIC-ONLY: not rendered into the exception message
+        to avoid unbounded message size from a verbose evidence
+        payload.
       * ``elapsed_seconds``: ``float | None`` -- the watchdog's
         ``idle_elapsed_seconds(clock.monotonic())`` value at the
         moment of the exit. ``None`` if no elapsed value was
-        captured.
+        captured. SURFACED IN MESSAGE.
       * ``transcript_tail``: ``tuple[str, ...]`` -- the last 10
         lines of the bounded output transcript at the moment of the
         exit (hard-capped via tuple slice in the line-reader
         construction site). Default ``()`` for legacy callers.
+        PROGRAMMATIC-ONLY: not rendered into the exception message
+        to avoid unbounded message size from a long transcript.
 
-    The diagnostic context is appended to the exception message so
-    a logged traceback is actionable without requiring a debugger or
-    the watchdog's full diagnostic state. Format:
+    The exception message embeds ONLY the two bounded-size
+    diagnostic fields -- ``last_observed_tool_call`` and
+    ``elapsed_seconds`` -- so a logged traceback remains concise
+    and human-readable. The full four-attribute surface is preserved
+    on the exception for callers that need the verbose evidence
+    summary or transcript tail. Format:
 
         ``OpenCodeResumableExitError: Agent 'opencode' failed
         with code 0: agent session exited without required
@@ -92,8 +101,11 @@ R7 root-cause diagnostic surface (NEW):
         [last_tool_call=read_file, elapsed=420.0s]``
 
     The ``[last_tool_call=..., elapsed=...]`` suffix is omitted when
-    the corresponding diagnostic attribute is ``None`` (legacy
-    callers see the original message unchanged).
+    both diagnostic attributes are ``None`` (legacy callers see the
+    original message unchanged); a partial suffix is rendered when
+    exactly one attribute is set. ``last_evidence_summary`` and
+    ``transcript_tail`` are NEVER rendered into the message -- they
+    are programmatic-only by design (see per-attribute notes above).
 
 Lock-in regression test:
     ``tests/recovery/test_opencode_resumable_exit_classification.py``
@@ -131,9 +143,14 @@ class OpenCodeResumableExitError(AgentInvocationError):
     R7 root-cause diagnostic surface (NEW): the exception also carries
     four keyword-only diagnostic attributes -- ``last_observed_tool_call``,
     ``last_evidence_summary``, ``elapsed_seconds``, and
-    ``transcript_tail`` -- that surface the captured watchdog state at
-    the moment of the rc=0 exit. The diagnostic context is appended
-    to the exception message so a logged traceback is actionable.
+    ``transcript_tail`` -- that capture the watchdog state at the
+    moment of the rc=0 exit. The four attributes are preserved on
+    the exception for programmatic access; the two bounded-size
+    fields (``last_observed_tool_call`` and ``elapsed_seconds``) are
+    ALSO surfaced in the exception message so a logged traceback is
+    actionable. The verbose fields (``last_evidence_summary`` and
+    ``transcript_tail``) are programmatic-only by design -- not
+    rendered into the message to avoid unbounded message size.
     """
 
     def __init__(

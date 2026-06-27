@@ -84,13 +84,22 @@ def _active() -> AgentExecutionState:
 def _make_watchdog_with_capture(
     *,
     captured_session_id: str | None,
-) -> tuple[IdleWatchdog, FakeClock]:
-    """Build an IdleWatchdog with the session-id capture hook injected.
+) -> tuple[IdleWatchdog, FakeClock, str | None]:
+    """Build an IdleWatchdog and return the captured session id alongside it.
 
-    The watchdog itself does not expose a public ``captured_session_id``
-    property; the line readers inject it. For this test, we wrap the
-    watchdog in a minimal helper that stashes the session id before the
-    fire so we can assert the end-to-end threading.
+    The watchdog itself does not own a public ``captured_session_id``
+    property: the line-reader layer extracts the session id from the
+    agent's ``--session`` flag and threads it through the public
+    ``_convert_idle_stream_timeout_to_agent_error(..., captured_session_id=...)``
+    seam. This test returns the captured id as a plain tuple element so
+    the assertions below can pass it back to the public conversion
+    seam -- no private watchdog attribute is set or read.
+
+    The captured session id parameter is accepted for symmetry with the
+    R4 contract: the kill error AND the converted error AND the
+    classifier all thread the SAME id end-to-end. The watchdog itself
+    does not need to know the id (it fires on activity signal, not on
+    session identity).
     """
     clock = FakeClock(start=0.0)
     policy = TimeoutPolicy(
@@ -104,13 +113,7 @@ def _make_watchdog_with_capture(
     )
     watchdog = IdleWatchdog(policy, clock, process_monitor=_NoProcessMonitor())
     watchdog.record_invocation_start()
-    # Attach the captured session id directly. The line readers set
-    # ``self._captured_session_id = ...`` from the agent's
-    # --session flag at invocation start; for the test we set it on
-    # the watchdog's record_attribute side via a public attribute
-    # shim so the resume path can read it back.
-    watchdog._captured_session_id = captured_session_id
-    return watchdog, clock
+    return watchdog, clock, captured_session_id
 
 
 def test_no_output_at_start_kill_threads_session_id() -> None:
@@ -122,7 +125,9 @@ def test_no_output_at_start_kill_threads_session_id() -> None:
     convert to ``AgentInactivityTimeoutError``; assert the typed
     error carries the captured id and ``session_resume_safe=True``.
     """
-    watchdog, clock = _make_watchdog_with_capture(captured_session_id="sess-abc-123")
+    watchdog, clock, captured_session_id = _make_watchdog_with_capture(
+        captured_session_id="sess-abc-123"
+    )
     clock.advance(31.0)  # past no_output_at_start_seconds=30.0
     verdict = watchdog.evaluate(classify_quiet=_active)
     assert verdict == WatchdogVerdict.FIRE
@@ -150,8 +155,9 @@ def test_no_output_at_start_kill_threads_session_id() -> None:
         exc=wrapper,
         parsed_output=("line 1", "line 2"),
         explicit_completion_seen=False,
-        captured_session_id="sess-abc-123",
+        captured_session_id=captured_session_id,
     )
+    assert converted.resumable_session_id == captured_session_id
     assert converted.resumable_session_id == "sess-abc-123"
     assert converted.session_resume_safe is True
     assert converted.reason == WatchdogFireReason.NO_OUTPUT_AT_START
@@ -165,7 +171,9 @@ def test_failure_classifier_marks_no_output_at_start_as_resumable() -> None:
     ``is_unavailable=False``. The classifier reads the watchdog reason
     from the typed exception's ``reason`` attribute.
     """
-    watchdog, clock = _make_watchdog_with_capture(captured_session_id="sess-abc-123")
+    watchdog, clock, captured_session_id = _make_watchdog_with_capture(
+        captured_session_id="sess-abc-123"
+    )
     clock.advance(31.0)
     watchdog.evaluate(classify_quiet=_active)
     typed_exc = IdleWatchdogKilledError(
@@ -185,7 +193,7 @@ def test_failure_classifier_marks_no_output_at_start_as_resumable() -> None:
         agent_name="test-agent",
         exc=wrapper,
         parsed_output=(),
-        captured_session_id="sess-abc-123",
+        captured_session_id=captured_session_id,
     )
     classifier = FailureClassifier()
     failure = classifier.classify(
