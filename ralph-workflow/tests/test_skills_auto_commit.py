@@ -584,3 +584,165 @@ def test_auto_commit_excludes_pre_staged_non_skill_paths(
         )
     finally:
         repo.close()
+
+
+@pytest.mark.timeout_seconds(15)
+def test_auto_commit_preserves_partial_staging_of_non_skill_file(
+    tmp_path: Path,
+) -> None:
+    """wt-025 / PA-fix-2: partial staging of a non-skill file MUST be preserved.
+
+    Pins the byte-for-byte contract: when the user has a PARTIALLY staged
+    file (a file with one staged hunk and a separate unstaged hunk), the
+    ``chore(skills): sync baseline bundle`` auto-commit MUST leave the
+    user's index byte-for-byte unchanged. The prior implementation
+    re-staged the file by pathname via ``stage_fn``, which silently
+    converted the unstaged hunk into a staged hunk and destroyed the
+    user's partial staging.
+
+    The fix snapshots each pre-staged non-skill path's index entry
+    (mode + blob SHA) via ``git ls-files --stage`` BEFORE ``git reset``,
+    then restores those exact entries via ``git update-index --cacheinfo``
+    AFTER the chore commit. This preserves the user's exact staged
+    content regardless of any working-tree drift.
+
+    Scenario:
+      - HEAD has ``src/main.py`` = ``"print(1)\\n"``.
+      - Working tree has ``"print(1)\\nprint(2)\\nprint(3)\\n"``.
+      - Index (cached) has ``"print(1)\\nprint(2)\\n"`` -- ``+print(2)``
+        is staged, ``+print(3)`` is unstaged.
+      - A skill is dirty, triggering the chore commit.
+
+    Assertions:
+      (a) the cached diff for ``src/main.py`` BEFORE the auto-commit is
+          byte-identical to the cached diff AFTER.
+      (b) the working-tree diff for ``src/main.py`` AFTER the auto-commit
+          still shows ``+print(3)`` as the unstaged hunk.
+      (c) the chore commit's HEAD diff does NOT contain ``src/main.py``.
+    """
+    # 1. Set up the repo with an initial commit, then commit ``src/main.py``
+    #    containing ``print(1)``.
+    Repo.init(tmp_path)
+    _track_initial_commit(tmp_path)
+
+    src_dir = tmp_path / "src"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    src_file = src_dir / "main.py"
+    src_file.write_text("print(1)\n", encoding="utf-8")
+    repo = Repo(tmp_path)
+    try:
+        actor = Actor("Test Author", "test@example.com")
+        repo.index.add(["src/main.py"])
+        repo.index.commit("seed src/main.py", author=actor, committer=actor)
+    finally:
+        repo.close()
+
+    # 2. Simulate a user mid-work: working tree has 3 lines, but only
+    #    ``print(2)`` is staged (the user ran ``git add -p`` to stage
+    #    just that hunk). ``print(3)`` remains unstaged.
+    src_file.write_text("print(1)\nprint(2)\nprint(3)\n", encoding="utf-8")
+    repo = Repo(tmp_path)
+    try:
+        # Build the staged blob ``"print(1)\\nprint(2)\\n"`` directly
+        # without invoking a subprocess: write the partial content to
+        # a file under ``tmp_path`` and use ``git hash-object -w <file>``
+        # to register it as a blob. Inject the blob into the index via
+        # ``git update-index --cacheinfo`` so the staged entry has the
+        # partial content (NOT the working-tree content). This bypasses
+        # any staging tool that would re-stage the whole working tree.
+        staged_content_file = tmp_path / ".partial_staged_content"
+        staged_content_file.write_bytes(b"print(1)\nprint(2)\n")
+        blob_sha = repo.git.hash_object("-w", str(staged_content_file)).strip()
+        _ = repo.git.update_index(
+            "--add",
+            "--cacheinfo",
+            f"100644,{blob_sha},src/main.py",
+        )
+        repo.index.write()
+    finally:
+        repo.close()
+
+    # 3. Capture the cached diff BEFORE the auto-commit -- this is the
+    #    byte-for-byte invariant the test pins.
+    repo = Repo(tmp_path)
+    try:
+        before_cached_diff = repo.git.diff("--cached", "--", "src/main.py")
+        before_cached_names = sorted(repo.git.diff("--cached", "--name-only").splitlines())
+    finally:
+        repo.close()
+
+    # Sanity: the setup invariant -- the cached diff MUST be exactly
+    # the ``+print(2)`` hunk (no ``+print(3)``).
+    assert "+print(2)" in before_cached_diff, (
+        "Setup invariant: cached diff MUST contain '+print(2)'; "
+        f"got: {before_cached_diff!r}"
+    )
+    assert "+print(3)" not in before_cached_diff, (
+        "Setup invariant: cached diff MUST NOT contain '+print(3)' (that hunk "
+        f"is unstaged); got: {before_cached_diff!r}"
+    )
+    assert before_cached_names == ["src/main.py"], (
+        "Setup invariant: src/main.py MUST be the only staged path; "
+        f"got: {before_cached_names!r}"
+    )
+
+    # 4. Make a skill dirty -- the trigger for the chore commit.
+    skill_dir = tmp_path / ".opencode" / "skills" / "brainstorming"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_dir.joinpath("SKILL.md").write_text("# brainstorm\n", encoding="utf-8")
+
+    # 5. Run the REAL production path: ``stage_files`` + ``create_commit``
+    #    from ``ralph.git.operations`` (NOT a MagicMock).
+    sha = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
+    assert sha is not None, (
+        "PA-fix-2: auto-commit MUST return a SHA when the skill tree is dirty"
+    )
+
+    # 6. PA-fix-2 invariant: the cached diff for src/main.py MUST be
+    #    byte-identical before and after -- partial staging MUST survive
+    #    the chore commit.
+    repo = Repo(tmp_path)
+    try:
+        after_cached_diff = repo.git.diff("--cached", "--", "src/main.py")
+        after_working_diff = repo.git.diff("--", "src/main.py")
+        after_cached_names = sorted(repo.git.diff("--cached", "--name-only").splitlines())
+        head_subject = repo.head.commit.message.splitlines()[0]
+        committed_paths = {
+            diff.a_path
+            for diff in repo.head.commit.diff(repo.head.commit.parents[0])
+        }
+    finally:
+        repo.close()
+
+    assert after_cached_diff == before_cached_diff, (
+        "PA-fix-2: partial staging MUST be preserved byte-for-byte across "
+        "the chore commit.\n"
+        f"  before: {before_cached_diff!r}\n"
+        f"  after:  {after_cached_diff!r}"
+    )
+    # The unstaged hunk MUST still be unstaged -- ``+print(3)`` shows up
+    # in the working-tree diff, not the cached diff.
+    assert "+print(3)" in after_working_diff, (
+        "PA-fix-2: the unstaged +print(3) hunk MUST remain unstaged; "
+        f"working diff: {after_working_diff!r}"
+    )
+    assert "+print(3)" not in after_cached_diff, (
+        "PA-fix-2: the unstaged +print(3) hunk MUST NOT leak into the index; "
+        f"cached diff: {after_cached_diff!r}"
+    )
+    assert after_cached_names == ["src/main.py"], (
+        "PA-fix-2: src/main.py MUST still be staged after the auto-commit; "
+        f"got: {after_cached_names!r}"
+    )
+    assert head_subject == SKILL_AUTO_COMMIT_SUBJECT, (
+        "PA-fix-2: chore commit subject MUST be deterministic; "
+        f"got: {head_subject!r}"
+    )
+    assert "src/main.py" not in committed_paths, (
+        "PA-fix-2: chore(skills) commit MUST NOT capture src/main.py; "
+        f"got committed paths: {committed_paths!r}"
+    )
+    assert ".opencode/skills/brainstorming/SKILL.md" in committed_paths, (
+        "PA-fix-2: chore(skills) commit MUST include the skill path; "
+        f"got committed paths: {committed_paths!r}"
+    )
