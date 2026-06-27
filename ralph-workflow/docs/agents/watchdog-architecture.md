@@ -484,102 +484,15 @@ threading contract (7 numbered evidence points).
 
 ## Trustworthy Idle Watchdog spec coverage (wt-021)
 
-The Trustworthy Idle Watchdog product spec
-(`.agent/CURRENT_PROMPT.md`) defines eight acceptance criteria. Each
-criterion is pinned by a dedicated black-box test file and the
-consolidated spec test
-(`tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`)
-asserts one concrete invariant per criterion against its dedicated
-pin. The matrix below is the canonical record; the spec test pins
-every row.
-
-1. **R1 — Child-process monitors count only real subagents.** A
-   process is a real subagent iff it is a live descendant of the
-   supervised agent PID AND it is REGISTERED in the shared
-   `SubagentPidRegistry`. The filtered count is exposed via
-   `ProcessMonitor.spawned_subagent_count()` (preferred) and
-   `live_subagent_count()` (legacy alias). Pin:
-   `tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py`.
-   Invariant: a monitor that only sees helper PIDs returns 0 from
-   BOTH seam names; the alias is faithful (both names return the
-   same filtered value). [wt-021 R1 / Trustworthy Idle Watchdog R1]
-
-2. **R2 — No false positives.** The watchdog does NOT kill while
-   activity is recent or a real subagent is working. The
-   `classify_stuck` function maps `WAITING_ON_CHILD` → `LOADING`,
-   `RESUMABLE_CONTINUE` → `TRANSITIONING`, and `is_waiting_state=True`
-   → `DUPLICATE_KILL`; the smart-verdict gate returns `CONTINUE`
-   for every non-`STUCK` kind. Pins:
-   `tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py`
-   (single MCP tool-call + quiet with fresh corroborator does NOT
-   fire) + `tests/agents/idle_watchdog/test_stuck_classifier.py`
-   (verdict priority). [wt-021 R2 / Trustworthy Idle Watchdog R2]
-
-3. **R3 — No false negatives.** Every genuine hang fires within a
-   bounded ceiling, even when a non-subagent helper process looks
-   like a lingering child. The hard ceilings are checked against
-   the FILTERED subagent count; a helpers-only monitor returns 0
-   and the ceiling fires. Pin:
-   `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
-   (session / cumulative / idle ceilings all fire with helpers
-   alive). [wt-021 R3 / Trustworthy Idle Watchdog R3]
-
-4. **R4 — Watchdog-driven kills resume the existing session.** The
-   resume path (`AgentInactivityTimeoutError` /
-   `OpenCodeResumableExitError` with a prior session) returns
-   `recovery_action='resume'` via
-   `recovery_action_for_failure_reason`; the fresh path is
-   function-separate via `fresh_session_options`. Pin:
-   `tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py`
-   (8 evidence points end-to-end) +
-   `tests/recovery/test_opencode_resumable_exit_classification.py`.
-   [wt-021 R4 / Trustworthy Idle Watchdog R4]
-
-5. **R5 — Real-time subagent visibility for all supported agents.**
-   `record_subagent_work(description=line)` populates
-   `last_subagent_progress_description` so every supported
-   `AgentTransport`'s real extracted progress surfaces through the
-   watchdog. Pin:
-   `tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py`
-   (8 transports × 5 signal shapes; OpenCode additionally routes
-   per-child `RegistryBackedSubagentOutputCapture` lines).
-   [wt-021 R5 / Trustworthy Idle Watchdog R5]
-
-6. **R6 — Quiet, meaningful output.** `_gate_fire` emissions are
-   throttled by a COMBINED coarse per-`fire_reason` map
-   (`_last_any_deferred_log_at` keyed on `fire_reason.value`
-   alone) PLUS a per-tuple map (`_last_deferred_log_at` keyed on
-   `(fire_reason, deferred_kind)`). The coarse throttle caps
-   emissions to one DEBUG record per `watchdog_log_throttle_seconds`
-   per `fire_reason` REGARDLESS of how the deferred_kind cycles.
-   Pin: `tests/agents/idle_watchdog/test_log_spam_throttle.py` (per-
-   tuple + coarse single-key + refresh-window cases).
-   [wt-021 R6 / Trustworthy Idle Watchdog R6]
-
-7. **R7 — Ambiguous rc=0 exits classified deterministically.**
-   `OpenCodeResumableExitError` classifies as
-   `FailureCategory.AGENT` BEFORE the broader
-   `AgentInvocationError` branch; the exception NEVER falls through
-   to `FailureCategory.AMBIGUOUS`. Pin:
-   `tests/recovery/test_opencode_resumable_exit_classification.py`
-   (every instance, including `session_id=None`, classifies as
-   `AGENT`). [wt-021 R7 / Trustworthy Idle Watchdog R7]
-
-8. **R8 — Clean, black-box-testable architecture.** Every watchdog
-   test file uses `FakeClock` (`ralph/agents/timeout_clock.py`) + a
-   tiny `@dataclass` satisfying the `ProcessMonitor` Protocol. No
-   real sleep, no real subprocess, no real filesystem. Enforced
-   structurally by the AST-level audit
-   `ralph/testing/audit_test_policy.py` (wired into `make verify`).
-   Pin: `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`
-   (8 ordinary test methods, one per R1-R8, asserting one concrete
-   invariant each). [wt-021 R8 / Trustworthy Idle Watchdog R8]
-
-Consolidated AC summary test:
-
-- `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py` —
-  single black-box module with a `TestTrustworthyIdleWatchdogSpec`
-  class containing 8 ordinary test methods (`test_r1` through
-  `test_r8`, no `@pytest.mark.parametrize`). Each method asserts one
-  concrete invariant and references its dedicated pin test in the
-  docstring. Target wall-clock: <2 seconds for the whole file.
+> **Canonical reference:** the per-AC traceability map
+> (R1–R8 → implementing module + dedicated pin test) lives in
+> [`watchdog-spec.md`](watchdog-spec.md). This section does NOT
+> duplicate that map — it points to the canonical doc so the
+> consolidated pin test
+> (`tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r8`)
+> remains the single source of truth for which files pin which
+> acceptance criteria. If you need to know "which file owns R5" or
+> "which test pins R7," open `watchdog-spec.md` — that document
+> is kept in sync with the codebase via the same `test_r8`
+> assertion that enforces every dedicated pin test file path
+> exists on disk.

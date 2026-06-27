@@ -91,15 +91,36 @@ from ralph.recovery.failure_classifier import FailureClassifier
 
 # Immutable reference list (audit_resource_lifecycle accepts ``tuple`` and
 # ``frozenset`` as immutable; do NOT convert to a mutable ``list``).
+# Every entry MUST exist on disk; ``test_r8`` below enforces that via
+# ``absolute_path.is_file()``. The list mirrors the dedicated pin tests
+# enumerated in ``ralph-workflow/docs/agents/watchdog-spec.md`` — when a
+# pin test is added to the spec, append the relative path here too.
 RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
+    # R1 - Child-process monitors count only real subagents.
     "tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py",
-    "tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py",
     "tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py",
+    "tests/agents/idle_watchdog/test_shared_subagent_pid_registry.py",
+    # R2 - No false positives.
+    "tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py",
     "tests/agents/idle_watchdog/test_stuck_classifier.py",
-    "tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py",
-    "tests/agents/idle_watchdog/test_log_spam_throttle.py",
+    "tests/agents/idle_watchdog/test_no_output_at_start_loading.py",
+    # R3 - No false negatives.
+    "tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py",
+    "tests/agents/idle_watchdog/test_session_ceiling_no_resume.py",
+    # R4 - Resume on watchdog kill, never restart.
+    "tests/agents/idle_watchdog/test_resume_after_kill_contract.py",
+    "tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py",
+    "tests/agents/idle_watchdog/test_resume_session_id_threading.py",
     "tests/recovery/test_resume_after_watchdog_kill_threads_session_id.py",
+    # R5 - Real-time subagent visibility for all supported agents.
+    "tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py",
+    # R6 - Quiet, meaningful output.
+    "tests/agents/idle_watchdog/test_log_spam_throttle.py",
+    "tests/agents/idle_watchdog/test_evidence_deferral_throttle.py",
+    "tests/agents/idle_watchdog/test_invocation_start_full_reset.py",
+    # R7 - Explain and handle the "mysterious" rc=0 exits.
     "tests/recovery/test_opencode_resumable_exit_classification.py",
+    "tests/recovery/test_opencode_resumable_exit_classifier.py",
 )
 
 

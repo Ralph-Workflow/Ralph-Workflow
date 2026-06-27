@@ -26,14 +26,19 @@ R5 section below and the per-transport parametrize at
 
 ### Implementing modules
 
-- `ralph/agents/idle_watchdog/_subagent_identity.py:82` — `SubagentIdentity`
-  dataclass; the per-transport source tag is the seam the filter
-  consults.
+- `ralph/agents/idle_watchdog/_subagent_identity.py:82` —
+  `class SubagentIdentity`; the per-transport source tag is the seam
+  the filter consults.
 - `ralph/agents/idle_watchdog/_subagent_identity.py:130` —
-  `SubagentPidRegistry`; FIFO-capped at `_MAX_REGISTRY_ENTRIES`
-  (1024), shared across transports, filtered by `source`.
-- `ralph/process/monitor/_process_monitor.py:42` — `ProcessMonitor`
-  Protocol; canonical seam every per-agent monitor implements.
+  `class SubagentPidRegistry`; FIFO-capped at
+  `_MAX_REGISTRY_ENTRIES` (1024), shared across transports, filtered
+  by `source`.
+- `ralph/process/monitor/_process_monitor.py:18` —
+  `class ProcessRole(StrEnum)`; the role enum every per-agent
+  monitor tags its observations with.
+- `ralph/process/monitor/_process_monitor.py:42` —
+  `class ProcessMonitor(Protocol)`; canonical seam every per-agent
+  monitor implements.
 - `ralph/process/monitor/_process_monitor.py:78` —
   `ProcessMonitor.live_subagent_count`; canonical filtered count.
 - `ralph/process/monitor/_process_monitor.py:91` —
@@ -63,23 +68,29 @@ R5 section below and the per-transport parametrize at
 
 ### Implementing modules
 
-- `ralph/agents/idle_watchdog/_gate.py:16` — `classify_stuck_now`;
+- `ralph/agents/idle_watchdog/_gate.py:16` — `def classify_stuck_now`;
   the StuckClassifier input combiner consumed by the smart-verdict
   gate.
-- `ralph/agents/idle_watchdog/_gate.py:99` — `gate_fire`; the
+- `ralph/agents/idle_watchdog/_gate.py:99` — `def gate_fire`; the
   gate that returns `WatchdogVerdict.CONTINUE` for every non-STUCK
   classification.
-- `ralph/agents/idle_watchdog/_stuck_classifier.py` —
-  `classify_stuck`; pure-function mapping from
+- `ralph/agents/idle_watchdog/_stuck_classifier.py:290` —
+  `def classify_stuck`; pure-function mapping from
   `AgentExecutionState` + channel evidence + corroboration to
   `StuckKind`.
 - `ralph/agents/idle_watchdog/_active_branch.py:226` —
-  `evaluate_inner`; the central verdict path that consults every
+  `def evaluate_inner`; the central verdict path that consults every
   escape hatch.
+- `ralph/agents/idle_watchdog/_fire_evaluators.py:118` —
+  `def evaluate_no_progress_quiet`; the strictly-stuck and
+  no-progress-quiet ceiling enforcement.
+- `ralph/agents/idle_watchdog/_fire_evaluators.py:303` —
+  `def evaluate_strictly_stuck`; the orthogonal strictly-stuck
+  ceiling for stuck-but-alive subagents.
 - `ralph/agents/idle_watchdog/_fire_evaluators.py:419` —
-  `evaluate_no_output_at_start`; the premature first-output guard
-  with multiple deferral gates (subagent activity, recent tool
-  result, first-party channel freshness).
+  `def evaluate_no_output_at_start`; the premature first-output
+  guard with multiple deferral gates (subagent activity, recent
+  tool result, first-party channel freshness).
 
 ### Pin tests
 
@@ -98,21 +109,32 @@ R5 section below and the per-transport parametrize at
 ### Implementing modules
 
 - `ralph/agents/idle_watchdog/_active_branch.py:226` —
-  `evaluate_inner`; the session-ceiling + repeated-error breaker +
-  strictly-stuck ceiling + no-progress ceiling pre-checks.
+  `def evaluate_inner`; the session-ceiling + repeated-error
+  breaker + strictly-stuck ceiling + no-progress ceiling
+  pre-checks.
+- `ralph/agents/idle_watchdog/_active_branch.py:262` —
+  inline `SESSION_CEILING_EXCEEDED` check; the absolute
+  `max_session_seconds=3300` bypass triggered when
+  `session_elapsed >= self._config.max_session_seconds`.
+- `ralph/agents/idle_watchdog/_active_branch.py:255-265` —
+  session-ceiling early-exit block (the hard wall bypassing the
+  smart-verdict gate for `SESSION_CEILING_EXCEEDED` only).
+- `ralph/agents/idle_watchdog/_gate.py:99` — `def gate_fire`;
+  bypass path for `WatchdogFireReason.SESSION_CEILING_EXCEEDED`
+  (line 141) — the only reason that bypasses the gate.
 - `ralph/agents/idle_watchdog/_waiting_branch.py:20` —
-  `effective_waiting_ceiling`; the bounded waiting ceiling computed
-  from corroboration (`max_waiting_on_child_seconds=1800`,
+  `def effective_waiting_ceiling`; the bounded waiting ceiling
+  computed from corroboration (`max_waiting_on_child_seconds=1800`,
   `stuck_job_sub_ceiling_seconds=600`).
-- `ralph/agents/idle_watchdog/_fire_evaluators.py:199` —
-  `evaluate_no_progress_quiet`; the strictly-stuck and
-  no-progress-quiet ceiling enforcement.
-- `ralph/agents/idle_watchdog/_fire_evaluators.py:253` —
-  `evaluate_strictly_stuck`; the orthogonal strictly-stuck ceiling
-  for stuck-but-alive subagents.
-- `ralph/agents/idle_watchdog/_fire_evaluators.py:370` —
-  `evaluate_session_ceiling`; the absolute `max_session_seconds=3300`
-  bypass.
+- `ralph/agents/idle_watchdog/_fire_evaluators.py:118` —
+  `def evaluate_no_progress_quiet`; the dumb-kill ceiling +
+  heartbeat-only fire path.
+- `ralph/agents/idle_watchdog/_fire_evaluators.py:303` —
+  `def evaluate_strictly_stuck`; the orthogonal strictly-stuck
+  ceiling for stuck-but-alive subagents.
+- `ralph/agents/idle_watchdog/timeout_policy.py:134` —
+  `TimeoutPolicy.max_session_seconds`; the configurable wall-clock
+  cap consumed by the session-ceiling check above.
 
 ### Pin tests
 
@@ -130,49 +152,50 @@ R5 section below and the per-transport parametrize at
 
 ### Implementing modules
 
-- `ralph/agents/idle_watchdog/idle_watchdog.py:220` — `IdleWatchdog`;
-  the `_RESUMABLE_FIRE_REASONS` set + function-separated resume/fresh
-  paths.
-- `ralph/agents/idle_watchdog/_activity_methods.py` —
-  `diagnostic_snapshot()` carries `resumable_session_id: str | None`
+- `ralph/agents/idle_watchdog/idle_watchdog.py:220` —
+  `class IdleWatchdog`; the `_RESUMABLE_FIRE_REASONS` set +
+  function-separated resume/fresh paths.
+- `ralph/agents/idle_watchdog/_activity_methods.py:253` —
+  `def diagnostic_snapshot`; carries `resumable_session_id: str | None`
   hardcoded to `None` (the watchdog itself never populates the
   field; it is a stable key reserved for the outer watchdog-kill
   readers that merge the snapshot into a larger post-mortem
   payload).
 - `ralph/agents/invoke/_process_reader.py:609` —
-  `merged_diag["resumable_session_id"]`; the watchdog-kill path
-  for subprocess transports populates this key on the OUTER
-  `merged_diag` payload (NOT inside the inner `watchdog_snapshot`
-  dict). The id is sourced from the visible-TUI
+  `merged_diag["resumable_session_id"] = captured_session_id`; the
+  watchdog-kill path for subprocess transports populates this key
+  on the OUTER `merged_diag` payload (NOT inside the inner
+  `watchdog_snapshot` dict). The id is sourced from the visible-TUI
   `self._captured_session_id` populated from the agent session.
 - `ralph/agents/invoke/_pty_line_reader.py:676` —
-  `merged_diag["resumable_session_id"]`; the watchdog-kill path
-  for PTY transports populates this key on the OUTER
-  `merged_diag` payload with the same semantics as the subprocess
-  path.
-- `ralph/agents/idle_watchdog_kill.py:19` — `IdleWatchdogKilledError`;
-  the typed exception that carries the resumable session id through
-  the failure-classifier pipeline. This is the CANONICAL carrier of
+  `merged_diag["resumable_session_id"] = captured_session_id`; the
+  watchdog-kill path for PTY transports populates this key on the
+  OUTER `merged_diag` payload with the same semantics as the
+  subprocess path.
+- `ralph/agents/idle_watchdog_kill.py:19` —
+  `class IdleWatchdogKilledError(Exception)`; the typed exception
+  that carries the resumable session id through the
+  failure-classifier pipeline. This is the CANONICAL carrier of
   the id for the failure-classifier pipeline; the `merged_diag`
   population above is the canonical carrier for log-only consumers
   that walk the post-mortem dict directly without inspecting the
   exception chain.
 - `ralph/agents/invoke/_open_code_resumable_exit_error.py:73` —
-  `OpenCodeResumableExitError`; the typed rc=0 exit exception
-  classified by R7 below.
-- `ralph/agents/invoke/_session_resume.py` —
-  `recovery_action_for_failure_reason`; the function that maps a
-  failure reason to `"resume"` vs `"fresh"`.
+  `class OpenCodeResumableExitError(AgentInvocationError)`; the
+  typed rc=0 exit exception classified by R7 below.
+- `ralph/agents/invoke/_session_resume.py:170` —
+  `def recovery_action_for_failure_reason`; the function that maps
+  a failure reason to `"resume"` vs `"fresh"`.
 
 > **Contract note (resumable_session_id location):**
-> `resumable_session_id` lives on TWO surfaces: (1) the outer
-> `merged_diag` payload (set by `_process_reader.py` and
-> `_pty_line_reader.py` at the moment of the watchdog kill), and
-> (2) the typed `IdleWatchdogKilledError.resumable_session_id`
-> attribute (used by the failure classifier via `exc.__cause__`).
-> The inner `IdleWatchdog.diagnostic_snapshot()` dict hardcodes
-> `resumable_session_id` to `None`; the watchdog itself does NOT
-> populate the field. Consumers MUST consult the outer
+> `resumable_session_id` lives on THREE surfaces: (1) the outer
+> `merged_diag` payload (set by `_process_reader.py:609` and
+> `_pty_line_reader.py:676` at the moment of the watchdog kill), (2)
+> the typed `IdleWatchdogKilledError.resumable_session_id` attribute
+> (used by the failure classifier via `exc.__cause__`), and (3) the
+> inner `IdleWatchdog.diagnostic_snapshot()` dict key
+> `resumable_session_id` — hardcoded to `None`; the watchdog itself
+> does NOT populate the field. Consumers MUST consult the outer
 > `merged_diag` payload OR walk the exception chain
 > (`failure.resumable_session_id`) — NOT the inner
 > `diagnostic_snapshot()` key.
@@ -220,27 +243,27 @@ parametrized per-transport pin test at
 
 ### Implementing modules
 
-- `ralph/agents/idle_watchdog/_activity_methods.py` —
-  `_parse_tool_call_from_description`; the R5 CURRENT TOOL CALL
-  parser.
-- `ralph/agents/idle_watchdog/_activity_methods.py` —
-  `diagnostic_snapshot`; exposes all three R5 fields on the
+- `ralph/agents/idle_watchdog/_activity_methods.py:50` —
+  `def _parse_tool_call_from_description`; the R5 CURRENT TOOL CALL
+  parser (pure function).
+- `ralph/agents/idle_watchdog/_activity_methods.py:253` —
+  `def diagnostic_snapshot`; exposes all three R5 fields on the
   watchdog public surface.
 - `ralph/agents/idle_watchdog/waiting_status_event.py:14` —
-  `WaitingStatusEvent`; the frozen dataclass carrying all three R5
-  fields on every emitted event.
-- `ralph/agents/idle_watchdog/_active_branch.py` — `emit`; the
-  dispatcher that populates all three R5 fields on every emitted
-  `WaitingStatusEvent`.
-- `ralph/agents/idle_watchdog/_waiting_branch.py` —
-  `handle_waiting_branch`; the SUBAGENT_PROGRESS emit site that
+  `class WaitingStatusEvent`; the frozen dataclass carrying all
+  three R5 fields on every emitted event.
+- `ralph/agents/idle_watchdog/_active_branch.py:100` —
+  `def emit`; the dispatcher that populates all three R5 fields on
+  every emitted `WaitingStatusEvent`.
+- `ralph/agents/idle_watchdog/_waiting_branch.py:92` —
+  `def handle_waiting_branch`; the SUBAGENT_PROGRESS emit site that
   flows all three fields to operators.
-- `ralph/agents/idle_watchdog/_activity_methods.py` —
-  `record_subagent_work`; the canonical producer of the R5 surface
-  (PROGRESS + LAST ACTIVITY).
-- `ralph/agents/idle_watchdog/_activity_methods.py` —
-  `record_invocation_start`; the per-invocation reset that clears
-  all three R5 fields to `None`.
+- `ralph/agents/idle_watchdog/_activity_methods.py:425` —
+  `def record_subagent_work`; the canonical producer of the R5
+  surface (PROGRESS + LAST ACTIVITY).
+- `ralph/agents/idle_watchdog/_activity_methods.py:126` —
+  `def record_invocation_start`; the per-invocation reset that
+  clears all three R5 fields to `None`.
 
 ### Pin tests
 
@@ -265,28 +288,30 @@ parametrized per-transport pin test at
 
 ### Implementing modules
 
-- `ralph/agents/idle_watchdog/_active_branch.py` — `maybe_log_deferred`;
-  the per-tuple `(fire_reason, deferred_kind)` throttle keyed on
+- `ralph/agents/idle_watchdog/_gate.py:193` —
+  `def maybe_log_deferred`; the per-tuple
+  `(fire_reason, deferred_kind)` throttle keyed on
   `watchdog_log_throttle_seconds`.
-- `ralph/agents/idle_watchdog/_active_branch.py` —
-  `maybe_log_any_deferred`; the coarse per-`fire_reason` throttle
-  that caps emissions to one DEBUG record per throttle window
-  regardless of `deferred_kind` cycles.
-- `ralph/agents/idle_watchdog/_active_branch.py` —
-  `maybe_log_evidence_deferral`; the per-channel evidence-deferral
-  throttle that mirrors the per-tuple map for the activity-aware
-  path.
-- `ralph/agents/idle_watchdog/_waiting_branch.py` —
-  `handle_waiting_branch`; the structured-status emit path
+- `ralph/agents/idle_watchdog/_gate.py:230` —
+  `def maybe_log_any_deferred`; the coarse per-`fire_reason`
+  throttle that caps emissions to one DEBUG record per throttle
+  window regardless of `deferred_kind` cycles.
+- `ralph/agents/idle_watchdog/_active_branch.py:394` —
+  `def maybe_log_evidence_deferral`; the per-channel
+  evidence-deferral throttle that mirrors the per-tuple map for
+  the activity-aware path.
+- `ralph/agents/idle_watchdog/_waiting_branch.py:92` —
+  `def handle_waiting_branch`; the structured-status emit path
   (ENTERED, PROGRESS, SUSPECTED_FROZEN, HARD_STOP) replacing the
   per-tick debug spam.
-- `ralph/agents/idle_watchdog/timeout_policy.py` — `TimeoutPolicy`;
-  carries `watchdog_log_throttle_seconds`,
-  `watchdog_subagent_progress_interval_seconds`,
-  `waiting_status_interval_seconds` (the cadence knobs).
-- `ralph/agents/idle_watchdog/_activity_methods.py` —
-  `record_invocation_start`; the per-invocation reset that clears
-  every throttle map so a fresh run starts with empty maps.
+- `ralph/agents/idle_watchdog/timeout_policy.py:52` —
+  `class TimeoutPolicy`; carries `watchdog_log_throttle_seconds`
+  (line 301), `watchdog_subagent_progress_interval_seconds` (line
+  307), `waiting_status_interval_seconds` (line 140) — the cadence
+  knobs.
+- `ralph/agents/idle_watchdog/_activity_methods.py:126` —
+  `def record_invocation_start`; the per-invocation reset that
+  clears every throttle map so a fresh run starts with empty maps.
 
 ### Pin tests
 
@@ -305,16 +330,18 @@ parametrized per-transport pin test at
 ### Implementing modules
 
 - `ralph/agents/invoke/_open_code_resumable_exit_error.py:73` —
-  `OpenCodeResumableExitError`; the typed exception carrying
-  `resumable_session_id` and the `flagged_for_review` flag.
-- `ralph/recovery/failure_classifier.py:597` — `FailureClassifier`;
-  the typed-cause classification pipeline.
-- `ralph/recovery/failure_classifier.py:604` — `FailureClassifier.classify`;
-  the public entrypoint that routes typed exceptions to
-  `FailureCategory`.
+  `class OpenCodeResumableExitError(AgentInvocationError)`; the
+  typed exception carrying `resumable_session_id` and the
+  `flagged_for_review` flag.
+- `ralph/recovery/failure_classifier.py:597` —
+  `class FailureClassifier`; the typed-cause classification
+  pipeline.
+- `ralph/recovery/failure_classifier.py:604` —
+  `def FailureClassifier.classify`; the public entrypoint that
+  routes typed exceptions to `FailureCategory`.
 - `ralph/recovery/failure_classifier.py:856` —
-  `FailureClassifier._categorize_exc`; the typed-cause branch that
-  maps `OpenCodeResumableExitError` to `FailureCategory.AGENT`
+  `def FailureClassifier._categorize_exc`; the typed-cause branch
+  that maps `OpenCodeResumableExitError` to `FailureCategory.AGENT`
   (never `AMBIGUOUS`) and threads `resumable_session_id` through.
 
 ### Pin tests
@@ -337,23 +364,28 @@ parametrized per-transport pin test at
 
 ### Implementing modules
 
-- `ralph/agents/idle_watchdog/timeout_policy.py` — `TimeoutPolicy`;
-  the typed configuration consumed by every watchdog surface (no
-  hidden globals).
-- `ralph/agents/idle_watchdog/idle_watchdog.py:220` — `IdleWatchdog`;
-  constructor takes injected `Clock`, `TimeoutPolicy`, optional
-  `ProcessMonitor`, optional `Corroborator`, optional
-  `ConnectivityStateProvider`, optional `WaitingStatusListener`.
-- `ralph/process/monitor/_process_monitor.py:42` — `ProcessMonitor`
-  Protocol; tests inject `@dataclass` fakes (the
-  `_HelpersOnlyMonitor` / `_FilteredCountMonitor` pattern in
+- `ralph/agents/idle_watchdog/timeout_policy.py:52` —
+  `class TimeoutPolicy`; the typed configuration consumed by every
+  watchdog surface (no hidden globals).
+- `ralph/agents/idle_watchdog/idle_watchdog.py:220` —
+  `class IdleWatchdog`; constructor takes injected `Clock`,
+  `TimeoutPolicy`, optional `ProcessMonitor`, optional
+  `Corroborator`, optional `ConnectivityStateProvider`, optional
+  `WaitingStatusListener`.
+- `ralph/process/monitor/_process_monitor.py:42` —
+  `class ProcessMonitor(Protocol)`; tests inject `@dataclass` fakes
+  (the `_HelpersOnlyMonitor` / `_FilteredCountMonitor` pattern in
   `tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py`
   and the consolidated suite).
-- `ralph/agents/timeout_clock.py` — `FakeClock`; the deterministic
-  clock every watchdog test drives instead of wall-clock waits.
-- `ralph/testing/audit_test_policy.py` — the audit module that
-  enforces no real `time.sleep`, no `subprocess.run` without
-  `timeout=`, and no real file I/O in non-`subprocess_e2e` tests.
+- `ralph/agents/timeout_clock.py:16` — `class FakeClock`; the
+  deterministic clock every watchdog test drives instead of
+  wall-clock waits.
+- `ralph/testing/audit_test_policy.py:211` —
+  `class TestPolicyAuditor(ast.NodeVisitor)`; the AST-level audit
+  module that enforces no real `time.sleep`, no `subprocess.run`
+  without `timeout=`, and no real file I/O in non-`subprocess_e2e`
+  tests (entrypoints at `audit_test_file` line 563 and
+  `audit_tests_directory` line 625).
 
 ### Pin tests
 
