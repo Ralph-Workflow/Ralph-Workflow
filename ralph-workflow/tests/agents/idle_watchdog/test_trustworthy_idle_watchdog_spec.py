@@ -130,6 +130,7 @@ RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     "tests/process/monitor/test_dispatch_all_transports.py",
     # R6 - Quiet, meaningful output.
     "tests/agents/idle_watchdog/test_log_spam_throttle.py",
+    "tests/agents/idle_watchdog/test_log_spam_throttle_public_surface.py",
     "tests/agents/idle_watchdog/test_evidence_deferral_throttle.py",
     "tests/agents/idle_watchdog/test_invocation_start_full_reset.py",
     # R7 - Explain and handle the "mysterious" rc=0 exits.

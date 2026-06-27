@@ -360,7 +360,7 @@ human-readable template naming:
   * **the hard ceiling seconds** (rounded).
 
 The exact loguru INFO message template, emitted at
-`ralph/agents/idle_watchdog/_waiting_branch.py:331-336`, is:
+`ralph/agents/idle_watchdog/_waiting_branch.py:337-343`, is:
 
 ```
 idle watchdog: agent waiting on subagent ({} alive) for {}s - hard ceiling at {}s
@@ -377,7 +377,7 @@ window rather than the per-tick debug spam the prompt's evidence
 exhibit described.
 
 The WAITING entry log emitted at
-`ralph/agents/idle_watchdog/_waiting_branch.py:123-126` is a
+`ralph/agents/idle_watchdog/_waiting_branch.py:122-126` is a
 SEPARATE loguru INFO record from the heartbeat:
 
 ```
