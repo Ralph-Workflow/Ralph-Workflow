@@ -15,6 +15,8 @@ Use it for well-specified work that can run against your repo's tests while you 
 
 🌐 **[ralphworkflow.com](https://ralphworkflow.com)** — comparison guides, first-run walkthrough, and the [Loop Engineering blog](https://ralphworkflow.com/blog).
 
+🌐 **[English](#)** | **[中文](README.zh.md)**
+
 ## You've been flying with a copilot. Ralph Workflow is the autopilot for it.
 
 Every AI coding tool today is a **copilot** — Cursor, GitHub Copilot, interactive Claude Code. A copilot keeps you in the seat, hands on, assisting in real time. That's right for the hard parts and wrong for the long stretch between them, where you're approving an agent's work prompt-by-prompt for a task you already specified.
@@ -132,7 +134,20 @@ Ralph Workflow depends on good engineering practice — it doesn't replace it. A
 
 Ralph Workflow is one of 27+ independent implementations of the Ralph Loop pattern documented in [USERS.md](USERS.md). The pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph), and [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) tracks the wider ecosystem.
 
-Built something with Ralph Workflow? Add a credit line to your README and you're on the [Showcase](SHOWCASE.md). [See all 27+ projects →](USERS.md)
+**Ecosystem by category** (from [ECOSYSTEM.md](ECOSYSTEM.md)):
+
+| Category | Count | Example |
+|----------|-------|----------|
+| CLI / orchestrators | 9 | Ralph Workflow, umputun/ralphex, bastani-inc/atomic |
+| Agent SDKs / frameworks | 5 | computerlovetech/ralphify, benikigai/nightshift |
+| Platform / CI pipelines | 4 | self-serve loop engineering platforms |
+| IDE / editor integrations | 3 | Loop Engineering in VS Code, Emacs, Neovim |
+| Skilling / learning packs | 3 | Skill packs, workshops, cookbooks |
+| SDK / composite agents | 2 | Agent-to-agent orchestration |
+| Workflow as Code | 1 | YAML/DSL-declared pipelines |
+| Developer Experience | 1 | CLI tools, IDE helpers |
+
+Built something with Ralph Workflow? Add a credit line to your README and you're on the [Showcase](SHOWCASE.md). [See all 27+ projects →](USERS.md) · [Explore the ecosystem →](ECOSYSTEM.md)
 
 ## Documentation
 

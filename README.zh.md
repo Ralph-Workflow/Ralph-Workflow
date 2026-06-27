@@ -6,6 +6,8 @@
 
 Ralph Workflow 是一个免费、开源的 Loop Engineering 框架，运行你已经有的编码代理——Claude Code、Codex 或 OpenCode——在你的本地机器上。
 
+🌐 **[中文](#)** | **[English](README.md)**
+
 ![Codeberg stars](https://img.shields.io/codeberg/stars/RalphWorkflow/Ralph-Workflow) ![GitHub stars](https://img.shields.io/github/stars/Ralph-Workflow/Ralph-Workflow) ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
 [![Built with Ralph Loop](assets/built-with-ralph-loop.svg)](https://github.com/Ralph-Workflow/Ralph-Workflow)
 
