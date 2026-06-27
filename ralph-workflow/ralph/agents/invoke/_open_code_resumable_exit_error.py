@@ -174,17 +174,11 @@ class OpenCodeResumableExitError(AgentInvocationError):
         )
         diagnostic_suffix_parts: list[str] = []
         if last_observed_tool_call is not None:
-            diagnostic_suffix_parts.append(
-                f"last_tool_call={last_observed_tool_call}"
-            )
+            diagnostic_suffix_parts.append(f"last_tool_call={last_observed_tool_call}")
         if elapsed_seconds is not None:
-            diagnostic_suffix_parts.append(
-                f"elapsed={round(elapsed_seconds, 1)}s"
-            )
+            diagnostic_suffix_parts.append(f"elapsed={round(elapsed_seconds, 1)}s")
         if diagnostic_suffix_parts:
-            full_message = (
-                base_message + " [" + ", ".join(diagnostic_suffix_parts) + "]"
-            )
+            full_message = base_message + " [" + ", ".join(diagnostic_suffix_parts) + "]"
         else:
             full_message = base_message
         super().__init__(agent_name, 0, full_message)
