@@ -336,6 +336,15 @@ def invoke_agent(
         # any future parser-side PID registration a single source of
         # truth (the cross-transport authoritative set).
         transport_for_registry = _agent_transport(config)
+        # R1 / R5 (Trustworthy Idle Watchdog spec): the
+        # orchestrator (``stream_parsed_agent_activity`` call site in
+        # effect_executor) MAY pass a pre-built (registry,
+        # source_label) pair so the same registry reaches both the
+        # strategy (here, via ``subagent_pid_source``) and the parser
+        # (via ``stream_parsed_agent_activity``). When the caller
+        # does not thread a registry, build one locally and let the
+        # orchestrator's parser construction see a fresh registry
+        # (legacy behavior, NOT the production wiring).
         (
             _subagent_pid_registry,
             subagent_pid_source,

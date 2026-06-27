@@ -51,6 +51,11 @@ if TYPE_CHECKING:
 _EXPECTED_CALLBACK_ARITY: int = 2
 _MIN_RECORD_ARGS: int = 2
 
+
+def _line_in_ranges(line: int, ranges: list[tuple[int, int]]) -> bool:
+    """Return True when ``line`` sits inside any ``(start, end)`` range."""
+    return any(start <= line <= end for start, end in ranges)
+
 _SKIP_DIRS: frozenset[str] = frozenset(
     {
         "__pycache__",
@@ -445,6 +450,91 @@ class _ModuleVisitor(ast.NodeVisitor):
                 return True
         return False
 
+    def _collect_forbidden_descendant_snapshot(
+        self,
+        target: ast.FunctionDef,
+    ) -> list[int]:
+        """Return line numbers of forbidden ``descendant_snapshot`` refs.
+
+        The legacy escape hatch (``process_monitor_enabled=False``
+        fallback when ``self._process_monitor is None``) is the
+        only ``descendant_snapshot`` reference the audit allows. The
+        reference must sit in the ``else:`` arm of an
+        ``if monitor is not None: ... else:`` block -- anywhere else
+        is the bug class from the product spec.
+        """
+        forbidden: list[int] = []
+        guard_indices = self._find_monitor_guard_arms(target)
+        legacy_line_ranges: list[tuple[int, int]] = []
+        if guard_indices is not None:
+            _if_start, _if_end, else_start, else_end = guard_indices
+            if else_start is not None and else_end is not None:
+                legacy_line_ranges.append((else_start, else_end))
+        for child in ast.walk(target):
+            line_raw: object = getattr(child, "lineno", None)
+            if not isinstance(line_raw, int):
+                continue
+            line: int = line_raw
+            is_name_match = (
+                isinstance(child, ast.Name)
+                and child.id == _SUBAGENT_COUNTING_SEAM_REJECTED
+            )
+            is_attr_match = (
+                isinstance(child, ast.Attribute)
+                and child.attr == _SUBAGENT_COUNTING_SEAM_REJECTED
+            )
+            if (is_name_match or is_attr_match) and not _line_in_ranges(
+                line, legacy_line_ranges
+            ):
+                forbidden.append(line)
+        return forbidden
+
+    def _find_monitor_guard_arms(
+        self,
+        target: ast.FunctionDef,
+    ) -> tuple[int, int, int | None, int | None] | None:
+        """Locate the canonical monitor guard block.
+
+        Returns ``(if_start_line, if_end_line, else_start_line,
+        else_end_line)``. The detection looks for an ``ast.If``
+        whose test contains ``monitor is not None`` (or
+        ``self._process_monitor is not None``).
+        """
+        for stmt in ast.walk(target):
+            if not isinstance(stmt, ast.If):
+                continue
+            test_src = ast.unparse(stmt.test)
+            is_guard = (
+                "self._process_monitor is not None" in test_src
+                or "monitor is not None" in test_src
+            )
+            if not is_guard:
+                continue
+            body_first = stmt.body[0] if stmt.body else stmt
+            body_last = stmt.body[-1] if stmt.body else stmt
+            if_start_raw: object = getattr(body_first, "lineno", stmt.lineno)
+            if_start: int = (
+                if_start_raw if isinstance(if_start_raw, int) else stmt.lineno
+            )
+            if_end_raw: object = getattr(body_last, "end_lineno", stmt.lineno)
+            if_end: int = if_end_raw if isinstance(if_end_raw, int) else stmt.lineno
+            if stmt.orelse:
+                else_first = stmt.orelse[0]
+                else_last = stmt.orelse[-1]
+                else_start_raw: object = getattr(else_first, "lineno", None)
+                else_end_raw: object = getattr(else_last, "end_lineno", None)
+                else_start: int | None = (
+                    else_start_raw if isinstance(else_start_raw, int) else None
+                )
+                else_end: int | None = (
+                    else_end_raw if isinstance(else_end_raw, int) else None
+                )
+            else:
+                else_start = None
+                else_end = None
+            return (if_start, if_end, else_start, else_end)
+        return None
+
     def check_subagent_counting_seam(self) -> None:
         """R1 audit: ``_corroborate`` MUST NOT use ``descendant_snapshot()``.
 
@@ -452,14 +542,28 @@ class _ModuleVisitor(ast.NodeVisitor):
         (``agents/invoke/_process_reader.py`` and
         ``agents/invoke/_pty_line_reader.py``). The detector locates
         the ``_corroborate`` function definition and walks its body
-        for any reference to ``descendant_snapshot``. When found AND
-        the function does NOT also reference the filtered seam
-        (``spawned_subagent_count`` or ``live_subagent_count``), a
+        for any reference to ``descendant_snapshot``. When ANY
+        ``descendant_snapshot`` reference is found -- even alongside
+        a reference to the filtered seam -- a
         ``subagent_counting_seam`` violation is raised.
 
-        The wider tree is parsed only when the file is a seam file
-        AND defines ``_corroborate`` -- mirrors the existing
-        pre-filter pattern in :func:`_file_needs_parse`.
+        This is the strict reading of the R1 contract: the broader
+        ``descendant_snapshot()`` count MUST NEVER be used at this
+        seam, even as a "fallback" path, because the broader count
+        includes shell helpers like ``npm test`` / ``cargo build``
+        and produced the 2365s indefinite deferral in the wild
+        (cited in the product spec). The previous pass only flagged
+        descendant_snapshot when the filtered seam was ALSO absent;
+        that allowed mixed usage where the broader count could still
+        block the hard ceilings in tests / process_monitor_enabled=False
+        configurations. This pass closes that loophole.
+
+        Accepts both ``descendant_snapshot(...)`` as a Name (free
+        function call) AND ``self._handle.descendant_snapshot()`` as
+        an Attribute access (member call) -- the production code
+        uses both patterns. The wider tree is parsed only when the
+        file is a seam file AND defines ``_corroborate`` -- mirrors
+        the existing pre-filter pattern in :func:`_file_needs_parse`.
         """
         if self.rel_path not in _SUBAGENT_COUNTING_SEAM_FILES:
             return
@@ -475,34 +579,23 @@ class _ModuleVisitor(ast.NodeVisitor):
                 break
         if target is None:
             return
-        # Walk the body for ``descendant_snapshot`` references. The
-        # narrower check (no descendant_snapshot at all) would NOT
-        # flag a future regression that introduced the broader count;
-        # the test asserts the inverse -- the broader count is
-        # forbidden when present without the filtered seam.
-        # Accepts both ``descendant_snapshot(...)`` as a Name (free
-        # function call) AND ``self._handle.descendant_snapshot()`` as
-        # an Attribute access (member call) -- the production code
-        # uses both patterns.
-        uses_rejected = False
-        uses_accepted = False
-        for child in ast.walk(target):
-            if isinstance(child, ast.Name) and child.id == _SUBAGENT_COUNTING_SEAM_REJECTED:
-                uses_rejected = True
-            elif isinstance(child, ast.Name) and child.id in _SUBAGENT_COUNTING_SEAM_ACCEPTED:
-                uses_accepted = True
-            elif (
-                isinstance(child, ast.Attribute)
-                and child.attr == _SUBAGENT_COUNTING_SEAM_REJECTED
-            ):
-                uses_rejected = True
-            elif (
-                isinstance(child, ast.Attribute)
-                and child.attr in _SUBAGENT_COUNTING_SEAM_ACCEPTED
-            ):
-                uses_accepted = True
-        if uses_rejected and not uses_accepted:
-            self._add("subagent_counting_seam", target.lineno)
+        # Strict R1 check: ANY reference to ``descendant_snapshot``
+        # inside ``_corroborate`` raises the violation. The legacy
+        # escape hatch (``else:`` branch when ``monitor is None`` --
+        # ``process_monitor_enabled=False`` opt-out for integration
+        # tests pre-dating the R5 registry seam) is the ONLY
+        # ``descendant_snapshot`` reference allowed; the canonical
+        # ``if monitor is not None:`` filtered-seam branch MUST NOT
+        # use ``descendant_snapshot``. The detector walks the body
+        # and tracks which branch a ``descendant_snapshot``
+        # reference sits in -- references inside an ``else:`` arm
+        # (the legacy escape hatch) are permitted, references in any
+        # other context (including the canonical ``if`` arm) are
+        # forbidden.
+        forbidden_descent_references = self._collect_forbidden_descendant_snapshot(target)
+        if forbidden_descent_references:
+            line = forbidden_descent_references[0]
+            self._add("subagent_counting_seam", line)
 
 
 def audit_reader_file(path: Path) -> list[ActivityAwareWatchdogViolation]:

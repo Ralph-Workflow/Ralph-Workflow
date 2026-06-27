@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
     from pathlib import Path
 
+    from ralph.agents.idle_watchdog import SubagentPidRegistry
     from ralph.config.agent_config import AgentConfig
     from ralph.display.artifact_reader import PlanSummary
     from ralph.display.context import DisplayContext
@@ -250,12 +251,28 @@ def stream_parsed_agent_activity(
     agent_config: AgentConfig | None = None,
     **kwargs: object,
 ) -> None:
-    """Stream and render parsed agent output lines."""
+    """Stream and render parsed agent output lines.
+
+    Accepts and forwards the per-invocation
+    ``subagent_pid_registry=`` and ``subagent_source_label=`` kwargs
+    into the resolved parser so the parser's structured-event hook
+    registers any embedded PID into the shared registry (R1 / R5 of
+    the Trustworthy Idle Watchdog spec). Both kwargs are optional;
+    legacy callers continue to work without them.
+    """
     transport = cast("AgentTransport | None", kwargs.get("transport"))
     display_context = cast("DisplayContext | None", kwargs.get("display_context"))
     raw_output_sink = cast("deque[str] | list[str] | None", kwargs.get("raw_output_sink"))
     rendered_output_sink = cast("deque[str] | list[str] | None", kwargs.get("rendered_output_sink"))
     session_id_sink = cast("Callable[[str], None] | None", kwargs.get("session_id_sink"))
+    subagent_pid_registry = cast(
+        "SubagentPidRegistry | None",
+        kwargs.get("subagent_pid_registry"),
+    )
+    subagent_source_label = cast(
+        "str | None",
+        kwargs.get("subagent_source_label"),
+    )
 
     if agent_config is not None:
         parser_key = resolve_parser_key(
@@ -267,7 +284,11 @@ def stream_parsed_agent_activity(
         parser_key = (
             "claude_interactive" if transport == AgentTransport.CLAUDE_INTERACTIVE else parser_type
         )
-    parser = _resolve_parser(parser_key)
+    parser = _resolve_parser(
+        parser_key,
+        subagent_pid_registry=subagent_pid_registry,
+        subagent_source_label=subagent_source_label,
+    )
 
     def _iter_lines() -> Iterator[str]:
         for line in lines:
@@ -411,12 +432,43 @@ def _record_activity_on_subscriber(
         logger.debug("subscriber.record_activity failed", exc_info=True)
 
 
-def _resolve_parser(parser_type: str) -> AgentParser:
+def _resolve_parser(
+    parser_type: str,
+    *,
+    subagent_pid_registry: SubagentPidRegistry | None = None,
+    subagent_source_label: str | None = None,
+) -> AgentParser:
+    """Resolve a parser instance by ``parser_type``.
+
+    R1 / R5 (Trustworthy Idle Watchdog spec): when the caller threads a
+    shared ``SubagentPidRegistry`` plus a per-transport source label
+    through this helper, the registry is forwarded into
+    ``get_parser`` so the parser's structured-event handler can
+    register any embedded PID into the registry. The registration
+    flows back to ``ProcessMonitor.spawned_subagent_count()`` through
+    the existing per-transport ``SubagentPidSource`` seam, so the
+    watchdog sees real subagent PIDs as they appear in the agent's
+    stream (defense-in-depth against the broader
+    ``descendant_snapshot()`` count).
+
+    Both kwargs are keyword-only and default to ``None`` so legacy
+    callers (the smoke plumbing, commit plumbing) that invoke
+    ``_resolve_parser(parser_type)`` continue to work without
+    changes.
+    """
     try:
-        return get_parser(parser_type)
+        return get_parser(
+            parser_type,
+            subagent_pid_registry=subagent_pid_registry,
+            subagent_source_label=subagent_source_label,
+        )
     except ValueError:
         logger.warning("Unknown parser '{}'; falling back to generic", parser_type)
-        return get_parser("generic")
+        return get_parser(
+            "generic",
+            subagent_pid_registry=subagent_pid_registry,
+            subagent_source_label=subagent_source_label,
+        )
 
 
 def _truncate(text: str, max_length: int) -> str:

@@ -126,32 +126,24 @@ class BaseExecutionStrategy:
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         del liveness_probe
-        # R1 (Trustworthy Idle Watchdog spec): when a SubagentPidSource
-        # is injected (the per-transport factory helpers in
+        # R1 (Trustworthy Idle Watchdog spec): the precedence is
+        # (a) OpenCode ChildLivenessRegistry first, (b) injected
+        # ``SubagentPidSource`` (per-transport factory helpers in
         # ``ralph.process.monitor._subagent_pid_source_providers`` wire
-        # this from a ``SubagentPidRegistry``), it is the FILTERED
-        # signal -- the set of REAL subagent PIDs, never the broader
-        # ``descendant_snapshot()`` count which includes shell helpers
-        # like ``npm test`` / ``cargo build`` (the 2365s indefinite
-        # deferral bug from the product spec). The source MUST take
-        # precedence over both the registry and the descendant handle
-        # because it is the canonical owner of the real-subagent set.
-        if self._subagent_pid_source is not None:
-            try:
-                pids = self._subagent_pid_source.known_subagent_pids()
-            except Exception:
-                pids = set()
-            if pids:
-                return AgentExecutionState.WAITING_ON_CHILD
-            return AgentExecutionState.ACTIVE
-        # OpenCode path (ChildLivenessRegistry wired by the strategy
-        # factory): use the registry's filtered signal
-        # (``len(self._registry.snapshot())``) instead of falling back
-        # to ``handle.has_live_descendants()`` -- the registry is the
-        # authoritative real-subagent set updated from OpenCode's
-        # structured child lifecycle events. The BROADER descendant
-        # count is the bug class from the product spec; we MUST NOT
-        # use it when a registry is injected.
+        # this from a ``SubagentPidRegistry``), then (c) the legacy
+        # ``handle.has_live_descendants()`` fallback ONLY when neither
+        # filtered seam is injected. The registry wins for OpenCode
+        # because the OpenCode path already has a
+        # ``ChildLivenessSubagentPidSource`` wrapper feeding the
+        # registry from structured lifecycle events; the
+        # ``SubagentPidSource`` wins for non-OpenCode transports that
+        # do not wire a registry but still inject a filtered source.
+        # The BROADER ``descendant_snapshot()`` /
+        # ``handle.has_live_descendants()`` count is the bug class
+        # from the product spec -- it includes shell helpers like
+        # ``npm test`` / ``cargo build`` and produced the 2365s
+        # indefinite deferral. We MUST NOT consult it when a filtered
+        # seam is present.
         if self._registry is not None:
             try:
                 # ``snapshot`` returns a ``ChildActivitySnapshot``;
@@ -165,9 +157,20 @@ class BaseExecutionStrategy:
             except Exception:
                 pass
             return AgentExecutionState.ACTIVE
+        if self._subagent_pid_source is not None:
+            try:
+                pids = self._subagent_pid_source.known_subagent_pids()
+            except Exception:
+                pids = set()
+            if pids:
+                return AgentExecutionState.WAITING_ON_CHILD
+            return AgentExecutionState.ACTIVE
         # Legacy fallback (no registry, no injected source): keep the
         # previous ``has_live_descendants()`` behavior for
         # backward-compatible tests that pre-date the registry seam.
+        # Used ONLY when no filtered seam is available so a
+        # non-instrumented test (or a transport the R5 wiring has not
+        # yet covered) does not regress to "always ACTIVE".
         if hasattr(handle, "has_live_descendants"):
             try:
                 if bool(handle.has_live_descendants()):

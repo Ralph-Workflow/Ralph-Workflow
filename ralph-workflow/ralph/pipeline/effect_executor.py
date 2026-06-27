@@ -573,6 +573,31 @@ def _consume_attempt_output(
     )
     get_heartbeat = pipeline_deps.heartbeat_policy_from_env_fn
 
+    # R1 / R5 (Trustworthy Idle Watchdog spec): build the per-invocation
+    # ``SubagentPidRegistry`` once at the orchestrator level so the
+    # SAME registry reaches the parser layer
+    # (``stream_parsed_agent_activity`` -> ``_resolve_parser`` ->
+    # ``get_parser`` -> ``parser._subagent_pid_registry``). The
+    # strategy layer (``invoke_agent`` -> ``strategy_for_command``)
+    # builds its own registry internally for backward compat with
+    # test fakes that use the canonical ``invoke_agent(config,
+    # prompt_file, options=...)`` signature; the parser-side
+    # registration hook is the new addition wired by this change.
+    # Without the parser-side wiring, the parser's structured-event
+    # registration hook fires but the registrations never reach the
+    # watchdog's filtered count -- the watchdog either undercounts
+    # (no parser registrations reach the strategy) or miscounts
+    # (the parser registers into an orphan registry).
+    _raw_transport: object = getattr(ctx.agent_config, "transport", None)
+    _agent_config_transport: AgentTransport = (
+        _raw_transport if isinstance(_raw_transport, AgentTransport) else AgentTransport.GENERIC
+    )
+    _agent_registry = AgentRegistry()
+    _subagent_pid_registry, _subagent_pid_source = (
+        _agent_registry.build_subagent_pid_registry(_agent_config_transport)
+    )
+    _subagent_source_label = _agent_config_transport.value
+
     def _run_invocation() -> None:
         output_lines = ctx.deps.invoke_agent(ctx.agent_config, attempt_prompt_file, options=options)
         if verbosity_rank(ctx.verbosity) >= VERBOSITY_RANK[Verbosity.NORMAL]:
@@ -587,6 +612,8 @@ def _consume_attempt_output(
                 rendered_output_sink=rendered_output,
                 session_id_sink=capture_session_id,
                 agent_config=ctx.agent_config,
+                subagent_pid_registry=_subagent_pid_registry,
+                subagent_source_label=_subagent_source_label,
             )
             return
         for line in output_lines:

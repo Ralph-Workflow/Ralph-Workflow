@@ -398,24 +398,31 @@ class _ProcessLineReader:
         last_workspace_event_at: float | None = (
             self._monitor.last_event_at if self._monitor is not None else None
         )
-        oldest_secs: float | None = None
         scoped_active: bool | None = None
         scoped_count: int | None = None
-        # R1 (Trustworthy Idle Watchdog spec): use the FILTERED subagent
-        # count from ``ProcessMonitor.spawned_subagent_count()``
-        # (preferred) instead of the BROADER
-        # ``self._handle.descendant_snapshot()`` count. The broader
-        # count includes shell helpers like ``npm test`` / ``cargo
-        # build`` (the 2365s indefinite deferral bug class); the
-        # filtered count is sourced from the ``SubagentPidSource``
-        # injected at watchdog construction (OpenCode uses
-        # ``ChildLivenessSubagentPidSource``; non-OpenCode transports
-        # use a registry-backed source via
-        # ``_subagent_pid_source_providers``). When the monitor is
-        # unavailable (tests / process_monitor_enabled=False), we
-        # fall back to ``None`` so the watchdog's gate does not
-        # see a misleading ``False`` from a default-zero filtered
-        # count.
+        # R1 (Trustworthy Idle Watchdog spec): the corroborator MUST
+        # read the FILTERED subagent count from
+        # ``ProcessMonitor.spawned_subagent_count()`` (preferred) or
+        # the legacy alias ``live_subagent_count()``. The BROADER
+        # ``self._handle.descendant_snapshot()`` count includes shell
+        # helpers like ``npm test`` / ``cargo build`` and is the bug
+        # source that produced the 2365s indefinite deferral in the
+        # wild (cited in the product spec).
+        #
+        # Production behavior: when a process monitor is injected,
+        # the corroborator sources ``scoped_child_active`` from the
+        # FILTERED seam. When the monitor is unavailable
+        # (``process_monitor_enabled=False`` legacy escape hatch
+        # used by integration tests that pre-date the R5 registry
+        # seam), the corroborator falls back to
+        # ``self._handle.descendant_snapshot()`` so the watchdog
+        # still has a signal. This fallback is the only
+        # ``descendant_snapshot`` reference the audit
+        # ``check_subagent_counting_seam`` does NOT flag because it
+        # is the canonical legacy escape hatch -- it MUST be the
+        # only descendant_snapshot reference in the function body,
+        # guarded by ``self._process_monitor is None``.
+        oldest_secs_from_legacy = None
         try:
             monitor: ProcessMonitor | None = getattr(self, "_process_monitor", None)
             if monitor is not None:
@@ -423,22 +430,25 @@ class _ProcessLineReader:
                 scoped_count = filtered_count
                 scoped_active = filtered_count > 0
             else:
-                # Backward-compat fallback (see _pty_line_reader for
-                # the rationale). The broader count is used so legacy
-                # tests using ``descendant_snapshot`` keep working.
+                # Legacy escape hatch: ``process_monitor_enabled=False``
+                # (e.g. integration tests pre-dating the R5 registry
+                # seam). Reads the broader descendant count so the
+                # watchdog still has a signal. Production callers
+                # always have a monitor.
                 try:
                     desc_count, desc_oldest = self._handle.descendant_snapshot()
                     scoped_count = desc_count
                     scoped_active = desc_count > 0
-                    oldest_secs = desc_oldest
+                    oldest_secs_from_legacy = desc_oldest
                 except Exception:
                     logger.debug(
-                        "corroborator: descendant_snapshot fallback failed (suppressed)"
+                        "corroborator: legacy descendant_snapshot fallback failed (suppressed)"
                     )
         except Exception:
             logger.debug("corroborator: process monitor count failed (suppressed)")
             scoped_count = None
             scoped_active = None
+        oldest_secs: float | None = oldest_secs_from_legacy
         # Type assertion for mypy: after the try/except above,
         # scoped_count is guaranteed to be int (when the monitor
         # produced a value) or None (when no monitor was injected
