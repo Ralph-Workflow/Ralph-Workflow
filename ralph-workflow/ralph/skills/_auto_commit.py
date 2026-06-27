@@ -78,6 +78,18 @@ _SKILL_AUTO_COMMIT_CHANGED_SKILLS_HEADER: str = "Changed skills:"
 # empty trailing newline).
 _GIT_PORCELAIN_PREFIX_LEN: int = 4
 
+# ``git ls-files --stage`` returns lines of the form
+# ``<mode> <blob-sha> <stage-number>\t<path>``. The metadata prefix has
+# exactly 3 whitespace-separated tokens before the tab; the path follows
+# the tab. Lines that do not match this shape (e.g. an unmerged entry
+# that already failed the pre-commit hook) are skipped defensively.
+_GIT_LS_FILES_META_FIELDS: int = 3
+_GIT_LS_FILES_PATH_PARTS: int = 2
+
+# Stage-0 means "fully merged in the index". Anything else indicates an
+# unmerged conflict state which the chore commit MUST NOT touch.
+_GIT_INDEX_STAGE_MERGED: str = "0"
+
 
 def _list_dirty_skill_paths(repo: Repo, prefix: str) -> list[str]:
     """Return sorted repo-relative paths under ``prefix`` that are dirty.
@@ -134,6 +146,63 @@ def _extract_skill_names(dirty_paths: list[str]) -> list[str]:
                 names.add(skill_name)
             break
     return sorted(names)
+
+
+def _snapshot_pre_staged_index_entries(
+    repo: Repo, paths: list[str]
+) -> dict[str, tuple[str, str]]:
+    """Capture each path's index entry (mode + blob SHA) via ``git ls-files --stage``.
+
+    The returned mapping can be used with ``git update-index --cacheinfo``
+    to restore the user's exact staged state after a chore commit --
+    critical for preserving partial staging across the auto-commit. A
+    partial-staged file has staged hunks in the index that differ from
+    the working tree; re-staging the file by pathname would replace
+    those staged hunks with the working-tree content and silently
+    commit unstaged hunks.
+
+    Lines that do not match the expected
+    ``<mode> <sha> <stage>\\t<path>`` shape, or whose stage is not
+    stage-0 (i.e. unmerged entries), are skipped defensively -- the
+    chore commit MUST NOT touch unmerged state.
+    """
+    snapshots: dict[str, tuple[str, str]] = {}
+    if not paths:
+        return snapshots
+    ls_files_raw = cast(
+        "str", repo.git.ls_files("--stage", "--", *paths)
+    )
+    for ls_line in ls_files_raw.splitlines():
+        parts = ls_line.split("\t", 1)
+        if len(parts) != _GIT_LS_FILES_PATH_PARTS:
+            continue
+        meta = parts[0].split()
+        if len(meta) < _GIT_LS_FILES_META_FIELDS:
+            continue
+        mode, blob_sha, stage = meta[0], meta[1], meta[2]
+        if stage != _GIT_INDEX_STAGE_MERGED:
+            continue
+        snapshots[parts[1]] = (mode, blob_sha)
+    return snapshots
+
+
+def _restore_pre_staged_index_entries(
+    repo: Repo, snapshots: dict[str, tuple[str, str]]
+) -> None:
+    """Restore each path's exact index entry via ``git update-index --cacheinfo``.
+
+    Best-effort restoration -- a broken git state MUST NOT block the
+    pipeline. Errors are caught and logged at DEBUG by the caller.
+    """
+    for path, (mode, blob_sha) in snapshots.items():
+        _ = cast(
+            "None",
+            repo.git.update_index(
+                "--add",
+                "--cacheinfo",
+                f"{mode},{blob_sha},{path}",
+            ),
+        )
 
 
 def commit_skill_updates(
@@ -223,8 +292,8 @@ def commit_skill_updates(
             # Pin the skill-only commit contract: snapshot every pre-staged
             # NON-skill path BEFORE staging the skill paths, unstage them
             # so the chore commit cannot capture unrelated pre-staged
-            # entries, then re-stage them after the commit to preserve
-            # the user's staging state across the auto-commit.
+            # entries, then restore their EXACT index state after the
+            # commit to preserve the user's staging state.
             #
             # ``repo.index.entries`` is a cached OrderedDict that does NOT
             # reflect fresh ``git add`` operations; use
@@ -234,12 +303,27 @@ def commit_skill_updates(
             # the skill paths, polluting the deterministic
             # ``chore(skills): sync baseline bundle`` commit with unrelated
             # changes.
+            #
+            # Restoring the user's staging state requires more than
+            # re-staging by pathname -- the user may have PARTIALLY
+            # staged a file (e.g. ``src/main.py`` with ``+print(2)``
+            # staged and ``+print(3)`` still in the working tree).
+            # Calling ``stage_fn(repo_root, paths)`` would replace the
+            # partial-staged version with the working-tree content and
+            # silently commit unstaged hunks. To preserve the exact
+            # staged state, we capture each pre-staged non-skill path's
+            # index entry (mode + blob SHA) via ``git ls-files -s``
+            # BEFORE the ``git reset`` and restore those exact entries
+            # via ``git update-index --cacheinfo`` AFTER the commit.
             pre_staged_non_skill = sorted(
                 path
                 for path in cast(
                     "str", repo.git.diff("--cached", "--name-only")
                 ).splitlines()
                 if not any(path.startswith(prefix) for prefix in _SKILL_ROOT_PREFIXES)
+            )
+            pre_staged_blobs = _snapshot_pre_staged_index_entries(
+                repo, pre_staged_non_skill
             )
             if pre_staged_non_skill:
                 cast("None", repo.git.reset("HEAD", "--", *pre_staged_non_skill))
@@ -256,17 +340,16 @@ def commit_skill_updates(
                 message = f"{SKILL_AUTO_COMMIT_SUBJECT}\n\n{body}"
                 return create_commit_fn(repo_root_path, message)
             finally:
-                # Re-stage the pre-staged non-skill paths so the user's
-                # staging state is preserved across the auto-commit.
-                # Failure here is best-effort: a broken git state MUST
-                # NOT block the pipeline. The chore commit has already
-                # landed (or failed), and the user's working tree is
-                # unchanged -- the worst case is that the user's
-                # pre-staged paths are left unstaged, which they can
-                # recover from with a single ``git add``.
-                if pre_staged_non_skill:
+                # Restore the EXACT staged state for every pre-staged
+                # non-skill path. Failure is best-effort: a broken git
+                # state MUST NOT block the pipeline. The chore commit
+                # has already landed (or failed), and the user's working
+                # tree is unchanged -- the worst case is that the
+                # user's pre-staged paths are left unstaged, which they
+                # can recover from with a single ``git add``.
+                if pre_staged_blobs:
                     try:
-                        stage_fn(repo_root_path, pre_staged_non_skill)
+                        _restore_pre_staged_index_entries(repo, pre_staged_blobs)
                     except Exception as restore_exc:
                         logger.debug(
                             "commit_skill_updates: failed to restore pre-staged "
