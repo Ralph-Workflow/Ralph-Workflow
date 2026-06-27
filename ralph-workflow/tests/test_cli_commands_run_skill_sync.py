@@ -772,3 +772,23 @@ def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
         f"AC-05 (4): ZERO WARNING lines for tracked skill-root paths; "
         f"got: {offending_warnings!r}"
     )
+
+    # Assertion (5): positive evidence that the FIVE-root early-skip fired.
+    # The test scenario commits ``.opencode/skills/<name>/SKILL.md`` and
+    # ``.opencode/skills/<name>/.ralph-managed.json`` in the initial commit,
+    # so both paths are tracked when ``untrack_engine_internal_files``
+    # iterates ``repo.index.entries``. The early-skip block MUST emit at
+    # least one DEBUG message containing ``Skipping tracked skill-root path``
+    # -- this is the positive pin the PA-fix-2 audit asked for. A WARNING-
+    # level sink would silently drop this DEBUG message (the PA-005 bug),
+    # so this test installs a SINGLE DEBUG-level sink.
+    early_skip_msgs = [
+        msg
+        for msg in captured
+        if "Skipping tracked skill-root path" in msg
+    ]
+    assert early_skip_msgs, (
+        f"AC-05 (5): AT LEAST ONE captured DEBUG message MUST contain "
+        f"'Skipping tracked skill-root path' (positive early-skip evidence); "
+        f"got captured: {captured!r}"
+    )
