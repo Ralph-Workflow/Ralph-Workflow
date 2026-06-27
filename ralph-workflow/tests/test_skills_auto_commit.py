@@ -27,6 +27,7 @@ from unittest.mock import MagicMock
 import pytest
 from git import Actor, Repo
 
+from ralph.git.operations import create_commit, stage_files
 from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 from ralph.skills._auto_commit import (
     SKILL_AUTO_COMMIT_SUBJECT,
@@ -475,3 +476,111 @@ def test_auto_commit_body_is_deterministic_across_shuffled_input_orderings(
         f"All three runs MUST produce byte-identical messages; "
         f"got distinct: {captured_messages!r}"
     )
+
+
+@pytest.mark.timeout_seconds(15)
+def test_auto_commit_excludes_pre_staged_non_skill_paths(
+    tmp_path: Path,
+) -> None:
+    """wt-025 / PA-fix-1: the chore commit MUST NOT capture unrelated pre-staged entries.
+
+    Pins the skill-only commit contract end-to-end. Even when the user
+    has pre-staged unrelated files (e.g. ``src/main.py``) before the
+    pre-pipeline skill sync runs, the resulting
+    ``chore(skills): sync baseline bundle`` commit MUST NOT include those
+    files. The auto-commit is skill-only -- any pre-staged non-skill
+    path is captured BEFORE staging the skill paths, unstaged so the
+    production ``create_commit`` (``repo.index.commit(...)``) cannot see
+    them, then re-staged AFTER the commit to preserve the user's
+    staging state.
+
+    Uses the REAL ``stage_files`` and ``create_commit`` from
+    ``ralph.git.operations`` -- NOT a MagicMock -- to exercise the
+    production path end-to-end. The committed diff is inspected via
+    ``head.diff(parents[0])`` to confirm only the skill path is in the
+    chore commit; ``git diff --cached --name-only`` confirms the
+    pre-staged ``src/main.py`` is still staged after the auto-commit.
+
+    Without the snapshot-and-restore logic added in the wt-025 PA-fix-1
+    response, the prior implementation would commit
+    ``chore(skills): sync baseline bundle`` together with
+    ``src/main.py`` -- polluting the deterministic auto-commit with
+    unrelated changes.
+    """
+    # Use the REAL production stage_files + create_commit -- this is
+    # the exact path the pre-pipeline sync runs in production.
+
+    Repo.init(tmp_path)
+    _track_initial_commit(tmp_path)
+
+    # 1. Pre-stage and commit an UNRELATED non-skill file
+    #    (``src/main.py``). This simulates a user who has already done
+    #    ``git add src/main.py`` BEFORE the pre-pipeline skill sync runs.
+    src_dir = tmp_path / "src"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    src_file = src_dir / "main.py"
+    src_file.write_text("print(1)\n", encoding="utf-8")
+    repo = Repo(tmp_path)
+    repo.index.add(["src/main.py"])
+    actor = Actor("Test Author", "test@example.com")
+    repo.index.commit("user commit before skill sync", author=actor, committer=actor)
+
+    # 2. Re-stage ``src/main.py`` to simulate a user mid-work: the file
+    #    is dirty in the working tree AND staged in the index.
+    src_file.write_text("print(2)\n", encoding="utf-8")
+    repo.index.add(["src/main.py"])
+    staged_before = sorted(repo.git.diff("--cached", "--name-only").splitlines())
+    assert staged_before == ["src/main.py"], (
+        "Setup invariant: src/main.py MUST be pre-staged before the auto-commit "
+        f"runs; got: {staged_before!r}"
+    )
+    repo.close()
+
+    # 3. Make a skill dirty -- this is the trigger for the chore commit.
+    skill_dir = tmp_path / ".opencode" / "skills" / "brainstorming"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_dir.joinpath("SKILL.md").write_text("# brainstorm\n", encoding="utf-8")
+
+    # 4. Run the REAL production path: ``stage_files`` + ``create_commit``
+    #    from ``ralph.git.operations``.
+    sha = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
+    assert sha is not None, "auto-commit MUST return a SHA when the skill tree is dirty"
+
+    # 5. Inspect HEAD -- it MUST be the deterministic chore subject, AND
+    #    it MUST NOT contain the pre-staged ``src/main.py``.
+    repo = Repo(tmp_path)
+    try:
+        head_subject = repo.head.commit.message.splitlines()[0]
+        assert head_subject == SKILL_AUTO_COMMIT_SUBJECT, (
+            "PA-fix-1: chore commit subject MUST be deterministic; "
+            f"got: {head_subject!r}"
+        )
+
+        committed_paths = {
+            diff.a_path
+            for diff in repo.head.commit.diff(repo.head.commit.parents[0])
+        }
+        assert "src/main.py" not in committed_paths, (
+            "PA-fix-1: chore(skills) commit MUST NOT capture pre-staged "
+            f"src/main.py; got committed paths: {committed_paths!r}"
+        )
+        assert ".opencode/skills/brainstorming/SKILL.md" in committed_paths, (
+            "PA-fix-1: chore(skills) commit MUST include the skill path; "
+            f"got committed paths: {committed_paths!r}"
+        )
+    finally:
+        repo.close()
+
+    # 6. The user's pre-staged ``src/main.py`` MUST still be staged after
+    #    the auto-commit -- the snapshot-and-restore contract preserves
+    #    the user's staging state across the chore commit.
+    repo = Repo(tmp_path)
+    try:
+        staged_after = sorted(repo.git.diff("--cached", "--name-only").splitlines())
+        assert staged_after == ["src/main.py"], (
+            "PA-fix-1: src/main.py MUST still be staged after the auto-commit "
+            "(snapshot-and-restore contract); "
+            f"got: {staged_after!r}"
+        )
+    finally:
+        repo.close()

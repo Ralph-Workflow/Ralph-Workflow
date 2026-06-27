@@ -220,13 +220,59 @@ def commit_skill_updates(
             )
             if not all_dirty:
                 return None
-            stage_fn(repo_root_path, all_dirty)
-            skill_names = _extract_skill_names(all_dirty)
-            body_lines = [_SKILL_AUTO_COMMIT_HEADER, "", _SKILL_AUTO_COMMIT_CHANGED_SKILLS_HEADER]
-            body_lines.extend(f"- {name}" for name in skill_names)
-            body = "\n".join(body_lines)
-            message = f"{SKILL_AUTO_COMMIT_SUBJECT}\n\n{body}"
-            return create_commit_fn(repo_root_path, message)
+            # Pin the skill-only commit contract: snapshot every pre-staged
+            # NON-skill path BEFORE staging the skill paths, unstage them
+            # so the chore commit cannot capture unrelated pre-staged
+            # entries, then re-stage them after the commit to preserve
+            # the user's staging state across the auto-commit.
+            #
+            # ``repo.index.entries`` is a cached OrderedDict that does NOT
+            # reflect fresh ``git add`` operations; use
+            # ``git diff --cached --name-only`` (which calls git directly)
+            # to query the LIVE index state. Without this snapshot, the
+            # chore commit would commit ANY pre-staged file along with
+            # the skill paths, polluting the deterministic
+            # ``chore(skills): sync baseline bundle`` commit with unrelated
+            # changes.
+            pre_staged_non_skill = sorted(
+                path
+                for path in cast(
+                    "str", repo.git.diff("--cached", "--name-only")
+                ).splitlines()
+                if not any(path.startswith(prefix) for prefix in _SKILL_ROOT_PREFIXES)
+            )
+            if pre_staged_non_skill:
+                cast("None", repo.git.reset("HEAD", "--", *pre_staged_non_skill))
+            try:
+                stage_fn(repo_root_path, all_dirty)
+                skill_names = _extract_skill_names(all_dirty)
+                body_lines = [
+                    _SKILL_AUTO_COMMIT_HEADER,
+                    "",
+                    _SKILL_AUTO_COMMIT_CHANGED_SKILLS_HEADER,
+                ]
+                body_lines.extend(f"- {name}" for name in skill_names)
+                body = "\n".join(body_lines)
+                message = f"{SKILL_AUTO_COMMIT_SUBJECT}\n\n{body}"
+                return create_commit_fn(repo_root_path, message)
+            finally:
+                # Re-stage the pre-staged non-skill paths so the user's
+                # staging state is preserved across the auto-commit.
+                # Failure here is best-effort: a broken git state MUST
+                # NOT block the pipeline. The chore commit has already
+                # landed (or failed), and the user's working tree is
+                # unchanged -- the worst case is that the user's
+                # pre-staged paths are left unstaged, which they can
+                # recover from with a single ``git add``.
+                if pre_staged_non_skill:
+                    try:
+                        stage_fn(repo_root_path, pre_staged_non_skill)
+                    except Exception as restore_exc:
+                        logger.debug(
+                            "commit_skill_updates: failed to restore pre-staged "
+                            "non-skill paths (non-fatal): {}",
+                            restore_exc,
+                        )
         except (OSError, GitCommandError) as exc:
             logger.debug("commit_skill_updates: auto-commit failed (non-fatal): {}", exc)
             return None
