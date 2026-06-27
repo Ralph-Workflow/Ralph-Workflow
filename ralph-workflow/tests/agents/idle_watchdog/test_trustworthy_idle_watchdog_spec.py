@@ -856,11 +856,24 @@ class TestTrustworthyIdleWatchdogSpec:
               this module runs without ``time.sleep(N > 0)`` and
               without real subprocesses.
         """
-        # (a) Pin test files exist on disk.
+        # (a) Pin test files exist on disk.  Resolve every path
+        # relative to this test file's location (NOT the current
+        # working directory) so the assertion is robust to invocation
+        # from outside ``ralph-workflow/`` (e.g. when running pytest
+        # with an absolute path from the repo root).  The package
+        # layout is:
+        #   ralph-workflow/
+        #     tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py
+        #     tests/<other pin test dirs>/...
+        # so the test file's parent.parent.parent.parent resolves to
+        # the ``ralph-workflow/`` directory which contains every
+        # ``RALPH_PIN_TEST_PATHS`` entry verbatim (each entry begins
+        # with ``tests/...``).
+        test_root = Path(__file__).resolve().parent.parent.parent.parent
         for relative_path in RALPH_PIN_TEST_PATHS:
-            package_relative = Path(relative_path)
-            assert package_relative.is_file(), (
-                f"Pin test file MUST exist at {package_relative}"
+            absolute_path = test_root / relative_path
+            assert absolute_path.is_file(), (
+                f"Pin test file MUST exist at {absolute_path}"
             )
 
         # (b) ProcessMonitor Protocol advertises the filtered seam names.

@@ -61,6 +61,7 @@ class _WaitingKindLike(Protocol):
     SUSPECTED_FROZEN: object
     HARD_STOP: object
     EXITED: object
+    SUBAGENT_PROGRESS: object
     name: str
 
 
@@ -111,6 +112,29 @@ def _format_waiting_status_line(event: object) -> str:
         return base + subagent_part
     if cast_event.kind == waiting_kind_cls.EXITED:
         return f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
+    if cast_event.kind == waiting_kind_cls.SUBAGENT_PROGRESS:
+        # Real-time subagent progress (R5, Trustworthy Idle Watchdog spec).
+        # This is an in-progress signal -- a live subagent is producing
+        # activity, NOT a hard ceiling / stuck signal.  Rendering it as
+        # ``hit hard ceiling`` would be a false operator-visible output
+        # (analysis-feedback contract) because the line would imply the
+        # child is stuck when it is demonstrably active.  Format the line
+        # as an in-progress update that surfaces the cumulative wait and
+        # the live subagent count from the diagnostic payload (the
+        # diagnostic carries ``live_subagent_count`` populated from the
+        # R1-filtered ``ProcessMonitor.spawned_subagent_count`` seam),
+        # and ALWAYS append the ``subagent=`` suffix so the operator
+        # sees the latest progress description (``tool_use:Read`` etc.)
+        # the watchdog recorded via ``record_subagent_work``.
+        live_count = cast_event.diagnostic.get("live_subagent_count", 0)
+        live_label = (
+            f"{live_count} alive" if isinstance(live_count, (int, float)) else "live"
+        )
+        base = (
+            f"Background child work: subagent progress"
+            f" (cumulative={cum}s, ceiling={ceil}s, {live_label})"
+        )
+        return base + subagent_part
     scoped = cast_event.diagnostic.get("scoped_child_active", "?")
     oldest_val = cast_event.diagnostic.get("oldest_child_seconds")
     oldest_part = (

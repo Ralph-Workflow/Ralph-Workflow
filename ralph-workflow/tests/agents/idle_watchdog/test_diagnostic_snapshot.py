@@ -23,6 +23,7 @@ from __future__ import annotations
 import inspect
 import json
 from dataclasses import dataclass
+from pathlib import Path
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
@@ -265,4 +266,133 @@ def test_diagnostic_snapshot_records_fire_reason() -> None:
     assert snapshot["last_fire_reason"] == "no_output_at_start", (
         f"snapshot.last_fire_reason MUST be 'no_output_at_start'; got"
         f" {snapshot['last_fire_reason']!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# R4 contract pin: resumable_session_id location.
+#
+# The watchdog kill -> recovery path threads the captured agent session
+# id end-to-end. The id lives on TWO surfaces:
+#
+#   (1) The OUTER ``merged_diag`` payload populated by the watchdog-
+#       kill readers in ``ralph/agents/invoke/_process_reader.py``
+#       (subprocess transport) and ``ralph/agents/invoke/
+#       _pty_line_reader.py`` (PTY transport).  This is the surface
+#       log-only consumers (e.g. an on-call grep of the merged_diag
+#       payload) MUST consult.
+#
+#   (2) The typed ``IdleWatchdogKilledError.resumable_session_id``
+#       attribute.  The failure classifier consults ``exc.__cause__``
+#       first (so the typed exception path is the canonical classifier
+#       seam).
+#
+# The inner ``IdleWatchdog.diagnostic_snapshot()`` dict hardcodes
+# ``resumable_session_id`` to ``None``; the watchdog itself NEVER
+# populates the field.  This is intentional: the watchdog is
+# transport-agnostic and does not know about the outer watchdog-kill
+# reader's session-capture seam.  The key is reserved as a stable
+# surface that future readers can rely on.
+#
+# The watchdog-spec.md R4 section documents this exact contract.  These
+# tests pin the contract so a future PR that accidentally moves the
+# field cannot ship without flipping one of the assertions.
+# ---------------------------------------------------------------------------
+
+
+def test_diagnostic_snapshot_resumable_session_id_is_always_none() -> None:
+    """The inner ``diagnostic_snapshot()`` dict hardcodes
+    ``resumable_session_id`` to ``None``.
+
+    The watchdog is transport-agnostic and does NOT know about the
+    outer watchdog-kill reader's session-capture seam.  The id is
+    surfaced on the OUTER ``merged_diag`` payload by the watchdog-
+    kill readers (``_process_reader.py`` / ``_pty_line_reader.py``)
+    and on the typed ``IdleWatchdogKilledError.resumable_session_id``
+    attribute used by the failure classifier via ``exc.__cause__``.
+
+    Even after a fire the watchdog itself does not populate this
+    field — the inner snapshot is reserved as a stable key for
+    future readers, not as the canonical carrier of the id.
+    """
+    watchdog, _clock = _make_watchdog()
+    # Pre-fire: field is None.
+    snapshot = watchdog.diagnostic_snapshot(now=0.0)
+    assert "resumable_session_id" in snapshot, (
+        "diagnostic_snapshot MUST keep resumable_session_id as a stable key"
+    )
+    assert snapshot["resumable_session_id"] is None, (
+        f"diagnostic_snapshot.resumable_session_id MUST be None"
+        f" (the watchdog itself does not populate the field); got"
+        f" {snapshot['resumable_session_id']!r}"
+    )
+
+
+def test_diagnostic_snapshot_resumable_session_id_remains_none_after_fire() -> None:
+    """Even after a watchdog FIRE, ``resumable_session_id`` stays None.
+
+    Confirms the watchdog does NOT populate the field on the inner
+    snapshot at any point in the fire lifecycle.  The id MUST be
+    threaded through the OUTER ``merged_diag`` payload (set by the
+    watchdog-kill readers) or the typed ``IdleWatchdogKilledError``
+    attribute, NOT the inner snapshot dict.
+    """
+    clock = FakeClock(start=0.0)
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=60.0,
+        no_output_at_start_seconds=10.0,
+        no_progress_quiet_seconds=None,
+        activity_evidence_ttl_seconds=180.0,
+    )
+    watchdog = IdleWatchdog(policy, clock, process_monitor=_FakeProcessMonitor())
+    watchdog.record_invocation_start()
+    clock.advance(11.0)
+
+    def _active() -> AgentExecutionState:
+        return AgentExecutionState.ACTIVE
+
+    verdict = watchdog.evaluate(classify_quiet=_active)
+    assert verdict.name == "FIRE"
+    snapshot = watchdog.diagnostic_snapshot(now=clock.monotonic())
+    assert snapshot["resumable_session_id"] is None, (
+        f"diagnostic_snapshot.resumable_session_id MUST remain None"
+        f" after a fire (the watchdog never populates the field); got"
+        f" {snapshot['resumable_session_id']!r}"
+    )
+
+
+def test_resumable_session_id_contract_documented_in_spec() -> None:
+    """The watchdog-spec.md R4 section documents the actual location of
+    ``resumable_session_id`` (the OUTER ``merged_diag`` payload,
+    NOT the inner ``diagnostic_snapshot()`` dict).
+
+    Pin the spec-vs-implementation contract: a future PR that
+    silently moves the field without updating the doc MUST fail
+    this assertion.  The doc is read relative to the test file so
+    the test is cwd-robust (mirrors the ``test_r8`` cwd-robustness
+    fix below).
+    """
+    spec_path = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "docs"
+        / "agents"
+        / "watchdog-spec.md"
+    )
+    spec_text = spec_path.read_text(encoding="utf-8")
+    # The spec MUST name both surfaces explicitly so the
+    # watchdog-spec.md -> implementation contract cannot drift.
+    assert "merged_diag" in spec_text, (
+        "watchdog-spec.md MUST document that resumable_session_id"
+        " lives on the OUTER merged_diag payload"
+    )
+    assert "IdleWatchdogKilledError" in spec_text, (
+        "watchdog-spec.md MUST document that resumable_session_id"
+        " also lives on the typed IdleWatchdogKilledError attribute"
+    )
+    # The spec MUST clarify that the inner diagnostic_snapshot key
+    # is hardcoded to None (so a future reader does not assume the
+    # inner snapshot is the canonical carrier).
+    assert "diagnostic_snapshot" in spec_text, (
+        "watchdog-spec.md MUST reference diagnostic_snapshot in the"
+        " R4 resumable_session_id location contract"
     )

@@ -511,3 +511,122 @@ def test_progress_event_with_sanitized_subagent_activity_renders_cleanly(tmp_pat
     assert f"subagent={sanitized}" in line
     # The sanitized form does not contain raw sensitive markers.
     assert "/etc/passwd" not in line
+
+
+# ---------------------------------------------------------------------------
+# Task: SUBAGENT_PROGRESS event rendering (R5/R6)
+#
+# The SUBAGENT_PROGRESS WaitingStatusKind is the real-time subagent
+# activity surface emitted from the watchdog's waiting branch.  It is
+# an IN-PROGRESS signal (a live subagent is producing activity, NOT a
+# stuck signal), so it MUST NOT be rendered with the HARD_STOP
+# ``Background child work hit hard ceiling`` template.  These tests
+# pin the dedicated branch in ``_format_waiting_status_line``.
+# ---------------------------------------------------------------------------
+
+
+def test_subagent_progress_event_renders_in_progress_not_hard_stop(tmp_path: Path) -> None:
+    """SUBAGENT_PROGRESS renders as an in-progress line, not HARD_STOP.
+
+    Regression pin for the analysis-feedback finding that
+    ``_format_waiting_status_line`` had no explicit SUBAGENT_PROGRESS
+    branch and fell through to the HARD_STOP template (which would
+    display ``Background child work hit hard ceiling`` for a live
+    subagent-progress event, falsely implying the child is stuck).
+    """
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.SUBAGENT_PROGRESS,
+                diagnostic={"live_subagent_count": 2},
+                subagent_activity="tool_use:Read",
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "hit hard ceiling" not in line
+    assert "subagent progress" in line
+    # The subagent= suffix must be appended so operators see the latest
+    # progress description recorded by record_subagent_work().
+    assert "subagent=tool_use:Read" in line
+
+
+def test_subagent_progress_event_without_subagent_activity(tmp_path: Path) -> None:
+    """SUBAGENT_PROGRESS without subagent_activity still renders cleanly.
+
+    When the watchdog emits SUBAGENT_PROGRESS with only the live
+    subagent count (no description text yet), the line MUST still
+    surface the live count and MUST NOT fall through to HARD_STOP.
+    The ``subagent=`` suffix is omitted because there is no
+    description to render (mirrors the PROGRESS behavior).
+    """
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.SUBAGENT_PROGRESS,
+                diagnostic={"live_subagent_count": 1},
+                subagent_activity=None,
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "hit hard ceiling" not in line
+    assert "subagent progress" in line
+    assert "1 alive" in line
+    # No subagent= suffix when there is no description.
+    assert "subagent=" not in line
+
+
+def test_subagent_progress_event_with_zero_live_count(tmp_path: Path) -> None:
+    """SUBAGENT_PROGRESS with live_subagent_count=0 renders without false live label.
+
+    When the watchdog's SUBAGENT_PROGRESS diagnostic carries an
+    explicit ``live_subagent_count=0`` (e.g. the description was
+    recorded but the filtered process monitor reports zero live
+    subagents), the line MUST still render cleanly and MUST NOT
+    fall through to HARD_STOP.  The ``alive`` label falls back to
+    ``live`` when the diagnostic value is non-numeric.
+    """
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.SUBAGENT_PROGRESS,
+                diagnostic={"live_subagent_count": 0},
+                subagent_activity="tool_use:Glob",
+            )
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "hit hard ceiling" not in line
+    assert "subagent progress" in line
+    assert "subagent=tool_use:Glob" in line
+
+
+def test_subagent_progress_event_does_not_add_decision_log_entry(tmp_path: Path) -> None:
+    """SUBAGENT_PROGRESS is an in-progress signal: no decision-log entry.
+
+    The decision log is reserved for SUSPECTED_FROZEN and HARD_STOP
+    (terminal-state events).  SUBAGENT_PROGRESS is a positive-activity
+    signal and MUST NOT add to the decision log so the operator's
+    decision-log stream is not diluted by per-tick subagent heartbeats.
+    """
+    sub = _make_subscriber(tmp_path)
+    initial_len = len(sub.decision_log)
+    sub.record_waiting_status(
+        _event(
+            _EventOptions(
+                kind=WaitingStatusKind.SUBAGENT_PROGRESS,
+                diagnostic={"live_subagent_count": 1},
+                subagent_activity="tool_use:Read",
+            )
+        )
+    )
+    assert len(sub.decision_log) == initial_len, (
+        "SUBAGENT_PROGRESS must NOT add a decision-log entry"
+    )

@@ -133,18 +133,49 @@ R5 section below and the per-transport parametrize at
 - `ralph/agents/idle_watchdog/idle_watchdog.py:220` — `IdleWatchdog`;
   the `_RESUMABLE_FIRE_REASONS` set + function-separated resume/fresh
   paths.
-- `ralph/agents/idle_watchdog/idle_watchdog.py` — `resumable_session_id`
-  in `diagnostic_snapshot()`; populated externally by the watchdog
-  kill path.
+- `ralph/agents/idle_watchdog/_activity_methods.py` —
+  `diagnostic_snapshot()` carries `resumable_session_id: str | None`
+  hardcoded to `None` (the watchdog itself never populates the
+  field; it is a stable key reserved for the outer watchdog-kill
+  readers that merge the snapshot into a larger post-mortem
+  payload).
+- `ralph/agents/invoke/_process_reader.py:609` —
+  `merged_diag["resumable_session_id"]`; the watchdog-kill path
+  for subprocess transports populates this key on the OUTER
+  `merged_diag` payload (NOT inside the inner `watchdog_snapshot`
+  dict). The id is sourced from the visible-TUI
+  `self._captured_session_id` populated from the agent session.
+- `ralph/agents/invoke/_pty_line_reader.py:676` —
+  `merged_diag["resumable_session_id"]`; the watchdog-kill path
+  for PTY transports populates this key on the OUTER
+  `merged_diag` payload with the same semantics as the subprocess
+  path.
 - `ralph/agents/idle_watchdog_kill.py:19` — `IdleWatchdogKilledError`;
   the typed exception that carries the resumable session id through
-  the failure-classifier pipeline.
+  the failure-classifier pipeline. This is the CANONICAL carrier of
+  the id for the failure-classifier pipeline; the `merged_diag`
+  population above is the canonical carrier for log-only consumers
+  that walk the post-mortem dict directly without inspecting the
+  exception chain.
 - `ralph/agents/invoke/_open_code_resumable_exit_error.py:73` —
   `OpenCodeResumableExitError`; the typed rc=0 exit exception
   classified by R7 below.
 - `ralph/agents/invoke/_session_resume.py` —
   `recovery_action_for_failure_reason`; the function that maps a
   failure reason to `"resume"` vs `"fresh"`.
+
+> **Contract note (resumable_session_id location):**
+> `resumable_session_id` lives on TWO surfaces: (1) the outer
+> `merged_diag` payload (set by `_process_reader.py` and
+> `_pty_line_reader.py` at the moment of the watchdog kill), and
+> (2) the typed `IdleWatchdogKilledError.resumable_session_id`
+> attribute (used by the failure classifier via `exc.__cause__`).
+> The inner `IdleWatchdog.diagnostic_snapshot()` dict hardcodes
+> `resumable_session_id` to `None`; the watchdog itself does NOT
+> populate the field. Consumers MUST consult the outer
+> `merged_diag` payload OR walk the exception chain
+> (`failure.resumable_session_id`) — NOT the inner
+> `diagnostic_snapshot()` key.
 
 ### Pin tests
 
