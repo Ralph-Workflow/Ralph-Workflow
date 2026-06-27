@@ -115,6 +115,22 @@ class _CompletionCheckOptions:
     captured_session_id: str | None = None
     completion_run_id: str | None = None
     evaluate_completion_fn: _EvalCompletionFn | None = None
+    # R7 (Trustworthy Idle Watchdog spec) root-cause diagnostic
+    # fields. Threaded from the line-reader layer at construction
+    # time (see ``_process_reader.py:945`` and ``_pty_runner.py:154``)
+    # and forwarded to ``OpenCodeResumableExitError`` at the raise
+    # site at line 368 below so the diagnostic payload surfaces the
+    # captured watchdog state at the moment of the rc=0 exit. The
+    # fields are keyword-only with default ``None`` / ``()`` so
+    # existing call sites that do not opt in remain unaffected --
+    # only the watchdog-firing path (where step 6 populates the
+    # ``opts``) carries the diagnostic context. See
+    # ``ralph/agents/invoke/_open_code_resumable_exit_error.py`` for
+    # the R7 root-cause triage contract.
+    last_observed_tool_call: str | None = None
+    last_evidence_summary: str | None = None
+    elapsed_seconds: float | None = None
+    transcript_tail: tuple[str, ...] = ()
     _sentinel_check_fn: Callable[[Path, str | None], bool] | None = field(default=None)
 
 
@@ -365,7 +381,14 @@ def _check_process_result(
                     if candidate is not None:
                         session_id = candidate
                         break
-            raise OpenCodeResumableExitError(agent_name, session_id=session_id)
+            raise OpenCodeResumableExitError(
+                agent_name,
+                session_id=session_id,
+                last_observed_tool_call=opts.last_observed_tool_call,
+                last_evidence_summary=opts.last_evidence_summary,
+                elapsed_seconds=opts.elapsed_seconds,
+                transcript_tail=opts.transcript_tail,
+            )
     elif (
         opts is not None
         and opts.execution_strategy is not None

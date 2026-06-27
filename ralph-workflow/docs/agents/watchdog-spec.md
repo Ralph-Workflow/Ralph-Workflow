@@ -126,6 +126,16 @@ R5 section below and the per-transport parametrize at
   `def effective_waiting_ceiling`; the bounded waiting ceiling
   computed from corroboration (`max_waiting_on_child_seconds=1800`,
   `stuck_job_sub_ceiling_seconds=600`).
+- `ralph/agents/idle_watchdog/_waiting_branch.py:238-247` —
+  cumulative waiting ceiling block (now hard-enforced per R3);
+  fires `CHILDREN_PERSIST_TOO_LONG` UNCONDITIONALLY when
+  `candidate_total >= effective_ceiling`, without consulting
+  `self._gate_fire`. The sub-ceiling block at lines 158-237
+  RETAINED its `_gate_fire` consultation because that branch is
+  the smart sub-ceiling bounded by `stuck_job_sub_ceiling_seconds`
+  (default 600s); the cumulative ceiling is the absolute
+  backstop. Per PROMPT R3: "There must be a hard, bounded ceiling
+  after which a true hang fires regardless of deferral reasons."
 - `ralph/agents/idle_watchdog/_fire_evaluators.py:118` —
   `def evaluate_no_progress_quiet`; the dumb-kill ceiling +
   heartbeat-only fire path.
@@ -142,6 +152,15 @@ R5 section below and the per-transport parametrize at
 - `tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py`
 - `tests/agents/idle_watchdog/test_session_ceiling_no_resume.py`
 - `tests/agents/idle_watchdog/test_pure_stall_wedge.py`
+- `tests/agents/idle_watchdog/test_cumulative_waiting_ceiling_fires_with_real_subagent_alive.py`
+  — the NEW R3 regression pin for the cumulative ceiling hard
+  enforcement. Exercises two scenarios via `_classify_stuck_now`
+  override: (1) `SILENT_SUBAGENT` (the 2365s indefinite deferral
+  regression) and (2) `LOADING` (a productive liveness signal).
+  Both cases MUST fire `CHILDREN_PERSIST_TOO_LONG` at the ceiling.
+  Uses `FakeClock` + Protocol-typed `@dataclass` `ProcessMonitor`
+  fake (NO real subprocess), in scope for the canonical R8 audit
+  target.
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r3`
 
 ---
@@ -387,9 +406,23 @@ Verify cited line numbers after touching the cited files.
 
 - `ralph/agents/invoke/_open_code_resumable_exit_error.py:73` —
   `class OpenCodeResumableExitError(AgentInvocationError)`; the
-  typed exception that carries a single attribute —
-  `resumable_session_id` (the captured transport-level session id).
-  The exception's diagnostic message text (`"(no artifact, no
+  typed exception that carries the canonical `resumable_session_id`
+  attribute (the captured transport-level session id) AND four
+  NEW keyword-only diagnostic attributes for the R7 root-cause
+  triage surface:
+  `last_observed_tool_call` (the parsed tool-call verb from the
+  line-reader layer, e.g. `"read_file"` or `"tool_use:Edit"`),
+  `last_evidence_summary` (the watchdog's
+  `last_evidence_summary(now).to_dict_list()` str-coerced payload),
+  `elapsed_seconds` (the watchdog's `idle_elapsed_seconds(clock.monotonic())`
+  at the moment of the exit), and `transcript_tail` (the last 10
+  lines of the bounded output transcript, hard-capped via tuple
+  slice). All four default to `None` / `()` so legacy two-arg
+  callers are unaffected. When populated, the diagnostic context
+  is appended to the exception message in a
+  `[last_tool_call=..., elapsed=...]` suffix so a logged traceback
+  is actionable without requiring a debugger. The exception's
+  base diagnostic message text (`"(no artifact, no
   declare_complete)"`) is the root-cause signature produced by
   `ralph/agents/completion_signals.py::find_declare_complete_marker`
   in `ralph/agents/invoke/_completion.py` when an agent subprocess
@@ -399,6 +432,28 @@ Verify cited line numbers after touching the cited files.
   classification introduced here explicitly removes; no current
   attribute or method of `OpenCodeResumableExitError` carries the
   `flagged_for_review` flag.
+- `ralph/agents/invoke/_completion.py:108` —
+  `@dataclass(frozen=True) class _CompletionCheckOptions`; the
+  in-process dataclass that threads the four R7 diagnostic
+  fields from the line-reader layer to the
+  `OpenCodeResumableExitError` raise site at line 368.
+  Keyword-only with default `None` / `()` so existing call
+  sites that do not opt in remain unaffected.
+- `ralph/agents/invoke/_completion.py:368` — the
+  `raise OpenCodeResumableExitError(agent_name, session_id=..., ...)`
+  site that forwards the four diagnostic fields from `opts` to
+  the exception constructor. Callers that did not populate
+  `opts` (e.g. non-watchdog paths) construct cleanly because
+  every field defaults to `None` / `()`.
+- `ralph/agents/invoke/_process_reader.py:945` — the subprocess
+  transport `_CompletionCheckOptions` construction site that
+  populates the four diagnostic fields from the watchdog
+  instance held on the line reader (`reader._watchdog`, set at
+  the start of `read_lines()`).
+- `ralph/agents/invoke/_pty_runner.py:154` — the PTY transport
+  `_CompletionCheckOptions` construction site that mirrors the
+  subprocess wiring with the PTY-side watchdog instance
+  (`pty_reader._watchdog`, set at the start of `read_lines()`).
 - `ralph/recovery/failure_classifier.py:597` —
   `class FailureClassifier`; the typed-cause classification
   pipeline.
@@ -410,15 +465,65 @@ Verify cited line numbers after touching the cited files.
   that maps `OpenCodeResumableExitError` to `FailureCategory.AGENT`
   (never `AMBIGUOUS`) and threads `resumable_session_id` through.
 
+### R7 — Root-cause triage (repo-evidenced signals)
+
+The R7 root-cause triage workflow uses ONLY signals with concrete
+repo evidence. The diagnostic payload is built from the watchdog
+state the line-reader layer already holds:
+
+1. **`IdleWatchdog.last_evidence_summary(now)`** at
+   `ralph/agents/idle_watchdog/idle_watchdog.py:890` (the per-channel
+   evidence summary; `to_dict_list()` str-coerced payload). This
+   is the same surface the watchdog-kill path surfaces under
+   `merged_diag["evidence_summary"]` at
+   `ralph/agents/invoke/_process_reader.py:598`.
+
+2. **`IdleWatchdog.diagnostic_snapshot()["current_subagent_tool_call"]`**
+   at `ralph/agents/idle_watchdog/_activity_methods.py:253` (the
+   parsed tool-call verb; populated by `record_subagent_work`
+   for the R5 PROGRESS surface).
+
+3. **`merged_diag["evidence_summary"]`** populated at
+   `ralph/agents/invoke/_process_reader.py:598` (the watchdog-kill
+   payload; same `last_evidence_summary(now).to_dict_list()`
+   pattern used at the R7 enrichment site).
+
+4. **The NEW `OpenCodeResumableExitError` attributes** added in
+   step 5 of the wt-021 plan
+   (`last_observed_tool_call`, `last_evidence_summary`,
+   `elapsed_seconds`, `transcript_tail`) — the typed exception's
+   R7 root-cause triage surface that an on-call operator reads
+   from a logged traceback.
+
+Speculative 'observed in the wild' scenarios are NOT enumerated
+here — the headline PROMPT A.2365s+ indefinite deferral and the
+headline PROMPT C. ambiguous rc=0 exit are the only root-cause
+signals referenced, and both are pinned by the canonical pin
+tests below. Any future 'observed in the wild' root-cause signal
+MUST be cited with concrete repo evidence (file path + line
+number) before being added to this list — fabrication_guard
+level 1 rejects unsupported claims per AGENTS.md.
+
 ### Pin tests
 
 - `tests/recovery/test_opencode_resumable_exit_classification.py`
   (6 tests) — proves the OpenCodeResumableExitError typed-cause
   branch classifies as `FailureCategory.AGENT`.
 - `tests/recovery/test_opencode_resumable_exit_classifier.py`
-  (5 tests) — proves the `FailureClassifier._categorize_exc` branch
+  (7 tests) — proves the `FailureClassifier._categorize_exc` branch
   threads `resumable_session_id` through to the recovery controller.
-  Together with the file above, 11 tests pin the R7 invariant.
+  Together with the file above, 13 tests pin the R7 invariant.
+  The two NEW pin tests added in wt-021 are:
+    - `test_diagnostic_context_carried`: the four NEW diagnostic
+      attributes (`last_observed_tool_call`,
+      `last_evidence_summary`, `elapsed_seconds`, `transcript_tail`)
+      are preserved through `FailureClassifier.classify`; the
+      `AGENT`-not-`AMBIGUOUS` invariant is maintained; the
+      exception message embeds the diagnostic context.
+    - `test_backward_compatible_construction`: the legacy two-arg
+      form `OpenCodeResumableExitError(agent_name, session_id=...)`
+      constructs cleanly with all NEW attributes defaulting to
+      `None` / `()`.
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r7`
 
 ---

@@ -52,9 +52,55 @@ Deterministic classification contract (single source of truth):
        deterministic classification precisely to remove the
        repeated ambiguous-warning spam).
 
+R7 root-cause diagnostic surface (NEW):
+
+    In addition to ``resumable_session_id`` (the resume hook), the
+    exception carries four NEW keyword-only diagnostic attributes
+    that surface the captured watchdog state at the moment of the
+    rc=0 exit. The diagnostic surface lets an on-call operator read
+    a logged traceback and immediately understand WHAT the agent was
+    doing at the moment of the exit -- without needing to walk the
+    exception chain or re-invoke the watchdog.
+
+    Diagnostic attributes (all keyword-only with default ``None`` /
+    ``()`` so legacy two-arg callers are unaffected):
+
+      * ``last_observed_tool_call``: ``str | None`` -- the most recent
+        parsed tool-call verb (e.g. ``"read_file"``,
+        ``"tool_use:Edit"``) from the line reader layer. ``None`` if
+        no tool call was recorded.
+      * ``last_evidence_summary``: ``str | None`` -- the watchdog's
+        ``last_evidence_summary(now).to_dict_list()`` str-coerced
+        payload (the per-channel evidence summary at the moment
+        of the exit). ``None`` if no evidence summary was captured.
+      * ``elapsed_seconds``: ``float | None`` -- the watchdog's
+        ``idle_elapsed_seconds(clock.monotonic())`` value at the
+        moment of the exit. ``None`` if no elapsed value was
+        captured.
+      * ``transcript_tail``: ``tuple[str, ...]`` -- the last 10
+        lines of the bounded output transcript at the moment of the
+        exit (hard-capped via tuple slice in the line-reader
+        construction site). Default ``()`` for legacy callers.
+
+    The diagnostic context is appended to the exception message so
+    a logged traceback is actionable without requiring a debugger or
+    the watchdog's full diagnostic state. Format:
+
+        ``OpenCodeResumableExitError: Agent 'opencode' failed
+        with code 0: agent session exited without required
+        completion evidence (no artifact, no declare_complete)
+        [last_tool_call=read_file, elapsed=420.0s]``
+
+    The ``[last_tool_call=..., elapsed=...]`` suffix is omitted when
+    the corresponding diagnostic attribute is ``None`` (legacy
+    callers see the original message unchanged).
+
 Lock-in regression test:
     ``tests/recovery/test_opencode_resumable_exit_classification.py``
-    proves the four contract points above.
+    proves the four contract points above. The NEW diagnostic
+    surface is pinned by ``tests/recovery/test_opencode_resumable_exit_classifier.py``
+    tests ``test_diagnostic_context_carried`` and
+    ``test_backward_compatible_construction``.
 
 References:
     - ``ralph/agents/invoke/_session_resume.py`` for the
@@ -63,6 +109,8 @@ References:
       the typed-cause branch ordering.
     - ``ralph/agents/invoke/_errors.py`` for the ``AgentInvocationError``
       base class hierarchy.
+    - ``ralph/agents/invoke/_completion.py:_CompletionCheckOptions``
+      for the dataclass that threads the diagnostic fields.
 """
 
 from __future__ import annotations
@@ -79,18 +127,50 @@ class OpenCodeResumableExitError(AgentInvocationError):
     :attr:`resumable_session_id` so the failure classifier's typed-cause
     branch can thread it through the ``FailureCategory.AGENT`` resume
     path (see module docstring for the full contract).
+
+    R7 root-cause diagnostic surface (NEW): the exception also carries
+    four keyword-only diagnostic attributes -- ``last_observed_tool_call``,
+    ``last_evidence_summary``, ``elapsed_seconds``, and
+    ``transcript_tail`` -- that surface the captured watchdog state at
+    the moment of the rc=0 exit. The diagnostic context is appended
+    to the exception message so a logged traceback is actionable.
     """
 
-    def __init__(self, agent_name: str, session_id: str | None = None) -> None:
+    def __init__(
+        self,
+        agent_name: str,
+        session_id: str | None = None,
+        *,
+        last_observed_tool_call: str | None = None,
+        last_evidence_summary: str | None = None,
+        elapsed_seconds: float | None = None,
+        transcript_tail: tuple[str, ...] = (),
+    ) -> None:
         self.resumable_session_id = session_id
-        super().__init__(
-            agent_name,
-            0,
-            (
-                "agent session exited without required completion evidence "
-                "(no artifact, no declare_complete)"
-            ),
+        self.last_observed_tool_call = last_observed_tool_call
+        self.last_evidence_summary = last_evidence_summary
+        self.elapsed_seconds = elapsed_seconds
+        self.transcript_tail = transcript_tail
+        base_message = (
+            "agent session exited without required completion evidence "
+            "(no artifact, no declare_complete)"
         )
+        diagnostic_suffix_parts: list[str] = []
+        if last_observed_tool_call is not None:
+            diagnostic_suffix_parts.append(
+                f"last_tool_call={last_observed_tool_call}"
+            )
+        if elapsed_seconds is not None:
+            diagnostic_suffix_parts.append(
+                f"elapsed={round(elapsed_seconds, 1)}s"
+            )
+        if diagnostic_suffix_parts:
+            full_message = (
+                base_message + " [" + ", ".join(diagnostic_suffix_parts) + "]"
+            )
+        else:
+            full_message = base_message
+        super().__init__(agent_name, 0, full_message)
 
 
 __all__ = ["OpenCodeResumableExitError"]

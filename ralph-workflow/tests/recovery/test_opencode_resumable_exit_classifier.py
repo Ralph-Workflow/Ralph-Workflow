@@ -184,3 +184,114 @@ def test_opencode_resumable_exit_without_session_id_still_classifies_as_agent() 
     assert failure.category == FailureCategory.AGENT
     assert failure.counts_against_budget is True
     assert failure.reset_session is False
+
+
+def test_diagnostic_context_carried() -> None:
+    """R7 (Trustworthy Idle Watchdog): the four diagnostic fields are
+    preserved through ``FailureClassifier`` and the AGENT-not-AMBIGUOUS
+    invariant is maintained.
+
+    Per R7, ``OpenCodeResumableExitError`` carries four NEW
+    keyword-only diagnostic attributes -- ``last_observed_tool_call``,
+    ``last_evidence_summary``, ``elapsed_seconds``, and
+    ``transcript_tail`` -- so a logged traceback is actionable without
+    requiring a debugger or the watchdog's full diagnostic state. The
+    diagnostic context is appended to the exception message in a
+    ``[last_tool_call=..., elapsed=...]`` suffix.
+
+    Assertions:
+      * The four diagnostic fields are preserved on the exception
+        object after ``FailureClassifier.classify`` returns.
+      * The exception message contains the diagnostic context
+        (``last_tool_call=read_file`` and ``elapsed=420.0s``).
+      * The classification is ``FailureCategory.AGENT`` (NOT
+        ``AMBIGUOUS``) -- the diagnostic enrichment is additive.
+      * The ``resumable_session_id`` is preserved.
+    """
+    classifier = FailureClassifier()
+    exc = OpenCodeResumableExitError(
+        "opencode",
+        session_id="sess-1",
+        last_observed_tool_call="read_file",
+        last_evidence_summary="workspace_change: kind=source weight=1.0",
+        elapsed_seconds=420.0,
+        transcript_tail=("line-1", "line-2", "line-3"),
+    )
+
+    failure = classifier.classify(
+        exc,
+        phase="development",
+        agent="opencode",
+        connectivity_state="online",
+    )
+
+    # Headline: AGENT, NOT AMBIGUOUS -- the diagnostic enrichment
+    # is additive and does NOT change the classification.
+    assert failure.category == FailureCategory.AGENT
+    assert failure.category != FailureCategory.AMBIGUOUS
+    assert failure.resumable_session_id == "sess-1"
+
+    # The four diagnostic fields are preserved on the exception.
+    assert exc.last_observed_tool_call == "read_file"
+    assert exc.last_evidence_summary == "workspace_change: kind=source weight=1.0"
+    assert exc.elapsed_seconds == 420.0
+    assert len(exc.transcript_tail) == 3
+    assert exc.transcript_tail == ("line-1", "line-2", "line-3")
+
+    # The exception message embeds the diagnostic context so a
+    # logged traceback is actionable.
+    message = str(exc)
+    assert "read_file" in message, (
+        f"exception message MUST carry the last_tool_call diagnostic;"
+        f" got {message!r}"
+    )
+    assert "420.0s" in message, (
+        f"exception message MUST carry the elapsed diagnostic;"
+        f" got {message!r}"
+    )
+
+
+def test_backward_compatible_construction() -> None:
+    """R7 (Trustworthy Idle Watchdog): the legacy two-arg form of
+    ``OpenCodeResumableExitError`` constructs cleanly with all new
+    diagnostic fields defaulting to ``None`` / ``()``.
+
+    Per R7, the four NEW diagnostic attributes are keyword-only with
+    default ``None`` / ``()`` so every existing caller keeps working
+    unchanged. The pre-fix test sites at
+    ``test_opencode_resumable_exit_classifier.py`` and
+    ``test_opencode_resumable_exit_classification.py`` use the legacy
+    two-arg form (``OpenCodeResumableExitError(agent_name,
+    session_id=...)``); they MUST continue to construct without
+    diagnostic fields.
+
+    Assertions:
+      * The legacy two-arg form constructs without error.
+      * ``resumable_session_id`` is preserved.
+      * All four NEW diagnostic attributes default to ``None`` /
+        ``()``.
+      * The exception message is the original (no diagnostic suffix)
+        because the new attributes are all ``None``.
+    """
+    exc = OpenCodeResumableExitError("opencode", session_id="sess-legacy")
+
+    # The original attribute is preserved.
+    assert exc.resumable_session_id == "sess-legacy"
+
+    # All four NEW diagnostic attributes default to ``None`` / ``()``.
+    assert exc.last_observed_tool_call is None
+    assert exc.last_evidence_summary is None
+    assert exc.elapsed_seconds is None
+    assert exc.transcript_tail == ()
+
+    # The exception message is the original (no diagnostic suffix).
+    message = str(exc)
+    assert "last_tool_call" not in message, (
+        f"exception message MUST NOT carry the last_tool_call diagnostic"
+        f" when last_observed_tool_call is None; got {message!r}"
+    )
+    assert "elapsed=" not in message, (
+        f"exception message MUST NOT carry the elapsed diagnostic"
+        f" when elapsed_seconds is None; got {message!r}"
+    )
+    assert "agent session exited without required completion evidence" in message

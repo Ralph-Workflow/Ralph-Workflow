@@ -766,6 +766,15 @@ class _ProcessLineReader:
         if self._is_waiting_state_provider is not None:
             watchdog.set_is_waiting_state(self._is_waiting_state_provider())
         watchdog.record_invocation_start()
+        # R7 (Trustworthy Idle Watchdog): expose the watchdog
+        # reference on the reader so the line-reader layer can
+        # populate the R7 diagnostic fields on
+        # ``_CompletionCheckOptions`` at the construction site
+        # AFTER the iterator exhausts (post-read at
+        # ``_process_reader.py:945``). The watchdog is also
+        # closed-loop in the ``finally`` block below; the reader
+        # only consumes the reference while it is in scope.
+        self._watchdog = watchdog
 
         sink_token, subagent_token = self._bind_watchdog_monitors_and_sinks(watchdog)
         try:
@@ -878,7 +887,8 @@ def _run_subprocess_and_read_lines(
             connectivity_state_provider=ctx.connectivity_state_provider,
             is_waiting_state_provider=ctx.is_waiting_state_provider,
         )
-        lines_iter = _ProcessLineReader(handle, reader_ctx, clock).read_lines()
+        reader = _ProcessLineReader(handle, reader_ctx, clock)
+        lines_iter = reader.read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
         captured_session_id: str | None = None
@@ -938,6 +948,24 @@ def _run_subprocess_and_read_lines(
                 expected_session_id=reader_ctx.expected_session_id,
             ) from exc
 
+        # R7 (Trustworthy Idle Watchdog): populate the diagnostic
+        # fields on ``_CompletionCheckOptions`` from the watchdog
+        # state held on the reader (``reader._watchdog`` was set
+        # at the start of ``read_lines()``). The helper at
+        # ``_collect_r7_diagnostic_fields`` extracts the four
+        # fields into a tuple so this function stays under the
+        # PLR0912 / PLR0915 branch / statement limits.
+        (
+            evidence_summary_str,
+            last_tool_call_str,
+            elapsed_value,
+            transcript_tail,
+        ) = _collect_r7_diagnostic_fields(
+            reader=reader,
+            clock=clock,
+            parsed_output=parsed_output,
+        )
+
         _check_process_result(
             handle,
             _agent_command_name(ctx.config),
@@ -952,6 +980,10 @@ def _run_subprocess_and_read_lines(
                 captured_session_id=captured_session_id,
                 completion_run_id=completion_run_id_from_extra_env(ctx.extra_env),
                 evaluate_completion_fn=ctx.evaluate_completion_fn,
+                last_observed_tool_call=last_tool_call_str,
+                last_evidence_summary=evidence_summary_str,
+                elapsed_seconds=elapsed_value,
+                transcript_tail=transcript_tail,
             ),
             _clock=clock,
         )
@@ -965,3 +997,75 @@ def _read_lines_from_process(
 ) -> Iterator[str]:
     clock: Clock = _clock or SystemClock()
     return _ProcessLineReader(handle, ctx, clock).read_lines()
+
+
+def _collect_r7_diagnostic_fields(
+    *,
+    reader: object,
+    clock: Clock,
+    parsed_output: deque[str],
+) -> tuple[str | None, str | None, float | None, tuple[str, ...]]:
+    """Extract the four R7 diagnostic fields from the reader's watchdog.
+
+    R7 (Trustworthy Idle Watchdog spec) requires the
+    ``OpenCodeResumableExitError`` to carry the captured watchdog
+    state at the moment of the rc=0 exit so a logged traceback is
+    actionable. The helper returns a tuple of
+    ``(last_evidence_summary, last_observed_tool_call, elapsed_seconds,
+    transcript_tail)`` extracted from the watchdog instance held
+    on the line reader (``reader._watchdog``, set at the start of
+    ``read_lines()``). The ``reader`` parameter is typed as
+    ``object`` so both ``_ProcessLineReader`` (subprocess transport,
+    ``_process_reader.py``) and ``PtyLineReader`` (PTY transport,
+    ``_pty_line_reader.py``) can be passed in -- both expose the
+    same ``_watchdog`` attribute.
+
+    The ``transcript_tail`` is hard-capped to the last 10 entries
+    of ``parsed_output`` via tuple slice so audit_resource_lifecycle
+    accepts it (the dataclass field is typed as ``tuple[str, ...]``,
+    never a list literal). ``last_evidence_summary`` is str-coerced
+    from the ``to_dict_list()`` payload via the canonical coercion
+    pattern already used at ``_process_reader.py:598`` for the
+    watchdog-kill merged_diag payload.
+
+    Every read is wrapped in ``try / except Exception`` so a
+    misbehaving watchdog mock cannot crash the rc=0 path; the
+    caller falls back to ``None`` / ``()`` on any exception.
+
+    Returns:
+      A tuple of ``(last_evidence_summary, last_observed_tool_call,
+      elapsed_seconds, transcript_tail)``. The dataclass field
+      order matches the keyword-only signature of
+      ``_CompletionCheckOptions``.
+    """
+    watchdog_for_diag: IdleWatchdog | None = getattr(reader, "_watchdog", None)
+    if watchdog_for_diag is None:
+        return None, None, None, ()
+    diag_now = clock.monotonic()
+    try:
+        evidence_summary_obj = watchdog_for_diag.last_evidence_summary(diag_now)
+        evidence_summary_str: str | None = str(evidence_summary_obj.to_dict_list())
+    except Exception:
+        evidence_summary_str = None
+    try:
+        last_tool_call_obj: object = watchdog_for_diag.diagnostic_snapshot(
+            now=diag_now
+        ).get("current_subagent_tool_call")
+        last_tool_call_str: str | None = (
+            str(last_tool_call_obj) if last_tool_call_obj is not None else None
+        )
+    except Exception:
+        last_tool_call_str = None
+    try:
+        elapsed_value: float | None = round(
+            watchdog_for_diag.idle_elapsed_seconds(diag_now), 1
+        )
+    except Exception:
+        elapsed_value = None
+    transcript_tail: tuple[str, ...] = tuple(list(parsed_output)[-10:])
+    return (
+        evidence_summary_str,
+        last_tool_call_str,
+        elapsed_value,
+        transcript_tail,
+    )

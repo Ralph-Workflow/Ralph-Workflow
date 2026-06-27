@@ -143,21 +143,29 @@ def _three_agent_state(current_index: int = 0) -> PipelineState:
 
 
 def test_dumb_kill_agent_reading_current_prompt_with_subagent_progress() -> None:
-    """Reproduce the first dumb-kill incident: agent reads
-    ``.agent/CURRENT_PROMPT.md`` while a live subagent is
-    registered with the process monitor (the agent dispatched
-    a subagent in parallel).
+    """R3 contract (Trustworthy Idle Watchdog): the cumulative ceiling
+    fires UNCONDITIONALLY when ``candidate_total >= effective_ceiling``.
 
-    The OLD behavior fired at the 120s ceiling mid-read.  The NEW
-    behavior defers the fire because the subagent_liveness
-    side-channel is fresh (the process monitor reports a live
-    subagent), so the classifier returns LOADING and the gate
-    returns CONTINUE for the entire 300s ceiling.
+    Per PROMPT R3: "There must be a hard, bounded ceiling after which a
+    true hang fires regardless of deferral reasons." The cumulative
+    waiting ceiling at ``_waiting_branch.py:238-247`` no longer
+    consults ``_gate_fire``; it fires even when the classifier returns
+    LOADING (a productive session with a live subagent). The
+    mitigation is to raise ``max_waiting_on_child_seconds`` for
+    long-running sessions (the default is 1800s).
+
+    This test exercises the cumulative ceiling with a live subagent
+    (filtered count = 1) and ``os_descendant_only_ceiling=300.0``.
+    The effective ceiling is reduced to 300s by the corroborator's
+    ``OS_DESCENDANT_ONLY_STALE_PROGRESS`` alive_by signal. The
+    ceiling fires at 300s regardless of the LOADING classification.
+
+    Pre-fix (wt-012 dumb-kill prevention): the gate deferred the
+    fire via the StuckClassifier's LOADING branch. Post-fix (R3
+    hard enforcement): the cumulative ceiling fires regardless.
 
     Assertions:
-      - verdict is CONTINUE (not FIRE) when the cumulative
-        ceiling is reached.
-      - last_fire_reason is DEFERRED_BY_STUCK_CLASSIFIER.
+      - verdict is FIRE at 300s with ``CHILDREN_PERSIST_TOO_LONG``.
     """
     monitor = _LiveOnlyProcessMonitor(live_count=1)
 
@@ -186,34 +194,40 @@ def test_dumb_kill_agent_reading_current_prompt_with_subagent_progress() -> None
     first = wd.evaluate(classify_quiet=_waiting)
     assert first == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance past the 300s effective ceiling.  The OLD behavior
-    # would have fired at 120s cumulative ceiling; the NEW
-    # behavior defers because the subagent_liveness side-channel
-    # is fresh (the process monitor reports 1 live subagent) and
-    # can_defer=True.  The classifier returns LOADING and the
-    # gate returns CONTINUE.
+    # Advance past the 300s effective ceiling. The cumulative
+    # ceiling fires UNCONDITIONALLY at 300s per PROMPT R3 hard
+    # enforcement (no _gate_fire consultation). The classifier
+    # may return LOADING for the live subagent but the ceiling
+    # fires regardless.
     clock.advance(300.0)
 
     verdict = wd.evaluate(classify_quiet=_waiting)
-    assert verdict == WatchdogVerdict.CONTINUE, (
-        f"expected CONTINUE (subagent_liveness is fresh), got {verdict}"
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"cumulative ceiling MUST fire unconditionally past the"
+        f" effective ceiling (R3 hard enforcement); got {verdict}"
     )
-    assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+    assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
 def test_dumb_kill_agent_with_os_descendant_only_child_is_deferred() -> None:
-    """Reproduce the second dumb-kill incident: agent alive with
-    ``alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS`` and
-    ``scoped_child_active=True`` corroboration.
+    """R3 contract (Trustworthy Idle Watchdog): the cumulative ceiling
+    fires UNCONDITIONALLY even when the corroborator reports
+    ``scoped_child_active=True`` and ``OS_DESCENDANT_ONLY_STALE_PROGRESS``.
 
-    The OLD behavior fired at the 120s ceiling.  The NEW behavior
-    defers the fire because the classifier returns LOADING
-    (subagent_liveness fresh, alive_by set) and the gate returns
-    CONTINUE for at least 300s.
+    Per PROMPT R3: "There must be a hard, bounded ceiling after which a
+    true hang fires regardless of deferral reasons." The cumulative
+    waiting ceiling fires regardless of any classifier deferral.
+
+    This test exercises the cumulative ceiling with a live subagent
+    and ``os_descendant_only_ceiling=300.0``. The effective ceiling
+    is reduced to 300s and the ceiling fires unconditionally.
+
+    Pre-fix (wt-012 dumb-kill prevention): the gate deferred the
+    fire via the StuckClassifier's LOADING branch. Post-fix (R3
+    hard enforcement): the cumulative ceiling fires regardless.
 
     Assertions:
-      - verdict is CONTINUE (not FIRE) past 300s.
-      - last_fire_reason is DEFERRED_BY_STUCK_CLASSIFIER.
+      - verdict is FIRE at 300s with ``CHILDREN_PERSIST_TOO_LONG``.
     """
     monitor = _LiveOnlyProcessMonitor(live_count=1)
 
@@ -241,31 +255,34 @@ def test_dumb_kill_agent_with_os_descendant_only_child_is_deferred() -> None:
     first = wd.evaluate(classify_quiet=_waiting)
     assert first == WatchdogVerdict.WAITING_ON_CHILD
 
-    # Advance past the 300s effective ceiling. The OLD behavior
-    # would have fired at 120s; the NEW behavior defers because
-    # the child is still alive (subagent_liveness fresh,
-    # alive_by=OS_DESCENDANT_ONLY_STALE_PROGRESS), so the
-    # classifier returns LOADING and the gate returns CONTINUE.
+    # Advance past the 300s effective ceiling. The cumulative
+    # ceiling fires UNCONDITIONALLY per R3 hard enforcement.
     clock.advance(300.0)
 
     verdict = wd.evaluate(classify_quiet=_waiting)
-    assert verdict == WatchdogVerdict.CONTINUE, (
-        f"expected CONTINUE (classifier returns LOADING for live subagent), got {verdict}"
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"cumulative ceiling MUST fire unconditionally past the"
+        f" effective ceiling (R3 hard enforcement); got {verdict}"
     )
-    assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+    assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
 def test_dumb_kill_first_output_fragment_with_live_subagent() -> None:
-    """Reproduce the third dumb-kill scenario: agent emits a
-    single ``mcp_tool_call`` (the ``mcp_tool`` channel is fresh)
-    then is quiet for 300s with a live subagent.
+    """R3 contract (Trustworthy Idle Watchdog): the cumulative ceiling
+    fires UNCONDITIONALLY regardless of fresh mcp_tool evidence.
 
-    The OLD behavior fired at the 120s ceiling after the single
-    fragment.  The NEW behavior defers because the ``mcp_tool``
-    channel is fresh (within activity_ttl=30s).
+    Per PROMPT R3: "There must be a hard, bounded ceiling after which a
+    true hang fires regardless of deferral reasons." The cumulative
+    waiting ceiling fires regardless of any classifier deferral, even
+    when first-party channels (mcp_tool) are fresh within
+    ``activity_evidence_ttl_seconds``.
+
+    Pre-fix (wt-012 dumb-kill prevention): the gate deferred the
+    fire because mcp_tool was fresh. Post-fix (R3 hard enforcement):
+    the cumulative ceiling fires regardless of mcp_tool freshness.
 
     Assertions:
-      - verdict is CONTINUE for at least 300s after the mcp_tool_call.
+      - verdict is FIRE at 300s with ``CHILDREN_PERSIST_TOO_LONG``.
     """
     monitor = _LiveOnlyProcessMonitor(live_count=1)
 
@@ -295,37 +312,39 @@ def test_dumb_kill_first_output_fragment_with_live_subagent() -> None:
     # channel is now fresh.
     wd.record_mcp_tool_call()
 
-    # Advance 300s past the mcp_tool_call. The OLD behavior
-    # would have fired at 120s cumulative ceiling; the NEW
-    # behavior defers because mcp_tool is fresh (within
-    # activity_ttl=30s).
+    # Advance 300s past the mcp_tool_call. The cumulative ceiling
+    # fires UNCONDITIONALLY per R3 hard enforcement regardless of
+    # mcp_tool freshness.
     clock.advance(300.0)
 
     verdict = wd.evaluate(classify_quiet=_waiting)
-    assert verdict == WatchdogVerdict.CONTINUE, (
-        f"expected CONTINUE (mcp_tool channel is fresh), got {verdict}"
+    assert verdict == WatchdogVerdict.FIRE, (
+        f"cumulative ceiling MUST fire unconditionally past the"
+        f" effective ceiling (R3 hard enforcement); got {verdict}"
     )
-    assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+    assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
 def test_dumb_kill_repeated_evaluate_with_progress_does_not_drift_to_fire() -> None:
-    """Production scenario: 50 consecutive ``evaluate()`` calls,
-    each 6s apart, with a live subagent reporting progress.
+    """R3 contract (Trustworthy Idle Watchdog): the cumulative ceiling
+    fires within the production hot path even with continuous
+    subagent_progress recordings.
 
-    The watchdog must NEVER return FIRE across all 50 calls.  The
-    deferral is consistent, not just one-shot.  This is the
-    negative test that locks the smart-verdict gate's behavior
-    in the production hot path.  Between calls, the verdict is
-    ``WAITING_ON_CHILD`` (we are still under the cumulative
-    ceiling); past the ceiling, the gate must return ``CONTINUE``
-    with ``DEFERRED_BY_STUCK_CLASSIFIER`` because the
-    subagent_progress channel is fresh.
+    Per PROMPT R3: "There must be a hard, bounded ceiling after which a
+    true hang fires regardless of deferral reasons." The cumulative
+    waiting ceiling fires within the configured effective ceiling
+    regardless of any classifier deferral -- a productive session
+    that exceeds the ceiling IS killed (the mitigation is to raise
+    ``max_waiting_on_child_seconds`` for long-running waits).
+
+    Pre-fix (wt-012 dumb-kill prevention): 50 consecutive
+    ``evaluate()`` calls never produced FIRE. Post-fix (R3 hard
+    enforcement): the cumulative ceiling fires at the effective
+    ceiling even with continuous subagent_progress.
 
     Assertions:
-      - No ``evaluate()`` call returns ``FIRE``.
-      - When the cumulative ceiling is reached (300s), the
-        watchdog returns ``CONTINUE`` with
-        ``DEFERRED_BY_STUCK_CLASSIFIER``.
+      - The first ``evaluate()`` past the effective ceiling
+        returns FIRE with ``CHILDREN_PERSIST_TOO_LONG``.
     """
     monitor = _LiveOnlyProcessMonitor(live_count=1)
 
@@ -351,16 +370,26 @@ def test_dumb_kill_repeated_evaluate_with_progress_does_not_drift_to_fire() -> N
     first = wd.evaluate(classify_quiet=_waiting)
     assert first == WatchdogVerdict.WAITING_ON_CHILD
 
+    # 50 consecutive evaluate() calls each 6s apart, with the
+    # subagent reporting progress each step. The cumulative
+    # ceiling at 300s effective fires unconditionally per R3
+    # hard enforcement.
+    fire_observed = False
     for _ in range(50):
         clock.advance(6.0)
         wd.record_subagent_work()  # the subagent reports progress each step
         verdict = wd.evaluate(classify_quiet=_waiting)
-        assert verdict != WatchdogVerdict.FIRE, (
-            f"watchdog must never FIRE while subagent_progress is fresh, got {verdict}"
-        )
+        if verdict == WatchdogVerdict.FIRE:
+            fire_observed = True
+            break
 
-    # The final state must show the deferral reason.
-    assert wd.last_fire_reason == WatchdogFireReason.DEFERRED_BY_STUCK_CLASSIFIER
+    # The cumulative ceiling MUST fire at the effective ceiling
+    # regardless of subagent_progress freshness.
+    assert fire_observed, (
+        "cumulative ceiling MUST fire at the effective ceiling"
+        " (R3 hard enforcement); never observed FIRE in 50 calls"
+    )
+    assert wd.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
 def test_dumb_kill_recovery_controller_never_advances_to_failed_on_unavailable() -> None:

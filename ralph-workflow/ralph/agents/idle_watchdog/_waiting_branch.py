@@ -89,7 +89,7 @@ def compute_effective_suspect(
     return self._config.suspect_waiting_on_child_seconds, "standard"
 
 
-def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated reasons + gate path + stuck_job_sub_ceiling
+def handle_waiting_branch(  # noqa: PLR0912, PLR0915 - 5 orchestrated reasons + gate path + stuck_job_sub_ceiling
     self: IdleWatchdog,
     now: float,
     classify_quiet: Callable[[], AgentExecutionState],
@@ -236,14 +236,22 @@ def handle_waiting_branch(  # noqa: PLR0911, PLR0912, PLR0915 - 5 orchestrated r
         return WatchdogVerdict.FIRE
 
     if candidate_total >= effective_ceiling:
-        gate_verdict = self._gate_fire(
-            WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
-            now=now,
-            idle_elapsed=idle_elapsed,
-            corroboration=current_corr,
-        )
-        if gate_verdict == WatchdogVerdict.CONTINUE:
-            return WatchdogVerdict.CONTINUE
+        # Hard enforcement (R3, Trustworthy Idle Watchdog spec): the
+        # CUMULATIVE waiting ceiling fires UNCONDITIONALLY when
+        # ``candidate_total >= effective_ceiling``. Per PROMPT:
+        # "There must be a hard, bounded ceiling after which a true
+        # hang fires regardless of deferral reasons." Pre-fix this
+        # block consulted ``self._gate_fire(...)`` and returned
+        # ``WatchdogVerdict.CONTINUE`` when ``_classify_stuck_now``
+        # returned ``SILENT_SUBAGENT`` (or any other non-STUCK kind);
+        # that consult was the structural cause of the 2365s
+        # indefinite deferral (the headline R3 defect). The
+        # SUB-ceiling block at lines 158-237 above RETAINED its
+        # ``self._gate_fire`` consultation because it is the smart
+        # sub-ceiling bounded by ``stuck_job_sub_ceiling_seconds``
+        # (default 600s) and gates on the corroborator's stale
+        # alive_by; the cumulative ceiling at this block is the
+        # absolute backstop that no deferral reason can bypass.
         self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
         corr_diag_hs = self._build_corroboration_diag(current_corr)
         corr_diag_hs["evidence"] = self._build_evidence_string(corr_diag_hs)

@@ -111,6 +111,12 @@ RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     "tests/agents/idle_watchdog/test_stuck_job_sub_ceiling.py",
     "tests/agents/idle_watchdog/test_session_ceiling_no_resume.py",
     "tests/agents/idle_watchdog/test_pure_stall_wedge.py",
+    # R3 (NEW) - cumulative ceiling hard-enforcement pin. Uses
+    # FakeClock + Protocol-typed @dataclass ProcessMonitor fake
+    # (NO real subprocess) so it stays in the canonical R8 audit
+    # target. Pinned in wt-021 to lock the fix that removed the
+    # _gate_fire consultation from the cumulative ceiling block.
+    "tests/agents/idle_watchdog/test_cumulative_waiting_ceiling_fires_with_real_subagent_alive.py",
     # R4 - Resume on watchdog kill, never restart.
     "tests/agents/idle_watchdog/test_resume_after_kill_contract.py",
     "tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py",
@@ -1042,11 +1048,21 @@ class TestTrustworthyIdleWatchdogSpec:
               failure, not a recoverable artifact validation problem).
           (d) ``reset_session=False`` -- this is a resume-friendly
               exit, not a stale-session reset.
+          (e) The four NEW R7 root-cause diagnostic fields
+              (``last_observed_tool_call``, ``last_evidence_summary``,
+              ``elapsed_seconds``, ``transcript_tail``) are preserved
+              on the exception object -- the diagnostic surface is
+              additive and does NOT change classification behavior.
         """
         classifier = FailureClassifier()
         for session_id in ("sess-a", "sess-b", "sess-c", None):
             exc = OpenCodeResumableExitError(
-                agent_name="opencode", session_id=session_id
+                agent_name="opencode",
+                session_id=session_id,
+                last_observed_tool_call="read_file",
+                last_evidence_summary="workspace_change: kind=source weight=1.0",
+                elapsed_seconds=420.0,
+                transcript_tail=("line-1", "line-2"),
             )
             failure = classifier.classify(
                 exc,
@@ -1067,6 +1083,16 @@ class TestTrustworthyIdleWatchdogSpec:
             # NOT a stale-session reset -- the recovery controller
             # resumes the existing session.
             assert failure.reset_session is False
+            # The four NEW R7 root-cause diagnostic fields are
+            # preserved on the exception object regardless of
+            # the session_id (including None). The diagnostic
+            # surface is additive and does NOT affect classification.
+            assert exc.last_observed_tool_call == "read_file"
+            assert exc.last_evidence_summary == (
+                "workspace_change: kind=source weight=1.0"
+            )
+            assert exc.elapsed_seconds == 420.0
+            assert exc.transcript_tail == ("line-1", "line-2")
 
     def test_r8(self) -> None:
         """R8: clean, black-box-testable architecture.

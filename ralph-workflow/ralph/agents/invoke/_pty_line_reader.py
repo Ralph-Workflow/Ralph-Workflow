@@ -1073,6 +1073,13 @@ class PtyLineReader:
         if self._is_waiting_state_provider is not None:
             watchdog.set_is_waiting_state(self._is_waiting_state_provider())
         watchdog.record_invocation_start()
+        # R7 (Trustworthy Idle Watchdog): expose the watchdog
+        # reference on the PTY line reader so the line-reader
+        # layer can populate the R7 diagnostic fields on
+        # ``_CompletionCheckOptions`` at the construction site
+        # AFTER the iterator exhausts (post-read at
+        # ``_pty_runner.py``).
+        self._watchdog = watchdog
 
         # Register the watchdog's workspace channel recorder as the
         # on-event callback on the WorkspaceMonitor so every file

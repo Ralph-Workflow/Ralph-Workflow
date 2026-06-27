@@ -24,6 +24,7 @@ from ralph.agents.invoke._errors import (
 from ralph.agents.invoke._process_reader import (
     _MAX_PARSED_OUTPUT_LINES,
     _agent_command_name,
+    _collect_r7_diagnostic_fields,
     _is_resumable_fire_reason,
     _subprocess_env,
 )
@@ -69,13 +70,14 @@ def run_pty_and_read_lines(
     strategy = ctx.execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = ctx.liveness_probe or DefaultLivenessProbe()
     with handle:
-        lines_iter = PtyLineReader(
+        pty_reader = PtyLineReader(
             handle,
             _agent_command_name(ctx.config),
             ctx,
             clock,
             _extras,
-        ).read_lines()
+        )
+        lines_iter = pty_reader.read_lines()
         parsed_output: deque[str] = deque(maxlen=_MAX_PARSED_OUTPUT_LINES)
         explicit_completion_seen = False
         captured_session_id: str | None = None
@@ -147,6 +149,24 @@ def run_pty_and_read_lines(
                 ),
             ) from exc
 
+        # R7 (Trustworthy Idle Watchdog): populate the diagnostic
+        # fields on ``_CompletionCheckOptions`` from the watchdog
+        # state held on the PTY line reader (``pty_reader._watchdog``
+        # was set at the start of ``read_lines()``). The helper at
+        # ``_process_reader._collect_r7_diagnostic_fields`` extracts
+        # the four fields into a tuple so this function stays under
+        # the PLR0912 / PLR0915 branch / statement limits.
+        (
+            evidence_summary_str,
+            last_tool_call_str,
+            elapsed_value,
+            transcript_tail,
+        ) = _collect_r7_diagnostic_fields(
+            reader=pty_reader,
+            clock=clock,
+            parsed_output=parsed_output,
+        )
+
         _check_process_result(
             handle,
             _agent_command_name(ctx.config),
@@ -161,6 +181,10 @@ def run_pty_and_read_lines(
                 captured_session_id=captured_session_id,
                 completion_run_id=completion_run_id,
                 evaluate_completion_fn=ctx.evaluate_completion_fn,
+                last_observed_tool_call=last_tool_call_str,
+                last_evidence_summary=evidence_summary_str,
+                elapsed_seconds=elapsed_value,
+                transcript_tail=transcript_tail,
             ),
             _clock=clock,
         )
