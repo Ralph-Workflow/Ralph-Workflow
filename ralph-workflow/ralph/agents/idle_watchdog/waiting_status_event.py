@@ -37,6 +37,20 @@ class WaitingStatusEvent:
             suspicion, progress). ``None`` when no subagent observation has
             happened yet. Optional with a default so existing positional
             callers continue to work without changes.
+        last_subagent_progress_at: Optional monotonic timestamp of the
+            most recent subagent observation that populated
+            ``subagent_activity``. Mirrors the watchdog's
+            ``last_subagent_progress_at`` channel-evidence timestamp so
+            every emitted event carries BOTH the textual description and
+            when it was last observed. Optional with a default so existing
+            positional callers continue to work without changes.
+        current_subagent_tool_call: Optional parsed ``verb:`` prefix
+            from ``subagent_activity`` (the current tool call the
+            subagent is executing). Mirrors the watchdog's
+            ``diagnostic_snapshot()["current_subagent_tool_call"]`` field
+            so both surfaces carry the same parsed value. Optional with
+            a default so existing positional callers continue to work
+            without changes.
     """
 
     kind: WaitingStatusKind
@@ -47,6 +61,8 @@ class WaitingStatusEvent:
     suspect_threshold_seconds: float | None
     diagnostic: dict[str, str | int | float | bool | list[object]] = field(default_factory=dict)
     subagent_activity: str | None = None
+    last_subagent_progress_at: float | None = None
+    current_subagent_tool_call: str | None = None
 
 
 WaitingStatusListener = Callable[[WaitingStatusEvent], None]

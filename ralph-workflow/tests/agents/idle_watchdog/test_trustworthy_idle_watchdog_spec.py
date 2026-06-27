@@ -57,6 +57,8 @@ from ralph.agents.idle_watchdog import (
     SubagentIdentity,
     SubagentPidRegistry,
     TimeoutPolicy,
+    WaitingStatusEvent,
+    WaitingStatusListener,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -538,19 +540,33 @@ class TestTrustworthyIdleWatchdogSpec:
     def test_r5(self) -> None:
         """R5: real-time subagent visibility for all supported agents.
 
+        EXPLICIT THREE-FIELD PUBLIC CONTRACT (the R5 surface extension
+        is the headline deliverable of wt-021):
+
+          (a) PROGRESS = ``last_subagent_progress_description``
+              (``str | None``) -- the free-form description text set by
+              ``record_subagent_work(description=...)``. EXISTING field
+              -- preserved for backward compatibility.
+          (b) LAST ACTIVITY = ``last_subagent_progress_at``
+              (``float | None``) -- the monotonic timestamp of the most
+              recent subagent observation. NEW field.
+          (c) CURRENT TOOL CALL = ``current_subagent_tool_call``
+              (``str | None``) -- the parsed ``verb:`` prefix from the
+              description when the description starts with a known
+              tool-call verb (``tool_use``, ``tool_result``, ``mcp_tool``,
+              ``subagent``, ``bash``, ``read``, ``write``, ``edit``,
+              ``glob``, ``grep``, ``webfetch``, ``websearch``);
+              ``None`` otherwise. NEW field.
+
+        All three fields MUST be exposed on BOTH:
+          * the public ``diagnostic_snapshot()`` dict, AND
+          * the public ``WaitingStatusEvent`` surface.
+
         Drives the SAME observable behavior as
-        ``tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py``:
-
-          (a) ``record_subagent_work(description=line)`` populates
-              ``last_subagent_progress_description`` (public property).
-          (b) A new invocation clears the description via
-              ``record_invocation_start`` so a fresh agent starts with
-              a clean slate.
-
-        Uses the PUBLIC property ``last_subagent_progress_description``
-        (NOT private attributes) so the assertion is genuinely
-        black-box. The watchdog's surface is the contract every
-        operator / dashboard consumes.
+        ``tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py``
+        (per-transport parametrize over ``list(AgentTransport)``) +
+        ``tests/agents/idle_watchdog/test_subagent_progress_surface.py`` +
+        ``tests/agents/idle_watchdog/test_waiting_subagent_progress.py``.
         """
         clock = FakeClock(start=0.0)
         policy = TimeoutPolicy(
@@ -559,26 +575,110 @@ class TestTrustworthyIdleWatchdogSpec:
             no_progress_quiet_seconds=None,
             activity_evidence_ttl_seconds=180.0,
         )
+        captured: list[WaitingStatusEvent] = []
+
+        def _capture(event: WaitingStatusEvent) -> None:
+            captured.append(event)
+
         watchdog = _make_idle_watchdog(
             process_monitor=_HelpersOnlyMonitor(),
             policy=policy,
             clock=clock,
         )
         watchdog.record_invocation_start()
-        # Baseline: no description recorded yet (the public property).
+        watchdog.register_default_subagent_activity_listener(
+            cast("WaitingStatusListener", _capture)
+        )
+        # Baseline: all three R5 fields are None at invocation start
+        # (per-invocation reset semantics).
         assert watchdog.last_subagent_progress_description is None
+        baseline_snapshot = watchdog.diagnostic_snapshot(now=0.0)
+        assert baseline_snapshot["last_subagent_progress_at"] is None
+        assert baseline_snapshot["current_subagent_tool_call"] is None
 
-        # Recording subagent work populates the PUBLIC description
-        # property so every transport's real extracted progress
-        # surfaces through the watchdog.
+        # Recording subagent work with a known-verb description
+        # populates ALL THREE R5 fields on the watchdog surface.
+        # PROGRESS (existing field): free-form description text.
         watchdog.record_subagent_work(description="tool_use:Read")
         assert watchdog.last_subagent_progress_description == "tool_use:Read"
+        # LAST ACTIVITY (new field): monotonic timestamp is a
+        # non-None float >= 0.0.
+        snapshot = watchdog.diagnostic_snapshot(now=0.0)
+        last_activity = snapshot["last_subagent_progress_at"]
+        assert last_activity is not None
+        assert isinstance(last_activity, float)
+        assert last_activity >= 0.0
+        # CURRENT TOOL CALL (new field): the parsed verb prefix.
+        assert snapshot["current_subagent_tool_call"] == "tool_use"
+
+        # Drive the watchdog through ``evaluate()`` with a
+        # ``WAITING_ON_CHILD`` ``classify_quiet`` so the watchdog
+        # transitions into the waiting branch and emits the ENTERED
+        # + SUBAGENT_PROGRESS waiting-status events naturally. The
+        # default subagent activity listener captures both events.
+        clock.advance(61.0)
+
+        def _waiting() -> AgentExecutionState:
+            return AgentExecutionState.WAITING_ON_CHILD
+
+        watchdog.evaluate(classify_quiet=_waiting)
+        assert captured, (
+            "watchdog.evaluate MUST emit at least one waiting-status"
+            " event when transitioning into WAITING_ON_CHILD"
+        )
+
+        # Every captured event MUST carry all three R5 fields on
+        # the ``WaitingStatusEvent`` surface. The default subagent
+        # activity listener receives every event whose
+        # ``subagent_activity`` is not None (ENTERED, PROGRESS,
+        # SUBAGENT_PROGRESS all qualify), so the assertion
+        # guarantees every emitted event carries the full R5
+        # public contract.
+        for event in captured:
+            assert event.subagent_activity == "tool_use:Read", (
+                f"WaitingStatusEvent PROGRESS field MUST carry the"
+                f" recorded description; got {event.subagent_activity!r}"
+            )
+            assert event.last_subagent_progress_at is not None, (
+                "WaitingStatusEvent LAST ACTIVITY field MUST be populated"
+            )
+            assert isinstance(event.last_subagent_progress_at, float), (
+                "WaitingStatusEvent LAST ACTIVITY field MUST be a float"
+            )
+            assert event.last_subagent_progress_at >= 0.0, (
+                "WaitingStatusEvent LAST ACTIVITY field MUST be >= 0.0"
+            )
+            assert event.current_subagent_tool_call == "tool_use", (
+                "WaitingStatusEvent CURRENT TOOL CALL field MUST be"
+                " the parsed verb from the observed description"
+            )
+
+        # A follow-up record_subagent_work overwrites the prior
+        # description; PROGRESS + CURRENT TOOL CALL follow.
         watchdog.record_subagent_work(description="tool_use:Edit")
         assert watchdog.last_subagent_progress_description == "tool_use:Edit"
+        snapshot2 = watchdog.diagnostic_snapshot(now=0.0)
+        assert snapshot2["current_subagent_tool_call"] == "tool_use"
 
-        # New invocation clears the description.
+        # A description with no known verb prefix resets CURRENT
+        # TOOL CALL to None while PROGRESS retains the text.
+        watchdog.record_subagent_work(
+            description="[subagent] progress: phase=phase-1"
+        )
+        assert (
+            watchdog.last_subagent_progress_description
+            == "[subagent] progress: phase=phase-1"
+        )
+        snapshot3 = watchdog.diagnostic_snapshot(now=0.0)
+        assert snapshot3["current_subagent_tool_call"] is None
+
+        # New invocation clears ALL THREE R5 fields back to None
+        # (per-invocation reset semantics from R5).
         watchdog.record_invocation_start()
         assert watchdog.last_subagent_progress_description is None
+        reset_snapshot = watchdog.diagnostic_snapshot(now=0.0)
+        assert reset_snapshot["last_subagent_progress_at"] is None
+        assert reset_snapshot["current_subagent_tool_call"] is None
 
     def test_r6(self) -> None:
         """R6: combined coarse + per-tuple throttle caps log emissions.

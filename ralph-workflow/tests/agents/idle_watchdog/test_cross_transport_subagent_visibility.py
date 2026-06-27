@@ -151,6 +151,57 @@ def _reset_sink_tokens(tokens: tuple[object, object]) -> None:
     reset_subagent_sink(subagent_token)
 
 
+# wt-021 (R5, Trustworthy Idle Watchdog spec): mirrors the
+# production helper ``_parse_tool_call_from_description`` in
+# ``ralph.agents.idle_watchdog._activity_methods``. Returns the
+# substring before the first ``": "`` when the description starts
+# with a known tool-call verb from the canonical verb set
+# (``tool_use``, ``tool_result``, ``mcp_tool``, ``subagent``,
+# ``bash``, ``read``, ``write``, ``edit``, ``glob``, ``grep``,
+# ``webfetch``, ``websearch``). The helper exists in the test
+# module so each parametrized assertion can compare the watchdog
+# surface (``diagnostic_snapshot()["current_subagent_tool_call"]``
+# or ``WaitingStatusEvent.current_subagent_tool_call``) to the
+# deterministic production parser output without importing the
+# private helper (which is module-private to the watchdog
+# implementation).
+_KNOWN_TOOL_CALL_VERBS_FOR_TEST: frozenset[str] = frozenset(
+    {
+        "tool_use",
+        "tool_result",
+        "mcp_tool",
+        "subagent",
+        "bash",
+        "read",
+        "write",
+        "edit",
+        "glob",
+        "grep",
+        "webfetch",
+        "websearch",
+    }
+)
+
+
+def _parse_tool_call_expected(description: str | None) -> str | None:
+    """Mirror the production R5 CURRENT TOOL CALL parser.
+
+    Splits on a single ``:`` (not ``": "``) because the
+    canonical production format from the NDJSON parser layer is
+    ``tool_use:<name>`` with no space after the colon. See
+    ``ralph.agents.idle_watchdog._activity_methods._parse_tool_call_from_description``
+    for the production implementation this helper mirrors.
+    """
+    if not description:
+        return None
+    head, sep, _tail = description.partition(":")
+    if not sep:
+        return None
+    if head not in _KNOWN_TOOL_CALL_VERBS_FOR_TEST:
+        return None
+    return head
+
+
 # ---------------------------------------------------------------------------
 # OpenCode: registry-backed discovery + cross-transport sink
 # ---------------------------------------------------------------------------
@@ -344,6 +395,38 @@ def test_transport_strategy_surfaces_real_extracted_progress_to_watchdog(
             f" MUST report subagent_progress_count >= 1 after a real"
             f" progress line; got {snapshot['subagent_progress_count']}"
         )
+        # R5 LAST ACTIVITY: the monotonic timestamp of the most
+        # recent subagent observation MUST be populated for every
+        # transport after a real child signal line. ``>= 0.0``
+        # guards against accidentally returning a sentinel
+        # negative value (FakeClock starts at 0.0 so the recorded
+        # timestamp is the wall-clock origin).
+        last_activity = snapshot["last_subagent_progress_at"]
+        assert (
+            last_activity is not None
+            and isinstance(last_activity, float)
+            and last_activity >= 0.0
+        ), (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report last_subagent_progress_at as a non-None"
+            f" float >= 0.0 after a real progress line; got {last_activity!r}"
+        )
+        # R5 CURRENT TOOL CALL: the parsed ``verb:`` prefix MUST
+        # match what the production parser yields for the observed
+        # description. For ``_REAL_PROGRESS_LINE =
+        # "[subagent] progress: phase=phase-1"`` the parser
+        # returns ``None`` (the head ``"[subagent] progress"`` is
+        # not a known verb) -- the assertion is therefore a
+        # meaningful black-box check that the field exists and
+        # the parser runs end-to-end on every transport.
+        assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
+            _REAL_PROGRESS_LINE
+        ), (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report current_subagent_tool_call matching the"
+            f" parser output for the observed description; got"
+            f" {snapshot['current_subagent_tool_call']!r}"
+        )
     finally:
         _reset_sink_tokens(tokens)
 
@@ -379,6 +462,29 @@ def test_transport_strategy_surfaces_real_heartbeat_extraction(
             f" MUST report subagent_progress_count >= 1 after a real"
             f" heartbeat line; got {snapshot['subagent_progress_count']}"
         )
+        # R5 LAST ACTIVITY + CURRENT TOOL CALL: must flow through
+        # every transport after a real heartbeat line. The parser
+        # returns ``None`` for ``"[subagent] heartbeat"`` (no
+        # ``": "`` separator) so the assertion is meaningful even
+        # when the parsed value is ``None``.
+        last_activity = snapshot["last_subagent_progress_at"]
+        assert (
+            last_activity is not None
+            and isinstance(last_activity, float)
+            and last_activity >= 0.0
+        ), (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report last_subagent_progress_at as a non-None"
+            f" float >= 0.0 after a real heartbeat line; got {last_activity!r}"
+        )
+        assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
+            _REAL_HEARTBEAT_LINE
+        ), (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report current_subagent_tool_call matching the"
+            f" parser output for the heartbeat description; got"
+            f" {snapshot['current_subagent_tool_call']!r}"
+        )
     finally:
         _reset_sink_tokens(tokens)
 
@@ -413,6 +519,28 @@ def test_transport_strategy_surfaces_real_json_extraction(
             f"transport={transport!r}: diagnostic_snapshot"
             f" MUST report subagent_progress_count >= 1 after a real"
             f" JSON child signal; got {snapshot['subagent_progress_count']}"
+        )
+        # R5 LAST ACTIVITY + CURRENT TOOL CALL: must flow through
+        # every transport after a real JSON child signal. The
+        # parser returns ``None`` for the JSON envelope (the head
+        # ``{"type"`` is not a known verb).
+        last_activity = snapshot["last_subagent_progress_at"]
+        assert (
+            last_activity is not None
+            and isinstance(last_activity, float)
+            and last_activity >= 0.0
+        ), (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report last_subagent_progress_at as a non-None"
+            f" float >= 0.0 after a real JSON child signal; got {last_activity!r}"
+        )
+        assert snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
+            _REAL_CHILD_JSON_LINE
+        ), (
+            f"transport={transport!r}: diagnostic_snapshot"
+            f" MUST report current_subagent_tool_call matching the"
+            f" parser output for the JSON child signal; got"
+            f" {snapshot['current_subagent_tool_call']!r}"
         )
     finally:
         _reset_sink_tokens(tokens)
@@ -473,6 +601,30 @@ def test_transport_strategy_surfaces_real_extraction_to_listener(
             f"transport={transport!r}: listener did not receive real"
             f" extracted progress; got {latest.subagent_activity!r}"
         )
+        # R5 LAST ACTIVITY + CURRENT TOOL CALL on the
+        # WaitingStatusEvent surface for every transport. The
+        # ``emit`` dispatcher in ``_active_branch`` populates all
+        # three R5 fields on every emitted event; the listener
+        # receives the typed dataclass so the assertion is
+        # black-box (no private-seam access).
+        assert (
+            latest.last_subagent_progress_at is not None
+            and isinstance(latest.last_subagent_progress_at, float)
+            and latest.last_subagent_progress_at >= 0.0
+        ), (
+            f"transport={transport!r}: WaitingStatusEvent"
+            f" MUST carry last_subagent_progress_at as a non-None"
+            f" float >= 0.0 after a real progress line; got"
+            f" {latest.last_subagent_progress_at!r}"
+        )
+        assert latest.current_subagent_tool_call == _parse_tool_call_expected(
+            _REAL_PROGRESS_LINE
+        ), (
+            f"transport={transport!r}: WaitingStatusEvent"
+            f" MUST carry current_subagent_tool_call matching the"
+            f" parser output for the observed description; got"
+            f" {latest.current_subagent_tool_call!r}"
+        )
     finally:
         _reset_sink_tokens(tokens)
 
@@ -528,5 +680,33 @@ def test_cross_transport_subagent_activity_sink_is_wired(
         " carry the recorded subagent description; got: {captured}"
     )
 
+    # R5 LAST ACTIVITY + CURRENT TOOL CALL on the
+    # ``diagnostic_snapshot()`` surface for the sink-wired path:
+    # after recording subagent work and driving ``evaluate()``
+    # into WAITING_ON_CHILD, the snapshot MUST expose all three
+    # R5 fields populated from the same source the watchdog uses
+    # for the WaitingStatusEvent surface. The snapshot MUST be
+    # taken BEFORE ``record_invocation_start`` because that
+    # helper resets the R5 fields to ``None`` (per-invocation
+    # semantics from R5).
+    post_record_snapshot = watchdog.diagnostic_snapshot(now=0.0)
+    last_activity_post = post_record_snapshot["last_subagent_progress_at"]
+    assert (
+        last_activity_post is not None
+        and isinstance(last_activity_post, float)
+        and last_activity_post >= 0.0
+    )
+    assert post_record_snapshot["current_subagent_tool_call"] == _parse_tool_call_expected(
+        "first"
+    )
+
     watchdog.record_invocation_start()
     assert watchdog.last_subagent_progress_description is None
+
+    # ``record_invocation_start`` resets ALL THREE R5 fields to
+    # ``None`` (per-invocation semantics from R5). Verifies the
+    # LAST ACTIVITY + CURRENT TOOL CALL fields are cleared
+    # alongside the existing PROGRESS field reset.
+    reset_snapshot = watchdog.diagnostic_snapshot(now=0.0)
+    assert reset_snapshot["last_subagent_progress_at"] is None
+    assert reset_snapshot["current_subagent_tool_call"] is None

@@ -17,6 +17,76 @@ from ralph.agents.idle_watchdog._sanitize import _sanitize_subagent_description
 from ralph.agents.idle_watchdog._workspace_change_kind import WorkspaceChangeKind
 from ralph.process.child_liveness import AliveBy
 
+# wt-021 (R5, Trustworthy Idle Watchdog spec): the explicit
+# three-field public contract for real-time subagent visibility
+# parses the ``verb:`` prefix from the free-form progress
+# description set by :meth:`record_subagent_work`. The set below
+# is the canonical list of verbs production agents emit on the
+# cross-transport subagent activity sink; the helper is a tiny
+# pure function so it can be reused by ``diagnostic_snapshot``,
+# the ``WaitingStatusEvent`` emit path, and the per-transport pin
+# tests without re-implementing the prefix-parse logic. The set
+# is a frozen ``frozenset`` (immutable; resource-lifecycle
+# audit does not flag it) and module-private: callers MUST NOT
+# mutate it.
+_KNOWN_TOOL_CALL_VERBS: frozenset[str] = frozenset(
+    {
+        "tool_use",
+        "tool_result",
+        "mcp_tool",
+        "subagent",
+        "bash",
+        "read",
+        "write",
+        "edit",
+        "glob",
+        "grep",
+        "webfetch",
+        "websearch",
+    }
+)
+
+
+def _parse_tool_call_from_description(description: str | None) -> str | None:
+    """Parse the ``verb:`` prefix from a subagent progress description.
+
+    Returns the substring before the first ``:`` when the
+    description starts with a known tool-call verb
+    (``tool_use``, ``tool_result``, ``mcp_tool``, ``subagent``,
+    ``bash``, ``read``, ``write``, ``edit``, ``glob``,
+    ``grep``, ``webfetch``, ``websearch``). Otherwise ``None``.
+
+    The separator is a single ``:`` (not ``": "``) because the
+    canonical production format from the NDJSON parser layer is
+    ``tool_use:<name>`` with no space after the colon (see
+    ``ralph/agents/parsers/claude_interactive.py`` line 61: the
+    documented summary format is ``tool_use:<name>``). The parser
+    is the canonical extraction for the R5 CURRENT TOOL CALL
+    field; both the watchdog surface (``diagnostic_snapshot``)
+    and the WaitingStatusEvent surface populate the same field
+    via this helper so a description like ``"tool_use:Read"``
+    surfaces as ``"tool_use"`` everywhere an operator reads it.
+
+    Pure function; no I/O; safe to call from the public
+    diagnostic surface and from the per-transport pin tests.
+
+    Examples:
+        ``"tool_use:Read"``               -> ``"tool_use"``
+        ``"tool_result:Bash"``            -> ``"tool_result"``
+        ``"[subagent] progress: phase=1"``-> ``None``
+        ``'{"type": "child_progress"}'``  -> ``None``
+        ``None``                           -> ``None``
+        ``""``                             -> ``None``
+    """
+    if not description:
+        return None
+    head, sep, _tail = description.partition(":")
+    if not sep:
+        return None
+    if head not in _KNOWN_TOOL_CALL_VERBS:
+        return None
+    return head
+
 if TYPE_CHECKING:
     from ralph.agents.idle_watchdog.idle_watchdog import IdleWatchdog
 
@@ -198,6 +268,20 @@ def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[st
     - ``invocation_elapsed_seconds``: ``float``
     - ``cumulative_waiting_on_child_seconds``: ``float``
     - ``last_subagent_progress_description``: ``str | None``
+      (R5 PROGRESS: free-form description text set by
+      ``record_subagent_work(description=...)``; the existing
+      field -- preserved for backward compatibility)
+    - ``last_subagent_progress_at``: ``float | None``
+      (R5 LAST ACTIVITY: monotonic timestamp of the most recent
+      subagent observation; channel-evidence timestamp
+      ``_last_subagent_progress_at`` surfaced directly so
+      operators see when the subagent last produced a signal)
+    - ``current_subagent_tool_call``: ``str | None``
+      (R5 CURRENT TOOL CALL: parsed ``verb:`` prefix from the
+      description when the description starts with a known
+      tool-call verb; ``None`` when no observation has been
+      recorded yet OR the description does not start with a
+      known verb)
     - ``live_subagent_count``: ``int`` (0 when no monitor)
     - ``subagent_progress_count``: ``int``
     - ``subagent_output_count``: ``int``
@@ -234,6 +318,10 @@ def diagnostic_snapshot(self: IdleWatchdog, now: float | None = None) -> dict[st
             self._cumulative_waiting_on_child_seconds, 1
         ),
         "last_subagent_progress_description": self._last_subagent_progress_description,
+        "last_subagent_progress_at": self._last_subagent_progress_at,
+        "current_subagent_tool_call": _parse_tool_call_from_description(
+            self._last_subagent_progress_description
+        ),
         "live_subagent_count": live_subagent_count,
         "subagent_progress_count": self._subagent_progress_count,
         "subagent_output_count": self._subagent_output_count,

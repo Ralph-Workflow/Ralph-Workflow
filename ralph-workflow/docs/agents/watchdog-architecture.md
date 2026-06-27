@@ -7,6 +7,20 @@ architectural reference; the AST contract test in
 the drift audit `ralph.testing.audit_watchdog_drift` are the
 enforcement.
 
+> **Per-AC traceability map** — for a one-section-per-R1-R8 mapping
+> between each acceptance criterion (verbatim from
+> `.agent/CURRENT_PROMPT.md`), the implementing module(s), and the
+> dedicated pin test(s), see
+> [`watchdog-spec.md`](watchdog-spec.md). That document is the
+> canonical source for "which file owns which AC" and is kept in
+> sync with the codebase via the consolidated pin test
+> `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r8`.
+> The R5 section of that document names the explicit three-field
+> public contract (`last_subagent_progress_description` /
+> `last_subagent_progress_at` / `current_subagent_tool_call`) and
+> the per-transport parametrize at
+> `tests/agents/idle_watchdog/test_cross_transport_subagent_visibility.py`.
+
 ## Overview
 
 Two watchdog classes own every wall-clock fire decision:

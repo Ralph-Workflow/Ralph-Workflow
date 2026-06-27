@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.execution_state import AgentExecutionState
+from ralph.agents.idle_watchdog._activity_methods import (
+    _parse_tool_call_from_description,
+)
 from ralph.agents.idle_watchdog._evidence_tier import ChannelName
 from ralph.agents.idle_watchdog.waiting_status_event import WaitingStatusEvent
 from ralph.agents.idle_watchdog.watchdog_fire_reason import WatchdogFireReason
@@ -136,6 +139,10 @@ def emit(
         suspect_threshold_seconds=_suspect,
         diagnostic=dict(diagnostic) if diagnostic else {},
         subagent_activity=self._last_subagent_progress_description,
+        last_subagent_progress_at=self._last_subagent_progress_at,
+        current_subagent_tool_call=_parse_tool_call_from_description(
+            self._last_subagent_progress_description
+        ),
     )
     if main_listener is not None:
         try:
