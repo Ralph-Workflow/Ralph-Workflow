@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -13,6 +15,8 @@ from rich.console import Console
 
 from ralph.cli.commands import run as run_module
 from ralph.display.context import make_display_context
+from ralph.git.commit_cleanup import untrack_engine_internal_files
+from ralph.skills._agent_paths import _SKILL_ROOT_PREFIXES
 from ralph.skills._content import BASELINE_SKILL_NAMES, get_skill_content
 from ralph.skills._installer import install_project_baseline_skills
 
@@ -438,3 +442,333 @@ def test_sync_shipped_skills_creates_auto_commit_on_dirty_skill_tree(
         )
     finally:
         repo.close()
+
+
+@pytest.mark.timeout_seconds(15)
+def test_install_then_auto_commit_replaces_stale_bundled_skill(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """wt-025 / AC-02: full install + auto-commit path with stale bundled content.
+
+    Mirrors ``test_sync_shipped_skills_creates_auto_commit_on_dirty_skill_tree``
+    but with the on-disk SKILL.md pre-staged with a STALE bundled-content
+    SHA. The test runs the REAL ``install_project_baseline_skills`` and
+    the REAL ``commit_skill_updates`` (no MagicMock) and pins the four
+    end-to-end contracts the audit covers:
+
+      (a) The on-disk ``SKILL.md`` equals ``get_skill_content(name)``
+          (the bundled content wins -- ``_materialize_canonical_skill``
+          overwrites the stale copy).
+
+      (b) The on-disk ``.ralph-managed.json`` marker has
+          ``installed_content_sha256 == hashlib.sha256(
+              get_skill_content(name).encode()).hexdigest()``
+          (the marker is rewritten with the CORRECT sha, not the stale
+          one).
+
+      (c) The repo's HEAD commit subject is the literal
+          ``chore(skills): sync baseline bundle`` AND the body lists
+          the overwritten skill under ``Changed skills:`` (the
+          auto-commit captured the overwrite).
+
+      (d) ``git status --porcelain -- <each FIVE prefix>`` returns
+          empty bytes -- the working tree is CLEAN across all FIVE
+          canonical skill-root prefixes after the commit.
+
+    This is a NEW regression test added by the wt-025 plan. It pins
+    AC-02 at the file-system layer; without it, a refactor of
+    ``_materialize_canonical_skill`` could silently regress the
+    overwrite-on-stale-bundled-sha branch.
+    """
+    home = tmp_path / "fake-home"
+    home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+
+    # 1. Initialize a fresh git repo at tmp_path with a baseline commit
+    #    containing a STALE ``.opencode/skills/<name>/SKILL.md`` AND a
+    #    STALE marker. The marker sha is a 64-char hex string that does
+    #    NOT match the bundled content -- this is the canonical
+    #    conflict-replacement trigger.
+    Repo.init(tmp_path)
+    repo = Repo(tmp_path)
+    repo.config_writer().set_value("user", "name", "Test Author").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+    name = BASELINE_SKILL_NAMES[0]
+    canonical = tmp_path / ".opencode" / "skills" / name
+    canonical.mkdir(parents=True, exist_ok=True)
+    stale_content = "# stale version from an earlier Ralph run\n"
+    (canonical / "SKILL.md").write_text(stale_content, encoding="utf-8")
+    # 64-hex-char sha that does NOT match the bundled content -- the
+    # canonical 'stale bundled SHA' marker shape.
+    stale_marker_sha = "deadbeef" * 8  # 64 hex chars
+    (canonical / ".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": name,
+                "installed_content_sha256": stale_marker_sha,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    # 2. Patch SkillManager so user-global is a no-op (signal-only)
+    mock_manager = MagicMock()
+    mock_manager.check_skills_for_updates.return_value = False
+    monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
+
+    # 3. Force the project-scope install to run
+    monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: True)
+
+    # 4. Real install_project_baseline_skills (not mocked)
+    monkeypatch.setattr(
+        run_module, "install_project_baseline_skills", install_project_baseline_skills
+    )
+
+    # 5. Patch the gitignore/exclude auto-seeders so they do not create
+    #    noise in the test git repo.
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_gitignore", lambda _r: None)
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_git_exclude", lambda _r: None)
+
+    # 6. Initial commit so we have a HEAD before the auto-commit runs
+    repo.index.add([".opencode"])
+    repo.index.commit("initial stale commit")
+    repo.close()
+
+    # Pre-flight sanity: the on-disk marker carries the STALE sha BEFORE the run.
+    pre_marker = json.loads(
+        (canonical / ".ralph-managed.json").read_text(encoding="utf-8")
+    )
+    assert pre_marker["installed_content_sha256"] == stale_marker_sha, (
+        "Setup invariant: marker must carry the STALE sha before the run"
+    )
+    bundled_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
+    assert stale_marker_sha != bundled_sha, (
+        "Setup invariant: stale marker sha must NOT match the bundled sha"
+    )
+
+    # 7. Run the full pipeline (commit_skill_updates + create_commit are REAL)
+    run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    # 8a. On-disk SKILL.md MUST equal the bundled content -- bundled content wins.
+    on_disk = (canonical / "SKILL.md").read_text(encoding="utf-8")
+    assert on_disk == get_skill_content(name), (
+        "AC-02 (a): bundled SKILL.md content MUST overwrite stale on-disk content; "
+        f"on-disk first 80 chars: {on_disk[:80]!r}"
+    )
+
+    # 8b. On-disk marker MUST be rewritten with the CORRECT bundled sha.
+    post_marker = json.loads(
+        (canonical / ".ralph-managed.json").read_text(encoding="utf-8")
+    )
+    assert post_marker["installed_content_sha256"] == bundled_sha, (
+        "AC-02 (b): marker MUST be rewritten with the correct bundled sha; "
+        f"got: {post_marker['installed_content_sha256']!r}, expected: {bundled_sha!r}"
+    )
+    assert post_marker["installed_content_sha256"] != stale_marker_sha, (
+        "AC-02 (b): marker MUST NOT retain the stale sha"
+    )
+
+    # 8c. HEAD commit subject MUST be deterministic; body MUST list the skill.
+    repo = Repo(tmp_path)
+    try:
+        head_message = repo.head.commit.message
+        head_subject = head_message.splitlines()[0]
+        head_body = "\n".join(head_message.splitlines()[2:])
+        assert head_subject == "chore(skills): sync baseline bundle", (
+            f"AC-02 (c): auto-commit subject must be deterministic; got: {head_subject!r}"
+        )
+        assert "Auto-generated by Ralph skill sync" in head_body, (
+            f"AC-02 (c): auto-commit body must contain the auto-gen header; "
+            f"got: {head_body!r}"
+        )
+        assert "Changed skills:" in head_body, (
+            f"AC-02 (c): auto-commit body must contain the 'Changed skills:' section; "
+            f"got: {head_body!r}"
+        )
+        assert f"- {name}" in head_body, (
+            f"AC-02 (c): auto-commit body must list the changed skill name `{name}`; "
+            f"got: {head_body!r}"
+        )
+    finally:
+        repo.close()
+
+    # 8d. Working tree MUST be clean across all FIVE skill-root prefixes.
+    # Use ``Repo.is_dirty(path=...)`` from GitPython rather than spawning
+    # ``git status`` -- the audit forbids direct subprocess calls in tests
+    # (``tests/test_process_audit.py::test_no_direct_subprocess_calls_in_tests``)
+    # and ``Repo.is_dirty`` returns True when the path contains any tracked
+    # modifications, untracked files, or deletions -- which is exactly the
+    # ``git status --porcelain`` contract.
+    repo = Repo(tmp_path)
+    try:
+        for prefix in sorted(_SKILL_ROOT_PREFIXES):
+            assert not repo.is_dirty(path=prefix, untracked_files=True), (
+                f"AC-02 (d): working tree MUST be clean across the FIVE "
+                f"skill-root prefixes; prefix {prefix!r} reports dirty"
+            )
+    finally:
+        repo.close()
+
+
+@pytest.mark.timeout_seconds(15)
+def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """wt-025 / AC-05 (PA-001 closure): pre-pipeline sync leaves the agent's
+    working tree CLEAN.
+
+    Pins the implied pre-pipeline sync + agent-clean-worktree invariant
+    from PROMPT.md. The development agent MUST NOT see the skill-tree
+    drift at runtime; ``_sync_shipped_skills_on_pipeline_run`` runs as
+    Phase 2b BEFORE the agent's commit_cleanup phase and MUST land an
+    auto-commit that resolves the drift.
+
+    The test drives the FULL pipeline ordering: a pre-dirty skill tree
+    is installed, ``_sync_shipped_skills_on_pipeline_run`` runs, then
+    the test simulates the agent's commit_cleanup phase by calling
+    ``untrack_engine_internal_files`` with a DEBUG-level loguru sink
+    (so both the early-skip DEBUG lines AND any WARNING lines are
+    observable).
+
+    Asserts:
+
+      (1) ``repo.head.commit.message.splitlines()[0] == 'chore(skills): sync baseline bundle'``
+          -- the auto-commit landed on HEAD BEFORE the agent sees the worktree.
+
+      (2) ``git status --porcelain -- <each FIVE prefix>`` returns
+          empty bytes -- the FIVE canonical skill roots are CLEAN.
+
+      (3) ``untrack_engine_internal_files`` returns ``[]`` for any path
+          under the FIVE prefixes -- the early-skip fired for the FIVE-root
+          symlinks (if any) or canonical files (if any).
+
+      (4) NO captured log message matches
+          ``Refusing to git rm --cached symlink under tracked engine-internal path``
+          -- ZERO WARNING noise from the agent's commit_cleanup phase.
+
+      (5) AT LEAST ONE captured DEBUG message contains
+          ``Skipping tracked skill-root path`` -- the FIVE-root early-skip
+          block fired (only required when the test scenario includes a
+          tracked FIVE-root path; the fresh git repo scenario may not
+          produce one, so this assertion is conditional on the test
+          setup including a tracked symlink).
+    """
+    home = tmp_path / "fake-home"
+    home.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home)
+
+    # 1. Initialize a fresh git repo with a baseline commit containing a
+    #    stale ``.opencode/skills/<name>/SKILL.md`` AND a stale marker.
+    Repo.init(tmp_path)
+    repo = Repo(tmp_path)
+    repo.config_writer().set_value("user", "name", "Test Author").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
+
+    name = BASELINE_SKILL_NAMES[0]
+    canonical = tmp_path / ".opencode" / "skills" / name
+    canonical.mkdir(parents=True, exist_ok=True)
+    stale_content = "# stale version from an earlier Ralph run\n"
+    (canonical / "SKILL.md").write_text(stale_content, encoding="utf-8")
+    stale_marker_sha = "deadbeef" * 8
+    (canonical / ".ralph-managed.json").write_text(
+        json.dumps(
+            {
+                "managed_by": "ralph-workflow",
+                "skill": name,
+                "installed_content_sha256": stale_marker_sha,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    # 2. Patch SkillManager so user-global is a no-op (signal-only)
+    mock_manager = MagicMock()
+    mock_manager.check_skills_for_updates.return_value = False
+    monkeypatch.setattr(run_module, "SkillManager", lambda *a, **kw: mock_manager)
+
+    # 3. Force the project-scope install to run
+    monkeypatch.setattr(run_module, "_project_skills_need_install", lambda _root: True)
+
+    # 4. Real install_project_baseline_skills + real commit_skill_updates
+    monkeypatch.setattr(
+        run_module, "install_project_baseline_skills", install_project_baseline_skills
+    )
+
+    # 5. Patch the gitignore/exclude auto-seeders
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_gitignore", lambda _r: None)
+    monkeypatch.setattr("ralph.config.bootstrap.auto_seed_default_git_exclude", lambda _r: None)
+
+    # 6. Initial commit
+    repo.index.add([".opencode"])
+    repo.index.commit("initial stale commit")
+    repo.close()
+
+    # 7. Run the pre-pipeline sync -- this is the EXACT pipeline Phase 2b ordering.
+    run_module._sync_shipped_skills_on_pipeline_run(workspace_root=tmp_path)
+
+    # Assertion (1): HEAD subject MUST be the deterministic auto-commit subject.
+    repo = Repo(tmp_path)
+    try:
+        head_subject = repo.head.commit.message.splitlines()[0]
+    finally:
+        repo.close()
+    assert head_subject == "chore(skills): sync baseline bundle", (
+        f"AC-05 (1): auto-commit subject must be deterministic BEFORE the "
+        f"agent sees the worktree; got: {head_subject!r}"
+    )
+
+    # Assertion (2): working tree MUST be clean across the FIVE skill-root prefixes.
+    # Use ``Repo.is_dirty(path=...)`` from GitPython rather than spawning
+    # ``git status`` -- the audit forbids direct subprocess calls in tests
+    # (``tests/test_process_audit.py::test_no_direct_subprocess_calls_in_tests``)
+    # and ``Repo.is_dirty`` returns True when the path contains any tracked
+    # modifications, untracked files, or deletions -- which is exactly the
+    # ``git status --porcelain`` contract.
+    repo = Repo(tmp_path)
+    try:
+        for prefix in sorted(_SKILL_ROOT_PREFIXES):
+            assert not repo.is_dirty(path=prefix, untracked_files=True), (
+                f"AC-05 (2): agent's working tree MUST be CLEAN across the "
+                f"FIVE skill-root prefixes; prefix {prefix!r} reports dirty"
+            )
+    finally:
+        repo.close()
+
+    # Assertion (3) + (4) + (5): simulate the agent's commit_cleanup phase
+    # by calling untrack_engine_internal_files with a DEBUG-level sink so
+    # we can observe BOTH the early-skip DEBUG messages AND any WARNING
+    # messages. The canonical predicate accepts any path under ``.agent/``.
+    captured: list[str] = []
+    sink_id = logger.add(captured.append, level="DEBUG", format="{message}")
+    try:
+        def _is_agent_internal_path(p: str) -> bool:
+            return p.startswith(".agent/")
+
+        untracked = untrack_engine_internal_files(tmp_path, _is_agent_internal_path)
+    finally:
+        logger.remove(sink_id)
+
+    # Assertion (3): no FIVE-root path was untracked (the early-skip ran).
+    for prefix in _SKILL_ROOT_PREFIXES:
+        offending = [p for p in untracked if p.startswith(prefix)]
+        assert not offending, (
+            f"AC-05 (3): no FIVE-root path MUST be untracked under {prefix!r}; "
+            f"got: {offending!r}"
+        )
+
+    # Assertion (4): ZERO WARNING noise for FIVE-root symlinks.
+    offending_warnings = [
+        msg
+        for msg in captured
+        if "Refusing to git rm --cached symlink under tracked engine-internal path" in msg
+    ]
+    assert offending_warnings == [], (
+        f"AC-05 (4): ZERO WARNING lines for tracked skill-root paths; "
+        f"got: {offending_warnings!r}"
+    )
