@@ -60,7 +60,6 @@ from ralph.agents.parsers import (
     ClaudeInteractiveParser,
     ClaudeParser,
     CodexParser,
-    GeminiParser,
     GenericParser,
     PiParser,
     get_parser,
@@ -120,12 +119,13 @@ def test_agent_registry_build_subagent_pid_registry_per_transport(
     assert isinstance(registry, SubagentPidRegistry)
     assert isinstance(source, SubagentPidSource)
     # Registering a PID for the correct transport source makes it
-    # visible via the per-transport filtered source. Nanocoder is
-    # mapped to the ``generic`` source label internally (no
-    # dedicated ``make_nanocoder_*`` factory); use the canonical
-    # label the factory binds.
-    canonical_source = "generic" if transport == AgentTransport.NANOCODER else transport.value
-    registry.register(12345, source=canonical_source, now=0.0)
+    # visible via the per-transport filtered source. Every supported
+    # ``AgentTransport`` member is bound to its canonical source label
+    # (``transport.value``) -- including Nanocoder, which has its own
+    # ``make_nanocoder_subagent_pid_source`` factory since the
+    # watchdog's per-transport ``SubagentPidSource`` filter (R1) is
+    # keyed on the ``AgentTransport`` enum, not the parser.
+    registry.register(12345, source=transport.value, now=0.0)
     assert 12345 in source.known_subagent_pids()
     # A PID registered for a DIFFERENT transport is invisible (R1
     # isolation between per-transport filtered views).
@@ -133,10 +133,7 @@ def test_agent_registry_build_subagent_pid_registry_per_transport(
         AgentTransport.CLAUDE if transport != AgentTransport.CLAUDE else AgentTransport.PI
     )
     other_registry, other_source = agent_registry.build_subagent_pid_registry(other_transport)
-    other_source_label = (
-        "generic" if other_transport == AgentTransport.NANOCODER else other_transport.value
-    )
-    other_registry.register(67890, source=other_source_label, now=0.0)
+    other_registry.register(67890, source=other_transport.value, now=0.0)
     assert 67890 not in source.known_subagent_pids()
     assert 67890 in other_source.known_subagent_pids()
 
@@ -276,7 +273,6 @@ def test_strategy_for_transport_threads_subagent_pid_source() -> None:
         ("pi", PiParser),
         ("agy", AgyParser),
         ("generic", GenericParser),
-        ("gemini", GeminiParser),
     ],
 )
 def test_parser_constructor_stores_subagent_pid_registry(
@@ -289,15 +285,19 @@ def test_parser_constructor_stores_subagent_pid_registry(
     The fix: store as ``self._subagent_pid_registry`` so future code
     paths can register PIDs into the shared registry without
     re-plumbing the constructor signature.
+
+    The parametrize list is keyed on the eight supported
+    ``AgentTransport`` enum members that have a corresponding parser
+    class (every transport except ``OPENCODE`` -- OpenCode's parser is
+    constructed with the production ``parser_factory`` call, not via
+    the bare constructor, so it has its own dedicated wiring test).
+    Gemini is a parser-only transport that maps to ``GENERIC`` via
+    the catalog; it is intentionally NOT in the watchdog's R1
+    subagent-source contract because it is not a supported
+    ``AgentTransport`` member.
     """
-    # Gemini is a parser-only transport (no AgentTransport enum
-    # entry); construct a bare ``SubagentPidRegistry`` so the test
-    # is independent of the production factory map.
-    if transport_label == "gemini":
-        registry = SubagentPidRegistry()
-    else:
-        agent_registry = AgentRegistry()
-        registry, _ = agent_registry.build_subagent_pid_registry(AgentTransport(transport_label))
+    agent_registry = AgentRegistry()
+    registry, _ = agent_registry.build_subagent_pid_registry(AgentTransport(transport_label))
     parser = parser_cls(subagent_pid_registry=registry)
     assert getattr(parser, "_subagent_pid_registry", None) is registry
 
@@ -313,7 +313,7 @@ def test_parser_default_constructor_keeps_registry_none() -> None:
     assert getattr(parser, "_subagent_pid_registry", None) is None
     parser = CodexParser()
     assert getattr(parser, "_subagent_pid_registry", None) is None
-    parser = GeminiParser()
+    parser = GenericParser()
     assert getattr(parser, "_subagent_pid_registry", None) is None
 
 
@@ -405,7 +405,6 @@ def test_catalog_default_seeded_transports_have_subagent_pid_registry_factory() 
         ("codex", CodexParser),
         ("pi", PiParser),
         ("agy", AgyParser),
-        ("gemini", GeminiParser),
         ("generic", GenericParser),
     ],
 )
@@ -420,6 +419,11 @@ def test_parser_registers_pid_from_structured_event_when_registry_wired(
     structured event. When an event carries an embedded PID, the parser
     registers it via ``SubagentPidRegistry.register``. When the event
     has no PID, the hook is a no-op (and the registry stays empty).
+
+    The parametrize list is the subset of parser keys that are
+    also supported ``AgentTransport`` members. ``gemini`` is a
+    parser-only key (no ``AgentTransport.GEMINI`` member) and is
+    therefore NOT in the watchdog's R1 subagent-source contract.
     """
     registry = SubagentPidRegistry()
     parser = parser_cls(
@@ -491,7 +495,6 @@ def test_parser_registration_hook_no_op_when_source_label_none() -> None:
         ("codex", "codex"),
         ("pi", "pi"),
         ("agy", "agy"),
-        ("gemini", "gemini"),
         ("generic", "generic"),
     ],
 )
@@ -505,6 +508,11 @@ def test_get_parser_threads_registry_and_source_label(
     with no registry. The fix: ``get_parser`` MUST accept and forward
     the registry + source label kwargs so the parser's registration
     hook fires for PID-carrying events.
+
+    The parametrize list is the subset of parser keys that are
+    also supported ``AgentTransport`` members. ``gemini`` is a
+    parser-only key (no ``AgentTransport.GEMINI`` member) and is
+    therefore NOT in the watchdog's R1 subagent-source contract.
     """
     registry = SubagentPidRegistry()
     parser = get_parser(

@@ -54,7 +54,7 @@ if TYPE_CHECKING:
         "generic",
         "claude_interactive",
         "codex",
-        "gemini",
+        "nanocoder",
     ]
 
 

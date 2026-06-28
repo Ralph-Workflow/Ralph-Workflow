@@ -26,8 +26,8 @@ from ralph.process.monitor import (
     make_claude_interactive_subagent_pid_source,
     make_claude_subagent_pid_source,
     make_codex_subagent_pid_source,
-    make_gemini_subagent_pid_source,
     make_generic_subagent_pid_source,
+    make_nanocoder_subagent_pid_source,
     make_opencode_subagent_pid_source,
     make_pi_subagent_pid_source,
 )
@@ -215,11 +215,13 @@ class AgentRegistry:
             "agy": make_agy_subagent_pid_source,
             "claude_interactive": make_claude_interactive_subagent_pid_source,
             "codex": make_codex_subagent_pid_source,
-            "gemini": make_gemini_subagent_pid_source,
             "generic": make_generic_subagent_pid_source,
-            # Nanocoder uses the generic wire format and the generic
-            # SubagentPidSource adapter (no per-transport specific events).
-            "nanocoder": make_generic_subagent_pid_source,
+            # Nanocoder shares the generic wire format (no per-transport
+            # structured child events) but the watchdog's per-transport
+            # ``SubagentPidSource`` filter (R1) is keyed on the
+            # ``AgentTransport`` enum, so it gets its own canonical
+            # factory that binds the ``"nanocoder"`` source label.
+            "nanocoder": make_nanocoder_subagent_pid_source,
         }
         factory = factory_map.get(transport_name)
         if factory is None:

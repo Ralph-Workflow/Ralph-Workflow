@@ -593,8 +593,20 @@ class TestNoMcpWireFormOutsideMcpModule:
     )
     def test_no_wire_form_literals_outside_mcp(self, checked_root: pathlib.Path) -> None:
         offenders: list[str] = []
+        # Substring pre-filter (same fast-path pattern used elsewhere
+        # in this module). The wire-form ``mcp__<server>__<tool>``
+        # pattern requires the literal substring ``mcp__`` to appear in
+        # the source as a string literal -- a single substring check
+        # is enough to skip files that cannot contain a match. This
+        # avoids an AST.parse + _all_string_literals() pass per file.
         for path in _walk_python_files(checked_root):
-            for literal in _wire_form_literals_in_source(_read(path)):
+            try:
+                source = _read(path)
+            except (OSError, UnicodeDecodeError):
+                continue
+            if "mcp__" not in source:
+                continue
+            for literal in _wire_form_literals_in_source(source):
                 offenders.extend([f"{path.relative_to(RALPH_ROOT.parent)}: {literal}"])
         assert offenders == [], (
             "Wire-form `mcp__<server>__<tool>` literals found outside "
@@ -842,12 +854,36 @@ class TestParallelDisplayOwnsAllDisplayHelpers:
         )
         offenders: list[str] = []
         # Collect all (rel, source) pairs outside the allowed files.
+        # Substring pre-filter (same fast-path pattern used in
+        # ``TestNoSessionIdReimplementation`` and
+        # ``TestUserFacingStatusEmissionRoutesThroughParallelDisplay``):
+        # skip files that lack every target marker. The Phase 2
+        # ``emit_activity_line`` check has its own pass over the same
+        # filtered set so the pre-filter MUST also test for that
+        # marker.
+        target_markers = (
+            "class ParallelDisplay",
+            "def build_default_display_legacy_bridge",
+            "def emit_activity_line",
+            "def get_display_context",
+            "def resolve_active_display",
+            "def resolve_display",
+            "def status_text",
+            "def strip_markup",
+            "def subscriber_for_display",
+        )
         candidate_files: list[tuple[pathlib.Path, pathlib.Path, str]] = []
         for path in _walk_python_files(RALPH_ROOT):
             rel = path.relative_to(RALPH_ROOT.parent)
             if rel in allowed_files:
                 continue
-            candidate_files.append((rel, path, _read(path)))
+            try:
+                source = _read(path)
+            except (OSError, UnicodeDecodeError):
+                continue
+            if not any(marker in source for marker in target_markers):
+                continue
+            candidate_files.append((rel, path, source))
         # Phase 1: collect other user-facing symbol matches.
         for rel, _, source in candidate_files:
             for sym in user_facing_symbols:
@@ -1058,6 +1094,20 @@ class TestNoSessionIdReimplementation:
             rel = path.relative_to(RALPH_ROOT.parent)
             if rel in allowed_files:
                 continue
+            # Substring pre-filter (same fast-path pattern used in
+            # ``test_no_anti_drift_recovery_invariants.py``). The match
+            # shape is ``def extract_<...>session<...>(...)`` -- a
+            # function named ``extract_*session*`` MUST appear in the
+            # source as ``def extract_`` and contain ``session`` as a
+            # substring. Files that lack either marker cannot
+            # contribute an offender and are skipped without an
+            # AST.parse + ast.walk pass.
+            try:
+                source = _read(path)
+            except (OSError, UnicodeDecodeError):
+                continue
+            if "def extract_" not in source or "session" not in source:
+                continue
             tree = _parse(path)
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -1100,6 +1150,22 @@ class TestUserFacingStatusEmissionRoutesThroughParallelDisplay:
         for path in _walk_python_files(RALPH_ROOT):
             rel = path.relative_to(RALPH_ROOT.parent)
             if rel in allowed_files:
+                continue
+            # Substring pre-filter (same fast-path pattern used in
+            # ``TestNoSessionIdReimplementation``). A function named
+            # ``emit_activity_line`` or ``status_text`` MUST appear in
+            # the source as ``def <name>(`` for an AST FunctionDef to
+            # match. Files that lack both names cannot contribute an
+            # offender and are skipped without an AST.parse + ast.walk
+            # pass.
+            try:
+                source = _read(path)
+            except (OSError, UnicodeDecodeError):
+                continue
+            if (
+                "def emit_activity_line(" not in source
+                and "def status_text(" not in source
+            ):
                 continue
             tree = _parse(path)
             for node in ast.walk(tree):

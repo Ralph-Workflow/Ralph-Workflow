@@ -222,11 +222,12 @@ def test_shared_registry_supported_for_every_transport(transport: AgentTransport
     """
     registry, source = AgentRegistry().build_subagent_pid_registry(transport)
     transport_name = transport.value
-    # NANOCODER maps to ``generic`` in the factory_map (see
-    # ``ralph/agents/registry.py:build_subagent_pid_registry`` --
-    # nanocoder uses the generic wire format). For every other
-    # transport the value matches its enum name.
-    source_label = "generic" if transport_name == "nanocoder" else transport_name
+    # Every supported ``AgentTransport`` member is bound to its canonical
+    # source label (``transport.value``) -- including Nanocoder, which
+    # has its own ``make_nanocoder_subagent_pid_source`` factory since
+    # the watchdog's per-transport ``SubagentPidSource`` filter (R1) is
+    # keyed on the ``AgentTransport`` enum, not the parser.
+    source_label = transport_name
     # Register a PID under the transport's source label.
     pid = 70000 + (hash(transport_name) % 1000)
     # Cast keeps the test fully typed per AGENTS.md 'tests must be

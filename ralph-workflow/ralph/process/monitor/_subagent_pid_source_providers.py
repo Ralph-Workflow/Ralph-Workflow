@@ -123,14 +123,23 @@ def make_codex_subagent_pid_source(registry: SubagentPidRegistry) -> SubagentPid
     return _RegistryBackedSubagentPidSource(registry, "codex")
 
 
-def make_gemini_subagent_pid_source(registry: SubagentPidRegistry) -> SubagentPidSource:
-    """Build a registry-backed ``SubagentPidSource`` for the Gemini transport."""
-    return _RegistryBackedSubagentPidSource(registry, "gemini")
-
-
 def make_generic_subagent_pid_source(registry: SubagentPidRegistry) -> SubagentPidSource:
     """Build a registry-backed ``SubagentPidSource`` for the generic transport."""
     return _RegistryBackedSubagentPidSource(registry, "generic")
+
+
+def make_nanocoder_subagent_pid_source(registry: SubagentPidRegistry) -> SubagentPidSource:
+    """Build a registry-backed ``SubagentPidSource`` for the Nanocoder transport.
+
+    Nanocoder shares the generic wire format (it has no per-transport
+    structured child events), but the watchdog's per-transport
+    ``SubagentPidSource`` filter (R1) is keyed on the ``AgentTransport``
+    enum, not on the parser. The factory binds the canonical
+    ``"nanocoder"`` source label so a Nanocoder-registered PID is
+    isolated from Generic-registered PIDs in the shared
+    ``SubagentPidRegistry`` (the R1 isolation invariant).
+    """
+    return _RegistryBackedSubagentPidSource(registry, "nanocoder")
 
 
 __all__ = [
@@ -138,8 +147,8 @@ __all__ = [
     "make_claude_interactive_subagent_pid_source",
     "make_claude_subagent_pid_source",
     "make_codex_subagent_pid_source",
-    "make_gemini_subagent_pid_source",
     "make_generic_subagent_pid_source",
+    "make_nanocoder_subagent_pid_source",
     "make_opencode_subagent_pid_source",
     "make_pi_subagent_pid_source",
 ]

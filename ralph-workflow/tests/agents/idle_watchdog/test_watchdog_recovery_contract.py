@@ -298,7 +298,16 @@ def test_watchdog_fire_reason_created_only_in_canonical_owners() -> None:
     # simple heuristic: any ``ast.Attribute`` access of
     # ``WatchdogFireReason.X`` whose enclosing function does not
     # appear inside the canonical owners is a candidate.
-    candidate_pattern = re.compile(r"WatchdogFireReason\.[A-Z_]+")
+    #
+    # Performance: the pre-filter regex matches the AST-walked shape
+    # (only ``WatchdogFireReason.X(...)`` call sites, NOT bare attribute
+    # access in comparisons / annotations) so files that merely
+    # reference the enum (``reason == WatchdogFireReason.NO_OUTPUT_AT_START``
+    # etc.) are skipped without an AST parse + walk. The AST-level
+    # comparison-vs-construction heuristic remains the source of
+    # truth; this pre-filter only avoids unnecessary work when the
+    # source cannot contain a call site at all.
+    candidate_pattern = re.compile(r"WatchdogFireReason\.[A-Z_]+\s*\(")
     for path in REPO_ROOT.glob("ralph/**/*.py"):
         if path in canonical_owners:
             continue
@@ -351,9 +360,24 @@ def _collect_function_owners(
     files_to_check: list[Path],
     target_names: tuple[str, ...],
 ) -> dict[str, list[Path]]:
-    """Return a mapping of function name to list of files defining it at top level."""
+    """Return a mapping of function name to list of files defining it at top level.
+
+    Performance: a substring pre-filter skips files that cannot possibly
+    contain a top-level ``def <target_name>(...)`` (function names are
+    syntactic and MUST appear as ``def <name>`` in the source). The
+    pre-filter is the same fast-path pattern used in
+    ``tests/test_no_anti_drift_regression.py`` -- it does not change
+    the AST semantics, only avoids an AST.parse + ast.walk call when
+    the source string cannot contain the function name.
+    """
     owners: dict[str, list[Path]] = {name: [] for name in target_names}
     for path in files_to_check:
+        try:
+            source = _read(path)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if not any(f"def {name}(" in source or f"def {name} (" in source for name in target_names):
+            continue
         try:
             tree = _parse(path)
         except (SyntaxError, ValueError):
@@ -371,9 +395,22 @@ def _collect_function_owners(
 def _check_no_duplicate_cooldown_dataclass_field(
     files_to_check: list[Path],
 ) -> None:
-    """Raise if any file outside the tracker defines a cooldown state field."""
+    """Raise if any file outside the tracker defines a cooldown state field.
+
+    Performance: a substring pre-filter skips files that cannot possibly
+    contain a class-body ``<field>: <type>`` annotation with one of the
+    cooldown state field names (the field name MUST appear as an
+    identifier in the source for an AST AnnAssign target to match).
+    """
+    cooldown_field_names = ("cooldown_until", "unavailable_until", "backoff_until_ms")
     for path in files_to_check:
         if path == UNAVAILABILITY_TRACKER:
+            continue
+        try:
+            source = _read(path)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if not any(name in source for name in cooldown_field_names):
             continue
         try:
             tree = _parse(path)
@@ -388,11 +425,7 @@ def _check_no_duplicate_cooldown_dataclass_field(
                 target = stmt.target
                 if not isinstance(target, ast.Name):
                     continue
-                if target.id not in {
-                    "cooldown_until",
-                    "unavailable_until",
-                    "backoff_until_ms",
-                }:
+                if target.id not in cooldown_field_names:
                     continue
                 rel = path.relative_to(REPO_ROOT)
                 msg = (
