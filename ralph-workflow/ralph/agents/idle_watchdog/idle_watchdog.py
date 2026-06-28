@@ -206,7 +206,7 @@ _actual = frozenset(member.value for member in WatchdogFireReason.__members__.va
 if _actual != _EXPECTED_FIRE_REASONS:
     missing = _EXPECTED_FIRE_REASONS - _actual
     extra = _actual - _EXPECTED_FIRE_REASONS
-    msg = (
+    raise RuntimeError(
         "WatchdogFireReason.__members__ drifted from the IdleWatchdog owner's"
         " allowlist. The watchdog owner is the single source of truth for"
         " fire decisions. Missing:"

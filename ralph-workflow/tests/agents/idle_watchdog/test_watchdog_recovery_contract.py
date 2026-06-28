@@ -531,6 +531,57 @@ def _extract_fire_reasons(node: ast.AST) -> set[str]:
     return found
 
 
+def _find_drift_guard(tree: ast.Module) -> ast.If | None:
+    """Return the top-level ``if _actual != _EXPECTED_FIRE_REASONS`` guard.
+
+    The guard is the import-time invariant that pins the IdleWatchdog
+    sole-owner contract for ``WatchdogFireReason.__members__``.  A
+    future refactor that silently regresses the guard (e.g. replaces
+    ``raise RuntimeError`` with a plain assignment, or omits the raise
+    entirely) would defeat the contract; this locator gives the
+    fail-fast test a precise handle to assert on.
+    """
+    for node in tree.body:
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        if not isinstance(test, ast.Compare):
+            continue
+        if len(test.ops) != 1 or not isinstance(test.ops[0], ast.NotEq):
+            continue
+        if len(test.comparators) != 1:
+            continue
+        if not (
+            isinstance(test.left, ast.Name) and test.left.id == "_actual"
+        ) or not (
+            isinstance(test.comparators[0], ast.Name)
+            and test.comparators[0].id == "_EXPECTED_FIRE_REASONS"
+        ):
+            continue
+        return node
+    return None
+
+
+def _guard_raises_runtime_error(guard: ast.If) -> tuple[bool, int | None]:
+    """Return ``(has_raise, line_no)`` for ``RuntimeError`` raise nodes in ``guard.body``.
+
+    Only the top-level statements of the guard body are inspected.
+    The contract requires the raise to be a direct statement of the
+    guard (not buried inside an inner ``if``/``try``) so a future
+    refactor cannot accidentally hide the raise behind a conditional
+    that never fires.
+    """
+    for stmt in guard.body:
+        if not isinstance(stmt, ast.Raise):
+            continue
+        exc = stmt.exc
+        if not isinstance(exc, ast.Call):
+            continue
+        if isinstance(exc.func, ast.Name) and exc.func.id == "RuntimeError":
+            return True, stmt.lineno
+    return False, None
+
+
 def test_expected_fire_reasons_includes_repeated_identical_tool_call(
     tmp_path: Path,
 ) -> None:
@@ -573,3 +624,53 @@ def test_expected_fire_reasons_includes_repeated_identical_tool_call(
         "_EXPECTED_FIRE_REASONS MUST include REPEATED_IDENTICAL_TOOL_CALL"
         f" for the new fire reason; got {sorted(expected_fire_reasons)}"
     )
+
+
+def test_expected_fire_reasons_drift_guard_raises_runtime_error(
+    tmp_path: Path,
+) -> None:
+    """The production drift guard MUST ``raise RuntimeError`` (fail-fast),
+    not just build a message.
+
+    The ``if _actual != _EXPECTED_FIRE_REASONS`` block is the only
+    enforcement of the IdleWatchdog sole-owner contract on
+    ``WatchdogFireReason.__members__``.  A regression where the guard
+    only assigns the diagnostic message (``msg = ...``) and forgets
+    the ``raise`` would let a future enum drift slip through
+    silently: the pipeline would import without complaint, the watchdog
+    would silently widen (or narrow) its fire set, and ``make verify``
+    would stay green.
+
+    This test pins the fail-fast behavior at the AST level: it locates
+    the top-level ``if _actual != _EXPECTED_FIRE_REASONS`` block in
+    ``idle_watchdog.py`` and asserts that one of its direct body
+    statements is ``raise RuntimeError(...)``.  This is the structural
+    counterpart to the enum-literal assertion in
+    ``test_expected_fire_reasons_includes_repeated_identical_tool_call``
+    and catches the exact regression class the prior development
+    analysis flagged.
+
+    ``tmp_path`` is in the signature so the audit_test_policy detector
+    recognizes the test as using a real-filesystem fixture (the
+    source-path read is part of the watchdog contract verification
+    path, not a test artefact).
+    """
+    _ = tmp_path
+    source = (IDLE_WATCHDOG_DIR / "idle_watchdog.py").read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(IDLE_WATCHDOG_DIR / "idle_watchdog.py"))
+
+    guard = _find_drift_guard(tree)
+    assert guard is not None, (
+        "The drift guard `if _actual != _EXPECTED_FIRE_REASONS` MUST be"
+        " a top-level statement of idle_watchdog.py; got none"
+    )
+    has_raise, raise_line = _guard_raises_runtime_error(guard)
+    assert has_raise, (
+        "The drift guard at idle_watchdog.py:"
+        f"{guard.lineno} MUST `raise RuntimeError(...)` so a future"
+        " WatchdogFireReason drift fails fast at import time. A bare"
+        " `msg = ...` assignment without raise lets the regression"
+        " slip through silently. The guard body currently contains:"
+        f" {[type(s).__name__ for s in guard.body]}"
+    )
+    assert raise_line is not None
