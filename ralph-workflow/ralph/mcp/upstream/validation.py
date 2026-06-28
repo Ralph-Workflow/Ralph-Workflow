@@ -179,15 +179,36 @@ def validate_upstream_mcp_servers(
 
     if not failures:
         if server_list:
-            logger.info("Validated {} custom MCP server(s); all reachable.", len(server_list))
+            logger.info("Validated {} MCP server(s); all reachable.", len(server_list))
         return report
 
-    if effective_strict:
-        raise UpstreamValidationError(
-            "Custom MCP servers failed startup validation:\n" + _format_failure_report(failures)
+    # Servers imported from agent-native config (Claude `.mcp.json`, AGY, etc.) are
+    # owned and launched by the agent runtime, not Ralph. They are best-effort: if a
+    # third-party server cannot start, Ralph warns (so the operator can fix the agent's
+    # MCP config) and continues without it — it never aborts the session. Only
+    # Ralph-owned custom (`mcp.toml`) servers fail fast in strict mode.
+    origin_by_name = {server.name: server.origin for server in server_list}
+    agent_upstream_failures = tuple(f for f in failures if origin_by_name.get(f.name) != "custom")
+    custom_failures = tuple(f for f in failures if origin_by_name.get(f.name) == "custom")
+
+    for failure in agent_upstream_failures:
+        logger.warning(
+            "Agent-native MCP server '{}' ({}) failed startup validation and will be "
+            "skipped; the agent runtime's MCP config is misconfigured: {}",
+            failure.name,
+            failure.transport,
+            failure.error,
         )
 
-    for failure in failures:
+    if effective_strict:
+        if custom_failures:
+            raise UpstreamValidationError(
+                "Custom MCP servers failed startup validation:\n"
+                + _format_failure_report(custom_failures)
+            )
+        return report
+
+    for failure in custom_failures:
         logger.warning(
             "Custom MCP server '{}' ({}) failed validation: {}",
             failure.name,

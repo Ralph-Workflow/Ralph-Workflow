@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from typing import Protocol
 
     from ralph.mcp.upstream.config import UpstreamMcpServer
+    from ralph.mcp.upstream.upstream_tool import UpstreamTool
     from ralph.mcp.upstream.validation import UpstreamValidationReport
 
     class _ValidateMcpFn(Protocol):
@@ -109,8 +110,25 @@ def run_custom_mcp_validation(
 
     probe_results = probe_fn(healthy_servers, workspace_path=workspace_root)
     failures = [p for p in probe_results if not p.ok]
-    if failures and strict:
-        for failure in failures:
+
+    # Agent-native (third-party) servers are best-effort here too: a probe failure
+    # warns and continues even in strict mode, because the agent runtime owns them.
+    # Only Ralph-owned custom (mcp.toml) servers gate the runner exit code.
+    origin_by_name = {server.name: server.origin for server in healthy_servers}
+    custom_failures = [p for p in failures if origin_by_name.get(p.server_name) == "custom"]
+    agent_failures = [p for p in failures if origin_by_name.get(p.server_name) != "custom"]
+
+    for failure in agent_failures:
+        logger.warning(
+            "Agent transport probe failed for agent-native MCP server (skipping; the "
+            "agent runtime's MCP config is misconfigured): server={} transport={} error={}",
+            failure.server_name,
+            failure.transport,
+            failure.error,
+        )
+
+    if custom_failures and strict:
+        for failure in custom_failures:
             logger.error(
                 "Agent transport probe failed: server={} transport={} error={}",
                 failure.server_name,
@@ -118,7 +136,7 @@ def run_custom_mcp_validation(
                 failure.error,
             )
         return 1
-    for failure in failures:
+    for failure in custom_failures:
         logger.warning(
             "Agent transport probe failed (soft mode): server={} transport={} error={}",
             failure.server_name,
@@ -126,8 +144,26 @@ def run_custom_mcp_validation(
             failure.error,
         )
 
+    # Agent-native catalogs are best-effort and collected per server so one broken
+    # third-party server cannot sink the whole catalog or abort preflight. Custom
+    # (mcp.toml) catalog collection stays all-or-nothing and gates the exit code.
+    agent_healthy = tuple(s for s in healthy_servers if s.origin != "custom")
+    custom_healthy = tuple(s for s in healthy_servers if s.origin == "custom")
+    catalog: dict[str, list[UpstreamTool]] = {}
+    for server in agent_healthy:
+        try:
+            catalog.update(collect_tool_catalog((server,)))
+        except Exception as exc:
+            logger.warning(
+                "Failed to collect tool catalog for agent-native MCP server '{}' "
+                "(skipping; the agent runtime's MCP config is misconfigured): {}",
+                server.name,
+                exc,
+            )
+
     try:
-        cache_tool_catalog(workspace_root, collect_tool_catalog(healthy_servers))
+        catalog.update(collect_tool_catalog(custom_healthy))
+        cache_tool_catalog(workspace_root, catalog)
     except Exception as exc:
         clear_tool_catalog(workspace_root)
         if strict:

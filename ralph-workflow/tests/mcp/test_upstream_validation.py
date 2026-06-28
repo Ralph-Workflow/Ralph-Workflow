@@ -48,6 +48,28 @@ def _stdio_server(name: str = "local", env: dict[str, str] | None = None) -> Ups
     )
 
 
+def _custom_http_server(name: str = "ralph-custom") -> UpstreamMcpServer:
+    return UpstreamMcpServer(
+        name=name,
+        transport="http",
+        url="http://example.invalid/mcp",
+        origin="custom",
+    )
+
+
+def _agent_http_server(name: str = "agent-native") -> UpstreamMcpServer:
+    return UpstreamMcpServer(
+        name=name,
+        transport="http",
+        url="http://example.invalid/mcp",
+        origin="agent_upstream",
+    )
+
+
+def _boom_http(*_args: object, **_kwargs: object) -> None:
+    raise RetryablePreflightError("connection refused")
+
+
 def _passing_http(*_args: object, **_kwargs: object) -> None:
     return None
 
@@ -94,7 +116,7 @@ def test_validator_passes_healthy_stdio_server(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_validator_raises_in_strict_mode_on_unreachable_server() -> None:
-    server = _http_server(name="unreachable")
+    server = _custom_http_server(name="unreachable")
 
     def boom(*_args: object, **_kwargs: object) -> None:
         raise RetryablePreflightError("connection refused")
@@ -121,9 +143,82 @@ def test_validator_does_not_raise_in_soft_mode() -> None:
     assert "connection refused" in stream.getvalue()
 
 
+def test_strict_mode_does_not_raise_on_failing_agent_upstream_server() -> None:
+    """Agent-native (third-party) MCP servers are best-effort: warn and continue."""
+    server = _agent_http_server(name="angular")
+
+    stream = StringIO()
+    sink_id = logger.add(stream, level="WARNING")
+    try:
+        report = validate_upstream_mcp_servers([server], strict=True, preflight_http=_boom_http)
+    finally:
+        logger.remove(sink_id)
+
+    assert not report.all_ok
+    assert report.servers[0].name == "angular"
+    assert report.servers[0].ok is False
+    logged = stream.getvalue()
+    assert "angular" in logged
+    assert "agent" in logged.lower()
+
+
+def test_strict_mode_still_raises_on_failing_custom_server() -> None:
+    """Ralph-owned custom (mcp.toml) servers still fail fast in strict mode."""
+    server = _custom_http_server(name="ralph-docs")
+
+    with pytest.raises(UpstreamValidationError) as excinfo:
+        validate_upstream_mcp_servers([server], strict=True, preflight_http=_boom_http)
+    assert "ralph-docs" in str(excinfo.value)
+
+
+def test_strict_mode_raises_only_for_custom_failures_in_mixed_set() -> None:
+    """A broken third-party server must not be named in the fail-fast diagnostic."""
+    custom = _custom_http_server(name="ralph-docs")
+    agent = _agent_http_server(name="angular")
+
+    with pytest.raises(UpstreamValidationError) as excinfo:
+        validate_upstream_mcp_servers([custom, agent], strict=True, preflight_http=_boom_http)
+    message = str(excinfo.value)
+    assert "ralph-docs" in message
+    assert "angular" not in message
+
+
+def test_strict_mode_continues_when_only_agent_upstream_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A healthy custom server plus a broken agent server: no raise, both reported."""
+    custom = UpstreamMcpServer(
+        name="ralph-docs", transport="http", url="http://healthy.invalid/mcp", origin="custom"
+    )
+    agent = UpstreamMcpServer(
+        name="angular", transport="http", url="http://broken.invalid/mcp", origin="agent_upstream"
+    )
+
+    _patch_make_upstream_client(
+        monkeypatch, _StubClient([UpstreamTool(name="ping", description="ping")])
+    )
+
+    def url_aware_http(url: str, _required: object, _timeout: object) -> None:
+        if "broken.invalid" in url:
+            raise RetryablePreflightError("connection refused")
+
+    report = validate_upstream_mcp_servers(
+        [custom, agent], strict=True, preflight_http=url_aware_http
+    )
+    names = {s.name: s.ok for s in report.servers}
+    assert names["ralph-docs"] is True
+    assert names["angular"] is False
+
+
 def test_validator_report_redacts_env_secrets() -> None:
     secret = "supersecret"
-    server = _http_server(name="leaky", env={"API_KEY": secret})
+    server = UpstreamMcpServer(
+        name="leaky",
+        transport="http",
+        url="http://example.invalid/mcp",
+        env={"API_KEY": secret},
+        origin="custom",
+    )
 
     def boom(*_args: object, **_kwargs: object) -> None:
         raise RetryablePreflightError(f"connection refused (token={secret})")

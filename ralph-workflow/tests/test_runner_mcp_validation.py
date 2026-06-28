@@ -36,6 +36,18 @@ def _http_server(name: str = "alpha") -> UpstreamMcpServer:
     return UpstreamMcpServer(name=name, transport="http", url=f"http://example.invalid/{name}")
 
 
+def _custom_http_server(name: str = "alpha") -> UpstreamMcpServer:
+    return UpstreamMcpServer(
+        name=name, transport="http", url=f"http://example.invalid/{name}", origin="custom"
+    )
+
+
+def _agent_http_server(name: str = "angular") -> UpstreamMcpServer:
+    return UpstreamMcpServer(
+        name=name, transport="http", url=f"http://example.invalid/{name}", origin="agent_upstream"
+    )
+
+
 def _stdio_server(name: str = "beta") -> UpstreamMcpServer:
     return UpstreamMcpServer(
         name=name,
@@ -230,7 +242,7 @@ def test_soft_mode_upstream_failure_returns_zero_and_skips_failed_servers(
 def test_strict_mode_probe_failure_returns_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    server = _http_server("alpha")
+    server = _custom_http_server("alpha")
     monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: (server,))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
@@ -268,10 +280,70 @@ def test_strict_mode_probe_failure_returns_one(
     assert "handshake failed" in error_stream.getvalue()
 
 
+def test_strict_mode_agent_upstream_probe_failure_returns_zero_and_warns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A third-party (agent-native) server failing the agent probe must not abort.
+
+    Agent-native MCP servers are best-effort: a probe failure warns and continues,
+    even in strict mode, because the agent runtime owns them — not Ralph.
+    """
+    server = _agent_http_server("angular")
+    monkeypatch.setattr(
+        "ralph.mcp.transport.claude.load_existing_claude_upstream_servers",
+        lambda _p: (server,),
+    )
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: ())
+    monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
+
+    monkeypatch.setattr(
+        runner_module,
+        "_VALIDATE_MCP",
+        MagicMock(return_value=_ok_report((server,))),
+    )
+
+    failing_probe = (
+        AgentProbeReport(
+            transport=AgentTransport.CLAUDE,
+            server_name="angular",
+            ok=False,
+            error="handshake failed",
+        ),
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "_PROBE_AGENT_TRANSPORTS",
+        MagicMock(return_value=failing_probe),
+    )
+    monkeypatch.setattr(
+        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog",
+        lambda current_servers: {
+            s.name: [UpstreamTool(name="ping", description="Ping", input_schema={})]
+            for s in current_servers
+        },
+    )
+
+    error_stream = StringIO()
+    error_sink = logger.add(error_stream, level="ERROR")
+    warning_stream = StringIO()
+    warning_sink = logger.add(warning_stream, level="WARNING")
+    try:
+        rc = runner_module.validate_custom_mcp_servers(tmp_path)
+    finally:
+        logger.remove(error_sink)
+        logger.remove(warning_sink)
+
+    assert rc == 0
+    assert error_stream.getvalue() == ""
+    warning_output = warning_stream.getvalue()
+    assert "angular" in warning_output
+    assert "agent" in warning_output.lower()
+
+
 def test_soft_mode_probe_failure_returns_zero_and_logs_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    server = _http_server("alpha")
+    server = _custom_http_server("alpha")
     monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: (server,))
     monkeypatch.setenv("RALPH_MCP_STRICT", "0")
 
@@ -309,6 +381,73 @@ def test_soft_mode_probe_failure_returns_zero_and_logs_warning(
     warning_output = warning_stream.getvalue()
     assert "handshake failed" in warning_output
     assert "soft mode" in warning_output
+
+
+def test_strict_mode_agent_upstream_catalog_failure_returns_zero_and_warns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A third-party server failing tool-catalog collection must not abort preflight."""
+    server = _agent_http_server("angular")
+    monkeypatch.setattr(
+        "ralph.mcp.transport.claude.load_existing_claude_upstream_servers",
+        lambda _p: (server,),
+    )
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: ())
+    monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
+
+    monkeypatch.setattr(
+        runner_module, "_VALIDATE_MCP", MagicMock(return_value=_ok_report((server,)))
+    )
+    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", MagicMock(return_value=()))
+
+    def boom_catalog(servers_arg: tuple[UpstreamMcpServer, ...]) -> dict[str, list[UpstreamTool]]:
+        if any(s.name == "angular" for s in servers_arg):
+            raise RuntimeError("tool listing failed")
+        ping = UpstreamTool(name="ping", description="P", input_schema={})
+        return {s.name: [ping] for s in servers_arg}
+
+    monkeypatch.setattr(
+        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog", boom_catalog
+    )
+
+    error_stream = StringIO()
+    error_sink = logger.add(error_stream, level="ERROR")
+    warning_stream = StringIO()
+    warning_sink = logger.add(warning_stream, level="WARNING")
+    try:
+        rc = runner_module.validate_custom_mcp_servers(tmp_path)
+    finally:
+        logger.remove(error_sink)
+        logger.remove(warning_sink)
+
+    assert rc == 0
+    assert error_stream.getvalue() == ""
+    assert "angular" in warning_stream.getvalue()
+
+
+def test_strict_mode_custom_catalog_failure_returns_one(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A Ralph-owned custom server failing tool-catalog collection still aborts in strict mode."""
+    server = _custom_http_server("alpha")
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: (server,))
+    monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
+
+    monkeypatch.setattr(
+        runner_module, "_VALIDATE_MCP", MagicMock(return_value=_ok_report((server,)))
+    )
+    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", MagicMock(return_value=()))
+
+    def boom_catalog(_servers: tuple[UpstreamMcpServer, ...]) -> dict[str, list[UpstreamTool]]:
+        raise RuntimeError("tool listing failed")
+
+    monkeypatch.setattr(
+        "ralph.pipeline._runner_mcp_validation.collect_tool_catalog", boom_catalog
+    )
+
+    rc = runner_module.validate_custom_mcp_servers(tmp_path)
+
+    assert rc == 1
 
 
 def test_no_probe_invoked_when_no_healthy_servers(
