@@ -57,6 +57,15 @@ R5 section below and the per-transport parametrize at
 - `tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py`
 - `tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py`
 - `tests/agents/idle_watchdog/test_shared_subagent_pid_registry.py`
+- `tests/agents/idle_watchdog/test_production_subagent_registry_wiring.py`
+  — production SubagentPidRegistry wiring end-to-end pin; exercises
+  the `AgentRegistry.build_subagent_pid_registry(transport)` →
+  `BaseExecutionStrategy(subagent_pid_source=...)` →
+  `classify_quiet` injection path AND the parser-side registry
+  storage for every `AgentTransport` member (8 transports:
+  OpenCode, Claude, Claude-interactive, Codex, Nanocoder, Generic,
+  Agy, Pi). Pinned in wt-021 to lock the production wiring and
+  catch any future refactor that bypasses the registry seam.
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r1`
 
 ---
@@ -161,6 +170,19 @@ R5 section below and the per-transport parametrize at
   Uses `FakeClock` + Protocol-typed `@dataclass` `ProcessMonitor`
   fake (NO real subprocess), in scope for the canonical R8 audit
   target.
+- `tests/agents/idle_watchdog/test_stuck_job_heartbeat_ceiling.py`
+  — heartbeat-only ceiling pin for stuck jobs that emit heartbeats
+  but no real work (`AliveBy.FRESH_HEARTBEAT_ONLY`). Locks the
+  `no_progress_quiet_heartbeat_ceiling_seconds` (default 240s)
+  branch: (1) fires `NO_PROGRESS_QUIET` when the corroborator
+  reports `FRESH_HEARTBEAT_ONLY` AND `invocation_elapsed_seconds`
+  >= the ceiling; (2) does NOT trip before its threshold;
+  (3) fires BEFORE the dumb-kill ceiling when
+  `heartbeat_ceiling < no_progress_quiet_seconds`; (4) `FRESH_PROGRESS`
+  (real progress, not just heartbeat) continues to defer
+  indefinitely (the R2 guarantee); (5) `None` disables the
+  heartbeat-only ceiling. Pinned in wt-021 to lock the
+  heartbeat-only ceiling enforcement.
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r3`
 
 ---
@@ -338,6 +360,17 @@ parametrized per-transport pin test at
 ### Pin tests
 
 - `tests/agents/idle_watchdog/test_log_spam_throttle.py`
+- `tests/agents/idle_watchdog/test_log_spam_throttle_public_surface.py`
+  — the NEW R6 public-surface proof that drives the watchdog via
+  `watchdog.evaluate(classify_quiet=...)` only (NO `setattr` on
+  `_classify_stuck_now`, NO direct call to `_gate_fire`, NO read
+  of `_last_*_log_at`). Captures `WaitingStatusEvent` instances via
+  `register_waiting_status_listener` (the public listener API) and
+  counts both PROGRESS-kind emissions and loguru StringIO records
+  filtered on `component='idle_watchdog'`. The 1000-call cycle
+  MUST emit `<= 2` PROGRESS events (the R6 spam-invariant).
+  Pinned in wt-021 to lock the R6 throttle contract via
+  public-surface observables only.
 - `tests/agents/idle_watchdog/test_evidence_deferral_throttle.py`
 - `tests/agents/idle_watchdog/test_invocation_start_full_reset.py`
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r6`

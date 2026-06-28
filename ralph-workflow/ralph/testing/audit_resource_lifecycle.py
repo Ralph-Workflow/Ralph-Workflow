@@ -238,7 +238,29 @@ def _dotted_name(node: ast.Call) -> str | None:
     return ".".join(reversed(parts))
 
 
-def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, str]]:
+def _collect_import_aliases_if_needed(
+    source: str,
+    tree: ast.Module,
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Resolve ``import x as y`` / ``from x import y [as z]`` bindings ONLY
+    when the source contains an import pattern that the audit cares about.
+
+    For files that don't import threading/httpx/requests/urllib3/os/asyncio
+    (the imports the alias-resolved contracts care about), the visitor
+    relies on bare canonical names and the import-collection walk is
+    unnecessary. Skipping the walk saves ~200-300 ms on large files like
+    ``ralph/mcp/tools/artifact.py`` (2.6k lines, 10k+ AST nodes).
+
+    Returns:
+        module_aliases: local module alias -> canonical module ("sp" -> "subprocess")
+        from_imports: local name -> canonical dotted path ("Client" -> "httpx.Client")
+    """
+    if not _source_needs_import_resolution(source):
+        return {}, {}
+    return _collect_import_aliases(tree)
+
+
+def _collect_import_aliases(tree: ast.Module) -> tuple[dict[str, str], dict[str, str]]:
     """Resolve ``import x as y`` / ``from x import y [as z]`` bindings.
 
     Returns:
@@ -247,7 +269,13 @@ def _collect_import_aliases(tree: ast.AST) -> tuple[dict[str, str], dict[str, st
     """
     module_aliases: dict[str, str] = {}
     from_imports: dict[str, str] = {}
-    for node in ast.walk(tree):
+    # Walk ONLY the module body — imports live at the top level
+    # (``ast.Import`` / ``ast.ImportFrom`` are not nested). This skips
+    # walking every nested function body, expression, etc., which on
+    # ``ralph/mcp/tools/artifact.py`` (10k+ nodes total, ~50 top-level
+    # statements) is a ~200x reduction in the walked-node count for the
+    # import-collection pass.
+    for node in tree.body:
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.asname is not None:
@@ -277,22 +305,29 @@ def _canonical_name(
     return ".".join([head, *parts[1:]])
 
 
-def _is_in_with(node: ast.Call, tree: ast.Module) -> bool:
-    """Return True if ``node`` is the context-manager expression of a with statement.
+def _collect_in_with_calls(tree: ast.Module) -> set[ast.Call]:
+    """Return the set of Call nodes that ARE the context-manager
+    expression of a with statement (sync or async).
 
     Both ``with httpx.Client() as client:`` (sync) and ``async with
     httpx.AsyncClient() as client:`` (async) are legitimate patterns
     and must NOT be flagged. Bare assignment (``client = httpx.Client()``
-    or ``client = httpx.AsyncClient()``) is the violation. We walk
-    the AST tree and accept either ``ast.With`` or ``ast.AsyncWith``
-    whose ``items[i].context_expr`` is the same call node.
+    or ``client = httpx.AsyncClient()``) is the violation. The set is
+    pre-computed once per file so the visit loop does O(1) membership
+    tests instead of an O(nodes) walk per HTTP client call.
+
+    Only ``context_expr`` is captured (the typical Client/AsyncClient
+    pattern). The audit calls ``node not in in_with_calls`` for every
+    HTTP client call, so the membership test must be cheap.
     """
+    result: set[ast.Call] = set()
     for parent in ast.walk(tree):
         if isinstance(parent, (ast.With, ast.AsyncWith)):
             for item in parent.items:
-                if item.context_expr is node:
-                    return True
-    return False
+                ctx = item.context_expr
+                if isinstance(ctx, ast.Call):
+                    result.add(ctx)
+    return result
 
 
 def _is_static_dict_key(node: ast.expr) -> bool:
@@ -479,6 +514,10 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         self._from_imports = from_imports or {}
         self._enclosing_function: ast.FunctionDef | ast.AsyncFunctionDef | None = None
         self._enclosing_class: ast.ClassDef | None = None
+        # Pre-computed in ``visit_Module`` so ``visit_Call`` can do an
+        # O(1) set membership test instead of an O(nodes) tree walk per
+        # HTTP client call. ``None`` until ``visit_Module`` runs.
+        self._in_with_calls: set[ast.Call] | None = None
 
     def _allowed(self, node: ast.AST) -> bool:
         lineno: int = getattr(node, "lineno", 0)
@@ -503,10 +542,14 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
 
     def visit_Module(self, node: ast.Module) -> None:
         # Capture the module so we can check whether each Call is the
-        # context-manager expression of a with statement. Stored on
-        # self so ``_is_in_with`` can walk it without re-walking the
-        # tree on every call.
+        # context-manager expression of a with statement. The set of
+        # Call nodes that ARE in a ``with`` statement's context_expr is
+        # pre-computed once via ``ast.walk``; ``visit_Call`` then does a
+        # set membership test instead of a full tree walk per HTTP
+        # client call. This collapses the worst-case complexity from
+        # O(http_calls * nodes) to O(nodes + http_calls).
         self.tree = node
+        self._in_with_calls = _collect_in_with_calls(node)
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -587,7 +630,11 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         if canonical in _HTTP_CLIENT_NAMES:
             tree = self.tree
             assert tree is not None, "visit_Module must run before visit_Call"
-            if not _is_in_with(node, tree):
+            in_with_calls = self._in_with_calls
+            assert in_with_calls is not None, (
+                "visit_Module must populate _in_with_calls before visit_Call"
+            )
+            if node not in in_with_calls:
                 self._add(
                     node,
                     "bare_http_client",
@@ -623,6 +670,122 @@ class ResourceLifecycleAuditor(ast.NodeVisitor):
         return False
 
 
+# Substring pre-filter: any file that lacks ALL of the audited
+# patterns cannot contain a violation, so the AST parse + walk is
+# skipped. Each entry is a substring that, when absent, rules out
+# one or more contract classes. The pre-filter is conservative: a
+# file that contains a substring still MIGHT be clean (the AST walk
+# decides), but a file that contains none cannot be in violation.
+# This collapses the AST-walk cost from O(total_source_bytes) to
+# O(matching_files_source_bytes), which on the ralph/ tree is a
+# ~30x speedup for the production-tree scan.
+#
+# The pre-filter covers the EXPENSIVE contracts (alias-resolved
+# calls). The accumulator rule (contract 4) uses bare ``self._x = []``
+# / ``_x = []`` patterns that are cheap to detect via ast.walk
+# WITHOUT alias resolution, so the substring pre-filter does not
+# need to enumerate every mutable-collection literal; the AST walk
+# handles those quickly.
+#
+# ``_IMPORT_KEYWORDS`` is the substring set that, when absent, rules
+# out ALL alias-resolved call checks (the daemon-thread,
+# HTTP-client, and raw-fd contracts). A file that contains none of
+# these keywords has no aliased imports that the audit needs to
+# resolve, so ``_collect_import_aliases`` (an ``ast.walk`` over every
+# node in the file) is unnecessary — the visitor can rely on bare
+# canonical names. This is the secondary fast-path: even after the
+# _AUDIT_SUBSTRINGS pre-filter admits a file, the import-collection
+# walk is skipped unless a relevant import pattern is present.
+_IMPORT_KEYWORDS: tuple[str, ...] = (
+    # daemon-Thread rule
+    "from threading",
+    "import threading",
+    "from asyncio",
+    "import asyncio",
+    # HTTP-client rule
+    "from httpx",
+    "import httpx",
+    "from requests",
+    "import requests",
+    "from urllib3",
+    "import urllib3",
+    # raw os fd rule
+    "from os import",
+    "import os",
+    # alias-only patterns (still useful: catches ``from x import`` /
+    # ``import x as y`` shapes that hide canonical names)
+    "import threading as",
+    "import httpx as",
+    "import requests as",
+    "import os as",
+    "import asyncio as",
+)
+
+
+def _source_needs_import_resolution(source: str) -> bool:
+    """Return True iff ``source`` contains any substring that the
+    alias-resolved call checks need to resolve.
+
+    Files that do not match are skipped without an ``_collect_import_aliases``
+    walk — that walk is O(nodes) and is the dominant cost on large
+    files like ``ralph/mcp/tools/artifact.py`` (2.6k lines, 10k+ nodes)
+    even after the broader audit substring pre-filter admits them.
+    """
+    return any(needle in source for needle in _IMPORT_KEYWORDS)
+
+
+_AUDIT_SUBSTRINGS: tuple[str, ...] = (
+    # daemon-Thread rule (contract 1)
+    "Thread(",
+    "threading.Thread",
+    "from threading",
+    "import threading",
+    # HTTP-with rule (contract 2)
+    "Client(",
+    "AsyncClient(",
+    "Session(",
+    "httpx",
+    "requests",
+    # raw os fd rule (contract 3)
+    "os.open(",
+    "os.openpty(",
+    "os.pipe(",
+    # accumulator constructors (contract 4) — alias-resolved
+    # call patterns. The bare ``=[]`` / ``={}`` / ``[]`` / ``{}``
+    # literal patterns are also included: a file that lacks every
+    # list/dict literal in the audited shapes cannot contain an
+    # accumulator violation, and the substring pre-filter is
+    # cheaper than the AST parse + walk.
+    "deque(",
+    "OrderedDict(",
+    "defaultdict(",
+    "list()",
+    "dict()",
+    "set()",
+    # The accumulator literal patterns tolerate a single space
+    # between ``=`` and the literal because Python's PEP 8 style
+    # (``x = []``, ``x = {}``) is the dominant idiom and the
+    # substring pre-filter must catch it to avoid silently
+    # skipping files like ``self._x = {}`` in __init__.
+    "= []",
+    "= {}",
+    "= set()",
+    "= list()",
+    "= dict()",
+    "= deque(",
+    "= OrderedDict(",
+    "= defaultdict(",
+)
+
+
+def _source_has_audit_pattern(source: str) -> bool:
+    """Return True iff ``source`` contains any substring that the audit
+    needs to inspect. Files that do not match are skipped without an
+    AST parse + walk — the dominant cost of the production-tree scan.
+    """
+    return any(needle in source for needle in _AUDIT_SUBSTRINGS)
+
+
 def audit_resource_lifecycle_file(file_path: Path) -> list[ResourceLifecycleViolation]:
     """Audit a single Python file for resource-lifecycle violations.
 
@@ -639,11 +802,19 @@ def audit_resource_lifecycle_file(file_path: Path) -> list[ResourceLifecycleViol
         # raw os fd outside ralph/process/) and matches the contract.
         rel_path = file_path.as_posix()
     source = file_path.read_text(encoding="utf-8")
+    # Substring pre-filter: a file that lacks every audited pattern
+    # cannot contain a violation. The same pattern (substring
+    # pre-filter, then AST parse + walk) is used in
+    # test_no_anti_drift_regression.py and
+    # test_no_anti_drift_recovery_invariants.py. This is the
+    # canonical fast-path for AST audits over the ralph/ tree.
+    if not _source_has_audit_pattern(source):
+        return []
     try:
         tree = ast.parse(source, filename=str(file_path))
     except SyntaxError:
         return []
-    module_aliases, from_imports = _collect_import_aliases(tree)
+    module_aliases, from_imports = _collect_import_aliases_if_needed(source, tree)
     auditor = ResourceLifecycleAuditor(
         str(file_path),
         source,

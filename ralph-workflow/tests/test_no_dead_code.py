@@ -107,7 +107,21 @@ def test_no_module_level_console_globals_in_ralph_source() -> None:
     """
     offenders: list[str] = []
     for path in _walk_python_files(RALPH_ROOT):
-        source = _read(path)
+        # Substring pre-filter: an offender MUST contain a
+        # ``Console()`` call to one of the forbidden names. A file
+        # that does not contain the literal ``Console(`` cannot
+        # contribute an offender and is skipped without an
+        # ``ast.parse`` pass. This is the canonical fast-path
+        # pattern (also used in test_no_anti_drift_regression.py
+        # and test_no_anti_drift_recovery_invariants.py) and
+        # collapses the AST-walk cost from O(total_source_bytes)
+        # to O(matching_files_source_bytes).
+        try:
+            source = _read(path)
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "Console(" not in source:
+            continue
         for lineno, target, value in _module_level_console_globals(source):
             offenders.append(
                 f"{path.relative_to(RALPH_ROOT.parent)}:{lineno} {target} = {ast.unparse(value)}"

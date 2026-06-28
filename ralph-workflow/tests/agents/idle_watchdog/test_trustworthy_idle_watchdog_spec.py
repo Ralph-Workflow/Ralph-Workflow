@@ -102,6 +102,12 @@ RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     "tests/agents/idle_watchdog/test_subagent_identity_excludes_helpers.py",
     "tests/agents/idle_watchdog/test_hard_ceiling_with_helpers_alive.py",
     "tests/agents/idle_watchdog/test_shared_subagent_pid_registry.py",
+    # R1 (NEW) - production SubagentPidRegistry wiring end-to-end pin
+    # for the AgentRegistry -> BaseExecutionStrategy ->
+    # classify_quiet injection path and the parser-side registry
+    # storage. Pinned in wt-021 to lock the production wiring and
+    # catch any future refactor that bypasses the registry seam.
+    "tests/agents/idle_watchdog/test_production_subagent_registry_wiring.py",
     # R2 - No false positives.
     "tests/agents/idle_watchdog/test_silent_after_tool_call_wedge.py",
     "tests/agents/idle_watchdog/test_stuck_classifier.py",
@@ -117,6 +123,11 @@ RALPH_PIN_TEST_PATHS: tuple[str, ...] = (
     # target. Pinned in wt-021 to lock the fix that removed the
     # _gate_fire consultation from the cumulative ceiling block.
     "tests/agents/idle_watchdog/test_cumulative_waiting_ceiling_fires_with_real_subagent_alive.py",
+    # R3 (NEW) - heartbeat-only ceiling pin for stuck jobs that
+    # emit heartbeats but no real work (AliveBy.FRESH_HEARTBEAT_ONLY).
+    # Pinned in wt-021 to lock the no_progress_quiet_heartbeat_ceiling
+    # enforcement and the FRESH_PROGRESS deferral invariant.
+    "tests/agents/idle_watchdog/test_stuck_job_heartbeat_ceiling.py",
     # R4 - Resume on watchdog kill, never restart.
     "tests/agents/idle_watchdog/test_resume_after_kill_contract.py",
     "tests/agents/idle_watchdog/test_resume_after_kill_watchdog_boundary.py",
