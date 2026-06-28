@@ -61,6 +61,7 @@ _SUBAGENT_SOURCES: frozenset[str] = frozenset(
         "claude_interactive",
         "codex",
         "nanocoder",
+        "gemini",
     }
 )
 
@@ -91,8 +92,9 @@ class SubagentIdentity:
         pid: The OS process id of the registered subagent.
         source: The transport that registered the subagent (one of
             ``opencode``, ``claude``, ``pi``, ``agy``, ``generic``,
-            ``claude_interactive``, ``codex``, ``nanocoder`` -- the eight
-            canonical ``AgentTransport`` source labels).
+            ``claude_interactive``, ``codex``, ``nanocoder``,
+            ``gemini`` -- the nine canonical ``AgentTransport``
+            parser source labels).
         registered_at_monotonic: Monotonic timestamp captured when the
             subagent was first registered. On a duplicate ``register`` call
             the original timestamp is preserved (idempotent).
@@ -112,6 +114,7 @@ class SubagentIdentity:
         "claude_interactive",
         "codex",
         "nanocoder",
+        "gemini",
     ]
     registered_at_monotonic: float
     label_prefix: str | None = None
@@ -187,6 +190,7 @@ class SubagentPidRegistry:
             "claude_interactive",
             "codex",
             "nanocoder",
+            "gemini",
         ],
         label_prefix: str | None = None,
         *,

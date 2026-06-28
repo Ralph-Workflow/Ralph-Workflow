@@ -60,6 +60,7 @@ from ralph.agents.parsers import (
     ClaudeInteractiveParser,
     ClaudeParser,
     CodexParser,
+    GeminiParser,
     GenericParser,
     PiParser,
     get_parser,
@@ -291,10 +292,13 @@ def test_parser_constructor_stores_subagent_pid_registry(
     class (every transport except ``OPENCODE`` -- OpenCode's parser is
     constructed with the production ``parser_factory`` call, not via
     the bare constructor, so it has its own dedicated wiring test).
-    Gemini is a parser-only transport that maps to ``GENERIC`` via
-    the catalog; it is intentionally NOT in the watchdog's R1
-    subagent-source contract because it is not a supported
-    ``AgentTransport`` member.
+    ``gemini`` has its own dedicated regression test below
+    (``test_gemini_parser_registers_pid_from_child_progress``) because
+    the public factory path uses a parser-bound source label distinct
+    from its ``AgentTransport`` (``GENERIC``); the regression test
+    pins the explicit behavior so a future PR cannot silently drop
+    ``gemini``-labeled registrations the way the prior bare
+    ``except Exception`` pattern did.
     """
     agent_registry = AgentRegistry()
     registry, _ = agent_registry.build_subagent_pid_registry(AgentTransport(transport_label))
@@ -421,9 +425,13 @@ def test_parser_registers_pid_from_structured_event_when_registry_wired(
     has no PID, the hook is a no-op (and the registry stays empty).
 
     The parametrize list is the subset of parser keys that are
-    also supported ``AgentTransport`` members. ``gemini`` is a
-    parser-only key (no ``AgentTransport.GEMINI`` member) and is
-    therefore NOT in the watchdog's R1 subagent-source contract.
+    also supported ``AgentTransport`` members. ``gemini`` is
+    covered by the dedicated regression test
+    ``test_gemini_parser_registers_pid_from_child_progress`` below
+    (the public factory path uses the parser-bound ``"gemini"``
+    source label even though the catalog maps Gemini to the
+    ``GENERIC`` transport, so it sits outside the
+    ``AgentTransport``-keyed parametrizations).
     """
     registry = SubagentPidRegistry()
     parser = parser_cls(
@@ -510,9 +518,13 @@ def test_get_parser_threads_registry_and_source_label(
     hook fires for PID-carrying events.
 
     The parametrize list is the subset of parser keys that are
-    also supported ``AgentTransport`` members. ``gemini`` is a
-    parser-only key (no ``AgentTransport.GEMINI`` member) and is
-    therefore NOT in the watchdog's R1 subagent-source contract.
+    also supported ``AgentTransport`` members. ``gemini`` is
+    covered by the dedicated regression test
+    ``test_get_parser_gemini_threads_registry_and_source_label`` below
+    (the public factory path uses the parser-bound ``"gemini"``
+    source label even though the catalog maps Gemini to the
+    ``GENERIC`` transport, so it sits outside the
+    ``AgentTransport``-keyed parametrizations).
     """
     registry = SubagentPidRegistry()
     parser = get_parser(
@@ -599,3 +611,184 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
     assert isinstance(source, SubagentPidSource), (
         f"subagent_pid_source must be a SubagentPidSource instance, got {type(source).__name__}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Gemini parser R1 wiring (regression for the prior silent no-op)
+# ---------------------------------------------------------------------------
+
+
+def test_gemini_parser_registers_pid_from_child_progress() -> None:
+    """``get_parser('gemini', subagent_pid_registry=..., subagent_source_label='gemini')``
+    MUST register PID-carrying events into the shared registry.
+
+    Regression for the prior silent no-op: the public Gemini factory
+    path constructed a parser with ``subagent_source_label='gemini'``
+    and parsed a PID-carrying ``child_progress`` event, but the
+    underlying ``SubagentPidRegistry.register`` call raised
+    ``ValueError`` because ``'gemini'`` was missing from the
+    canonical ``_SUBAGENT_SOURCES`` set; the bare ``except Exception``
+    clause in ``NdjsonParserBase._try_register_subagent_pid_from_obj``
+    silently swallowed the rejection and the PID was never
+    registered, losing the watchdog's R1 subagent signal.
+
+    The fix:
+
+      * ``'gemini'`` is added to the canonical ``_SUBAGENT_SOURCES``
+        set in ``ralph/agents/idle_watchdog/_subagent_identity.py`` so
+        ``SubagentPidRegistry.register`` accepts the parser-bound
+        source label.
+      * ``NdjsonParserBase._try_register_subagent_pid_from_obj``
+        narrows the exception clause from ``except Exception`` to
+        ``except ValueError`` so other exception types propagate
+        instead of being silently dropped.
+
+    This test pins BOTH invariants via the public ``get_parser``
+    factory path:
+
+      1. ``events`` is non-empty (parser still emits its typed event).
+      2. ``registry.known_pids()`` contains the emitted PID.
+      3. ``registry.snapshot()[0].source == 'gemini'`` (the parser
+         source label is preserved through registration).
+
+    The test uses no real subprocess, no real wall-clock sleep, and
+    no real filesystem I/O -- it is a pure-Python black-box fixture
+    that satisfies ``audit_test_policy``.
+    """
+    registry = SubagentPidRegistry()
+    parser = get_parser(
+        "gemini",
+        subagent_pid_registry=registry,
+        subagent_source_label="gemini",
+    )
+    pid = 424242
+    line = '{"type": "child_progress", "pid": ' + str(pid) + ', "content": "x"}'
+    events = list(parser.parse(iter([line])))
+
+    assert events, "parser MUST still emit an event for child_progress line"
+    assert pid in registry.known_pids(), (
+        f"Gemini parser must register pid {pid} into the shared registry; "
+        f"got known_pids={sorted(registry.known_pids())}"
+    )
+    identity = next(iter(registry.snapshot()))
+    assert identity.source == "gemini", (
+        f"identity.source must be 'gemini' (the parser-bound label), "
+        f"got {identity.source!r}"
+    )
+
+
+def test_gemini_parser_registers_pid_via_direct_constructor() -> None:
+    """Constructing ``GeminiParser(subagent_pid_registry=..., subagent_source_label='gemini')``
+    directly also registers PIDs (the bare-constructor path mirrors the
+    factory path).
+
+    The bare-constructor path uses the same ``_try_register_subagent_pid_from_obj``
+    hook as the factory path; this test pins the contract for callers
+    that construct ``GeminiParser`` directly without going through
+    ``get_parser``.
+    """
+    registry = SubagentPidRegistry()
+    parser = GeminiParser(
+        subagent_pid_registry=registry,
+        subagent_source_label="gemini",
+    )
+    pid = 314159
+    line = '{"type": "child_progress", "pid": ' + str(pid) + ', "content": "x"}'
+    events = list(parser.parse(iter([line])))
+
+    assert events
+    assert pid in registry.known_pids()
+    identity = next(iter(registry.snapshot()))
+    assert identity.source == "gemini"
+
+
+def test_gemini_parser_registration_no_op_when_registry_none() -> None:
+    """The Gemini parser registration hook is a no-op when no registry is provided.
+
+    Mirrors the existing per-parser no-op test for Codex / Claude / etc.
+    so a future refactor that wires a default registry into Gemini by
+    accident is caught.
+    """
+    parser = GeminiParser()  # zero-arg legacy call
+    line = '{"type": "child_progress", "pid": 99999}'
+    events = list(parser.parse(iter([line])))
+    assert events  # parser still emits
+    assert getattr(parser, "_subagent_pid_registry", None) is None
+
+
+def test_gemini_parser_registration_no_op_when_source_label_none() -> None:
+    """The Gemini parser registration hook is a no-op when no source label is provided.
+
+    A parser constructed with a registry but no source label MUST NOT
+    register PIDs -- the source label is what attributes a PID to the
+    right transport for the per-transport ``SubagentPidSource`` filter.
+    """
+    registry = SubagentPidRegistry()
+    parser = GeminiParser(subagent_pid_registry=registry)
+    assert parser._subagent_source_label is None
+    line = '{"type": "child_progress", "pid": 12345}'
+    list(parser.parse(iter([line])))
+    assert 12345 not in registry.known_pids()
+
+
+def test_gemini_parser_propagates_non_value_error_registration_failures() -> None:
+    """A non-``ValueError`` exception from ``SubagentPidRegistry.register`` MUST propagate.
+
+    The prior ``except Exception`` clause silently dropped every
+    registration failure; the fix narrows it to ``except ValueError``
+    so programmer errors (``TypeError``, ``AttributeError``,
+    ``RuntimeError``) surface to the caller. This test injects a
+    registry stub that raises ``TypeError`` and asserts the parser's
+    ``parse`` path propagates the error rather than swallowing it.
+    """
+    sentinel = RuntimeError("programmer-error sentinel from injected registry")
+
+    class _RaisingRegistry:
+        def register(
+            self,
+            pid: int,
+            source: str,
+            label_prefix: str | None = None,
+            *,
+            now: float | None = None,
+        ) -> object:
+            raise sentinel
+
+    parser = GeminiParser(
+        subagent_pid_registry=cast("SubagentPidRegistry", _RaisingRegistry()),
+        subagent_source_label="gemini",
+    )
+    line = '{"type": "child_progress", "pid": 7777}'
+    with pytest.raises(RuntimeError, match="programmer-error sentinel"):
+        list(parser.parse(iter([line])))
+
+
+def test_gemini_parser_swallows_value_error_registration_failures() -> None:
+    """A ``ValueError`` from ``SubagentPidRegistry.register`` is still swallowed.
+
+    The narrowing from ``except Exception`` to ``except ValueError``
+    preserves the forward-compat safety net: the parser's primary
+    event-emission path must continue to work even when the
+    registry's validation rejects a registration (e.g. an unknown
+    source label). The test injects a registry stub that raises
+    ``ValueError`` and asserts ``parse`` returns the typed event
+    WITHOUT re-raising.
+    """
+    class _ValueErrorRegistry:
+        def register(
+            self,
+            pid: int,
+            source: str,
+            label_prefix: str | None = None,
+            *,
+            now: float | None = None,
+        ) -> object:
+            raise ValueError(f"unknown subagent source {source!r}")
+
+    parser = GeminiParser(
+        subagent_pid_registry=cast("SubagentPidRegistry", _ValueErrorRegistry()),
+        subagent_source_label="gemini",
+    )
+    line = '{"type": "child_progress", "pid": 8888}'
+    events = list(parser.parse(iter([line])))
+    assert events, "parser MUST still emit an event when ValueError is raised"

@@ -45,7 +45,11 @@ if TYPE_CHECKING:
     # Per-transport source tokens accepted by
     # :class:`SubagentPidRegistry.register`. The registry enforces this
     # Literal at runtime; the parser narrows the same set here so a
-    # misconfigured parser is caught by the type checker.
+    # misconfigured parser is caught by the type checker. ``gemini``
+    # is the parser-bound source for the Gemini transport (its
+    # :class:`ralph.config.enums.AgentTransport` is ``GENERIC``; the
+    # parser-bound source label is the discriminator for the
+    # per-parser PID registration seam).
     _SubagentSourceLabel = Literal[
         "opencode",
         "claude",
@@ -55,6 +59,7 @@ if TYPE_CHECKING:
         "claude_interactive",
         "codex",
         "nanocoder",
+        "gemini",
     ]
 
 
@@ -161,10 +166,24 @@ class NdjsonParserBase(ParserTemplateBase):
                 pid,
                 source=cast("_SubagentSourceLabel", self._subagent_source_label),
             )
-        except Exception:
-            # Forward-compat: a future SubagentPidRegistry validation
-            # tightening (e.g. transport label enforcement) MUST NOT
-            # break the parser's primary event-emission path.
+        except ValueError:
+            # Fail-closed: a known validation rejection (unknown
+            # source label, invalid PID) MUST NOT propagate into the
+            # parser's primary event-emission path because the parser
+            # is on the hot path of every per-line classification
+            # cycle. ONLY ``ValueError`` is caught -- other exception
+            # types (``TypeError``, ``AttributeError``,
+            # ``RuntimeError``) indicate a programmer error and MUST
+            # surface so the bug is caught at test time rather than
+            # silently no-op'ing the PID registration. The bare
+            # ``except Exception`` pattern previously in place
+            # silently dropped registration calls for source labels
+            # that the registry rejected (e.g. an earlier iteration of
+            # the canonical source set that did not include
+            # ``"gemini"``); the regression test at
+            # ``tests/agents/idle_watchdog/test_production_subagent_registry_wiring.py``
+            # pins the explicit behavior so a future PR cannot
+            # regress to the silent no-op.
             return
 
     def classify_line(self, line: str) -> Iterator[AgentOutputLine]:
