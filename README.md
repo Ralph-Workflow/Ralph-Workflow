@@ -1,5 +1,13 @@
 # Ralph Workflow
 
+## ⚡ Quickstart
+
+```bash
+pipx install ralph-workflow   # 1. install (Python 3.12+)
+ralph --init                  # 2. scaffold .agent/ and PROMPT.md
+ralph                         # 3. run the unattended workflow
+```
+
 ## Stop babysitting your coding agents.
 
 **Hand off a spec, step away, and come back to tested code worth reviewing.**
