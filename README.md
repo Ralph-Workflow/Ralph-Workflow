@@ -16,6 +16,8 @@ ralph                         # 3. run the unattended workflow
 
 Use it for well-specified work that can run against your repo's tests while you do something else.
 
+**The reference implementation of Loop Engineering.** Three org-backed commercial derivatives — [Atomic](https://github.com/bastani-inc/atomic) (260★), [Ralphify](https://github.com/computerlovetech/ralphify) (68★), and [LoopTroop](https://github.com/looptroop-ai/loop-troop) (38★) — have adopted the architecture, with 20+ independent projects and 450+ cumulative ecosystem stars. *(Source: [ECOSYSTEM.md](ECOSYSTEM.md), verified 2026-06-28).*
+
 ![Codeberg stars](https://img.shields.io/codeberg/stars/RalphWorkflow/Ralph-Workflow) ![GitHub stars](https://img.shields.io/github/stars/Ralph-Workflow/Ralph-Workflow) ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)  
 [![Built with Ralph Loop](assets/built-with-ralph-loop.svg)](https://ghuntley.com/ralph)
 
