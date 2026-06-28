@@ -222,7 +222,7 @@ R5 section below and the per-transport parametrize at
   population above is the canonical carrier for log-only consumers
   that walk the post-mortem dict directly without inspecting the
   exception chain.
-- `ralph/agents/invoke/_open_code_resumable_exit_error.py:73` —
+- `ralph/agents/invoke/_open_code_resumable_exit_error.py:133-145` —
   `class OpenCodeResumableExitError(AgentInvocationError)`; the
   typed rc=0 exit exception classified by R7 below.
 - `ralph/agents/invoke/_session_resume.py:170` —
@@ -437,7 +437,7 @@ Verify cited line numbers after touching the cited files.
 
 ### Implementing modules
 
-- `ralph/agents/invoke/_open_code_resumable_exit_error.py:73` —
+- `ralph/agents/invoke/_open_code_resumable_exit_error.py:133-145` —
   `class OpenCodeResumableExitError(AgentInvocationError)`; the
   typed exception that carries the canonical `resumable_session_id`
   attribute (the captured transport-level session id) AND four

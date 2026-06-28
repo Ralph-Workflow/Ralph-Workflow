@@ -9,12 +9,12 @@ enforcement.
 
 > **Per-AC traceability map** — for a one-section-per-R1-R8 mapping
 > between each acceptance criterion (verbatim from
-> `.agent/CURRENT_PROMPT.md`), the implementing module(s), and the
+> `PROMPT.md`), the implementing module(s), and the
 > dedicated pin test(s), see
 > [`watchdog-spec.md`](watchdog-spec.md). That document is the
 > canonical source for "which file owns which AC" and is kept in
 > sync with the codebase via the consolidated pin test
-> `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r8`.
+> `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r8`.
 > The R5 section of that document names the explicit three-field
 > public contract (`last_subagent_progress_description` /
 > `last_subagent_progress_at` / `current_subagent_tool_call`) and
@@ -489,7 +489,7 @@ threading contract (7 numbered evidence points).
 > [`watchdog-spec.md`](watchdog-spec.md). This section does NOT
 > duplicate that map — it points to the canonical doc so the
 > consolidated pin test
-> (`tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::test_r8`)
+> (`tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r8`)
 > remains the single source of truth for which files pin which
 > acceptance criteria. If you need to know "which file owns R5" or
 > "which test pins R7," open `watchdog-spec.md` — that document
