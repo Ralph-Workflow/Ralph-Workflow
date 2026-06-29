@@ -93,8 +93,8 @@ If you want the short filter before you even draft `PROMPT.md`, use
 ```bash
 pipx install ralph-workflow
 cd /path/to/your/repo
-ralph --init
 ralph --diagnose
+ralph --init
 $EDITOR PROMPT.md
 ralph
 ```
@@ -102,11 +102,11 @@ ralph
 Run those commands from a human-operated shell outside any Ralph-managed
 agent session.
 
-- `ralph --init` provisions the default local work surface, web helpers, and
-  shipped baseline skills for a first run that is ready to use.
 - `ralph --diagnose` is the pre-flight check; it shows which baseline helpers
   are healthy, missing, unreachable, degraded, or need repair. See the
   [Diagnostics](docs/sphinx/diagnostics.md) page for the full workflow.
+- `ralph --init` provisions the default local work surface, web helpers, and
+  shipped baseline skills for a first run that is ready to use.
 
 ## Judge the result honestly
 

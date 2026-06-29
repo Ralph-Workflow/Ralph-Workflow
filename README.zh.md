@@ -11,7 +11,7 @@ Ralph Workflow 把简单的 Ralph 循环（plan → build → verify）扩展为
 🌐 **[中文](#)** | **[English](README.md)**
 
 ![Codeberg stars](https://img.shields.io/codeberg/stars/RalphWorkflow/Ralph-Workflow) ![GitHub stars](https://img.shields.io/github/stars/Ralph-Workflow/Ralph-Workflow) ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)
-[![Built with Ralph Loop](assets/built-with-ralph-loop.svg)](https://github.com/Ralph-Workflow/Ralph-Workflow)
+[![Built with Ralph Loop](assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 
 🌐 **[ralphworkflow.com](https://ralphworkflow.com)** — 完整网站，含对比指南、首次运行指南、博客。
 
@@ -64,7 +64,7 @@ Loop Engineering 是一种**为无人值守执行而设计的编码代理模式*
 如果你的项目使用了 Ralph Workflow（或任何 Ralph Loop 实现），可以添加徽章：
 
 ```markdown
-[![Built with Ralph Loop](https://raw.githubusercontent.com/Ralph-Workflow/Ralph-Workflow/main/assets/built-with-ralph-loop.svg)](https://github.com/Ralph-Workflow/Ralph-Workflow)
+[![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 ```
 
 ## 更多信息

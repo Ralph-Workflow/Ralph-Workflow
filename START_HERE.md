@@ -54,8 +54,8 @@ If you're unsure, use [first-task-guide.md](ralph-workflow/docs/sphinx/first-tas
 ```bash
 pipx install ralph-workflow
 cd /path/to/your/project
-ralph --init
 ralph --diagnose
+ralph --init
 $EDITOR PROMPT.md
 ralph
 ```
@@ -63,13 +63,13 @@ ralph
 Run those commands from a human-operated shell outside any Ralph-managed
 agent session.
 
-- `ralph --init` provisions the default local work surface, web helpers, and
-  shipped baseline skills for a first run that is ready to use.
 - `ralph --diagnose` is the **pre-flight check** — it shows which baseline
   helpers are healthy, missing, unreachable, degraded, or need repair before
   you spend a real run on them. See
   [diagnostics.md](ralph-workflow/docs/sphinx/diagnostics.md) for what each
   check proves.
+- `ralph --init` provisions the default local work surface, web helpers, and
+  shipped baseline skills for a first run that is ready to use.
 
 ## What success looks like
 

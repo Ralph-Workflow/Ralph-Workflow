@@ -33,8 +33,9 @@ Use these folders only when you know you need contributor guidance or deeper bac
 - `docs/agents/` — contributor and verification guidance for agents, testing, type-ignore policy, and verification workflow
 - `docs/code-style/` — documentation rubric plus maintained style/process guidance
 - `docs/tooling/` — tooling setup and support notes for the Python implementation (`python-tooling.md`)
-- `docs/architecture/` — Python-runtime architecture overview and 3 current Python pages
-  (pipeline-lifecycle, event-loop-and-reducers, parallel-fan-out)
+- `docs/architecture/` — Python-runtime architecture: an `overview.md` plus the
+  maintained topical pages `pipeline-lifecycle.md`, `event-loop-and-reducers.md`,
+  and `parallel-fan-out.md`
 
 ### I want to see a real overnight run before I decide
 
