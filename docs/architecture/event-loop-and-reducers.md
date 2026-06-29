@@ -10,7 +10,7 @@ The implementation lives in `ralph-workflow/ralph/`. All module references point
 
 Related docs:
 - `pipeline-lifecycle.md` — end-to-end lifecycle (planning → development → commit → review → fix)
-- `logging-and-observability.md` — per-run logging and observability
+- [`../legacy-rust/architecture/logging-and-observability.md`](../legacy-rust/architecture/logging-and-observability.md) — per-run logging and observability (legacy Rust-era reference; current runtime uses `ralph/logging.py` and `ralph/logging_models.py`)
 
 ## Policy-Defined Orchestration
 
@@ -166,5 +166,5 @@ When adding or changing reducer behavior:
 ## See Also
 
 - `pipeline-lifecycle.md` — end-to-end phase lifecycle
-- `checkpoint-and-resume.md` — checkpoint semantics and resume flow
-- `git-and-rebase.md` — git operations and baseline diff tracking
+- [`../legacy-rust/architecture/checkpoint-and-resume.md`](../legacy-rust/architecture/checkpoint-and-resume.md) — checkpoint semantics and resume flow (legacy Rust-era reference)
+- [`../legacy-rust/architecture/git-and-rebase.md`](../legacy-rust/architecture/git-and-rebase.md) — git operations and baseline diff tracking (legacy Rust-era reference)

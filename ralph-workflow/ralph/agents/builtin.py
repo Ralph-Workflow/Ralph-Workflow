@@ -1,4 +1,31 @@
-"""Single declarative source of truth for the seven built-in agents."""
+"""Declarative registry of the seven built-in agent CLIs.
+
+This module is the single source of truth for the agents that Ralph Workflow
+ships with out of the box. Each entry is a :class:`~ralph.agents.builtin_spec.BuiltinAgentSpec`
+declaratively describing one CLI: the transport, the parser/strategy pair,
+the JSON parsing mode, the executable, the flags used for unattended
+("yolo") invocation, resume/session support, and whether the agent is allowed
+to author commits.
+
+The seven built-in agents are:
+
+- ``claude`` (Claude Code interactive / PTY transport)
+- ``claude-headless`` (Claude Code headless JSON-stream transport)
+- ``codex`` (Codex CLI)
+- ``opencode`` (OpenCode CLI)
+- ``nanocoder`` (Nanocoder CLI)
+- ``agy`` (AGY CLI; binary overridable via ``RALPH_AGY_BINARY``)
+- ``pi`` (Pi.dev CLI)
+
+Adding a new built-in agent requires editing this module only; the catalog
+picks the entries up via :func:`builtin_supports`. Custom agents configured
+via ``.agent/agents.toml`` are layered on top by the catalog and do not need
+to be declared here.
+
+Side effects: none at import time. The agent supports are returned as a
+fresh tuple on each call to :func:`builtin_supports` so callers can iterate
+without sharing state.
+"""
 
 from __future__ import annotations
 

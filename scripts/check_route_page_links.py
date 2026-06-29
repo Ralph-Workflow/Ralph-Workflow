@@ -32,8 +32,14 @@ from urllib.parse import urlparse
 
 try:
     import urllib.request
+    import urllib.error
 except ImportError:
     urllib = None  # type: ignore[assignment]
+
+try:
+    import ssl
+except ImportError:
+    ssl = None  # type: ignore[assignment]
 
 
 EXTERNAL_LINK_TIMEOUT_SECONDS = 10.0
@@ -79,14 +85,39 @@ def check_internal(link_file: Path, url: str) -> str | None:
     return None
 
 
-def check_external(url: str) -> str | None:
-    if url in EXTERNAL_IGNORES:
-        return None
-    if urllib is None:
+def _build_unverified_ssl_context() -> "ssl.SSLContext | None":  # type: ignore[name-defined]
+    if ssl is None:
         return None
     try:
+        return ssl._create_unverified_context()  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _is_ssl_error(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if (
+        "SSL" in name
+        or "Certificate" in name
+        or "ssl" in type(exc).__module__
+    ):
+        return True
+    cause = getattr(exc, "reason", None) or getattr(exc, "args", [None])[0]
+    if cause is exc:
+        return False
+    if cause is not None and isinstance(cause, BaseException):
+        return _is_ssl_error(cause)
+    return False
+
+
+def _check_external_once(  # type: ignore[name-defined]
+    url: str, context: "ssl.SSLContext | None"
+) -> str | None:
+    try:
         req = urllib.request.Request(url, method="HEAD")
-        with urllib.request.urlopen(req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS) as resp:
+        with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
+            req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS, context=context
+        ) as resp:
             status = getattr(resp, "status", 200)
             if status >= 400:
                 return f"HTTP {status} on HEAD {url}"
@@ -94,8 +125,8 @@ def check_external(url: str) -> str | None:
         if exc.code == 405:
             try:
                 req = urllib.request.Request(url, method="GET")
-                with urllib.request.urlopen(
-                    req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS
+                with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
+                    req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS, context=context
                 ) as resp:
                     status = getattr(resp, "status", 200)
                     if status >= 400:
@@ -107,6 +138,35 @@ def check_external(url: str) -> str | None:
     except Exception as exc:  # noqa: BLE001
         return f"request failed for {url}: {exc}"
     return None
+
+
+def check_external(url: str) -> str | None:
+    if url in EXTERNAL_IGNORES:
+        return None
+    if urllib is None:
+        return None
+    try:
+        req = urllib.request.Request(url, method="HEAD")
+        with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
+            req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS
+        ) as resp:
+            status = getattr(resp, "status", 200)
+            if status >= 400:
+                return f"HTTP {status} on HEAD {url}"
+    except urllib.error.HTTPError as exc:
+        if exc.code == 405:
+            return _get_with_fallback(url)
+        return f"HTTP {exc.code} on HEAD {url}"
+    except Exception as exc:  # noqa: BLE001
+        if _is_ssl_error(exc):
+            return _get_with_fallback(url)
+        return f"request failed for {url}: {exc}"
+    return None
+
+
+def _get_with_fallback(url: str) -> str | None:
+    fallback_ctx = _build_unverified_ssl_context()
+    return _check_external_once(url, fallback_ctx)
 
 
 def check_file(path: Path) -> list[str]:

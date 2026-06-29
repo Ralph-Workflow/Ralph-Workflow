@@ -375,4 +375,4 @@ The checkpoint is saved when the interrupt is caught, before any process killing
 
 - `event-loop-and-reducers.md` — event loop driver, reducer architecture, effect handler layering
 - `pipeline-lifecycle.md` — end-to-end pipeline lifecycle
-- `checkpoint-and-resume.md` — checkpoint semantics and resume flow
+- [`../legacy-rust/architecture/checkpoint-and-resume.md`](../legacy-rust/architecture/checkpoint-and-resume.md) — checkpoint semantics and resume flow (legacy Rust-era reference)

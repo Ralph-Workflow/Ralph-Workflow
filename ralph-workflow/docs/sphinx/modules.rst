@@ -1197,6 +1197,13 @@ ralph.agents.builtin_spec
    :members:
    :show-inheritance:
 
+ralph.agents.builtin
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.builtin
+   :members:
+   :show-inheritance:
+
 ralph.agents.idle_watchdog_kill
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

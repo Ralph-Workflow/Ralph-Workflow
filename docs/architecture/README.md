@@ -48,14 +48,14 @@ on those pages for current behavior.
 
 ## Related
 
-- `ralph-workflow/docs/sphinx/` — the maintained Sphinx manual, including
-  the concept pages ([`ralph-loop`](../ralph-workflow/docs/sphinx/ralph-loop.md),
-  [`policy-driven-pipeline`](../ralph-workflow/docs/sphinx/policy-driven-pipeline.md),
-  [`phase-routing`](../ralph-workflow/docs/sphinx/phase-routing.md),
-  [`artifact-lifecycle`](../ralph-workflow/docs/sphinx/artifact-lifecycle.md),
-  [`watchdogs-and-timeouts`](../ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md),
-  [`verification-model`](../ralph-workflow/docs/sphinx/verification-model.md))
-- `ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md` —
+- [`../../ralph-workflow/docs/sphinx/`](../../ralph-workflow/docs/sphinx/index.rst) — the maintained Sphinx manual, including
+  the concept pages ([`ralph-loop`](../../ralph-workflow/docs/sphinx/ralph-loop.md),
+  [`policy-driven-pipeline`](../../ralph-workflow/docs/sphinx/policy-driven-pipeline.md),
+  [`phase-routing`](../../ralph-workflow/docs/sphinx/phase-routing.md),
+  [`artifact-lifecycle`](../../ralph-workflow/docs/sphinx/artifact-lifecycle.md),
+  [`watchdogs-and-timeouts`](../../ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md),
+  [`verification-model`](../../ralph-workflow/docs/sphinx/verification-model.md))
+- [`../../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md`](../../ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md) —
   MADR-format ADR for the InterruptController/InterruptDispatcher split
-- `ralph-workflow/CHANGELOG.md` — what changed in the runtime between
+- [`../../ralph-workflow/CHANGELOG.md`](../../ralph-workflow/CHANGELOG.md) — what changed in the runtime between
   releases

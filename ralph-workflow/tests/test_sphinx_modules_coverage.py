@@ -16,7 +16,6 @@ _EXCLUDED: dict[str, str] = {
     "testing.fake_process": "test infrastructure, not public API",
     # Internal event/model types not intended as public API
     "agents.catalog": "internal injectable registry, not public API",
-    "agents.builtin": "internal declarative source of truth, not public API",
     "agents.invocation_context": "internal DI seam, not public API",
     "agents.post_exit_verdict": "internal watchdog verdict type, not public API",
     "agents.registration": "internal registration seam, opt-in import only; not public API",

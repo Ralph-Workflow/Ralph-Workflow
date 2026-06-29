@@ -10,8 +10,8 @@ The implementation lives in `ralph-workflow/ralph/`. All module references point
 
 Related docs:
 - `event-loop-and-reducers.md` — event loop and reducer mechanics
-- `checkpoint-and-resume.md` — checkpoint persistence
-- `git-and-rebase.md` — git baseline behavior
+- [`../legacy-rust/architecture/checkpoint-and-resume.md`](../legacy-rust/architecture/checkpoint-and-resume.md) — checkpoint persistence (legacy Rust-era reference; current runtime uses `ralph/pipeline/checkpoint.py` and the recovery controller)
+- [`../legacy-rust/architecture/git-and-rebase.md`](../legacy-rust/architecture/git-and-rebase.md) — git baseline behavior (legacy Rust-era reference; current runtime uses `ralph/git/commit_cleanup.py`)
 
 ## Policy-Defined Orchestration
 
