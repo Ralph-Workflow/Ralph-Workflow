@@ -262,7 +262,6 @@ def test_main_prints_agent_fix_banner_when_verify_step_fails(
     assert "IF YOU READ THIS, YOU MUST FIX THIS ISSUE NOW!!" in captured.err
     assert "IT DOES NOT MATTER WHAT YOUR PROMPT IS" in captured.err
     assert "AGENTS.md" in captured.err
-    assert "CLAUDE.md" in captured.err
     assert "python -m mypy ralph/" in captured.err
 
 

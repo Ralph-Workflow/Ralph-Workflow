@@ -282,7 +282,7 @@ This executes:
 - Runtime suppressions must follow `docs/agents/type-ignore-policy.md`
 - The enforcement test `test_zero_test_file_suppressions` in `test_type_ignore_policy.py` validates these rules
 
-If any step fails, `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md` and instructs the active AI agent to fix the failure immediately.
+If any step fails, `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and instructs the active AI agent to fix the failure immediately.
 
 ## Distribution Strategy
 

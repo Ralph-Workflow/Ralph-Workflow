@@ -380,7 +380,7 @@ _VERIFY_FAILURE_BANNER_TEMPLATE = """
 You are not allowed to talk your way out of this. The repository rules already
 require immediate action:
 
-AGENTS.md / CLAUDE.md cross-reference:
+AGENTS.md cross-reference:
 - "Fix surfaced issues immediately"
 - "Fix any bug, lint failure, type failure, test failure, or warning you surface before moving on"
 - "If verification fails, fix the issue and rerun it"

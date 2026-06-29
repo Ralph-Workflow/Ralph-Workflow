@@ -98,7 +98,7 @@ Run this before opening or updating a PR:
 make verify
 ```
 
-`make verify` now emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md` so AI agents are explicitly told to stop and fix the failing check immediately.
+`make verify` now emits a high-visibility failure banner that cites `AGENTS.md` so AI agents are explicitly told to stop and fix the failing check immediately.
 
 ### Test budget policy — 60 seconds, combined total
 
