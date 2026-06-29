@@ -1,90 +1,41 @@
----
-orphan: true
----
+# Spec-Driven AI Agent: Why the Spec Still Matters
 
-# Spec-Driven AI Agent: Why the Spec Matters More Than the Prompt
+Ralph Workflow is a free and open-source AI agent orchestrator built for work that is big enough to deserve a real written spec. Its simple Ralph-loop core — plan, implement, review — gives each phase a concrete handoff boundary. The system composes into more complex workflows for serious engineering, but it never stops asking the same question: is the spec satisfied? A written spec is not a nice-to-have here — it is the finish line the loop keeps orbiting until it is actually reached.
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability.
+The problem is that the task was never specific enough to verify honestly.
 
+## Why Ralph Workflow leans on specs
 
-Ralph Workflow is a **free and open-source** spec-driven AI agent workflow for developers who want results they can actually review instead of transcripts they have to decode.
+Ralph Workflow is designed for ambitious work that already deserves a clear target:
 
-If an agent keeps saying it is done before the work actually holds up, the problem is often not raw model capability. The problem is the absence of a real spec.
+- a real feature slice
+- a milestone with acceptance criteria
+- a refactor with defined invariants
+- a verification pass with concrete failure conditions
 
-## What “spec-driven” actually means
+That is where a spec stops being ceremony and starts being operational.
+It tells the workflow what done means.
+It also gives the human a standard to review against afterward.
 
-A spec-driven AI agent does not start from vague intent alone. It starts from a written task that makes four things explicit:
+## What a good spec changes
 
-- what should change
-- what should stay unchanged
-- what done looks like
-- what checks prove the work holds up
+A serious spec helps in three places at once:
 
-That is the difference between hoping the agent converges and giving the run a finish line.
+1. **Planning** — the agent can make better choices when constraints are explicit.
+2. **Verification** — checks can be judged against something real instead of vibes.
+3. **Review** — the human can compare the result to the promised scope instead of reading tea leaves from a transcript.
 
-## Why specs beat prompts on substantial work
+Without that written target, even a strong model can produce work that sounds plausible while drifting away from what mattered.
 
-Prompts tell the agent what to do.
-Specs tell the agent what success looks like.
+## Why this fits the default workflow
 
-That matters most when the task is too big to babysit and too risky to trust blindly. Without a spec, “done” becomes the agent's opinion. With a spec, “done” becomes something you can verify.
+Ralph Workflow is not asking for giant design docs on every change.
+It is asking you to use the workflow where ambiguity is expensive and a clear finish line matters.
+That is one reason the default workflow works better on serious repo tasks than on tiny, vague chores.
 
-## The workflow Ralph Workflow is built for
+## What to read next
 
-[Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) is built around a spec-first loop:
-
-1. write the task in `PROMPT.md`
-2. run planning, implementation, verification, and review
-3. come back to a real diff, checks, artifacts, and open questions
-4. decide whether you would merge it
-
-That is what makes it different from a normal AI coding chat. The point is not to produce a plausible answer. The point is to run a real software workflow with executable proof and verification.
-
-## Who this is for
-
-Ralph Workflow is for developers and technical teams who already use coding agents on their own machine and want a better way to hand off meaningful work overnight.
-
-Good fit:
-
-- bounded features
-- refactors with clear acceptance criteria
-- test expansion
-- cleanup work with obvious verification
-
-Bad fit:
-
-- vague exploration
-- risky production surgery with no harness
-- tasks where nobody agrees what success looks like
-
-## Best first evaluation path
-
-1. Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-2. Use [Getting Started](getting-started.md) to run one real task
-3. Use [Choose Your First Ralph Workflow Task](first-task-guide.md) and [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) to judge the result honestly
-4. Turn that result into one public next step with [After Your First Ralph Workflow Run](after-your-first-run.md)
-
-Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-## Best next step on Codeberg if you want a spec-first overnight workflow
-
-Do not leave the evaluation private.
-
-Use **Codeberg** as the main public home:
-
-- **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if the workflow earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction or spec/proof gaps on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-That keeps the trust signal and the feedback loop on the primary repo instead of splitting them across surfaces.
-
-## Why try it now
-
-Because Ralph Workflow is free and open source, runs with the agents you already use on your own machine, and lets you test a spec-driven overnight workflow on one real backlog task tonight.
-
-Run one real task, judge the result honestly, and then take exactly one public action on Codeberg:
-
-- **promising run:** star or watch the repo
-- **shaky run:** open the right issue on Codeberg
+- for choosing a strong first task: [first-task-guide.md](./first-task-guide.md)
+- for the shortest honest run path: [START_HERE.md](../START_HERE.md)
+- for operator setup and configuration: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)

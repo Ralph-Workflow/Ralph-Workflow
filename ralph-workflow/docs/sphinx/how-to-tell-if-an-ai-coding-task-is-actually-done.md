@@ -1,20 +1,16 @@
----
-orphan: true
----
-
 # How to Tell if an AI Coding Task Is Actually Done
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is not that it produces a cleaner summary. Ralph Workflow is built to leave you with **software and verification you can actually judge** — executable changes, checks, artifacts, and a short result summary — instead of just a transcript and a confident done claim.
+What makes it different is the handoff: Ralph Workflow is built to leave you with a **strong software result** — a real diff, checks, artifacts, and a short result summary — instead of just a transcript and a confident done claim.
 
-Why read this now? An AI coding task is not done when the model sounds done. It is done when the result comes back in a shape you can review, verify, and decide whether you would merge.
+Why read this now? Because an AI coding task is not done when the model sounds done. It is done when the result comes back in a shape you can review, verify, and decide whether you would merge.
 
 ## The fast test: done means mergeable or honestly blocked
 
@@ -58,7 +54,7 @@ Those are signs that the task may be **stopped**, but not truly **done**.
 
 A strong unattended coding result should hand back:
 
-- working behavior you can verify
+- a understandable diff
 - changed files that match the brief
 - checks that actually ran
 - a short result summary
@@ -66,9 +62,9 @@ A strong unattended coding result should hand back:
 - explicit open questions or residual risk
 - a review path that ends in one question: **does the implementation hold up?**
 
-If you want the concrete review checklist, read [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md).
+If you want the concrete review checklist, read [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md).
 
-If you want to see the artifact shape first, open [Example Review Bundle](example-review-bundle.md).
+If you want to see the artifact shape first, open [example-review-bundle.md](./example-review-bundle.md).
 
 ## Why this matters for unattended coding
 
@@ -80,7 +76,7 @@ For small interactive work, you can often patch that with live supervision.
 For overnight or unattended work, that does not scale.
 
 You need the end state to be legible without replaying the entire session.
-That is why Ralph Workflow is built around **repo-local execution, verification, and artifacts**, not just raw logs.
+That is why Ralph Workflow is built around **repo-local output** and a **reviewable morning-after handoff**, not just raw logs.
 
 ## The honest first evaluation path
 
@@ -94,6 +90,7 @@ If you are deciding whether Ralph Workflow is worth trying, use this sequence:
    - rough run → **open a Codeberg issue with the missing proof or friction**
 
 Best next public actions:
+
 - **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

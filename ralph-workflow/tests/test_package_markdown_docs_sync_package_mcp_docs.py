@@ -18,7 +18,7 @@ _PACKAGE_MD_DOCS = [
     "docs/mcp/mcp-servers.md",
     "docs/mcp/web-visit.md",
     "docs/mcp/web-search.md",
-    "docs/mcp-tool-restriction.md",
+    "docs/sphinx/mcp-tool-restriction.md",
 ]
 
 

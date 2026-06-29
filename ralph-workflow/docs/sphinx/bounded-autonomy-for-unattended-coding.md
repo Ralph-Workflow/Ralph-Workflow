@@ -1,14 +1,10 @@
----
-orphan: true
----
-
 # Bounded Autonomy for Unattended Coding
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** tool that orchestrates the coding agents you already run **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -112,13 +108,13 @@ Ralph Workflow exists for exactly this middle ground:
 - serious enough to hand off overnight
 - constrained enough to review honestly in the morning
 
-Primary repo on Codeberg:
-- **Codeberg** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **GitHub mirror** second: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+That is why the primary repo lives on Codeberg:
+- inspect it on **Codeberg** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- use the synced **GitHub mirror** second: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## Next steps
 
-- Start with [Getting Started](getting-started.md)
-- Use [When Ralph Workflow Fits — and When It Does Not](when-unattended-coding-fits.md) if you are still choosing the first task
-- Use [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) if the human review still feels fuzzy
-- Inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) to see a concrete review path before your own run
+- Start with [../START_HERE.md](../START_HERE.md)
+- Use [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) if you are still choosing the first task
+- Use [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) if the human review still feels fuzzy
+- Inspect [free-open-source-proof.md](./free-open-source-proof.md) if you want to see a concrete review path before your own run

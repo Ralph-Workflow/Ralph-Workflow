@@ -1,14 +1,14 @@
 # Which Agent Should I Start With?
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the workflow model: Ralph Workflow lets you start with a strong default software workflow and route different phases across agents instead of relying on one long coding session.
+What makes it different is the handoff: Ralph Workflow brings back a **strong software result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
 
 Why use it now? You do **not** need to switch your whole toolchain first. Pick one agent you already trust, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
@@ -16,12 +16,11 @@ Why use it now? You do **not** need to switch your whole toolchain first. Pick o
 
 For a first Ralph Workflow run, start with the agent that is **already installed, already authenticated, and already familiar** on your machine.
 
-Do **not** optimize this choice too hard.
+Do **not** optimize this choice too hard. The main first-run question is not "which model is theoretically best?"
 
-The main first-run question is not "which model is theoretically best?"
 It is:
 
-> **Can I get one real unattended run to produce working software, real checks, or an honest blocked state?**
+> **Can I get one real unattended run to finish with a strong software result?**
 
 If one agent is already working for you today, that is usually the right first choice.
 
@@ -34,8 +33,7 @@ If one agent is already working for you today, that is usually the right first c
 - you care most about planning quality and clean review handoff
 
 Why this is a good first fit:
-
-- strong default choice for end-to-end unattended work
+- strong default for end-to-end unattended work
 - commonly the clearest first-run path for Ralph Workflow users
 - good when you want to judge the workflow, not compare providers yet
 
@@ -46,7 +44,6 @@ Why this is a good first fit:
 - you expect to care about cost control or provider familiarity more than picking one "best" agent
 
 Why this is a good first fit:
-
 - strong option for teams already standardized on OpenAI
 - solid review and implementation choice
 - keeps the first run inside tools you already know
@@ -55,28 +52,12 @@ Why this is a good first fit:
 
 - `opencode` already works on your machine
 - you want multi-provider flexibility from the start
-- you already have an OpenCode setup you like and do not want to reconfigure everything just to try Ralph Workflow
+- you already have an OpenCode setup you like
 
 Why this is a good first fit:
-
 - preserves your existing gateway setup
 - lets Ralph Workflow orchestrate the agent stack you already use
 - good for teams that switch models often
-
-### Start with Nanocoder if...
-
-- `nanocoder` already works on your machine
-- you want a local-first, multi-provider coding agent surface
-- you want Ralph Workflow to manage MCP wiring around Nanocoder's documented `run` mode instead of replacing your existing setup
-- your tasks are **short enough to complete within 50 tool calls** (see known limitation below)
-
-Why this is a good first fit:
-
-- preserves an existing Nanocoder workflow instead of forcing a tool switch
-- keeps Nanocoder inside the same unattended Ralph Workflow phase workflow as the other supported built-ins
-- good when you want an opt-in alternative to OpenCode without changing Ralph Workflow's default chain choices
-
-**Known limitation — 50-turn cap:** Nanocoder's headless `run` mode (which Ralph Workflow uses) has a hardcoded limit of 50 conversation turns in `plain/conversation.js`. There is no CLI flag to raise this limit. Tasks that require more than 50 back-and-forth model/tool exchanges will hit this cap and exit with an error. The Ink (TUI) runtime has no such limit but requires a real TTY — it cannot be used headlessly via subprocess pipe. For long or complex tasks, prefer Claude Code, OpenCode, or Google Anti Gravity instead.
 
 ### Start with Google Anti Gravity if...
 
@@ -85,33 +66,13 @@ Why this is a good first fit:
 - you prefer a lightweight TUI-focused experience
 
 Why this is a good first fit:
-
 - Gemini-backed coding with strong context handling
 - Ralph Workflow orchestrates it with the same MCP-controlled workflow used for other supported agents
 - good when you want Google ecosystem integration
 
-Verify the install end-to-end with `python -m ralph smoke-interactive-agy`. The run uses `agy/Claude Sonnet 4.6 (Thinking)` by default and honors AGY's 5m `--print-timeout`; allow up to 6 minutes for the live run. AGY v1.0.8 accepts only the human-readable display names returned by `agy models` (e.g. `Claude Sonnet 4.6 (Thinking)`); lowercased or slashed slugs such as `agy/gemini-3.5-flash-low` are not recognized. See `tmp/agy-source-of-truth.txt` for the current measured wire format. If the smoke exits non-zero with `AGY --print returned empty stdout: ...`, the upstream `agy` binary returned no stdout; check `~/.gemini/antigravity-cli/cli.log` for an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.
-
-### Start with Pi if...
-
-- `pi` already works on your machine (see <https://pi.dev> for install and auth)
-- you want a documented headless mode that mirrors the pi.dev `AgentSessionEvent` NDJSON format per <https://pi.dev/docs/latest/json>
-- you want multi-provider flexibility via the documented `pi/<provider>/<model>` shorthand
-- you are comfortable with non-MCP operation on the agent side - pi.dev has no documented CLI MCP flag, so Ralph Workflow runs `pi` without forwarding `RALPH_MCP_ENDPOINT` and uses the prompt-side artifact fallback
-
-Why this is a good first fit:
-
-- thin, single-binary agent with a strict headless mode
-- the NDJSON wire format is fully documented and pinned by the wire-format spec test at `tests/agents/parsers/test_pi_dev_wire_format_spec.py`
-- the public-surface black-box test at `tests/agents/test_pi_dev_blackbox.py` exercises the full `AgentRegistry` -> `catalog` -> `build_command` path so docs and runtime cannot drift
-
-Verify Ralph Workflow's pi integration and wire-format contract with `uv run pytest tests/agents/test_pi_dev_blackbox.py -q` (registry -> catalog -> parser -> build_command chain) and `uv run pytest tests/agents/parsers/test_pi_dev_wire_format_spec.py -q` (documented event vocabulary pinned to the committed fixture). Both tests are black-box and intentionally avoid a real pi install, subprocess, or network call; they verify Ralph Workflow's parser and CLI-flag wiring against the documented pi.dev wire format, not the install/auth state of the local pi binary. For local install and auth validation, follow the official pi.dev setup at <https://pi.dev/docs/latest/usage>; for the wire-format spec see <https://pi.dev/docs/latest/json>.
-
 ## Best first-run rule
 
-Pick the path with the **least setup friction**.
-
-That usually means:
+Pick the path with the **least setup friction**:
 
 1. the agent is already installed
 2. the agent is already authenticated
@@ -121,7 +82,7 @@ If two agents are equally ready, prefer the one you would be happiest reviewing 
 
 ## What matters more than the agent choice
 
-For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, Nanocoder, Google Anti Gravity, or Pi:
+For a first run, these matter more than whether you picked Claude Code, Codex, OpenCode, or Google Anti Gravity:
 
 - choosing a **small real backlog task**
 - writing a **clear one-paragraph spec** in `PROMPT.md`
@@ -141,34 +102,32 @@ Avoid these first-run traps:
 
 ## If you do not have any agent set up yet
 
-Ralph Workflow does not replace the coding agent itself.
+Ralph Workflow does not replace the coding agent itself. Install and authenticate **one** supported agent CLI first, then come back and use Ralph Workflow to orchestrate it.
 
-Before your first run, install and authenticate **one** supported agent CLI first.
-Then come back and use Ralph Workflow to orchestrate it.
+If you want the shortest honest path after that:
 
-If you want the shortest honest path after that, continue with:
+- [../START_HERE.md](../START_HERE.md)
+- [first-task-prompt-templates.md](./first-task-prompt-templates.md)
+- [when-unattended-coding-fits.md](./when-unattended-coding-fits.md)
 
-- [Getting Started](getting-started.md)
-- [First-Task Prompt Templates](first-task-prompt-templates.md)
-- [Choose Your First Ralph Workflow Task](first-task-guide.md)
+If you want to inspect the project before you install it, start with the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) and **star or watch it there** if it matches the kind of overnight handoff you want. The [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) is there too.
 
 ## Recommended first-run sequence
 
 1. Pick the agent that is already working on your machine.
-2. Use [Getting Started](getting-started.md) for the fastest real-task path.
-3. If `PROMPT.md` is blank, use [First-Task Prompt Templates](first-task-prompt-templates.md).
+2. Use [../START_HERE.md](../START_HERE.md) for the fastest real-task path.
+3. If `PROMPT.md` is blank, use [first-task-prompt-templates.md](./first-task-prompt-templates.md).
 4. Run one bounded backlog task.
 5. Review the result tomorrow and ask: **does the implementation hold up?**
 
 That is enough to tell you whether Ralph Workflow is useful in your real environment.
 
-## Best public next step after you pick an agent
+## Turn the result into one public Codeberg action
 
-Once you know which agent you want to start with, keep the public project relationship on **Codeberg**:
+If this page helped you pick the first agent path, the next step should keep the trust signal on the primary repo.
 
-- **Inspect the primary repo first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if the first run looks promising:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Open first-run friction or docs issues on Codeberg if the run misses:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg** if the first run looks worth repeating: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-That keeps qualified evaluation traffic, trust signals, and feedback attached to the primary repo instead of leaking them across mirrors.
+- **Need the post-run scorecard first?** Read [After Your First Ralph Workflow Run](./after-your-first-run.md)

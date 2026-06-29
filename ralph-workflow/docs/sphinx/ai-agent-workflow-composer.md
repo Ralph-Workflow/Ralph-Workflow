@@ -1,14 +1,10 @@
----
-orphan: true
----
-
 # AI Agent Workflow Composer: When One Agent Session Stops Being Enough
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is a **free and open-source** AI agent workflow composer for developers who want work that is **too big to babysit and too risky to trust blindly** and need more than a single agent session.
+Ralph Workflow is a **free and open-source** AI agent workflow composer for developers who want work that is **too big to babysit and too risky to trust blindly** to come back as a strong software result instead of a transcript.
 
 If you are searching for an AI agent workflow composer, the real question is not whether a tool can call more than one model. It is whether the workflow can stay understandable while still covering planning, implementation, verification, review, and re-entry.
 
@@ -53,9 +49,9 @@ That is why Ralph Workflow is better described as a workflow composer than a sin
 ## Best first evaluation path
 
 1. Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-2. Use [Getting Started](getting-started.md) for one real first run
-3. Use [Choose Your First Ralph Workflow Task](first-task-guide.md) and [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) to judge the result honestly
-4. Turn that result into one public next step with [After Your First Ralph Workflow Run](after-your-first-run.md)
+2. Use [START_HERE.md](../START_HERE.md) for one real first run
+3. Use [first-task-guide.md](./first-task-guide.md) and [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) to judge the result honestly
+4. Turn that result into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
 Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
 

@@ -76,7 +76,7 @@ def test_docs_readme_covers_performance_family() -> None:
 # ---------------------------------------------------------------------------
 
 _PACKAGE_TIMEOUT_POLICY = PACKAGE_DOCS_DIR / "agents" / "timeout-policy.md"
-_PACKAGE_UNATTENDED_DOC = PACKAGE_DOCS_DIR / "unattended-coding-agent.md"
+_PACKAGE_UNATTENDED_DOC = PACKAGE_DOCS_DIR / "sphinx" / "unattended-coding-agent.md"
 _PACKAGE_CHANGELOG = PACKAGE_ROOT / "CHANGELOG.md"
 
 

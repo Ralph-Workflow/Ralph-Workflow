@@ -1,35 +1,61 @@
 # Architecture Docs
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+Ralph Workflow is **the autopilot for coding agents** and a free and
+open-source AI agent orchestrator built around a simple Ralph-loop core.
+The simple core composes into a stronger workflow system for serious repo
+work, and the default workflow is strong enough to start with before you
+customize anything.
 
+This directory holds the **current Python-runtime architecture documentation**.
+For archived Rust-era design material, see
+[`../legacy-rust/README.md`](../legacy-rust/README.md).
 
-This directory holds mixed-state architecture documentation: some pages describe current Python behavior, others are historical Rust-era reference.
+## Read this first
+
+- **[overview.md](overview.md)** — end-to-end Python-runtime architecture
+  overview: subsystem boundaries, ownership, data flow, and invariants
+  for every layer from the CLI through the MCP server.
 
 ## Maintained: Current Python Behavior
 
-These pages are kept current with the Python implementation in `ralph-workflow/ralph/`:
+These pages are kept current with the Python implementation in
+`ralph-workflow/ralph/`:
 
-- **`pipeline-lifecycle.md`** — End-to-end pipeline lifecycle: planning, development, commit, review, and fix loops. Policy-driven orchestration via `ralph/pipeline/`.
-- **`event-loop-and-reducers.md`** — Event loop, reducer architecture, and policy-based routing. Covers `ralph/pipeline/orchestrator.py` and `ralph/pipeline/reducer.py`.
-- **`parallel-fan-out.md`** — Same-workspace v1 parallel fan-out. Key constraints: `allowed_directories` path isolation, `.agent/workers/<unit_id>/` namespaces, artifact-based worker completion. No per-worker git branches or post-development merge step.
+- **[overview.md](overview.md)** — End-to-end Python-runtime architecture:
+  Ralph loop, policy interpretation, phase routing, agent invocation,
+  artifact submission, completion detection, verification, recovery,
+  watchdogs, configuration, and extension points.
+- **[pipeline-lifecycle.md](pipeline-lifecycle.md)** — End-to-end pipeline
+  lifecycle: planning, development, commit, review, and fix loops.
+  Policy-driven orchestration via `ralph/pipeline/`.
+- **[event-loop-and-reducers.md](event-loop-and-reducers.md)** — Event loop,
+  reducer architecture, and policy-based routing. Covers
+  `ralph/pipeline/orchestrator.py` and `ralph/pipeline/reducer.py`.
+- **[parallel-fan-out.md](parallel-fan-out.md)** — Same-workspace v1 parallel
+  fan-out. Key constraints: `allowed_directories` path isolation,
+  `.agent/workers/<unit_id>/` namespaces, artifact-based worker completion.
+  No per-worker git branches or post-development merge step. The bundled
+  default ships with `dispatch_mode = "agent_subagents"`; see
+  `ralph-workflow/docs/sphinx/parallel-mode.md` for the full opt-in
+  contract.
 
-## Historical: Rust-Era Reference
+## Quarantined: Rust-era material
 
-These pages reference retired Rust paths (`src/`, `crates/`, `cargo`, libgit2). They are retained for migration context and design history, not current behavior:
+All Rust-era architecture material is quarantined under
+[`../legacy-rust/architecture/`](../legacy-rust/architecture/) with a clear
+header noting it is unmaintained pre-Python-rewrite reference. Do not rely
+on those pages for current behavior.
 
-| Page | Rust path referenced |
-|------|---------------------|
-| `checkpoint-and-resume.md` | `src/checkpoint/` |
-| `agents-and-prompts.md` | `src/agents/` |
-| `git-and-rebase.md` | libgit2 via `git2` crate |
-| `analysis-agent.md` | Historical Rust reference |
-| `effect-system.md` | Historical Rust reference |
-| `streaming-and-parsers.md` | Historical Rust reference |
-| `mcp-upstream-proxy.md` | Historical Rust reference |
-| `codebase-tour.md` | Historical Rust reference |
-| `logging-and-observability.md` | Historical Rust reference |
-| `memory-budget.md` | Historical Rust reference |
-| `memory-safety.md` | Historical Rust reference |
+## Related
 
-For current behavior, prefer Python module docstrings and `ralph-workflow/README.md`.
+- `ralph-workflow/docs/sphinx/` — the maintained Sphinx manual, including
+  the concept pages ([`ralph-loop`](../ralph-workflow/docs/sphinx/ralph-loop.md),
+  [`policy-driven-pipeline`](../ralph-workflow/docs/sphinx/policy-driven-pipeline.md),
+  [`phase-routing`](../ralph-workflow/docs/sphinx/phase-routing.md),
+  [`artifact-lifecycle`](../ralph-workflow/docs/sphinx/artifact-lifecycle.md),
+  [`watchdogs-and-timeouts`](../ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md),
+  [`verification-model`](../ralph-workflow/docs/sphinx/verification-model.md))
+- `ralph-workflow/docs/architecture/adr-0001-interrupt-architecture.md` —
+  MADR-format ADR for the InterruptController/InterruptDispatcher split
+- `ralph-workflow/CHANGELOG.md` — what changed in the runtime between
+  releases

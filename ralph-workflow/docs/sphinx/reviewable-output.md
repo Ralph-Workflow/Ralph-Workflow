@@ -1,76 +1,50 @@
----
-orphan: true
----
-
 # What Good Ralph Workflow Output Looks Like
 
-Use this page after you understand the workflow and want a review standard for the morning-after handoff.
-This page is supporting proof, not the main product pitch.
+Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core.
+This page is supporting proof for that composable workflow system and its strong default workflow, not the main product pitch.
 
-Ralph Workflow is the operating system for autonomous coding: a free and open-source composable loop framework and AI orchestrator built around a simple core loop inspired by the original Ralph loop.
-That simple core composes into a stronger composable workflow for substantial, well-specified repo work, and the default workflow is already strong enough to start with before you customize anything.
-
-## What a trustworthy result should answer quickly
-
-A strong result should let you answer these questions without diving into raw logs first:
-
-- What changed?
-- What checks ran?
-- What still looks risky?
-- What should I inspect first?
-
-If the output cannot answer those quickly, the handoff is weak even if the branch is large.
-
-## What strong output usually includes
-
-Strong output usually includes:
-
-- a concise task/result summary
-- the important files or components that changed
-- the checks that ran and whether they passed
-- known gaps, caveats, or follow-up risks
-- enough context for a human to inspect the software directly
-
-## A real finish-receipt
-
-This is the actual, unedited `DEVELOPMENT_RESULT.md` from the bundled empty-name-validation example — the artifact itself, not a link out to it:
-
-```text
-# Development Result
-
-## Outcome
-Implemented empty-name validation in the CLI create flow and added
-test coverage for empty and whitespace-only input.
-
-## Changed files
-- cli/create.py
-- tests/test_create.py
-
-## Checks run
-- pytest tests/test_create.py        ✓ passed
-- project formatting / lint checks    ✓ passed
-
-## Reviewer focus
-- confirm validation happens before any file creation side effect
-- confirm the error message is clear enough for CLI users
-- confirm no unrelated flow changed
-```
-
-Notice what this answers without opening a single log: what changed, what checks ran and passed, and what to inspect first.
-
-> **Star to bookmark before your overnight run.** Stars are the only signal we get that Ralph is working for you, and they set what we build next: [star on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow). ⭐
+Use this page after you already understand the workflow and want a review standard for the morning-after handoff.
+Start with the product story and operator route first, then use this page to judge whether a run produced something worth trusting.
 
 ## What to evaluate first
 
-1. inspect the software behavior or diff summary
-2. inspect the checks that ran
-3. inspect the remaining risks or open questions
-4. only then fall back to deeper logs if something looks wrong
+The first question is not whether the transcript sounds smart.
+The first question is what the software does now.
 
-That order keeps proof secondary to actual software judgment.
+Good output usually means:
 
-## What to do next
+- the task scope is recognizable from the result
+- the repo is in a better state than before
+- meaningful checks ran and their outcome is explicit
+- the change can be reviewed against a real written spec
+- the human can decide what to do next without reconstructing the whole run
 
-- Need the full operator path? Return to [Getting Started](getting-started.md).
-- Need config/operator reference? Open [Reference](reference.md).
-- Need first-run task guidance? Open [first-task-guide.md](first-task-guide.md).
+## Supporting evidence, in the right order
+
+Use evidence in this order:
+
+1. **working behavior** — what changed in the software
+2. **real checks** — tests, integration checks, or other meaningful validation
+3. **written scope** — whether the result matches the promised task
+4. **supporting artifacts** — logs, diffs, or deeper traces if you need them
+
+Logs and transcripts can be useful.
+They just should not be the main promise.
+
+## What weak output looks like
+
+Be skeptical when a run gives you:
+
+- lots of narration but unclear product change
+- a diff with no convincing checks
+- a confident summary for a vague task
+- artifacts that sound organized but do not make the result easier to judge
+
+Ralph Workflow depends on real engineering guardrails.
+If the repo does not have them, the honest outcome may be limited proof rather than full trust.
+
+## Where to go next
+
+- for the shortest first-run path: [START_HERE.md](../START_HERE.md)
+- for choosing a task with a real finish line: [first-task-guide.md](./first-task-guide.md)
+- for why specs matter to output quality: [spec-driven-ai-agent.md](./spec-driven-ai-agent.md)

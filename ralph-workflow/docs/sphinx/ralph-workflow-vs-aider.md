@@ -1,21 +1,25 @@
----
-orphan: true
----
-
 # Ralph Workflow vs Aider
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
 If you already know Aider, the simplest difference is this:
 
 - **Aider** is an interactive AI pair-programming tool you steer in the terminal.
-- **Ralph Workflow** is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine** for real software work.
+- **Ralph Workflow** is an **open-source** orchestration CLI that runs the coding agents you already use **on your own machine** and hands back a **strong software result** after an unattended run.
 
 That means Ralph Workflow is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-Why try Ralph Workflow now? Because you can keep the agents you already use, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+Why try Ralph Workflow now? You can keep the agents you already use, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+
+Before you install anything, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+If Ralph Workflow earns trust after a real overnight run, keep the public next step on Codeberg:
+
+- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## The core difference
 
@@ -35,7 +39,7 @@ Ralph Workflow is usually the better fit when you want to:
 - wake up to a large chunk of work instead of babysitting the terminal
 - use different agents for planning, development, and review
 - keep the workflow repo-native and inspectable on your own machine
-- judge the result by whether it produced working software and real verification
+- judge the result with a simple merge / no-human review
 
 Typical good Ralph Workflow tasks:
 
@@ -80,7 +84,7 @@ That is the real product test.
 
 ## Fastest honest first test
 
-Before you start, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is free and open source, but it does not replace the coding agent itself.
+Before you start, have at least one supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is open source, but it does not replace the coding agent itself.
 
 Then run:
 
@@ -95,17 +99,11 @@ ralph
 
 Use one real backlog task, not a vague demo.
 
-If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
+If you want help picking that first task, read [when unattended coding fits](./when-unattended-coding-fits.md), [the first-task guide](./first-task-guide.md), and [first-task prompt templates](./first-task-prompt-templates.md).
 
-If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [what good output looks like](./free-open-source-proof.md) and the [example review bundle](../examples/first-review-bundle/README.md).
 
-## If Ralph Workflow looks like the missing piece, make the next step public
+After that first real run, take exactly one public next step on Codeberg:
 
-Do not let the comparison end as a private maybe.
-
-- **Inspect the primary repo on Codeberg first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if the unattended handoff is the thing you were missing:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction on Codeberg so the gap gets fixed on the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror if that is where you track projects:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-If you want the shortest post-run scorecard before you decide, use [After Your First Ralph Workflow Run](after-your-first-run.md).
+- **promising run:** star or watch the repo
+- **shaky run:** open the right issue on Codeberg

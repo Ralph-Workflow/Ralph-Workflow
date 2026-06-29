@@ -106,4 +106,15 @@ source_suffix = {
 linkcheck_ignore = [
     r"http://PROMPT\.md",
     r"https://docs\.claude\.com/",
+    # The linkify extension auto-links bare `.md` filename mentions to
+    # `http://<name>.md` even when they refer to local artifact files
+    # (`.agent/ISSUES.md`, `.agent/FIX_RESULT.md`, etc.). Those are not
+    # real URLs and must not be HEAD-validated.
+    r"http://ISSUES\.md",
+    r"http://FIX_RESULT\.md",
+    r"http://DEVELOPMENT_RESULT\.md",
+    r"http://DEVELOPMENT_ANALYSIS_DECISION\.md",
+    r"http://REVIEW_ANALYSIS_DECISION\.md",
+    r"http://PLAN\.md",
+    r"http://CONFIG\.md",
 ]

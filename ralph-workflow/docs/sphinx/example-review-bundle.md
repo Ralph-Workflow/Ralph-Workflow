@@ -1,13 +1,10 @@
----
-orphan: true
----
-
 # Example Review Bundle: What a Morning-After Ralph Workflow Handoff Looks Like
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 This page is supporting proof for that composable workflow system and its strong default workflow, not the main product pitch.
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -17,27 +14,25 @@ Why look at this now? Before you install anything, you can inspect the exact sha
 
 ## The live example in this repo
 
-Open the example bundle on **Codeberg** here:
+Open the example bundle here:
 
-- [Bundle overview (README.md)](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle/README.md)
-- [Original task prompt (PROMPT.md)](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle/PROMPT.md)
-- [Initial handoff (DEVELOPMENT_RESULT.md)](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle/.agent/DEVELOPMENT_RESULT.md)
-- [Reviewer findings (ISSUES.md)](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle/.agent/ISSUES.md)
-- [Follow-up fix handoff (FIX_RESULT.md)](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle/.agent/FIX_RESULT.md)
-- [Artifacts directory](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle/.agent/artifacts)
+- [`examples/first-review-bundle/README.md`](../examples/first-review-bundle/README.md)
+- [`examples/first-review-bundle/PROMPT.md`](../examples/first-review-bundle/PROMPT.md)
+- [`examples/first-review-bundle/.agent/DEVELOPMENT_RESULT.md`](../examples/first-review-bundle/.agent/DEVELOPMENT_RESULT.md)
+- [`examples/first-review-bundle/.agent/ISSUES.md`](../examples/first-review-bundle/.agent/ISSUES.md)
+- [`examples/first-review-bundle/.agent/FIX_RESULT.md`](../examples/first-review-bundle/.agent/FIX_RESULT.md)
+- [`examples/first-review-bundle/.agent/artifacts/`](../examples/first-review-bundle/.agent/artifacts/)
 
 If that bundle looks like the kind of morning-after handoff you would actually trust, take the next public step on **Codeberg**:
 
 - **Inspect the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Star / watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## What this example proves
 
-This bundle is intentionally small.
-
-It shows a first task that is:
+This bundle is intentionally small. It shows a first task that is:
 
 - real enough to matter
 - narrow enough to review quickly
@@ -56,12 +51,11 @@ That lets you judge the thing that matters most: not whether the agent looked cl
 4. Glance at the JSON artifacts to see the machine-readable trail.
 5. Ask one question: **does the implementation hold up?**
 
-If that review path feels boring and fast, the workflow is doing its job.
-If it feels vague, the handoff is still too weak.
+If that review path feels boring and fast, the workflow is doing its job. If it feels vague, the handoff is still too weak.
 
 ## Next steps
 
-- Start with the repo guide on **Codeberg**: <https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/START_HERE.md>
-- See <https://ralphworkflow.com/docs/reviewable-output/> for the shorter proof overview
-- Use <https://ralphworkflow.com/docs/first-task-prompt-templates/> if you want a copy-paste `PROMPT.md` shape for your own first run
+- Start with [../START_HERE.md](../START_HERE.md)
+- See [free-open-source-proof.md](./free-open-source-proof.md) for the shorter proof overview
+- Use [first-task-prompt-templates.md](./first-task-prompt-templates.md) if you want a copy-paste `PROMPT.md` shape for your own first run
 - If this proof asset makes Ralph Workflow look worth trying, put the adoption signal on **Codeberg** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>

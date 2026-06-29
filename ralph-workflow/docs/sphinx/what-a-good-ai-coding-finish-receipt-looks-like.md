@@ -1,14 +1,10 @@
----
-orphan: true
----
-
 # What a Good AI Coding result summary Looks Like
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 This page is supporting proof for that composable workflow system and its strong default workflow, not the main product pitch.
 
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -93,25 +89,20 @@ Tomorrow morning, open the diff and the result summary and ask:
 > **does the implementation hold up?**
 
 If the answer comes quickly, the handoff is doing its job.
+
 If you still need to reconstruct the whole night, tighten the scope or the review path and run again.
 
-## Turn a good result summary into the right public next step
+## Turn this into one public Codeberg action
 
-If this is the kind of morning-after handoff you want, keep the real project relationship on **Codeberg**:
+If this is the kind of morning-after handoff you want before you trust unattended coding, keep the public next step on **Codeberg** first:
 
 - **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Report missing proof or first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-A clean result summary should lead to one honest public action:
-
-- if the run earned trust, put the signal on **Codeberg**
-- if the run exposed a gap, report that exact gap on **Codeberg**
 
 ## Next reading
 
-- [Getting Started](getting-started.md) — shortest path to a real first run
-- [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) — five-minute merge check for the morning-after handoff
-- [What Breaks First When You Run Multiple Coding Agents?](what-breaks-first-with-multiple-coding-agents.md) — why review/reconstruction pain usually breaks trust before Git does
-- [Example Review Bundle](example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts
-- [After Your First Ralph Workflow Run](after-your-first-run.md) — short Codeberg-first scorecard for what to do after a promising or rough first run
+- [../START_HERE.md](../START_HERE.md) — shortest path to a real first run
+- [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md) — five-minute merge check for the morning-after handoff
+- [what-breaks-first-with-multiple-coding-agents.md](./what-breaks-first-with-multiple-coding-agents.md) — why review/reconstruction pain usually breaks trust before Git does
+- [example-review-bundle.md](./example-review-bundle.md) — inspect a public sample prompt, result notes, review feedback, and artifacts

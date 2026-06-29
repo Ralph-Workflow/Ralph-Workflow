@@ -1,14 +1,10 @@
----
-orphan: true
----
-
 # What Breaks First When You Run Multiple Coding Agents?
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams who already know how to run Claude Code, Codex, OpenCode, Google Anti Gravity, worktrees, or parallel branches — but still do not trust the morning-after result when the task is **too big to babysit and too risky to trust blindly**.
 
@@ -89,15 +85,16 @@ Then ask one question the next morning:
 > **does the implementation hold up?**
 
 If yes, hand it a harder task next.
+
 If not, tighten the scope or acceptance criteria and run again.
 
 ## Next reading
 
-- [Getting Started](getting-started.md) — shortest path to a real first run
-- [Which Agent Should I Start With?](which-agent-should-i-start-with.md) — use the agent already working on your machine
-- [Claude Code + Codex Workflow](claude-code-codex-workflow.md) — cleaner Claude/Codex split without manual glue chaos
-- [Why Worktrees Are Not Enough](why-worktrees-are-not-enough.md) — why isolation alone does not create a trustworthy finish
-- [What Good Ralph Workflow Output Looks Like](reviewable-output.md) — see what a trustworthy finish should look like
-- [Example Review Bundle](example-review-bundle.md) — inspect a public morning-after handoff before your own run
+- [START_HERE.md](../START_HERE.md) — shortest path to a real first run
+- [which-agent-should-i-start-with.md](./which-agent-should-i-start-with.md) — use the agent already working on your machine
+- [claude-code-codex-workflow.md](./claude-code-codex-workflow.md) — cleaner Claude/Codex split without manual glue chaos
+- [why-worktrees-are-not-enough.md](./why-worktrees-are-not-enough.md) — why isolation alone does not create a trustworthy finish
+- [example-review-bundle.md](./example-review-bundle.md) — inspect a public morning-after handoff before your own run
+- [free-open-source-proof.md](./free-open-source-proof.md) — see the proof path and merge test
 - [Primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — inspect, star, or watch Ralph Workflow on the main repo
 - [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) — follow the mirror if GitHub is where you already track projects

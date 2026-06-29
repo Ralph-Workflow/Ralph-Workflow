@@ -16,7 +16,7 @@ If you just tried Ralph Workflow, the highest-signal contribution is no longer a
 
 The new issue forms are designed to capture the exact adoption bottleneck: what blocked a real first run, what proof was missing, and what would have made the project easier to trust.
 
-If you are not sure whether your first run earned a star, a watch, or a bug report, use [docs/after-your-first-run.md](./docs/after-your-first-run.md) first.
+If you are not sure whether your first run earned a star, a watch, or a bug report, use [after-your-first-run.md](./ralph-workflow/docs/sphinx/after-your-first-run.md) first.
 
 The intended post-run branch is simple:
 

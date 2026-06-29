@@ -1,22 +1,18 @@
----
-orphan: true
----
-
 # Why Worktrees Are Not Enough for Unattended AI Coding
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-If you already use Claude Code, Codex CLI, OpenCode, Google Anti Gravity, or similar tools with git worktrees, you have solved part of the problem.
+If you already use Claude Code, Codex CLI, Google Anti Gravity, or similar tools with git worktrees, you have solved part of the problem.
 
 You have **not** solved the whole one.
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams doing engineering work that is **too big to babysit and too risky to trust blindly**.
 
-What makes Ralph Workflow different is not that it creates more branches or more sessions. It is that it is built to take an unattended task through a **real loop**: sharpen the task, implement, verify, review, and leave behind executable results plus enough evidence to decide whether you would merge it.
+What makes Ralph Workflow different is not that it creates more branches or more sessions. It is that it is built to take an unattended task all the way to a **strong software result**: a scoped diff, checks that actually ran, artifacts, and enough context to decide whether you would merge it.
 
 Why use it now? You can keep the agents and local setup you already trust, run one real backlog task tonight, and decide tomorrow whether the result actually holds up.
 
@@ -74,7 +70,7 @@ That difference matters more than another branch-management trick.
 
 A useful unattended run should hand back:
 
-- working behavior you can inspect or run
+- a understandable diff
 - changed files you can inspect normally
 - checks that really ran
 - artifacts and logs you can follow
@@ -84,7 +80,7 @@ A useful unattended run should hand back:
 
 Use worktrees when you need safer parallel isolation.
 
-Use Ralph Workflow when you need an unattended run to come back as a **verifiable engineering result**, not just a separate sandbox.
+Use Ralph Workflow when you need an unattended run to come back as a **reviewable engineering handoff**, not just a separate sandbox.
 
 The best first test is simple:
 
@@ -97,14 +93,14 @@ If yes, that is the product value.
 
 ## Next steps
 
-- Start with [Getting Started](getting-started.md)
-- See [What Good Ralph Workflow Output Looks Like](reviewable-output.md) for an example strong software result
-- See [When Unattended Coding Fits](when-unattended-coding-fits.md) to choose a good first task
-- See [Example Review Bundle](example-review-bundle.md) if you want a public proof asset before your first run
+- Start with [../START_HERE.md](../START_HERE.md)
+- See [free-open-source-proof.md](./free-open-source-proof.md) for an example strong software result
+- See [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) to choose a good first task
 
-If parallel repo work is already familiar but you still need a trustworthy unattended finish, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+If you already understand git worktree mechanics but you still need a trustworthy unattended finish, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 
 Best next public actions:
+
 - **Inspect / star / watch on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>

@@ -1,14 +1,10 @@
----
-orphan: true
----
-
 # Claude Code + Codex Workflow: Split the Work, Not the Review
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams using tools like **Claude Code** and **Codex** for work that is **too big to babysit and too risky to trust blindly**.
 
@@ -92,22 +88,13 @@ Then:
 4. review the diff, checks, and notes in the morning
 5. decide whether you would merge it
 
-If you want the shortest first-run path, start with [Getting Started](getting-started.md).
-If you want help choosing the first agent path, read [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
-If you want to inspect a public proof asset before your own run, open [Example Review Bundle](example-review-bundle.md).
+If you want the shortest first-run path, start with [../START_HERE.md](../START_HERE.md).
 
-## Best next step if the role split still ends in manual review glue
+If you want help choosing the first agent path, read [which-agent-should-i-start-with.md](./which-agent-should-i-start-with.md).
 
-Do not stop at "we used two agents."
+If you want to inspect a public proof asset before your own run, open [example-review-bundle.md](./example-review-bundle.md).
 
-Use **Codeberg** as the main public home:
-
-- **Inspect the primary repo on Codeberg first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if the morning-after handoff is the thing you were missing:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction on Codeberg if the split still leaves weak finish-state proof:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror if that is where you already follow projects:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-Then use [After Your First Ralph Workflow Run](after-your-first-run.md) so one promising trial becomes a visible primary-repo trust signal and one rough trial becomes a useful issue.
+If this Claude Code + Codex handoff problem is exactly the one you want solved, inspect Ralph Workflow on the [primary Codeberg repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow) and **star or watch it there**. If GitHub is where you already track tooling, the [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) is there too.
 
 ## The practical takeaway
 
@@ -116,3 +103,13 @@ Claude Code + Codex is already a good instinct.
 The bigger question is whether the workflow gives you a **clean, reviewable finish** instead of more supervision work.
 
 That is the job Ralph Workflow is trying to do.
+
+## Turn this evaluation into one public Codeberg action
+
+If this split-workflow page fits the pain you are already dealing with, the next step should be public and primary-repo-first.
+
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg** if Ralph Workflow looks like the cleaner Claude Code + Codex handoff path: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **Need the post-run scorecard first?** Read [After Your First Ralph Workflow Run](./after-your-first-run.md)

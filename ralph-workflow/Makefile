@@ -1,4 +1,4 @@
-.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs packaging-smoke
+.PHONY: help install stable dev install-dev test test-unit test-integration test-subprocess-e2e lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck route-linkcheck serve-docs packaging-smoke
 
 # pytest-xdist worker count for parallel test execution.
 #
@@ -77,6 +77,7 @@ help:
 	@echo "  dead-code      Run Vulture dead-code audit (fails while backlog exists)"
 	@echo "  docs           Build Sphinx HTML documentation"
 	@echo "  docs-linkcheck Check all hyperlinks in docs (opt-in, not in verify)"
+	@echo "  route-linkcheck Check links in non-Sphinx route pages (opt-in, not in verify)"
 	@echo "  serve-docs     Build and serve docs at http://localhost:8080"
 	@echo ""
 	@echo "  run            Run ralph CLI directly"
@@ -351,6 +352,9 @@ docs:
 
 docs-linkcheck:
 	uv run --extra docs sphinx-build -b linkcheck docs/sphinx docs/sphinx/_build/linkcheck
+
+route-linkcheck:
+	cd .. && python3 scripts/check_route_page_links.py README.md START_HERE.md docs/README.md ralph-workflow/docs/README.md
 
 serve-docs: docs
 	@echo "Serving docs at http://localhost:8080"

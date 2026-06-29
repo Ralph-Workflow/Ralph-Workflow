@@ -1,215 +1,195 @@
-# Ralph Workflow
+# Ralph Workflow — the autopilot for coding agents
 
-## ⚡ Quickstart
+> **Codeberg is primary.** Star, watch, fork, and report issues there first:
+> <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> GitHub is a read-only mirror:
+> <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
-```bash
-pipx install ralph-workflow   # 1. install (Python 3.12+)
-ralph --init                  # 2. scaffold .agent/ and PROMPT.md
-ralph                         # 3. run the unattended workflow
-```
+Ralph Workflow is **the autopilot for coding agents** — a free and
+open-source **AI agent orchestrator** that runs the coding agents you already
+use, on your own machine. Hand it a well-specified task, let the agents plan,
+build, verify, and fix, and come back to reviewable, tested work.
 
-## Stop babysitting your coding agents.
+It's an **operating system for autonomous coding**: a composable loop
+framework built around a simple Ralph-loop core that becomes powerful through
+composition. The default workflow is strong enough to adopt as-is, before you
+customize anything.
 
-**Hand off a spec, step away, and come back to tested code worth reviewing.**
+[Install](#install) · [Start your first run](#start-your-first-run) · [Read the docs](https://ralphworkflow.com/docs) · [Source on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow) · [Submit an issue](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new)
 
-**Autopilot for your coding agents.** Ralph Workflow runs the coding agents you already use — Claude Code, Codex, or OpenCode — **unattended**, on your own machine. Free, open-source, local-first. *(Underneath: a composable loop framework.)*
+## What you get back from a run
 
-Use it for well-specified work that can run against your repo's tests while you do something else.
-
-**The reference implementation of Loop Engineering.** Three org-backed commercial derivatives — [Atomic](https://github.com/bastani-inc/atomic) (260★), [Ralphify](https://github.com/computerlovetech/ralphify) (68★), and [LoopTroop](https://github.com/looptroop-ai/loop-troop) (38★) — have adopted the architecture, with 20+ independent projects and 450+ cumulative ecosystem stars. *(Source: [ECOSYSTEM.md](ECOSYSTEM.md), verified 2026-06-28).*
-
-![Codeberg stars](https://img.shields.io/codeberg/stars/RalphWorkflow/Ralph-Workflow) ![GitHub stars](https://img.shields.io/github/stars/Ralph-Workflow/Ralph-Workflow) ![PyPI](https://img.shields.io/pypi/v/ralph-workflow.svg) ![PyPI downloads](https://img.shields.io/pypi/dm/ralph-workflow.svg) ![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg) ![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)  
-[![Built with Ralph Loop](assets/built-with-ralph-loop.svg)](https://ghuntley.com/ralph)
-
-*13,796 lifetime PyPI downloads · 4,814 in the last 30 days (source: [pepy.tech](https://pepy.tech/projects/ralph-workflow), verified 2026-06-26).*
-
-🌐 **[ralphworkflow.com](https://ralphworkflow.com)** — comparison guides, first-run walkthrough, and the [Loop Engineering blog](https://ralphworkflow.com/blog).
-
-🌐 **[English](#)** | **[中文](README.zh.md)**
-
-## You've been flying with a copilot. Ralph Workflow is the autopilot for it.
-
-Every AI coding tool today is a **copilot** — Cursor, GitHub Copilot, interactive Claude Code. A copilot keeps you in the seat, hands on, assisting in real time. That's right for the hard parts and wrong for the long stretch between them, where you're approving an agent's work prompt-by-prompt for a task you already specified.
-
-Ralph Workflow is the **autopilot** for that stretch. It commands the coding agents you already run — it doesn't replace them, and you stay pilot in command.
-
-You stay responsible for the important judgment calls: write the spec, start the run, exercise the result, confirm it works, read the diff, and decide what merges. Ralph Workflow handles the long middle: plan, build, verify, fix, and return a concrete handoff instead of a chat transcript.
-
-## Install and run
-
-```bash
-pipx install ralph-workflow   # 1. install (Python 3.12+)
-ralph --init                  # 2. scaffold .agent/ and PROMPT.md
-$EDITOR PROMPT.md             # 3. write PROMPT.md — your spec for the run
-ralph                         # 4. run the unattended workflow, then walk away
-```
-
-`ralph --init` installs the agent bundles and capabilities and seeds a batteries-included `.gitignore`. Run `ralph --diagnose` first if you want to confirm your agents and tools are healthy before a run.
-
-### Docker (no Python required)
-
-```bash
-docker run --rm -it \
-  -v "$(pwd):/workspace" \
-  -v "$HOME/.ralph:/root/.ralph" \
-  ralphworkflow/ralph --help
-```
-
-Build from source:
-
-```bash
-git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
-cd Ralph-Workflow/ralph-workflow
-docker build -t ralph-workflow .
-docker run --rm -it -v "$(pwd):/workspace" -v "$HOME/.ralph:/root/.ralph" ralph-workflow
-```
-
-New here? **[START_HERE.md](START_HERE.md)** is the fastest serious first-run path — task selection, diagnosis, and a walked-through first wake-up.
-
-## What a run leaves you
-
-This is an excerpt from the actual finish-receipt in the bundled [empty-name-validation example](examples/first-review-bundle/) — a real, unedited handoff you read when you come back, instead of a transcript:
+This is the actual finish-receipt from a real bundled example — a real,
+unedited handoff you read in the morning instead of a transcript:
 
 ```text
+# Development Result
+
 ## Outcome
+Implemented empty-name validation in the CLI create flow and added
+test coverage for empty and whitespace-only input.
 
-Implemented empty-name validation in the CLI create flow and added test coverage for empty and whitespace-only input.
+## Changed files
+- cli/create.py
+- tests/test_create.py
 
-## What changed
+## Checks run
+- pytest tests/test_create.py        ✓ passed
+- project formatting / lint checks    ✓ passed
 
-- added an early guard before any project files are created
-- return a clear user-facing error for empty or whitespace-only names
+## Reviewer focus
+- confirm validation happens before any file creation side effect
+- confirm the error message is clear enough for CLI users
+- confirm no unrelated flow changed
 ```
 
-The [full receipt](examples/first-review-bundle/.agent/DEVELOPMENT_RESULT.md) tells you exactly where to point your review. The same bundle also includes the review agent's `ISSUES.md` — where it caught that the first pass missed whitespace-only names like `"   "` — and the `FIX_RESULT.md` from the loop fixing it: plan → build → review → fix, captured on disk. Watch a full first run: [📺 the first-run walkthrough →](https://ralphworkflow.com/blog/ralph-workflow-in-5-minutes).
+Sample unedited terminal captures from a real run (Ralph Workflow v0.8.8): [`ralph --init`](assets/demo/init-output.txt) · [`ralph --diagnose`](assets/demo/diagnose-output.txt) · [`ralph --dry-run`](assets/demo/dry-run-output.txt).
 
-## What it does
+## What it is
 
-Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify — and turns it into a **composable loop framework** where each phase can loop independently and hand off to the next. A single `ralph` command spawns planning, development iteration, review, and fix cycles across multiple agents, then produces finished git commits you can review when you come back.
+Ralph Workflow extends the simple Ralph loop — plan, build, verify — into a
+**composable loop framework**. Each phase can loop independently, recover on
+failure, and hand off to the next phase. One `ralph` command runs planning,
+development, review, fix, and recovery cycles across multiple agents, then
+hands back finished git commits and a development_result receipt.
 
-**This is not a chat window or a prompt tool.** It's an orchestrator that runs real engineering pipelines unattended. The default workflow works out of the box; customize it when you need more control.
-
-### Why it's different
-
-| What most tools do | What Ralph Workflow does |
-|---|---|
-| One agent, one chat session (a copilot) | Multiple agents routed by phase: planning → dev → review → fix |
-| Copy-paste between tools | Agents hand off work through the repo, not context stuffing |
-| Hit context limits halfway | Phase-based summaries + checkpoint files keep context tight |
-| Locked to one vendor | Claude + Codex + OpenCode in the same pipeline — your choice |
-| "Look at the diff" | Runnable, tested software with integration checks |
-
-[See how Ralph Workflow compares to 19 other autonomous coding tools →](https://ralphworkflow.com/compare)
-
-**Built-in capabilities:**
-
-- **Phase routing** — planning agent → development agent → review agent → fix loop
-- **Cost arbitrage** — use cheaper agents for planning, stronger ones for coding
-- **Repo-based handoff** — each phase reads the previous one's output from the repo
-- **Recovery + retry** — each phase can loop independently on failure
-- **Vendor-neutral** — your config is YAML, your agents are your choice, your code is yours
-- **`ralph --diagnose`** — health check for agents, tools, and capability bundles
-
-Sample unedited terminal captures from a real run (Ralph Workflow v0.8.8): [`ralph --init`](docs/sphinx/_static/demo/init-output.txt) · [`ralph --diagnose`](docs/sphinx/_static/demo/diagnose-output.txt) · [`ralph --dry-run`](docs/sphinx/_static/demo/dry-run-output.txt).
+This is **not** a chat window, a prompt tool, or a single-agent loop. It's an
+orchestrator for unattended engineering work.
 
 ## Who it's for
 
-If one of these describes you, you're the reason Ralph Workflow exists:
+If one of these describes you, Ralph Workflow is built for you:
 
-**The solo builder.** You have side projects with real spec depth — you know what to build, but you're one person. Set `PROMPT.md` before bed, wake up to reviewed commits.
+- **The solo builder.** You have side projects with real spec depth — you
+  know what to build, but you're one person. Set `PROMPT.md` before bed, wake
+  up to reviewed commits.
+- **The team lead.** Ralph Workflow fits between PR and review — unattended
+  verification that your agents shipped what you asked for, not what they
+  guessed.
+- **The AI tool builder.** You're already wiring Claude Code into your
+  workflow. Ralph Workflow gives you the loop pattern — phase routing, cost
+  arbitrage, recovery, checkpointing — as infrastructure instead of
+  something you'd build yourself.
 
-**The team lead.** Ralph Workflow fits between PR and review — unattended verification that your agents are shipping what you asked for, not what they guessed.
+**Ralph Workflow is not for** one-line fixes, vague prompts, or repos
+without tests. It's for **ambitious, well-specified work** you'd trust a
+capable colleague to do unattended. A repo without guardrails will produce
+results that reflect that.
 
-**The AI tool builder.** You're already wiring Claude Code into your workflow. Ralph Workflow gives you the loop pattern — phase routing, cost arbitrage, recovery — as infrastructure instead of something you'd build yourself.
+## Why it's different
 
-**Ralph Workflow is not for** one-line fixes, vague prompts, or repos without tests. It's for **ambitious, well-specified work** you'd trust a capable colleague to do unattended. A repo without guardrails will produce results that reflect that.
+| What most tools do               | What Ralph Workflow does                                              |
+| -------------------------------- | --------------------------------------------------------------------- |
+| One agent, one chat session      | Multiple agents routed by phase (plan → dev → review → fix → recover) |
+| Copy-paste between tools         | Agents hand off work through the repo, not context stuffing           |
+| Hit context limits halfway       | Phase-based summaries + checkpoint files keep context tight           |
+| Locked to one vendor             | Claude + Codex + OpenCode + Nanocoder + AGY + Pi in one pipeline      |
+| "Look at the diff"               | Runnable, tested software with integration checks                     |
+| Single-agent idle watchdog       | Four-channel evidence: stdout + MCP + subagent + workspace            |
 
-## What builders say
+## Start your first run
 
-> "I actually have a working implementation on my fork that converged on the same two primitives (`progress.json` + a wake-up file)."
->
-> — **[CY Hsieh](https://github.com/Martingale42/superpowers/tree/main/skills/orchestrator-driven-development)**, building orchestrator-driven development on Ralph Workflow
+```bash
+pipx install ralph-workflow        # 1. install
+cd /path/to/your/project           # 2. pick a real repo
+ralph --init                       # 3. scaffold .agent/ + PROMPT.md
+ralph --diagnose                   # 4. pre-flight: verify agents, MCP, capabilities
+$EDITOR PROMPT.md                  # 5. write the task — see PROMPT.md template
+ralph                              # 6. run the unattended workflow
+```
 
-> "I was missing: a system not primped on one language or framework, a straightforward repeatable workflow (plan → implement → record), a permanent spec-library, a system that keeps asking me instead of making assumptions."
->
-> — **[Marco Nae](https://codeberg.org/RalphWorkflow/Ralph-Workflow)**, star-gazer, speq-skill maintainer
+Run those commands from a human-operated shell outside any Ralph-managed
+agent session.
 
-> "A Claude Code skill for running Claude unattended on a planned work track — overnight, day-trip, multi-hour meeting block."
->
-> — **[endario](https://github.com/endario/unattended-loop)**, unattended-loop, a derivative Ralph skill
+- `ralph --init` provisions the default local work surface and shipped
+  baseline skills.
+- `ralph --diagnose` is the **pre-flight check**: it verifies your agent
+  CLIs, MCP servers, and capability bundles are healthy. See the
+  [diagnostics page](ralph-workflow/docs/sphinx/diagnostics.md) for what each
+  check proves.
 
-[Star Ralph Workflow on Codeberg →](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
+When you come back, ask one question: **would I merge this?** If yes, give it
+a harder task next. If no, tighten the spec, the checks, or the task choice
+and run again.
 
-## Before you hand off a run
+The shortest path is [START_HERE.md](START_HERE.md). The full walkthrough is
+in the [maintained manual](ralph-workflow/docs/sphinx/index.rst).
 
-Ralph Workflow depends on good engineering practice — it doesn't replace it. A run is only as good as what you give it:
+## Trust and safety boundaries
 
-- **Clear specs** with concrete acceptance criteria
-- **Meaningful tests** in your repo — they're how the loop knows it's done
-- **Honest review discipline** — the review agent flags issues; you decide what to do
+These are not negotiable. They are how the tool is designed:
 
-**What you need first.** Python 3.12+ on macOS, Linux, or Windows, plus the agent CLIs you want Ralph Workflow to drive (Claude Code, Codex, OpenCode, and more) — installed and authenticated by you. Ralph Workflow invokes those tools and supervises the loop; it never stores your credentials. [Full agent setup →](https://ralphworkflow.com/docs/getting-started.html)
+- **Local execution.** Ralph Workflow runs on your machine. It does not
+  upload your code or data to a cloud service. Crash reports are anonymous
+  and opt-out-able — see *Privacy* in the package README.
+- **Agent authentication is yours, not Ralph's.** Ralph Workflow does not
+  store, read, or proxy agent credentials. Each agent CLI uses its own
+  native authentication (vendor login or API key). You authenticate each
+  agent first, and Ralph Workflow then invokes those CLIs as-is.
+  See [the Agent CLI lifecycle page](ralph-workflow/docs/sphinx/agents.md)
+  for the full selection, detection, and invocation story.
+- **Branch / worktree expectations.** A long run writes files and may
+  create branches. Run on a clean worktree and review with your normal git
+  workflow before merge.
+- **Unattended approval implications.** "Unattended" means agents may keep
+  writing while you sleep. Have backups and branch protection. See
+  [`bounded-autonomy-for-unattended-coding.md`](ralph-workflow/docs/sphinx/bounded-autonomy-for-unattended-coding.md)
+  for the safety model.
+- **Cost.** Agent calls are on your cloud bill. Ralph Workflow itself has
+  no per-run fee.
+- **Human responsibility.** Agents handle the long middle. You handle the
+  judgment: run the code against the real environment, check the diff, look
+  at the receipts, decide.
 
-**Where it runs, and staying safe.** Ralph Workflow runs on your machine and commits to your **current branch** — so start each run on a throwaway branch or worktree you can reset, and preview the plan first with `ralph --dry-run` (it invokes no agents). There's no OS-level sandbox, and because the run is unattended, Ralph Workflow launches the agent CLIs in auto-approve mode by default (for example Claude's `--permission-mode auto`, Codex's `--dangerously-bypass-approvals-and-sandbox`): they act without stopping for per-action approval, within whatever your shell and the CLI permit. Ralph Workflow's own MCP exec tool refuses a blacklist of dangerous commands — privilege escalation, `rm -rf /`, container escape, external network calls — but an agent can still reach the shell through its own CLI, so the real boundary is branch isolation plus running and reviewing the result yourself.
+## Supported agents
 
-**What bounds a run, and what it costs.** A run is capped by iteration budgets (the default development budget is 5 cycles), not an open-ended loop; override them per run with `--counter`. Ralph Workflow itself is free, but it spends real tokens through your agent providers — an unattended multi-agent loop is not cheap, so size the task and the budget to match, and use cheaper models for planning (that's what cost arbitrage is for).
+Ralph Workflow ships with first-class support for six user-facing agent
+CLIs: Claude Code (interactive + headless), Codex, OpenCode, Nanocoder,
+Google Anti Gravity (AGY), and Pi. Each has a documented end-to-end
+verification path. See
+[Agent Compatibility](ralph-workflow/docs/sphinx/agent-compatibility.md) for
+the full matrix and known caveats.
 
-**If a run goes sideways.** Checkpoints let you resume an interrupted run with `--resume`. To undo work you don't want, it's plain git — `git revert` or reset the branch. Nothing is auto-merged; every change waits for your review.
+## Runtime, license, project home
 
-## Part of the Ralph Loop ecosystem
+- **Runtime:** Python ≥ 3.12. Local-first; no required cloud account.
+- **License:** AGPL-3.0-or-later.
+- **Project home (primary):** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **PyPI:** <https://pypi.org/project/ralph-workflow/>
+- **Documentation site:** <https://ralphworkflow.com/docs>
+- **Issue tracker:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Contribution route:** [CONTRIBUTING.md](CONTRIBUTING.md) →
+  [ralph-workflow/CONTRIBUTING.md](ralph-workflow/CONTRIBUTING.md)
 
-Ralph Workflow is one of 27+ independent implementations of the Ralph Loop pattern documented in [USERS.md](USERS.md). The pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph), and [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) tracks the wider ecosystem.
+## Documentation route
 
-**Ecosystem by category** (from [ECOSYSTEM.md](ECOSYSTEM.md)):
+The shortest read is the README → START_HERE → docs-map → manual route:
 
-| Category | Count | Example |
-|----------|-------|----------|
-| CLI / orchestrators | 9 | Ralph Workflow, umputun/ralphex, bastani-inc/atomic |
-| Agent SDKs / frameworks | 5 | computerlovetech/ralphify, benikigai/nightshift |
-| Platform / CI pipelines | 4 | self-serve loop engineering platforms |
-| IDE / editor integrations | 3 | Loop Engineering in VS Code, Emacs, Neovim |
-| Skilling / learning packs | 3 | Skill packs, workshops, cookbooks |
-| SDK / composite agents | 2 | Agent-to-agent orchestration |
-| Workflow as Code | 1 | YAML/DSL-declared pipelines |
-| Developer Experience | 1 | CLI tools, IDE helpers |
+1. **README.md** (this file) — what it is, who it's for, fastest install
+2. **[START_HERE.md](START_HERE.md)** — guided first run
+3. **[docs/README.md](docs/README.md)** — route by intent (evaluate / install
+   / configure / contribute / understand architecture)
+4. **[ralph-workflow/docs/sphinx/index.rst](ralph-workflow/docs/sphinx/index.rst)**
+   — the maintained operator manual
 
-Built something with Ralph Workflow? Add a credit line to your README and you're on the [Showcase](SHOWCASE.md).
+For contributor and architecture detail, the
+[`docs/architecture/`](docs/architecture/README.md) overview explains the
+Python runtime end-to-end.
 
-### Independent validators
+## Ecosystem and attribution
 
-The pattern is emerging independently. These projects ship loop-engineered agent runners — no affiliation, same architecture:
+The Ralph Loop pattern is attributed to
+[Geoffrey Huntley (ghuntley.com/ralph)](https://ghuntley.com/ralph).
+Ralph Workflow is an independent reference implementation — not the
+pattern's originator. See [ECOSYSTEM.md](ECOSYSTEM.md) for the broader
+ecosystem of pattern derivatives and live integrations.
 
-| Project | Stars | Approach |
-|---------|-------|----------|
-| [SantanderAI/ralph](https://github.com/SantanderAI/ralph) | 77 ⭐ | Bash/PowerShell — fresh-session Claude Code, Codex, and Gemini CLI loop | (verify: gh)
-| [rxdt/py_ralph_frame](https://github.com/rxdt/py_ralph_frame) | 5 ⭐ | Python harness — lightweight spec-driven loop, `uvx`-installable | (verify: gh)
-| [anthropics/ralph-loop plugin](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/ralph-loop) | official | Anthropic's Claude Code plugin implementing the Ralph Loop pattern |
+## Call to action
 
-Ralph Workflow is the feature-complete orchestrator above these — composable phase routing, cost arbitrage, checkpoint/resume, and repo-based agent handoff. The validators each explore a different corner of the same loop-engineering space. [See all 27+ projects →](USERS.md) · [Explore the ecosystem →](ECOSYSTEM.md)
+Pick **one**. They're all signals that shape what we build next.
 
-## Documentation
-
-| Page | What it covers |
-|---|---|
-| [START_HERE.md](START_HERE.md) | The fastest serious first-run path |
-| [Getting Started](https://ralphworkflow.com/docs/getting-started.html) | First install, first run, first wake-up |
-| [Full Docs](https://ralphworkflow.com/docs) | Quickstart, configuration, user stories, and more |
-
-Maintainers working in-repo should treat `ralph-workflow/docs/sphinx/` as the canonical source for the published manual.
-
-## Community
-
-Questions, ideas, or something not working? The Codeberg tracker is the project's public forum. Ralph Workflow collects zero telemetry, so issues and feedback are how we learn what to build.
-
-- **[Star on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow)** — stars are the only signal we get that Ralph Workflow is working for you, and they set what we build next
-- **[Ask a question](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=question)** — anything from "will this work for my stack?" to feature ideas
-- **[PMF survey](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new?labels=pmf-survey)** (60 seconds) — *"How would you feel if you could no longer use Ralph Workflow?"* Very / Somewhat / Not disappointed, plus a sentence on what you'd use instead. Or run `ralph --feedback` after a run.
-- **[Contribute code](ralph-workflow/CONTRIBUTING.md)** — setup, verification, and the contribution workflow
-- **[See who's building with Ralph Workflow](USERS.md)** — and the wider Ralph Loop ecosystem
-- **[Read the blog](https://ralphworkflow.com/blog)** — Loop Engineering explained, ecosystem tours, and migration guides
-
-The canonical forge is [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow); GitHub is a mirror.
-
----
-
-*Free and open source. Runs on your machine. Ships with a default workflow strong enough for real software engineering — write the spec, run `ralph`, and judge it by the finished commits.*
+- ⭐ [Star the primary repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
+- ▶ [Run your first real task](START_HERE.md)
+- 📖 [Read the operator manual](ralph-workflow/docs/sphinx/index.rst)
+- 🐛 [Report a first-run friction](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new)
+- 🤝 [Contribute](CONTRIBUTING.md)

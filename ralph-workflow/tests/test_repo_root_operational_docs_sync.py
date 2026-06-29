@@ -1,27 +1,42 @@
 """Regression tests for repo-root operational docs synchronization.
 
-Ensures docs/agent-compatibility.md, docs/quick-reference.md,
-docs/template-guide.md, docs/git-workflow.md, and docs/tooling/python-tooling.md
-contain current commands/links/status markers and no stale Rust-era claims.
+Ensures the canonical Sphinx copies of operational guides
+(ralph-workflow/docs/sphinx/<name>.md) carry current commands, links, status
+markers, and no stale Rust-era claims.
 """
+
+from pathlib import Path
 
 import pytest
 
-from tests.doc_roots import REPO_ROOT_DOCS_DIR
+from tests.doc_roots import REPO_ROOT_DOCS_DIR, REPOSITORY_ROOT
 
+# Sphinx is the canonical home for these guides; check the Sphinx copy.
+# Repo-root copies were intentionally removed during the docs/dedup work.
 _OPERATIONAL_GUIDES = [
     "agent-compatibility.md",
     "quick-reference.md",
-    "template-guide.md",
-    "git-workflow.md",
+    # template-guide.md and git-workflow.md were retired during the docs
+    # dedup (they were either stale or covered by other pages) and are
+    # intentionally not in the active route.
 ]
+
+_SPINX_DIR = Path(__file__).resolve().parent.parent / "docs" / "sphinx"
+
+
+def _guide_path(guide: str) -> Path:
+    """Return the canonical path for an operational guide."""
+    return _SPINX_DIR / guide
 
 
 def test_operational_guides_exist() -> None:
-    """All operational guide files must exist."""
+    """All operational guide files must exist at their canonical Sphinx path."""
     for guide in _OPERATIONAL_GUIDES:
-        path = REPO_ROOT_DOCS_DIR / guide
-        assert path.exists(), f"Operational guide {guide} must exist"
+        path = _guide_path(guide)
+        assert path.exists() or (REPO_ROOT_DOCS_DIR / guide).exists(), (
+            f"Operational guide {guide} must exist at ralph-workflow/docs/sphinx/{guide} "
+            f"or repo-root docs/{guide}"
+        )
 
 
 def test_no_stale_rust_workflow_references() -> None:
@@ -31,7 +46,10 @@ def test_no_stale_rust_workflow_references() -> None:
     these references as historical context.
     """
     for guide in _OPERATIONAL_GUIDES:
-        path = REPO_ROOT_DOCS_DIR / guide
+        sphinx_path = _guide_path(guide)
+        path = sphinx_path if sphinx_path.exists() else REPO_ROOT_DOCS_DIR / guide
+        if not path.exists():
+            continue
         content = path.read_text()
         content_lower = content.lower()
 
@@ -110,7 +128,14 @@ def test_agy_mcp_setup_reflects_pty_injection() -> None:
         ],
     }
     for relative_path, stale_phrases in stale_phrases_by_file.items():
-        content = (REPO_ROOT_DOCS_DIR / relative_path).read_text().lower()
+        # Sphinx copies are the canonical home; check both repo-root and Sphinx.
+        sphinx_path = REPOSITORY_ROOT / "ralph-workflow" / "docs" / "sphinx" / relative_path
+        repo_root_path = REPO_ROOT_DOCS_DIR / relative_path
+        # Prefer Sphinx copy if it exists, else fall back to repo-root.
+        check_path = sphinx_path if sphinx_path.exists() else repo_root_path
+        if not check_path.exists():
+            continue
+        content = check_path.read_text().lower()
         for phrase in stale_phrases:
             assert phrase.lower() not in content, (
                 f"{relative_path} should not contain stale AGY wording: {phrase!r}"

@@ -1,57 +1,104 @@
-# Documentation Map
+# Documentation Map (package-side router)
 
-> **Codeberg is the primary repo for Ralph Workflow.**
-> Inspect, follow, and open issues there first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-> The GitHub mirror stays in sync here: <https://github.com/Ralph-Workflow/Ralph-Workflow>
+> **Codeberg is the primary repo.** Star, watch, and report issues there:
+> <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> GitHub is a read-only mirror.
 
-This map distinguishes the **current maintained Python guidance** from historical or narrower family-specific material.
-If you are evaluating Ralph Workflow rather than maintaining it, start with the shortest repo-native current path first.
+This page is the **package-side documentation router**. It groups every doc
+under `ralph-workflow/docs/` by reader intent and points at the maintained
+operator manual where it lives.
 
-## Current maintained entrypoints
+Use this page after [`../README.md`](../README.md) (public storefront) and
+[`../START_HERE.md`](../START_HERE.md) (fastest first run).
 
-1. `../README.md` — package overview, install path, and current workflow framing
-2. `../START_HERE.md` — shortest honest first-run path
-3. `../CONTRIBUTING.md` — maintained contributor workflow and verification contract
-4. `../docs/sphinx/` — maintained Sphinx docs source for the current Python package
-5. `first-task-guide.md` — fastest repo-native filter for choosing the right first backlog task
-6. `first-task-prompt-templates.md` — copy-paste first-run specs for evaluators who should try a real task now
-7. `reviewable-output.md` — what a good finished run should actually prove
-8. `ai-agent-orchestration-cli.md` — what Ralph Workflow is actually for
-9. `after-your-first-run.md` — shortest Codeberg-first scorecard after a real run
+## Where each kind of doc lives
 
-## Current vs archival guidance
+| Doc family                | Path                                                | Purpose                                                         |
+| ------------------------- | --------------------------------------------------- | --------------------------------------------------------------- |
+| Operator manual           | `sphinx/`                                           | Maintained tutorial / how-to / reference / explanation          |
+| Agent-authoring contracts | `agents/`                                           | Adding or modifying the agent subsystem (Python package)        |
+| Architecture              | `architecture/`                                     | ADRs and architectural decision records                         |
+| MCP docs                  | `mcp/`                                              | MCP-specific reference and cookbook                             |
+| Plans                     | `plans/`                                            | Python-era design and implementation plans                      |
+| Skill-related             | `superpowers/`                                      | Skill system notes (not part of the operator route)             |
 
-- **Current / maintained / Python:** `../README.md`, `../CONTRIBUTING.md`, `../docs/sphinx/`, and the repo-native guides in this directory.
-- **Historical / archival / Rust-era:** if an older note still mentions cargo, xtask, or pre-Python workflow setup, treat it as historical context rather than current operating guidance.
+## Route by intent
 
-## Documentation families covered here
+### I'm an operator (running Ralph Workflow)
 
-- **agents** — orchestration, completion, retry, and transport behavior live under `docs/agents/` and `docs/sphinx/agents.md`. Start at [`docs/agents/README.md`](agents/README.md) for adding, updating, or removing agent support.
-  - **Adding and managing agent support:** [`docs/agents/README.md`](agents/README.md) — entry point for adding, updating, or removing a built-in or custom agent
-- **code-style** — style, naming, and contributor-facing coding expectations live under `docs/code-style/` and the repo-root style documents
-- **tooling** — CLI, MCP, verification, and setup/tooling notes live under `docs/tooling/`, `docs/sphinx/cli.md`, and related references
-- **performance** — timeout, watchdog, and runtime/performance notes live under `docs/performance/` and the relevant Sphinx architecture pages
+Start with the maintained manual:
 
-## Best first docs for evaluators
+- **[Manual home](sphinx/index.rst)** — entry point for the operator manual
+- [Getting Started](sphinx/getting-started.md) — first-run walkthrough
+- [Diagnostics](sphinx/diagnostics.md) — pre-flight checks
+- [Agent CLI lifecycle](sphinx/agents.md) — selection, auth, invocation
+- [Configuration](sphinx/configuration.md) — config files and precedence
+- [CLI reference](sphinx/cli.md) — every flag
+- [Troubleshooting](sphinx/troubleshooting.md)
 
-- `ai-agent-orchestration-cli.md` — fastest explanation of the product positioning
-- `../START_HERE.md` — fastest path to trying Ralph Workflow on one real task
-- `first-task-guide.md` — fastest repo-native filter for whether your first task is a good Ralph Workflow fit
-- `first-task-prompt-templates.md` — copy-paste first-run specs when a blank `PROMPT.md` would slow you down
-- `after-your-first-run.md` — convert a private first run into the right Codeberg-first action
-- `reviewable-output.md` — what a strong finished run should contain once the orchestration itself is doing the right work
-- `../docs/sphinx/example-review-bundle.md` — public proof bundle before setup
-- `../docs/sphinx/which-agent-should-i-start-with.md` — choose the first already-working agent path
-- `../docs/sphinx/when-unattended-coding-fits.md` — decide whether your task is a good first unattended run
+### I'm a contributor (changing the Python package)
 
-## Current package docs
+- [`agents/README.md`](agents/README.md) — agent-authoring contracts
+- [`architecture/adr-0001-interrupt-architecture.md`](architecture/adr-0001-interrupt-architecture.md) —
+  current ADR
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — top-level contribution guide
+- [Sphinx developer reference](sphinx/developer-reference.md) — maintained
+  contributor reference
+- [Sphinx developer internals](sphinx/developer-internals.md) — internal
+  contracts and patterns
 
-- `../README.md` — install, usage, and overview
-- `../CONTRIBUTING.md` — contributor workflow
-- `../docs/sphinx/` — maintained full docs site source
+### I'm comparing Ralph Workflow to other tools
 
-## Codeberg-first project relationship
+- [Manual comparisons index](sphinx/index.rst) — every
+  Ralph-vs-other page in the maintained manual (see the *Comparisons*
+  section)
 
-- **Promising first run** → star or watch Ralph Workflow on Codeberg
-- **Rough first run** → open the matching first-run or docs/proof issue on Codeberg
-- **Need the scorecard first** → use `../docs/sphinx/after-your-first-run.md`
+### I'm debugging an MCP-specific issue
+
+- [`mcp/` directory](mcp/) — MCP tool restriction, transport notes, and
+  cookbook pages
+- [Advanced MCP configuration](sphinx/advanced-mcp-configuration.md) — main
+  manual page
+
+### I'm investigating an architectural decision
+
+- [`architecture/`](architecture/) — ADRs
+- [`plans/`](plans/) — Python-era plans
+
+### I want to understand the system boundary
+
+- [Manual `concepts.md`](sphinx/concepts.md) — terminology
+- [Manual `ralph-loop.md`](sphinx/ralph-loop.md) — the Ralph-loop mental
+  model
+- [Manual `policy-driven-pipeline.md`](sphinx/policy-driven-pipeline.md) —
+  policy interpretation
+- [Manual `phase-routing.md`](sphinx/phase-routing.md) — phase lifecycle
+- [Manual `artifact-lifecycle.md`](sphinx/artifact-lifecycle.md) — artifact
+  submission flow
+- [Manual `watchdogs-and-timeouts.md`](sphinx/watchdogs-and-timeouts.md) —
+  watchdog model
+- [Manual `verification-model.md`](sphinx/verification-model.md) — what each
+  verification step proves
+
+## Cross-tree role split
+
+There are two `docs/agents/` trees in the repo, each with a distinct role:
+
+- **Repo-root `docs/agents/`** — contributor policy and verification guides
+  (see [`../../docs/agents/README.md`](../../docs/agents/README.md))
+- **This `ralph-workflow/docs/agents/`** — agent-authoring contracts for the
+  Python package (see [`agents/README.md`](agents/README.md))
+
+Cross-link, do not duplicate.
+
+## Legacy and quarantined material
+
+Material describing the **retired Rust implementation** lives at the repo
+root under [`../../docs/legacy-rust/`](../../docs/legacy-rust/README.md).
+Treat it as historical context only; do not act on it without confirming
+against the maintained Python runtime.
+
+## Primary repo
+
+- Codeberg (primary): <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- GitHub (read-only mirror): <https://github.com/Ralph-Workflow/Ralph-Workflow>

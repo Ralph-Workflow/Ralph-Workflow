@@ -1,10 +1,6 @@
----
-orphan: true
----
-
 # Claude Code "Run Until Done" Still Needs a Reviewable Finish
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
@@ -14,7 +10,7 @@ The useful question is this:
 
 > **When it stops, do you get something you can actually review and decide to merge?**
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -107,18 +103,16 @@ Ralph Workflow is the stronger path when:
 
 If you need live exploration on a fragile task, stay interactive. If you want a bounded overnight handoff you can judge honestly in the morning, Ralph Workflow is the better fit.
 
-## Best next step if "run until done" still leaves a fuzzy morning-after handoff
-
-Do not stop at a longer session.
+## Best next step
 
 Use **Codeberg** as the main public home:
 
 - **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if the finish state earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report finish-receipt or first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
-Then use [After Your First Ralph Workflow Run](after-your-first-run.md) so a promising trial becomes a visible primary-repo trust signal and a rough one becomes a useful issue.
+Keeping the trust signals on Codeberg makes the primary repo a clearer evaluation surface.
 
 ## Fastest honest first run
 
@@ -128,7 +122,7 @@ Then use [After Your First Ralph Workflow Run](after-your-first-run.md) so a pro
 4. Review the diff, checks, and artifacts in the morning
 5. Ask: **does the implementation hold up?**
 
-If you want the shortest path, start with [Getting Started](getting-started.md).
+If you want the shortest path, start with [../START_HERE.md](../START_HERE.md).
 
 If the blocker is still approval babysitting, read [claude-code-approval-mode.md](./claude-code-approval-mode.md).
 

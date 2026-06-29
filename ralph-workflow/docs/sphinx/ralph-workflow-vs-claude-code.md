@@ -1,21 +1,25 @@
----
-orphan: true
----
-
 # Ralph Workflow vs Claude Code
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
 If you already know Claude Code, the simplest difference is this:
 
 - **Claude Code** is an interactive coding agent you drive directly.
-- **Ralph Workflow** is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine** for real software work.
+- **Ralph Workflow** is an **open-source** orchestration CLI that runs the coding agents you already use **on your own machine** and hands back a **strong software result** after an unattended run.
 
 That means Ralph Workflow is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-Why try Ralph Workflow now? Because you do not need to abandon Claude Code to use it. You can keep Claude in the loop, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+Why try Ralph Workflow now? You do not need to abandon Claude Code to use it. Keep Claude in the loop, hand off one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+
+Before you install anything, inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+
+If Ralph Workflow earns trust after a real overnight run, keep the public next step on Codeberg:
+
+- **Star or watch the primary repo:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction or proof gaps:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 ## The core difference
 
@@ -35,7 +39,7 @@ Ralph Workflow is usually the better fit when you want to:
 - wake up to a large chunk of work instead of babysitting the terminal
 - keep Claude Code but add a stronger morning-after handoff
 - route different phases through different agents when needed
-- judge the result by whether it produced working software and real verification
+- judge the result with a simple merge / no-human review
 
 Typical good Ralph Workflow tasks:
 
@@ -81,7 +85,7 @@ That is the real product test.
 
 ## Fastest honest first test
 
-Before you start, have Claude Code or another supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is free and open source, but it does not replace the coding agent itself.
+Before you start, have Claude Code or another supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is open source, but it does not replace the coding agent itself.
 
 Then run:
 
@@ -96,17 +100,11 @@ ralph
 
 Use one real backlog task, not a vague demo.
 
-If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
+If you want help picking that first task, read [when unattended coding fits](./when-unattended-coding-fits.md), [the first-task guide](./first-task-guide.md), and [first-task prompt templates](./first-task-prompt-templates.md).
 
-If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [what good output looks like](./free-open-source-proof.md) and the [example review bundle](../examples/first-review-bundle/README.md).
 
-## Best public next step if Claude Code is already in your stack
+After that first real run, take exactly one public next step on Codeberg:
 
-Use **Codeberg** as the main public home for evaluating Ralph Workflow:
-
-- **Inspect the primary repo first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if Ralph Workflow earns a place next to Claude Code:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Open first-run friction or docs issues on Codeberg if the handoff misses:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-That keeps Claude Code comparison traffic, trust, and feedback attached to the primary repo instead of the mirror.
+- **promising run:** star or watch the repo
+- **shaky run:** open the right issue on Codeberg

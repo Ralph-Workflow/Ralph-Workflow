@@ -1,10 +1,10 @@
 # When Ralph Workflow Fits — and When It Does Not
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is an **open-source** tool that orchestrates the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams who want to hand off engineering work that is **too big to babysit and too risky to trust blindly**.
 
@@ -32,7 +32,7 @@ These are the kinds of tasks Ralph Workflow is good at:
 - a narrow refactor with tests
 - repetitive implementation work where the expected shape is obvious
 - a cleanup task with straightforward verification
-- a docs or test pass where `done` is easy to check
+- a docs or test pass where "done" is easy to check
 - a backlog item you want to hand off overnight and review in the morning
 
 Why these fit:
@@ -57,12 +57,12 @@ Why these fail:
 
 - the agent has to guess too much
 - the handoff is hard to review honestly
-- `done` is unclear
+- "done" is unclear
 - the task needs live steering, not unattended execution
 
-If you want concrete examples before you choose a first run, read [Good Unattended AI Coding Task vs Bad One](good-unattended-ai-coding-task.md).
+If you want concrete examples before you choose a first run, read [Good Unattended AI Coding Task vs Bad One](./good-unattended-ai-coding-task.md).
 
-If you want the fastest copy-paste path from task choice to `PROMPT.md`, pair that with [Choose Your First Ralph Workflow Task](first-task-guide.md) and [First-Task Prompt Templates](first-task-prompt-templates.md).
+If you want the fastest copy-paste path from task choice to `PROMPT.md`, pair that with [Choose Your First Ralph Workflow Task](./first-task-guide.md) and [First-Task Prompt Templates](./first-task-prompt-templates.md).
 
 ## A good first-task filter
 
@@ -91,11 +91,12 @@ That is the real product test.
 
 ## Next steps
 
-- Start with [Getting Started](getting-started.md)
-- Read [Choose Your First Ralph Workflow Task](first-task-guide.md) for the quickest first-run filter
-- Read [Good Unattended AI Coding Task vs Bad One](good-unattended-ai-coding-task.md) for concrete task shapes before you commit to a first run
-- Read [First-Task Prompt Templates](first-task-prompt-templates.md) if you want a copy-paste `PROMPT.md` shape before your first run
-- See [Example Review Bundle](example-review-bundle.md) for a public sample prompt, handoff notes, and artifacts
+- Start with [../START_HERE.md](../START_HERE.md)
+- Read [Choose Your First Ralph Workflow Task](./first-task-guide.md) for the quickest first-run filter
+- Read [Good Unattended AI Coding Task vs Bad One](./good-unattended-ai-coding-task.md) for concrete task shapes before you commit to a first run
+- Read [First-Task Prompt Templates](./first-task-prompt-templates.md) if you want copy-paste starter specs
+- See [free-open-source-proof.md](./free-open-source-proof.md) for an example first task and review bundle
+- Use [quick-reference.md](./quick-reference.md) when you are ready to run it
 
 After one real run, convert the result into exactly one Codeberg action:
 

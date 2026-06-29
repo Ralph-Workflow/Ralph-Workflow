@@ -36,10 +36,11 @@ If you are unsure what counts as a good task, use [First Task Guide](first-task-
 
 1. Install Ralph Workflow and confirm the CLI is available.
 2. Initialize the repo with `ralph --init`.
-3. Pick one real repo and one task with a clear finish line.
-4. Start with the default workflow instead of customizing immediately.
-5. Let Ralph Workflow plan, implement, and verify the change.
-6. Judge the result by the software change and the checks, not by transcript confidence alone.
+3. Run `ralph --diagnose` to verify your agents, MCP servers, and capability bundle are healthy (see [Diagnostics](diagnostics.md)).
+4. Pick one real repo and one task with a clear finish line. **Bring your own authenticated agent CLI** — Ralph Workflow does not authenticate agents on your behalf (see [Agent CLI lifecycle](agents.md)).
+5. Start with the default workflow instead of customizing immediately.
+6. Let Ralph Workflow plan, implement, and verify the change.
+7. Judge the result by the software change and the checks, not by transcript confidence alone.
 
 That flow matters because Ralph Workflow is designed to give you a stronger unattended coding loop than a single long agent session.
 The point of the first run is to see whether the default loop improves the repo in a way you can actually review.

@@ -1,7 +1,68 @@
-"""Agent registry for managing available AI agents.
+"""Agent registry: the source of truth for which agents Ralph Workflow can invoke.
 
-The registry loads agent configurations and resolves agent names
-to their executable commands and settings.
+The ``AgentRegistry`` is the in-memory index that maps every agent name Ralph
+Workflow can route to (e.g. ``claude``, ``codex``, ``opencode``, ``agy``,
+``nanocoder``, ``pi``, plus dynamic ``<agent>/<model>`` aliases) to the
+``AgentConfig`` that describes how to invoke that agent.
+
+Public surface at a glance:
+
+- ``AgentRegistry`` — the registry itself; constructed either empty or
+  pre-seeded with the bundled defaults via :meth:`AgentRegistry.from_config`
+- ``AgentRegistry.from_config`` — build a registry from a
+  :class:`ralph.config.models.UnifiedConfig`, layering user-global,
+  project-local, and CLI overrides in the correct precedence order
+- ``builtin_agents`` — the built-in default agent configurations that ship
+  with Ralph Workflow; the registry seeds itself from this map when no
+  explicit catalog override is provided
+- ``AgentSpec`` — the internal declarative record that backs every
+  ``AgentConfig`` in the registry (see ``ralph.agents.spec``)
+
+When to use this module:
+
+- You are extending Ralph Workflow with a new agent CLI. Use
+  :func:`ralph.agents.registration.register_agent_support_to_catalog` to
+  register the new agent support into the catalog, then construct an
+  ``AgentRegistry`` with the catalog injected. The registry does not
+  auto-seed at module import; you opt in by calling ``AgentRegistry(...)``
+  or ``AgentRegistry.from_config(...)``.
+- You are debugging a routing failure. The registry is what
+  :mod:`ralph.pipeline.orchestrator` consults to resolve a phase's declared
+  agent name to a command. If a phase fails with "unknown agent", the
+  registry is where the missing name should be.
+- You are writing a custom CLI command that needs to know which agents are
+  available. Use ``AgentRegistry.from_config(unified_config)`` and inspect
+  the resulting registry rather than reading config files directly.
+
+Side effects:
+
+- Construction does not spawn subprocesses, hit the network, or write
+  files. The registry is a pure in-memory structure.
+- Resolving an agent name does not require the underlying CLI binary to
+  be installed; :func:`ralph.agents.availability.check_agent_availability`
+  is what actually probes ``PATH``.
+- The registry does not own credential handling. Authentication lives in
+  the agent CLI itself (see the agent lifecycle page in the docs).
+
+Invariants:
+
+- The registry's keys are the agent names policy references (e.g.
+  ``claude-headless``, ``agy/Gemini 3.5 Flash (Medium)``). The registry
+  does not silently rename or normalize these strings.
+- The registry does not silently drop unknown agent names; resolution
+  raises :class:`ralph.agents.unknown_agent_error.UnknownAgentError`.
+- Built-in agents are seeded by ``from_config``; an explicitly constructed
+  ``AgentRegistry(catalog=...)`` seeds from the injected catalog via
+  ``_seed_catalog_with_builtins``. A bare ``AgentRegistry()`` does not
+  seed; pass a catalog or call ``from_config``.
+
+Testing notes:
+
+- ``ralph.testing.fake_agent_executor.FakeAgentExecutor`` swaps the
+  process-execution layer for tests; the registry itself remains a pure
+  index and does not need fakes.
+- The seeded default catalog is reachable as
+  ``ralph.agents.catalog.default_catalog``.
 """
 
 from __future__ import annotations

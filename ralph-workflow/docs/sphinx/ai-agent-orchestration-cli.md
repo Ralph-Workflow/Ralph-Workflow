@@ -1,84 +1,35 @@
----
-orphan: true
----
+# AI Agent Orchestration CLI: What Matters in Practice
 
-# AI Agent Orchestration CLI: A Practical Comparison for Developers
+Ralph Workflow is a free and open-source AI agent orchestrator — not a thin wrapper, but a composable loop framework that runs the coding agents you already use on your own machine. Its opinion is simple: the orchestrator should not be more complex than the work it is orchestrating. A single understandable Ralph-loop at the center composes into more ambitious workflows without the CLI turning into a maze of flags and phase names you need a diagram to follow.
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
-That simple core composes into a stronger composable workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+If you are comparing AI agent orchestration CLIs, the useful question is not whether a tool can call an agent.
+The useful question is whether it gives you a workflow that stays understandable, reviewable, and extensible when the task stops being tiny.
 
+## What Ralph Workflow is trying to solve
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** for developers who want work that is **too big to babysit and too risky to trust blindly** and need more than a single agent session.
+A single long coding-agent session can work for small edits.
+It gets much shakier when the task needs:
 
-If you are searching for an AI agent orchestration CLI, the real question is not whether a tool can call an agent. It is whether the tool can turn longer coding work into something you would actually inspect, test, and maybe merge.
+- a real written spec
+- explicit planning before implementation
+- repeated verification instead of one final guess
+- room to swap or extend agent behavior later
+- a handoff a human can judge without reverse-engineering the whole run
 
-## What an AI agent orchestration CLI should actually do
+Ralph Workflow takes the simple Ralph-loop idea and uses it as the center of a larger orchestration model.
+The point is not complexity for its own sake.
+The point is to keep the center simple so the larger workflow stays easier to reason about.
 
-An AI agent orchestration CLI should do more than wrap one prompt:
+## Why the default workflow matters
 
-- require a written task or spec before the run starts
-- let you use the agents you already have on your own machine
-- move through plan, build, verify, and review instead of stopping at a draft
-- preserve checkpoints and supporting details for long runs
-- hand back a reviewable diff with checks and notes
+The default workflow matters because most users should not have to design an orchestration system before they can test one.
+You should be able to start with the shipped path, run a real task, and only then decide whether to extend it.
 
-If it cannot do those things, it is closer to prompt automation than orchestration.
+That is the practical promise: simple at the center, stronger in composition, useful before customization.
 
-## Why developers look for one
+## Where to go next
 
-The usual pain is familiar:
-
-- the agent says it is done, but the job does not hold up
-- long runs fail and leave no clean re-entry point
-- review means replaying terminal scrollback instead of opening a diff
-- glue scripts become their own maintenance burden
-
-That is the gap an orchestration CLI is supposed to close.
-
-## Where Ralph Workflow fits
-
-[Ralph Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) is built for that gap.
-
-It is for developers and technical teams who want to hand off substantial work overnight, come back to changed files plus checks and supporting details, and ask one honest question:
-
-**does the implementation hold up?**
-
-What makes it different is the finish line:
-
-- spec-first instead of prompt-first
-- phase-gated instead of draft-and-stop
-- agent-agnostic instead of tied to one coding tool
-- reviewable output instead of a done claim
-
-Ralph Workflow is **not** a hosted black box. It runs on your own machine with the coding agents you already use.
-
-## Best first evaluation path
-
-1. Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-2. Use [Getting Started](getting-started.md) for one real first run
-3. Open [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md) and judge the morning-after handoff honestly
-4. Turn that result into one public next step with [After Your First Ralph Workflow Run](after-your-first-run.md)
-
-Use GitHub only as the mirror if that is where you already track projects: <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-## Best next step on Codeberg if this matches what you need
-
-Do not leave the evaluation private.
-
-Use **Codeberg** as the main public home:
-
-- **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if the workflow earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction or proof gaps on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-That keeps the trust signal and the feedback loop on the primary repo instead of splitting them across surfaces.
-
-## Why try it now
-
-Because Ralph Workflow is free and open source, works with the agents you already use on your own machine, and gives you a practical way to test whether unattended coding can handle one real backlog task tonight.
-
-Run one real task, judge the morning-after handoff honestly, and then take exactly one public action on Codeberg:
-
-- **promising run:** star or watch the repo
-- **shaky run:** open the right issue on Codeberg
+- for the shortest honest first run: [START_HERE.md](../START_HERE.md)
+- for task selection help: [first-task-guide.md](./first-task-guide.md)
+- for the operator manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
+- for configuration and file locations: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)

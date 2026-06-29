@@ -1,10 +1,6 @@
----
-orphan: true
----
-
 # Claude Code Automation for Real Repo Work
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
@@ -12,7 +8,7 @@ If you are searching for **Claude Code automation**, the real question is not ju
 
 The real question is: **can you come back to a strong software result instead of a long session and a confident done claim?**
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
@@ -22,22 +18,18 @@ Why use it now? Keep Claude Code in the loop, inspect the source on **Codeberg**
 
 ## What useful Claude Code automation should actually solve
 
-If you already like Claude Code, raw automation still leaves a few hard problems:
+If you already like Claude Code, raw automation still leaves hard problems:
 
 - the task can drift while you are away
 - the handoff can be a transcript instead of a clean diff
 - tests can be claimed without an obvious review path
 - morning-after re-entry can be slower than the actual coding
 
-Useful Claude Code automation should make the **finish state** clearer, not just the runtime longer.
-
-That is the gap Ralph Workflow is meant to close.
+Useful Claude Code automation should make the **finish state** clearer, not just the runtime longer. That is the gap Ralph Workflow is meant to close.
 
 ## What Ralph Workflow adds on top of Claude Code
 
-Ralph Workflow does **not** replace Claude Code.
-
-It wraps the agent you already use in a repo-native unattended flow so the result is easier to judge in normal engineering terms:
+Ralph Workflow does **not** replace Claude Code. It wraps the agent you already use in a repo-native unattended flow so the result is easier to judge in normal engineering terms:
 
 - what changed
 - what checks ran
@@ -68,7 +60,7 @@ Open questions:
 
 That is the promise worth holding automation to: **proof of completion, not just a done claim**.
 
-If you want to inspect that shape before you install anything, open the public [example review bundle](example-review-bundle.md).
+If you want to inspect that shape before you install anything, open the public [example review bundle](./example-review-bundle.md).
 
 ## Best next step if Claude Code is already your default
 
@@ -77,7 +69,7 @@ Use **Codeberg** as the main public home:
 - **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 - **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **GitHub mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
 Keeping the main trust signals on Codeberg makes the primary repo a clearer evaluation surface.
 
@@ -89,6 +81,8 @@ Keeping the main trust signals on Codeberg makes the primary repo a clearer eval
 4. Review the diff, checks, and artifacts in the morning
 5. Ask: **does the implementation hold up?**
 
-If you want the shortest path, start with [getting-started.md](getting-started.md).
-If you want the clearest contrast first, read [ralph-workflow-vs-claude-code.md](ralph-workflow-vs-claude-code.md).
-If you want the best task filter before you run anything, read [when-unattended-coding-fits.md](when-unattended-coding-fits.md).
+If you want the shortest path, start with [../START_HERE.md](../START_HERE.md).
+
+If you want the clearest contrast first, read [ralph-workflow-vs-claude-code.md](./ralph-workflow-vs-claude-code.md).
+
+If you want the best task filter before you run anything, read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md).

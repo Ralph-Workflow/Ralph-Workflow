@@ -1,29 +1,25 @@
----
-orphan: true
----
-
 # Ralph Workflow vs OpenCode
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
 If you already use OpenCode, the simplest difference is this:
 
 - **OpenCode** is the coding-agent interface and provider-routing layer you drive directly.
-- **Ralph Workflow** is a **free and open-source** orchestration CLI that runs OpenCode or another supported coding agent **on your own machine** inside a **composable loop workflow** for real software work.
+- **Ralph Workflow** is an **open-source** orchestration CLI that runs OpenCode or another supported coding agent **on your own machine** and hands back a **strong software result** after an unattended run.
 
 That makes Ralph Workflow a fit for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-Why try it now? Because you do not need to replace OpenCode to use it. Keep your current OpenCode setup, hand Ralph Workflow one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
+Why try it now? You do not need to replace OpenCode to use it. Keep your current OpenCode setup, hand Ralph Workflow one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
 ## The core difference
 
 OpenCode is strongest when you want flexible provider access and a direct agent surface you can steer yourself.
 
-Ralph Workflow is strongest when you want the workflow itself to do more than one agent session can do cleanly.
+Ralph Workflow is strongest when you want the morning-after handoff to be the product.
 
-You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, development, verification, and review as one unattended flow, and you come back to executable changes, test evidence, logs, and artifacts you can inspect like normal engineering work.
+You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, development, verification, and review as one unattended flow, and you come back to a diff, checks, logs, and artifacts you can inspect like normal engineering work.
 
 ## Choose Ralph Workflow when
 
@@ -31,9 +27,9 @@ Ralph Workflow is usually the better fit when you want to:
 
 - keep OpenCode as your agent path but stop babysitting the session
 - hand off a real backlog task and review it later
-- run a real loop across planning, implementation, verification, and review
+- wake up to a understandable diff instead of a long transcript
 - route planning, implementation, and review through different agents when needed
-- evaluate the result by running software and checks, not by trusting a chat session
+- judge the result with one merge / no-human review
 
 Typical good Ralph Workflow tasks:
 
@@ -67,19 +63,19 @@ If your current pain is not "which provider should I route this to?" but "how do
 
 The difference is not simply more runtime.
 
-Ralph Workflow is built around a different workflow model:
+Ralph Workflow is built around a different finish line:
 
-- a spec-first loop instead of a single session
-- planning, implementation, verification, and review in one run
-- agent routing across phases when different tools fit different jobs
-- executable results and checks you can inspect in the repo
-- enough context to answer: **did this actually work, and would I merge it?**
+- a real diff
+- checks that actually ran
+- artifacts saved in the repo
+- review output you can inspect
+- enough context to answer: **does the implementation hold up?**
 
 That is the real product test.
 
 ## Fastest honest first test
 
-Before you start, have OpenCode or another supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is free and open source, but it does not replace the coding agent itself.
+Before you start, have OpenCode or another supported agent CLI already installed and already authenticated on your own machine. Ralph Workflow is open source, but it does not replace the coding agent itself.
 
 Then run:
 
@@ -94,9 +90,9 @@ ralph
 
 Use one real backlog task, not a vague demo.
 
-If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
+If you want help choosing that first task, read [when unattended coding fits](when-unattended-coding-fits.md), [the first-task guide](first-task-guide.md), and [first-task prompt templates](first-task-prompt-templates.md).
 
-If you want to see the kind of executable result and verification trail Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect the [example review bundle](example-review-bundle.md) and [how to review AI coding output before you merge](review-ai-coding-output-before-merge.md).
 
 ## Best next step if this sounds like the missing piece
 

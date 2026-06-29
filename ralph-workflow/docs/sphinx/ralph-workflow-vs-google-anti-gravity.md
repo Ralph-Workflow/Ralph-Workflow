@@ -1,10 +1,6 @@
----
-orphan: true
----
-
 # Ralph Workflow vs Google Anti Gravity
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
@@ -27,11 +23,7 @@ Ralph Workflow is strongest when you want to get out of the loop for a while.
 
 You write a bounded spec in `PROMPT.md`, Ralph Workflow runs planning, development, verification, and review as one unattended flow, and you come back to a diff, checks, logs, and artifacts you can inspect like normal engineering work.
 
-For Google Anti Gravity support, the MCP contract matters too: Ralph Workflow automatically injects its MCP endpoint at run time; use `ralph --check-mcp` to verify AGY transport compatibility before the first run. Ralph Workflow-owned MCP tools, completion signals such as `declare_complete`, and proxied upstream servers are part of the supported-agent story rather than an escape hatch.
-
-Ralph Workflow's AGY support is based on the upstream `agy` CLI source and the measured v1.0.8 wire format, not on assumptions. The canonical display names from `agy models` are the only valid `--model` values, and the flag order used by the harness matches what the real binary accepts. The eight canonical names are `Gemini 3.5 Flash (Medium)`, `Gemini 3.5 Flash (High)`, `Gemini 3.5 Flash (Low)`, `Gemini 3.1 Pro (Low)`, `Gemini 3.1 Pro (High)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, and `GPT-OSS 120B (Medium)`. See `tmp/agy-source-of-truth.txt` for the recorded upstream-source facts and local measurements.
-
-For CI or environments without a live AGY account, set `RALPH_AGY_BINARY` to `tests/_support/mock_agy.sh`. The deterministic mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin shell wrapper that passes through to it.
+For Google Anti Gravity support, the MCP contract matters too: Ralph Workflow injects the run-scoped MCP endpoint into AGY's workspace config before launch, then use `ralph --check-mcp` to verify the wiring. Ralph Workflow-owned MCP tools, completion signals such as `declare_complete`, and proxied upstream servers are part of the supported-agent story rather than an escape hatch.
 
 ## Choose Ralph Workflow when
 
@@ -87,6 +79,7 @@ That is the real product test.
 
 ## Fastest honest first test
 
+Before you start, Ralph Workflow automatically injects the Ralph Workflow MCP endpoint into AGY's workspace config before each run and restores it afterward. You can still verify the wiring with `ralph --check-mcp`, but no manual pre-configuration is needed before the first run.
 
 Then run:
 
@@ -104,17 +97,17 @@ Use one real backlog task, not a vague demo.
 
 **Completion contract:** Ralph Workflow expects Google Anti Gravity to signal completion using `declare_complete` (via the Ralph Workflow MCP tool surface) or by submitting a phase artifact — the same contract as Claude interactive mode.
 
-If you want help picking that first task, read [When Unattended Coding Fits](when-unattended-coding-fits.md), [Choose Your First Ralph Workflow Task](first-task-guide.md), and [First-Task Prompt Templates](first-task-prompt-templates.md).
+If you want help picking that first task, read [when unattended coding fits](when-unattended-coding-fits.md), [the first-task guide](first-task-guide.md), and [first-task prompt templates](first-task-prompt-templates.md).
 
-If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and the [Example Review Bundle](example-review-bundle.md).
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect the [example review bundle](example-review-bundle.md) and [how to review AI coding output before you merge](review-ai-coding-output-before-merge.md).
 
-## Best public next step if Google Anti Gravity is already in your stack
+## Best next step if this sounds like the missing piece
 
-Use **Codeberg** as the main public home for evaluating Ralph Workflow:
+Use **Codeberg** as the main public home:
 
-- **Inspect the primary repo first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if Ralph Workflow earns a place next to Google Anti Gravity:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Open first-run friction or docs issues on Codeberg if the handoff misses:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Inspect the source on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star / watch / fork on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
 
-Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust surface for developers evaluating Anti Gravity-based setups.
+Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust surface for developers evaluating Google Anti Gravity-based setups.

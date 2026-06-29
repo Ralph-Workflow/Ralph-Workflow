@@ -1,10 +1,6 @@
----
-orphan: true
----
-
 # Open-Source AI Coding Orchestrator: What Ralph Workflow Is Actually For
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
@@ -12,11 +8,11 @@ If you are searching for an **open-source AI coding orchestrator**, the real que
 
 The real question is: **can it take one real backlog task, run on your own machine, and bring back something you would actually review and maybe merge?**
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the finish line: Ralph Workflow hands back a **strong software result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
+What makes it different is the finish line: Ralph Workflow is built to hand back a **strong software result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
 
 Why use it now? Because you can inspect the source on **Codeberg**, install it for free, run one real task tonight, and judge the result tomorrow with one honest question: **does the implementation hold up?**
 
@@ -70,7 +66,7 @@ Open questions:
 
 That is the real promise: **proof of completion, not just a done claim**.
 
-If you want to inspect that shape before you install, open the public [Example Review Bundle](example-review-bundle.md).
+If you want to inspect that shape before you install, open the public [example review bundle](./example-review-bundle.md).
 
 ## Best next step if this is what you want
 
@@ -91,6 +87,6 @@ Keeping adoption and feedback on Codeberg makes the primary repo a clearer trust
 4. Review the diff, checks, and artifacts in the morning
 5. Ask: **does the implementation hold up?**
 
-If you want the shortest path, start with [Getting Started](getting-started.md).
-If you want the best task filter first, read [When Ralph Workflow Fits — and When It Does Not](when-unattended-coding-fits.md).
-If you want the clearest proof before setup, read [What Good Ralph Workflow Output Looks Like](reviewable-output.md) and [How to Review AI Coding Output Before You Merge](review-ai-coding-output-before-merge.md).
+If you want the shortest path, start with [../START_HERE.md](../START_HERE.md).
+If you want the best task filter first, read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md).
+If you want the clearest proof before setup, read [free-open-source-proof.md](./free-open-source-proof.md) and [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md).

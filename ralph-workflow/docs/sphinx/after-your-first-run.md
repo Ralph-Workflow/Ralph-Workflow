@@ -1,10 +1,6 @@
----
-orphan: true
----
-
 # After Your First Ralph Workflow Run
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
@@ -25,8 +21,8 @@ Use Codeberg for the real project relationship: stars, watches, issues, and cont
 
 Treat the first run as a fork with only two healthy outcomes:
 
-1. **It earned trust** → star or watch Ralph Workflow on Codeberg.
-2. **It exposed friction** → open the matching first-run or docs/proof issue form on Codeberg.
+1. **It earned trust** — star or watch Ralph Workflow on Codeberg.
+2. **It exposed friction** — open the matching first-run or docs/proof issue form on Codeberg.
 
 If you do neither, the adoption signal stays private and the project learns nothing.
 
@@ -35,11 +31,10 @@ If you do neither, the adoption signal stays private and the project learns noth
 After the run finishes, check these in order:
 
 1. **Does the diff match the task?**
-2. **Did the software actually do the requested thing?**
-3. **Did the checks actually run, including integration checks where they matter?**
-4. **Are the changes reviewable in one sitting?**
-5. **Are open questions called out clearly?**
-6. **does the implementation hold up?**
+2. **Did the checks actually run?**
+3. **Are the changes reviewable in one sitting?**
+4. **Are open questions called out clearly?**
+5. **does the implementation hold up?**
 
 If the answer to most of these is **yes**, Ralph Workflow is doing useful work.
 
@@ -64,7 +59,7 @@ Report it on **Codeberg** so the fix lands on the primary repo:
 - **First-run friction form** — choose that form at <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 - **Docs / proof gap form** — choose that form at <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
 
-Best bug reports say:
+Best bug/feedback reports say:
 
 - what real task you tried to hand off
 - where the friction showed up
@@ -78,7 +73,7 @@ A successful first run does **not** need to be perfect.
 It only needs to prove something real:
 
 - the task was scoped well enough to hand off
-- the workflow came back with real executable proof
+- the handoff came back as a real review surface
 - you can tell why you would or would not merge it
 
 That is already much better than a transcript that only sounds finished.
@@ -87,14 +82,12 @@ That is already much better than a transcript that only sounds finished.
 
 Move to a bigger second task only if the first run gave you:
 
-- working behavior you can verify
+- a understandable diff
 - real checks
 - a clean re-entry point the next morning
 - enough trust that you would review another result
 
-If not, do **not** jump to a bigger task yet.
-
-Instead:
+If not, do **not** jump to a bigger task yet. Instead:
 
 1. tighten the spec
 2. choose a more bounded task
@@ -104,8 +97,10 @@ Instead:
 
 Use these in order:
 
-1. [Example review bundle](example-review-bundle.md)
-2. [How to review AI coding output before you merge](review-ai-coding-output-before-merge.md)
-3. [Contributing on the primary repo](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
+1. [Example review bundle](./example-review-bundle.md)
+2. [What Good Output Looks Like](./free-open-source-proof.md)
+3. [Open a first-run or docs/proof issue on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new)
 
-The goal is simple: convert your first run into one honest public action on **Codeberg** — either a **star/watch** because it worked, or a **useful issue** because it did not.
+Do not turn uncertainty into silence.
+If the run looked promising, put the signal on **Codeberg** with a **star** or **watch**.
+If the run felt weak, put the learning on **Codeberg** with a **useful issue**.

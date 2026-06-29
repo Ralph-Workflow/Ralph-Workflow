@@ -1,18 +1,14 @@
----
-orphan: true
----
-
 # First-Task Prompt Templates
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the handoff: Ralph Workflow returns a **strong software result** in your repo — diff, checks, artifacts — instead of a transcript and a claim that the task is done.
+What makes it different is the composable loop structure: planning → development → verification, each phase driving the next, producing a **strong software result** you can evaluate directly — instead of a transcript and a claim that the task is done.
 
 Why use it now? Copy one of these templates into `PROMPT.md`, run one real backlog task tonight, and decide tomorrow whether the result is something you would actually merge.
 
@@ -23,7 +19,7 @@ Why use it now? Copy one of these templates into `PROMPT.md`, run one real backl
 3. Keep the scope narrow enough to review in one sitting.
 4. Run Ralph Workflow and ask one question in the morning: **does the implementation hold up?**
 
-If you are still not sure whether your task is a good fit, read [Choose Your First Ralph Workflow Task](first-task-guide.md) first.
+If you are still not sure whether your task is a good fit, read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) first.
 
 ## Template 1: Small feature slice
 
@@ -43,7 +39,6 @@ Add <feature> to <surface>. Keep the rest of the flow unchanged.
 ```
 
 Example fit:
-
 - add a `/health` endpoint
 - add empty-state UI for a list page
 - add a CLI flag with clear output
@@ -67,7 +62,6 @@ Keep the normal success path unchanged.
 ```
 
 Example fit:
-
 - reject empty project names
 - block invalid config values
 - stop destructive commands unless a flag is present
@@ -91,7 +85,6 @@ without changing external behavior.
 ```
 
 Example fit:
-
 - extract repeated parsing logic
 - split a large function into smaller helpers
 - simplify conditionals in one module
@@ -115,7 +108,6 @@ Do not change production behavior unless a small testability fix is required.
 ```
 
 Example fit:
-
 - add tests around a CLI command
 - cover a serialization edge case
 - add regression coverage for a fixed bug
@@ -139,7 +131,6 @@ without guessing.
 ```
 
 Example fit:
-
 - improve install docs
 - add a troubleshooting section
 - clarify configuration steps for first-time users
@@ -160,21 +151,18 @@ A weak first task is:
 - a broad migration with no clear stopping point
 - anything where nobody agrees what `done` means
 
-## Best next step after you run one of these templates
-
-Do not leave the result as a private experiment.
-
-Use **Codeberg** as the main public home:
-
-- **Inspect the primary repo on Codeberg first:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Star or watch on Codeberg if the first run earns trust:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
-- **Report first-run friction or missing template guidance on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
-- **Use GitHub only as the mirror if that is where you already track projects:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
-
-Then use [After Your First Ralph Workflow Run](after-your-first-run.md) to turn one honest trial into the right public next step.
-
 ## Next step
 
-- Continue with [Getting Started](getting-started.md) for the fastest first-run path
-- Read [What Good Ralph Workflow Output Looks Like](reviewable-output.md) to see what good output should look like
-- Read [Choose Your First Ralph Workflow Task](first-task-guide.md) if you still need a task fit check
+- Read [../START_HERE.md](../START_HERE.md) for the fastest first-run path
+- Read [free-open-source-proof.md](./free-open-source-proof.md) to see what good output should look like
+- Read [when-unattended-coding-fits.md](./when-unattended-coding-fits.md) if you still need a task fit check
+
+## Turn the first run into one public Codeberg action
+
+These templates are only useful if they end in a real evaluation and a visible next step.
+
+- **Inspect the primary repo on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Star or watch on Codeberg** if the first run earns it: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+- **Report first-run friction, weak docs, or missing proof on Codeberg:** <https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new>
+- **Use GitHub only as the mirror:** <https://github.com/Ralph-Workflow/Ralph-Workflow>
+- **Need the post-run scorecard first?** Read [After Your First Ralph Workflow Run](./after-your-first-run.md)

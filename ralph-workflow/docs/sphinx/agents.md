@@ -1,24 +1,52 @@
----
-orphan: true
----
+# Agent CLI lifecycle
 
-# Agents
+This page covers the full lifecycle of an agent CLI in Ralph Workflow:
+**selection**, **detection**, **authentication**, and **invocation**.
+It complements [Configuration](configuration.md) (which configures each
+phase to use an agent) and
+[Which Agent Should I Start With?](which-agent-should-i-start-with.md) (which
+helps you pick one for your first task).
 
-Ralph Workflow can supervise multiple coding agents, but the contract stays the same: the workflow is built for **unattended** orchestration that still comes back reviewable in the morning.
+## The agent-CLI trust boundary
 
-## Supported agents
+Ralph Workflow does **not** authenticate agent CLIs. Each agent CLI uses its
+own native authentication:
 
-Ralph Workflow currently supports **Claude**, **Codex**, **OpenCode**, **Nanocoder**, **Google Anti Gravity**, and **Pi** as orchestration targets. Each runs under the same unattended workflow contract described on this page. For help choosing, see [Which Agent Should I Start With?](which-agent-should-i-start-with.md).
+- **Claude Code** — `claude login` / Anthropic API key in the local keychain
+- **Codex CLI** — `codex login` / OpenAI API key in the local keychain
+- **OpenCode** — provider-specific keys configured per provider
+- **Nanocoder** — local-only TUI, no remote auth
+- **Google Anti Gravity (AGY)** — `agy login` / Google account
+- **Pi** — `pi` provider configuration
 
-> See `ralph/skills/_agent_paths.py` for the canonical mapping of every supported agent that has a documented user-global skill-discovery root. Pi has no documented skill-discovery system per <https://pi.dev/docs/latest/usage>, so it is intentionally absent from that registry.
+You authenticate each agent CLI *yourself* before invoking Ralph Workflow.
+Ralph Workflow then calls the agent CLI as-is and supervises the workflow.
+It does not read, store, or proxy credentials.
 
-Every supported agent has a documented verification path that targets its own contract. Claude and AGY each have an interactive parity smoke test (`python -m ralph smoke-interactive-claude` and `python -m ralph smoke-interactive-agy`) that exercises a live (or mocked live) subprocess and is the supported path for proving real end-to-end output without an account. Codex, OpenCode, Nanocoder, and Pi each have a public-surface black-box pytest suite that drives the agent through `AgentRegistry.from_config`, the catalog, and the public command-builder surface without spawning a real CLI subprocess. These black-box suites verify Ralph Workflow's public registry / catalog / parser / command-builder surface for the agent, plus the committed wire-format fixture (for Pi, the documented `AgentSessionEvent` vocabulary in `tests/agents/parsers/fixtures/pi_dev_documented_events.json`); they do **not** claim live MCP wiring or real Pi-agent output, because Pi has no documented CLI MCP wiring path per <https://pi.dev/docs/latest/usage>. Ralph Workflow runs Pi without forwarding `RALPH_MCP_ENDPOINT`, so Pi workflow phases rely on the prompt-side artifact fallback instead of MCP tool calls.
+> This is a deliberate trust boundary: **you** own your agent credentials.
+> Ralph Workflow's job is to orchestrate work, not to handle secrets.
 
-### Google Anti Gravity (AGY)
+## Selection — the seven built-in agents
 
-AGY is discovered from `PATH` like any other agent. Set `RALPH_AGY_BINARY` to point at a custom executable or at the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock simulates AGY v1.0.8's measured wire format and is the supported path for proving real output end-to-end without a live account. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `tests/_support/mock_agy.sh` is a thin shell wrapper suitable for `RALPH_AGY_BINARY`.
+The canonical registry is `ralph/agents/builtin.py`. Ralph Workflow ships
+with seven built-in agent specs that the bundled default policy can route
+phases to:
 
-The canonical display names accepted by `agy models` are the only valid `--model` values; lowercased or dashed slugs are rejected by the upstream binary. The eight canonical names are:
+| Built-in name     | CLI          | Transport            | Headless? | Use case                                              |
+| ----------------- | ------------ | -------------------- | --------- | ----------------------------------------------------- |
+| `claude`          | `claude`     | Interactive (PTY)    | Yes (with `--print`) | Anthropic's Claude Code; canonical reference agent |
+| `claude-headless` | `claude`     | Headless subprocess  | Yes       | Same binary, no PTY — cheaper, less visibility        |
+| `codex`           | `codex`      | Headless subprocess  | Yes       | OpenAI's Codex CLI                                     |
+| `opencode`        | `opencode`   | Headless subprocess  | Yes       | Open-source terminal coding agent                     |
+| `nanocoder`       | `nanocoder`  | Local TUI            | Yes       | Local-only TUI coding agent                          |
+| `agy`             | `agy`        | Interactive (PTY)    | Yes (mock-backed) | Google's Antigravity CLI (v1.0.9+)              |
+| `pi`              | `pi`         | Headless subprocess  | Yes       | Minimal coding agent; `pi --mode json <prompt>`       |
+
+Beyond the seven built-ins, the registry resolves dynamic `<agent>/<model>`
+aliases through `_resolve_dynamic_agent`. So `agy/Gemini 3.5 Flash (Medium)`
+is a valid agent spec that resolves at runtime to the AGY binary with the
+named model. The eight canonical `agy models` display names accepted by
+`agy models` are:
 
 - `Gemini 3.5 Flash (Medium)`
 - `Gemini 3.5 Flash (High)`
@@ -29,115 +57,192 @@ The canonical display names accepted by `agy models` are the only valid `--model
 - `Claude Opus 4.6 (Thinking)`
 - `GPT-OSS 120B (Medium)`
 
-Use `ralph --check-mcp` to validate AGY transport compatibility before the first run.
+For chain and drain routing — using one agent's output as the next agent's
+input across phases — see [Configuration](configuration.md).
 
-## Project-local skills
+## Detection — finding agents on PATH
 
-In addition to the user-global skill bundle, every `ralph` run auto-seeds a project-local skill fan-out so the same baseline is available to every supported agent at the project scope (not just in your user home).
+Ralph Workflow discovers each agent CLI via `shutil.which(agent_binary)`.
+Detection happens at the moment a phase is routed to an agent, not at
+`--init` time, so a CLI you install between `ralph --init` and `ralph` is
+picked up automatically.
 
-### Canonical+symlinks design
+To verify detection before a run:
 
-`.opencode/skills/` is the single source of truth. The 3 project-scope sibling roots (`./.claude/skills/`, `./.codex/skills/`, `./.gemini/antigravity-cli/skills/`) are symlinks into it. OpenCode is intentionally absent as a project sibling because the project canonical `./.opencode/skills/` IS the opencode project root, so it would be a self-symlink. The user-global opencode root at `~/.config/opencode/skills/` is covered by the user-global install.
+```bash
+ralph --list-agents
+```
 
-Self-improving skills are not yet implemented — see the future-extension sketch below and the `# FUTURE: self-improving skills hook goes here` comment at the END of `install_project_baseline_skills` in `ralph/skills/_installer.py`.
+To validate availability alongside the rest of the pre-flight:
 
-### Auto-seed behavior
+```bash
+ralph --diagnose
+```
 
-On every `ralph` run, missing project skills AND the batteries-included `.gitignore` (see `_DEFAULT_GITIGNORE_PATTERNS` in `ralph/config/bootstrap.py`) are auto-seeded when missing. Re-running is idempotent. Use `ralph --force-init-skills` to force a full re-resolve even when valid installs exist. If a project-scope install reports a conflict (NEEDS_REPAIR), `_sync_shipped_skills_on_pipeline_run` surfaces `ralph --force-init-skills` as the remediation hint on a non-DEBUG channel so the user actually sees it.
+### Overriding the binary path
 
-### User-global update policy
+Some agents allow pointing at a custom executable via environment variable.
+The canonical example is `RALPH_AGY_BINARY`:
 
-On a normal `ralph` run, outdated **user-global** baseline skills (e.g. `~/.claude/skills/`, `~/.codex/skills/`, `~/.config/opencode/skills/`, `~/.gemini/antigravity-cli/skills/`) are **NOT auto-repaired**. `SkillManager.check_skills_for_updates()` records `update_available=True` in capability state but never mutates the user-global canonical root or any sibling symlink. The run prints a `ralph --force-init-skills` hint on a non-DEBUG channel so the user knows how to apply the update. Only an explicit `ralph --force-init-skills` (or `ralph --init`) invocation overwrites the user-global canonical or sibling symlinks.
+```bash
+RALPH_AGY_BINARY=/path/to/custom/agy ralph --diagnose
+```
 
-This split — project-scope artifacts are auto-seeded, user-global artifacts are hint-only — matches the prompt's "we don't update it unless the person runs --force-init-skills" contract.
+The seam lives in `ralph/cli/commands/smoke.py` via
+`_maybe_apply_agy_binary_override(agent_config)` immediately after
+`registry.get(agent_name)`. The plumbing layer stays free of env-var seams;
+the CLI surface applies the override at the boundary.
 
-### Customization contract
+For mock-backed deterministic CI runs, point `RALPH_AGY_BINARY` at the
+bundled mock:
 
-Editing the SKILL.md under `./.opencode/skills/` propagates to all sibling symlinks. Editing a sibling symlink's target directly is a no-op. The `.ralph-managed.json` marker protects user-edited content from being overwritten.
+```bash
+RALPH_AGY_BINARY="$(pwd)/tests/_support/mock_agy.sh"
+```
 
-### Code citations
+The mock entrypoint is `tests/_support/mock_agy.py` (run as
+`python -m tests._support.mock_agy`); `tests/_support/mock_agy.sh` is a thin
+shell wrapper suitable for `RALPH_AGY_BINARY`.
 
-- `ralph/skills/_agent_paths.py` — `project_skill_root` and `project_sibling_skill_roots`
-- `ralph/skills/_installer.py` — `install_project_baseline_skills`, `_project_skills_need_install`
-- `ralph/cli/commands/run.py` — `_sync_shipped_skills_on_pipeline_run`
+## Authentication — you own it
 
-### Self-improving skills (future)
+This section is short on purpose. **Ralph Workflow does not authenticate
+agents.** Before your first run:
 
-The TODO lives at the end of `install_project_baseline_skills` in `ralph/skills/_installer.py`. The future design is a hook called after every `ralph` run that lets agents write back improvements to `./.opencode/skills/<name>/SKILL.md`, with a prompt-confirmation gate to prevent runaway mutations. The hook entry point lives at `ralph/skills/_installer.py:self_improving_skills_hook` and is called from `install_project_baseline_skills` after every successful project fan-out. The default body is a no-op; the future implementation will gate mutations on a prompt-confirmation step.
+1. Install each agent CLI you want to use (e.g. `pipx install codex-cli`).
+2. Authenticate each one using its native flow.
+3. Verify the auth worked (e.g. `claude "say hello"` works from your shell).
+4. Then run `ralph --diagnose` to confirm Ralph Workflow can find the CLI on
+   `PATH`.
 
-**Scope constraint:** the hook fires only on the project-scope fan-out (`install_project_baseline_skills`); the user-global install path (`install_baseline_skills`, invoked by `ralph --init` and `ralph --force-init-skills`) is intentionally NOT wired in this iteration to avoid silently mutating the user's home directory (e.g. `~/.claude/skills/`). Project-scope mutations are reversible (delete `./.opencode/skills/`, re-run `ralph`); user-global mutations are not.
+If `ralph --diagnose` reports the agent is missing but the CLI works in your
+shell, the most common cause is that `PATH` in your non-interactive shell
+differs from your interactive shell. Always test from the same shell type
+you'll launch `ralph` from.
 
-## Supported-agent research contract
+## Invocation — per-transport command builders
 
-Every `AgentSkillRoot` in `ralph/skills/_agent_paths.py` carries a `source_url` and a `last_verified_iso` (YYYY-MM-DD). The audit in `tests/test_skills_agent_paths_research.py` pins the contract for user-global entries. `ProjectAgentSkillRoot` (in the same file) mirrors the same contract for project-scope entries; `tests/test_skills_project_paths_research.py` pins it. Future maintainers MUST bump `last_verified_iso` in the same commit that changes `source_url` or `path_segments`, citing the re-verification source.
+Each transport has a `CommandBuilder` in `ralph/agents/invoke/_command_builders/`
+that assembles the argv passed to the agent subprocess. The argv shapes
+differ by transport:
 
-## What this page is for
+### Claude Code (interactive, PTY)
 
-This page explains how Ralph Workflow orchestrates agent sessions, what completion means, and why interactive and headless transports make different tradeoffs.
+The Claude command builder emits the autonomy flag the bundled policy
+declares, plus the session/resume and MCP config injection. With
+`autonomy_mode = "dangerously-skip-permissions"`, the argv includes
+`--dangerously-skip-permissions`. Claude's MCP config injection routes the
+Ralph Workflow MCP tools into the agent's tool surface; see
+[Advanced MCP Configuration](advanced-mcp-configuration.md).
 
-## The unattended orchestration contract
+### Claude Code (headless, no PTY)
 
-Ralph Workflow does not treat an agent transcript as proof that the work is done. It supervises each session, orchestrates the configured phases, and looks for concrete completion evidence before handing control back.
+Same binary, no PTY. Cheaper to spawn, less visibility. Use when you trust
+the prompt-side artifact fallback and don't need live transcript display.
 
-That evidence comes from:
+### Codex
 
-- **artifact** output that shows what was produced for the phase
-- explicit tool or MCP signals such as `declare_complete`
-- verification and review steps that confirm the handoff is not just a confident draft
+The Codex builder uses OpenAI's `--approve` flag for unattended approval
+plus any resume/session flags the policy declares.
 
-If an agent exits **without completing** the phase, Ralph Workflow treats that as **incomplete** work rather than silently calling it done. The session can be resumed, retried, or routed through the next recovery path depending on the configured policy.
+### OpenCode
 
-## Interactive vs headless modes
+The OpenCode builder uses `--approve` for unattended approval plus
+provider-specific flags forwarded through `--provider`.
 
-Interactive transports give Ralph Workflow better streaming **observability** into what the agent is doing during a live session. Headless transports can be simpler to automate, but the tradeoff is less step-by-step visibility while the run is in flight.
+### Nanocoder
 
-That tradeoff matters most when you want stronger supervision of a long-running interactive coding session. Ralph Workflow can still manage either mode, but the operational visibility differs.
+Local-only TUI. The builder launches Nanocoder without autonomy flags —
+Nanocoder has no remote auth surface.
 
-## Completion and parser behavior
+### AGY (PTY)
 
-Completion is evaluated from durable evidence, not from a conversational vibe. Parsers may produce **bounded summaries** of what happened, but they do not preserve every multimodal parser output as first-class artifacts in the final event stream.
+The AGY builder runs `agy` inside a PTY with a bounded drain so buffered
+stdout is captured end-to-end. The AGY parser classifies live output into
+`text:` / `thinking:` / `tool_use:` events for the smoke report. With
+`autonomy_mode = "dangerously-bypass-approvals-and-sandbox"`, the argv
+includes the corresponding AGY-side flag.
 
-In practice, Ralph Workflow expects either:
+### Pi
 
-- phase artifacts that show the result
-- an explicit `declare_complete` call
-- or a recovery path when the session ends before either condition is met
+The Pi builder invokes `pi --mode json <prompt>` and parses the resulting
+NDJSON stream per Pi's documented `AgentSessionEvent` vocabulary at
+<https://pi.dev/docs/latest/json>. Pi has no documented CLI MCP wiring path,
+so Ralph Workflow runs Pi **without** forwarding `RALPH_MCP_ENDPOINT`;
+Pi workflow phases rely on the prompt-side artifact fallback instead of MCP
+tool calls.
 
-## Resolved capability delivery
+## End-to-end verification paths
 
-Multimodal delivery is decided per session through `ResolvedCapabilityProfile`, which acts as the pre-computed, session-owned contract for how each modality is delivered to the active agent transport.
+Each agent has a documented verification path that targets its own contract:
 
-That keeps media, artifacts, and tool output aligned with the capabilities of the current session instead of assuming one fixed behavior for every provider.
+- **Claude Code (interactive)**: `ralph smoke-interactive-claude`
+- **AGY (interactive)**: `ralph smoke-interactive-agy` (mock-backed by default)
+- **Codex, OpenCode, Nanocoder, Pi**: public-surface black-box pytest suite
+  (`uv run pytest tests/agents/<agent>_blackbox.py -q`)
 
-## Dedicated parallel worker bootstrap
+These suites verify Ralph Workflow's public registry / catalog / parser /
+command-builder surface for each agent, plus the committed wire-format
+fixture where applicable. They do **not** claim live MCP wiring for agents
+that have no documented CLI MCP path.
 
-Ralph-managed parallel worker bootstrap is dormant in the bundled default (see [Parallel Mode](parallel-mode.md)). This section documents the opt-in contract for the `ralph_fan_out` dispatch mode.
+The canonical end-to-end AGY verification (mock-backed, always green) is:
 
-When Ralph Workflow fans out parallel workers for a multi-unit execution, each worker enters through a dedicated bootstrap path that short-circuits the shared pipeline startup loop.
+```bash
+cd ralph-workflow && \
+  RALPH_AGY_BINARY="$(pwd)/tests/_support/mock_agy.sh" \
+  uv run python -m ralph smoke-interactive-agy --agent 'agy/Gemini 3.5 Flash (Medium)'
+```
 
-### What each worker receives
+Expected green parity table excerpt:
 
-Each parallel worker gets its own isolated execution context:
+```text
+| Agent                         | Transport | File | Session                                       | Parser events | Tool activity | Artifact | Breaks |
+| agy/Gemini 3.5 Flash (Medium) | agy       | yes  | interactive-agy-smoke-Gemini-3.5-Flash-Medium | 1             | yes           | yes      | none   |
+```
 
-- **Work-unit manifest** — serialized at `.agent/workers/<unit_id>/worker-manifest.json` before launch, containing the unit description, allowed directories, phase, drain, and the parent run's config path and CLI overrides
-- **Worker-local prompt dump** — rendered prompt written to `.agent/workers/<unit_id>/tmp/<phase>_prompt.md` instead of the shared `.agent/tmp/` location
-- **Worker-local checkpoint** — saved to `.agent/workers/<unit_id>/tmp/checkpoint.json` instead of `.agent/checkpoint.json`
-- **Worker-local system prompt and current-prompt mirror** — materialized under the same worker namespace, keeping the worker's view of PROMPT.md and system prompt isolated from other workers
-- **Worker-local multimodal sidecar** — handoff metadata written to `.agent/workers/<unit_id>/tmp/<phase>_multimodal_handoff.json`
+## Completion and observability
 
-### Why isolation matters
+Completion is evaluated from **durable evidence**, not from a conversational
+vibe. Ralph Workflow expects each agent invocation to produce either a phase
+artifact that satisfies the phase's declared contract, or an explicit
+`declare_complete` MCP call. If a session exits **incomplete** (without
+either signal), Ralph Workflow treats the work as incomplete rather than
+calling it done — the session can be resumed, retried, or routed through the
+next recovery path per policy.
 
-The old bootstrap path launched workers as generic `python -m ralph` invocations that entered the shared pipeline loop and competed for singleton runtime files. The dedicated bootstrap path bypasses that loop entirely and threads the work-unit context through the manifest so each worker operates on its own state.
+Interactive transports (Claude Code in PTY, AGY in PTY) give Ralph Workflow
+better streaming **observability** into what the agent is doing during a
+live session. Headless transports are cheaper to spawn and simpler to
+automate, but the tradeoff is less step-by-step visibility while the run is
+in flight. Pick the transport that matches the operational visibility you
+need for the run.
 
-Post-fanout verification remains serialized — Ralph Workflow waits for all workers to finish before running the single verification step, but the workers themselves execute in parallel with no shared state to corrupt.
+Multimodal delivery is decided per session through
+`ResolvedCapabilityProfile`, which acts as the pre-computed, session-owned
+contract for how each modality is delivered to the active agent transport.
 
-### Bootstrap entry point
+## When something doesn't work
 
-Workers launched via fan-out receive the manifest path through the hidden `--parallel-worker-manifest` CLI option. The worker runtime loads the manifest, reconstructs the work-unit context, materializes the prompt for the unit, and executes the phase without re-entering the outer pipeline loop.
+If `ralph --diagnose` reports an agent problem, check:
+
+1. The CLI is installed: `which <binary>` returns a path
+2. The CLI works in your shell: `<binary> --version` succeeds
+3. Auth is valid: try a one-shot prompt in your shell
+4. PATH matches: launch `ralph` from the same shell type you tested in
+5. The right binary override is set: `RALPH_AGY_BINARY` if you're using a
+   custom or mock AGY
+
+For transport-specific issues, see [Troubleshooting](troubleshooting.md)
+and the agent's verification path above.
 
 ## Related pages
 
-- [Developer Internals](developer-internals.md)
-- [MCP Architecture](mcp-architecture.md)
-- [Artifacts](artifacts.md)
-- [Transcript and Display Reference](transcript.md)
+- [Diagnostics](diagnostics.md) — pre-flight checks for agents and MCP
+- [Configuration](configuration.md) — how phases are routed to agents
+- [Agent Compatibility](agent-compatibility.md) — known caveats and
+  workarounds per agent
+- [Which Agent Should I Start With?](which-agent-should-i-start-with.md) —
+  picking your first agent
+- [CLI reference](cli.md) — every flag including `--list-agents`,
+  `--diagnose`, and `--check-mcp`

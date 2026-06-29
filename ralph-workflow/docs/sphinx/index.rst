@@ -5,7 +5,10 @@ Ralph Workflow
 
 **Hand your coding agents a spec tonight. Wake up to reviewable, tested commits.**
 
-Ralph Workflow is a free, open-source composable loop framework that runs the coding agents you already use — Claude Code, Codex, OpenCode, or Pi.dev — on your own machine. Simple at the center, powerful in composition.
+Ralph Workflow is the **autopilot for coding agents** and a free, open-source
+composable loop framework that runs the coding agents you already use —
+Claude Code, Codex, OpenCode, Nanocoder, AGY, or Pi.dev — on your own machine.
+Simple at the center, powerful in composition.
 
 Install and run
 ---------------
@@ -65,15 +68,19 @@ First run
 - :doc:`getting-started`
 - :doc:`quickstart`
 - :doc:`first-task-guide`
+- :doc:`first-task-prompt-templates`
+- :doc:`diagnostics`
 
-Configuration and customization
--------------------------------
+Configure & operate
+-------------------
 
 - :doc:`configuration`
+- :doc:`agents`
 - :doc:`reference`
 - :doc:`advanced-pipeline-configuration`
 - :doc:`advanced-artifact-configuration`
 - :doc:`advanced-mcp-configuration`
+- :doc:`parallel-mode`
 - :doc:`policy-explanation`
 
 Use-case routing
@@ -82,6 +89,82 @@ Use-case routing
 - :doc:`user-stories`
 - :doc:`which-agent-should-i-start-with`
 - :doc:`when-unattended-coding-fits`
+- :doc:`agent-compatibility`
+
+Concepts / explanation
+----------------------
+
+- :doc:`concepts`
+- :doc:`ralph-loop`
+- :doc:`policy-driven-pipeline`
+- :doc:`phase-routing`
+- :doc:`artifact-lifecycle`
+- :doc:`watchdogs-and-timeouts`
+- :doc:`verification-model`
+
+Reference
+---------
+
+- :doc:`cli`
+- :doc:`mcp-tools`
+- :doc:`artifacts`
+- :doc:`recovery`
+- :doc:`troubleshooting`
+- :doc:`versioning`
+- :doc:`pro-support`
+- :doc:`modules`
+- :doc:`quick-reference`
+- :doc:`developer-reference`
+- :doc:`developer-internals`
+- :doc:`local-web-access`
+- :doc:`prompts`
+- :doc:`supervising-api`
+- :doc:`transcript`
+- :doc:`mcp-tool-restriction`
+- :doc:`mcp-architecture`
+- :doc:`policy-driven-overhaul-migration`
+- :doc:`display`
+
+Proof / framing
+---------------
+
+- :doc:`after-your-first-run`
+- :doc:`reviewable-output`
+- :doc:`example-review-bundle`
+- :doc:`overnight-demo-real`
+- :doc:`free-open-source-proof`
+- :doc:`what-a-good-ai-coding-finish-receipt-looks-like`
+
+Comparisons
+-----------
+
+- :doc:`ralph-workflow-vs-aider`
+- :doc:`ralph-workflow-vs-claude-code`
+- :doc:`ralph-workflow-vs-codex-cli`
+- :doc:`ralph-workflow-vs-google-anti-gravity`
+- :doc:`ralph-workflow-vs-opencode`
+
+How-to articles
+---------------
+
+- :doc:`claude-code-approval-mode`
+- :doc:`claude-code-automation`
+- :doc:`claude-code-codex-workflow`
+- :doc:`claude-code-run-until-done`
+- :doc:`run-claude-code-overnight-without-babysitting`
+- :doc:`remote-supervision-of-coding-agents`
+- :doc:`review-ai-coding-output-before-merge`
+- :doc:`what-breaks-first-with-multiple-coding-agents`
+- :doc:`why-worktrees-are-not-enough`
+- :doc:`bounded-autonomy-for-unattended-coding`
+- :doc:`how-to-tell-if-an-ai-coding-task-is-actually-done`
+- :doc:`good-unattended-ai-coding-task`
+- :doc:`open-source-ai-coding-orchestrator`
+- :doc:`unattended-coding-agent`
+- :doc:`spec-driven-ai-agent`
+- :doc:`ai-agent-orchestration-cli`
+- :doc:`ai-agent-workflow-composer`
+- :doc:`ai-coding-workflow-automation`
 
 .. toctree::
    :hidden:
@@ -89,12 +172,72 @@ Use-case routing
    getting-started
    quickstart
    first-task-guide
+   first-task-prompt-templates
+   diagnostics
    configuration
+   agents
    reference
    advanced-pipeline-configuration
    advanced-artifact-configuration
    advanced-mcp-configuration
+   parallel-mode
    policy-explanation
    user-stories
    which-agent-should-i-start-with
    when-unattended-coding-fits
+   agent-compatibility
+   concepts
+   ralph-loop
+   policy-driven-pipeline
+   phase-routing
+   artifact-lifecycle
+   watchdogs-and-timeouts
+   verification-model
+   cli
+   mcp-tools
+   artifacts
+   recovery
+   troubleshooting
+   versioning
+   pro-support
+   modules
+   quick-reference
+   developer-reference
+   developer-internals
+   local-web-access
+   prompts
+   supervising-api
+   transcript
+   mcp-tool-restriction
+   mcp-architecture
+   policy-driven-overhaul-migration
+   display
+   after-your-first-run
+   reviewable-output
+   example-review-bundle
+   overnight-demo-real
+   free-open-source-proof
+   what-a-good-ai-coding-finish-receipt-looks-like
+   ralph-workflow-vs-aider
+   ralph-workflow-vs-claude-code
+   ralph-workflow-vs-codex-cli
+   ralph-workflow-vs-google-anti-gravity
+   ralph-workflow-vs-opencode
+   claude-code-approval-mode
+   claude-code-automation
+   claude-code-codex-workflow
+   claude-code-run-until-done
+   run-claude-code-overnight-without-babysitting
+   remote-supervision-of-coding-agents
+   review-ai-coding-output-before-merge
+   what-breaks-first-with-multiple-coding-agents
+   why-worktrees-are-not-enough
+   bounded-autonomy-for-unattended-coding
+   how-to-tell-if-an-ai-coding-task-is-actually-done
+   good-unattended-ai-coding-task
+   open-source-ai-coding-orchestrator
+   unattended-coding-agent
+   spec-driven-ai-agent
+   ai-agent-orchestration-cli
+   ai-agent-workflow-composer
+   ai-coding-workflow-automation

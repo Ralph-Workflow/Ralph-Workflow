@@ -1,22 +1,18 @@
----
-orphan: true
----
-
 # AI Coding Workflow Automation: What Actually Makes It Useful
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
+Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
 If you are searching for **AI coding workflow automation**, the real question is not whether a tool can launch an agent and keep it busy.
 
-The real question is: **does the workflow produce software you can actually run, verify, and maybe merge?**
+The real question is: **does the workflow come back as something you would actually review and maybe merge?**
 
-Ralph Workflow is **the operating system for autonomous coding**: a **free and open-source composable loop framework and AI orchestrator** that runs the coding agents you already use **on your own machine**.
+Ralph Workflow is a **free and open-source** orchestration CLI that runs the coding agents you already use **on your own machine**.
 
 It is for developers and technical teams with work that is **too big to babysit and too risky to trust blindly**.
 
-What makes it different is the workflow model: Ralph Workflow is built around **composable loops** for planning, implementation, verification, and review, with enough evidence at the end to decide whether the work actually holds up.
+What makes it different is the finish line: Ralph Workflow is built to hand back a **strong software result** — a diff, checks, artifacts, and enough context to decide whether the work actually holds up.
 
 Why use it now? Because you can inspect the source on **Codeberg**, run one real backlog task tonight, and judge the result tomorrow with one honest question: **does the implementation hold up?**
 
@@ -40,7 +36,7 @@ The common failure mode is not that the model refuses to write code.
 
 It is that the automation hands back something hard to judge:
 
-- a transcript instead of executable proof
+- a transcript instead of a reviewable diff
 - a claim that tests passed without a clear proof path
 - a long run with no clean re-entry point
 - too much manual glue between planning, implementation, and review
@@ -56,7 +52,7 @@ It gives the run a more trustworthy shape:
 - **spec-first** instead of prompt-first
 - **phase-gated** instead of draft-and-stop
 - **agent-agnostic** instead of locked to one coding tool
-- **composable loops** instead of a single long agent session
+- **reviewable output** instead of a transcript you have to reconstruct
 
 It is not a hosted black box. It runs on your machine with Claude Code, Codex CLI, OpenCode, Google Anti Gravity, or the agent path you already use.
 
@@ -64,7 +60,7 @@ It is not a hosted black box. It runs on your machine with Claude Code, Codex CL
 
 1. Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 2. Pick one bounded real task with [first-task-guide.md](./first-task-guide.md)
-3. Run the shortest honest first pass with [../START_HERE.md](../../../START_HERE.md)
+3. Run the shortest honest first pass with [../START_HERE.md](../START_HERE.md)
 4. Judge the morning-after handoff with [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md)
 5. Turn that outcome into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
@@ -87,7 +83,7 @@ That keeps adoption and feedback on the primary repo instead of splitting them a
 
 Because Ralph Workflow is free and open source, works with the agents you already use on your own machine, and gives you a practical way to test AI coding workflow automation on one real backlog task instead of a synthetic demo.
 
-Run one real task, judge the software and checks honestly, and then take exactly one public action on Codeberg:
+Run one real task, judge the handoff honestly, and then take exactly one public action on Codeberg:
 
 - **promising run:** star or watch the repo
 - **shaky run:** open the right issue on Codeberg
