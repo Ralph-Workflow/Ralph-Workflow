@@ -54,11 +54,11 @@ under a different launcher name.
 
 For the full dev-build workflow and the rationale behind the `rdev`
 / `ralph` split, see
-[`../CONTRIBUTING.md`](../CONTRIBUTING.md).
+[`../../CONTRIBUTING.md`](../../CONTRIBUTING.md).
 
 ## Related pages
 
 - [CLI Reference](cli.md) — command surface and flags
 - [Configuration](configuration.md) — runtime policy and config precedence
 - [Versioning](versioning.md) — release and compatibility policy
-- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — full contributor guide with the dev/stable build workflow
+- [`../../CONTRIBUTING.md`](../../CONTRIBUTING.md) — full contributor guide with the dev/stable build workflow

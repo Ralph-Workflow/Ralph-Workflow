@@ -46,7 +46,7 @@ track:
   release.
 
 The full contributor workflow for both builds lives in
-[`../CONTRIBUTING.md`](../CONTRIBUTING.md) (see § Development setup).
+[`../../CONTRIBUTING.md`](../../CONTRIBUTING.md) (see § Development setup).
 This page focuses on what changes when you cut a release.
 
 ## 1. Bump the version

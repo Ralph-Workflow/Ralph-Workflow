@@ -116,7 +116,7 @@ Use one real backlog task, not a vague demo.
 
 If you want help picking that first task, read [when unattended coding fits](./when-unattended-coding-fits.md), [the first-task guide](./first-task-guide.md), and [first-task prompt templates](./first-task-prompt-templates.md).
 
-If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [what good output looks like](./free-open-source-proof.md) and the [example review bundle](../examples/first-review-bundle/README.md).
+If you want to see the kind of morning-after handoff Ralph Workflow is aiming for before you install, inspect [what good output looks like](./free-open-source-proof.md) and the [example review bundle](../../../examples/first-review-bundle/README.md).
 
 After that first real run, take exactly one public next step on Codeberg:
 

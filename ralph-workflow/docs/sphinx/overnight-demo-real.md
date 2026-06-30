@@ -97,7 +97,7 @@ Ralph Workflow took a 10-document specification and produced:
 
 1. **Star the repo** → [codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 2. **Try it tonight** → `pipx install ralph-workflow`
-3. **Read the quick start** → [START_HERE.md](../START_HERE.md)
+3. **Read the quick start** → [START_HERE.md](../../../START_HERE.md)
 4. **See the docs** → [ralphworkflow.com/docs](https://ralphworkflow.com/docs)
 
 **Codeberg primary.** GitHub mirror only: [github.com/Ralph-Workflow/Ralph-Workflow](https://github.com/Ralph-Workflow/Ralph-Workflow)

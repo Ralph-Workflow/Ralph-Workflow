@@ -51,5 +51,5 @@ You should be able to start with the shipped path, learn how it behaves on a rea
 
 - for the shortest honest first run: [START_HERE.md](../START_HERE.md)
 - for choosing a task worth running unattended: [first-task-guide.md](./first-task-guide.md)
-- for the maintained manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
-- for user-goal routing inside the manual: [user-stories.md](../ralph-workflow/docs/sphinx/user-stories.md)
+- for the maintained manual: [Sphinx manual home](./index.rst)
+- for user-goal routing inside the manual: [user-stories.md](./user-stories.md)

@@ -13,7 +13,7 @@ material:
 - `index.md` — this file
 
 All eight Rust-era style-guide leaves have been moved to
-[`docs/legacy-rust/code-style/`](../../legacy-rust/code-style/) and
+[`docs/legacy-rust/code-style/`](../legacy-rust/code-style/) and
 quarantined as archival background. They are kept for historical
 reference only and do not describe the maintained Python implementation.
 
@@ -78,6 +78,6 @@ The eight Rust-era style-guide leaves that previously lived here
 `errors-and-diagnostics.md`, `functional-transformations.md`,
 `generics-and-abstractions.md`, `module-organization.md`, `testing.md`)
 have been moved to
-[`docs/legacy-rust/code-style/`](../../legacy-rust/code-style/) and
+[`docs/legacy-rust/code-style/`](../legacy-rust/code-style/) and
 quarantined as archival background. They are kept for historical
 reference only and do not describe the maintained Python implementation.

@@ -40,4 +40,4 @@ That is one reason the default workflow works better on serious repo tasks than 
 
 - for choosing a strong first task: [first-task-guide.md](./first-task-guide.md)
 - for the shortest honest run path: [START_HERE.md](../START_HERE.md)
-- for operator setup and configuration: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)
+- for operator setup and configuration: [configuration.md](./configuration.md)

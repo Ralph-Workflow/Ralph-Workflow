@@ -31,12 +31,12 @@ Why look at this now? Before you install anything, you can inspect the exact sha
 
 Open the example bundle here:
 
-- [`examples/first-review-bundle/README.md`](../examples/first-review-bundle/README.md)
-- [`examples/first-review-bundle/PROMPT.md`](../examples/first-review-bundle/PROMPT.md)
-- [`examples/first-review-bundle/.agent/DEVELOPMENT_RESULT.md`](../examples/first-review-bundle/.agent/DEVELOPMENT_RESULT.md)
-- [`examples/first-review-bundle/.agent/ISSUES.md`](../examples/first-review-bundle/.agent/ISSUES.md)
-- [`examples/first-review-bundle/.agent/FIX_RESULT.md`](../examples/first-review-bundle/.agent/FIX_RESULT.md)
-- [`examples/first-review-bundle/.agent/artifacts/`](../examples/first-review-bundle/.agent/artifacts/)
+- [`examples/first-review-bundle/README.md`](../../../examples/first-review-bundle/README.md)
+- [`examples/first-review-bundle/PROMPT.md`](../../../examples/first-review-bundle/PROMPT.md)
+- [`examples/first-review-bundle/.agent/DEVELOPMENT_RESULT.md`](../../../examples/first-review-bundle/.agent/DEVELOPMENT_RESULT.md)
+- [`examples/first-review-bundle/.agent/ISSUES.md`](../../../examples/first-review-bundle/.agent/ISSUES.md)
+- [`examples/first-review-bundle/.agent/FIX_RESULT.md`](../../../examples/first-review-bundle/.agent/FIX_RESULT.md)
+- [`examples/first-review-bundle/.agent/artifacts/`](../../../examples/first-review-bundle/.agent/artifacts/)
 
 If that bundle looks like the kind of morning-after handoff you would actually trust, take the next public step on **Codeberg**:
 

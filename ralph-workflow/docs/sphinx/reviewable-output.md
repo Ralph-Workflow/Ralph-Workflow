@@ -61,6 +61,6 @@ If the repo does not have them, the honest outcome may be limited proof rather t
 
 ## Where to go next
 
-- for the shortest first-run path: [START_HERE.md](../START_HERE.md)
+- for the shortest first-run path: [START_HERE.md](../../../START_HERE.md)
 - for choosing a task with a real finish line: [first-task-guide.md](./first-task-guide.md)
 - for why specs matter to output quality: [spec-driven-ai-agent.md](./spec-driven-ai-agent.md)

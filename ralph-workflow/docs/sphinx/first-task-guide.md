@@ -20,7 +20,7 @@ The default workflow is strong enough to adopt as-is, before you customize anyth
 
 This guide helps you pick the right first task, set it up, and judge the outcome honestly. It is not a feature tour — it is a minimal path to your first verdict: *does this produce code I would actually merge?*
 
-If you want the shortest possible path, read [START_HERE.md](../START_HERE.md). If you want a deeper narrative walkthrough, see the [After Your First Run](./after-your-first-run.md) page. This page is the core conversion guide: task selection, spec writing, execution, and morning-after review in one place.
+If you want the shortest possible path, read [START_HERE.md](../../../START_HERE.md). If you want a deeper narrative walkthrough, see the [After Your First Run](./after-your-first-run.md) page. This page is the core conversion guide: task selection, spec writing, execution, and morning-after review in one place.
 
 > **See it in action first.** Read [Getting started](./getting-started.md) (init → diagnose → dry-run).
 
@@ -208,7 +208,7 @@ Pick a task from your backlog. Define it clearly in `PROMPT.md`. Run it. Come ba
 
 ## Next pages
 
-- **Shortest first run:** [START_HERE.md](../START_HERE.md) — minimal setup, one task, go
+- **Shortest first run:** [START_HERE.md](../../../START_HERE.md) — minimal setup, one task, go
 - **Prompt help:** [first-task-prompt-templates.md](./first-task-prompt-templates.md) — ready-to-copy templates
 - **Diagnostics:** [diagnostics.md](./diagnostics.md) — pre-flight checks before you run
 - **Agents:** [agents.md](./agents.md) — selection, auth, and invocation

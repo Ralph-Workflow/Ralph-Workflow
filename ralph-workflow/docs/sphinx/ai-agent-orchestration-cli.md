@@ -76,5 +76,5 @@ That is the practical promise: simple at the center, stronger in composition, us
 
 - for the shortest honest first run: [START_HERE.md](../START_HERE.md)
 - for task selection help: [first-task-guide.md](./first-task-guide.md)
-- for the operator manual: [Sphinx manual home](../ralph-workflow/docs/sphinx/index.rst)
-- for configuration and file locations: [configuration.md](../ralph-workflow/docs/sphinx/configuration.md)
+- for the operator manual: [Sphinx manual home](./index.rst)
+- for configuration and file locations: [configuration.md](./configuration.md)

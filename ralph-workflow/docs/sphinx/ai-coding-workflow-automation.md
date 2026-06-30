@@ -75,7 +75,7 @@ It is not a hosted black box. It runs on your machine with Claude Code, Codex CL
 
 1. Inspect the **primary Codeberg repo** first: <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 2. Pick one bounded real task with [first-task-guide.md](./first-task-guide.md)
-3. Run the shortest honest first pass with [../START_HERE.md](../START_HERE.md)
+3. Run the shortest honest first pass with [../../../START_HERE.md](../../../START_HERE.md)
 4. Judge the morning-after handoff with [review-ai-coding-output-before-merge.md](./review-ai-coding-output-before-merge.md)
 5. Turn that outcome into one public next step with [after-your-first-run.md](./after-your-first-run.md)
 
