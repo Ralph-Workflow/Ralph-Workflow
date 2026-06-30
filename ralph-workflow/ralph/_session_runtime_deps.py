@@ -134,10 +134,18 @@ class ManagedAgentSessionDeps:
             given options. Returns an iterable of stdout chunks.
             Side effects: spawns a subprocess, injects the resolved
             environment into the agent, and yields streamed output.
-        materialize_system_prompt: Load the named system-prompt file
-            for a workspace and resolve any ``current_prompt``
-            placeholder. Side effects: reads from ``workspace_root``;
-            does not write.
+        materialize_system_prompt: Resolve the prompt inputs for a
+            named system prompt and, when the named prompt is supplied,
+            write the materialized system-prompt file the agent will
+            consume. Side effects: reads prompt inputs from
+            ``workspace_root`` (and the engine-owned current-prompt
+            mirror under the ``.agent`` directory), and may write the
+            materialized system-prompt file under ``workspace_root`` at
+            ``.agent/tmp/<name>_system_prompt.md`` (or under the worker
+            namespace when one is provided), plus the synchronized
+            current-prompt mirror and any prompt-history snapshot.
+            Returns the filesystem path of the written system-prompt
+            file as a string.
         workspace_factory: Build a :class:`ralph.workspace.protocol.Workspace`
             rooted at the given path. Side effects: instantiates the
             workspace implementation; the production default returns
