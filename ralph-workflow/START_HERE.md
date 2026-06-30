@@ -20,7 +20,11 @@
   - How duplication was reduced or contained: this page is the
     package-side twin of the repo-root START_HERE — same sequence, same
     diagnostics pre-flight, but framed for a reader who has already
-    installed and wants the operator fast-path.
+    installed and wants the operator fast-path. Both surfaces share the
+    same ordered first-run sequence — `cd <repo>` → `ralph --init` →
+    `ralph --diagnose` → `$EDITOR PROMPT.md` → `ralph` — matching the
+    top-level README so a reader landing on either START_HERE sees the
+    same install + first-run path.
   - How the route is clearer now than before: explicit role boundary up
     front, then prerequisites, then exact steps, then a success signal,
     then a short next-click chain into the operator manual.

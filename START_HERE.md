@@ -18,7 +18,12 @@
     stays.
   - How duplication was reduced or contained: the package-side START_HERE
     gets a parallel role-specific page; the top-level README keeps install
-    + first-run. No two surfaces now fight or duplicate each other.
+    + first-run. No two surfaces now fight or duplicate each other. Both
+    surfaces share the same ordered first-run sequence — `pipx install`
+    → `cd <repo>` → `ralph --init` → `ralph --diagnose` →
+    `$EDITOR PROMPT.md` → `ralph` — matching the top-level README so a
+    reader landing on either START_HERE sees the same install + first-run
+    path.
   - How the route is clearer now than before: a clear evaluator role
     announcement up front, then prerequisites, then exact first steps with
     verification signals after each command.
@@ -72,19 +77,19 @@ agent session:
 ```bash
 pipx install ralph-workflow        # 1. install the autopilot
 cd /path/to/your/project           # 2. pick a real repo
-ralph --diagnose                   # 3. pre-flight: verify agents, MCP, capabilities
-ralph --init                       # 4. scaffold .agent/ + PROMPT.md
+ralph --init                       # 3. scaffold .agent/ + PROMPT.md
+ralph --diagnose                   # 4. pre-flight: verify agents, MCP, capabilities
 $EDITOR PROMPT.md                  # 5. write the task — see PROMPT.md template
 ralph                              # 6. run the unattended workflow
 ```
 
+- `ralph --init` provisions the default local work surface and shipped
+  baseline skills.
 - `ralph --diagnose` is the **pre-flight check** — it shows which
   baseline helpers are healthy, missing, unreachable, degraded, or
   need repair before you spend a real run on them. See
   [diagnostics.md](ralph-workflow/docs/sphinx/diagnostics.md) for what
   each check proves.
-- `ralph --init` provisions the default local work surface and shipped
-  baseline skills.
 
 ## What success looks like
 
