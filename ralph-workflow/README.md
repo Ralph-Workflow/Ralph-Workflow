@@ -1,40 +1,45 @@
 <!--
   Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: trimmed manual-depth technical detail from this PyPI
-    README so it stays a storefront rather than a manual. The Idle
-    watchdog four-channel-evidence section (channel list, default knob,
-    `agent_idle_activity_evidence_ttl_seconds`) and the Pro-support
-    "Pipeline dependency injection" subsection (PipelineDeps bundle,
-    factory references, per-collaborator role narration) were both
-    demoted to one-to-two-line summaries that defer to the Sphinx
-    manual via link. The autopilot-first H1/tagline, the canonical
-    value-prop sentence, the verifiable download stat (10,700+ lifetime
-    PyPI downloads · 4,000+ in the last 30 days, pepy.tech, 2026-06-12),
-    and the supported-agents table are preserved unchanged.
+  - What changed: this PyPI README now reads as a storefront, not a
+    manual. The AGY section was collapsed to a one-sentence pointer
+    (the smoke command with env var, parity-table excerpt, live
+    regression test names/counts, and `tmp/agy-source-of-truth.txt`
+    reference were all removed — they live in the Sphinx manual).
+    The standalone "Idle watchdog" H2 was folded into Trust and
+    safety as a one-line pointer. The "Install and run" and "Quick
+    start" sections were collapsed into a single install-and-run
+    block. The Documentation list was trimmed to four operator
+    entries with contributor material under a sub-bullet. The
+    rolling 30-day PyPI download clause was pruned (the date was
+    2026-06-12 and refreshing it would require network-dependent
+    level-2 verification); only the evergreen lifetime figure is
+    retained. The Trust and safety block was widened with one-line
+    pointers to the root README's full coverage (agent
+    authentication, branch/worktree expectations, unattended
+    approval implications, cost, human validation responsibility).
   - Why it belongs here: this file is the PyPI-facing README
-    (`[project] readme = "README.md"` in pyproject.toml). PyPI readers
-    want to know what the package is, whether it fits, and how to
-    install it before they read about operator/security concerns, and
-    they should hear the same autopilot story they would see on the
-    top-level README.
-  - What was pruned, merged, or explicitly left alone: the rubric-compliant
-    download stat and the per-agent supported-agents table are preserved;
-    the Idle-watchdog and Pipeline-DI sections were the two longest
-    manual-depth subsections on the page and are now Sphinx-link defers.
-    The MCP server trust boundary stays in the "Trust and safety" section.
-    The "composable loop framework" phrasing is preserved as a
-    secondary descriptive clause.
-  - How duplication was reduced or contained: the install block already
-    lives in the top-level README — this page repeats it once, in the
-    canonical sequence (install → first-run), and then defers all
-    deeper documentation to the operator manual instead of restating
-    it. The canonical value-prop sentence is shared verbatim with both
-    START_HERE files and the Sphinx index so all four surfaces reinforce
-    the same story.
+    (`[project] readme = "README.md"` in pyproject.toml). PyPI
+    readers want to know what the package is, whether it fits, and
+    how to install it; deeper operator detail belongs in the
+    Sphinx manual.
+  - What was pruned, merged, or explicitly left alone: the AGY
+    smoke command + parity table + live-regression test counts,
+    the `tmp/agy-source-of-truth.txt` reference, the standalone
+    "Idle watchdog" H2, the "Quick start" duplicate, the rolling
+    30-day download clause, and several duplicate Documentation
+    bullets were pruned. The supported-agents table is preserved
+    because it is a single-page summary that PyPI readers want.
+    The verbatim finish-receipt block is preserved here (PyPI
+    readers may not click through to the manual).
+  - How duplication was reduced or contained: root README is the
+    single source for the full 6-step first-run block; this README
+    repeats the trimmed 4-step version (install → init → write spec
+    → run) for PyPI context and defers all deeper material via
+    Sphinx links. The finish-receipt is preserved on PyPI but
+    lives once on the root README in the maintained docs surfaces.
   - How the route is clearer now than before: what-it-is → who-it's-for →
     install-and-run → supported-agents → what-a-run-leaves-you →
-    documentation → fit-or-not-fit → watchdog-pointer → privacy →
-    community → trust-and-safety → development-and-verification →
+    documentation → fit-or-not-fit → trust-and-safety → development →
     pro-support-pointer. Manual-depth technical detail is now reached
     only via Sphinx links, never duplicated on this page.
 -->
@@ -62,7 +67,7 @@ customize anything.
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-*10,700+ lifetime PyPI downloads · 4,000+ in the last 30 days (pepy.tech, 2026-06-12).*
+*10,700+ lifetime PyPI downloads (pepy.tech, 2026-06-12).*
 
 ## What it is
 
@@ -95,51 +100,24 @@ A repo without guardrails will produce results that reflect that.
 
 ```bash
 pipx install ralph-workflow   # 1. install
-ralph --init                  # 2. scaffold .agent/ and PROMPT.md
-$EDITOR PROMPT.md             # 3. edit PROMPT.md — your spec for the run
-ralph                         # 4. run the unattended workflow
+cd /path/to/your/project      # 2. move into the repo you want agents on
+ralph --init                  # 3. scaffold .agent/ + PROMPT.md
+ralph --diagnose              # 4. pre-flight: agents, MCP, capabilities
+$EDITOR PROMPT.md             # 5. write the task — see PROMPT.md template
+ralph                         # 6. run the unattended workflow
 ```
 
-This also auto-symlinks the bundled skill bundle into the supported
-agent roots and seeds a batteries-included .gitignore covering Python,
-Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir,
-Scala, Terraform, and common IDE/OS patterns.
-
-Ralph Workflow does not manage provider authentication or store your
-agent credentials. You authenticate the agent CLIs yourself first, and
-Ralph Workflow then invokes those tools directly and supervises the
-workflow, even when different phases are routed through different agent
-families.
-
-### Before your first run
-
-1. Install the agent CLIs you want Ralph Workflow to call.
-2. Authenticate those CLIs normally.
-3. Pick one small, concrete task for the first run.
-
-### Quick start
-
-```bash
-cd /path/to/your/project
-ralph --init
-ralph --diagnose
-$EDITOR PROMPT.md
-ralph
-```
-
+`ralph --init` also auto-symlinks the bundled skill bundle into the
+supported agent roots and seeds a batteries-included `.gitignore`
+covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET,
+Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns.
 Run those commands from a human-operated shell outside any Ralph-managed
 agent session.
 
-What happens in that flow:
+Before your first run: install the agent CLIs you want Ralph Workflow to
+call, authenticate them normally, and pick one small concrete task.
 
-- **`ralph --init`** creates the local `.agent/` support files.
-- **`ralph --diagnose`** checks whether your configured agents and MCP
-  setup are reachable.
-- **`PROMPT.md`** becomes the task spec for the run.
-- **`ralph`** directly invokes your configured agent CLIs and starts the
-  unattended workflow.
-
-Depth presets control iteration intensity:
+Depth presets:
 
 ```bash
 ralph -Q     # quick: small fixes, single iteration
@@ -150,59 +128,20 @@ ralph -T     # thorough: complex refactors, ten iterations
 ## Supported agents
 
 Ralph Workflow ships with first-class support for six user-facing agent
-CLIs: Claude Code (with both interactive and headless transports),
-Codex, OpenCode, Nanocoder, Google Anti Gravity, and Pi. Each agent has
-a documented end-to-end verification path: an interactive parity smoke
-test for Claude and AGY, and a public-surface black-box pytest suite for
-Codex, OpenCode, Nanocoder, and Pi.
+CLIs: Claude Code, Codex, OpenCode, Nanocoder, Google Anti Gravity, and
+Pi. Each agent has a documented end-to-end verification path in the
+Sphinx manual; see the
+[`agents`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/agents.md)
+page for the canonical details.
 
-| Agent | Description | Verification command |
-|---|---|---|
-| **Claude Code** | Anthropic's CLI for Claude. The canonical reference agent. | `ralph smoke-interactive-claude` |
-| **Codex** | OpenAI's Codex CLI. | (public-surface black-box pytest) |
-| **OpenCode** | Open-source terminal coding agent. | (public-surface black-box pytest) |
-| **Nanocoder** | Local-only TUI coding agent. | (public-surface black-box pytest) |
-| **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`, v1.0.9+). Runs in a PTY with a bounded drain so buffered stdout is captured end-to-end, and the AGY parser classifies live output into `text:` / `thinking:` / `tool_use:` events for the smoke report. | `ralph smoke-interactive-agy` |
-| **Pi** | Minimal coding agent. Headless mode is `pi --mode json <prompt>` and emits the documented `AgentSessionEvent` NDJSON stream per <https://pi.dev/docs/latest/json>. | `uv run pytest tests/agents/test_pi_dev_blackbox.py -q` |
-
-The canonical end-to-end AGY verification (mock-backed, always green) is:
-
-```bash
-cd ralph-workflow && \
-  RALPH_AGY_BINARY="$(pwd)/tests/_support/mock_agy.sh" \
-  uv run python -m ralph smoke-interactive-agy --agent 'agy/Gemini 3.5 Flash (Medium)'
-```
-
-Expected green parity table excerpt:
-
-```text
-| Agent                         | Transport | File | Session                                       | Parser events | Tool activity | Artifact | Breaks |
-| agy/Gemini 3.5 Flash (Medium) | agy       | yes  | interactive-agy-smoke-Gemini-3.5-Flash-Medium | 1             | yes           | yes      | none   |
-```
-
-Live AGY is also exercised end-to-end by
-`tests/test_agy_live_regression.py` (8 black-box tests, marked `live_agy`)
-and `tests/test_smoke_agy_end_to_end.py` (4 black-box tests, marked
-`subprocess_e2e`). Neither suite runs under `make verify` (the 60s
-combined test budget only covers the `ralph.test_suites` invocation
-that `make verify` runs); run them on demand with:
-
-```bash
-cd ralph-workflow
-make test-live-agy                # 8 live tests, 600s per-suite cap
-uv run pytest tests/test_smoke_agy_end_to_end.py -q -m subprocess_e2e
-```
-
-The live suite either passes or xfails via documented upstream-blocked
-gates. The smoke-log e2e suite skips cleanly when `agy` is not on `PATH`.
-
-The full source-of-truth for AGY CLI behavior (version, flag set, model
-list, probe output, cli.log tail) is committed to
-`tmp/agy-source-of-truth.txt` and re-validated on every plan that
-touches AGY support; see the most recent `=== LIVE RE-MEASUREMENT ===`
-block for the current local-binary health verdict. The agent-by-agent
-documentation lives in `docs/sphinx/agents.md`; this README section is
-a one-paragraph pointer, not a duplicate.
+| Agent | Description |
+|---|---|
+| **Claude Code** | Anthropic's CLI for Claude. The canonical reference agent. |
+| **Codex** | OpenAI's Codex CLI. |
+| **OpenCode** | Open-source terminal coding agent. |
+| **Nanocoder** | Local-only TUI coding agent. |
+| **Google Anti Gravity (AGY)** | Google's Antigravity CLI (`agy`, v1.0.9+). |
+| **Pi** | Minimal coding agent. Headless mode is `pi --mode json <prompt>`. |
 
 ## What a run leaves you
 
@@ -245,19 +184,16 @@ defers to the Sphinx operator manual for those.
   shorter repeat-use reference with commands and flags
 - **Getting Started:** [`docs/sphinx/getting-started.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/getting-started.md) —
   fuller first-run walkthrough with task guidance
-- **Concepts:** [`docs/sphinx/concepts.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/concepts.md) —
-  terminology and mental model
-- **CLI Reference:** [`docs/sphinx/cli.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/cli.md) —
-  all flags and sub-commands
 - **Configuration:** [`docs/sphinx/configuration.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/configuration.md) —
   config files and precedence
-- **Developer Reference:** [`docs/sphinx/developer-reference.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/developer-reference.md) —
-  maintained contributor and architecture reference
-- **Modules Index:** [`docs/sphinx/modules.rst`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/modules.rst) —
-  API/module entry points for deeper internals
-- **Adding and managing agent support:** [`docs/agents/README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/agents/README.md) —
-  entry point for adding, updating, or removing a built-in or custom
-  agent
+- **CLI Reference:** [`docs/sphinx/cli.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/cli.md) —
+  all flags and sub-commands
+
+Contributor material:
+
+- **Modules Index:** [`docs/sphinx/modules.rst`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/modules.rst)
+- **Developer Reference:** [`docs/sphinx/developer-reference.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/developer-reference.md)
+- **Adding and managing agent support:** [`docs/agents/README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/agents/README.md)
 
 ## When Ralph Workflow fits (and when it doesn't)
 
@@ -275,18 +211,6 @@ defers to the Sphinx operator manual for those.
 - Tiny tasks where setup overhead is not worth it
 - Workflows that need unpredictable mid-run human input
 
-## Idle watchdog
-
-The agent session watchdog judges whether a session is stuck by watching
-four evidence channels (stdout, MCP tool calls, subagent activity, and
-workspace file changes) instead of stdout alone, so unattended runs that
-do real work through quiet channels are not falsely killed.
-
-For full configuration knobs, channel semantics, and post-mortem
-diagnostic shape, see
-[Watchdogs and timeouts](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md)
-in the operator manual.
-
 ## Privacy & Error Reporting
 
 Ralph Workflow sends anonymous crash reports and performance metrics to
@@ -294,10 +218,10 @@ help fix bugs and improve reliability. No personal data is collected.
 
 Each installation generates a random 32-character identifier stored in
 `~/.config/ralph-workflow-user.ini`. This identifier is not tied to
-your name, email address, IP address, or any other personal data — it
-is a random string used only to distinguish different installations in
-crash reports. A fresh random session identifier is generated on every
-run.
+your name, email address, IP address, or any other personal data —
+it is a random string used only to distinguish different installations
+in crash reports. A fresh random session identifier is generated on
+every run.
 
 To opt out: delete or rename `~/.config/ralph-workflow-user.ini`.
 Ralph Workflow creates a new random ID on the next run.
@@ -313,16 +237,20 @@ for you, and they set what we build next.
 
 ## Trust and safety
 
-The standalone Ralph Workflow MCP server (`ralph-mcp`) binds to
-`127.0.0.1` and exposes the exec surface only over loopback. When the
-optional `MCP_AUTH_TOKEN` environment variable is set, requests must
-carry a matching `Authorization: Bearer <token>` header; the
-comparison uses `hmac.compare_digest` to prevent timing-side-channel
-attacks. An unset or empty `MCP_AUTH_TOKEN` is a no-op (the loopback
-bind is the trust boundary).
-
-Local execution is the rule: Ralph Workflow does not upload your code
-or data to a cloud service.
+Ralph Workflow runs locally on your own machine and does not upload
+your code or data to a cloud service. For the full coverage of trust
+and safety boundaries (agent authentication, branch/worktree
+expectations, unattended approval implications, cost, and human
+validation responsibility), see the root
+[`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md)
+"Trust and safety" section. The watchdog that decides whether an
+agent session is stuck uses four evidence channels (stdout, MCP tool
+calls, subagent activity, workspace file changes) instead of stdout
+alone; the full configuration lives in
+[Watchdogs and timeouts](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md).
+The standalone `ralph-mcp` server binds to `127.0.0.1` and exposes the
+exec surface only over loopback; optional bearer-token auth uses
+`hmac.compare_digest` to prevent timing-side-channel attacks.
 
 ## Development and verification
 
@@ -337,13 +265,7 @@ make verify
 ## Pro support (optional GUI layer)
 
 [Ralph-Workflow-Pro](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/pro-support.md)
-is an optional GUI layer that runs the engine as a subprocess. The
-engine exposes a small, read-only, bounded surface so Pro can monitor
-runs and, in advanced uses, inject custom pipeline collaborators.
-
-For the engine-side contract, the `PipelineDeps` bundle shape, and the
-default-factory wiring, see
+is an optional GUI layer that runs the engine as a subprocess. For the
+engine-side contract and the default-factory wiring, see the
 [Pro support](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/pro-support.md)
-and
-[Developer reference](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/developer-reference.md)
-in the operator manual.
+page in the operator manual.

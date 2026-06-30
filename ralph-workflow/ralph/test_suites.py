@@ -33,6 +33,15 @@ if TYPE_CHECKING:
     from ralph.executor.process import ProcessResult
 
     class SuiteRunner(Protocol):
+        """Subprocess seam for the maintained pytest suite.
+
+        Owns the full lifecycle of a single pytest invocation —
+        spawning the subprocess, enforcing the suite wall-clock cap,
+        returning a ``ProcessResult``. Default implementation is
+        ``_default_runner``, which delegates to
+        :func:`ralph.verify_timeout.run_command_with_timeout`.
+        """
+
         def __call__(
             self,
             command: Sequence[str],
@@ -101,6 +110,34 @@ def run_test_suites(
     suite_timeout_seconds: float = DEFAULT_SUITE_TIMEOUT_SECONDS,
     runner: SuiteRunner = _default_runner,
 ) -> int:
+    """Run the maintained pytest verification suite and return its exit code.
+
+    Args:
+        cwd: Working directory for the pytest subprocess (the package
+            root that contains ``tests/``).
+        suite_timeout_seconds: Wall-clock cap for this single pytest
+            invocation. Default ``DEFAULT_SUITE_TIMEOUT_SECONDS``
+            (60 s). Note this is a per-invocation cap only — the
+            60-second COMBINED budget across every test step is
+            enforced upstream by ``ralph.verify`` via cumulative
+            ``time.monotonic()`` tracking; the elapsed time of this
+            function counts against that budget.
+        runner: Subprocess seam (``SuiteRunner`` protocol). Defaults
+            to ``_default_runner``, which delegates to
+            ``run_command_with_timeout``.
+
+    Returns:
+        The subprocess returncode. ``0`` on success; non-zero mirrors
+        pytest's own exit semantics (test failures, collection
+        errors, timeout). ``SuiteTimeoutError`` is converted to a
+        ``124`` exit by the underlying runner.
+
+    Side effects:
+        Spawns a pytest subprocess via ``runner``. The subprocess
+        inherits an environment with
+        ``RALPH_PYTEST_TEST_TIMEOUT_SECONDS`` and
+        ``RALPH_PYTEST_SUITE_TIMEOUT_SECONDS`` populated.
+    """
     env = build_timeout_env(
         test_timeout_seconds=timeout_seconds_from_env(
             TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS
@@ -117,6 +154,13 @@ def run_test_suites(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Entry point for the ``ralph.test_suites`` command-line tool.
+
+    Forwards to :func:`run_test_suites` using the current working
+    directory. Returns the pytest subprocess exit code. Positional
+    arguments are rejected with ``SystemExit`` to surface silent
+    misuse.
+    """
     if argv:
         raise SystemExit("ralph.test_suites does not accept positional arguments")
     return run_test_suites(cwd=Path.cwd())

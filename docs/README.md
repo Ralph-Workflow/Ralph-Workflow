@@ -1,34 +1,38 @@
 # Documentation Map
 
-Ralph Workflow is **the autopilot for coding agents** —
-a free and open-source operating system for autonomous coding, an AI agent
+Ralph Workflow is **the autopilot for coding agents** — a free and
+open-source operating system for autonomous coding, an AI agent
 orchestrator built around a simple Ralph-loop core that becomes powerful
-through composition.
-The default workflow is already strong enough to adopt as-is before you
-customize anything.
-
+through composition. **Hand it a well-specified coding task, let the
+agents plan, build, verify, and fix, and come back to reviewable, tested
+work.** The default workflow is already strong enough to adopt as-is
+before you customize anything.
 
 Use this page after [README.md](../README.md) and [START_HERE.md](../START_HERE.md).
 Those pages explain what Ralph Workflow is and how to judge one honest first run.
 This page routes you to the next page that best matches your question.
 
+Every route bullet below is tagged with its doc-family role
+(`tutorial` / `how-to` / `reference` / `explanation` / `proof` /
+`internals`) so you can match a route to the kind of page you need.
+
 ## Choose one route
 
-### I want the fastest first successful run
+### I want the fastest first successful run (tutorial)
 
-- [Choose your first task](../ralph-workflow/docs/sphinx/first-task-guide.md)
-- [First-task prompt templates](../ralph-workflow/docs/sphinx/first-task-prompt-templates.md)
-- [Getting started in the manual](../ralph-workflow/docs/sphinx/getting-started.md)
+- [Choose your first task](../ralph-workflow/docs/sphinx/first-task-guide.md) — tutorial
+- [First-task prompt templates](../ralph-workflow/docs/sphinx/first-task-prompt-templates.md) — tutorial
+- [Getting started in the manual](../ralph-workflow/docs/sphinx/getting-started.md) — tutorial
 
-### I want the maintained operator manual
+### I want the maintained operator manual (how-to + reference)
 
-- [Manual home](../ralph-workflow/docs/sphinx/index.rst)
-- [Configuration + Reference](../ralph-workflow/docs/sphinx/configuration.md)
-- [User stories](../ralph-workflow/docs/sphinx/user-stories.md)
-- [Run diagnostics before a workflow](../ralph-workflow/docs/sphinx/diagnostics.md)
-- [Agent CLI lifecycle (selection, auth, invocation)](../ralph-workflow/docs/sphinx/agents.md)
+- [Manual home](../ralph-workflow/docs/sphinx/index.rst) — how-to + reference
+- [Configuration + Reference](../ralph-workflow/docs/sphinx/configuration.md) — reference
+- [User stories](../ralph-workflow/docs/sphinx/user-stories.md) — how-to
+- [Run diagnostics before a workflow](../ralph-workflow/docs/sphinx/diagnostics.md) — how-to
+- [Agent CLI lifecycle (selection, auth, invocation)](../ralph-workflow/docs/sphinx/agents.md) — how-to
 
-### I need the repo-root docs families mapped clearly
+### I need the repo-root docs families mapped clearly (internals)
 
 These repo-root docs are a **map of the surrounding documentation system**, not the main operator manual.
 The maintained day-to-day operator path is the Sphinx manual above.
@@ -41,15 +45,15 @@ Use these folders only when you know you need contributor guidance or deeper bac
   maintained topical pages `pipeline-lifecycle.md`, `event-loop-and-reducers.md`,
   and `parallel-fan-out.md`
 
-### I want to see a real overnight run before I decide
+### I want to see a real overnight run before I decide (proof)
 
-- [Real overnight demo: task spec → output](../ralph-workflow/docs/sphinx/overnight-demo-real.md)
+- [Real overnight demo: task spec → output](../ralph-workflow/docs/sphinx/overnight-demo-real.md) — proof
 
-### I want product framing before I go deeper
+### I want product framing before I go deeper (explanation)
 
-- [AI agent orchestration CLI](../ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md)
-- [Why the spec still matters](../ralph-workflow/docs/sphinx/spec-driven-ai-agent.md)
-- [What unattended use should mean](../ralph-workflow/docs/sphinx/unattended-coding-agent.md)
+- [AI agent orchestration CLI](../ralph-workflow/docs/sphinx/ai-agent-orchestration-cli.md) — explanation
+- [Why the spec still matters](../ralph-workflow/docs/sphinx/spec-driven-ai-agent.md) — explanation
+- [What unattended use should mean](../ralph-workflow/docs/sphinx/unattended-coding-agent.md) — explanation
 
 ### Legacy (Rust-era)
 

@@ -52,154 +52,29 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
 
    New here? Start with :doc:`getting-started` before you dive into the rest of the manual.
 
-What an overnight run leaves you
---------------------------------
-
-For readers who already understand the product and want a concrete
-artifact to judge it by, here is the actual finish-receipt from the
-bundled empty-name-validation example — a real, unedited handoff you
-read in the morning instead of a transcript:
-
-.. code-block:: text
-
-   # Development Result
-
-   ## Outcome
-   Implemented empty-name validation in the CLI create flow and added
-   test coverage for empty and whitespace-only input.
-
-   ## Changed files
-   - cli/create.py
-   - tests/test_create.py
-
-   ## Checks run
-   - pytest tests/test_create.py        ✓ passed
-   - project formatting / lint checks    ✓ passed
-
-   ## Reviewer focus
-   - confirm validation happens before any file creation side effect
-   - confirm the error message is clear enough for CLI users
-   - confirm no unrelated flow changed
-
 .. tip::
 
-   **Star to bookmark before your overnight run.** It is the only signal we get that Ralph is working for you, and it sets what we build next: `star on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow>`_. ⭐
-
-Manual paths
-============
-
-First run
----------
-
-- :doc:`getting-started`
-- :doc:`quickstart`
-- :doc:`first-task-guide`
-- :doc:`first-task-prompt-templates`
-- :doc:`diagnostics`
-
-Configure & operate
--------------------
-
-- :doc:`configuration`
-- :doc:`agents`
-- :doc:`reference`
-- :doc:`advanced-pipeline-configuration`
-- :doc:`advanced-artifact-configuration`
-- :doc:`advanced-mcp-configuration`
-- :doc:`parallel-mode`
-- :doc:`policy-explanation`
-
-Use-case routing
-----------------
-
-- :doc:`user-stories`
-- :doc:`which-agent-should-i-start-with`
-- :doc:`when-unattended-coding-fits`
-- :doc:`agent-compatibility`
-
-Concepts / explanation
-----------------------
-
-- :doc:`concepts`
-- :doc:`ralph-loop`
-- :doc:`policy-driven-pipeline`
-- :doc:`phase-routing`
-- :doc:`artifact-lifecycle`
-- :doc:`watchdogs-and-timeouts`
-- :doc:`verification-model`
-
-Reference
----------
-
-- :doc:`cli`
-- :doc:`mcp-tools`
-- :doc:`artifacts`
-- :doc:`recovery`
-- :doc:`troubleshooting`
-- :doc:`versioning`
-- :doc:`pro-support`
-- :doc:`modules`
-- :doc:`quick-reference`
-- :doc:`developer-reference`
-- :doc:`developer-internals`
-- :doc:`local-web-access`
-- :doc:`prompts`
-- :doc:`supervising-api`
-- :doc:`transcript`
-- :doc:`mcp-tool-restriction`
-- :doc:`mcp-architecture`
-- :doc:`policy-driven-overhaul-migration`
-- :doc:`display`
-
-Proof / framing
----------------
-
-- :doc:`after-your-first-run`
-- :doc:`reviewable-output`
-- :doc:`example-review-bundle`
-- :doc:`overnight-demo-real`
-- :doc:`free-open-source-proof`
-- :doc:`what-a-good-ai-coding-finish-receipt-looks-like`
-
-Comparisons
------------
-
-- :doc:`ralph-workflow-vs-aider`
-- :doc:`ralph-workflow-vs-claude-code`
-- :doc:`ralph-workflow-vs-codex-cli`
-- :doc:`ralph-workflow-vs-google-anti-gravity`
-- :doc:`ralph-workflow-vs-opencode`
-
-How-to articles
----------------
-
-- :doc:`claude-code-approval-mode`
-- :doc:`claude-code-automation`
-- :doc:`claude-code-codex-workflow`
-- :doc:`claude-code-run-until-done`
-- :doc:`run-claude-code-overnight-without-babysitting`
-- :doc:`remote-supervision-of-coding-agents`
-- :doc:`review-ai-coding-output-before-merge`
-- :doc:`what-breaks-first-with-multiple-coding-agents`
-- :doc:`why-worktrees-are-not-enough`
-- :doc:`bounded-autonomy-for-unattended-coding`
-- :doc:`how-to-tell-if-an-ai-coding-task-is-actually-done`
-- :doc:`good-unattended-ai-coding-task`
-- :doc:`open-source-ai-coding-orchestrator`
-- :doc:`unattended-coding-agent`
-- :doc:`spec-driven-ai-agent`
-- :doc:`ai-agent-orchestration-cli`
-- :doc:`ai-agent-workflow-composer`
-- :doc:`ai-coding-workflow-automation`
+   Want a concrete artifact to judge the product by? See
+   :doc:`example-review-bundle` for a full empty-name-validation
+   finish-receipt — a real, unedited handoff you read in the
+   morning instead of a transcript.
 
 .. toctree::
    :hidden:
+   :caption: First run
+   :maxdepth: 1
 
    getting-started
    quickstart
    first-task-guide
    first-task-prompt-templates
    diagnostics
+
+.. toctree::
+   :hidden:
+   :caption: Configure & operate
+   :maxdepth: 1
+
    configuration
    agents
    reference
@@ -208,10 +83,22 @@ How-to articles
    advanced-mcp-configuration
    parallel-mode
    policy-explanation
+
+.. toctree::
+   :hidden:
+   :caption: Use-case routing
+   :maxdepth: 1
+
    user-stories
    which-agent-should-i-start-with
    when-unattended-coding-fits
    agent-compatibility
+
+.. toctree::
+   :hidden:
+   :caption: Concepts / explanation
+   :maxdepth: 1
+
    concepts
    ralph-loop
    policy-driven-pipeline
@@ -219,6 +106,12 @@ How-to articles
    artifact-lifecycle
    watchdogs-and-timeouts
    verification-model
+
+.. toctree::
+   :hidden:
+   :caption: Reference
+   :maxdepth: 1
+
    cli
    mcp-tools
    artifacts
@@ -236,19 +129,36 @@ How-to articles
    transcript
    mcp-tool-restriction
    mcp-architecture
-   policy-driven-overhaul-migration
    display
+
+.. toctree::
+   :hidden:
+   :caption: Comparisons
+   :maxdepth: 1
+
+   ralph-workflow-vs-aider
+   ralph-workflow-vs-claude-code
+   ralph-workflow-vs-codex-cli
+   ralph-workflow-vs-google-anti-gravity
+   ralph-workflow-vs-opencode
+
+.. toctree::
+   :hidden:
+   :caption: Proof
+   :maxdepth: 1
+
    after-your-first-run
    reviewable-output
    example-review-bundle
    overnight-demo-real
    free-open-source-proof
    what-a-good-ai-coding-finish-receipt-looks-like
-   ralph-workflow-vs-aider
-   ralph-workflow-vs-claude-code
-   ralph-workflow-vs-codex-cli
-   ralph-workflow-vs-google-anti-gravity
-   ralph-workflow-vs-opencode
+
+.. toctree::
+   :hidden:
+   :caption: How-to
+   :maxdepth: 1
+
    claude-code-approval-mode
    claude-code-automation
    claude-code-codex-workflow
@@ -267,3 +177,10 @@ How-to articles
    ai-agent-orchestration-cli
    ai-agent-workflow-composer
    ai-coding-workflow-automation
+
+.. toctree::
+   :hidden:
+   :caption: Archive / Migration
+   :maxdepth: 1
+
+   policy-driven-overhaul-migration

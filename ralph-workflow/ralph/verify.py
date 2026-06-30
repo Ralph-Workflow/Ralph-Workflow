@@ -1,4 +1,57 @@
-"""Verification command wrapper with explicit AI-agent failure guidance."""
+"""Verification command wrapper with explicit AI-agent failure guidance.
+
+This module is the single source of truth for ``make verify`` budget
+enforcement. It owns three ABSOLUTE and IMMUTABLE limits:
+
+* ``_TOTAL_TEST_BUDGET_SECONDS`` — the 60-second combined wall-clock
+  budget for **all** test suites running sequentially under
+  ``make verify``. This is NOT a per-suite limit. ``run_verify()``
+  tracks cumulative wall-clock time with ``time.monotonic()`` across
+  every step whose index is in ``_BUDGET_TRACKED_STEPS`` and rejects
+  any tracked step once the running total exceeds 60 seconds. Adding
+  new test suites, splitting existing suites, or renaming targets
+  does **not** increase the budget — the tracker sums time across all
+  budget-tracked steps.
+
+* ``_INTEGRATION_PER_TEST_TIMEOUT_SECONDS`` — the 1-second per-test
+  cap for tests under ``tests/integration/``. Enforced by SIGALRM in
+  ``tests/conftest.py``. Any integration test that exceeds this cap
+  is a design defect: fix the production coupling, not the timeout.
+
+* ``_VERIFY_STEP_TIMEOUT_SECONDS`` — the per-step timeout for the
+  non-test verification steps (ruff, mypy, the policy/lifecycle
+  audits). Independent of the combined test budget.
+
+Non-circumvention contract:
+
+The 60-second combined budget cannot be raised or bypassed by any of
+the following. Each is detected by an import-time ``RuntimeError``
+check (``if``/``raise`` rather than ``assert`` so the checks survive
+``python -O``):
+
+* Splitting tests into more suites (N suites does **not** yield
+  N x 60 s; the cumulative tracker sums across every tracked step).
+* Adding new test steps without adding their labels to
+  ``_KNOWN_TEST_STEP_LABELS`` and their indices to
+  ``_BUDGET_TRACKED_STEPS`` (the labels/steps sync invariant).
+* Emptying ``_KNOWN_TEST_STEP_LABELS`` to hide test steps from budget
+  tracking, emptying ``_BUDGET_TRACKED_STEPS`` to disable tracking, or
+  removing ``"make test"`` from ``_KNOWN_TEST_STEP_LABELS``.
+* Raising ``_TOTAL_TEST_BUDGET_SECONDS`` or any of the per-step
+  timeouts (an epsilon check pins the 60-second value to 60.0).
+
+Tests marked ``@pytest.mark.subprocess_e2e`` are excluded from the
+main ``make test`` suite and do **not** count against the combined
+budget. The single allowed skip is ``tests/test_verify_invariants.py``
+(Python 3.14 + loguru import-order incompatibility; the invariants
+remain enforced in the main ``make verify`` path).
+
+If tests are too slow, fix the test design — replace real I/O with
+fakes (``MemoryWorkspace``, ``tmp_path``, ``MockProcessExecutor``),
+eliminate ``sleep()`` and real wall-clock waits, inject a clock
+abstraction, refactor production code behind an interface, or
+assert on observable behavior. Do **not** raise these constants.
+"""
 
 from __future__ import annotations
 
@@ -31,64 +84,36 @@ if TYPE_CHECKING:
         ) -> ProcessResult: ...
 
 
-# --- Test budget constants --- ABSOLUTE and IMMUTABLE ---
-#
-# These constants define the hard time limits for `make verify`.
-# They are ABSOLUTE and IMMUTABLE — do NOT change them to work
-# around slow tests or to "adjust" budget allocations.
-#
-# _TOTAL_TEST_BUDGET_SECONDS: ABSOLUTE and IMMUTABLE combined
-# wall-clock budget for ALL test suites. NOT a per-suite limit.
-# Cannot be circumvented by adding/splitting/moving suites. The
-# total elapsed time of every test suite running sequentially under
-# `make verify` must not exceed this value.
-#
-# _INTEGRATION_PER_TEST_TIMEOUT_SECONDS: ABSOLUTE and IMMUTABLE
-# per-test timeout for integration tests (tests/integration/).
-# NO integration test may take longer than this. Enforced by
-# SIGALRM in tests/conftest.py — any integration test that
-# exceeds this limit is a design defect: fix the production
-# coupling, not the timeout.
-#
-# Enforcement mechanism: run_verify() tracks cumulative wall-clock
-# time via time.monotonic() across ALL test-budget-tracked steps.
-# Splitting tests across N suites does NOT give you N x 60s — the
-# combined time of every track-tested step is summed and compared
-# against this cap. The per-step timeout passed to each runner() call
-# is min(per_suite_limit, remaining_budget), so an early suite that
-# consumes most of the budget leaves less for later suites.
-#
-# _VERIFY_STEP_TIMEOUT_SECONDS is the per-step timeout for
-# individual verification steps (ruff, mypy). The test step uses
-# the combined budget.
-#
-# If tests are too slow, fix the test design (remove I/O, use
-# MemoryWorkspace, inject fake clocks). Do NOT raise these constants.
-#
-# --- Allowed skip: subprocess_e2e tests ---
-#
-# Tests marked ``@pytest.mark.subprocess_e2e`` are excluded from the
-# main ``make test`` suite (``-m "not subprocess_e2e"``).  These tests
-# may be skipped only in narrow, documented cases where the failure is
-# in the test harness or a third-party dependency we cannot control.
-#
-# The SINGLE allowed skip as of 2026-05-29:
-#   ``tests/test_verify_invariants.py`` — imports ``verify.py`` via
-#   ``importlib.util.spec_from_file_location + exec_module`` in a
-#   subprocess.  In Python 3.14, this triggers a ``loguru`` /
-#   ``asyncio`` circular import (``AttributeError: partially
-#   initialized module 'asyncio'``).  The invariants are still
-#   enforced correctly in the main ``make verify`` path (import-time
-#   RuntimeError checks).  This is a test-harness compatibility issue
-#   with a third-party library (loguru), not a verification defect.
-#
-# No other test may be skipped, quarantined, or marked subprocess_e2e
-# to bypass the 1s per-test or 60s combined budget limits.
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
+"""Per-step wall-clock timeout for non-test verification steps (ruff, mypy,
+and the policy/lifecycle audits). Independent of the combined test budget.
+Pinned to a minimum of 5 seconds by an import-time invariant so a step
+cannot be silently disabled by lowering this constant."""
+
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
+"""ABSOLUTE and IMMUTABLE combined wall-clock budget for **all** test suites
+running sequentially under ``make verify``. Enforced by ``run_verify()`` via
+cumulative ``time.monotonic()`` tracking across every step whose index is in
+``_BUDGET_TRACKED_STEPS``. Pinned to 60.0 by an import-time epsilon check;
+raising this constant is detected as a RuntimeError on import."""
+
 _INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0
+"""ABSOLUTE and IMMUTABLE per-test timeout for integration tests under
+``tests/integration/``. Enforced by SIGALRM in ``tests/conftest.py``. Any
+integration test that exceeds this cap is a design defect — fix the
+production coupling, not the timeout. Pinned to 1.0 by an import-time
+epsilon check."""
+
 _BUDGET_EPSILON: Final = 1e-9
+"""Equality tolerance used by the import-time ``abs(x - target) < eps``
+checks that pin ``_TOTAL_TEST_BUDGET_SECONDS = 60.0`` and
+``_INTEGRATION_PER_TEST_TIMEOUT_SECONDS = 1.0``."""
+
 _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
+"""Minimum allowed value of ``_VERIFY_STEP_TIMEOUT_SECONDS``. Lowering
+the per-step timeout below this threshold trips an import-time
+RuntimeError — a non-trivial timeout prevents the per-step caps from
+being silently neutered."""
 
 # --- Verification step definitions ---
 #

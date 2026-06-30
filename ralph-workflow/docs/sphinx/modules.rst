@@ -2497,8 +2497,7 @@ ralph.api
 ~~~~~~~~~
 
 .. automodule:: ralph.api
-   :members:
-   :show-inheritance:
+   :no-members:
 
 ralph.api.opencode
 ~~~~~~~~~~~~~~~~~~

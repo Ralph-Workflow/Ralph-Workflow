@@ -1,32 +1,33 @@
 <!--
   Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: clarified the role of the repo-root START_HERE.md as the
-    shortest serious first-run path for a repo visitor, separate from the
-    package-side START_HERE.md (for someone who installed via pipx and is
-    reading the package directory). Both now share the canonical autopilot
-    positioning and the install/ralph --init/first-run sequence from the
-    top-level README.
-  - Why it belongs here: this page is the public storefront's guided-first-run
-    surface. A repo visitor landing on this page should know what they will
-    evaluate for, what success looks like, and where to go next — without
-    restating the README's full positioning.
-  - What was pruned, merged, or explicitly left alone: redundant framing
-    prose is trimmed; the rubric-aligned page-family minimum structure
-    (evaluator kind → one realistic first-run goal → prerequisites → exact
-    first steps → success signal → next click) is preserved as the spine.
-    Codeberg pointer, README + docs map + operator manual next-click chain
-    stays.
-  - How duplication was reduced or contained: the package-side START_HERE
-    gets a parallel role-specific page; the top-level README keeps install
-    + first-run. No two surfaces now fight or duplicate each other. Both
-    surfaces share the same ordered first-run sequence — `pipx install`
-    → `cd <repo>` → `ralph --init` → `ralph --diagnose` →
-    `$EDITOR PROMPT.md` → `ralph` — matching the top-level README so a
-    reader landing on either START_HERE sees the same install + first-run
-    path.
-  - How the route is clearer now than before: a clear evaluator role
-    announcement up front, then prerequisites, then exact first steps with
-    verification signals after each command.
+  - What changed: de-duplicated the finish-receipt block. The verbatim
+    empty-name-validation `development_result` block previously lived
+    here AND on the root README AND on `ralph-workflow/START_HERE.md`
+    AND on the Sphinx index. Root README is now the single source of
+    the verbatim receipt; this page links there and uses a one-line
+    summary instead.
+  - Why it belongs here: this page is the public storefront's guided-
+    first-run surface for a repo visitor. The receipt block is one
+    click away via `README.md#what-a-run-leaves-you` so the reader
+    still sees it, but the START_HERE page no longer competes with
+    README as a second source of the verbatim artifact.
+  - What was pruned, merged, or explicitly left alone: the duplicated
+    finish-receipt code block (≈30 lines) is replaced by a 1-line
+    pointer plus a 2-line summary. The rubric-aligned page-family
+    minimum structure (evaluator kind → one realistic first-run goal
+    → prerequisites → exact first steps → success signal → next click)
+    is preserved as the spine.
+  - How duplication was reduced or contained: root README is now the
+    single source of the verbatim empty-name-validation receipt. The
+    package-side START_HERE also defers to root README for the receipt.
+    The diagnostics healthy-output sample is preserved here because
+    `--diagnose` is a per-invocation check, not a receipt — it's the
+    pre-flight that belongs on the first-run path, not the post-run
+    artifact.
+  - How the route is clearer now than before: evaluator role →
+    prerequisites → exact first steps → pre-flight signal (verbatim)
+    → post-run signal (pointer to README) → morning-after review note
+    → next click.
 -->
 
 # Start Here: try Ralph Workflow on one real backlog task
@@ -129,39 +130,11 @@ you spend a real run on it. The full failure-mode table is in
 
 After step 6 returns, you should find a `development_result` artifact
 that names the change, the checks, and the reviewer focus without
-reconstructing the run. Here is a compact example reusing the same
-empty-name-validation task already referenced in the README and the
-Sphinx manual:
-
-```text
-# Development Result
-
-## Outcome
-Implemented empty-name validation in the CLI create flow and added
-test coverage for empty and whitespace-only input.
-
-## Changed files
-- cli/create.py
-- tests/test_create.py
-
-## Checks run
-- pytest tests/test_create.py        ✓ passed
-- project formatting / lint checks    ✓ passed
-
-## Reviewer focus
-- confirm validation happens before any file creation side effect
-- confirm the error message is clear enough for CLI users
-- confirm no unrelated flow changed
-```
-
-After a good first run you should be able to point to:
-
-- A real repo change that matches the written task
-- Meaningful checks that ran and reported clear outcomes
-- A `development_result` artifact you can review without reconstructing
-  the whole run
-- A clear sense of whether the default workflow helped enough to keep
-  using
+reconstructing the run. The canonical finish-receipt is in
+[`README.md`](README.md) — root README is the single source for the
+verbatim empty-name-validation receipt block ("What a run leaves you"
+section). A successful run leaves a short artifact you can read in
+under a minute: outcome, changed files, checks, reviewer focus.
 
 The morning-after review matters more than the running transcript.
 Open the diff, run the program against your real environment, exercise

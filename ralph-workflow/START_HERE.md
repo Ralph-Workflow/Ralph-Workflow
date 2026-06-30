@@ -1,33 +1,37 @@
 <!--
   Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: clarified the role of the package-side START_HERE.md as
-    the package-operator first-run path for someone who installed via
-    pipx and is reading the package directory. The autopilot positioning
-    and install/ralph --init/first-run sequence match the top-level
-    README and the repo-root START_HERE so the three surfaces reinforce
-    the same product story.
+  - What changed: de-duplicated the finish-receipt block and the
+    `ralph --diagnose` healthy-output sample. The verbatim
+    empty-name-validation `development_result` block previously lived
+    here AND on the root README AND on `START_HERE.md` AND on the
+    Sphinx index; root README is now the single source for the
+    verbatim receipt and this page defers to it. The pre-flight
+    `--diagnose` sample is also preserved in the repo-root
+    `START_HERE.md`, so this page now points there instead of
+    restating the same block.
   - Why it belongs here: the page lives inside `ralph-workflow/`, which
     is the package directory a pipx-installed reader explores after
     `ralph --help`. The role boundary (package operator vs. repo
     visitor) keeps the route coherent instead of duplicating the
     repo-root START_HERE.
-  - What was pruned, merged, or explicitly left alone: redundant
-    long-form prose is trimmed; the rubric-aligned page-family minimum
-    structure (evaluator kind → one realistic first-run goal →
-    prerequisites → exact first steps → success signal → next click)
-    is preserved. Quickstart / getting-started / agents / and
-    configuration next-click chain stays.
+  - What was pruned, merged, or explicitly left alone: the duplicated
+    finish-receipt code block (≈30 lines) and the duplicated
+    `ralph --diagnose` healthy-output sample (≈12 lines) are replaced
+    by pointers to the canonical surfaces. The package-operator-only
+    framing (no global pipx install step, since the package is
+    already installed by definition) is preserved. The rubric-aligned
+    page-family minimum structure (evaluator kind → one realistic
+    first-run goal → prerequisites → exact first steps → success
+    signal → next click) is preserved as the spine.
   - How duplication was reduced or contained: this page is the
-    package-side twin of the repo-root START_HERE — same sequence, same
-    diagnostics pre-flight, but framed for a reader who has already
-    installed and wants the operator fast-path. Both surfaces share the
-    same ordered first-run sequence — `cd <repo>` → `ralph --init` →
-    `ralph --diagnose` → `$EDITOR PROMPT.md` → `ralph` — matching the
-    top-level README so a reader landing on either START_HERE sees the
-    same install + first-run path.
-  - How the route is clearer now than before: explicit role boundary up
-    front, then prerequisites, then exact steps, then a success signal,
-    then a short next-click chain into the operator manual.
+    package-side twin of the repo-root START_HERE — same sequence, but
+    framed for a reader who has already installed and wants the
+    operator fast-path. Receipt and pre-flight output live once each
+    on the root surfaces.
+  - How the route is clearer now than before: explicit role boundary
+    up front, then prerequisites, then exact steps, then a pointer
+    to the canonical pre-flight and receipt, then a short next-click
+    chain into the operator manual.
 -->
 
 # Start Here: first run as a package operator
@@ -101,65 +105,23 @@ morning after.
 
 After step 3 in [Exact first steps](#exact-first-steps), the pre-flight
 report should show every line green, with no missing, degraded, or
-needs-repair signals:
-
-```text
-Ralph Workflow Diagnostics
-—————————————————————————————
-✓ Git repository
-✓ Configuration
-✓ Agents (claude, opencode)
-✓ MCP servers (3 upstreams reachable)
-✓ Workspace files
-✓ Capability state (12/12 healthy)
-✓ Pre-flight policy validation
-
-All checks passed. Ready for `ralph`.
-```
-
-If a line is red, `--diagnose` tells you what is missing (e.g. an agent
-CLI not on `PATH`), unreachable (e.g. an MCP upstream), or degraded
-(e.g. a capability whose provider key is unset). Fix that line before
-you spend a real run on it. The full failure-mode table is in
-[Diagnostics](docs/sphinx/diagnostics.md).
+needs-repair signals. The verbatim healthy-output sample lives in the
+repo-root [START_HERE.md](../START_HERE.md) — this page defers to it
+so the pre-flight signal is described once, not four times across the
+docs tree. If a line is red, `--diagnose` tells you what is missing
+(e.g. an agent CLI not on `PATH`), unreachable (e.g. an MCP upstream),
+or degraded (e.g. a capability whose provider key is unset). The full
+failure-mode table is in [Diagnostics](docs/sphinx/diagnostics.md).
 
 ### A successful run leaves a finish-receipt you can review
 
 After step 4 returns, you should find a `development_result` artifact
 that names the change, the checks, and the reviewer focus without
-reconstructing the run. Here is a compact example reusing the same
-empty-name-validation task already referenced in the README and the
-Sphinx manual:
-
-```text
-# Development Result
-
-## Outcome
-Implemented empty-name validation in the CLI create flow and added
-test coverage for empty and whitespace-only input.
-
-## Changed files
-- cli/create.py
-- tests/test_create.py
-
-## Checks run
-- pytest tests/test_create.py        ✓ passed
-- project formatting / lint checks    ✓ passed
-
-## Reviewer focus
-- confirm validation happens before any file creation side effect
-- confirm the error message is clear enough for CLI users
-- confirm no unrelated flow changed
-```
-
-After a good first run you should be able to point to:
-
-- A real repo change that matches the written task
-- Meaningful checks that ran and reported clear outcomes
-- A `development_result` artifact you can review without reconstructing
-  the whole run
-- A clear sense of whether the default workflow helped enough to keep
-  using
+reconstructing the run. The canonical verbatim receipt is in the
+root [`README.md`](../README.md) — root README is the single source
+for the empty-name-validation receipt block ("What a run leaves you"
+section). A successful run leaves a short artifact you can read in
+under a minute: outcome, changed files, checks, reviewer focus.
 
 ## Where to go next
 

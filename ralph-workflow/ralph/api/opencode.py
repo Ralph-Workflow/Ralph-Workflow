@@ -52,7 +52,14 @@ _TTL_SECONDS: float = 300.0
 
 
 class _CatalogFetcher:
-    """Callable cache around the OpenCode catalog with a TTL refresh."""
+    """Callable cache around the OpenCode catalog with a TTL refresh.
+
+    The instance is a stateful callable: every invocation returns
+    ``list[ModelEntry]`` and refreshes the cached snapshot when more
+    than :data:`_TTL_SECONDS` (5 minutes) have elapsed since the
+    last fetch. Use :meth:`cache_clear` to force a fresh fetch on
+    the next call.
+    """
 
     def __init__(self, *, clock: _ClockProtocol | None = None) -> None:
         self._cache: list[ModelEntry] | None = None
@@ -60,6 +67,21 @@ class _CatalogFetcher:
         self._clock: _ClockProtocol = clock if clock is not None else SystemClock()
 
     def __call__(self) -> list[ModelEntry]:
+        """Fetch and return the OpenCode model catalog.
+
+        Returns:
+            ``list[ModelEntry]`` populated from
+            ``https://models.dev/api.json``. Within the 5-minute TTL
+            the cached list is returned directly; outside the TTL a
+            fresh HTTP GET refreshes the cache.
+
+        Raises:
+            httpx.HTTPError: When the underlying ``httpx.Client.get``
+                call fails (network error, non-2xx status, etc.).
+            ValueError: When the JSON payload is neither a list nor
+                a provider map, or when a provider/model entry is
+                missing required fields.
+        """
         if (
             self._cache is not None
             and self._cached_at is not None
@@ -231,7 +253,45 @@ def validate_local_model_support(
     env_path: str | None = None,
     _run_process: ProcessRunner = run_process,
 ) -> str | None:
-    """Return a human-readable error when the local OpenCode binary cannot use a model."""
+    """Return a human-readable error when the local OpenCode binary cannot use a model.
+
+    Two-mode return value:
+
+    * ``None`` — the local ``opencode`` binary (resolved from
+      ``env_path`` or ``PATH``) confirmed the model is supported
+      after a ``models --refresh <provider>`` invocation.
+    * Diagnostic ``str`` — the binary is missing, the refresh
+      command failed, or the model is absent from the refreshed
+      model list. The string is suitable for surfacing to the
+      user before launching an agent that targets ``model_id``.
+
+    Args:
+        model_id: Fully-qualified ``"provider/model"`` identifier.
+            When ``"/"`` is absent the function returns ``None``
+            immediately (the caller passed a bare provider name).
+        command: Executable name or path to invoke. Defaults to
+            ``"opencode"``, resolved via :func:`shutil.which`.
+        env_path: Optional override for the ``PATH`` used to resolve
+            ``command``. When ``None`` the current process's
+            ``PATH`` is used.
+        _run_process: Subprocess seam (``ProcessRunner`` protocol).
+            Defaults to :func:`ralph.executor.process.run_process`;
+            injectable for tests.
+
+    Returns:
+        ``None`` when ``model_id`` is supported locally; otherwise a
+        multi-line diagnostic string describing the failure mode.
+
+    Side effects:
+        Spawns two subprocesses: ``<command> --version`` (for the
+        diagnostic banner) and ``<command> models --refresh
+        <provider>`` (the actual preflight probe). Both run under
+        :func:`ralph.executor.process.run_process` with the
+        ``_LOCAL_COMMAND_TIMEOUT_SECS`` cap. Resolution walks the
+        ``env_path`` (or ``PATH``) using
+        :func:`shutil.which` and ``os.access`` so duplicate /
+        non-executable entries are filtered out.
+    """
     if "/" not in model_id:
         return None
 

@@ -30,18 +30,32 @@ That keeps first-run trust signals and first-run friction on the same primary su
 ```bash
 git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
 cd Ralph-Workflow/ralph-workflow
-python -m pip install -e ".[dev]"
-make verify
+make dev          # dev build — installs the package in editable mode with the dev extras
+make verify       # the canonical verification gate
 ```
+
+The dev build must NOT be installed as the global `ralph` (it would shadow the
+stable build) — leave the global install under `pipx install ralph-workflow`
+and run `make dev` only inside the working tree. For the dev-build vs
+stable-build distinction, see [`ralph-workflow/CONTRIBUTING.md`](ralph-workflow/CONTRIBUTING.md)
+"Development setup".
+
+Use `make install` instead of `make dev` when you only want the `rdev`
+launcher (a stable binary that does NOT shadow `ralph`) — see the package
+CONTRIBUTING for the exact semantics.
 
 ## Source of truth
 
-Use these first when changing the Python package:
+The canonical source-of-truth list lives in [`AGENTS.md`](AGENTS.md)
+"Source of truth". When changing the Python package, the priority order is:
 
-- `ralph-workflow/README.md`
-- `ralph-workflow/CONTRIBUTING.md`
-- `docs/agents/verification.md`
-- package docstrings in `ralph-workflow/ralph/`
+1. `PROMPT.md` (root — the canonical brief/rubric for the project)
+2. `ralph-workflow/CONTRIBUTING.md`
+3. `docs/agents/verification.md`
+4. `ralph-workflow/docs/agents/artifact-submission-contract.md`
+5. `ralph-workflow/README.md`
+6. Python source and docstrings under `ralph-workflow/ralph/`
+7. `docs/code-style/documentation-rubric.md` (canonical documentation rubric)
 
 ## Required verification
 

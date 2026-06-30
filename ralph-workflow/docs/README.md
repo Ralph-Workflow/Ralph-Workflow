@@ -1,5 +1,13 @@
 # Documentation Map (package-side router)
 
+Ralph Workflow is **the autopilot for coding agents** — a free and
+open-source operating system for autonomous coding, an AI agent
+orchestrator built around a simple Ralph-loop core that becomes powerful
+through composition. **Hand it a well-specified coding task, let the
+agents plan, build, verify, and fix, and come back to reviewable, tested
+work.** The default workflow is already strong enough to adopt as-is
+before you customize anything.
+
 > **Codeberg is the primary repo.** Star, watch, and report issues there:
 > <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
 > GitHub is a read-only mirror.
@@ -10,6 +18,10 @@ operator manual where it lives.
 
 Use this page after [`../README.md`](../README.md) (public storefront) and
 [`../START_HERE.md`](../START_HERE.md) (fastest first run).
+
+Every route bullet below is tagged with its doc-family role
+(`tutorial` / `how-to` / `reference` / `explanation` / `proof` /
+`internals`) so you can match a route to the kind of page you need.
 
 ## Where each kind of doc lives
 
@@ -24,61 +36,56 @@ Use this page after [`../README.md`](../README.md) (public storefront) and
 
 ## Route by intent
 
-### I'm an operator (running Ralph Workflow)
+### I'm an operator (running Ralph Workflow) — tutorial + how-to + reference
 
 Start with the maintained manual:
 
-- **[Manual home](sphinx/index.rst)** — entry point for the operator manual
-- [Getting Started](sphinx/getting-started.md) — first-run walkthrough
-- [Diagnostics](sphinx/diagnostics.md) — pre-flight checks
-- [Agent CLI lifecycle](sphinx/agents.md) — selection, auth, invocation
-- [Configuration](sphinx/configuration.md) — config files and precedence
-- [CLI reference](sphinx/cli.md) — every flag
-- [Troubleshooting](sphinx/troubleshooting.md)
+- **[Manual home](sphinx/index.rst)** — how-to + reference
+- [Getting Started](sphinx/getting-started.md) — tutorial
+- [Diagnostics](sphinx/diagnostics.md) — how-to
+- [Agent CLI lifecycle](sphinx/agents.md) — how-to + reference
+- [Configuration](sphinx/configuration.md) — reference
+- [CLI reference](sphinx/cli.md) — reference
+- [Troubleshooting](sphinx/troubleshooting.md) — how-to
 
-### I'm a contributor (changing the Python package)
+### I'm a contributor (changing the Python package) — how-to + internals
 
-- [`agents/README.md`](agents/README.md) — agent-authoring contracts
+- [`agents/README.md`](agents/README.md) — internals (agent-authoring contracts)
 - [`architecture/adr-0001-interrupt-architecture.md`](architecture/adr-0001-interrupt-architecture.md) —
-  current ADR
-- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — top-level contribution guide
-- [Sphinx developer reference](sphinx/developer-reference.md) — maintained
-  contributor reference
-- [Sphinx developer internals](sphinx/developer-internals.md) — internal
-  contracts and patterns
+  internals (current ADR)
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — how-to (top-level contribution guide)
+- [Sphinx developer reference](sphinx/developer-reference.md) — reference
+- [Sphinx developer internals](sphinx/developer-internals.md) — internals
 
-### I'm comparing Ralph Workflow to other tools
+### I'm comparing Ralph Workflow to other tools — explanation
 
-- [Manual comparisons index](sphinx/index.rst) — every
-  Ralph-vs-other page in the maintained manual (see the *Comparisons*
+- [Manual comparisons index](sphinx/index.rst) — explanation (every
+  Ralph-vs-other page in the maintained manual; see the *Comparisons*
   section)
 
-### I'm debugging an MCP-specific issue
+### I'm debugging an MCP-specific issue — how-to + reference
 
-- [`mcp/` directory](mcp/) — MCP tool restriction, transport notes, and
-  cookbook pages
-- [Advanced MCP configuration](sphinx/advanced-mcp-configuration.md) — main
-  manual page
+- [`mcp/` directory](mcp/) — reference (MCP tool restriction, transport notes,
+  and cookbook pages)
+- [Advanced MCP configuration](sphinx/advanced-mcp-configuration.md) — how-to
 
-### I'm investigating an architectural decision
+### I'm investigating an architectural decision — internals + explanation
 
-- [`architecture/`](architecture/) — ADRs
-- [`plans/`](plans/) — Python-era plans
+- [`architecture/`](architecture/) — internals (ADRs)
+- [`plans/`](plans/) — internals (Python-era plans)
 
-### I want to understand the system boundary
+### I want to understand the system boundary — explanation
 
-- [Manual `concepts.md`](sphinx/concepts.md) — terminology
-- [Manual `ralph-loop.md`](sphinx/ralph-loop.md) — the Ralph-loop mental
-  model
+- [Manual `concepts.md`](sphinx/concepts.md) — explanation (terminology)
+- [Manual `ralph-loop.md`](sphinx/ralph-loop.md) — explanation (Ralph-loop mental model)
 - [Manual `policy-driven-pipeline.md`](sphinx/policy-driven-pipeline.md) —
-  policy interpretation
-- [Manual `phase-routing.md`](sphinx/phase-routing.md) — phase lifecycle
-- [Manual `artifact-lifecycle.md`](sphinx/artifact-lifecycle.md) — artifact
-  submission flow
+  explanation (policy interpretation)
+- [Manual `phase-routing.md`](sphinx/phase-routing.md) — explanation (phase lifecycle)
+- [Manual `artifact-lifecycle.md`](sphinx/artifact-lifecycle.md) — explanation (artifact submission flow)
 - [Manual `watchdogs-and-timeouts.md`](sphinx/watchdogs-and-timeouts.md) —
-  watchdog model
-- [Manual `verification-model.md`](sphinx/verification-model.md) — what each
-  verification step proves
+  explanation (watchdog model)
+- [Manual `verification-model.md`](sphinx/verification-model.md) — explanation (what each
+  verification step proves)
 
 ## Cross-tree role split
 

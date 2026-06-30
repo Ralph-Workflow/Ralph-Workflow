@@ -1,5 +1,13 @@
 # Parallel Mode
 
+!!! info "Ralph-managed fan-out is dormant in this build"
+    Ralph-managed fan-out (the pipeline-level parallelisation
+    described historically on this page) is **dormant** in the
+    maintained build. The operator-facing parallel configuration
+    documented below remains accurate for downstream callers that
+    invoke their own parallel agents; the Ralph-managed fan-out
+    feature is not exercised by ``make verify``.
+
 Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
 **Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
 The default workflow is strong enough to adopt as-is, before you customize anything.

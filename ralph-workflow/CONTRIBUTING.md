@@ -154,6 +154,52 @@ make test-integration     # integration tests only
 make test-cov             # coverage report — enforces --fail-under=80
 ```
 
+## Guardrails
+
+The verification gate runs four policy audits in addition to ruff / mypy /
+pytest. Each one enforces a contract that contributors must preserve.
+
+- **Fabrication guard** (`scripts/fabrication_guard.py`, level 1
+  pre-commit hook, level 2/3 opt-in) — catches fabricated external
+  references in public-facing markdown (USERS.md, SHOWCASE.md,
+  README, Sphinx pages). Bare star / download / install counts must
+  be paired with (source, date). Why: a 2026-06-21 incident
+  fabricated an entire GitHub repo + npm package in USERS.md and
+  the project must not repeat that class of error. See
+  [`../docs/agents/fabrication-guard.md`](../docs/agents/fabrication-guard.md).
+
+- **Artifact-submission canonical path**
+  (`ralph.testing.audit_artifact_submission_canonical_path`) — every
+  artifact must be submitted through the canonical MCP path; ad-hoc
+  file writes to `.agent/PLAN.md` etc. are detected. Why: artifact
+  canonical path is the only path the audit and downstream readers
+  trust. See
+  [`docs/agents/artifact-submission-contract.md`](docs/agents/artifact-submission-contract.md).
+
+- **Resource-lifecycle contract**
+  (`ralph.testing.audit_resource_lifecycle`) — every long-lived
+  mutable collection (list / dict / set / deque at module level or
+  `self.X` in `__init__`) must carry a FIFO / size cap or a
+  justified inline marker. Unbounded accumulators retain
+  heavyweight objects across a long unattended run (the leak class
+  that produced `BudgetState.failures` and
+  `RalphAuditSinkAdapter._records`). See
+  [`docs/agents/memory-lifecycle.md`](docs/agents/memory-lifecycle.md).
+
+- **Bounded-subprocess (MCP timeout) contract**
+  (`ralph.testing.audit_mcp_timeout`) — every blocking call under
+  `ralph/mcp/`, `ralph/git/`, `ralph/process/`, `ralph/executor/`,
+  `ralph/agents/`, and `ralph/pro_support/` must use a bounded
+  `timeout=` (subprocess.run, httpx, requests, urlopen, socket).
+  Unbounded blocking calls hang the MCP server thread and starve
+  the agent of output. The only bypass is an inline
+  `# mcp-timeout-ok: <reason>` marker for a genuinely
+  unbounded-by-design call.
+
+Verification detail (per-step timeout, the audit order, the failure
+banner) is documented in [`docs/agents/verification.md`](../docs/agents/verification.md);
+do not triplicate it here.
+
 ## Documentation expectations
 
 - Update user-facing Markdown when workflows or commands change.
