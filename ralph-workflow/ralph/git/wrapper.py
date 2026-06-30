@@ -21,7 +21,54 @@ HOOKS_DIR_NAME = "hooks"
 
 
 class GitHelpers:
-    """Simple placeholder for Git wrapper state tracking."""
+    """State carrier for one agent-phase git-protection sequence.
+
+    :class:`GitHelpers` is the lightweight bundle :func:`start_agent_phase`
+    and :func:`end_agent_phase` populate as they enable and later roll back
+    the agent-phase git protections. The two functions use it to share a
+    view of the runtime state (which directory is the Ralph-managed hooks
+    dir, which repository root the protections belong to, and which ``git``
+    binary is the genuine system one) without recomputing it on every
+    call.
+
+    Attributes:
+        real_git: Path to the genuine ``git`` executable on the host. Set
+            by callers when the Ralph wrapper redirects ``git`` to a
+            sandbox binary; ``None`` when the host has no wrapper in front
+            of ``git``. The wrapper scripts use this to invoke the real
+            binary once the agent-phase protections are restored.
+        wrapper_dir: Path to the per-repository ``.git/ralph`` directory
+            that holds the agent-phase marker, HEAD OID snapshot, and the
+            Ralph-managed hooks directory. Set by :func:`start_agent_phase`
+            and read by :func:`end_agent_phase` during teardown. ``None``
+            before :func:`start_agent_phase` populates it.
+        wrapper_repo_root: Path to the repository root the protections
+            were enabled for. ``None`` before :func:`start_agent_phase`
+            populates it; :func:`end_agent_phase` asserts the value
+            matches the repo being torn down so a mismatched call fails
+            fast instead of editing the wrong repository's ``.git``.
+
+    Lifecycle:
+        1. Construct (or reuse) a :class:`GitHelpers`. Optional — the
+           phase helpers create one for you.
+        2. Call :func:`start_agent_phase(repo_root, helpers)`; it sets
+           ``wrapper_repo_root`` and ``wrapper_dir`` and writes the
+           marker / HEAD OID / hooks-path snapshot.
+        3. Run the agent phase (commit/push attempts are blocked by the
+           marker file the hook scripts check).
+        4. Call :func:`end_agent_phase(repo_root, helpers)`; it restores
+           ``core.hooksPath``, deletes the marker / snapshot / track
+           files, and leaves ``wrapper_dir`` populated only until the next
+           start/end cycle.
+
+    Invariants:
+        - The class is a plain data carrier with no locking; threads that
+          enable protections concurrently must serialize around the
+          instance externally.
+        - All attributes are intentionally typed ``Path | None`` because
+          none of them carry meaning outside of a paired
+          ``start_agent_phase`` / ``end_agent_phase`` cycle.
+    """
 
     real_git: Path | None
     wrapper_dir: Path | None
