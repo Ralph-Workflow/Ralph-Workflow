@@ -342,6 +342,15 @@ def handle_submit_artifact(
             when the payload fails the per-type schema check. The
             canonical submit path converts these into actionable
             per-field error messages.
+
+    Side effects:
+        Resolves the artifact directory (per-worker for parallel
+        workers, the shared ``.agent/artifacts/`` otherwise) and
+        delegates to ``submit_artifact_canonical``, which writes the
+        canonical artifact file, the completion receipt, and (when the
+        active policy declares ``artifact_history.enabled = true``)
+        the history snapshot under the resolved ``artifact_dir``. No
+        subprocess is spawned, no network call is made.
     """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Artifact submission")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
@@ -451,6 +460,16 @@ def handle_submit_plan_section(
             formats the error so the agent sees a clear ``[section]``
             marker and the underlying ``PlanArtifactValidationError``
             detail.
+
+    Side effects:
+        Resolves the artifact directory (per-worker for parallel
+        workers, the shared ``.agent/artifacts/`` otherwise) and
+        persists the merged draft under the resolved ``artifact_dir``
+        via ``save_plan_draft``. Schema-invalid but shape-valid sections
+        are staged with ``validation_warnings`` and do NOT block
+        persistence — the strict gates are ``ralph_validate_draft`` and
+        ``ralph_finalize_plan``. No subprocess is spawned, no network
+        call is made.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan section submission")
 
@@ -602,6 +621,18 @@ def handle_finalize_plan(
         PlanArtifactValidationError: When the assembled draft fails the
             whole-plan schema check (e.g. missing required sections,
             step number collision, cross-section reference violation).
+
+    Side effects:
+        Resolves the artifact directory (per-worker for parallel
+        workers, the shared ``.agent/artifacts/`` otherwise) and
+        delegates to ``submit_artifact_canonical``, which writes the
+        canonical ``plan.json`` artifact file, the completion receipt,
+        and (when the active policy declares
+        ``artifact_history.enabled = true``) the history snapshot under
+        the resolved ``artifact_dir``. The structured JSON artifact is
+        mirrored into a Markdown handoff via ``sync_markdown_handoff``
+        so downstream phases never need to read raw JSON directly. No
+        subprocess is spawned, no network call is made.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan finalization")
     del params
@@ -767,6 +798,15 @@ def handle_get_plan_draft(
     Raises:
         CapabilityDeniedError: When the session does not declare
             ``plan_draft.read``.
+
+    Side effects:
+        None. Read-only: resolves the artifact directory (per-worker or
+        shared), loads the staged draft via ``load_plan_draft`` and the
+        finalized response via ``load_plan_artifact_sections``, and
+        returns whichever is newer. Does NOT write
+        ``.agent/artifacts/plan.json`` and does NOT delete the
+        in-progress draft. No subprocess is spawned, no network call is
+        made.
     """
     require_capability(session, PLAN_DRAFT_READ_CAPABILITY, "Plan draft read")
     del params
@@ -794,11 +834,43 @@ def handle_validate_plan_draft(
     """Run the full PlanArtifact cross-section validator on the staged draft.
 
     Read-only: does NOT write ``.agent/artifacts/plan.json`` and does NOT
-    delete the in-progress draft. Returns ``{"valid": true}`` on success
-    or ``{"valid": false, "errors": ["summary: required field is missing"]}``
-    on failure. The same checks run at ``finalize_plan`` in the write path;
-    this tool exposes them in a read-only path so the agent can dry-run
-    validation before committing.
+    delete the in-progress draft. The same checks run at
+    ``finalize_plan`` in the write path; this tool exposes them in a
+    read-only path so the agent can dry-run validation before committing.
+
+    Args:
+        session: Agent session carrying the capability set, run id, and
+            optional ``worker_artifact_dir`` override for parallel
+            workers.
+        workspace: Workspace surface that resolves the artifact root.
+        params: Reserved for future filters. Currently ignored.
+        deps: Optional dependency-injection bundle. When ``None``,
+            ``DEFAULT_ARTIFACT_HANDLER_DEPS`` is used.
+
+    Returns:
+        A ``ToolResult`` with the canonical validation response JSON.
+        On success: ``{"valid": true, "errors": [], "staged_sections":
+        [...]}`` with ``is_error=False``. On a missing draft:
+        ``{"valid": false, "errors": [{"message": ..., "type":
+        "InvalidDraftState"}], "staged_sections": []}`` with
+        ``is_error=False`` (the missing-draft case is reported in-body,
+        not as an MCP error). On a schema failure:
+        ``{"valid": false, "errors": [{"message": ..., "type":
+        "PlanArtifactValidationError"}]}`` with ``is_error=False``.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``plan_draft.read``.
+
+    Side effects:
+        None. Read-only: resolves the artifact directory (per-worker or
+        shared) and runs ``finalize_plan_draft(draft)`` for its
+        ``PlanArtifactValidationError`` side effect — any per-section
+        ``PlanArtifactValidationError`` is converted into the
+        ``{"valid": false, "errors": [...]}`` JSON response and the
+        in-progress draft is left untouched. Does NOT write
+        ``.agent/artifacts/plan.json`` and does NOT delete the draft. No
+        subprocess is spawned, no network call is made.
     """
     require_capability(session, PLAN_DRAFT_READ_CAPABILITY, "Plan draft validation")
     del params
@@ -1184,6 +1256,49 @@ def handle_submit_plan_sections(
     malformed, the entire batch is rejected and the on-disk draft is
     unchanged. Schema-invalid but valid JSON sections are staged with
     validation_warnings so validate/finalize can be the strict gates.
+
+    Args:
+        session: Agent session carrying the capability set, run id, and
+            optional ``worker_artifact_dir`` override for parallel
+            workers.
+        workspace: Workspace surface that resolves the artifact root.
+        params: ``entries`` (list of ``{section, mode, content}``
+            dicts; each entry may inline the content or carry it as a
+            JSON-encoded string). The handler also accepts a
+            single-JSON-string container or a pre-coerced list. Unknown
+            top-level keys are ignored.
+        deps: Optional dependency-injection bundle. When ``None``,
+            ``DEFAULT_ARTIFACT_HANDLER_DEPS`` is used.
+
+    Returns:
+        A ``ToolResult`` with the canonical batch response JSON on
+        success: ``{"submitted": [...], "staged_sections": [...],
+        "total_bytes": <int>, "validation_warnings": [...]}`` with
+        ``is_error=False``. On a malformed envelope
+        (``entries`` missing or wrong type) or a single structurally
+        malformed entry: ``{"submitted": [], "failed_at": <int>,
+        "error": <message>}`` with ``is_error=True`` (the entire
+        batch is rejected and the on-disk draft is unchanged).
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``plan_draft.write``.
+        InvalidParamsError: When ``entries`` is missing, is the wrong
+            container type, or cannot be coerced from the supplied JSON
+            text. The handler formats the error so the agent sees a
+            clear ``entries`` envelope marker.
+
+    Side effects:
+        Resolves the artifact directory (per-worker for parallel
+        workers, the shared ``.agent/artifacts/`` otherwise) and
+        persists the merged draft under the resolved ``artifact_dir``
+        via ``save_plan_draft``. Schema-invalid but shape-valid sections
+        are staged with ``validation_warnings`` and do NOT block
+        persistence — the strict gates are ``ralph_validate_draft`` and
+        ``ralph_finalize_plan``. A structurally malformed entry
+        short-circuits before any merge, so the on-disk draft is
+        unchanged when the batch is rejected. No subprocess is spawned,
+        no network call is made.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan sections batched submit")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
@@ -1276,6 +1391,15 @@ def handle_discard_plan_draft(
     Raises:
         CapabilityDeniedError: When the session does not declare
             ``plan_draft.write``.
+
+    Side effects:
+        Resolves the artifact directory (per-worker for parallel
+        workers, the shared ``.agent/artifacts/`` otherwise) and calls
+        ``delete_plan_draft`` to remove the staged plan draft file when
+        present. The handler does NOT touch the finalized plan artifact
+        (that is the write path's concern) and does NOT mutate the
+        history index. No subprocess is spawned, no network call is
+        made.
     """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan draft discard")
     del params
