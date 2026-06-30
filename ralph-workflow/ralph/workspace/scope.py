@@ -58,7 +58,56 @@ def _canonicalize(path: Path | str) -> Path:
 
 @dataclass(frozen=True, init=False)
 class WorkspaceScope:
-    """Single source of truth for workspace root and config inheritance."""
+    """Single source of truth for workspace root and config inheritance.
+
+    Frozen dataclass that centralises every workspace-root and
+    allowed-directory decision made at process startup. Every
+    component that needs to know where files live, which paths an
+    agent may write, or where local and inherited configuration
+    files are read from should consume a :class:`WorkspaceScope`
+    instance rather than calling :func:`pathlib.Path.cwd` directly.
+    The dataclass is hashable and frozen so it can be cached,
+    passed between threads, and used as a dictionary key.
+
+    Construction canonicalises every path through :func:`_canonicalize`
+    (expanduser + resolve) and deduplicates ``allowed_roots`` so
+    callers can pass user-supplied paths and still rely on a stable
+    canonical form.
+
+    Attributes:
+        root: Canonical absolute path to the workspace root. All
+            ``.agent/``-relative paths are resolved against this
+            value, and it is the canonical entry point for
+            repository-relative lookups.
+        allowed_roots: Tuple of canonical absolute paths that agents
+            may read or write to during the run. ``root`` is always
+            the first entry. Additional entries are added by the
+            workspace resolver for linked worktrees, parallel
+            worker namespaces, and any directory the active
+            pipeline phase has been granted access to.
+        local_config_path: Canonical absolute path to the
+            workspace-local ``ralph-workflow.toml`` file. Defaults to
+            ``<root>/.agent/ralph-workflow.toml`` when no override
+            is supplied; can be overridden for tests and for
+            workspaces that store configuration outside ``.agent/``.
+        propagated_config_paths: Tuple of canonical absolute paths
+            to inherited configuration files. The values come from
+            the workspace resolver walking upward from ``root`` and
+            collecting any ``.agent/ralph-workflow.toml``,
+            ``agents.toml``, ``pipeline.toml``, ``artifacts.toml``,
+            or ``mcp.toml`` it finds. Order is parent-first so the
+            most-specific entry wins on conflict.
+
+    Lifecycle:
+        1. Construct (or receive from
+           :func:`resolve_workspace_scope`) a :class:`WorkspaceScope`.
+        2. Pass it to every component that needs to locate files
+           (``scope.root``, ``scope.local_config_path``) or check
+           path containment (``root in scope.allowed_roots``).
+        3. For parallel workers, build a restricted scope with
+           :meth:`for_same_workspace_worker` instead of mutating
+           the original instance — the dataclass is frozen.
+    """
 
     root: Path
     allowed_roots: tuple[Path, ...]

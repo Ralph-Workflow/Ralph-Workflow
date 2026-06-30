@@ -81,7 +81,56 @@ class GitHelpers:
 
 
 def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) -> None:
-    """Enable git protections for an agent phase."""
+    """Enable git protections for an agent phase.
+
+    Installs the Ralph-managed git hooks that block agent commits for the
+    remainder of the current phase. The function writes a marker file and
+    the current ``HEAD`` OID under ``<repo>/.git/ralph/``, snapshots the
+    previous ``core.hooksPath`` value, and repoints ``core.hooksPath`` at
+    the Ralph-managed hooks directory. Subsequent agent invocations that
+    attempt to commit or push are rejected by the hooks.
+
+    This function is the public entry point for enabling the protection
+    scheme and is paired with :func:`end_agent_phase`, which rolls back
+    the changes. Together they bracket one agent phase; callers that
+    skip :func:`end_agent_phase` leave the repository in a state that
+    still blocks commits.
+
+    Args:
+        repo_root: Path to the repository root whose protections should be
+            enabled. Accepts a :class:`pathlib.Path` or a string; the
+            value is resolved against the GitPython ``Repo`` constructor.
+        helpers: Optional pre-built :class:`GitHelpers` carrier. When
+            ``None``, a fresh carrier is constructed and populated with
+            ``wrapper_repo_root`` and ``wrapper_dir``. The same carrier
+            (or one with identical population) must be passed to the
+            matching :func:`end_agent_phase` call so teardown targets the
+            right repository.
+
+    Returns:
+        None. The function mutates the repository's ``.git/ralph``
+        directory, the local ``core.hooksPath`` config, and the supplied
+        :class:`GitHelpers` carrier.
+
+    Side effects:
+        - Creates ``<repo>/.git/ralph/`` if absent.
+        - Writes the marker, HEAD OID, and track files inside it.
+        - Snapshots and overwrites the local ``core.hooksPath``.
+        - Closes the GitPython ``Repo`` it opened for the duration of the
+          call (callers must not reuse the original handle).
+
+    Raises:
+        git.exc.GitCommandError: If any underlying ``git`` invocation
+            fails (filesystem permission, missing ``.git``, or a held
+            lock). Each subprocess is bounded by
+            ``GIT_SUBPROCESS_TIMEOUT_SECONDS`` so a stuck lock cannot
+            hang an agent-phase setup.
+
+    See also:
+        :func:`end_agent_phase` rolls back the protections this
+        function installs. :func:`detect_unauthorized_commit` reports
+        whether ``HEAD`` advanced during a protected phase.
+    """
 
     repo = Repo(repo_root)
     helpers = helpers or GitHelpers()
@@ -100,7 +149,53 @@ def start_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) 
 
 
 def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) -> None:
-    """Remove agent-phase protections and restore git state."""
+    """Remove agent-phase protections and restore git state.
+
+    Reverses every change made by :func:`start_agent_phase`: restores the
+    previous ``core.hooksPath`` value, deletes the Ralph-managed marker /
+    HEAD-OID / track files under ``<repo>/.git/ralph/``, and closes the
+    GitPython ``Repo`` opened for the duration of the call. After this
+    function returns, the repository is in the same git state it was in
+    before the matching :func:`start_agent_phase` call.
+
+    Args:
+        repo_root: Path to the repository root whose protections should
+            be rolled back. Must match the ``repo_root`` passed to the
+            matching :func:`start_agent_phase` call so teardown targets
+            the same repository. Accepts a :class:`pathlib.Path` or a
+            string.
+        helpers: Optional :class:`GitHelpers` carrier populated by the
+            matching :func:`start_agent_phase` call. When ``None``, a
+            fresh carrier is constructed and ``wrapper_repo_root`` is
+            set to ``Path(repo_root)`` so teardown can locate the
+            ``.git/ralph`` directory written during setup.
+
+    Returns:
+        None. The function mutates the repository's local
+        ``core.hooksPath`` and deletes the marker / snapshot files
+        written during setup.
+
+    Side effects:
+        - Restores the previous ``core.hooksPath`` from the snapshot
+          file (or clears it if none was set).
+        - Deletes the marker, HEAD OID, and track files inside
+          ``<repo>/.git/ralph/``.
+        - Closes the GitPython ``Repo`` it opened for the duration of
+          the call.
+
+    Raises:
+        git.exc.GitCommandError: If any underlying ``git`` invocation
+            fails (filesystem permission, missing snapshot file, or a
+            held lock). Each subprocess is bounded by
+            ``GIT_SUBPROCESS_TIMEOUT_SECONDS`` so a stuck lock cannot
+            hang an agent-phase teardown.
+
+    See also:
+        :func:`start_agent_phase` installs the protections this
+        function rolls back. :func:`detect_unauthorized_commit` reports
+        whether ``HEAD`` advanced during a protected phase, which this
+        function neither inspects nor clears.
+    """
     repo = Repo(repo_root)
     helpers = helpers or GitHelpers()
     helpers.wrapper_repo_root = Path(repo_root)
@@ -115,7 +210,50 @@ def end_agent_phase(repo_root: Path | str, helpers: GitHelpers | None = None) ->
 
 
 def detect_unauthorized_commit(repo_root: Path | str) -> bool:
-    """Return True if the HEAD OID no longer matches the stored baseline."""
+    """Return True if the HEAD OID no longer matches the stored baseline.
+
+    Compares the repository's current ``HEAD`` against the OID
+    :func:`start_agent_phase` snapshotted into
+    ``<repo>/.git/ralph/head-oid.txt``. A mismatch indicates that an
+    agent phase wrote a commit despite the protection hooks — a
+    condition the supervisor should treat as a security violation
+    and surface to the user before any further work continues.
+
+    The function is read-only: it does not modify the repository,
+    delete the snapshot file, or invoke the hooks. Callers that want
+    a single boolean answer for a check-and-act flow should call
+    this function and decide the policy themselves; a follow-up
+    :func:`end_agent_phase` will still roll back the protections
+    regardless of the return value.
+
+    Args:
+        repo_root: Path to the repository root to inspect. Accepts a
+            :class:`pathlib.Path` or a string; the value is resolved
+            against the GitPython ``Repo`` constructor.
+
+    Returns:
+        bool: ``True`` when a stored snapshot exists and the current
+        ``HEAD`` OID differs from it (unauthorized commit detected);
+        ``False`` when no snapshot exists, the snapshot is empty,
+        the current ``HEAD`` cannot be read, or ``HEAD`` still
+        matches the snapshot.
+
+    Side effects:
+        - Closes the GitPython ``Repo`` it opened for the duration of
+          the call.
+        - Does NOT mutate any file under ``<repo>/.git/ralph/`` and
+          does NOT invoke the hooks scripts.
+
+    Raises:
+        git.exc.GitCommandError: Re-raised only when the underlying
+            ``git`` invocation fails for a reason other than a missing
+            ``HEAD`` (detached/unborn HEAD is reported as ``False``,
+            not raised).
+
+    See also:
+        :func:`start_agent_phase` writes the snapshot this function
+        compares against. :func:`end_agent_phase` removes it.
+    """
 
     repo = Repo(repo_root)
     try:

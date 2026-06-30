@@ -3,27 +3,37 @@
   - What changed: rewrote the PyPI-facing package README so the H1/tagline
     matches the top-level README ("Ralph Workflow — the autopilot for
     coding agents"), the lead category is the autopilot / operating system
-    for autonomous coding (with "composable loop framework" appearing only
-    as a descriptive detail elsewhere), and install/first-run precede the
-    MCP trust-boundary section.
+    for autonomous coding, install/first-run precede the MCP
+    trust-boundary section, AND the `What it is` section leads with the
+    canonical autopilot positioning plus the canonical value-prop sentence
+    instead of opening with "composable loop framework" (which is now a
+    descriptive detail in a follow-on clause, not the lead category).
   - Why it belongs here: this file is the PyPI-facing README
     (`[project] readme = "README.md"` in pyproject.toml). PyPI readers want
     to know what the package is, whether it fits, and how to install it
-    before they read about operator/security concerns.
+    before they read about operator/security concerns, and they should
+    hear the same autopilot story they would see on the top-level README.
   - What was pruned, merged, or explicitly left alone: the rubric-compliant
     download stat (10,700+ lifetime PyPI downloads · 4,000+ in the last 30
     days, pepy.tech, 2026-06-12) and the per-agent supported-agents table
     are preserved; the MCP server trust boundary was demoted from the
-    first H2 to a later "Trust and safety" section.
+    first H2 to a later "Trust and safety" section. The "composable loop
+    framework" phrasing is preserved as a secondary descriptive clause
+    (the rubric allows it as a detail but forbids it as the lead category).
   - How duplication was reduced or contained: the install block already
     lives in the top-level README — this page repeats it once, in the
     canonical sequence (install → first-run), and then defers all deeper
-    documentation to the operator manual instead of restating it.
+    documentation to the operator manual instead of restating it. The
+    canonical value-prop sentence is shared verbatim with both START_HERE
+    files and the Sphinx index so all four surfaces reinforce the same
+    story.
   - How the route is clearer now than before: what-it-is → who-it's-for →
     install-and-run → supported-agents → what-a-run-leaves-you →
     why-it's-different → fit-or-not-fit → privacy → community →
     trust-and-safety → development-and-verification → pro-support. The MCP
-    trust boundary is no longer the front door on PyPI.
+    trust boundary is no longer the front door on PyPI, and the lead
+    category now matches the canonical autopilot language used across
+    every other public surface.
 -->
 
 # Ralph Workflow — the autopilot for coding agents
@@ -53,16 +63,18 @@ customize anything.
 
 ## What it is
 
-Ralph Workflow takes the simple Ralph-loop idea — plan, build, verify —
-and turns it into a **composable loop framework** where each phase can
-loop independently and hand off to the next. A single `ralph` command
-spawns planning, development iteration, review, and fix cycles across
-multiple agents, then produces finished git commits you can review when
-you come back.
+Ralph Workflow is an **operating system for autonomous coding**: the
+agents handle the long middle of engineering work while you handle the
+judgment that only a human can make. **Hand it a well-specified coding
+task, let the agents plan, build, verify, and fix, and come back to
+reviewable, tested work.**
 
-It is an **operating system for autonomous coding**: the agents handle
-the long middle of engineering work while you handle the judgment that
-only a human can make.
+The simple Ralph-loop idea — plan, build, verify — becomes a
+**composable loop framework** under the hood: each phase can loop
+independently and hand off to the next, so a single `ralph` command
+spawns planning, development iteration, review, and fix cycles across
+multiple agents and then produces finished git commits you can review
+when you come back.
 
 ## Who it's for
 

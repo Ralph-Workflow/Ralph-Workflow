@@ -41,6 +41,9 @@ open-source operating system for autonomous coding, an AI agent
 orchestrator built around a simple Ralph-loop core that becomes powerful
 through composition.
 
+**Hand it a well-specified coding task, let the agents plan, build,
+verify, and fix, and come back to reviewable, tested work.**
+
 This page is the **package-operator first-run path** for a reader who
 has just run `pipx install ralph-workflow` and is exploring the
 package directory. The default workflow is strong enough to adopt

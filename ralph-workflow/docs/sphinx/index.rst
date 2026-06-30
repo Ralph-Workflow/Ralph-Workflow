@@ -20,12 +20,24 @@ anything.
 Install and run
 ---------------
 
+The first-run sequence below matches the path used on
+:doc:`getting-started`, :doc:`quickstart`, and the two
+``START_HERE`` files. Run every step from a human-operated shell
+outside any Ralph-managed agent session.
+
 .. code-block:: bash
 
-   pipx install ralph-workflow   # 1. install
-   ralph --init                  # 2. scaffold .agent/ and PROMPT.md
-   $EDITOR PROMPT.md             # 3. edit PROMPT.md — your spec for the run
-   ralph                         # 4. run the unattended workflow
+   pipx install ralph-workflow      # 1. install the autopilot
+   cd /path/to/your/project         # 2. move into the repo you want agents on
+   ralph --init                     # 3. scaffold .agent/ + PROMPT.md
+   ralph --diagnose                 # 4. pre-flight: agents, MCP, capabilities
+   $EDITOR PROMPT.md                # 5. write the task — see PROMPT.md template
+   ralph                            # 6. run the unattended workflow
+
+``ralph --diagnose`` is the **pre-flight check** — it shows which
+baseline helpers are healthy, missing, unreachable, degraded, or
+need repair before you spend a real run on them. See
+:doc:`diagnostics` for what each check proves.
 
 Where to go next
 ----------------

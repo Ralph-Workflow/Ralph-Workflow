@@ -425,5 +425,47 @@ def access_mode_for_drain(
     drain: str,
     agents_policy: AgentsPolicy | None = None,
 ) -> AccessMode:
-    """Expose the MCP access mode mapping from the Rust startup module."""
+    """Expose the MCP access mode mapping from the Rust startup module.
+
+    Thin public wrapper around
+    :func:`ralph.mcp.protocol.capability_mapping.drain_to_access_mode`
+    that re-exports the MCP access-mode mapping under the
+    ``ralph.mcp.protocol.startup`` namespace. Callers that already
+    depend on the startup module (heartbeat, preflight, JSON-RPC
+    helpers) do not need a second import path; the mapping logic
+    itself lives in the capability-mapping module.
+
+    A drain is one of the named session-drain values declared by an
+    agent policy. The returned access mode describes whether the
+    MCP session opened for that drain may read only or also write
+    to the workspace.
+
+    Args:
+        drain: Drain name to resolve. Accepts a :class:`SessionDrain`
+            instance or a string. Unknown drain names fall through
+            to ``READ_ONLY`` because the resolver cannot determine
+            that a write-capable class is allowed.
+        agents_policy: Optional :class:`AgentsPolicy` whose declared
+            drains should be consulted. When ``None`` (the default),
+            the resolver falls back to the default agent policy
+            loaded by :mod:`ralph.mcp.protocol.capability_mapping`,
+            which is the conservative choice for callers that have
+            not parsed an ``agents.toml`` yet.
+
+    Returns:
+        :class:`ralph.mcp.protocol._access_mode.AccessMode`:
+        ``READ_WRITE`` when the drain's class explicitly allows
+        writes; ``READ_ONLY`` for every other case (read-only drains,
+        unknown drains, or an empty ``agents_policy``).
+
+    Side effects:
+        None. The function is a pure mapping from drain name to
+        access mode and does not touch the filesystem, network, or
+        any runtime state.
+
+    See also:
+        :func:`ralph.mcp.protocol.capability_mapping.drain_to_access_mode`
+        contains the actual implementation; this function exists for
+        callers that import from the startup namespace.
+    """
     return drain_to_access_mode(drain, agents_policy)
