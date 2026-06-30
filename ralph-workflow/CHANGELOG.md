@@ -43,250 +43,354 @@ and open a fresh `[Unreleased]`.
 
 ### Changed
 
-- **feat(watchdog): close wt-021 with consolidated Trustworthy Idle Watchdog acceptance-criteria test.** Commits `2a4aaf9cd`, `4ddd85613`, `1bc186c8e`, `1c3d4a2de` cover every R1–R8 acceptance criterion from the wt-021 product spec (`SubagentPidRegistry`, filtered `spawned_subagent_count()`, end-to-end `resumable_session_id`, deterministic `OpenCodeResumableExitError` typed-cause). Locks behavior in `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`.
+- **feat(watchdog): close wt-021 with consolidated Trustworthy Idle Watchdog acceptance-criteria test** — commits `2a4aaf9cd`, `4ddd85613`, `1bc186c8e`, `1c3d4a2de`. Locks behavior in `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py`.
 
-- **fix(agy): align the CLI default and the live regression suite on the same AGY alias** (`agy/Gemini 3.5 Flash (Medium)`); replaces the rate-limited `agy/Claude Sonnet 4.6 (Thinking)` default and widens the test oracles to accept any of the 8 canonical AGY model display names and the live or mock binary. Locks behavior in `tests/test_agy_live_regression.py`, `tests/test_cli_smoke.py`, `tests/test_smoke_agy_end_to_end.py`.
+- **fix(agy): align CLI default and live regression suite on `agy/Gemini 3.5 Flash (Medium)` and accept any canonical AGY model display name.** Locks behavior in `tests/test_agy_live_regression.py`, `tests/test_cli_smoke.py`, `tests/test_smoke_agy_end_to_end.py`.
 
 - **feat(idle-watchdog): fast-fires NO_OUTPUT_AT_START at 30s default instead of 60s** in `ralph/timeout_defaults.py`. Locks behavior in `tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py`.
+
 - **fix(idle-watchdog): preserves the NO_OUTPUT_AT_START baseline across LIFECYCLE frames** so a process-startup event cannot mask a hung agent, modifying `ralph/agents/idle_watchdog/idle_watchdog.py`. Locks behavior in `tests/agents/test_idle_watchdog_no_output_at_start_lifecycle.py`.
+
 - **refactor(recovery): extracts UnavailabilityStore Protocol** in `ralph/recovery/agent_unavailability_tracker.py` as a runtime-checkable interface seam. Locks behavior in `tests/recovery/test_unavailability_tracker.py`.
+
 - **feat(pipeline): emits structured WAITING / RESUMED logs** at INFO/DEBUG with recovery binding in `ralph/pipeline/run_loop.py` when all agents in a chain are unavailable. Locks behavior in `tests/pipeline/test_run_loop_waiting_state_logs.py` and `tests/recovery/test_all_agents_unavailable_never_crashes.py`.
+
 - **fix(recovery): tightens FailureClassifier._SUBSCRIPTION_LIMIT_SUBSTRINGS with opencode / Claude Code / generic-API cases** in `ralph/recovery/failure_classifier.py`. Locks behavior in `tests/recovery/test_unavailability_reason.py` and `tests/recovery/test_out_of_credits_fast_fallover.py`.
-- **refactor(artifact-submission): harden the canonical submission path and add a make-verify audit.** All artifact submission side effects (receipts, completion sentinels, canonical artifact files, `.agent/tmp/<type>.json` prompt-side fallback files, `.agent/artifacts/<type>.json` AGY smoke fallback files) now route through `ralph.mcp.artifacts.canonical_submit.submit_artifact_canonical`; `submit_artifact` and `finalize_plan` handlers in `ralph/mcp/tools/artifact.py` delegate to it. Locks behavior in `tests/test_canonical_artifact_submit.py`, `tests/test_commit_plumbing_uses_canonical_submit.py`, `tests/test_smoke_plumbing_uses_canonical_submit.py`, and `tests/test_audit_artifact_submission_canonical_path.py`. Documented in `docs/agents/artifact-submission-contract.md`.
-- **refactor(pipeline): route plumbing-direct-call fallback through `DefaultPipelineFactory` and add `pro_hooks` plumbing** — `ralph/pipeline/plumbing/commit_plumbing.py` and `ralph/pipeline/plumbing/smoke_plumbing.py` now build their fallback `PipelineDeps` via `DefaultPipelineFactory().build(...)` and accept a new `pro_hooks: ProPipelineHooks | None = None` keyword-only parameter. Locks behavior in `tests/test_pipeline_factory_default.py` and `tests/integration/test_plumbing_shared_deps.py`.
-- **refactor(pipeline): add `DefaultPipelineFactory` as the single composition root for the main pipeline and plumbing** — `ralph/pipeline/factory.py` exports a `DefaultPipelineFactory` class that implements the existing `PipelineFactory` Protocol; all five existing call sites route through it. Locks behavior in `tests/test_pipeline_factory_default.py` and `tests/integration/test_cli_plumbing_uses_factory.py`.
-- **refactor(idle-watchdog): consolidate watchdog logic and enshrine the two main retry rules.** Deletes the dead legacy watchdog module that previously sat at the ralph-workflow root (a 1389-line module with zero live/import/runtime references; the filename is derived at audit-import time from two private string fragments so the literal forbidden token never appears as a contiguous substring in source); moves `post_exit_watchdog.py` and `post_exit_verdict.py` into the `ralph/agents/idle_watchdog/` subpackage; adds `ralph/testing/audit_watchdog_drift.py` to forbid re-introduction of the legacy root watchdog sentinel. Locks behavior in `tests/recovery/test_two_main_retry_rules.py` and `tests/agents/idle_watchdog/test_dumb_kill_scenarios.py`; documented in `docs/agents/watchdog-architecture.md`.
-- **feat(idle-watchdog): weight workspace file changes by class.** The default ``WorkspaceMonitor`` now drops log/cache/artifact/other file changes from the ``NO_OUTPUT_DEADLINE`` evidence channel; only source-code changes count by default. **Behavior change:** operators who relied on log-file activity to defer the verdict must opt in by adding ``agent_workspace_change_weights`` to the ``[general]`` section of ``ralph-workflow.toml``. Locks behavior in `tests/agents/test_dumb_kill_scenarios.py` and `tests/agents/idle_watchdog/`; migration note in ``docs/agents/timeout-policy.md``.
-- **refactor(idle-watchdog): tighten `_is_no_progress_quiet` to defer `NO_PROGRESS_QUIET` when the corroborator reports any `alive_by` signal.** `NO_PROGRESS_QUIET` now fires only when the corroborator returns no `alive_by` signal AND no fresh channel evidence is present. Locks behavior in `tests/agents/idle_watchdog/test_dumb_kill_scenarios.py`.
-- **feat(recovery): surface `child_alive` on `IdleWatchdogKilledError` and differentiate live-child from dead-child `NO_PROGRESS_QUIET` in the failure classifier.** Adds an optional `child_alive: bool | None = None` keyword-only parameter to `IdleWatchdogKilledError.__init__`; `FailureClassifier._classify_unavailability_reason` routes `NO_PROGRESS_QUIET` to `is_unavailable=False` (Rule 1: same-agent retry) when `child_alive is True`, and to `is_unavailable=True` (Rule 2: exponential backoff) when `child_alive is False` or `None`. Locks behavior in `tests/recovery/test_two_main_retry_rules.py`.
-- **fix(interrupt): rename `bridge_pids` kwarg to `bridge_pgids`** on `InterruptController.force_interrupt`, `InterruptController.force_exit`, `InterruptDispatcher.force_exit`, and the second-SIGINT routing in `ralph.interrupt.asyncio_bridge`. Legacy `bridge_pids=` accepted via a deprecation shim. **`INTERRUPT_EXIT_CODE` (130) is unchanged.**
-- **Parallel plan execution is now delegated to the executing AI agent.** The bundled `pipeline.toml` development phase ships with `dispatch_mode = "agent_subagents"`, so the executing agent dispatches its own sub-agents per the plan's `work_units` / `parallel_plan`. **Ralph-managed fan-out is dormant in this build** (not removed). Opt back in via `[phases.development.parallelization] dispatch_mode = "ralph_fan_out"`. Locks behavior in `tests/test_continuation_template_parallel_guidance.py` and `tests/test_audit_parallelization_dormant.py`. Wording follows the audit and the `effect_router.py` WARNING ("dormant", not "removed") so the three sources stay in lockstep.
+
+- **refactor(artifact-submission): harden canonical artifact submission path and add make-verify audit.** Locks behavior in `tests/test_canonical_artifact_submit.py`, `tests/test_commit_plumbing_uses_canonical_submit.py`, `tests/test_smoke_plumbing_uses_canonical_submit.py`, and `tests/test_audit_artifact_submission_canonical_path.py`.
+
+- **refactor(pipeline): route plumbing-direct-call fallback through `DefaultPipelineFactory` and add `pro_hooks` plumbing parameter.** Locks behavior in `tests/test_pipeline_factory_default.py` and `tests/integration/test_plumbing_shared_deps.py`.
+
+- **refactor(pipeline): add `DefaultPipelineFactory` as single composition root for main pipeline and plumbing.** Locks behavior in `tests/test_pipeline_factory_default.py` and `tests/integration/test_cli_plumbing_uses_factory.py`.
+
+- **refactor(idle-watchdog): consolidate watchdog logic, delete legacy root module, and enshrine the two main retry rules.** Locks behavior in `tests/recovery/test_two_main_retry_rules.py` and `tests/agents/idle_watchdog/test_dumb_kill_scenarios.py`.
+
+- **feat(idle-watchdog): weight workspace file changes by class so only source-code changes count for `NO_OUTPUT_DEADLINE` by default. Behavior change:** operators who relied on log-file activity to defer the verdict must opt in via `[general] agent_workspace_change_weights`. Locks behavior in `tests/agents/test_dumb_kill_scenarios.py` and `tests/agents/idle_watchdog/`.
+
+- **refactor(idle-watchdog): tighten `_is_no_progress_quiet` to defer `NO_PROGRESS_QUIET` when the corroborator reports any `alive_by` signal** — `NO_PROGRESS_QUIET` now fires only when the corroborator returns no `alive_by` signal AND no fresh channel evidence is present. Locks behavior in `tests/agents/idle_watchdog/test_dumb_kill_scenarios.py`.
+
+- **feat(recovery): surface `child_alive` on `IdleWatchdogKilledError` to differentiate live-child from dead-child `NO_PROGRESS_QUIET`.** Locks behavior in `tests/recovery/test_two_main_retry_rules.py`.
+
+- **fix(interrupt): rename `bridge_pids` kwarg to `bridge_pgids`**; legacy `bridge_pids=` accepted via deprecation shim. `INTERRUPT_EXIT_CODE` (130) unchanged.
+
+- **Parallel plan execution is now delegated to the executing AI agent** via `dispatch_mode = "agent_subagents"`; Ralph-managed fan-out remains dormant and opt-in via `dispatch_mode = "ralph_fan_out"`. Locks behavior in `tests/test_continuation_template_parallel_guidance.py` and `tests/test_audit_parallelization_dormant.py`.
 
 ### Fixed
 
-- **fix(agy): live AGY end-to-end smoke now fully green on this dev machine.** Defaults the live regression suite to the deterministic `agy/Gemini 3.5 Flash (Medium)` alias with the canonical-receipt run_id, raises per-test timeouts to the full `--print-timeout=5m0s` budget, has `live_env` capture the real HOME before conftest remaps it (so the live AGY Go runtime can read OS-keychain OAuth credentials), prepends the repo root to `PYTHONPATH` for the local ralph source, and prefers parser-classified events over the raw transcript fallback in `meaningful_output_lines`. Locks behavior in `tests/test_agy_live_regression.py` and `tests/test_agy_harness_with_mock.py`. `make verify` exits 0 with `Cumulative test elapsed: 39.64s / budget: 60.0s`.
+- **fix(agy): make live AGY end-to-end smoke green with deterministic alias, longer timeouts, and parser-classified events.** Locks behavior in `tests/test_agy_live_regression.py` and `tests/test_agy_harness_with_mock.py`.
 
-- **fix(recovery): remove generic throttling marker from `OUT_OF_CREDITS` substring table** — the substring `"rate_limited"` was previously in `FailureClassifier._SUBSCRIPTION_LIMIT_SUBSTRINGS` and classified generic throttling as `OUT_OF_CREDITS`, applying the long 60s→30min cooldown. Removed from `ralph/recovery/failure_classifier.py:191`; the explicit credit/quota/limit substrings remain and still classify as `OUT_OF_CREDITS`. Locks behavior in `tests/recovery/test_unavailability_reason.py` (`test_generic_throttling_does_not_classify_as_out_of_credits`).
-- **fix(pipeline): bind pre-sleep wait-state DEBUG log with `recovery=True`** — changed `ralph/pipeline/run_loop.py:403` to use `logger.bind(recovery=True).debug(...)` so the `recovery=True` binding is present on every pre-sleep line (the AC-08 contract). Locks behavior in `tests/pipeline/test_run_loop_waiting_state_logs.py` and `tests/pipeline/test_run_loop_waiting_state_real_controller.py`.
-- **fix(recovery): cap `_mark_agent_unavailable` helper return value at the reason's `max_backoff_ms`** — the helper returned `entry.base_backoff_ms * multiplier` without reapplying the cap; fixed `ralph/recovery/controller.py:_mark_agent_unavailable` to `return min(computed, entry.max_backoff_ms)`. Locks behavior in `tests/recovery/test_out_of_credits_fast_fallover.py::test_controller_mark_agent_unavailable_caps_return_value_at_30_minutes`.
-- **fix(recovery): strengthen `test_wait_state_survives_ten_cooldown_cycles` to 30 consecutive `handle()` calls with bounded-stability assertion** — assert the phase never becomes terminal, `recovery_cycle_count` stays `0`, and per-iteration `last_retry_delay_ms` is positive and bounded by `max_backoff_ms` (bounded-stability, not pairwise-monotonic, because the wait state's delay is the EARLIEST cooldown by design). Locks behavior in `tests/recovery/test_all_agents_unavailable_never_crashes.py`.
-- **fix(recovery): add import-time invariant for the never-exit invariant in `RecoveryController`** — extends `_assert_two_state_invariant` in `ralph/recovery/controller.py` with a new `_assert_never_exit_invariant` that walks the AST and asserts the all-agents-unavailable branch contains a `Return` and appears before any `_enter_phase_failed` call. Locks behavior in `tests/recovery/test_two_state_invariant.py::test_never_exit_invariant_locked_at_import_under_python_O`.
-- **fix(pipeline): replace brittle `last_error` text parser with structured `state.is_waiting_state` flag** — `state.is_waiting_state: bool = False` set by `RecoveryController` in the wait branch; the run loop's WAITING / RESUMED detection reads the structured flag. The previous substring match failed in production because the controller writes `"all agents unavailable (last reason: ...); waiting for cooldown expiry"`. Locks behavior in `tests/pipeline/test_run_loop_waiting_state_real_controller.py` and the updated `tests/pipeline/test_run_loop_waiting_state_logs.py` and `tests/recovery/test_no_progress_quiet.py`.
-- **refactor(recovery): inject `UnavailabilityStore` Protocol into `RecoveryControllerOptions` and expose public controller surface** — `RecoveryControllerOptions.unavailability_store: UnavailabilityStore | None = None` accepts a Protocol-typed dependency; new public methods `controller.waiting_state_payload(phase, agents)` and `controller.agents_now_available(phase, agents)` wrap tracker access so the run loop never reaches through to the private `_unavailability_tracker` or `_clock`. Locks behavior in `tests/pipeline/test_run_loop_waiting_state_real_controller.py` and `tests/recovery/test_unavailability_tracker.py`.
+- **fix(recovery): remove generic `rate_limited` marker from `OUT_OF_CREDITS` substring table.** Locks behavior in `tests/recovery/test_unavailability_reason.py::test_generic_throttling_does_not_classify_as_out_of_credits`.
 
-- **fix(agy): refresh upstream + local AGY source-of-truth and pin live AGY smoke with a non-mock regression test.** Re-fetched all 6 upstream AGY URLs (CHANGELOG, README, release tag 1.0.8, issue #76, cli-using docs, cli-reference docs); re-measured the local `agy` binary — the v1.0.8 wire format, flag set, and 8 canonical model display names still match, no 429 quota exhaustion. Ran `python -m ralph smoke-interactive-agy` against the live `agy` binary and captured a green run to `tmp/smoke-interactive-agy-run.log` with file=yes, tool activity=yes, artifact=yes, breaks=none. Added `tests/test_agy_live_regression.py` and `tests/test_smoke_agy_end_to_end.py` (both `@pytest.mark.subprocess_e2e`) and validated the public `ralph --check-mcp` preflight (`tests/test_check_mcp_cli_agy.py`). See `tmp/agy-source-of-truth.txt` `=== UPSTREAM SOURCE RE-VALIDATION (2026-06-15T13:32:29Z) ===` and `=== LOCAL RE-MEASUREMENT (2026-06-15T13:32:29Z) ===`.
+- **fix(pipeline): bind pre-sleep wait-state DEBUG log with `recovery=True`** — `ralph/pipeline/run_loop.py:403` now uses `logger.bind(recovery=True).debug(...)` so the binding is present on every pre-sleep line (the AC-08 contract). Locks behavior in `tests/pipeline/test_run_loop_waiting_state_logs.py` and `tests/pipeline/test_run_loop_waiting_state_real_controller.py`.
 
-- **fix(agy): align smoke harness fixtures, resolver tests, and documented examples with the real AGY v1.0.8 wire format.** The fictitious `agy/gemini-3.5-flash-low` slug is replaced by the real display name `agy/Claude Sonnet 4.6 (Thinking)` across tests and docs; `tmp/agy-source-of-truth.txt` now records the measured `agy models` canonical names and the current upstream quota condition.
-- **fix(agy): add RALPH_AGY_BINARY env var override, deterministic mock AGY binary, and subprocess_e2e tests proving real end-to-end output without a live account.** `ralph/pipeline/plumbing/smoke_plumbing.py` now reads `RALPH_AGY_BINARY` at the smoke composition root and uses it to override the AGY executable path; the mock at `tests/_support/mock_agy.py` simulates AGY v1.0.8's measured `--print` wire format and writes the expected `smoke_test_result` artifact. Empty stdout with the mock is reported as an informational break, while live AGY empty stdout still surfaces the upstream quota/model diagnostic from `~/.gemini/antigravity-cli/cli.log`. The smoke prompt now explicitly allows `.agent/artifacts/` as a workspace-managed path, resolving the prior contradiction with `tmp/`. Shell-quoted override paths and AGY command parsing now handle paths containing spaces.
-- **fix(agy): move RALPH_AGY_BINARY override seam to the CLI surface and harden AGY smoke tests/docs.** The `RALPH_AGY_BINARY` override is now applied in `ralph/cli/commands/smoke.py` via `_maybe_apply_agy_binary_override(agent_config)` immediately after `registry.get(agent_name)`, keeping the plumbing layer free of env-var seams. `tests/test_agy_harness_with_mock.py` now asserts `result.parsed_event_count > 0` and explicitly applies the override helper so direct `run_smoke_plumbing` callers honor the mock. The canonical plumbing-contract test file is `tests/test_agy_plumbing_mock.py`; its fast prompt-contract and mock-diagnostic tests run under `make test`, while the import-time invariant tests run under `make test-subprocess-e2e`. Docs in `docs/sphinx/agents.md`, `docs/sphinx/cli.md`, `docs/sphinx/troubleshooting.md`, and `docs/sphinx/ralph-workflow-vs-google-anti-gravity.md` now list all eight canonical `agy models` display names and explicitly identify `tests/_support/mock_agy.py` as the mock entrypoint.
-- **fix(agy): drain the PTY master after child exit so live AGY buffered stdout is captured.** The prior `_read_thread` early-exited with `if self._handle.poll() is not None and not wait_for_master_readable(self._handle.master_fd, 0.01): break` in `ralph/agents/invoke/_pty_line_reader.py:325-327`, dropping every byte the live AGY flushed to the kernel's PTY buffer between the child exit and the parent poll return. The new bounded drain replaces the `break` with a 32-iteration loop (`_EIO_DRAIN_MAX = 32`, `_EIO_DRAIN_SELECT_SECONDS = 0.005`) that keeps calling the existing EIO-tolerant `read_master_chunk` until it returns `b""` or `wait_for_master_readable` reports the master is idle, so buffered AGY output is fully captured before the loop terminates. The reader-thread error handler is replaced by a `logger.opt(exception=True).warning(...)` breadcrumb (no more silent `except Exception: pass` at line 352) so unexpected exceptions are visible in the smoke log without breaking the harness contract. The drain is shared across all transports (Claude, opencode, AGY) and reuses the existing EIO-tolerant read path; the 7 PTY unit tests in `tests/test_agy_pty_invocation.py` stay green in <5s and the AGENTS.md non-circumvention rules are preserved. Two new `subprocess_e2e` tests in `tests/test_agy_live_regression.py` (`test_live_agy_pty_read_thread_sees_output` drives the public `run_pty_and_read_lines` API and asserts the read thread yields `N>0` lines from the live binary, the drain fix proof; `test_live_agy_artifact_promoted_to_canonical_receipt` asserts the canonical receipt at `.agent/receipts/interactive-agy-smoke-Claude-Sonnet-4.6-Thinking/smoke_test_result.json` with payload `{"run_id": ..., "artifact_type": "smoke_test_result"}`). The 6th test fails informatively on quota/auth-blocked runs (artifacts not produced) per the runtime-state policy in `docs/agents/verification.md`. The canonical artifact submission contract is unchanged (the fix is in the PTY read path only); the new `=== LIVE RE-MEASUREMENT (PLAN WT-015 FIX) ===`, `=== PTY DRAIN FIX EVIDENCE ===`, and `=== E2E LIVE EVIDENCE ===` sections in `tmp/agy-source-of-truth.txt` record the fix, the verified command sequence, and the new live regression evidence.
-- **fix(interrupt): close the sync entry-point seam on `handle_keyboard_interrupt` with `process_manager` + `poll_interval_s` kwargs, an explicit `RuntimeError` guard for the `monitor_stop`+pre-built-dispatcher conflict, and `Exception` (not `BaseException`) in the `_begin_interrupt` recovery block.** The sync entry point `ralph.pipeline._runner_interrupt.handle_keyboard_interrupt` is the seam a real Ctrl+C reaches inside the pipeline loop; it now accepts `process_manager: ProcessManager | None = None` (replaces the hard-coded `get_process_manager()` singleton) and `poll_interval_s: float = 0.05` (replaces the literal `0.05` busy-wait timeout; default unchanged from production behavior). Clock and sleep seams are intentionally NOT added because the entry point only uses `threading.Event` coordination. A new `RuntimeError` is raised when both `dispatcher` and `monitor_stop` are passed (the prior silent-ignore was a footgun). The recovery block in `_begin_interrupt` now uses `except Exception` instead of `except BaseException`, so `KeyboardInterrupt` and `SystemExit` propagate (the user's Ctrl+C still kills a hung process) while non-fatal dispatcher failures (`RuntimeError`, `ValueError`, `OSError`, etc.) still log the existing `"Interrupt controller raised during KeyboardInterrupt"` warning and recover the SIGINT handler. **`INTERRUPT_EXIT_CODE` (130) is unchanged.** The 6 black-box tests in `tests/test_runner_interrupt.py` pin the `poll_interval` seam, the `RuntimeError` guard, the recovery from non-fatal dispatcher failures, the first-SIGINT contract (`begin_interrupt` + `run_early_escalation_poll`), the second-SIGINT contract (`force_exit` with `bridge_pgids` from `process_manager.list_active()`), and the `_NotAnException(BaseException)` discriminator that proves the `Exception`-not-`BaseException` change. The 4 black-box tests in `tests/pipeline/test_run_loop_interrupt.py` pin the `run_loop._handle_keyboard_interrupt` wrapper: returns 130, marks the state `interrupted_by_user=True`, clears `loop_ctx.monitor_stop` after the entry-point call, and saves the checkpoint to `_checkpoint_path(loop_ctx.workspace_scope)`. See ADR-0001 D5 and D6.
-- **fix(interrupt): asyncio first-SIGINT handler is now non-blocking and dispatches `begin_interrupt` + `run_early_escalation_poll` via `loop.run_in_executor` with a done callback.** The cancel + signal-handler swap happens synchronously so two-quick-Ctrl+C works. The executor body runs `active_dispatcher.begin_interrupt(...)` and then spawns a daemon thread for `run_early_escalation_poll(INTERRUPT_HARD_KILL_BUDGET_SECONDS)` so a no-progress agent is SIGKILLd within the budget, mirroring the sync `handle_keyboard_interrupt` path. The future's `add_done_callback` logs any executor-body exception so failures are surfaced even when the future is never awaited.
-- **fix(interrupt): `_wait_for_list_active_empty` sleep bound is now `min(poll_interval_s, max(deadline - clock(), 0.0))`** instead of a hard-coded `0.01s` clamp. The block-wait no longer spins 100 times per grace period; the sleep count is `~ grace / poll`. The enshrining test `test_dispatcher_uses_injected_clock_for_block_wait_deadline` is updated to contract-level assertions (`sleep_calls[0] <= poll_interval_s AND sleep_calls[0] <= grace_period_s`) so it stays correct under any future correct implementation. The new TDD test `test_dispatcher_block_wait_sleep_never_exceeds_remaining_deadline` is the regression pin: with `grace_period_s=1.0` and `poll_interval_s=0.2` the sleep count is 4-6 (not 50-100).
-- **fix(interrupt): `install_signal_handlers` now returns an idempotent teardown callable** that removes the second-SIGINT handler. `fan_out.py` captures the teardown in a `try/finally` and invokes it on every code path (success, error, KeyboardInterrupt). The teardown is safe to invoke twice (a short-circuit `_done` flag is stored in the closure). The `_InstallSignalHandlersFn` Protocol at `fan_out.py:80` is updated to return `Callable[[], None] | None`, preserving mypy under `disallow_untyped_defs = True`.
-- **fix(interrupt): `controller.force_interrupt` no longer iterates `bridge_pgids` to call `kill_process_group` after `shutdown_all(0)`.** The real `ProcessManager.shutdown_all(0)` already SIGKILLs every active record; the per-pgid loop was redundant. `manager.shutdown_all(0)` is now the only kill path on the controller side. The `FakeProcessManager.shutdown_all` test double is updated to record kills to `kill_process_group_calls` when `grace_period_s == 0` so the test contract mirrors the real `ProcessManager` escalation.
-- **fix(commit_cleanup): surface untracked files in the cleanup diff and harden the safety rules.** `commit_cleanup_diff` appends `git ls-files --others --exclude-standard` under a shared `_UNTRACKED_HEADER` (cap 500 entries); `_HOUSEKEEPING_BASENAMES` (`.coverage`, `coverage.xml`) and `_PROTECTED_BASENAMES` (`dockerfile`, `makefile`, `license`, `readme`, case-insensitive) protect sensitive paths; `.next`/`.nuxt`/`.output` added to `_GENERATED_TEXT_DIRECTORIES`; `commit_cleanup.jinja` updated to instruct the agent to use `add_to_git_exclude` vs `delete_file`. Locks behavior in `tests/test_commit_cleanup_diff.py` and `tests/test_phases_commit_cleanup.py`.
-- **fix(invoke): wire subprocess reader `InactivityTimeoutOpts` with `session_resume_safe` and `resumable_session_id`.** Closes the opencode restart-from-scratch wedge by threading an optional `expected_session_id: str | None` through `_AgentRunCtx` / `_ProcessReaderCtx` (defaulted, backward-compatible) from `InvokeOptions.session_id or initial_session_id` via `dataclasses.replace`. The except block in `_process_reader.py` now mirrors the PTY runner's wiring 1-to-1 (same 3-element `WatchdogFireReason` set, same field order, same `captured_session_id or expected_session_id` fallback). Locks behavior in `tests/test_subprocess_reader_resume_safe.py` (4 black-box tests) and `tests/test_pipeline_runner_opencode_resume_build_agent_recovery_plan_resumable_session.py` (end-to-end resume seam). PTY path unchanged.
-- **fix(effect_executor): make retry prompt action-aware so resume never inlines the original task.** `_write_agent_retry_prompt` takes a `recovery_action` keyword: `resume` / `new_session_with_id` reference the original prompt by path and append `CONTINUE FROM WHERE YOU LEFT OFF`; `fresh` keeps prior inlined-body behavior. `build_agent_recovery_plan` reordered so `session_id` / `recovery_action` are computed before the prompt construction; new `AgentRecoveryPlan.recovery_action` field defaults to `None`. Locks behavior via the canonical recovery-decision seam; preserves `tests/test_no_anti_drift_recovery_invariants.py` 5-actual-sites / 8-file allowlist.
-- **fix(interrupt): add `test_second_sigint_during_first_sigint_executor_body` (asyncio) and `test_begin_interrupt_with_slow_body_still_escalates_after_body_returns` (dispatcher).** Two black-box tests pinning long-running-task interleavings (second-SIGINT-during-first-SIGINT-executor-body, slow-begin_interrupt-body). Both tests run < 200 ms and the production code already implements the contracts.
-- **fix(interrupt): SYNC long-running-body test pin, dead `grace_period_s` removal, `__init__.py` re-export, `run_shutdown_block` extraction, import-time invariant pins.** Five small changes: (1) `test_second_sigint_during_first_sigint_interrupt_thread` pins SYNC `handle_keyboard_interrupt` long-running-body contract (<200ms via `_SlowBeginDispatcher`); (2) dead `grace_period_s` removed from `InterruptDispatcher.run_early_escalation_poll`; (3) `ralph/interrupt/__init__.py` re-exports `dispatcher_from_process_manager` directly; (4) `run_shutdown_block` extracted to `ralph/interrupt/dispatcher.py` (7th seam = `error_log_message`); (5) import-time `if`/`raise RuntimeError` invariants pin `INTERRUPT_EXIT_CODE=130`, `INTERRUPT_HARD_KILL_BUDGET_SECONDS=1.5`, `SIGINT_PROGRESS_POLL_INTERVAL_SECONDS=0.2` (`python -O` immune). Locks behavior in `tests/test_runner_interrupt.py`, `tests/test_interrupt_constants.py` (5 invariant tests), and ADR-0001 D7/D8.
-- **fix(interrupt): production `run_shutdown_block` now uses liveness-based `_wait_for_list_active_empty` (via `begin_interrupt(block=True)`) instead of CPU-based `run_early_escalation_poll`.** Closes the "broken at times when the task is long running" bug for I/O-bound agents (alive but zero CPU). Replaces the daemon-thread CPU-poll path with a single `dispatcher.begin_interrupt(grace_period_s=grace_period_s, block=True)` call — no daemon thread, no `threading.Thread.join` — routed through liveness-based `_wait_for_list_active_empty`. The public `run_early_escalation_poll` is kept for backward compat but NOT wired into production; `join_timeout_s` is kept but UNUSED. Locks behavior in `tests/test_runner_interrupt.py` (4 contract + `_DrainOnBeginDispatcher`), `tests/test_interrupt_dispatcher.py` (`test_run_shutdown_block_does_not_sigkill_alive_but_zero_cpu_long_running_agent`, <100ms), and ADR-0001 D7/D8.
-- **fix(agy): close the real CLI flow with relative `RALPH_AGY_BINARY` and the mock-backed parity row.** Three coordinated changes: (1) `ralph/cli/commands/smoke.py::_resolve_agy_binary_override` (shared by both `_maybe_apply_agy_binary_override` and `_apply_agy_binary_override_to_config`) normalizes a relative `RALPH_AGY_BINARY` via `Path(...).resolve()`; (2) `smoke_harness_agent_command` sets `MOCK_AGY_ARTIFACT_DIR=workspace_root` via `os.environ.setdefault` (added to `_CLI_COMMANDS_ENV_EXEMPT` in `tests/display/test_di_invariants.py`) so the mock lands at the harness-expected location regardless of cwd; (3) `_meaningful_output_error` uses a three-tier check (rendered lines → parser-classified events → non-blank raw transcript lines) to handle AGY's `TextAccumulator`-based coalescing. `test_agy_live_regression.py::test_live_agy_no_breaks_and_tool_artifact_activity` strengthened to require both positive and negative dash-prefixed markers; 3 new black-box tests in `tests/test_cli_smoke.py` pin the contract. Mock-backed CLI flow reports `EXIT_CODE=0` / `file=yes` / `Breaks=none`; live AGY remains environmentally blocked. DI-seam allowlist line for `smoke_plumbing.py` updated from 445 → 464. `make verify` exits 0 with cumulative test elapsed ~36s / 60.0s budget.
+- **fix(recovery): cap `_mark_agent_unavailable` return value at the reason's `max_backoff_ms`.** Locks behavior in `tests/recovery/test_out_of_credits_fast_fallover.py::test_controller_mark_agent_unavailable_caps_return_value_at_30_minutes`.
+
+- **fix(recovery): strengthen wait-state survival test to 30 consecutive `handle()` calls with bounded-stability assertion.** Locks behavior in `tests/recovery/test_all_agents_unavailable_never_crashes.py`.
+
+- **fix(recovery): add import-time AST invariant ensuring `RecoveryController` never exits from the all-agents-unavailable branch.** Locks behavior in `tests/recovery/test_two_state_invariant.py::test_never_exit_invariant_locked_at_import_under_python_O`.
+
+- **fix(pipeline): replace brittle `last_error` text parser with structured `state.is_waiting_state` flag.** Locks behavior in `tests/pipeline/test_run_loop_waiting_state_real_controller.py`, `tests/pipeline/test_run_loop_waiting_state_logs.py`, and `tests/recovery/test_no_progress_quiet.py`.
+
+- **refactor(recovery): inject `UnavailabilityStore` Protocol into `RecoveryControllerOptions` and expose public controller surface.** Locks behavior in `tests/pipeline/test_run_loop_waiting_state_real_controller.py` and `tests/recovery/test_unavailability_tracker.py`.
+
+- **fix(agy): refresh upstream and local AGY source-of-truth and pin live AGY smoke with non-mock regression tests.** Locks behavior in `tests/test_agy_live_regression.py`, `tests/test_smoke_agy_end_to_end.py`, and `tests/test_check_mcp_cli_agy.py`.
+
+- **fix(agy): align smoke harness fixtures, resolver tests, and documented examples with the real AGY v1.0.8 wire format.**
+
+- **fix(agy): add `RALPH_AGY_BINARY` env override, deterministic mock AGY binary, and subprocess_e2e tests proving end-to-end output without a live account.**
+
+- **fix(agy): move `RALPH_AGY_BINARY` override seam to the CLI surface and harden AGY smoke tests/docs.** Locks behavior in `tests/test_agy_harness_with_mock.py` and `tests/test_agy_plumbing_mock.py`.
+
+- **fix(agy): drain the PTY master after child exit so live AGY buffered stdout is captured.** Locks behavior in `tests/test_agy_pty_invocation.py` and `tests/test_agy_live_regression.py`.
+
+- **fix(interrupt): close sync entry-point seam on `handle_keyboard_interrupt` with injected `process_manager` and `poll_interval_s`.** Locks behavior in `tests/test_runner_interrupt.py` and `tests/pipeline/test_run_loop_interrupt.py`.
+
+- **fix(interrupt): make asyncio first-SIGINT handler non-blocking by dispatching `begin_interrupt` and `run_early_escalation_poll` via `loop.run_in_executor` with a done callback.**
+
+- **fix(interrupt): bound `_wait_for_list_active_empty` sleep to the remaining deadline, eliminating the fixed 0.01s spin.** Regression pinned by `test_dispatcher_block_wait_sleep_never_exceeds_remaining_deadline`.
+
+- **fix(interrupt): make `install_signal_handlers` return an idempotent teardown callable and update `fan_out.py` to invoke it on every exit path.**
+
+- **fix(interrupt): remove redundant per-pgid `kill_process_group` loop from `controller.force_interrupt`, relying on `ProcessManager.shutdown_all(0)` for SIGKILL.**
+
+- **fix(commit_cleanup): surface untracked files in the cleanup diff and harden safety rules.** Locks behavior in `tests/test_commit_cleanup_diff.py` and `tests/test_phases_commit_cleanup.py`.
+
+- **fix(invoke): wire subprocess reader `InactivityTimeoutOpts` with `session_resume_safe` and `resumable_session_id`.** Locks behavior in `tests/test_subprocess_reader_resume_safe.py` and `tests/test_pipeline_runner_opencode_resume_build_agent_recovery_plan_resumable_session.py`.
+
+- **fix(effect_executor): make retry prompt action-aware so resume never inlines the original task.** Locks behavior in `tests/test_no_anti_drift_recovery_invariants.py`.
+
+- **fix(interrupt): add black-box tests for second-SIGINT-during-first-SIGINT-executor-body and slow `begin_interrupt` escalation.**
+
+- **fix(interrupt): add SYNC long-running-body test pin, remove dead `grace_period_s`, re-export dispatcher, extract `run_shutdown_block`, and pin import-time constants.** Locks behavior in `tests/test_runner_interrupt.py`, `tests/test_interrupt_constants.py`, and ADR-0001 D7/D8.
+
+- **fix(interrupt): switch production `run_shutdown_block` to liveness-based `_wait_for_list_active_empty` instead of CPU polling.** Locks behavior in `tests/test_runner_interrupt.py` and `tests/test_interrupt_dispatcher.py`.
+
+- **fix(agy): close the real CLI flow with relative `RALPH_AGY_BINARY` normalization and mock-backed parity.** Locks behavior in `tests/test_agy_live_regression.py` and `tests/test_cli_smoke.py`.
 
 ### Added
 
-- **feat(idle-watchdog): per-kind workspace event breakdown in the NO_OUTPUT_DEADLINE fire diagnostic** — ``last_evidence_summary`` workspace channel carries a per-kind ``kind_breakdown`` (e.g. ``{"source": 5, "log": 0}``) and the fire log embeds the full per-channel evidence summary in the loguru ``extra=`` dict so post-mortem readers see exactly which workspace kinds were active at the moment of the fire. ``ChannelEvidenceSummary.kind_breakdown`` is ``Optional[dict[str, int]]``, omitted from ``to_dict()`` when ``None`` for backward-compat.
-- **feat(idle-watchdog): new ``[general] agent_workspace_change_weights`` configuration key** for per-kind activity weighting. The default conservative policy is ``{ source = 1.0, log = 0.0, cache = 0.0, artifact = 0.0, other = 0.0 }``; operators can opt a kind in by overriding the value. See ``docs/agents/timeout-policy.md`` for the worked example and the migration note.
-- **feat(idle-watchdog): activity-aware idle verdict** — the watchdog now judges a session from four evidence channels (`stdout` baseline, `mcp_tool`, `subagent`, `workspace`); `NO_OUTPUT_DEADLINE` is deferred while any non-stdout channel is fresher than `agent_idle_activity_evidence_ttl_seconds` (default `30.0`); `SESSION_CEILING_EXCEEDED` and `CHILDREN_PERSIST_TOO_LONG` remain absolute; `mcp_tool` also covers upstream-proxied calls; HARD_STOP embeds per-channel `evidence_summary` + `active_channel`. Opt out via `agent_idle_activity_evidence_ttl_seconds = 0.0`. Locks behavior in `tests/agents/test_idle_watchdog_3.py`.
-- **feat(mcp): add `unsafe_mode` workflow flag to merge Ralph MCP into agent-native MCP configs** — new `[general.workflow].unsafe_mode` setting (mirrored by `--unsafe-mode` CLI flag) merges Ralph MCP into each agent's existing MCP config (OpenCode / Codex / Claude / AGY / Nanocoder) instead of overwriting it, with the unsafe value threaded from `GeneralConfig.workflow.unsafe_mode` through `InvokeOptions.unsafe_mode` into every transport helper. Default (`unsafe_mode=False`) is unchanged for every transport. Documented in `configuration.md` and the bundled `ralph-workflow.toml` / `ralph-workflow-local.toml` templates.
-- **feat(pipeline): add structural restart-from-scratch fingerprint.** New `ralph/pipeline/_restart_from_scratch.py` defines a frozenset of opening-narrative regexes with an import-time invariant guard (`python -O` immune). `retry_failure_signature` uses structural-dominant composition: when a restart pattern is detected, the structural fingerprint is the returned signature; otherwise the literal fingerprint is the fallback. The new module is private (leading underscore) and excluded from the sphinx modules coverage test.
-- **Pro support (engine-side implementation of `Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`).** Ships an engine-side `ralph.pro_support` package implementing the engine's half of the Pro integration contract: reads the three Pro-set env vars (`RALPH_WORKFLOW_PRO`, `RALPH_WORKSPACE`, `PROMPT_PATH`) and `<workspace>/.ralph/run.json` strictly, POSTs `/api/heartbeat` on a bounded daemon-thread client, adopts a late-arriving Pro marker via `ProMarkerWatcher`, exposes a frozen `PipelineStateSnapshot` published on every reduce step, and exposes `ProPipelineHooks` (5 factory kwargs + `policy_bundle_override` + `snapshot_registry`) with zero overhead for non-Pro runs. Locks behavior in `tests/test_pro_support_*.py`, `tests/test_run_loop_pro_integration.py`, `tests/test_orchestrator_pro_prompt_resolution.py`, `tests/test_pro_support_contract.py` (23 contract-level tests, all under 60s combined budget). Drift detection (`make verify-drift`) greps for hardcoded `PROMPT.md` literals, foreign `.ralph/run.json` references, `time.sleep` in `ralph/pro_support/`, and any `RALPH_*` env var outside the canonical three.
+- **feat(idle-watchdog): add per-kind workspace event breakdown to `NO_OUTPUT_DEADLINE` fire diagnostic.**
 
-- **Session timing budget resets on every attempt boundary.** `McpServer.reset_session_budget()` re-arms the 50-minute soft wrap-up nag (and the 55-minute hard `MAX_SESSION_SECONDS` ceiling) at the start of each attempt; `RestartAwareMcpBridge` exposes the same reset hook via `notifications/reset_wrapup`; `_RESET_WRAPUP_TIMEOUT_S = 2.0s` constant (`if`/`raise RuntimeError`, `python -O` immune) keeps `audit_mcp_timeout` green. 5 black-box tests cover the in-process reset, wire-level dispatch, bridge-level HTTP reset, attempt-boundary re-arm, and the no-op. `_session_wrapup` module + `McpServer` class docstrings document the per-invocation contract.
-- **No-auto-update-policy for user-global baseline skills.** `SkillManager.check_skills_for_updates()` is now surface-only: it records the update signal in capability state (`update_available=True`) but no longer auto-repairs `~/.claude/skills/` or any sibling symlink on a normal `ralph` run. `_sync_shipped_skills_on_pipeline_run` now surfaces a `ralph --force-init-skills` hint on the same non-DEBUG channel used for project-scope conflicts. Only an explicit `ralph --force-init-skills` (or `ralph --init`) invocation overwrites the user-global canonical or sibling symlinks.
-- **`ralph --init` now auto-symlinks the baseline skill bundle** into Codex (`~/.codex/skills/`), OpenCode (`~/.config/opencode/skills/`), and AGY (`~/.gemini/antigravity-cli/skills/`) roots in addition to Claude Code. Bundled `.gitignore` extended to cover Python, Node, editor, and OS artifacts (`__pycache__/`, `node_modules/`, `.idea/`, `.DS_Store`).
-- **Plan Artifact Optimizations for AI Coding (cheap-model-friendly + executor-strict).** Two cheap-model shortcut fields on `Summary` (`intent` ≤200 chars, `intent_verb` closed enum); three optional `PlanStep` fields (`satisfies` matching `^[A-Z]+-\d{2,}$`, `expected_evidence`, `verify_command`); `AcceptanceCriterion.satisfied_by_steps`; new `_validate_step_ac_cross_references` and tightened `_validate_step_type_contract` model validators (every `file_change` step must declare `targets`, every `verify` step must declare `verify_command` OR `location`); optional `DesignSection.outcome` ≤500 chars; new `_remap_ac_step_refs` helper at all three call sites of `_reindex_plan_steps`. Bundled `plan.md` format doc + `planning.jinja` template + `format_plan_for_execution` updated to surface the new fields. ~25 new unit tests, full coverage under `make verify`.
-- **Plan Artifact Improvements.** Optional `design` sub-section with seven typed SE-opinionated sub-models (Design Constraints, Non-Goals, Dependency Injection, Drift Detection, Testability, Refactor Strategy, Acceptance Criteria); bundled `plan.md` format doc and updated sphinx artifacts index; `planning.jinja` / `planning_fallback.jinja` add a `## DESIGN SECTION` block with DESIGN_SECTION_HINTS substring tests; the new sub-section round-trips through `normalize_plan_artifact_content` / `validate_plan_section`, renders in 9-section order in `render_plan_markdown`, and surfaces as a `Design` block between Risks and Verification in `format_plan_for_execution`. 18 new unit tests, full coverage under `make verify`.
-- **Google Anti Gravity (AGY) is now a first-class supported agent path.** AGY sessions require explicit completion evidence (`declare_complete` or a phase artifact), receive MCP tooling through Ralph's capability-gated model, have upstream MCP servers normalized and proxied via Ralph's upstream layer, and have multimodal delivery resolved through the Gemini provider profile. Ralph auto-injects the run-scoped Ralph MCP endpoint into the workspace-level `.agents/mcp_config.json` before each AGY run via `agy_workspace_mcp_endpoint`. Provider-visible config contains only the Ralph MCP endpoint; AGY command flag ordering fixed (`--dangerously-skip-permissions` precedes `--print <prompt>`); non-functional `session_flag` removed from the default AGY builtin config. Use `ralph --check-mcp` to verify AGY transport compatibility.
-- **Added `ralph smoke-interactive-agy` as the canonical AGY end-to-end verification command.** Interactive smoke plumbing parameterized by agent name and model; new `agy/<model>` dynamic resolver registers working model aliases (defaulting to `agy/Claude Sonnet 4.6 (Thinking)`); `_build_agy_command` applies the resolver's `--model` flag to the binary command line. Fails fast with actionable loguru errors when the `agy` binary is missing, the alias does not resolve, or the resolved transport is not AGY. See `docs/sphinx/cli.md`, `docs/sphinx/troubleshooting.md`, `docs/sphinx/agents.md`, `docs/sphinx/which-agent-should-i-start-with.md`.
-- **Pi.dev (https://pi.dev) is now a first-class supported agent path.** Ships `pi` as a seventh built-in agent alongside Claude, Codex, OpenCode, Nanocoder, and AGY, using the headless `pi --mode json <prompt>` invocation. Implementation: `parsers/pi.py` (`PiParser` NDJSON), `builtin.py` (seventh `BuiltinAgentSpec` row), `registry.py` (`pi/<model>` branch + `_is_valid_pi_model_id`), `invoke/_command_builders/__init__.py` (`PiCommandBuilder` with `positional_prompt=True`), `invoke/_runtime_resolvers/__init__.py` (`PiRuntimeResolver` fail-closed `UnsupportedMcpTransportError`). No documented CLI MCP wiring / skill discovery; correctly excluded from user-global and project-sibling roots. Locks behavior in `tests/agents/test_pi_dev_blackbox.py` (full registry → build_command path) and `tests/agents/parsers/test_pi_dev_wire_format_spec.py` (16-event `AgentSessionEvent` vocabulary vs. `tests/agents/parsers/fixtures/pi_dev_documented_events.json`).
-- **Dedicated `waiting_status_line` field on `PipelineSnapshot`.** Child-wait status updates
-  are now routed to a separate `waiting_status_line` field instead of overwriting
-  `last_activity_line`, so agent tool/content activity and waiting status can be displayed
-  independently without clobbering each other.
-- **Kind-specific `[waiting]` rendering in `PlainLogRenderer`.** Waiting status lines now
-  render with a distinct `[waiting]` tag and level: `INFO` for ENTERED/PROGRESS/EXITED,
-  `WARN` for SUSPECTED_FROZEN, and `ERROR` for HARD_STOP. The renderer deduplicates
-  consecutive identical waiting lines.
-- **CHILDREN_PERSIST_TOO_LONG diagnostic in completion summary.** When the pipeline ends
-  with a long-child-wait timeout, the completion summary now appends a parsed `Reason:`
-  line with `cumulative`, `scoped_child_active`, `oldest_child_seconds`,
-  `workspace_event_delta`, and `evidence` fields extracted from the error string.
-  The original error text remains unchanged; the reason line is purely additive.
-- **`_dispatch_waiting_event` free function for testable subscriber seam.** Extracted
-  from the runner's closure so tests can inject a fake subscriber without a full pipeline.
-- **`DisplayContext` single source of truth for rendering.** All display code now receives an
-  injected `DisplayContext` (frozen dataclass) that owns the Rich console, Okabe-Ito theme,
-  resolved terminal width, colour policy, and adaptive layout limits. No renderer constructs
-  its own `Console`. Obtain one via `make_display_context()` exported from `ralph.display`.
-- **Real terminal-mode detection (`compact` / `wide`).** `detect_mode` now returns
-  `'compact'` for terminals narrower than 60 columns and `'wide'` for wider ones.
-  `RALPH_FORCE_NARROW=1` forces compact mode regardless of width. `COLUMNS`, `NO_COLOR`,
-  and `FORCE_COLOR` are all respected. Adaptive limits (headline cap, condenser thresholds,
-  streaming checkpoint size) differ per mode.
-- **Semantic theme keys replace literal Rich style strings.** `phase_banner.py`, `cli/main.py`,
-  and all display modules now reference theme keys (`theme.text.muted`, `theme.banner.title`,
-  etc.) instead of raw colour strings. The Okabe-Ito palette is the single colour source.
-- **`RALPH_FORCE_NARROW` env knob.** Set to `1` / `true` / `yes` / `on` to force compact
-  rendering on wide terminals (useful for screenshots or constrained CI output).
-- **Custom policy workflow contract test (`tests/test_custom_policy_workflow.py`).** Demonstrates that Ralph Workflow routes on user-defined phase, drain, loop counter, and budget counter names (`design`/`build`/`audit`/`sign_off`/`done`, counter `cycles`, loop `audit_round`) without any runtime knowledge of the canonical defaults. Proves the policy-driven contract via `validate_policy_completeness`, `explain_policy`, `resolve_post_commit_phase`, and `with_loop_iteration` on a fully renamed bundle.
-- **Explanation sentences for `bypass_routes` and loopback caps in `ralph --explain-policy`.** `_render_explanation_sentences` now emits `Explanation: phase 'X' bypasses to 'Y' when the configured outcome is 'Z'` for every bypass route (sorted for determinism) and `Explanation: phase 'X' loops back to 'Y' until N attempts are exhausted` when a loop cap applies, satisfying Required Product Outcome D for every routing surface.
-- **ASCII workflow diagram in `ralph --explain-policy`.** The command now prints a deterministic boxed-node diagram of the active pipeline (entry marker, happy-path arrows, decision branches, loopback edges, terminal success/failure markers, and fan-out/loop annotations) above the existing structural breakdown. Renders pure-ASCII glyphs (no Unicode box characters) so it is safe in code reviews, CI logs, and runbooks. See `docs/sphinx/policy-explanation.md` for the legend.
-- **Same-workspace parallel workers v1.** When the planning agent declares two or more disjoint
-  `work_units`, Ralph now runs them as parallel workers in the SAME git checkout using
-  `ParallelExecutionMode.SAME_WORKSPACE`. Each worker is restricted to its declared
-  `allowed_directories`; coordination is by edit-area fencing and per-worker artifact namespaces
-  only — no worktrees, no separate git branches for each worker, no post-fanout merge step.
-- **Runner-boundary parallel preflight.** `_determine_effect_from_policy` now calls
-  `validate_work_units_against_policy` before constructing `FanOutDevelopmentEffect`. Plans with
-  overlapping edit areas, missing `allowed_directories`, or reserved paths produce an immediate
-  `ExitFailureEffect` with a reason containing `parallel preflight rejected plan:` rather than
-  silently degrading.
-- **Serialized post-fanout verification (opt-in).** A new `parallel_execution.post_fanout_verification`
-  policy field (default `false`) controls whether a workspace-wide `make verify` runs after all
-  workers finish. Verification is skipped when any worker failed. The result is captured in a
-  `PostFanoutVerificationEvent` that the reducer uses to mark the phase as failed on non-zero exit.
-- **`PostFanoutVerificationEvent`.** New event in `ralph.pipeline.events` and handled in the
-  reducer. `success=False` routes to `PHASE_FAILED`; `success=True` is a no-op.
-- **`parallel_development_summary.json`.** Written to `.agent/artifacts/parallel_development_summary.json`
-  after fan-out completes. Records per-worker status (`succeeded`, `failed`, `blocked`, `cancelled`),
-  artifact counts, and verification outcome. Worker success is based on worker-local artifact
-  evidence only — repo-wide git state is never used.
-- **Visual hierarchy fill for the 4 table/panel emit_* methods** — `ParallelDisplay.emit_agents_table`, `emit_providers_table`, `emit_config_table`, and `emit_info_panel` now emit a `[agents]` / `[providers]` / `[config]` / `[info]` section-rule header in non-compact mode, matching the contract pinned by `tests/display/test_parallel_display_visual_hierarchy.py`. The 4 methods gain a `_emit_section_rule(tag)` call as the first statement inside the `with contextlib.suppress(Exception):` block, guarded by `ctx.mode != "compact"` so the narrow-terminal contract is preserved.
-- **Black-box coverage for the 11 previously untested emit_* methods** — new `tests/display/` test files pin the section-rule header, banner title, and quiet-mode no-output contract for `emit_agents_table`, `emit_providers_table`, `emit_config_table`, `emit_capability_summary`, `emit_diagnose_inventory_table`, `emit_diagnose_probe_table`, `emit_diagnose_servers_table`, `emit_renderable`, `emit_first_run_panel`, `emit_welcome_banner`, and `emit_phase_close_from_exit`. Existing `tests/display/test_parallel_display_emit_info_panel.py` gains 2 new tests. `tests/display/test_di_invariants.py` asserts every emit_* method is referenced in at least one `tests/display/test_parallel_display_*.py` test file (broadened glob).
-- **docs(architecture): add `docs/architecture/adr-0001-interrupt-architecture.md`.** MADR-format ADR documenting the InterruptController/InterruptDispatcher split, clock+sleep seams, PGID routing via `pm.list_active()`, and Strategy A propagation in `handle_keyboard_interrupt_at_cli`. Each decision references production code by `file.py:LINE_RANGE` and pins a fully qualified test name as the test pin.
+- **feat(idle-watchdog): add `[general] agent_workspace_change_weights` configuration key for per-kind activity weighting.**
+
+- **feat(idle-watchdog): make idle verdict activity-aware by considering stdout, `mcp_tool`, subagent, and workspace evidence channels.** Locks behavior in `tests/agents/test_idle_watchdog_3.py`.
+
+- **feat(mcp): add `unsafe_mode` workflow flag to merge Ralph MCP into agent-native MCP configs instead of overwriting them.**
+
+- **feat(pipeline): add structural restart-from-scratch fingerprint with import-time invariant guard.**
+
+- **feat(pro_support): ship engine-side Pro integration contract implementation (`ralph.pro_support`) with heartbeat, marker watcher, snapshot, and hooks.** Locks behavior in `tests/test_pro_support_*.py`, `tests/test_run_loop_pro_integration.py`, `tests/test_orchestrator_pro_prompt_resolution.py`, and `tests/test_pro_support_contract.py`.
+
+- **feat(mcp): reset session timing budget on every attempt boundary via `McpServer.reset_session_budget()` and bridge `notifications/reset_wrapup`.**
+
+- **feat(skills): stop auto-updating user-global baseline skills on normal runs; only explicit `--force-init-skills` or `--init` overwrites them.**
+
+- **feat(cli): auto-symlink baseline skill bundle into Codex, OpenCode, and AGY roots during `ralph --init`.**
+
+- **feat(plan): add cheap-model shortcut fields and stricter plan-step validators.**
+
+- **feat(plan): add optional `design` sub-section with typed SE sub-models.**
+
+- **feat(agy): make AGY a first-class supported agent path with completion evidence, MCP tooling, and command flag ordering.**
+
+- **feat(agy): add `ralph smoke-interactive-agy` canonical end-to-end verification command with dynamic `agy/<model>` resolver.**
+
+- **feat(pi): add Pi.dev as a first-class supported agent path with parser, registry, command builder, and runtime resolver.** Locks behavior in `tests/agents/test_pi_dev_blackbox.py` and `tests/agents/parsers/test_pi_dev_wire_format_spec.py`.
+
+- **feat(display): add dedicated `waiting_status_line` field on `PipelineSnapshot`.**
+
+- **feat(display): render waiting status lines with kind-specific `[waiting]` tag and level.**
+
+- **feat(display): include `CHILDREN_PERSIST_TOO_LONG` diagnostic in completion summary.**
+
+- **`_dispatch_waiting_event` free function for testable subscriber seam** — extracted from the runner's closure so tests can inject a fake subscriber without a full pipeline.
+
+- **feat(display): introduce `DisplayContext` as single source of truth for rendering.**
+
+- **feat(display): detect terminal mode (`compact`/`wide`) and honor `RALPH_FORCE_NARROW`.**
+
+- **display: semantic theme keys replace literal Rich style strings** across `phase_banner.py`, `cli/main.py`, and all display modules, using the Okabe-Ito palette as the single colour source.
+
+- **display: add `RALPH_FORCE_NARROW` env knob** to force compact rendering on wide terminals.
+
+- **test(policy): add custom policy workflow contract test** demonstrating fully renamed phase/routing/counter names.
+
+- **feat(cli): add explanation sentences for `bypass_routes` and loopback caps in `ralph --explain-policy`.**
+
+- **feat(cli): add ASCII workflow diagram to `ralph --explain-policy`.**
+
+- **feat(parallel): implement same-workspace parallel workers v1** for disjoint `work_units`.
+
+- **feat(parallel): add runner-boundary parallel preflight** rejecting invalid work-unit plans.
+
+- **feat(parallel): add opt-in serialized post-fanout verification policy field.**
+
+- **feat(parallel): add `PostFanoutVerificationEvent` handled by the reducer.**
+
+- **feat(parallel): write `parallel_development_summary.json` after fan-out completes.**
+
+- **feat(display): add section-rule headers to table/panel `emit_*` methods in non-compact mode.**
+
+- **test(display): add black-box coverage for 11 previously untested `emit_*` methods.**
+
+- **docs(architecture): add ADR-0001 interrupt architecture document.**
 
 #### Upstream MCP server coverage
 
-- **DONE (closed by this change):** `mcp_tool` channel now also covers upstream MCP tool calls. Single emission point is `McpServer._handle_tools_call` (records via `self._invoke_activity_sinks(tool_name)` before dispatch); `UpstreamProxyHandler.__call__` is a pure pass-through (no double-count). 4 black-box tests in `tests/mcp/test_mcp_activity_sink.py` (success, failure, buggy-sink, no-sink) lock the contract under 60 s combined budget. Operators who previously set `agent_idle_activity_evidence_ttl_seconds = 0.0` no longer need that workaround.
+- **feat(idle-watchdog): extend `mcp_tool` activity channel to cover upstream MCP tool calls.** Locks behavior in `tests/mcp/test_mcp_activity_sink.py`.
 
 ### Removed
-- **fix(interrupt): drop `SignalBridge.pids`, `register_pid`, `deregister_pid`, and `_on_process_event` from `ralph.interrupt.asyncio_bridge`.** `pids` was a redundant shadow of `process_manager._records` (source of pid-vs-pgid mis-routing). Bridge no longer subscribes to `ProcessManager`; second-SIGINT path queries `pm.list_active()` and forwards `[r.pgid for r in active]` so kill goes through `kill_process_group(pgid, SIGKILL)`. `_unsubscribe` field removed. Callers must read `process_manager.list_active()` instead of `bridge.pids`.
+
+- **fix(interrupt): remove redundant `SignalBridge.pids` registration from `ralph.interrupt.asyncio_bridge`.**
+
 - **Cloud reporting infrastructure removed.** The old cloud reporting package, API shim, config model, and TOML section have been removed in favour of the new `ralph.supervising` trackable instance model.
 
 ### Changed
-- **`_compute_budget_state` is fully policy-driven.** Budget-state labels (`remaining`/`exhausted`/`no_review`) now work for any counter declared in `[budget_counters]`, not just the canonical `iteration`/`reviewer_pass` names. The function reads only `pipeline_policy.budget_counters` and `state.get_budget_remaining(counter)` — no hardcoded counter names remain in routing-predicate logic.
-- **ASCII workflow diagram renders loopbacks unambiguously.** The old `<--[loopback]-- target` glyph is replaced with `    | loop back to target` / `    +---^  (returns to 'target' phase)` below the looping phase box. When the loopback also consumes a loop counter, a third line `    [LOOPBACK: counter=NAME, max=N]` follows so readers can distinguish counted retries from uncounted routing.
-- `FanOutDevelopmentEffect.run_post_fanout_verification` now defaults to `False` and is driven by
-  the `parallel_execution.post_fanout_verification` policy field. The previous hardcoded `True`
-  would have triggered `make verify` in all fan-out runs, including unit tests.
-- **Display: completed DisplayContext dependency injection across CLI runner and command modules.** Module-level `console` globals removed from `init.py`, `commit.py`, and `runner.py`; all rendering now threads `DisplayContext` explicitly. `_LegacyConsoleDisplay` accepts an optional injected context; added a real `medium`-mode rendering branch in `phase_banner.py` and compact-mode column suppression for tables.
-- Documentation (`getting-started.md`, `concepts.md`, `parallel-mode.md`, `parallel-fan-out.md`)
-  truthfully describes v1 same-workspace behavior: no worktrees, no separate git branches for each worker, no
-  post-fanout merge step; soft isolation by path fencing and per-worker namespaces only.
-- `worker_developer.jinja` now correctly includes `shared/_unattended_mode.jinja` (was
-  `_unattended_mode.j2`) and explicitly tells workers they share the checkout.
-- **Strengthened anti-drift guard against free-function display imports.** `tests/test_no_anti_drift_regression.py` adds `TestNoExcludedEmitMethod` which AST-walks `ralph/cli/commands/`, `ralph/pipeline/`, and `ralph/config/` and asserts no module imports an `emit_*` method directly from `ralph.display.parallel_display`. Callers must use the public `ralph.display` re-export surface. Closes the original drift vector that caused the wt-007 split to begin with. `parallel_display.py` module docstring now correctly states 'Thirty-six instance methods' (was 'Thirty-five').
+
+- **refactor(policy): make `_compute_budget_state` fully policy-driven for any declared budget counter.**
+
+- **feat(cli): render ASCII workflow diagram loopbacks unambiguously with counter annotations.**
+
+- **refactor(pipeline): drive `FanOutDevelopmentEffect.run_post_fanout_verification` from the `parallel_execution.post_fanout_verification` policy field and default it to `False`.**
+
+- **refactor(display): complete `DisplayContext` dependency injection across CLI runner and command modules.**
+
+- **docs: update `getting-started.md`, `concepts.md`, `parallel-mode.md`, and `parallel-fan-out.md` to describe v1 same-workspace behavior.**
+
+- **fix(jinja): correct `worker_developer.jinja` to include `shared/_unattended_mode.jinja` and tell workers they share the checkout.**
+
+- **test(anti-drift): strengthen guard against free-function display imports.**
 
 ### Removed
-- Dead worktree-first parallel code paths. The only supported parallel execution mode is
-  `ParallelExecutionMode.SAME_WORKSPACE`; alternative fan-out paths using git worktrees are not part of the shipped
-  product.
-- **Global `[parallel_execution]` block removed.** Parallelization is now configured per phase under `[phases.<phase>.parallelization]` in `pipeline.toml`. `ParallelExecutionPolicy` model and `PipelinePolicy.parallel_execution` field are gone. `ValidationError` raised for any config still using the old block; rename to `[phases.development.parallelization]` and add `mode = "same_workspace"`. Pipeline fails closed when a plan declares 2+ work units for a phase without `parallelization` policy.
+
+- **chore(parallel): remove dead worktree-first parallel code paths**; only `ParallelExecutionMode.SAME_WORKSPACE` is supported.
+
+- **chore(config): remove global `[parallel_execution]` block**; parallelization is now configured per phase under `[phases.<phase>.parallelization]`.
 
 ### Changed
-- OpenCode runs no longer treat foreground process exit as terminal success — completion now requires either an explicit completion signal or the required phase artifact to be present in the workspace.
-- Idle/timeout evaluation for OpenCode considers Ralph-tracked agent labels (label prefix `agent:`) via the injectable `LivenessProbe` in addition to OS-level descendants, so quiet parents with live subagent work are not killed prematurely.
-- **Missing PROMPT.md error now actionable.** When `ralph` is run without a `PROMPT.md`, the preflight error message now includes `Run \`ralph --init\` to scaffold PROMPT.md and project config files` so new users know exactly how to fix it.
-- **ASCII banner shown on first run.** The Ralph ASCII banner is now printed above the 'Ralph first-run setup' panel on first invocation (and on `--regenerate-config`). It is suppressed on subsequent runs.
-- **Self-teaching PROMPT.md template.** `ralph --init` now seeds `PROMPT.md` with a concrete example (Goal, Context, Acceptance criteria, Notes sections) instead of empty placeholders, so new users immediately see what a usable prompt looks like.
-- **`ralph --diagnose` hint in Next steps.** The first-run welcome panel and the fallback next-steps list both now include a step recommending `ralph --diagnose` to validate the environment before the first pipeline run.
-- **Install URLs for known missing agents.** When a known agent (`claude`, `opencode`) is reported as missing from PATH in the first-run panel, a one-line install hint with the official documentation URL is shown inline.
-- **Verbose output is now the default.** Ralph surfaces phase banners, plan, analysis/decision state, agent activity, retries, and a final summary by default — output is the product of an agent system. Pass `--quiet` (or `-q`) to opt into the minimal, error-only variant. `--verbosity normal` is still accepted but mapped to verbose so existing wrapper scripts keep working.
-- The live dashboard now renders `Plan`, `Analysis`, and `Decision Log` panels backed by `.agent/artifacts/plan.json` and the latest `_analysis_decision` artifacts, not just a prompt preview.
-- Phase transitions emitted during a run are both printed above the live region and recorded into the dashboard's decision log.
-- Pipelines now end with a `Pipeline Complete` (or `Pipeline Failed`) summary panel that echoes the plan, decision log, metrics, verification status, commit, PR URL, and open risks that the user saw live.
-- **Log format extended with `MILESTONE` level and `META`/`CONT` category prefix.** Transcript lines now read `<ISO-TS> <LEVEL> <CAT> [<tag>][<unit>] <content>`. Phase transitions (`planning`, `development`, `review`, `fix`) use the `MILESTONE` level with a `◆ ` marker. All tags are classified as `META` (workflow metadata) or `CONT` (agent-produced content). Existing `INFO`/`SUCCESS`/`WARN`/`ERROR` levels are preserved for all other lines.
-- **Completion summary uses rule-delimited sections.** `emit_completion_summary` now renders a Rich `Group` with a titled header rule and a separate rule per section (Plan, Metrics, Decisions, Verification, Activity Summary, Commit, Risks, Error). Decision rows carry `[PASS]`/`[WARN]`/`[FAIL]`/`[INFO]` badges. The new `Activity Summary` section reports total agent calls, optional thinking-block count, and optional raw overflow path.
-- **Streaming block global-single invariant.** A `[content-start]` or `[thinking-start]` block from worker A is now automatically closed with the matching `*-end` line before a block from worker B can open. Only one streaming block is active at a time across all workers. Non-streaming events (tool use, lifecycle, etc.) also close any open streaming block before they are emitted.
-- **Raw-overflow reference managed by `PlainLogRenderer`.** The `[see .agent/raw/<unit>.log]` suffix is now appended by the renderer (`condensed_ref` param on `emit_activity_line`) rather than embedded in the condenser output. `condense_content` called without `overflow_ref` now emits `(truncated)` instead of `(truncated, see raw unavailable)`.
-- **Long-content summary is now default-on.** The `↳ summary:` headline line is shown for any content block exceeding 4000 display cells without needing to set an env variable. Set `RALPH_LONG_CONTENT_SUMMARY=0` (or `false`/`no`/`off`) to disable. The summary now uses a sentence-aware extractor (first sentence terminated by `.`, `!`, `?`, or newline), with a 200-character cap for inline summaries and 120 characters for streaming end-line summaries.
-- **Streaming `*-end` lines now report fragment count and total char length.** The end-line for a streaming block reads `({n} fragments, {chars} chars)` followed by the headline summary, giving the reader a quick measure of how much content was streamed.
-- **Streaming continue tags now carry a 1-based sequence number.** `[content-continue]` is now emitted as `[content-continue#2]`, `[content-continue#3]`, etc. so readers can track the progression of a streaming block.
-- **`WARN META [progress]` for dropped ring-buffer lines.** The debounced dropped-line notification is now emitted at `WARN` level (not `INFO`) to match its documented severity and the changelog entry below.
 
-- **Preflight guards unedited starter PROMPT.md.** When running `ralph` with a `PROMPT.md` that still contains the `<!-- ralph:starter-prompt ... -->` marker emitted by `ralph --init`, preflight now fails fast with an error that tells the user to edit the file first, preventing an accidental pipeline run against the example task.
-- **`--init` docs now use the real contract.** Quick-start examples now use bare `ralph --init`, compatibility labels remain deprecated/ignored, and rerun output no longer prints a fake template selector.
-- **Removed hidden `isolation_mode` compatibility plumbing.** The deprecated `--no-isolation` path is now gone end to end: CLI override input no longer accepts it, config overrides no longer synthesize it, and tests/default guidance only cover the supported execution flags.
+- OpenCode runs no longer treat foreground process exit as terminal success — completion now requires either an explicit completion signal or the required phase artifact to be present in the workspace.
+
+- Idle/timeout evaluation for OpenCode considers Ralph-tracked agent labels (label prefix `agent:`) via the injectable `LivenessProbe` in addition to OS-level descendants, so quiet parents with live subagent work are not killed prematurely.
+
+- **Missing PROMPT.md error now actionable** — when `ralph` is run without a `PROMPT.md`, the preflight error message includes `Run \`ralph --init\` to scaffold PROMPT.md and project config files` so new users know exactly how to fix it.
+
+- **ASCII banner shown on first run.** The Ralph ASCII banner is now printed above the 'Ralph first-run setup' panel on first invocation (and on `--regenerate-config`). It is suppressed on subsequent runs.
+
+- **Self-teaching PROMPT.md template.** `ralph --init` now seeds `PROMPT.md` with a concrete example (Goal, Context, Acceptance criteria, Notes sections) instead of empty placeholders, so new users immediately see what a usable prompt looks like.
+
+- **`ralph --diagnose` hint in Next steps.** The first-run welcome panel and the fallback next-steps list both now include a step recommending `ralph --diagnose` to validate the environment before the first pipeline run.
+
+- **Install URLs for known missing agents.** When a known agent (`claude`, `opencode`) is reported as missing from PATH in the first-run panel, a one-line install hint with the official documentation URL is shown inline.
+
+- **feat(cli): make verbose output the default** and map `--verbosity normal` to verbose; use `--quiet` / `-q` for minimal output.
+
+- The live dashboard now renders `Plan`, `Analysis`, and `Decision Log` panels backed by `.agent/artifacts/plan.json` and the latest `_analysis_decision` artifacts, not just a prompt preview.
+
+- Phase transitions emitted during a run are both printed above the live region and recorded into the dashboard's decision log.
+
+- Pipelines now end with a `Pipeline Complete` (or `Pipeline Failed`) summary panel that echoes the plan, decision log, metrics, verification status, commit, PR URL, and open risks that the user saw live.
+
+- **feat(logging): extend log format with `MILESTONE` level and `META`/`CONT` category prefix.**
+
+- **feat(display): render completion summary with rule-delimited sections and badges.**
+
+- **feat(display): enforce streaming block global-single invariant across workers.**
+
+- **feat(display): manage raw-overflow reference in `PlainLogRenderer`.**
+
+- **feat(display): enable long-content summary by default for blocks over 4000 display cells.**
+
+- **feat(display): include fragment count and char length on streaming `*-end` lines.**
+
+- **feat(display): add 1-based sequence numbers to streaming continue tags.**
+
+- **`WARN META [progress]` for dropped ring-buffer lines** — debounced dropped-line notification now emitted at `WARN` level (not `INFO`) to match its documented severity.
+
+- **Preflight guards unedited starter PROMPT.md** — when running `ralph` with a `PROMPT.md` that still contains the `<!-- ralph:starter-prompt ... -->` marker emitted by `ralph --init`, preflight fails fast with an error that tells the user to edit the file first, preventing an accidental pipeline run against the example task.
+
+- **`--init` docs now use the real contract** — quick-start examples use bare `ralph --init`, compatibility labels remain deprecated/ignored, rerun output no longer prints a fake template selector.
+
+- **chore(cli): remove hidden `isolation_mode` compatibility plumbing and `--no-isolation` path.**
 
 ### Added
-- **`visit_url` MCP tool (built-in web fetcher).** Fetches a single HTTP/HTTPS URL and returns readable extracted text. Gated by a new `WebVisit` capability granted to **all 10 session drains** by default (including `analysis` and `commit`). Requires the optional `[web-visit]` extras (`readability-lxml`, `selectolax`); without them, calls return `is_error=true` with a clear install hint. SSRF guard blocks private/loopback/link-local when `allow_private_networks=false` (default). Configured via `[web_visit]` in `mcp.toml`. See `docs/mcp/web-visit.md`.
-- **test(idle-watchdog): hard-fail AST audit for the activity-aware watchdog contract.** `ralph.testing.audit_activity_aware_watchdog` runs in `make verify` and locks six wiring invariants: `IdleWatchdog` receives `process_monitor=`, readers wire `set_active_sink` and `set_subagent_sink`, `WorkspaceMonitor.set_on_event` binds to a 2-arg `(kind, weight)` forwarder, `teardown_subtree` follows every `self._handle.terminate` on the fire path, `DefaultProcessMonitor` built with `role_classifier=role_classifier_for_transport(...)`, `discovery_strategy=`, `subagent_pid_source=`. The audit is a non-budget-tracked AST-only step. Tests live in `tests/test_audit_activity_aware_watchdog.py`; per-channel recorder invariants tightened in `tests/agents/test_idle_watchdog_3.py`.
-- **`WebVisit` capability** (`web.visit` / `WebVisit`) added to `Capability` and `McpCapability` enums and wired into the capability mapping layer with the same alias and policy evaluation as `WebSearch`.
-- **`WebVisitConfig`** pydantic model in `ralph.config.mcp_models` with `enabled`, `timeout_ms`, `max_bytes`, `user_agent`, `allow_private_networks`, and `extract_links` fields. Added as `web_visit` field on `McpConfig`.
-- **`[web-visit]` extras group** in `pyproject.toml` (`readability-lxml>=0.8.1`, `selectolax>=0.3.21`).
-- **Crawl4AI upstream MCP integration documented** in `docs/mcp/mcp-servers.md`. Ralph already supports upstream MCP servers — the new section documents how to run Crawl4AI locally and wire it in for multi-page / JavaScript-rendered crawling. No new code; configuration only.
-- **`ralph.agents.execution_state`** — provides `AgentExecutionState` (ACTIVE / WAITING_ON_CHILD / RESUMABLE_CONTINUE / TERMINAL_COMPLETE / FAILED) and per-transport `ExecutionStrategy` classes (`GenericExecutionStrategy`, `OpenCodeExecutionStrategy`) so liveness and completion semantics are isolated behind a transport-aware boundary.
-- **`ralph.agents.completion_signals`** — provides `CompletionSignals` dataclass and `evaluate_completion(workspace, phase)` to determine whether an agent run produced the required phase artifact, making artifact submission the primary OpenCode success criterion.
-- **`ralph.process.liveness`** — provides the `LivenessProbe` protocol, `DefaultLivenessProbe` (queries `ProcessManager` for active labels), and `FakeLivenessProbe` (injectable test fake) so unit tests can exercise multi-agent tree liveness logic without real subprocesses.
-- **`OpenCodeResumableExitError`** in `ralph.agents.invoke` — raised when OpenCode exits with code 0 without producing the required phase artifact, allowing the runner to continue the same session instead of restarting from scratch.
-- display: colorize LEVEL and CAT badges on TTY; plain text preserved under NO_COLOR/non-TTY.
-- display: emit one-line legend inside the [run-start] block describing LEVEL/CAT/[tag] format.
-- logging: register SUCCESS (25) and MILESTONE (35) loguru levels aligned with the transcript vocabulary.
-- display: print the Rich completion panel at pipeline stop alongside the existing [run-end] lines.
-- Surface agent output as kind-tagged `content`/`thinking`/`tool`/`tool-result` lines distinct from workflow metadata lines; oversized content is condensed with a pointer to `.agent/raw/<unit>.log`. Only condensed content and malformed parser input are written to that file — short, non-condensed output is not preserved there.
-- `ralph.display.content_condenser` — predictable head+tail condensation for oversized content lines.
-- `ralph.display.raw_overflow` — per-unit raw NDJSON overflow log writer.
-- `ralph.display.completion_summary` — end-of-run panel renderer reused by the runner for both dashboard and lines modes.
-- `ralph.display.panels.analysis` and `ralph.display.panels.decision_log` — new first-class dashboard regions.
-- `ralph.display.artifact_reader` — tolerant readers for `plan.json` and `*_analysis_decision.json` used by the dashboard subscriber.
-- `ParallelDisplay.emit_phase_transition` / `emit_analysis_result` — helpers that route transitions and decisions through both the live dashboard and the subscriber's decision log.
-- `LiveDashboard.print_above` — serialised helper for printing banners above the live region without fighting the render thread.
-- Strict startup validation for custom MCP servers configured via `mcp.toml`. Ralph now completes the standard `initialize` → `notifications/initialized` → `tools/list` handshake against every upstream server before phase 1, and after the upstream check it probes the Claude/Codex/OpenCode/AGY wiring it would emit against the same server. Failures abort the pipeline with exit code 1 and surface a redacted error (env var values are never logged). Set `RALPH_MCP_STRICT=0` to fall back to the legacy warn-and-skip behaviour for CI smoke runs.
-- `ralph --diagnose` renders a `Custom MCP Servers` table (per-server status with tool counts) and an `Agent Transport Compatibility` table (Claude/Codex/OpenCode/AGY reachability per server).
-- `ralph --check-mcp` runs the custom MCP startup validation and agent transport probe without starting the pipeline, returning exit code 0/1.
-- **Streaming block grouping.** Consecutive `text` or `thinking` activity lines from the same worker are now grouped into `[content-start]`/`[content-continue#N]`/`[content-end]` (or `[thinking-start]`/`[thinking-continue#N]`/`[thinking-end]`) sequences. The `*-end` line carries a fragment count, total char length, and one-line headline summary of the accumulated block. `PlainLogRenderer.flush_blocks()` closes open blocks on phase transitions and pipeline stop.
-- **`ralph.display.long_content_summary`** — default-on headline extractor for oversized content. When content exceeds 4000 display cells, a `↳ summary:` line with the first sentence of the content (max 200 chars) is prepended before the condensed excerpt. Set `RALPH_LONG_CONTENT_SUMMARY=0` to disable. No external AI call — the upstream provider already produced the text. See README "Long-content display" section.
-- **`RingBuffer.consume_drop_delta()`** — thread-safe method that returns and atomically zeroes the dropped-item counter since the last call. `ParallelDisplay` drains this after each activity emission and emits a debounced `WARN META [progress][<unit>] dropped N lines since last flush` line when drops occur (at most one warning per unit per second).
-- **`render_missing_plan_hint`** in `ralph.display.artifact_renderer` — emits an `INFO META [plan] (no plan artifact on disk)` line when planning completes without a `plan.json`, so the log always contains a plan entry.
-- **Raw-overflow diagnostic for malformed parser input.** `ActivityRouter` now accepts an optional `raw_overflow_callback` that is invoked when a parser raises. `ParallelDisplay` wires this to write the offending raw line to `.agent/raw/<unit>.log` before the ERROR event is emitted, so malformed input is preserved for diagnosis.
-- **Empty-state placeholders** for plan and activity sections. When no plan has been loaded yet the log emits `INFO META [plan] (no plan loaded yet)` once; when no agent is active it emits `INFO META [activity] (no active agent yet)` once, so the log never looks broken at startup.
-- **`theme.log.*` styles** in `RALPH_THEME` — `theme.log.info`, `theme.log.success`, `theme.log.warn`, `theme.log.error`, and `theme.log.milestone` give Rich TTY output visually distinct level badges while plain ANSI-free output continues to emit literal level strings unchanged.
-- **`show_phase_start_from_state(state, phase)`** in `ralph.display.phase_banner` and re-exported from `ralph.display` — convenience helper that extracts iteration, reviewer pass, and analysis iteration counters from any state-like object and delegates to `show_phase_start`.
-- **`[run-start]` orientation line** emitted once at pipeline start (MILESTONE header plus INFO continuation lines for prompt path, developer/reviewer agent+model, iterations, parallel worker budget, plan presence, workspace root). Suppressed by `--quiet`.
-- **`[phase-close]` now reports timing and activity counters.** Each phase-close line includes elapsed=<N>s and the count of content/thinking/tool_call/error events emitted during that phase (e.g. `plan: 5 step(s), 2 risk(s)`; `review: 3 issue(s)`). Suppressed by `--quiet`.
 
-- **`[run-end]` MILESTONE block** emitted once at pipeline stop with total elapsed and aggregate counters (content_blocks, thinking_blocks, tool_calls, errors, agent_calls). Suppressed by `--quiet`.
-- **Same-content streaming fragment suppression (default-on).** Identical consecutive text/thinking deltas no longer emit duplicate `[content-continue#N]` lines. Set `RALPH_STREAMING_DEDUP=0` to disable.
+- **feat(mcp): add built-in `visit_url` web fetcher MCP tool** gated by `WebVisit` capability and configured via `[web_visit]` in `mcp.toml`.
+
+- **test(idle-watchdog): add AST audit `ralph.testing.audit_activity_aware_watchdog` to enforce activity-aware watchdog wiring invariants.** Locks behavior in `tests/test_audit_activity_aware_watchdog.py` and `tests/agents/test_idle_watchdog_3.py`.
+
+- **`WebVisit` capability** (`web.visit` / `WebVisit`) added to `Capability` and `McpCapability` enums and wired into the capability mapping layer with the same alias and policy evaluation as `WebSearch`.
+
+- **`WebVisitConfig`** pydantic model in `ralph.config.mcp_models` with `enabled`, `timeout_ms`, `max_bytes`, `user_agent`, `allow_private_networks`, and `extract_links` fields. Added as `web_visit` field on `McpConfig`.
+
+- **`[web-visit]` extras group** in `pyproject.toml` (`readability-lxml>=0.8.1`, `selectolax>=0.3.21`).
+
+- **Crawl4AI upstream MCP integration documented** in `docs/mcp/mcp-servers.md` — Ralph already supports upstream MCP servers; new section documents how to run Crawl4AI locally and wire it in for multi-page / JavaScript-rendered crawling. No new code; configuration only.
+
+- **`ralph.agents.execution_state`** — provides `AgentExecutionState` (ACTIVE / WAITING_ON_CHILD / RESUMABLE_CONTINUE / TERMINAL_COMPLETE / FAILED) and per-transport `ExecutionStrategy` classes (`GenericExecutionStrategy`, `OpenCodeExecutionStrategy`) so liveness and completion semantics are isolated behind a transport-aware boundary.
+
+- **`ralph.agents.completion_signals`** — provides `CompletionSignals` dataclass and `evaluate_completion(workspace, phase)` to determine whether an agent run produced the required phase artifact, making artifact submission the primary OpenCode success criterion.
+
+- **`ralph.process.liveness`** — provides the `LivenessProbe` protocol, `DefaultLivenessProbe` (queries `ProcessManager` for active labels), and `FakeLivenessProbe` (injectable test fake) so unit tests can exercise multi-agent tree liveness logic without real subprocesses.
+
+- **`OpenCodeResumableExitError`** in `ralph.agents.invoke` — raised when OpenCode exits with code 0 without producing the required phase artifact, allowing the runner to continue the same session instead of restarting from scratch.
+
+- display: colorize LEVEL and CAT badges on TTY; plain text preserved under NO_COLOR/non-TTY.
+
+- display: emit one-line legend inside the [run-start] block describing LEVEL/CAT/[tag] format.
+
+- logging: register SUCCESS (25) and MILESTONE (35) loguru levels aligned with the transcript vocabulary.
+
+- display: print the Rich completion panel at pipeline stop alongside the existing [run-end] lines.
+
+- **feat(display): surface agent output as kind-tagged content/thinking/tool/tool-result lines** with raw-overflow pointers.
+
+- `ralph.display.content_condenser` — predictable head+tail condensation for oversized content lines.
+
+- `ralph.display.raw_overflow` — per-unit raw NDJSON overflow log writer.
+
+- `ralph.display.completion_summary` — end-of-run panel renderer reused by the runner for both dashboard and lines modes.
+
+- `ralph.display.panels.analysis` and `ralph.display.panels.decision_log` — new first-class dashboard regions.
+
+- `ralph.display.artifact_reader` — tolerant readers for `plan.json` and `*_analysis_decision.json` used by the dashboard subscriber.
+
+- `ParallelDisplay.emit_phase_transition` / `emit_analysis_result` — helpers that route transitions and decisions through both the live dashboard and the subscriber's decision log.
+
+- `LiveDashboard.print_above` — serialised helper for printing banners above the live region without fighting the render thread.
+
+- **feat(mcp): add strict startup validation for custom MCP servers configured via `mcp.toml`,** with `RALPH_MCP_STRICT=0` fallback.
+
+- `ralph --diagnose` renders a `Custom MCP Servers` table (per-server status with tool counts) and an `Agent Transport Compatibility` table (Claude/Codex/OpenCode/AGY reachability per server).
+
+- `ralph --check-mcp` runs the custom MCP startup validation and agent transport probe without starting the pipeline, returning exit code 0/1.
+
+- **feat(display): group consecutive text/thinking lines into streaming blocks with summary metadata.**
+
+- **feat(display): add default-on headline extraction for oversized content.**
+
+- **feat(display): add `RingBuffer.consume_drop_delta()` and debounced `WARN META [progress]` drop notifications.**
+
+- **`render_missing_plan_hint`** in `ralph.display.artifact_renderer` — emits an `INFO META [plan] (no plan artifact on disk)` line when planning completes without a `plan.json`, so the log always contains a plan entry.
+
+- **feat(display): wire raw-overflow callback for malformed parser input.**
+
+- **feat(display): emit empty-state placeholders for plan and activity sections at startup.**
+
+- **`theme.log.*` styles** in `RALPH_THEME` — `theme.log.info`, `theme.log.success`, `theme.log.warn`, `theme.log.error`, and `theme.log.milestone` give Rich TTY output visually distinct level badges while plain ANSI-free output continues to emit literal level strings unchanged.
+
+- **`show_phase_start_from_state(state, phase)`** in `ralph.display.phase_banner` and re-exported from `ralph.display` — convenience helper that extracts iteration, reviewer pass, and analysis iteration counters from any state-like object and delegates to `show_phase_start`.
+
+- **feat(display): emit `[run-start]` orientation line at pipeline start.**
+
+- **feat(display): report timing and activity counters in `[phase-close]` lines.**
+
+- **feat(display): emit `[run-end]` MILESTONE block with total elapsed and aggregate counters.**
+
+- **feat(display): suppress identical consecutive streaming fragments by default.**
 
 ### Migration
+
 - Users relying on the previously silent default behavior should now pass `--quiet` (or `-q`) explicitly.
+
 - Users currently passing `--verbosity normal` will see verbose output; they will need to switch to `--quiet` to restore the minimal variant.
+
 - Log parsers that assumed a fixed level set `{INFO,WARN,ERROR,SUCCESS}` must now also accept `MILESTONE` on phase-transition rows.
+
 - Log parsers that matched `[content-continue]` or `[thinking-continue]` exactly must update to match `[content-continue#N]` / `[thinking-continue#N]` (where N is a 1-based integer).
+
 - Tooling that expected dropped-buffer notifications at `INFO` level must update to `WARN`.
 
 ### Fixed
-- **OS-descendant-only child evidence now fires at the no-progress waiting ceiling.** When an OpenCode agent enters `WAITING_ON_CHILD` with only OS-level process descendants (no fresh scoped label or registry evidence, `alive_by=os_descendant_only_stale_progress`), the idle watchdog now fires at `max_waiting_on_child_no_progress_seconds` (default 600s) instead of the full `max_waiting_on_child_seconds` ceiling (default 1800s). Previously, `SUSPECTED_FROZEN` would fire correctly at 600s but the watchdog would continue waiting until 1800s, keeping a stuck agent alive 20 minutes longer than intended. The effective ceiling is also surfaced correctly in `PROGRESS` and `HARD_STOP` waiting events so log monitors see the true bound.
-- **Policy validation now rejects pipelines that declare a tracked budget counter without any matching `post_commit_routes` entry.** Previously, a commit-role phase with `tracks_budget = true` but no matching route would silently fall through to `on_success` instead of raising an error. `validate_policy_completeness` now fails closed with: `phases.<phase>: role='commit' tracks budget counter '<counter>' but no post_commit_routes apply to this phase.`
-- **OpenCode false-positive retry bug.** When OpenCode foreground exits rc=0 and (a) child agents are still running OR (b) no children are visible at the exact moment of exit but background work is still pending, `_check_process_result` now waits before declaring resumable failure. Two windows govern the wait: a mandatory `parent_exit_grace_seconds` (default 5s) that polls for late-appearing completion artifacts, `explicit_complete` markers, or newly-registered child agents — covering the race where MCP-driven background subagents have been launched but not yet registered with the ProcessManager — and the existing `descendant_wait_timeout_seconds` (default 30s) that engages once children are visible. Previously, when the foreground exited and no children were visible at that exact instant (a common case for late-spawning MCP subagents and async background work), `OpenCodeResumableExitError` was raised within ~1ms, killing the OpenCode parent before background work could complete. The new grace window eliminates this false positive while preserving the fast path (`TERMINAL_COMPLETE` when completion signals are present at exit time).
+
+- **fix(idle-watchdog): fire OS-descendant-only child evidence at `max_waiting_on_child_no_progress_seconds` (default 600s).**
+
+- **fix(policy): reject commit phases that track a budget counter without matching `post_commit_routes`.**
+
+- **fix(opencode): eliminate false-positive `OpenCodeResumableExitError` by waiting for late completion artifacts and child agents before declaring resumable failure.**
+
 - `-D` / `--developer-iters` and `-R` / `--reviewer-reviews` CLI flags now correctly control the number of dev/review cycles. Previously, the pipeline ran exactly one dev cycle and one review pass regardless of the flag values. The `developer_iters` setting controls dev cycles; `reviewer_reviews` controls review cycles.
+
 - `-R=0` now skips the review phase entirely instead of running one forced review pass.
+
 - Analysis loopbacks from `development_analysis` no longer consume a development budget slot. Loopbacks are retries of the same iteration, not new iterations.
+
 - `make typecheck` now runs mypy through `uv run python -m mypy` so it uses the project's virtualenv instead of a system-wide mypy that cannot see project dependencies.
 
 ### Removed
-- `commit_sha` field removed from `WorkerCompletedEvent`, `WorkerState`, and `WorkerSnapshot`. This was a worktree-era relic always set to empty string in same-workspace v1 mode. Checkpoints from earlier versions load cleanly due to `extra="ignore"` on `WorkerState`.
+
+- **chore(parallel): remove `commit_sha` field from worker events/state/snapshot** (worktree-era relic).
+
 - `max_dev_continuations` config field (previously declared but never used).
+
 - `_legacy_handle_agent_success` reducer path (unreachable in production — policy is always loaded).
+
 - Unused `developer_iters_option` / `reviewer_reviews_option` decorator stubs in `cli/options.py`.
 
 ### Documentation
-- **docs(pi): close four documentation gaps where pi was silently absent from operator-facing enumerations.** `docs/sphinx/configuration.md` now lists `pi` in the chain-valid names clause (line 228), the valid-agent-names sentence (line 244), and the subagent_capability table (lines 367-368, `None` default). `docs/sphinx/concepts.md` line 40 now enumerates `Pi.dev` alongside Claude Code, Codex, OpenCode, and Google Anti Gravity. `docs/sphinx/parallel-mode.md` now classifies pi as a sequential-only agent (the parallel-mode sub-agent-capable list at lines 16-17 and the sequential-fallback example at line 55 are both updated to mention `pi`). `docs/sphinx/advanced-mcp-configuration.md` adds a paragraph noting that `PiRuntimeResolver` raises `UnsupportedMcpTransportError` on any `MCP_ENDPOINT`, citing the live pi.dev docs URL `https://pi.dev/docs/latest/usage` (verified reachable via `curl -I`) and the pinning test `tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py::TestPiRuntimeResolver`. The wire-format spec test (`tests/agents/parsers/test_pi_dev_wire_format_spec.py`) was re-audited against `ralph-workflow/.agent/tmp/pi_docs_json.md` (fetched 2026-06-16) to confirm the 16-event canonical asserted set (= the 15-member documented `AgentSessionEvent` union + the separately-documented stream-level `session` header line) still matches the live docs. No adoption / credit / install-count claims added (D91 fabrication guard is absolute).
+
+- **docs(pi): close documentation gaps by enumerating `pi` in configuration, concepts, parallel-mode, and advanced-mcp docs.** Locks behavior in `tests/agents/invoke/test_pi_command_builder_and_runtime_resolver.py` and `tests/agents/parsers/test_pi_dev_wire_format_spec.py`.
 
 ### Migration Notes
-- **Users resuming from a checkpoint created by a prior buggy version**: the stored `development_budget_remaining` and `review_budget_remaining` fields will be `0`, causing the fix to silently repeat the old broken behavior. To get the fix, delete the checkpoint before resuming:
-  ```bash
-  rm .agent/checkpoint.json
-  ```
-  Then re-run `ralph -D N -R M` from scratch. Affected users already had a broken run (dev ran once), so this is equivalent to restarting the intended work.
+
+- **docs(migration): users resuming from a prior buggy checkpoint must delete `.agent/checkpoint.json` before re-running `ralph -D N -R M` from scratch.**
