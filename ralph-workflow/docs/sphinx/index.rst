@@ -120,6 +120,7 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    supervising-api
    troubleshooting
    versioning
+   changelog
    pro-support
    modules
    quick-reference

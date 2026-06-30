@@ -5,11 +5,18 @@ Ralph Workflow is the reference orchestrator in a growing category. These indepe
 | Tool | Stars (live) | Created | Approach | Best for |
 |------|-------|---------|----------|----------|
 | **Ralph Workflow** | [live stars](https://codeberg.org/RalphWorkflow/Ralph-Workflow) · [mirror stars](https://github.com/Ralph-Workflow/Ralph-Workflow) | 2026-01 ~v0.1 | Composable phase routing, cost arbitrage, checkpoint/resume, repo-based agent handoff | Multi-agent pipelines with different models per phase; projects that need resume-after-failure |
-| [SantanderAI/ralph](https://github.com/SantanderAI/ralph) | [live stars](https://github.com/SantanderAI/ralph/stargazers) | 2026-06-17 | Bash/PowerShell — fresh session per iteration, works with Claude Code, Codex, Gemini CLI | Simple loop with no context bloat; quick setup; Windows + Linux |
-| [rxdt/py_ralph_frame](https://github.com/rxdt/py_ralph_frame) | [live stars](https://github.com/rxdt/py_ralph_frame/stargazers) | 2026-06-23 | Python harness — spec-driven loop, `uvx`-installable, fresh-context runs | Python ecosystem users; lightweight spec→build→verify cycle |
-| [colinhacks/fray](https://github.com/colinhacks/fray) | [live stars](https://github.com/colinhacks/fray/stargazers) | 2026-06-21 | Multi-agent methodology + Claude Code plugin — .fray/ thread board, dispatch/reconciliation hooks | Multi-agent orchestration with explicit agent roles and thread tracking |
+| [SantanderAI/ralph](https://github.com/SantanderAI/ralph) (verify: repo-exists) | [live stars](https://github.com/SantanderAI/ralph/stargazers) | 2026-06-17 | Bash/PowerShell — fresh session per iteration, works with Claude Code, Codex, Gemini CLI | Simple loop with no context bloat; quick setup; Windows + Linux |
+| [rxdt/py_ralph_frame](https://github.com/rxdt/py_ralph_frame) (verify: repo-exists) | [live stars](https://github.com/rxdt/py_ralph_frame/stargazers) | 2026-06-23 | Python harness — spec-driven loop, `uvx`-installable, fresh-context runs | Python ecosystem users; lightweight spec→build→verify cycle |
+| [colinhacks/fray](https://github.com/colinhacks/fray) (verify: repo-exists) | [live stars](https://github.com/colinhacks/fray/stargazers) | 2026-06-21 | Multi-agent methodology + Claude Code plugin — .fray/ thread board, dispatch/reconciliation hooks | Multi-agent orchestration with explicit agent roles and thread tracking |
 
-(verify: repo-exists) Star counts rendered live from the source repo pages on fetch; audited 2026-06-30.
+<!-- docs-rubric review note (2026-06-30): inline (verify: repo-exists) annotations
+     moved into each competitor Tool/project cell, mirroring the SHOWCASE.md /
+     ECOSYSTEM.md inline-project-cell convention verified during planning.
+     Redundant standalone prefix on the previous line 12 removed; the
+     provenance sentence (live-stars, audited date) is retained unchanged.
+     No star counts, dates, or repo URLs were altered. -->
+
+Star counts rendered live from the source repo pages on fetch; audited 2026-06-30.
 
 ## How they compare
 

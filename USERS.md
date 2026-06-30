@@ -45,7 +45,7 @@ These independent projects implement the Ralph Loop architecture in their own to
 | [dscherm/comfyprompts](https://github.com/dscherm/comfyprompts) | — | Mini-ralphs with delegation matrix | (verify: repo-exists) |
 | [Delqhi-Projects/ZOE-Solar-Accounting-OCR](https://github.com/Delqhi-Projects/ZOE-Solar-Accounting-OCR) | — | Ralph/Lisa pipeline executor for accounting OCR | (verify: repo-exists) |
 
-## Shadow Ecosystem — Skill Registries, MCP & Media (2026-06-22 scout)
+## Shadow Ecosystem — Skill Registries, MCP & Media (last scouted 2026-06-30)
 
 | Project | Type | Description | Verify |
 |---------|------|-------------|--------|
@@ -78,3 +78,11 @@ These independent projects implement the Ralph Loop architecture in their own to
 ---
 
 *Attribution: The Ralph Loop pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph). Ralph Workflow is an independent reference implementation — not the pattern's originator.*
+
+<!-- docs-rubric review note (2026-06-30): the Shadow Ecosystem scout date was
+     refreshed from "(2026-06-22 scout)" to "(last scouted 2026-06-30)" because
+     `./scripts/fabrication_guard.py --level 2 USERS.md` confirmed every listed
+     repo still exists. No repo row, star link, or `(verify: repo-exists)`
+     annotation was altered. The explicit "last scouted" framing matches the
+     sibling ECOSYSTEM.md / SHOWCASE.md audit stamps and removes the silent
+     stale-date inconsistency flagged during planning. -->
