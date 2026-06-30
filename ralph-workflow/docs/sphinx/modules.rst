@@ -442,8 +442,6 @@ ralph.config.web_service_configs
    :members:
    :show-inheritance:
 
-----
-
 Policy
 ------
 
@@ -573,8 +571,6 @@ ralph.policy.render
 .. automodule:: ralph.policy.render
    :members:
    :show-inheritance:
-
-----
 
 Pipeline
 --------
@@ -1016,8 +1012,6 @@ ralph.pipeline.worker_status
    :members:
    :show-inheritance:
 
-----
-
 Skills
 ------
 
@@ -1034,8 +1028,6 @@ ralph.skills.manager
 .. automodule:: ralph.skills.manager
    :members:
    :show-inheritance:
-
-----
 
 Git
 ---
@@ -1138,8 +1130,6 @@ ralph.phases.timing
 .. automodule:: ralph.phases.timing
    :members:
    :show-inheritance:
-
-----
 
 Agents
 ------
@@ -1496,8 +1486,6 @@ ralph.agents.subprocess_executor
 .. automodule:: ralph.agents.subprocess_executor
    :members:
    :show-inheritance:
-
-----
 
 ralph.agents.timeout_clock
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3102,8 +3090,6 @@ ralph.prompts.plan_format
 .. automodule:: ralph.prompts.plan_format
    :members:
    :show-inheritance:
-
-----
 
 Testing
 -------

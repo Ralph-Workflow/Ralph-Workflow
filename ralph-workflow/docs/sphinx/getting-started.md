@@ -81,10 +81,100 @@ Outdated **user-global** skills are NOT auto-repaired on a normal `ralph` run; t
 
 ```bash
 pipx install ralph-workflow
+```
+
+Expected result:
+
+```text
+  installed package ralph-workflow X.Y.Z, installed using Python 3.12
+  These apps are now globally available
+    - ralph
+```
+
+Confirm the CLI is on `PATH`:
+
+```bash
+ralph --version
+```
+
+Expected result:
+
+```text
+Ralph Workflow version 0.8.18
+```
+
+Move into the repository you want agents to work on and scaffold it:
+
+```bash
 cd /path/to/your/repo
 ralph --init
+```
+
+Expected result:
+
+```text
+─── [status]
+Created: /path/to/your/repo/PROMPT.md
+
+─── [capabilities]
+Baseline Capabilities
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Capability                 ┃ Type     ┃ Status                                             ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ Workspace Ops              │ Built-in │ OK — always available                              │
+│ Git Read Ops               │ Built-in │ OK — always available                              │
+│ Artifact Ops               │ Built-in │ OK — always available                              │
+│ Plan Read                  │ Built-in │ OK — always available                              │
+│ Skill bundles              │ Built-in │ OK                                                 │
+└────────────────────────────┴──────────┴────────────────────────────────────────────────────┘
+```
+
+Run the pre-flight check before you spend a real run on it:
+
+```bash
+ralph --diagnose
+```
+
+Expected result (your agents will differ):
+
+```text
+─── [status]
+Ralph Workflow Diagnostics
+
+Git Repository
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Capability      ┃ Type                  ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Repository root │ /path/to/your/repo    │        │
+│ Working tree    │ Clean                 │        │
+└─────────────────┴───────────────────────┴────────┘
+
+Agents
+┏━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ Capability┃ Type                  ┃ Status  ┃
+┡━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ claude  │ Configured: claude     │ on PATH │
+│ codex   │ Configured: codex exec │ on PATH │
+│ opencode│ Configured: opencode   │ missing │
+└─────────┴────────────────────────┴─────────┘
+
+Pre-flight Validation
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Capability      ┃ Type        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Agent chains    │ Satisfiable │        │
+│ Recovery config │ Valid       │        │
+└─────────────────┴─────────────┴────────┘
+```
+
+If an agent you want to use shows `missing`, install it before you run
+`ralph`. If `Agent chains` is not `Satisfiable`, adjust your
+`ralph-workflow.toml` or the agent selection in `PROMPT.md`.
+
+Edit the run specification:
+
+```bash
 $EDITOR PROMPT.md
-ralph
 ```
 
 Example `PROMPT.md` starting point:
@@ -97,6 +187,46 @@ Ship one focused backlog task with tests or another real verification step.
 - keep the change scoped to the task
 - run the relevant checks before stopping
 ```
+
+Run the unattended workflow:
+
+```bash
+ralph
+```
+
+Expected high-level result:
+
+```text
+─── [plan]
+Planned: <N> steps to address the task
+...
+─── [verify]
+make verify
+...
+─── [status]
+Run completed. Review the branch/worktree before merging.
+```
+
+The exact transcript varies by task and agent. What matters is that the
+run ends with a concrete, reviewable change: modified files, test output,
+and a completion artifact you can inspect.
+
+## Validate the result in reality
+
+Do not accept the run only because the transcript looks confident. The
+uniquely human responsibility is to check the outcome against the real
+world:
+
+1. Run the program, tests, or checks yourself against real data or fixtures.
+2. Exercise the changed feature with representative inputs.
+3. Inspect the important files and artifacts the run produced.
+4. Use code review as supporting evidence, not the only acceptance mechanism.
+5. Decide the next action: push the branch, ask for changes, revert, rerun, or
+discard the result.
+
+Ralph Workflow handles the long middle — plan, build, verify, fix, recover,
+and return a reviewable handoff. You remain responsible for the destination
+and final judgment.
 
 If you need the underlying concepts first, open [Concepts](concepts.md).
 If your first run goes sideways, use [Troubleshooting](troubleshooting.md).

@@ -1,4 +1,4 @@
-"""ProcessEvent dataclass."""
+"""Immutable status-change event emitted by the process manager."""
 
 from __future__ import annotations
 
@@ -14,6 +14,12 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ProcessEvent:
+    """A single transition in a process record's lifecycle.
+
+    Carries the record that changed, the status before and after the
+    transition, and the wall-clock time at which the event was observed.
+    """
+
     record: ProcessRecord
     previous_status: ProcessStatus
     new_status: ProcessStatus

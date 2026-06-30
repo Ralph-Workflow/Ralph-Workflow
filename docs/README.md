@@ -47,6 +47,8 @@ Use these folders only when you know you need contributor guidance or deeper bac
 - `docs/architecture/` — Python-runtime architecture: an `overview.md` plus the
   maintained topical pages `pipeline-lifecycle.md`, `event-loop-and-reducers.md`,
   and `parallel-fan-out.md`
+- [Superpowers skill bundles](../ralph-workflow/docs/superpowers/README.md) —
+  spec layouts and plan metadata for the maintained Python package
 
 ### I want to see a real overnight run before I decide (proof)
 
@@ -64,6 +66,9 @@ Pages describing the **retired Rust implementation** are quarantined under
 [`docs/legacy-rust/`](legacy-rust/README.md), including the archived
 `docs/legacy-rust/performance/` performance notes. They are kept for
 historical context only; do not rely on them for current behavior.
+
+Start with [Rust Implementation Retired](migration/rust-implementation-retired.md)
+for the one-sentence status and the path to the maintained Python package.
 
 ## Keep proof secondary
 

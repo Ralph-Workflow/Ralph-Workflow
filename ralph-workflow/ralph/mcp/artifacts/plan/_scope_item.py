@@ -1,3 +1,5 @@
+"""Scope-item sub-model for the plan artifact summary section."""
+
 from __future__ import annotations
 
 from pydantic import ConfigDict, Field
@@ -7,6 +9,8 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class ScopeItem(RalphBaseModel):
+    """A single bounded work item within a plan's scope."""
+
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(

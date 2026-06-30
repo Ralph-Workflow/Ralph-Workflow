@@ -1,4 +1,8 @@
-"""ProcessManagerPolicy dataclass."""
+"""Policy constants for the process manager.
+
+Governs subprocess lifecycle: graceful termination timeouts, event logging,
+history limits, zombie reaping, and listener-subscription backpressure.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +11,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ProcessManagerPolicy:
+    """Immutable configuration for a ``ProcessManager`` instance."""
+
     default_grace_period_s: float = 5.0
     kill_followup_timeout_s: float = 2.0
     log_events: bool = True

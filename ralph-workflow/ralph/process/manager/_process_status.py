@@ -1,4 +1,4 @@
-"""ProcessStatus enum and terminal status constants."""
+"""Lifecycle states for a tracked subprocess."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ from enum import Enum, auto
 
 
 class ProcessStatus(Enum):
+    """Finite-state machine states for a managed child process."""
+
     SPAWNED = auto()
     RUNNING = auto()
     EXITED = auto()

@@ -25,9 +25,6 @@ For the maintained operator manual and the contributor reference, see:
 - [Developer reference](../../docs/sphinx/developer-reference.md)
 - [Agent subsystem](../../docs/agents/README.md)
 
-For the repo-root Superpowers directory, see
-[`../../../docs/superpowers/`](../../../docs/superpowers/README.md).
-
 ## Primary repo
 
 - Codeberg (primary):

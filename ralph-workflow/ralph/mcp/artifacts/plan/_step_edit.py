@@ -453,6 +453,24 @@ def insert_plan_step(
     index: int,
     step_payload: object,
 ) -> PlanArtifactDict:
+    """Insert a new step into a staged plan draft.
+
+    Args:
+        sections: The current staged plan sections dict.
+        index: 1-based insertion position. Values below 1 prepend; values
+            past ``len(steps) + 1`` append.
+        step_payload: JSON object describing the new step. ``number`` is
+            ignored and replaced with a synthetic number that is then
+            reindexed.
+
+    Returns:
+        A new ``sections`` dict with the step inserted and all steps
+        reindexed to contiguous 1-based numbers.
+
+    Raises:
+        PlanArtifactValidationError: If ``sections`` is malformed or the
+            payload is not a JSON object.
+    """
     steps, warnings = _steps_from_sections(sections)
     clamped_index = _clamp_insert_index(index, len(steps))
 
@@ -536,6 +554,21 @@ def replace_plan_step(
     step_number: int,
     step_payload: object,
 ) -> PlanArtifactDict:
+    """Replace an existing step in a staged plan draft.
+
+    Args:
+        sections: The current staged plan sections dict.
+        step_number: The 1-based step number to replace.
+        step_payload: JSON object describing the replacement step.
+
+    Returns:
+        A new ``sections`` dict with the step replaced and all steps
+        reindexed to contiguous 1-based numbers.
+
+    Raises:
+        PlanArtifactValidationError: If the step does not exist or the
+            payload is not a JSON object.
+    """
     steps, warnings = _steps_from_sections(sections)
     target_index = next(
         (
@@ -622,6 +655,19 @@ def remove_plan_step(
     *,
     step_number: int,
 ) -> PlanArtifactDict:
+    """Remove an existing step from a staged plan draft.
+
+    Args:
+        sections: The current staged plan sections dict.
+        step_number: The 1-based step number to remove.
+
+    Returns:
+        A new ``sections`` dict with the step removed and all steps
+        reindexed to contiguous 1-based numbers.
+
+    Raises:
+        PlanArtifactValidationError: If the step does not exist.
+    """
     steps, _source_warnings = _steps_from_sections(sections)
     remaining_steps = [
         step for step in steps if _coerce_positive_int(step.get("number")) != step_number

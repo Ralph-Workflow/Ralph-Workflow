@@ -1,4 +1,4 @@
-"""ProcessRecord dataclass."""
+"""Immutable snapshot of a tracked subprocess."""
 
 from __future__ import annotations
 
@@ -13,6 +13,14 @@ if TYPE_CHECKING:
 
 @dataclass
 class ProcessRecord:
+    """A point-in-time record describing a child process managed by Ralph.
+
+    The record is created when the process is spawned and updated as it
+    transitions through ``ProcessStatus`` values. Terminal records carry
+    ``returncode``, ``ended_at``, and optionally a ``cause`` explaining why
+    the process ended.
+    """
+
     pid: int
     pgid: int
     command: tuple[str, ...]

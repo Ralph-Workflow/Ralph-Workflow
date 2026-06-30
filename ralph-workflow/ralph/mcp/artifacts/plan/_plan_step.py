@@ -46,6 +46,15 @@ _STEP_TYPE_ALIASES: dict[str, str] = {
 
 
 class PlanStep(RalphBaseModel):
+    """One executable step in a plan artifact.
+
+    A plan step carries a numbered instruction, its type contract, optional
+    targets, evidence, and dependency/satisfaction metadata. The
+    ``step_type`` field determines which extra fields are required: a
+    ``file_change`` step must declare ``targets``, while a ``verify`` step
+    must declare either ``verify_command`` or ``location``.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     number: int = Field(..., ge=1, description="1-based step number.")

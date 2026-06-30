@@ -1,3 +1,5 @@
+"""Risk-mitigation sub-model for the plan artifact schema."""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -8,6 +10,8 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class RiskMitigation(RalphBaseModel):
+    """A single identified risk and its mitigating action."""
+
     model_config = ConfigDict(extra="forbid")
 
     risk: str = Field(..., min_length=1, max_length=8000)

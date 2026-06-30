@@ -1,7 +1,9 @@
 # Implementation Plans
 
-This directory holds implementation plans for the **maintained Python
-runtime** of Ralph Workflow.
+This directory holds **repo-root cross-cutting implementation plans**
+that span the whole Ralph Workflow repository. It does not hold
+package-scoped plans; those live under
+[`ralph-workflow/docs/plans/`](../../ralph-workflow/docs/plans/README.md).
 
 ## Who this is for
 
@@ -21,8 +23,9 @@ package.
 
 ## Maintained: Python-era plans
 
-The plans in this directory all describe the current Python package
-under `ralph-workflow/`. They are NOT the Rust-era plans — those are
+Package-scoped implementation plans for the maintained Python package
+live under [`ralph-workflow/docs/plans/`](../../ralph-workflow/docs/plans/README.md).
+The plans in this directory are NOT the Rust-era plans — those are
 archived under [`../legacy-rust/plans/`](../legacy-rust/plans/README.md).
 
 ## Next click

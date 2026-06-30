@@ -4,9 +4,7 @@ Ralph Workflow is a free and open-source AI agent orchestrator built around a si
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
 
-This directory has not yet been fully ported to the Python implementation. Many files here still document the retired Rust codebase.
-
-This directory (`docs/code-style/`) now contains only Python-current
+This directory (`docs/code-style/`) contains only Python-current
 material:
 
 - `documentation-rubric.md` — canonical documentation rubric for every docs-related change

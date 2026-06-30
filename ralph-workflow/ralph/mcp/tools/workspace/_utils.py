@@ -77,6 +77,12 @@ def _int_opt_param(params: dict[str, object], name: str) -> int | None:
 
 
 def normalize_relative_path(path: str) -> str:
+    """Return a normalized POSIX-style relative path string.
+
+    Collapses redundant separators and parent references. An empty or
+    dot-only path resolves to ``""`` so callers can treat it as the
+    workspace root.
+    """
     normalized = str(PurePosixPath(path))
     if normalized in ("", "."):
         return ""
@@ -84,12 +90,22 @@ def normalize_relative_path(path: str) -> str:
 
 
 def join_path(base: str, entry: str) -> str:
+    """Join a base relative path with an entry and normalize the result.
+
+    Args:
+        base: Existing relative path, or ``""`` for the workspace root.
+        entry: Path fragment to append.
+
+    Returns:
+        A normalized POSIX-style relative path.
+    """
     if not base:
         return normalize_relative_path(entry)
     return normalize_relative_path(str(PurePosixPath(base) / entry))
 
 
 def list_dir_entries(workspace: Workspace, path: str) -> list[str]:
+    """List the entries in ``path`` and surface workspace errors as ToolError."""
     try:
         return workspace.list_dir(path)
     except Exception as exc:
@@ -97,6 +113,7 @@ def list_dir_entries(workspace: Workspace, path: str) -> list[str]:
 
 
 def is_parallel_worker(session: object) -> bool:
+    """Return True when the active session is a parallel fan-out worker."""
     flag = _attribute_value(session, "is_parallel_worker", False)
     if callable(flag):
         try:
@@ -108,6 +125,12 @@ def is_parallel_worker(session: object) -> bool:
 
 
 def check_edit_area_restriction(session: object, path: str) -> None:
+    """Enforce the parallel-worker edit-area restriction for ``path``.
+
+    Raises:
+        CapabilityDeniedError: If the session is a parallel worker and the
+            configured edit-area policy does not approve the path.
+    """
     if not is_parallel_worker(session):
         return
     checker = _attribute_value(session, "check_edit_area")
@@ -128,6 +151,11 @@ def _write_file_to_workspace(workspace: Workspace, path: str, content: str) -> N
 
 
 def is_path_git_tracked(workspace: Workspace, path: str) -> bool:
+    """Return True when ``path`` should be treated as git-tracked output.
+
+    The path must exist in the workspace and must not live in ephemeral
+    directories such as ``.agent/``, ``target/``, or ``node_modules/``.
+    """
     normalized = normalize_relative_path(path)
     if not normalized:
         return False
@@ -146,6 +174,7 @@ def is_path_git_tracked(workspace: Workspace, path: str) -> bool:
 
 
 def infer_image_mime_type(path: str) -> str | None:
+    """Return the MIME type for supported image paths based on extension."""
     suffix = PurePosixPath(path).suffix.lower()
     return _SUPPORTED_IMAGE_MIME_TYPES.get(suffix)
 

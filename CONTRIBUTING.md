@@ -68,7 +68,7 @@ Canonical verification is the `make verify` command run from the `ralph-workflow
 
 1. `verify-drift` — invariant checks that protect the Pro contract and other architectural guarantees.
 2. `docs` — Sphinx HTML build with warnings-as-errors (`sphinx-build -W --keep-going`), so any documentation warning fails the gate before the Python verification step runs.
-3. `ralph.verify` — the **18-step pipeline** documented as the single source of truth in [`docs/agents/verification.md`](docs/agents/verification.md) (ruff, mypy, the pytest run tracked against the 60-second combined test budget, plus 15 audits and the social-proof gate).
+3. `ralph.verify` — the **18-step pipeline** documented as the single source of truth in [`docs/agents/verification.md`](docs/agents/verification.md) (ruff, mypy, the pytest run tracked against the 60-second combined test budget, plus 14 audits and the social-proof gate).
 
 Coverage and subprocess E2E remain separate opt-in targets:
 

@@ -87,7 +87,8 @@ serve-docs:
 
 help:
 	@echo "Ralph (Python) root targets"
-	@echo "  make verify      - lint + typecheck + tests with coverage"
+	@echo "  make verify      - docs build + ruff + mypy + 60s-capped tests + 14 audits (excludes coverage)"
+	@echo "  make setup-hooks - install the .githooks pre-commit hook path"
 	@echo "  make lint        - run ruff checks"
 	@echo "  make typecheck   - run strict mypy"
 	@echo "  make test        - run the full pytest suite without coverage"

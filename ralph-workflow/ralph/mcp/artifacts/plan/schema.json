@@ -81,6 +81,7 @@
     },
     "CriticalFiles": {
       "additionalProperties": false,
+      "description": "Primary and reference files that define the plan's surface area.",
       "properties": {
         "primary_files": {
           "items": {
@@ -261,6 +262,7 @@
     },
     "DesignSection": {
       "additionalProperties": false,
+      "description": "Design section aggregating SE-opinionated sub-models.\n\nCollects cross-cutting design choices: planning profile, constraints,\nnon-goals, dependency-injection expectations, drift-detection guards,\ntestability requirements, refactor strategy, and acceptance criteria.\nWhen ``planning_profile`` is set, the model bias-fills any missing\nsub-sections from preset defaults; user-provided values always win.",
       "properties": {
         "planning_profile": {
           "anyOf": [
@@ -615,6 +617,7 @@
     },
     "PlanStep": {
       "additionalProperties": false,
+      "description": "One executable step in a plan artifact.\n\nA plan step carries a numbered instruction, its type contract, optional\ntargets, evidence, and dependency/satisfaction metadata. The\n``step_type`` field determines which extra fields are required: a\n``file_change`` step must declare ``targets``, while a ``verify`` step\nmust declare either ``verify_command`` or ``location``.",
       "properties": {
         "number": {
           "description": "1-based step number.",
@@ -833,6 +836,7 @@
     },
     "RiskMitigation": {
       "additionalProperties": false,
+      "description": "A single identified risk and its mitigating action.",
       "properties": {
         "risk": {
           "maxLength": 8000,
@@ -874,6 +878,7 @@
     },
     "ScopeItem": {
       "additionalProperties": false,
+      "description": "A single bounded work item within a plan's scope.",
       "properties": {
         "text": {
           "description": "Required scope item text (non-empty, max 1000 chars).",
@@ -935,6 +940,7 @@
     },
     "SkillsMcp": {
       "additionalProperties": false,
+      "description": "Required skills and optional MCP servers for executing the plan.",
       "properties": {
         "skills": {
           "items": {
@@ -1001,6 +1007,7 @@
     },
     "Summary": {
       "additionalProperties": false,
+      "description": "Summary section of a plan artifact.\n\nCaptures the user-facing context, the explicit intent and intent verb,\nthe scope items that bound the work, and the coverage areas the plan\ntouches. ``intent_verb`` is a closed vocabulary used by the executor to\nchoose the right kind of verification and artifact semantics.",
       "properties": {
         "context": {
           "default": "",

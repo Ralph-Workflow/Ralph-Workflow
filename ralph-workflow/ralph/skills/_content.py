@@ -1,4 +1,10 @@
-"""Baseline skill content access."""
+"""Baseline skill content access.
+
+Reads bundled skill Markdown and metadata from ``ralph.skills.content``
+and materializes it into user-global or per-agent skill directories.
+Preserves user edits when the installed content hash no longer matches
+the managed marker.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +18,8 @@ if TYPE_CHECKING:
 
 
 class SkillMetadata(TypedDict):
+    """JSON shape of ``metadata.json`` shipped with the bundled skills."""
+
     source_repo: str
     source_commit: str
     source_version: str
@@ -26,6 +34,7 @@ _MANAGED_MARKER = ".ralph-managed.json"
 
 
 def _read_skill_metadata() -> SkillMetadata:
+    """Load the bundled skill metadata from package resources."""
     content_dir = files(__package__) / "content"
     raw = (content_dir / "metadata.json").read_text(encoding="utf-8")
     return cast("SkillMetadata", json.loads(raw))
@@ -35,10 +44,16 @@ BASELINE_SKILL_NAMES: tuple[str, ...] = tuple(_read_skill_metadata()["skills"])
 
 
 def list_skill_names() -> tuple[str, ...]:
+    """Return the names of all bundled baseline skills."""
     return BASELINE_SKILL_NAMES
 
 
 def get_skill_content(name: str) -> str:
+    """Return the Markdown content for a bundled skill.
+
+    Raises:
+        ValueError: If ``name`` is not a bundled baseline skill.
+    """
     if name not in BASELINE_SKILL_NAMES:
         msg = f"Unknown baseline skill: {name}"
         raise ValueError(msg)
@@ -47,10 +62,12 @@ def get_skill_content(name: str) -> str:
 
 
 def get_skill_metadata() -> SkillMetadata:
+    """Return the bundled skill metadata dict."""
     return _read_skill_metadata()
 
 
 def managed_skill_marker(name: str, *, installed_sha256: str) -> dict[str, str]:
+    """Build the contents of a ``.ralph-managed.json`` marker file."""
     return {
         "managed_by": "ralph-workflow",
         "skill": name,
@@ -59,6 +76,11 @@ def managed_skill_marker(name: str, *, installed_sha256: str) -> dict[str, str]:
 
 
 def materialize_skills_to_dir(target: Path) -> list[str]:
+    """Write every bundled skill as ``target/{name}.md`` plus metadata.
+
+    Returns:
+        The list of skill names written.
+    """
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
     metadata = get_skill_metadata()
@@ -73,6 +95,18 @@ def materialize_skills_to_dir(target: Path) -> list[str]:
 
 
 def materialize_skills_to_claude_dir(target: Path) -> list[str]:
+    """Write bundled skills into Claude-style ``target/{name}/SKILL.md`` dirs.
+
+    Skips a skill when an existing ``SKILL.md`` and ``.ralph-managed.json``
+    marker indicate the user manually edited the file. Returns the names of
+    skills actually written or refreshed.
+
+    Args:
+        target: Root skill directory (e.g. ``~/.claude/skills``).
+
+    Returns:
+        The list of skill names materialized.
+    """
     target.mkdir(parents=True, exist_ok=True)
     written_names: list[str] = []
     metadata = get_skill_metadata()

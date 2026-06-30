@@ -71,6 +71,15 @@ _PRESET_DEFAULTS: dict[PlanningProfile, dict[str, object]] = {
 
 
 class DesignSection(RalphBaseModel):
+    """Design section aggregating SE-opinionated sub-models.
+
+    Collects cross-cutting design choices: planning profile, constraints,
+    non-goals, dependency-injection expectations, drift-detection guards,
+    testability requirements, refactor strategy, and acceptance criteria.
+    When ``planning_profile`` is set, the model bias-fills any missing
+    sub-sections from preset defaults; user-provided values always win.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     planning_profile: PlanningProfile | None = None

@@ -1,7 +1,9 @@
 # Implementation Plans (package)
 
-This directory holds implementation plans for the **maintained Python
-package** at `ralph-workflow/`.
+This directory holds **package-scoped implementation plans** for the
+maintained Python package at `ralph-workflow/`. It does not hold
+repo-root cross-cutting plans; those live under
+[`../../../docs/plans/`](../../../docs/plans/README.md).
 
 ## Who this is for
 

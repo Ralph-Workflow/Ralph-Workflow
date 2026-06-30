@@ -1,3 +1,9 @@
+"""Skills-and-MCPs section of a plan artifact.
+
+Declares the skill bundles and MCP servers an executor should load
+before running the plan. Skill names are normalized and deduplicated.
+"""
+
 from __future__ import annotations
 
 from pydantic import ConfigDict, Field, field_validator
@@ -6,6 +12,8 @@ from ralph.pydantic_compat import RalphBaseModel
 
 
 class SkillsMcp(RalphBaseModel):
+    """Required skills and optional MCP servers for executing the plan."""
+
     model_config = ConfigDict(extra="forbid")
 
     skills: list[str] = Field(..., min_length=1, max_length=100)

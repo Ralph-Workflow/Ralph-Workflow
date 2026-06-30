@@ -64,6 +64,14 @@ _COVERAGE_AREAS: frozenset[str] = frozenset(
 
 
 class Summary(RalphBaseModel):
+    """Summary section of a plan artifact.
+
+    Captures the user-facing context, the explicit intent and intent verb,
+    the scope items that bound the work, and the coverage areas the plan
+    touches. ``intent_verb`` is a closed vocabulary used by the executor to
+    choose the right kind of verification and artifact semantics.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     context: str = Field(

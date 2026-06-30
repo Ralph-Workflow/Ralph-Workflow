@@ -123,6 +123,14 @@ from ralph.skills._project_paths import ProjectAgentSkillRoot
 
 @dataclass(frozen=True)
 class AgentSkillRoot:
+    """User-global skill-discovery root for one supported agent.
+
+    ``path_segments`` are joined onto ``Path.home()`` at resolve time so
+    tests that patch ``Path.home()`` see fresh paths. ``is_canonical``
+    marks the single root into which bundled skills are materialized;
+    sibling roots receive symlinks to it.
+    """
+
     agent: str
     # e.g. (".claude", "skills") -- joined onto Path.home() at call time
     path_segments: tuple[str, ...]
@@ -135,10 +143,11 @@ class AgentSkillRoot:
     last_verified_iso: str = ""
 
     def resolve(self) -> Path:
-        """Build the absolute path under the current Path.home().
+        """Build the absolute path under the current ``Path.home()``.
 
-        Called every time, so test code that monkeypatches Path.home re-resolves
-        these paths correctly. NEVER cache the resolved Path on the dataclass.
+        Called every time, so test code that monkeypatches ``Path.home``
+        re-resolves these paths correctly. Never cache the resolved path
+        on the dataclass.
         """
         return Path.home().joinpath(*self.path_segments)
 
@@ -204,6 +213,11 @@ def agent_skill_roots() -> tuple[AgentSkillRoot, ...]:
 
 
 def canonical_agent_skill_root() -> AgentSkillRoot:
+    """Return the single canonical user-global skill root.
+
+    Raises:
+        RuntimeError: If no registered root is marked canonical.
+    """
     for entry in AGENT_SKILL_ROOTS:
         if entry.is_canonical:
             return entry
@@ -212,6 +226,7 @@ def canonical_agent_skill_root() -> AgentSkillRoot:
 
 
 def sibling_agent_skill_roots() -> tuple[AgentSkillRoot, ...]:
+    """Return the non-canonical user-global skill roots (symlink targets)."""
     return tuple(entry for entry in AGENT_SKILL_ROOTS if not entry.is_canonical)
 
 

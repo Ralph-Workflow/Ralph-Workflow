@@ -1,3 +1,10 @@
+"""HTTP/SSE startup helpers for MCP server preflight checks.
+
+Builds JSON-RPC initialize/tools/list payloads, performs HTTP POST and
+legacy SSE exchanges, and validates that a remote MCP endpoint exposes
+the tools Ralph Workflow depends on.
+"""
+
 from __future__ import annotations
 
 import json
@@ -46,6 +53,8 @@ _HTTP_ACCEPTED = 202
 
 @dataclass(frozen=True)
 class HttpEndpointTarget:
+    """Resolved address, Host header, and path for an HTTP MCP endpoint."""
+
     address: tuple[str, int]
     host_header: str
     path: str
@@ -72,6 +81,7 @@ def _default_http_post(
 
 
 def initialize_request() -> JsonRpcResponse:
+    """Build the JSON-RPC ``initialize`` request payload."""
     return {
         "jsonrpc": "2.0",
         "id": 1,
@@ -85,6 +95,7 @@ def initialize_request() -> JsonRpcResponse:
 
 
 def initialized_notification() -> JsonRpcResponse:
+    """Build the JSON-RPC ``notifications/initialized`` payload."""
     return {
         "jsonrpc": "2.0",
         "method": "notifications/initialized",
@@ -93,6 +104,7 @@ def initialized_notification() -> JsonRpcResponse:
 
 
 def tools_list_request() -> JsonRpcResponse:
+    """Build the JSON-RPC ``tools/list`` request payload."""
     return {
         "jsonrpc": "2.0",
         "id": 2,
@@ -102,6 +114,7 @@ def tools_list_request() -> JsonRpcResponse:
 
 
 def looks_like_legacy_sse_endpoint(endpoint: str) -> bool:
+    """Return True when ``endpoint`` ends with the legacy ``/sse`` path."""
     parsed = urlparse(endpoint)
     return (parsed.path or "/").rstrip("/").endswith("/sse")
 
@@ -112,6 +125,15 @@ def legacy_sse_jsonrpc_exchange(
     *,
     timeout_s: float,
 ) -> list[JsonRpcResponse]:
+    """Exchange a sequence of JSON-RPC messages over a legacy SSE stream.
+
+    Connects to the SSE endpoint, reads the message endpoint URL, posts
+    each request, and collects responses for requests that carry an ``id``.
+
+    Raises:
+        PermanentPreflightError: On connection failure, unexpected HTTP
+            status, or malformed JSON-RPC payload.
+    """
     timeout = httpx.Timeout(timeout_s, connect=min(timeout_s, 5.0))
     responses: list[JsonRpcResponse] = []
     with (
@@ -142,6 +164,7 @@ def legacy_sse_jsonrpc_exchange(
 
 
 def read_legacy_sse_message_endpoint(endpoint: str, lines: Iterable[str]) -> str:
+    """Read the SSE event that advertises the JSON-RPC message endpoint."""
     while True:
         event, data = _read_sse_event(lines)
         if event == "endpoint":
@@ -205,6 +228,15 @@ def preflight_http_attempt(
     *,
     post_with_session_fn: HttpJsonRpcWithSessionFn | None = None,
 ) -> None:
+    """Verify an HTTP MCP endpoint by performing initialize + tools/list.
+
+    Automatically chooses the legacy SSE exchange when the endpoint path
+    ends with ``/sse``; otherwise uses stateful HTTP JSON-RPC posts.
+
+    Raises:
+        PermanentPreflightError: On protocol errors or missing tools.
+        RetryablePreflightError: On transient network failures.
+    """
     if looks_like_legacy_sse_endpoint(endpoint):
         responses = legacy_sse_jsonrpc_exchange(
             endpoint,
@@ -243,6 +275,7 @@ def post_http_jsonrpc(
     target_or_payload: HttpEndpointTarget | JsonRpcResponse,
     payload: JsonRpcResponse | None = None,
 ) -> JsonRpcResponse:
+    """Post a single JSON-RPC request and return the response payload."""
     response_payload, _ = post_http_jsonrpc_with_session(
         endpoint_or_target,
         target_or_payload,
@@ -259,6 +292,16 @@ def post_http_jsonrpc_with_session(
     session_id: str | None = None,
     post_fn: HttpPostFn = _default_http_post,
 ) -> tuple[JsonRpcResponse, str | None]:
+    """Post a JSON-RPC request and return the response plus session id.
+
+    Accepts either an endpoint URL plus explicit payload, or an
+    ``HttpEndpointTarget`` plus payload. Propagates the
+    ``mcp-session-id`` header when the server returns one.
+
+    Raises:
+        RetryablePreflightError: On transport-level failures.
+        PermanentPreflightError: On HTTP error status or unparseable JSON.
+    """
     if isinstance(endpoint_or_target, HttpEndpointTarget):
         endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
         assert payload is None
@@ -312,22 +355,26 @@ def _normalize_http_jsonrpc_body(body_bytes: bytes) -> bytes:
 
 
 def ensure_http_initialize(endpoint: str, target: HttpEndpointTarget) -> None:
+    """Post ``initialize`` and raise if the response contains an error."""
     response = post_http_jsonrpc(endpoint, target, initialize_request())
     ensure_no_preflight_error("HTTP MCP initialize", response.get("error"))
 
 
 def read_http_tools_list_response(endpoint: str, target: HttpEndpointTarget) -> list[str]:
+    """Post ``tools/list`` and return the available tool names."""
     response = post_http_jsonrpc(endpoint, target, tools_list_request())
     ensure_no_preflight_error("HTTP MCP tools/list", response.get("error"))
     return extract_preflight_tool_names(response.get("result"), "HTTP MCP")
 
 
 def ensure_no_preflight_error(label: str, error: object) -> None:
+    """Raise ``PermanentPreflightError`` when ``error`` is not None."""
     if error is not None:
         raise PermanentPreflightError(f"{label} failed: {error}")
 
 
 def extract_preflight_tool_names(result: object, label: str) -> list[str]:
+    """Extract tool names from a JSON-RPC ``tools/list`` result object."""
     if not isinstance(result, Mapping):
         raise PermanentPreflightError(f"{label} tools/list response missing result")
     tools = result.get("tools")
@@ -341,6 +388,7 @@ def extract_preflight_tool_names(result: object, label: str) -> list[str]:
 
 
 def ensure_required_tools(required_tools: Iterable[str], available_tools: list[str]) -> None:
+    """Raise ``PermanentPreflightError`` if any required tool is missing."""
     missing = [tool for tool in required_tools if tool not in available_tools]
     if missing:
         raise PermanentPreflightError(
@@ -349,6 +397,11 @@ def ensure_required_tools(required_tools: Iterable[str], available_tools: list[s
 
 
 def parse_http_endpoint(endpoint: str) -> HttpEndpointTarget:
+    """Parse an HTTP MCP endpoint URL into an ``HttpEndpointTarget``.
+
+    Raises:
+        ValueError: For unsupported schemes or missing host.
+    """
     parsed = urlparse(endpoint)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError(
@@ -367,6 +420,12 @@ def parse_http_endpoint(endpoint: str) -> HttpEndpointTarget:
 
 
 def probe_mcp_http_endpoint(endpoint: str, timeout: timedelta) -> None:
+    """Probe ``endpoint`` with a bounded timeout and no required tools.
+
+    Wraps ``preflight_http_attempt`` so the timeout is applied to every
+    underlying HTTP call. Raises the same errors as
+    ``preflight_http_attempt``.
+    """
     timeout_s = max(0.001, timeout.total_seconds())
     target = parse_http_endpoint(endpoint)
 

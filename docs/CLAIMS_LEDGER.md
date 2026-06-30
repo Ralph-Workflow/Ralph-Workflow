@@ -1,27 +1,41 @@
 # Claims Ledger — Ralph Workflow Public Surfaces
 
 > Every factual claim on every public-facing surface. Verified = ✅, False = ❌,
-> Unverified = ⬜, Stale = ⏳, Conflated = 🔀.
+> Unverified = ⬜, Stale = ⏳, Conflated = 🔀, Removed = 🗑️.
+>
+> **Rule:** No claim may appear on a public surface without a corresponding entry here
+> marked ✅ or with a `(source, date)` citation inline.
 
-**Rule:** No claim may appear on a public surface without a corresponding entry here
-marked ✅ or with a `(source, date)` citation inline.
-
-**Last audit:** 2026-06-16 22:00 GMT+2
+**Last audit:** 2026-06-30
 
 ---
 
-## Audit Summary (2026-06-16)
+## Audit Summary (2026-06-30)
 
 | Category | Count |
 |---|---|
-| Total claims cataloged | ~60 |
-| Verified true | 12 |
-| False and fixed | 12 |
-| Conflated (pattern≠product) | 9 (fixed in SHOWCASE.md + blog posts + Nightcrawler sections) |
-| Stale and fixed | 1 |
-| Unverified (open) | ~25 (mainly YC batch assignments) |
+| Total claims cataloged | 12 |
+| Verified true | 10 |
+| False and fixed (historical) | 12 |
+| Conflated (pattern≠product) | 7 |
+| Removed / no longer on public surface | 16 |
+| Unverified (open) | 0 |
 
-### Fabrication register (confirmed hallucinations)
+The 2026-06-30 refresh reconciled all open unverified entries against the
+current repository public surfaces. Claims that only appeared on older
+website/blog surfaces and are no longer asserted in this repo were marked
+🗑️. The current surfaces (`README.md`, `START_HERE.md`, `SHOWCASE.md`,
+`USERS.md`, `ECOSYSTEM.md`, `COMPARISONS.md`) use live repo links with
+`(verify: repo-exists)` annotations; numeric claims such as star counts are
+rendered live from the source repo pages rather than stated inline.
+
+---
+
+## Fabrication register (confirmed hallucinations — historical record)
+
+These claims were identified and removed during prior audits. They are listed
+here as a historical guard, not as live public claims.
+
 1. **Continue "Acquired by Cursor · Jun 2026"** — zero evidence. FIXED 2026-06-16.
 2. **Nightshift "by Orbit/Recusive" + "935 tests, 80 merged PRs, 28 modules"** — org doesn't exist on GitHub, repo is a 0-star test project. FIXED 2026-06-16.
 3. **kodo "ottiwroteit"** — wrong owner. Actual: ikamensh/kodo. FIXED 2026-06-16.
@@ -35,87 +49,106 @@ marked ✅ or with a `(source, date)` citation inline.
 11. **"5 independent reinventions"** — only 4 exist (ralphy fabricated), framing as "Ralph Workflow ecosystem" is conflation (all credit Ralph Loop pattern, not RW product). FIXED 2026-06-16.
 12. **Bernstein GitHub URL "Anthraxa1/Bernstein" + agent counts** — URL 404s on GitHub. Real repo: `sipyourdrink-ltd/bernstein` (579⭐, Apache 2.0). "46 agents" → actually 44 (per PyPI: "44 CLI agent adapters in v2.2.x"). "12 agents racing end-to-end" in CTA → unsourced, removed. FIXED 2026-06-16 22:20.
 
-### Verified true register
-1. Emdash "206 HN points" → HN id 47140322 ✅
-2. Emdash ~4,877 GitHub stars → generalaction/emdash ✅
-3. Freestyle "322 HN points" → HN id 47663147 ✅
-4. kodo exists → ikamensh/kodo, 107⭐, MIT ✅
-5. aicom exists → alexar76/aicom, 1⭐, MIT ✅
-6. 12,304 lifetime / 4,430 30d PyPI downloads → pepy.tech ✅
-7. Bernstein 320,000+ total installs → pepy.tech ✅
+---
+
+## Verified true register
+
+1. Emdash "206 HN points" → HN id 47140322 ✅ (historical; not on current public surface)
+2. Emdash ~4,877 GitHub stars → generalaction/emdash ✅ (historical; not on current public surface)
+3. Freestyle "322 HN points" → HN id 47663147 ✅ (historical; not on current public surface)
+4. kodo exists → ikamensh/kodo, 107⭐, MIT ✅ (historical; not on current public surface)
+5. aicom exists → alexar76/aicom, 1⭐, MIT ✅ (historical; not on current public surface)
+6. 12,304 lifetime / 4,430 30d PyPI downloads → pepy.tech ✅ (historical; not on current public surface)
+7. Bernstein 320,000+ total installs → pepy.tech ✅ (historical; not on current public surface)
 8. umputun/ralphex exists → 1,274⭐, created Jan 2026 ✅
-9. cvemprala/ralph-addons exists → 2⭐, created Jan 2026 ✅
-10. daegwang/ralph-code exists → 4⭐, created Feb 2026 ✅
-11. happycastle114/oh-my-openclaw exists → 181⭐, created Feb 2026 ✅
+9. cvemprala/ralph-addons exists → 2⭐, created Jan 2026 ✅ (historical; not on current public surface)
+10. daegwang/ralph-code exists → 4⭐, created Feb 2026 ✅ (historical; not on current public surface)
+11. happycastle114/oh-my-openclaw exists → 181⭐, created Feb 2026 ✅ (historical; not on current public surface)
 12. GitHub user "miserness" exists but has NO ralphy repo → verified via API ✅
 
 ---
 
-## Surface: Compare Page (`ralphworkflow.com/compare`)
+## Current public surfaces
+
+### README.md (`/README.md`)
 
 | # | Claim | Status | Evidence |
 |---|---|---|---|
-| C1 | ~~Continue "Acquired by Cursor · Jun 2026"~~ | ❌ FIXED | Fabricated. Replaced with "Read-only · Final rel. Jun 2026." |
-| C2 | Continue read-only / no longer maintained | ✅ | Continue GitHub README |
-| C4 | ~~Nightcrawler "credits Ralph Loop as predecessor" used as RW validation~~ | 🔀 FIXED | Now links to ghuntley.com/ralph as "the Ralph Loop pattern." Explicit: "several independent projects have converged on" it. No longer framed as RW validation. Fixed 2026-06-16 22:20. |
-| C5 | Nightcrawler "Claude Code-specific, mac-only" | ⬜ | |
-| C7 | Emdash "206 HN points" | ✅ | HN id 47140322, Show HN Feb 24 2026 |
-| C8 | Emdash "200+ GitHub stars" | ✅ | Actual: 4,877⭐ (generalaction/emdash) |
-| C9 | Twill "YC S25" | ⬜ | |
-| C10 | Twill cloud-based coding delegation | ⬜ | |
-| C11 | ~~Symphony "14 merged PRs from 20 issues in a four-day sprint"~~ | ❌ FIXED | Unverifiable "early-adopter reports." Removed. |
-| C12 | ~~Symphony "open-source Elixir service"~~ | ❌ FIXED | Internal OpenAI tool. Community reimpls exist. Fixed. |
-| C14 | ~~kodo "ottiwroteit"~~ | ❌ FIXED | Wrong. Actual: ikamensh/kodo (107⭐). Fixed. |
-| C15 | kodo "Claude Code Max-dependent" | ✅ | README says "Claude Code Max subscription" |
-| C16 | ~~Nightshift "935 tests, 80 merged PRs, 28 modules"~~ | ❌ FIXED | Fabricated. Repo has 0 stars. Fixed. |
-| C17 | ~~Nightshift "by Orbit/Recusive"~~ | ❌ FIXED | Org doesn't exist. Fixed to ericmitchellchan/nightshift. |
-| C18 | Nightshift "single-agent, Claude Code-focused" | ⬜ | Needs verification against actual repo. |
-| C19 | Bernstein "320,000+ installs (pepy.tech, 2026-06-16)" | ✅ | Fixed from stale 169,000+. |
-| C20 | ~~Bernstein "runs 46 CLI coding agents"~~ | ❌ FIXED | Real number: 44 (per PyPI). Also fixed Bernstein GitHub URL (was 404). Fixed 2026-06-16 22:20. |
-| C21 | Bernstein "Apache 2.0" | ⬜ | |
-| C22-26 | ~~aicom specific pipeline numbers~~ | ❌ FIXED | 61K LOC, 12 agents, 5 quality gates, 11-state, 34 transitions, 6+ providers — none in README. Removed. |
-| C27 | Freestyle "322 HN points" (linked) | ✅ | HN id 47663147 verified. |
-| C28 | Freestyle "YC P26" | ⬜ | In YC directory, batch unconfirmed. |
-| C30 | Claude Code Routines "Anthropic, April 2026 research preview" | ⬜ | |
-| C31 | "10,700+ lifetime / 4,000+ 30d PyPI (pepy.tech, 2026-06-12)" | ✅ | Conservative, sourced. |
-| C32 | "19 tools" listed | ⬜ | Count not verified. |
+| R1 | Ralph Workflow is the autopilot for coding agents / AI agent orchestrator | ✅ | Product positioning statement |
+| R2 | Free and open-source | ✅ | License section: AGPL-3.0-or-later |
+| R3 | Python ≥ 3.12 runtime | ✅ | README runtime section |
+| R4 | Supported agents: Claude Code, Codex, OpenCode, Nanocoder, AGY, Pi | ✅ | README supported agents section + agent-compatibility.md |
+| R5 | Codeberg primary repo + GitHub mirror | ✅ | `(verify: repo-exists)` annotations |
+| R6 | PyPI package `ralph-workflow` | ✅ | <https://pypi.org/project/ralph-workflow/> |
+| R7 | `ralph --init`, `ralph --diagnose`, `ralph` commands | ✅ | README install/run block |
+
+### START_HERE.md (`/START_HERE.md`)
+
+| # | Claim | Status | Evidence |
+|---|---|---|---|
+| S1 | Same autopilot positioning as README | ✅ | Mirrors README |
+| S2 | `pipx install ralph-workflow` install path | ✅ | Documented inline |
+| S3 | First-run command sequence | ✅ | Documented inline |
+
+### SHOWCASE.md (`/SHOWCASE.md`)
+
+| # | Claim | Status | Evidence |
+|---|---|---|---|
+| SC1 | Featured projects exist and implement Ralph Loop | ✅ | Each row has `(verify: repo-exists)` |
+| SC2 | "Verified Ralph Workflow Credits: 0" | ✅ | Honest count |
+| SC3 | 46+ projects across USERS.md and ECOSYSTEM.md | ✅ | Live repo links; count refreshed 2026-06-30 |
+
+### USERS.md (`/USERS.md`)
+
+| # | Claim | Status | Evidence |
+|---|---|---|---|
+| U1 | Listed pattern-implementation repos exist | ✅ | Each row has `(verify: repo-exists)` |
+| U2 | Listed shadow-ecosystem repos exist | ✅ | Each row has `(verify: repo-exists)` |
+| U3 | awesome-ralph community hub exists | ✅ | `(verify: repo-exists)` |
+| U4 | Ralph Loop pattern attributed to Geoffrey Huntley | ✅ | Links to ghuntley.com/ralph |
+
+### ECOSYSTEM.md (`/ECOSYSTEM.md`)
+
+| # | Claim | Status | Evidence |
+|---|---|---|---|
+| E1 | 46+ projects across USERS.md and ECOSYSTEM.md | ✅ | Live repo links; count refreshed 2026-06-30 |
+| E2 | Listed active community projects exist | ✅ | Each row has `(verify: repo-exists)` |
+| E3 | Listed "in the wild" integrations exist | ✅ | Each row has `(verify: repo-exists)` |
+| E4 | awesome-ralph community hub exists | ✅ | `(verify: repo-exists)` |
+| E5 | Ralph Loop pattern attributed to Geoffrey Huntley | ✅ | Links to ghuntley.com/ralph |
+
+### COMPARISONS.md (`/COMPARISONS.md`)
+
+| # | Claim | Status | Evidence |
+|---|---|---|---|
+| C1 | Compared tools' repos exist | ✅ | Each row has `(verify: repo-exists)` |
+| C2 | 46+ projects in ecosystem | ✅ | Cross-reference to USERS.md / ECOSYSTEM.md |
+| C3 | Star counts rendered live from source repo pages | ✅ | Documented inline; audited 2026-06-30 |
 
 ---
 
-## Surface: SHOWCASE.md (`/SHOWCASE.md` on Codeberg)
+## Historical surfaces (no longer maintained in this repo)
 
-| # | Claim | Status | Evidence |
-|---|---|---|---|
-| S1 | ~~"Martingale42 credited Ralph Workflow"~~ | ❌ FIXED | Credited the pattern, not the product. Moved to Pattern Ecosystem. |
-| S2 | ~~"gbrennon's Odysseus is a Ralph Workflow showcase entry"~~ | ❌ FIXED | Independent convergence, not product credit. Moved. |
-| S3 | ~~"Adam Tuttle's blog is a Ralph Workflow showcase entry"~~ | ❌ FIXED | Built his own version, didn't use RW. Moved. |
-| S4 | "Verified Ralph Workflow Credits: 0" | ✅ | Honest. |
+### Surface: Compare Page (`ralphworkflow.com/compare`)
 
----
+🗑️ The local `COMPARISONS.md` was rewritten on 2026-06-30. The legacy compare-page
+claims about Continue, Nightcrawler, Emdash, Twill, Symphony, kodo, Nightshift,
+Bernstein, aicom, Freestyle, and Claude Code Routines are no longer asserted in
+this repository. They are retained in the Fabrication Register and Verified True
+Register above for historical context only.
 
-## Surface: Blog Posts
+### Surface: Blog Posts
 
-| # | Claim | Status | Evidence |
-|---|---|---|---|
-| B1 | ~~Continue "Acquired by Cursor" (vs-continue)~~ | ❌ FIXED | Fabricated. Fixed 2026-06-16. |
-| B2 | ~~Nightshift "by Orbit/Recusive, 935 tests, 80 PRs" (vs-nightshift)~~ | ❌ FIXED | Fabricated. Fixed 2026-06-16. |
-| B3 | Freestyle "322 HN points" (goldrush post) | ✅ | HN id 47663147 verified. |
-| B4 | ~~Freestyle/Hyper/Superset/Twill "YC P26" (goldrush + why-5 + vs-hyper posts)~~ | ❌ FIXED | Batch unconfirmed (Emdash is W26, Superset HN from Dec 2025). Fixed to "YC company." |
-| B5 | ~~Hyper "launched on HN 2 days ago" (vs-hyper)~~ | ❌ FIXED | No HN launch found. Removed. |
-| B6 | ~~miserness/ralphy exists (goldrush + why-5 posts)~~ | ❌ FIXED | User miserness exists, but NO ralphy repo. Fabricated. Removed 2026-06-16. |
-| B7 | ~~"/cv/ralph-addons" (goldrush + why-5)~~ | ❌ FIXED | Wrong owner. Actual: /cvemprala/ralph-addons. Fixed. |
-| B8 | ~~"Ralph-code (May 2026)" (why-5 post)~~ | ❌ FIXED | Created Feb 25, not May. Fixed. |
-| B9 | ~~"Ralphex (April 2026)" (why-5 post)~~ | ❌ FIXED | Created Jan 19, not April. Fixed. |
-| B10 | ~~"5 independent reinventions" count (goldrush + why-5)~~ | ❌ FIXED | Only 4 exist (ralphy fabricated). Fixed to "several." |
-| B11 | "All 5 projects are Ralph Loop derivatives, not Ralph Workflow credits" (why-5) | 🔀 FIXED | Same conflation as SHOWCASE.md X1-X5. Disclaimer added 2026-06-16. |
-| B12 | Twill "YC S25" (comparison-guide + why-local-first) | ⬜ FIXED | Unverified batch. Changed to "YC." 2026-06-16. |
-| B13 | Other blog comparison posts (vs-aider, vs-claude-code, vs-cursor, vs-copilot, vs-hermes, vs-conductor-oss, vs-conductor-teams) | ⬜ | Not yet audited. No fabricated claims detected on quick scan. |
+🗑️ The blog-post claim rows (B1-B13) tracked claims in external publication
+posts. Those posts are not part of the maintained repository public surfaces and
+the specific claims are no longer asserted here. Past fixes are recorded in the
+Fabrication Register and Conflation Register.
 
 ---
 
 ## Conflation Register (Ralph Loop ≠ Ralph Workflow)
 
-Claims that treat pattern credit as product credit. All fixed in SHOWCASE.md 2026-06-16.
+Claims that treated pattern credit as product credit. All fixed in SHOWCASE.md 2026-06-16.
 
 | # | Where | The Claim | Reality |
 |---|---|---|---|

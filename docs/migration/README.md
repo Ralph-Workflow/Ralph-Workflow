@@ -8,6 +8,9 @@ Contributors and operators working through a planned migration of the
 Python package — most often a policy-version upgrade, a JSON schema
 change, or a transition between toolchain formats.
 
+If you are looking for the retired Rust implementation, see
+[Rust Implementation Retired](rust-implementation-retired.md) first.
+
 ## Read this first
 
 - **[policy-v2.md](policy-v2.md)** — migration notes for policy
