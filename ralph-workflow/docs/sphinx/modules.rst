@@ -164,6 +164,29 @@ ralph.rich_protocols
    :members:
    :show-inheritance:
 
+ralph.pydantic_compat
+~~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.pydantic_compat defines ``RalphBaseModel`` as a TYPE_CHECKING
+   static facade that re-exports ``pydantic.BaseModel`` at runtime; using
+   :no-members: avoids duplicate object-description warnings from autodoc on
+   the conditional class definitions.
+
+.. automodule:: ralph.pydantic_compat
+   :no-members:
+
+ralph.test_suites
+~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.test_suites contains a ``SuiteRunner`` Protocol guarded by
+   ``TYPE_CHECKING`` and helper code that is only meaningful from a
+   subprocess driver; using :no-members: keeps autodoc from introspecting the
+   conditional protocol. The CLI entry is registered separately under
+   ``ralph.cli.commands`` where it is documented in full.
+
+.. automodule:: ralph.test_suites
+   :no-members:
+
 ----
 
 CLI

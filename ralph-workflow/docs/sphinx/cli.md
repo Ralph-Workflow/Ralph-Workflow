@@ -147,11 +147,13 @@ Commits created through this generated-commit path keep the active git author id
 
 ### `ralph cleanup`
 
-Remove stale per-worker namespaces under `.agent/workers/` left behind after a hard-kill in same-workspace parallel mode. Each parallel worker normally writes to `.agent/workers/<unit_id>/` and cleans up automatically, but a hard-kill may leave those directories behind. `cleanup` enumerates them and (after confirmation) removes them. It does not remove `.agent/` config files, `PROMPT.md`, checkpoints, MCP sockets, or other temporary artifacts.
+Remove per-worker namespaces under `.agent/workers/` in same-workspace parallel mode. Each parallel worker normally writes to `.agent/workers/<unit_id>/` and cleans up automatically; after a hard-kill (or any other interruption that skips the normal cleanup), the directories can be left behind. `cleanup` enumerates every subdirectory directly under `.agent/workers/` and (after confirmation) removes them. There is no separate liveness or staleness check — anything listed by `iterdir()` in that directory is treated as a candidate for removal, so use `--dry-run` first when you are not sure what is there.
+
+`cleanup` only touches `.agent/workers/`. It does not remove `.agent/` config files, `PROMPT.md`, checkpoints, MCP sockets, or other temporary artifacts.
 
 ```bash
 ralph cleanup
-ralph cleanup --dry-run     # list stale namespaces without removing them
+ralph cleanup --dry-run     # list namespaces without removing them
 ralph cleanup --force       # remove without prompting for confirmation
 ```
 
@@ -195,16 +197,16 @@ Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print return
 
 Set `RALPH_AGY_BINARY` to use a custom AGY executable or the deterministic mock at `tests/_support/mock_agy.sh` for CI. The mock entrypoint is `tests/_support/mock_agy.py` (run as `python -m tests._support.mock_agy`); `mock_agy.sh` is a thin wrapper suitable for `RALPH_AGY_BINARY`.
 
-The eight canonical `agy models` display names are the only valid `--model` values:
+The eight canonical `agy/<display-name>` aliases accepted by `--agent` (the override flag, default `agy/Gemini 3.5 Flash (Medium)`):
 
-- `Gemini 3.5 Flash (Medium)`
-- `Gemini 3.5 Flash (High)`
-- `Gemini 3.5 Flash (Low)`
-- `Gemini 3.1 Pro (Low)`
-- `Gemini 3.1 Pro (High)`
-- `Claude Sonnet 4.6 (Thinking)`
-- `Claude Opus 4.6 (Thinking)`
-- `GPT-OSS 120B (Medium)`
+- `agy/Gemini 3.5 Flash (Medium)`
+- `agy/Gemini 3.5 Flash (High)`
+- `agy/Gemini 3.5 Flash (Low)`
+- `agy/Gemini 3.1 Pro (Low)`
+- `agy/Gemini 3.1 Pro (High)`
+- `agy/Claude Sonnet 4.6 (Thinking)`
+- `agy/Claude Opus 4.6 (Thinking)`
+- `agy/GPT-OSS 120B (Medium)`
 
 ## Related pages
 

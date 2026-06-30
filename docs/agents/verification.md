@@ -13,7 +13,7 @@ make verify
 
 `make verify` runs:
 1. `make lint` (`ruff check`)
-2. `make typecheck` (`mypy --strict`)
+2. `make typecheck` (`python -m mypy ralph/` — strict mode is enabled by `ralph-workflow/mypy.ini` via `strict = true`, not by the command line)
 3. `make test` (pytest, parallel, excludes `subprocess_e2e`) — the ONLY step whose wall-clock time counts against the 60-second combined test budget
 4. Lint bypass audit (`ralph/testing/audit_lint_bypass.py`) — detects forbidden noqa, per-file-ignores
 5. Typecheck bypass audit (`ralph/testing/audit_typecheck_bypass.py`) — detects non-compliant type:ignore, mypy config weakening (including `disable_error_code`)
@@ -131,7 +131,7 @@ The `make verify` pipeline includes automated bypass audits that scan the entire
 
 **Typecheck bypass audit** (`ralph/testing/audit_typecheck_bypass.py`):
 - Detects blanket `# type: ignore` without a specific mypy error code
-- Detects `# type: ignore[CODE]` without a policy-compliant reason marker (see `../docs/agents/type-ignore-policy.md` for exact format requirements)
+- Detects `# type: ignore[CODE]` without a policy-compliant reason marker (see `type-ignore-policy.md` for exact format requirements)
 - Detects `# type: ignore` in test files (tests must be fully typed — no exceptions)
 - Detects ALL mypy config that weakens type checking: `ignore_missing_imports = true`, `follow_imports = silent`, `exclude` patterns, `ignore_errors = true`, `disable_error_code` (globally suppresses error codes), `warn_unused_ignores = false` (silences unused ignore warnings), `disallow_untyped_defs = false` (allows untyped function definitions)
 - Violations produce output: `file:line: [TYPECHECK-BYPASS] category: detail`
