@@ -14,6 +14,7 @@ Use these first, in this order:
 3.5. `ralph-workflow/docs/agents/artifact-submission-contract.md`
 4. `ralph-workflow/README.md`
 5. Python source and docstrings under `ralph-workflow/ralph/`
+6. `docs/code-style/documentation-rubric.md` (canonical documentation rubric — applies to every docs change)
 
 If instructions conflict, follow the stricter one.
 

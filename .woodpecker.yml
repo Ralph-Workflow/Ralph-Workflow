@@ -3,10 +3,13 @@ when:
 
 steps:
   checks:
-    image: rust:1.78-bookworm
+    image: python:3.12-bookworm
     commands:
-      - rustup component add rustfmt clippy
-      # Run full verification suite via xtask (canonical entry point)
-      - cargo xtask verify
+      - pip install --upgrade uv
+      # Run the maintained Python verification suite via the canonical
+      # `make verify` entry point. After step 8 of the docs plan this
+      # also builds the Sphinx manual with -W (warnings-as-errors), so a
+      # single invocation covers both the test budget and docs drift.
+      - cd ralph-workflow && make verify
       # Note: System tests (git2-system-tests, process-system-tests) are NOT run in CI
       # They require real git/filesystem and are run manually as needed

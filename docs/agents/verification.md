@@ -11,7 +11,19 @@ cd ralph-workflow
 make verify
 ```
 
-`make verify` runs:
+## Fabrication guardrails
+
+Any time you edit a public-facing markdown file (README, USERS.md,
+SHOWCASE.md, docs/, the Sphinx operator manual), the
+[fabrication guard](fabrication-guard.md) is part of the contract.
+The guard runs as a pre-commit hook at Level 1 and can be re-run
+explicitly with `./scripts/fabrication_guard.py --level 1 <file>`
+or `--level 2 <file>` for network existence checks. Fabrication
+bypassing the guard (for example with `--no-verify`) is itself
+considered fabrication.
+
+`make verify` runs (in this order, with the docs prerequisite wired in via the Makefile):
+0. `make docs` — Sphinx HTML build with `-W` (warnings-as-errors). Runs **before** the python verify step as a Make prerequisite (it is NOT registered in `_VERIFY_STEPS`, so it stays outside the immutable 60-second combined test budget). Any Sphinx warning now fails `make verify`.
 1. `make lint` (`ruff check`)
 2. `make typecheck` (`python -m mypy ralph/` — strict mode is enabled by `ralph-workflow/mypy.ini` via `strict = true`, not by the command line)
 3. `make test` (pytest, parallel, excludes `subprocess_e2e`) — the ONLY step whose wall-clock time counts against the 60-second combined test budget
@@ -31,7 +43,7 @@ make verify
 17. Resource lifecycle audit (`ralph/testing/audit_resource_lifecycle.py`) — enforces the resource-lifecycle contract documented in `ralph-workflow/docs/agents/memory-lifecycle.md`: every `threading.Thread(...)` call has `daemon=True`, every `httpx.Client(...)` / `httpx.AsyncClient(...)` / `requests.Session(...)` is constructed inside a `with` statement, and raw `os.open` / `os.openpty` / `os.pipe` calls are confined to `ralph/process/` (with an inline `# resource-lifecycle-ok: <reason>` escape hatch for genuinely bounded-by-design call sites). Alias resolution is honored so `import httpx as hx; hx.Client()` cannot evade detection
 18. Skill auto-commit audit (`ralph/testing/audit_skill_auto_commit.py`) — enforces the deterministic wt-025 skill-update auto-commit contract: the literal subject `chore(skills): sync baseline bundle`, the FIVE canonical project-scope skill-root prefix strings (`.opencode/skills/`, `.agents/skills/`, `.claude/skills/`, `.codex/skills/`, `.gemini/antigravity-cli/skills/`), the AST placement of the early-skip block in `ralph/git/commit_cleanup.py::untrack_engine_internal_files`, the existence of `ralph/skills/_auto_commit.py`, and the failure-path best-effort contract (try/except wrapping `commit_skill_updates` and the `Skill auto-commit failed (non-fatal)` debug log literal). The audit is registered as a normal (non-budget-tracked) verify step appended at the end of `_VERIFY_STEPS`, so the immutable 60-second combined test budget remains preserved. The runtime regression pins live in `ralph-workflow/tests/test_git_commit_cleanup.py::test_untrack_engine_internal_files_does_not_warn_on_skill_symlinks` (WARNING suppression, AC-03), `ralph-workflow/tests/test_skills_auto_commit.py::test_auto_commit_body_is_deterministic_across_shuffled_input_orderings` (deterministic message shape, AC-01), `ralph-workflow/tests/test_cli_commands_run_skill_sync.py::test_install_then_auto_commit_replaces_stale_bundled_skill` (conflict-resolution overwrite, AC-02), and `ralph-workflow/tests/test_cli_commands_run_skill_sync.py::test_skill_sync_autocommits_before_agent_sees_skill_tree_drift` (agent-clean-worktree invariant, AC-05).
 
-All 18 steps run sequentially under `make verify`. Steps 1, 2, 4-18 each use a per-step timeout (`_VERIFY_STEP_TIMEOUT_SECONDS`); step 3 (`make test`) uses the 60-second combined budget. The full ordered list of step labels is the canonical `_VERIFY_STEPS` tuple in `ralph-workflow/ralph/verify.py`; this doc lists the user-facing name for each step and is the single source of truth for what `make verify` actually runs.
+All 18 steps run sequentially under `make verify`. Steps 1, 2, 4-18 each use a per-step timeout (`_VERIFY_STEP_TIMEOUT_SECONDS`); step 3 (`make test`) uses the 60-second combined budget. The full ordered list of step labels is the canonical `_VERIFY_STEPS` tuple in `ralph-workflow/ralph/verify.py`; this doc lists the user-facing name for each step and is the single source of truth for what `make verify` actually runs. Step 0 (the Sphinx docs build) is the Make prerequisite listed in `verify: verify-drift docs`; it is run with `-W --keep-going` so any warning fails the gate, but it does not count against the 60-second combined test budget because it is wired in via the Makefile, not via `_VERIFY_STEPS`.
 
 ### Bounded-subprocess contract — every MCP and git operation is bounded
 

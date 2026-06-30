@@ -69,14 +69,14 @@ help:
 	@echo "  clean          Clean build artifacts"
 	@echo "  clean-dist     Clean dist folder"
 	@echo "  dist-homebrew  Build Homebrew distribution"
-	@echo "  verify         Run full verification (ruff, mypy, pytest; excludes docs build and coverage)"
+	@echo "  verify         Run full verification (docs build + ruff, mypy, pytest, audits; excludes coverage)"
 	@echo "  dist-binary    Build PyInstaller single-file binary"
 	@echo "  dist-pypi      Build and publish to PyPI via hatch"
 	@echo "  dist-all       Build both binary and PyPI distributions"
 	@echo "  formula-check  Validate Homebrew formula syntax"
 	@echo "  dead-code      Run Vulture dead-code audit (fails while backlog exists)"
-	@echo "  docs           Build Sphinx HTML documentation"
-	@echo "  docs-linkcheck Check all hyperlinks in docs (opt-in, not in verify)"
+	@echo "  docs           Build Sphinx HTML documentation (gated by 'make verify' via Make prerequisite)"
+	@echo "  docs-linkcheck Check all hyperlinks in docs (opt-in; not in verify, run on demand)"
 	@echo "  route-linkcheck Check links in non-Sphinx route pages (opt-in, not in verify)"
 	@echo "  serve-docs     Build and serve docs at http://localhost:8080"
 	@echo ""
@@ -213,7 +213,11 @@ dist-homebrew: build-wheel
 
 # Distribution targets
 # Combined 60s test budget enforced by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS (IMMUTABLE).
-verify: verify-drift
+# `docs` is a Make prerequisite (NOT a `_VERIFY_STEPS` entry) so the Sphinx
+# build stays non-budget-tracked and the immutable 60s test budget is
+# unchanged. `make docs` uses `uv run --extra docs sphinx-build -W` so any
+# Sphinx warning fails the build before the python-verify step runs.
+verify: verify-drift docs
 	@uv run python -m ralph.verify
 
 # Drift detection: prevents the Pro contract invariants from regressing.

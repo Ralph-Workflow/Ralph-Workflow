@@ -36,6 +36,8 @@ the current Python implementation.
   (monitoring, optimization, memory budgets, baselines).
 - `architecture/` — Architecture pages for the retired Rust runtime
   (checkpoint-and-resume, agents-and-prompts, git-and-rebase, etc.).
+  Includes `code-style-architecture.md` (formerly misfiled under
+  `docs/code-style/`, moved here as part of the legacy quarantine).
 - `plans/` — Design and implementation plans from the Rust era, archived
   after the Python rewrite. The maintained Python-era plans remain in
   `docs/plans/`.

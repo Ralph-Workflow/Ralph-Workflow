@@ -6,6 +6,34 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 This maintainer-facing page describes how to bump, build, validate, and publish a new Ralph Workflow release.
 
+## Who this is for
+
+Maintainers preparing a release, and reviewers who want the
+canonical release and publishing workflow before approving a change
+to `__version__`, `pyproject.toml`, or the GitHub Actions / CI
+pipelines.
+
+## Relationship to dev build vs stable build
+
+Two install paths exist for Ralph Workflow, and they live on
+different tracks. This page documents how a release maps onto each
+track:
+
+- **Dev build** — the working tree, run with `rdev` (or `uv run
+  ralph` from inside the repo). It tracks `main` and is the build
+  you use to verify a release candidate before publishing. Install
+  it with `make install`.
+- **Stable build** — what `make stable` installs via
+  `uv tool install`. It tracks the published release, not the
+  working tree, and is what `pipx install ralph-workflow` and PyPI
+  users run. `make stable` re-runs `uv tool install --force
+  --upgrade ralph-workflow` and adopts the latest published
+  release.
+
+The full contributor workflow for both builds lives in
+[`../CONTRIBUTING.md`](../CONTRIBUTING.md) (see § Development setup).
+This page focuses on what changes when you cut a release.
+
 ## 1. Bump the version
 
 Edit `ralph/__init__.py` and update `__version__`:

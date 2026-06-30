@@ -97,3 +97,64 @@ See {doc}`artifacts` for how artifact history archival and clearing work.
 - {doc}`concepts` — workflow terms used by prompt templates
 - {doc}`artifacts` — artifact history and handoff contracts
 - {py:mod}`ralph.prompts` — full API reference
+
+## PROMPT.md as the run specification
+
+The run *specification* a user authors and the agent-side *prompt
+assembly* Ralph Workflow performs are two different things. This page
+documents the agent-side assembly; the user-facing run spec lives in a
+separate, distinct surface.
+
+### What `PROMPT.md` is
+
+`PROMPT.md` (in the active workspace's `.agent/` directory) is the
+**run specification** the user authors before each `ralph` run. It
+is the prose contract that says what the agents should accomplish,
+with what acceptance criteria, under what constraints. The run
+spec is what you edit between runs; everything else in this docs
+page is machinery that consumes or renders the run spec.
+
+The run spec is what the user reads back when they come back to a
+finished run — the morning-after review is about whether the run
+satisfied the run spec, not whether the agents stayed inside their
+prompt templates.
+
+### How the run spec differs from the agent-side prompts
+
+The Jinja2 template assembly this page describes is **agent-side**:
+Ralph Workflow builds the prompts it sends to each agent for each
+phase. Those prompts include:
+
+- the system prompt template for the active drain
+- shared partials (capability lists, phase-specific instructions,
+  skill injection hints)
+- phase-specific payload materialization (plan handoffs, analysis
+  feedback, artifact-history references)
+- references back to the run spec — Ralph Workflow routes the agent
+  back to `PROMPT.md` for the user's intent and acceptance
+  criteria
+
+The **run spec** is the user's intent. The **agent-side prompts**
+are how Ralph Workflow translates that intent into agent input.
+Both surfaces exist; you only author the run spec. The templates
+that produce the agent-side prompts are baked into the runtime;
+they are the maintainer-contributed details this page documents.
+
+### What to read next
+
+- [concepts](concepts.md) — terminology the run spec uses
+  (planning, development, review, fix, recovery) and the loop
+  pattern they compose into.
+- [first-task-guide](first-task-guide.md) — choosing a first task
+  before you draft the spec.
+- [first-task-prompt-templates](first-task-prompt-templates.md) —
+  concrete templates you can copy into `PROMPT.md`.
+
+### Review note
+
+This page is intentionally scoped to the agent-side prompt
+machinery. The user-facing run-spec role of `PROMPT.md` was
+previously explained only in `concepts.md` and `first-task-guide.md`;
+the cross-reference above is the maintained path between the two
+surfaces.
+
