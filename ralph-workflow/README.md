@@ -42,9 +42,9 @@
 # Ralph Workflow — the autopilot for coding agents
 
 > **Codeberg is primary.** Star, watch, fork, and report issues there first:
-> <https://codeberg.org/RalphWorkflow/Ralph-Workflow>
+> <https://codeberg.org/RalphWorkflow/Ralph-Workflow> (verify: repo-exists)
 > GitHub is a read-only mirror:
-> <https://github.com/Ralph-Workflow/Ralph-Workflow>
+> <https://github.com/Ralph-Workflow/Ralph-Workflow> (verify: repo-exists)
 
 Ralph Workflow is **the autopilot for coding agents** — a free and
 open-source operating system for autonomous coding, an AI agent

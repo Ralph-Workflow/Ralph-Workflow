@@ -32,7 +32,9 @@ The guard system is a multi-level fabrication defense implemented in
   known bad patterns: Nightcrawler misattribution, stale install
   counts, unverified npm package claims, bare star/download counts,
   and other patterns a fabricated claim leaves behind. Runs as a
-  **pre-commit hook** (`.git/hooks/pre-commit`) — the hook blocks
+  **pre-commit hook** (`.githooks/pre-commit`, wired via
+  `git config core.hooksPath .githooks`; install by running
+  `make setup-hooks` from the repo root) — the hook blocks
   any commit that fails Level 1.
 - **Level 2 — Existence verification (network, cached, ~5s first
   run).** Verifies every GitHub repo URL, every npm package
