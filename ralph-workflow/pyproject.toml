@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ralph-workflow"
 dynamic = ["version"]
-description = "Autopilot for coding agents — run Claude Code, Codex & OpenCode unattended with verification, recovery, orchestration."
+description = "Autopilot for coding agents — run Claude Code, Codex, OpenCode, Nanocoder, AGY & Pi unattended with verification, recovery, orchestration."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
@@ -89,7 +89,7 @@ Homepage = "https://ralphworkflow.com"
 Documentation = "https://ralphworkflow.com/docs"
 Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
 Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new"
-Community = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/USERS.md"
+Community = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues"
 "GitHub Mirror" = "https://github.com/Ralph-Workflow/Ralph-Workflow"
 Changelog = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/CHANGELOG.md"
 

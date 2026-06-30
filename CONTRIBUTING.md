@@ -64,9 +64,14 @@ cd ralph-workflow
 make verify
 ```
 
-Canonical verification is the `make verify` command run from the `ralph-workflow/` directory. It runs the **18-step pipeline** documented as the single source of truth in [`docs/agents/verification.md`](docs/agents/verification.md) (ruff, mypy, the pytest run tracked against the 60-second combined test budget, plus 15 audits and the social-proof gate). Per the Makefile help text, `make verify` explicitly **excludes** the docs build, coverage, and subprocess E2E — those are separate opt-in targets:
+Canonical verification is the `make verify` command run from the `ralph-workflow/` directory. `make verify` runs three prerequisites in order:
 
-- `make docs` — Sphinx HTML build (warnings-as-errors); not part of `make verify`.
+1. `verify-drift` — invariant checks that protect the Pro contract and other architectural guarantees.
+2. `docs` — Sphinx HTML build with warnings-as-errors (`sphinx-build -W --keep-going`), so any documentation warning fails the gate before the Python verification step runs.
+3. `ralph.verify` — the **18-step pipeline** documented as the single source of truth in [`docs/agents/verification.md`](docs/agents/verification.md) (ruff, mypy, the pytest run tracked against the 60-second combined test budget, plus 15 audits and the social-proof gate).
+
+Coverage and subprocess E2E remain separate opt-in targets:
+
 - `make test-cov` — coverage gate; not part of `make verify`.
 - `make test-subprocess-e2e` — subprocess E2E suite; not part of `make verify`.
 

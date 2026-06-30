@@ -52,3 +52,18 @@ If you are unsure which tree a new doc belongs in, default to this tree for
 
 Cross-link, do not duplicate. If both trees would carry the same content, it
 belongs in exactly one of them.
+
+## Public behavior changes
+
+Any change to public CLI behavior, configuration fields, artifact shapes, or
+exit codes MUST be reflected in the same PR in:
+
+1. the Sphinx manual (`ralph-workflow/docs/sphinx/`) so operators see the
+   current contract;
+2. the relevant tests, with a failing or updated black-box check that would
+   catch the regression; and
+3. `ralph-workflow/docs/sphinx/modules.rst` if the change affects the public
+   Python API.
+
+Do not treat docs, tests, or API reference as follow-up work. They are part of
+the public-behavior change.

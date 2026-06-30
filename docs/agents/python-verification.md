@@ -1,10 +1,21 @@
-# Python Verification
+# Python verification — redirect
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+This page redirects Python contributors to the canonical verification guide.
 
+Ralph Workflow's Python package is verified through the `make verify` gate in
+`ralph-workflow/`. The gate is the single source of truth for what "green"
+means, so this page orients you rather than duplicating it.
 
-> **Canonical guide:** [verification.md](verification.md)
->
-> All verification commands, smoke checks, and parallel-mode test runs are documented there.
-> This redirect stub is maintained for backward compatibility.
+- Start with [`verification.md`](verification.md) for the full 18-step gate:
+  what `verify-drift`, `docs`, and `ralph.verify` prove, the immutable
+  60-second combined test budget, and how to read each failure.
+- Read [`testing-guide.md`](testing-guide.md) for the project's black-box
+  testing expectations, fixture patterns, and the rules that keep the suite
+  under the budget.
+- See [`ralph-workflow/CONTRIBUTING.md`](../../ralph-workflow/CONTRIBUTING.md)
+  for the dev build and the exact verification command to run before finishing
+  a change.
+
+If a verification failure points at a missing public-surface update, the
+public-behavior-change rule in [`README.md`](README.md) requires the matching
+docs, tests, and API reference changes in the same PR.

@@ -15,81 +15,59 @@ These independent projects implement the Ralph Loop architecture in their own to
 > [![Built with Ralph Loop](https://codeberg.org/RalphWorkflow/Ralph-Workflow/raw/branch/main/assets/built-with-ralph-loop.svg)](https://codeberg.org/RalphWorkflow/Ralph-Workflow)
 > ```
 
-| Project | Stars (live) | Description |
-|---------|--------------|-------------|
-| [umputun/ralphex](https://github.com/umputun/ralphex) | [live stars](https://github.com/umputun/ralphex/stargazers) | Multi-provider LLM loop with plan-build-verify cycle | (verify: gh)
-| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) | [live stars](https://github.com/bastani-inc/atomic/stargazers) | Dynamic workflows with Pi extensions, custom models, MCP, sub-agents, review gates | (verify: gh)
-| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) | [live stars](https://github.com/computerlovetech/ralphify/stargazers) | Runtime for loop engineering — practitioner cookbook with Claude Code patterns | (verify: gh)
-| [gregorydickson/pickle-rick-claude](https://github.com/gregorydickson/pickle-rick-claude) | [live stars](https://github.com/gregorydickson/pickle-rick-claude/stargazers) | Ralph-inspired Claude Code runner with twist characterization | (verify: gh)
-| [benikigai/nightshift](https://github.com/benikigai/nightshift) | [live stars](https://github.com/benikigai/nightshift/stargazers) | Lights-out autonomous software work — ship specs overnight | (verify: gh)
-| [Gens-ai/autopilot](https://github.com/Gens-ai/autopilot) | [live stars](https://github.com/Gens-ai/autopilot/stargazers) | Standalone Ralph agent with structured loop execution | (verify: gh)
-| [tao3k/xiuxian-artisan-workshop](https://github.com/tao3k/xiuxian-artisan-workshop) | [live stars](https://github.com/tao3k/xiuxian-artisan-workshop/stargazers) | Game design bridge between human intent and machine execution | (verify: gh)
-| [basfenix/SelfSteeringRalph](https://github.com/basfenix/SelfSteeringRalph) | [live stars](https://github.com/basfenix/SelfSteeringRalph/stargazers) | Self-steering variant with autonomous goal decomposition | (verify: gh)
-| [Apra-Labs/agentic-ai-workshop](https://github.com/Apra-Labs/agentic-ai-workshop) | [live stars](https://github.com/Apra-Labs/agentic-ai-workshop/stargazers) | Educational Ralph Loop workshop with hands-on exercises | (verify: gh)
-| [v1truv1us/ai-eng-system](https://github.com/v1truv1us/ai-eng-system) | [live stars](https://github.com/v1truv1us/ai-eng-system/stargazers) | `/ralph-workflow` command integrating into AI engineering system | (verify: gh)
-| [jamesaphoenix/tx](https://github.com/jamesaphoenix/tx) | [live stars](https://github.com/jamesaphoenix/tx/stargazers) | Headless agent infrastructure with memory + tasks + orchestration | (verify: gh)
-| [KLIEBHAN/ralph-loop](https://github.com/KLIEBHAN/ralph-loop) | [live stars](https://github.com/KLIEBHAN/ralph-loop/stargazers) | Lightweight single-binary Ralph implementation | (verify: gh)
-| [coji831/agentic-devops-solar-ralph](https://github.com/coji831/agentic-devops-solar-ralph) | [live stars](https://github.com/coji831/agentic-devops-solar-ralph/stargazers) | SOLAR Agentic DevOps integration with operator guides | (verify: gh)
-| [agent-frontier/wgm](https://github.com/agent-frontier/wgm) | [live stars](https://github.com/agent-frontier/wgm/stargazers) | Rough request → working software pipeline | (verify: gh)
-| [skurekjakub/ralph-orchestrator](https://github.com/skurekjakub/ralph-orchestrator) | [live stars](https://github.com/skurekjakub/ralph-orchestrator/stargazers) | Orchestrator with detailed workflow diagrams | (verify: gh)
-| [DavisSylvester/ollama-dev-agent](https://github.com/DavisSylvester/ollama-dev-agent) | — | First local LLM adoption — runs on Ollama | (verify: gh)
-| [dr-gareth-roberts/chief-wiggum-loop](https://github.com/dr-gareth-roberts/chief-wiggum-loop) | — | Enterprise security-hardened loop with sandboxing + stuck classifier | (verify: gh)
-| [pbean/bmad-automator](https://github.com/pbean/bmad-automator) | — | BMAD enterprise agile integration | (verify: gh)
-| [mikefreno/ralpi](https://github.com/mikefreno/ralpi) | — | Raspberry Pi Ralph agent extension | (verify: gh)
-| [pro-vi/loopgen](https://github.com/pro-vi/loopgen) | — | Prompt compiler with Ralph Loop architecture | (verify: gh)
-| [inshalazmat/AI_Business_Employee](https://github.com/inshalazmat/AI_Business_Employee) | — | AI employee powered by Ralph Loop pattern | (verify: gh)
-| [sjhorn/ralph](https://github.com/sjhorn/ralph) | — | Go wrapper implementing a Ralph Wiggum loop | (verify: gh)
-| [3mdistal/ralph](https://github.com/3mdistal/ralph) | — | Community fork — OpenCode orchestrator | (verify: gh)
-| [suredream/ralphlow](https://github.com/suredream/ralphlow) | — | Workflow lock file system with structured architecture | (verify: gh)
-| [Was85/ralph-rlm-agent-framework](https://github.com/Was85/ralph-rlm-agent-framework) | — | Agent framework with ralph-workflow instructions | (verify: gh)
-| [dscherm/comfyprompts](https://github.com/dscherm/comfyprompts) | — | Mini-ralphs with delegation matrix | (verify: gh)
-| [Delqhi-Projects/ZOE-Solar-Accounting-OCR](https://github.com/Delqhi-Projects/ZOE-Solar-Accounting-OCR) | — | Ralph/Lisa pipeline executor for accounting OCR | (verify: gh)
+| Project | Stars (live) | Description | Verify |
+|---------|--------------|-------------|--------|
+| [umputun/ralphex](https://github.com/umputun/ralphex) | [live stars](https://github.com/umputun/ralphex/stargazers) | Multi-provider LLM loop with plan-build-verify cycle | (verify: repo-exists) |
+| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) | [live stars](https://github.com/bastani-inc/atomic/stargazers) | Dynamic workflows with Pi extensions, custom models, MCP, sub-agents, review gates | (verify: repo-exists) |
+| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) | [live stars](https://github.com/computerlovetech/ralphify/stargazers) | Runtime for loop engineering — practitioner cookbook with Claude Code patterns | (verify: repo-exists) |
+| [gregorydickson/pickle-rick-claude](https://github.com/gregorydickson/pickle-rick-claude) | [live stars](https://github.com/gregorydickson/pickle-rick-claude/stargazers) | Ralph-inspired Claude Code runner with twist characterization | (verify: repo-exists) |
+| [benikigai/nightshift](https://github.com/benikigai/nightshift) | [live stars](https://github.com/benikigai/nightshift/stargazers) | Lights-out autonomous software work — ship specs overnight | (verify: repo-exists) |
+| [Gens-ai/autopilot](https://github.com/Gens-ai/autopilot) | [live stars](https://github.com/Gens-ai/autopilot/stargazers) | Standalone Ralph agent with structured loop execution | (verify: repo-exists) |
+| [tao3k/xiuxian-artisan-workshop](https://github.com/tao3k/xiuxian-artisan-workshop) | [live stars](https://github.com/tao3k/xiuxian-artisan-workshop/stargazers) | Game design bridge between human intent and machine execution | (verify: repo-exists) |
+| [basfenix/SelfSteeringRalph](https://github.com/basfenix/SelfSteeringRalph) | [live stars](https://github.com/basfenix/SelfSteeringRalph/stargazers) | Self-steering variant with autonomous goal decomposition | (verify: repo-exists) |
+| [Apra-Labs/agentic-ai-workshop](https://github.com/Apra-Labs/agentic-ai-workshop) | [live stars](https://github.com/Apra-Labs/agentic-ai-workshop/stargazers) | Educational Ralph Loop workshop with hands-on exercises | (verify: repo-exists) |
+| [v1truv1us/ai-eng-system](https://github.com/v1truv1us/ai-eng-system) | [live stars](https://github.com/v1truv1us/ai-eng-system/stargazers) | `/ralph-workflow` command integrating into AI engineering system | (verify: repo-exists) |
+| [jamesaphoenix/tx](https://github.com/jamesaphoenix/tx) | [live stars](https://github.com/jamesaphoenix/tx/stargazers) | Headless agent infrastructure with memory + tasks + orchestration | (verify: repo-exists) |
+| [KLIEBHAN/ralph-loop](https://github.com/KLIEBHAN/ralph-loop) | [live stars](https://github.com/KLIEBHAN/ralph-loop/stargazers) | Lightweight single-binary Ralph implementation | (verify: repo-exists) |
+| [coji831/agentic-devops-solar-ralph](https://github.com/coji831/agentic-devops-solar-ralph) | [live stars](https://github.com/coji831/agentic-devops-solar-ralph/stargazers) | SOLAR Agentic DevOps integration with operator guides | (verify: repo-exists) |
+| [agent-frontier/wgm](https://github.com/agent-frontier/wgm) | [live stars](https://github.com/agent-frontier/wgm/stargazers) | Rough request → working software pipeline | (verify: repo-exists) |
+| [skurekjakub/ralph-orchestrator](https://github.com/skurekjakub/ralph-orchestrator) | [live stars](https://github.com/skurekjakub/ralph-orchestrator/stargazers) | Orchestrator with detailed workflow diagrams | (verify: repo-exists) |
+| [DavisSylvester/ollama-dev-agent](https://github.com/DavisSylvester/ollama-dev-agent) | — | First local LLM adoption — runs on Ollama | (verify: repo-exists) |
+| [dr-gareth-roberts/chief-wiggum-loop](https://github.com/dr-gareth-roberts/chief-wiggum-loop) | — | Enterprise security-hardened loop with sandboxing + stuck classifier | (verify: repo-exists) |
+| [pbean/bmad-automator](https://github.com/pbean/bmad-automator) | — | BMAD enterprise agile integration | (verify: repo-exists) |
+| [mikefreno/ralpi](https://github.com/mikefreno/ralpi) | — | Raspberry Pi Ralph agent extension | (verify: repo-exists) |
+| [pro-vi/loopgen](https://github.com/pro-vi/loopgen) | — | Prompt compiler with Ralph Loop architecture | (verify: repo-exists) |
+| [inshalazmat/AI_Business_Employee](https://github.com/inshalazmat/AI_Business_Employee) | — | AI employee powered by Ralph Loop pattern | (verify: repo-exists) |
+| [sjhorn/ralph](https://github.com/sjhorn/ralph) | — | Go wrapper implementing a Ralph Wiggum loop | (verify: repo-exists) |
+| [3mdistal/ralph](https://github.com/3mdistal/ralph) | — | Community fork — OpenCode orchestrator | (verify: repo-exists) |
+| [suredream/ralphlow](https://github.com/suredream/ralphlow) | — | Workflow lock file system with structured architecture | (verify: repo-exists) |
+| [Was85/ralph-rlm-agent-framework](https://github.com/Was85/ralph-rlm-agent-framework) | — | Agent framework with ralph-workflow instructions | (verify: repo-exists) |
+| [dscherm/comfyprompts](https://github.com/dscherm/comfyprompts) | — | Mini-ralphs with delegation matrix | (verify: repo-exists) |
+| [Delqhi-Projects/ZOE-Solar-Accounting-OCR](https://github.com/Delqhi-Projects/ZOE-Solar-Accounting-OCR) | — | Ralph/Lisa pipeline executor for accounting OCR | (verify: repo-exists) |
 
 ## Shadow Ecosystem — Skill Registries, MCP & Media (2026-06-22 scout)
 
 | Project | Type | Description | Verify |
 |---------|------|-------------|--------|
-| [majiayu000/claude-skill-registry](https://github.com/majiayu000/claude-skill-registry) | Skill Registry | Ralph Workflow SKILL.md in community skill registry — distribution channel | (verify: gh) |
-| [dgbau/rl](https://github.com/dgbau/rl) | RL Project | Reinforcement learning project with ralph-workflow skill integration | (verify: gh) |
-| [salmanrrana/brain-dump](https://github.com/salmanrrana/brain-dump) | OpenCode Integration | `@ralph` command loading ralph-workflow skill in OpenCode | (verify: gh) |
-| [fbratten/8me](https://github.com/fbratten/8me) | MCP Server | FastMCP server named "ralph-workflow" in tier3 agent pipeline | (verify: gh) |
-| [tincke10/Barto-MCP](https://github.com/tincke10/Barto-MCP) | MCP Server | MCP server with ralph-workflow tool in server.ts | (verify: gh) |
-| [plusplusoneplusplus/shortcuts](https://github.com/plusplusoneplusplus/shortcuts) | IDE Integration | RalphWorkflowPane React component in development shortcuts toolkit | (verify: gh) |
-| [robheat/ainformed-dev](https://github.com/robheat/ainformed-dev) | Media Coverage | AI news article: "Ralph Workflow — a free, open-source AI orchestrator for everyone" (2026-05-12) | (verify: gh) |
-| [huifeideyu-1121/ai-info-aggregator](https://github.com/huifeideyu-1121/ai-info-aggregator) | Media Coverage | AI Daily newsletter covering Show HN launch (2026-05-13) | (verify: gh) |
-| [robzilla79/forgecore-newsletter](https://github.com/robzilla79/forgecore-newsletter) | Media Coverage | Forgecore newsletter — research raw on Ralph Workflow Show HN (2026-05-12) | (verify: gh) |
-| [fanshanhong/claude-skills-cn](https://github.com/fanshanhong/claude-skills-cn) | Chinese Content | Chinese-language Claude skills article featuring Ralph Workflow (2026-06-02) | (verify: gh) |
-| [Brickea/daily-program](https://github.com/Brickea/daily-program) | Individual Adopter | Daily programmer tracking ralph-workflow 0.8.6 in daily notes | (verify: gh) |
-| [leolilisisy/gameList](https://github.com/leolilisisy/gameList) | Game Project | Game project using `@ralph-workflow.md` in memory-bank agent template | (verify: gh) |
-| [arisng/github-copilot-fc](https://github.com/arisng/github-copilot-fc) | Enterprise Planning | Ralph Workflow version governance documentation in GitHub Copilot config | (verify: gh) |
-| [tallesborges/zdx](https://github.com/tallesborges/zdx) | Enterprise Planning | `ralph-workflow-engine.md` superseding workflow-bundles architecture | (verify: gh) |
-| [szabgab/pydigger-data](https://github.com/szabgab/pydigger-data) | PyPI Index | ralph-workflow PyPI package data indexed in pydigger | (verify: gh) |
-
-## Early Adopters
-
-These practitioners installed, starred, forked, or watched the Ralph Workflow project. They're the people who found it useful enough to engage — our warmest signal for what the ICP actually looks like.
-
-| User | Platform | Signal | Profile |
-|---------|------|-------------|
-| pierodibello | Codeberg | ⭐ Star + 👁 Watch | Multi-signal adopter |
-| RoxanneA | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
-| TusharKarsan | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
-| awoehrl | GitHub | 👁 Watch | — |
-| swstegall | GitHub | ⭐ Star | — |
-| labumbu | GitHub | ⭐ Star | — |
-| andrei_legram | Codeberg | ⭐ Star | — |
-| bort | Codeberg | ⭐ Star | — |
-| brianr | Codeberg | ⭐ Star | — |
-| calebjasik | Codeberg | ⭐ Star | — |
-| christiankopac | Codeberg | ⭐ Star | — |
-| gbrennon | Codeberg | ⭐ Star | — |
-| marconae | Codeberg | ⭐ Star | — |
-| OemerAgcaer | Codeberg | ⭐ Star | — |
-| vit | Codeberg | ⭐ Star | — |
+| [majiayu000/claude-skill-registry](https://github.com/majiayu000/claude-skill-registry) | Skill Registry | Ralph Workflow SKILL.md in community skill registry — distribution channel | (verify: repo-exists) |
+| [dgbau/rl](https://github.com/dgbau/rl) | RL Project | Reinforcement learning project with ralph-workflow skill integration | (verify: repo-exists) |
+| [salmanrrana/brain-dump](https://github.com/salmanrrana/brain-dump) | OpenCode Integration | `@ralph` command loading ralph-workflow skill in OpenCode | (verify: repo-exists) |
+| [fbratten/8me](https://github.com/fbratten/8me) | MCP Server | FastMCP server named "ralph-workflow" in tier3 agent pipeline | (verify: repo-exists) |
+| [tincke10/Barto-MCP](https://github.com/tincke10/Barto-MCP) | MCP Server | MCP server with ralph-workflow tool in server.ts | (verify: repo-exists) |
+| [plusplusoneplusplus/shortcuts](https://github.com/plusplusoneplusplus/shortcuts) | IDE Integration | RalphWorkflowPane React component in development shortcuts toolkit | (verify: repo-exists) |
+| [robheat/ainformed-dev](https://github.com/robheat/ainformed-dev) | Media Coverage | AI news article: "Ralph Workflow — a free, open-source AI orchestrator for everyone" (2026-05-12) | (verify: repo-exists) |
+| [huifeideyu-1121/ai-info-aggregator](https://github.com/huifeideyu-1121/ai-info-aggregator) | Media Coverage | AI Daily newsletter covering Show HN launch (2026-05-13) | (verify: repo-exists) |
+| [robzilla79/forgecore-newsletter](https://github.com/robzilla79/forgecore-newsletter) | Media Coverage | Forgecore newsletter — research raw on Ralph Workflow Show HN (2026-05-12) | (verify: repo-exists) |
+| [fanshanhong/claude-skills-cn](https://github.com/fanshanhong/claude-skills-cn) | Chinese Content | Chinese-language Claude skills article featuring Ralph Workflow (2026-06-02) | (verify: repo-exists) |
+| [Brickea/daily-program](https://github.com/Brickea/daily-program) | Individual Adopter | Daily programmer tracking ralph-workflow 0.8.6 in daily notes | (verify: repo-exists) |
+| [leolilisisy/gameList](https://github.com/leolilisisy/gameList) | Game Project | Game project using `@ralph-workflow.md` in memory-bank agent template | (verify: repo-exists) |
+| [arisng/github-copilot-fc](https://github.com/arisng/github-copilot-fc) | Enterprise Planning | Ralph Workflow version governance documentation in GitHub Copilot config | (verify: repo-exists) |
+| [tallesborges/zdx](https://github.com/tallesborges/zdx) | Enterprise Planning | `ralph-workflow-engine.md` superseding workflow-bundles architecture | (verify: repo-exists) |
+| [szabgab/pydigger-data](https://github.com/szabgab/pydigger-data) | PyPI Index | ralph-workflow PyPI package data indexed in pydigger | (verify: repo-exists) |
 
 ## The Community Hub
 
-[**awesome-ralph**](https://github.com/snwfdhmp/awesome-ralph) (verify: gh) is the community-maintained directory of Ralph Loop implementations, workshops, skill packs, and academic references. Start there to understand the full scope of the ecosystem.
+[**awesome-ralph**](https://github.com/snwfdhmp/awesome-ralph) (verify: repo-exists) is the community-maintained directory of Ralph Loop implementations, workshops, skill packs, and academic references. Start there to understand the full scope of the ecosystem.
 
 ## Want to be listed?
 

@@ -9,7 +9,7 @@ Ralph Workflow is the reference orchestrator in a growing category. These indepe
 | [rxdt/py_ralph_frame](https://github.com/rxdt/py_ralph_frame) | [live stars](https://github.com/rxdt/py_ralph_frame/stargazers) | 2026-06-23 | Python harness — spec-driven loop, `uvx`-installable, fresh-context runs | Python ecosystem users; lightweight spec→build→verify cycle |
 | [colinhacks/fray](https://github.com/colinhacks/fray) | [live stars](https://github.com/colinhacks/fray/stargazers) | 2026-06-21 | Multi-agent methodology + Claude Code plugin — .fray/ thread board, dispatch/reconciliation hooks | Multi-agent orchestration with explicit agent roles and thread tracking |
 
-(verify: gh) Star counts rendered live from the source repo pages on fetch; audited 2026-06-30.
+(verify: repo-exists) Star counts rendered live from the source repo pages on fetch; audited 2026-06-30.
 
 ## How they compare
 
@@ -21,7 +21,7 @@ Ralph Workflow is the reference orchestrator in a growing category. These indepe
 | **Context strategy** | Checkpoint/resume — persistent state across iterations | Fresh session every iteration | Fresh context per run | Thread-board — per-agent context isolation |
 | **Multi-agent** | Phase routing — different models per phase | Single agent per loop run | Single agent per run | Multi-agent with dispatch/reconciliation |
 | **Cost control** | Cost arbitrage — route phases to cheaper models | Model selection via config | Model selection via config | Claude Code only |
-| **Install** | `pip install ralph-workflow` | Clone repo | `uvx py_ralph_frame` | Claude Code plugin install |
+| **Install** | `pipx install ralph-workflow` | Clone repo | `uvx py_ralph_frame` | Claude Code plugin install |
 | **Resume** | Repo-based checkpoint/resume | None (fresh start each time) | Spec-based state tracking | Board-based state tracking |
 | **Windows** | Via WSL | ✅ Native PowerShell | Via WSL | Via WSL |
 

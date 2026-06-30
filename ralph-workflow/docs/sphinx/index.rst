@@ -165,6 +165,12 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    bounded-autonomy-for-unattended-coding
    how-to-tell-if-an-ai-coding-task-is-actually-done
    good-unattended-ai-coding-task
+
+.. toctree::
+   :hidden:
+   :caption: Topics & positioning
+   :maxdepth: 1
+
    open-source-ai-coding-orchestrator
    unattended-coding-agent
    spec-driven-ai-agent
