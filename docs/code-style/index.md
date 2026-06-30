@@ -6,11 +6,21 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 This directory has not yet been fully ported to the Python implementation. Many files here still document the retired Rust codebase.
 
-## Current Python style source of truth
+This directory (`docs/code-style/`) now contains only Python-current
+material:
 
-Use these instead when working on the maintained package:
+- `documentation-rubric.md` — canonical documentation rubric for every docs-related change
+- `index.md` — this file
 
-- `docs/code-style/documentation-rubric.md` — canonical documentation rubric for every docs-related change
+All eight Rust-era style-guide leaves have been moved to
+[`docs/legacy-rust/code-style/`](../../legacy-rust/code-style/) and
+quarantined as archival background. They are kept for historical
+reference only and do not describe the maintained Python implementation.
+
+## Python style source of truth
+
+Use these when working on the maintained package:
+
 - `ralph-workflow/pyproject.toml` — tool configuration (`ruff`, `mypy`, packaging)
 - `ralph-workflow/CONTRIBUTING.md` — contributor workflow
 - public module docstrings under `ralph-workflow/ralph/` — API expectations for pydoc
@@ -63,4 +73,11 @@ The maintained-tree suppression policy is additionally enforced by a tokenize-ba
 
 ## Legacy status
 
-If a file in this directory talks about Rust-only topics such as crates, clippy, dylint, `#[allow(...)]`, or functional-Rust boundary rules, treat it as archival background until it is rewritten for Python.
+The eight Rust-era style-guide leaves that previously lived here
+(`boundaries.md`, `code-shape.md`, `coding-patterns.md`,
+`errors-and-diagnostics.md`, `functional-transformations.md`,
+`generics-and-abstractions.md`, `module-organization.md`, `testing.md`)
+have been moved to
+[`docs/legacy-rust/code-style/`](../../legacy-rust/code-style/) and
+quarantined as archival background. They are kept for historical
+reference only and do not describe the maintained Python implementation.

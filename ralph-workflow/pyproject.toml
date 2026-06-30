@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
 license-files = ["LICENSE"]
 authors = [{ name = "Mistlight" }]
-keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent", "loop-engineering", "loop", "autonomous-coding", "unattended", "claude-code", "opencode", "ollama", "unattended-loop", "quality-gate", "ralph-loop", "vendor-neutral", "ai-coding", "coding-agent", "overnight", "local-first", "codex", "codeberg", "oss", "loop-ecosystem"]
+keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent", "loop-engineering", "loop", "autonomous-coding", "unattended", "claude-code", "opencode", "ollama", "unattended-loop", "quality-gate", "ralph-loop", "vendor-neutral", "ai-coding", "coding-agent", "overnight", "local-first", "codex", "codeberg", "oss", "loop-ecosystem", "nanocoder", "agy", "pi"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
@@ -20,6 +20,13 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Software Development :: Code Generators",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Environment :: Console",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
 ]
 dependencies = [
   "typer>=0.12",
@@ -82,6 +89,7 @@ Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
 Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new"
 Community = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/USERS.md"
 "GitHub Mirror" = "https://github.com/Ralph-Workflow/Ralph-Workflow"
+Changelog = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/CHANGELOG.md"
 
 [tool.hatch.version]
 source = "code"

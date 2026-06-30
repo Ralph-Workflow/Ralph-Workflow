@@ -1,39 +1,42 @@
 <!--
   Review note (docs rubric §"Required review note for meaningful docs changes"):
-  - What changed: rewrote the PyPI-facing package README so the H1/tagline
-    matches the top-level README ("Ralph Workflow — the autopilot for
-    coding agents"), the lead category is the autopilot / operating system
-    for autonomous coding, install/first-run precede the MCP
-    trust-boundary section, AND the `What it is` section leads with the
-    canonical autopilot positioning plus the canonical value-prop sentence
-    instead of opening with "composable loop framework" (which is now a
-    descriptive detail in a follow-on clause, not the lead category).
+  - What changed: trimmed manual-depth technical detail from this PyPI
+    README so it stays a storefront rather than a manual. The Idle
+    watchdog four-channel-evidence section (channel list, default knob,
+    `agent_idle_activity_evidence_ttl_seconds`) and the Pro-support
+    "Pipeline dependency injection" subsection (PipelineDeps bundle,
+    factory references, per-collaborator role narration) were both
+    demoted to one-to-two-line summaries that defer to the Sphinx
+    manual via link. The autopilot-first H1/tagline, the canonical
+    value-prop sentence, the verifiable download stat (10,700+ lifetime
+    PyPI downloads · 4,000+ in the last 30 days, pepy.tech, 2026-06-12),
+    and the supported-agents table are preserved unchanged.
   - Why it belongs here: this file is the PyPI-facing README
-    (`[project] readme = "README.md"` in pyproject.toml). PyPI readers want
-    to know what the package is, whether it fits, and how to install it
-    before they read about operator/security concerns, and they should
-    hear the same autopilot story they would see on the top-level README.
+    (`[project] readme = "README.md"` in pyproject.toml). PyPI readers
+    want to know what the package is, whether it fits, and how to
+    install it before they read about operator/security concerns, and
+    they should hear the same autopilot story they would see on the
+    top-level README.
   - What was pruned, merged, or explicitly left alone: the rubric-compliant
-    download stat (10,700+ lifetime PyPI downloads · 4,000+ in the last 30
-    days, pepy.tech, 2026-06-12) and the per-agent supported-agents table
-    are preserved; the MCP server trust boundary was demoted from the
-    first H2 to a later "Trust and safety" section. The "composable loop
-    framework" phrasing is preserved as a secondary descriptive clause
-    (the rubric allows it as a detail but forbids it as the lead category).
+    download stat and the per-agent supported-agents table are preserved;
+    the Idle-watchdog and Pipeline-DI sections were the two longest
+    manual-depth subsections on the page and are now Sphinx-link defers.
+    The MCP server trust boundary stays in the "Trust and safety" section.
+    The "composable loop framework" phrasing is preserved as a
+    secondary descriptive clause.
   - How duplication was reduced or contained: the install block already
     lives in the top-level README — this page repeats it once, in the
-    canonical sequence (install → first-run), and then defers all deeper
-    documentation to the operator manual instead of restating it. The
-    canonical value-prop sentence is shared verbatim with both START_HERE
-    files and the Sphinx index so all four surfaces reinforce the same
-    story.
+    canonical sequence (install → first-run), and then defers all
+    deeper documentation to the operator manual instead of restating
+    it. The canonical value-prop sentence is shared verbatim with both
+    START_HERE files and the Sphinx index so all four surfaces reinforce
+    the same story.
   - How the route is clearer now than before: what-it-is → who-it's-for →
     install-and-run → supported-agents → what-a-run-leaves-you →
-    why-it's-different → fit-or-not-fit → privacy → community →
-    trust-and-safety → development-and-verification → pro-support. The MCP
-    trust boundary is no longer the front door on PyPI, and the lead
-    category now matches the canonical autopilot language used across
-    every other public surface.
+    documentation → fit-or-not-fit → watchdog-pointer → privacy →
+    community → trust-and-safety → development-and-verification →
+    pro-support-pointer. Manual-depth technical detail is now reached
+    only via Sphinx links, never duplicated on this page.
 -->
 
 # Ralph Workflow — the autopilot for coding agents
@@ -274,42 +277,15 @@ defers to the Sphinx operator manual for those.
 
 ## Idle watchdog
 
-The agent session watchdog judges whether a session is stuck. It used to
-base that verdict entirely on stdout output, which is no longer a
-reliable proxy: real work now happens through channels that don't emit
-stdout — Ralph Workflow MCP tool calls, subagent delegation, and
-workspace file changes.
+The agent session watchdog judges whether a session is stuck by watching
+four evidence channels (stdout, MCP tool calls, subagent activity, and
+workspace file changes) instead of stdout alone, so unattended runs that
+do real work through quiet channels are not falsely killed.
 
-The watchdog now considers **four evidence channels**:
-
-- `stdout` — agent stdout output (the baseline)
-- `mcp_tool` — Ralph Workflow MCP tool calls / completions
-- `subagent` — delegated child progress / tool calls / heartbeats
-- `workspace` — workspace file changes from `WorkspaceMonitor`
-
-Workspace evidence collection runs whenever a run has a `workspace_path`,
-regardless of whether the progress UI (`show_progress`) is enabled, so
-quiet unattended runs that do real file work are not falsely killed.
-
-While any non-stdout channel is fresher than the new
-`agent_idle_activity_evidence_ttl_seconds` knob (under `[general]`,
-default `30.0`), the `NO_OUTPUT_DEADLINE` fire is deferred and the
-watchdog returns `CONTINUE`. Set the knob to `0.0` to opt out and
-restore the legacy stdout-only behaviour.
-
-Every HARD_STOP diagnostic and every deferred `CONTINUE` carries a
-per-channel `evidence_summary` array with `{channel, last_at,
-age_seconds, counter}` entries and an `active_channel` label, so a
-post-mortem reader can see exactly which channels were fresh and which
-were stale at the moment the verdict was reached.
-
-The absolute `SESSION_CEILING_EXCEEDED` and
-`CHILDREN_PERSIST_TOO_LONG` ceilings are checked BEFORE the deferral
-and remain absolute — no activity can extend the maximum session
-duration or the cumulative waiting-on-child ceiling.
-
-For more details on watchdog configuration, see the
-[Timeout Policy documentation](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/agents/timeout-policy.md).
+For full configuration knobs, channel semantics, and post-mortem
+diagnostic shape, see
+[Watchdogs and timeouts](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md)
+in the operator manual.
 
 ## Privacy & Error Reporting
 
@@ -362,37 +338,12 @@ make verify
 
 [Ralph-Workflow-Pro](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/pro-support.md)
 is an optional GUI layer that runs the engine as a subprocess. The
-engine exposes a small, read-only, bounded surface so Pro can
-monitor and (in advanced uses) inject custom pipeline
-collaborators. See the engine-side contract page below for the
-maintained source of truth on the Pro↔Ralph Workflow integration.
+engine exposes a small, read-only, bounded surface so Pro can monitor
+runs and, in advanced uses, inject custom pipeline collaborators.
 
-### Pipeline dependency injection
-
-The engine's pipeline and plumbing commands share the same underlying
-execution core through a single injectable dependency bundle,
-`PipelineDeps` (`ralph.pipeline.factory`). The bundle carries the four
-primary collaborators:
-
-- **display** — `display_context` drives all output surfaces.
-- **model** — `model_identity` is forwarded through the session bridge
-  to `AgentSession`.
-- **prompt** — `system_prompt_materializer` is consumed inside
-  `execute_agent_effect` and is shared by both the main pipeline and
-  plumbing. `phase_prompt_materializer` is used by the main pipeline
-  for phase handoff prompts; plumbing commands build single-task
-  prompts directly and do not route them through the phase
-  materializer.
-- **artifact requirements** — `artifact_requirements_resolver`
-  resolves the required artifact contract for each phase/drain. The
-  commit plumbing path preserves an injected resolver and only falls
-  back to its commit-specific resolver when the bundle still contains
-  the default production implementation.
-
-The main pipeline (`ralph.pipeline.runner`) and plumbing commands
-(`--generate-commit`, smoke test) both build a `PipelineDeps` via
-`build_default_pipeline_deps` and execute agents through
-`execute_agent_effect`.
-
-Engine-side contract page:
-[`docs/sphinx/pro-support.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/pro-support.md).
+For the engine-side contract, the `PipelineDeps` bundle shape, and the
+default-factory wiring, see
+[Pro support](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/pro-support.md)
+and
+[Developer reference](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/developer-reference.md)
+in the operator manual.

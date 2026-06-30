@@ -52,7 +52,7 @@ particularly lessons from Haskell:
 | `forbid_interior_mutability` | **`&T` must mean truly immutable.** No mechanism to mutate behind a shared reference in pure code. | Haskell values are immutable; `IORef`/`MVar` exist only in `IO`. |
 
 For practical examples of how to rewrite imperative code to satisfy these lints, see
-`docs/code-style/functional-transformations.md`.
+`docs/legacy-rust/code-style/functional-transformations.md`.
 
 ## Available Lints
 
@@ -149,7 +149,7 @@ near the top of the file. When `cargo xtask verify` sees that marker, it prints
 
 ### File length policy
 
-`docs/code-style/module-organization.md` treats line count as a signal, not a goal in itself. This repository therefore uses `file_too_long` only for the hard-fail case at 1000+ lines, where a file is overwhelmingly likely to own too many responsibilities. The 500-line threshold remains a review guideline for contributors, not a deny-level lint.
+`docs/legacy-rust/code-style/module-organization.md` treats line count as a signal, not a goal in itself. This repository therefore uses `file_too_long` only for the hard-fail case at 1000+ lines, where a file is overwhelmingly likely to own too many responsibilities. The 500-line threshold remains a review guideline for contributors, not a deny-level lint.
 
 ## Running Lints
 

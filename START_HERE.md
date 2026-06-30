@@ -96,7 +96,65 @@ ralph                              # 6. run the unattended workflow
 
 ## What success looks like
 
-After a good first run, you should be able to point to:
+A successful first run produces two concrete signals you can read the
+morning after.
+
+### `ralph --diagnose` should report all-healthy before you start
+
+After step 4 in [Exact first steps](#exact-first-steps), the pre-flight
+report should show every line green, with no missing, degraded, or
+needs-repair signals:
+
+```text
+Ralph Workflow Diagnostics
+—————————————————————————————
+✓ Git repository
+✓ Configuration
+✓ Agents (claude, opencode)
+✓ MCP servers (3 upstreams reachable)
+✓ Workspace files
+✓ Capability state (12/12 healthy)
+✓ Pre-flight policy validation
+
+All checks passed. Ready for `ralph`.
+```
+
+If a line is red, `--diagnose` tells you what is missing (e.g. an agent
+CLI not on `PATH`), unreachable (e.g. an MCP upstream), or degraded
+(e.g. a capability whose provider key is unset). Fix that line before
+you spend a real run on it. The full failure-mode table is in
+[diagnostics.md](ralph-workflow/docs/sphinx/diagnostics.md).
+
+### A successful run leaves a finish-receipt you can review
+
+After step 6 returns, you should find a `development_result` artifact
+that names the change, the checks, and the reviewer focus without
+reconstructing the run. Here is a compact example reusing the same
+empty-name-validation task already referenced in the README and the
+Sphinx manual:
+
+```text
+# Development Result
+
+## Outcome
+Implemented empty-name validation in the CLI create flow and added
+test coverage for empty and whitespace-only input.
+
+## Changed files
+- cli/create.py
+- tests/test_create.py
+
+## Checks run
+- pytest tests/test_create.py        ✓ passed
+- project formatting / lint checks    ✓ passed
+
+## Reviewer focus
+- confirm validation happens before any file creation side effect
+- confirm the error message is clear enough for CLI users
+- confirm no unrelated flow changed
+```
+
+After a good first run you should be able to point to:
 
 - A real repo change that matches the written task
 - Meaningful checks that ran and reported clear outcomes

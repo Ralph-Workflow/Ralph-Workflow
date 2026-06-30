@@ -100,6 +100,18 @@ make verify
 
 `make verify` now emits a high-visibility failure banner that cites `AGENTS.md` so AI agents are explicitly told to stop and fix the failing check immediately.
 
+`make verify` runs two Make prerequisites before invoking the Python
+verify runner:
+
+- **`verify-drift`** — scans the source tree for banned literals
+  (out-of-place `PROMPT.md` references, ad-hoc `.ralph/run.json`
+  mentions, drift of `RALPH_*` environment variables into places that
+  do not own them). Catches documentation/code drift early.
+- **`docs`** — runs `uv run --extra docs sphinx-build -W --keep-going`
+  against `docs/sphinx/`. Sphinx warnings are treated as errors, so
+  orphan metadata, broken cross-references, or malformed toctrees fail
+  the build before any Python check runs.
+
 ### Test budget policy — 60 seconds, combined total
 
 `make verify` enforces an **immutable 60-second combined test budget** across all test suites:
@@ -133,13 +145,13 @@ make dead-code
 You can narrow failures with:
 
 ```bash
-ruff check ralph/ tests/
-ruff format --check ralph/ tests/
-uv run python -m mypy ralph/
-make test-cov
-make test
-make test-unit
-make test-integration
+make lint                 # uv run ruff check ralph/ tests/
+make format-check         # uv run ruff format --check ralph/ tests/
+make typecheck            # uv run python -m mypy ralph/
+make test                 # full combined 60s budget run
+make test-unit            # unit tests only
+make test-integration     # integration tests only
+make test-cov             # coverage report — enforces --fail-under=80
 ```
 
 ## Documentation expectations

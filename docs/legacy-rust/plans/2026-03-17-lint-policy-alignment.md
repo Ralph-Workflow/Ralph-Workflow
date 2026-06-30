@@ -10,7 +10,7 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 **Goal:** Align workspace lint configuration, crate-root lint documentation, and custom dylints with the repository style guide so enforcement matches the documented architecture instead of accidental historical drift.
 
-**Architecture:** Keep boundary-sensitive functional rules in dylint, keep broad Clippy policy focused on universally safe style constraints, and document every allowed exception where contributors actually discover the lint. Reduce over-strict enforcement where it contradicts `docs/code-style/*`, and add missing cargo/crate coverage for owned crates.
+**Architecture:** Keep boundary-sensitive functional rules in dylint, keep broad Clippy policy focused on universally safe style constraints, and document every allowed exception where contributors actually discover the lint. Reduce over-strict enforcement where it contradicts `docs/legacy-rust/code-style/*`, and add missing cargo/crate coverage for owned crates.
 
 **Tech Stack:** Rust, Cargo workspace lints, Clippy, Dylint, repository style-guide docs
 
@@ -20,7 +20,7 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 **Files:**
 - Modify: `CODE_STYLE.md`
-- Modify: `docs/code-style/testing.md`
+- Modify: `docs/legacy-rust/code-style/testing.md`
 - Modify: `docs/tooling/dylint.md`
 
 **Step 1: Write the failing test**

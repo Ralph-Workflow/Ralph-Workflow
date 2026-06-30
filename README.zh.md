@@ -1,5 +1,7 @@
 # Ralph Workflow
 
+> ⚠️ 本页面是社区维护的中文版，可能滞后于规范的 [English README](README.md)。如有不一致，请以英文版为准。
+>
 > 主仓库：[codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — Star/Issues/Discussion 请到 Codeberg。
 
 **Ralph Workflow 是“编码代理的自动驾驶仪”（autopilot for coding agents）——**一个免费、开源的 **AI 代理编排器（AI agent orchestrator）**，把你已经在用的编码代理放到你本地机器上跑循环工程（Loop Engineering）。 把规格书交给你的编码代理，离开，回来就能看到可审查、已测试的提交。这是实现 Ralph Loop 模式的 27+ 个独立项目之一（见 [USERS.md](USERS.md)）。新概念？阅读 [什么是 Loop Engineering？](https://ralphworkflow.com/blog/what-is-loop-engineering-2026)
@@ -71,5 +73,5 @@ Loop Engineering 是一种**为无人值守执行而设计的编码代理模式*
 
 - [完整 English README](README.md)
 - [ralphworkflow.com](https://ralphworkflow.com) — 完整网站
-- [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) (904⭐) — Loop Engineering 社区目录
+- [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) (verify: gh) — Loop Engineering 社区目录
 - [Codeberg 仓库](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — Star/Issues/Discussion

@@ -943,4 +943,4 @@ they are "imperative escape hatches" for pure-but-imperative code:
 
 I/O retry loops are retry policy, which belongs in orchestration, not the
 boundary itself — the boundary should perform one attempt and report the outcome.
-See `docs/code-style/boundaries.md` for the correct split.
+See `docs/legacy-rust/code-style/boundaries.md` for the correct split.

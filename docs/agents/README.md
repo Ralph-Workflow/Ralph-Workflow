@@ -22,6 +22,8 @@ adding or modifying the agent subsystem inside the Python package.
 - `workspace-trait.md` — workspace abstraction contract
 - `agent-support-architecture.md` — how this repo supports Ralph Workflow
   agents
+- `fabrication-guard.md` — fabrication-guard levels, mandatory protocol,
+  and the absolute ban on inflating adoption/credits/stats claims
 
 ## What does NOT live here
 

@@ -8,13 +8,17 @@ Treat older Rust-oriented material elsewhere in the repo as legacy background un
 ## Source of truth
 
 Use these first, in this order:
-1. `PROMPT.md`
+1. `PROMPT.md` (root — the canonical documentation rubric / brief for the project)
 2. `ralph-workflow/CONTRIBUTING.md`
 3. `docs/agents/verification.md`
 3.5. `ralph-workflow/docs/agents/artifact-submission-contract.md`
 4. `ralph-workflow/README.md`
 5. Python source and docstrings under `ralph-workflow/ralph/`
 6. `docs/code-style/documentation-rubric.md` (canonical documentation rubric — applies to every docs change)
+
+Note: the root `PROMPT.md` is the project brief/rubric, while
+`ralph-workflow/PROMPT.md` is the starter task template seeded into
+your project by `ralph --init` — do not conflate the two.
 
 If instructions conflict, follow the stricter one.
 
@@ -38,7 +42,9 @@ failure). Fabrication is the single gravest threat to this project's credibility
 
 - **`scripts/fabrication_guard.py`** — multi-level fabrication defense:
   - Level 1 (regex patterns, no network, <100ms): catches known bad patterns.
-    Runs as a **pre-commit hook** (`.git/hooks/pre-commit`) — blocks bad commits.
+    Runs as a **pre-commit hook** (`.githooks/pre-commit`, wired via
+    `git config core.hooksPath .githooks`; install by running
+    `make setup-hooks` from the repo root) — blocks bad commits.
   - Level 2 (existence checks, network, cached): verifies every GitHub repo,
     npm package, and external URL actually exists. Run with `--level 2`.
   - Level 3 (quantitative verification, network, needs GITHUB_TOKEN):

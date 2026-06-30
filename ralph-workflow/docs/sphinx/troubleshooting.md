@@ -1,7 +1,3 @@
----
-orphan: true
----
-
 # Troubleshooting
 
 > **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.

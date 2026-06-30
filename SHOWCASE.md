@@ -6,13 +6,13 @@ Projects shipped with the Ralph Loop pattern. Real software, built overnight by 
 
 ## Featured
 
-| Project | Stars | What was built |
-|---------|-------|----------------|
-| [umputun/ralphex](https://github.com/umputun/ralphex) (verify: gh) | 1,296 ⭐ | Multi-provider LLM loop — plan, build, verify across OpenAI, Anthropic, Ollama. The largest Ralph Loop implementation outside the reference toolkit. |
-| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) (verify: gh) | 254 ⭐ | Dynamic workflows with Pi extensions, custom models, MCP, sub-agents, artifacts, review gates, and mid-run steering. Uses ralph-workflow redesign analysis. |
-| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) (verify: gh) | 66 ⭐ | Runtime for loop engineering — practitioner cookbook with Claude Code patterns. The closest sibling to Ralph Workflow's reference implementation. |
-| [benikigai/nightshift](https://github.com/benikigai/nightshift) (verify: gh) | 14 ⭐ | Lights-out autonomous software work — ship specs, wake up to tested commits. Ships what Ralph Workflow enables. |
-| [tao3k/xiuxian-artisan-workshop](https://github.com/tao3k/xiuxian-artisan-workshop) (verify: gh) | 14 ⭐ | Game design bridge between human intent and machine execution, inspired by Ralph Workflow philosophy. |
+| Project | Stars (live) | What was built |
+|---------|--------------|----------------|
+| [umputun/ralphex](https://github.com/umputun/ralphex) (verify: gh) | [live stars](https://github.com/umputun/ralphex/stargazers) | Multi-provider LLM loop — plan, build, verify across OpenAI, Anthropic, Ollama. The largest Ralph Loop implementation outside the reference toolkit. |
+| [bastani-inc/atomic](https://github.com/bastani-inc/atomic) (verify: gh) | [live stars](https://github.com/bastani-inc/atomic/stargazers) | Dynamic workflows with Pi extensions, custom models, MCP, sub-agents, artifacts, review gates, and mid-run steering. Uses ralph-workflow redesign analysis. |
+| [computerlovetech/ralphify](https://github.com/computerlovetech/ralphify) (verify: gh) | [live stars](https://github.com/computerlovetech/ralphify/stargazers) | Runtime for loop engineering — practitioner cookbook with Claude Code patterns. The closest sibling to Ralph Workflow's reference implementation. |
+| [benikigai/nightshift](https://github.com/benikigai/nightshift) (verify: gh) | [live stars](https://github.com/benikigai/nightshift/stargazers) | Lights-out autonomous software work — ship specs, wake up to tested commits. Ships what Ralph Workflow enables. |
+| [tao3k/xiuxian-artisan-workshop](https://github.com/tao3k/xiuxian-artisan-workshop) (verify: gh) | [live stars](https://github.com/tao3k/xiuxian-artisan-workshop/stargazers) | Game design bridge between human intent and machine execution, inspired by Ralph Workflow philosophy. |
 
 ## What makes a good Showcase entry?
 
