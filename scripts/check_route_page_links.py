@@ -44,6 +44,12 @@ except ImportError:
 
 EXTERNAL_LINK_TIMEOUT_SECONDS = 10.0
 EXTERNAL_IGNORES = {"http://PROMPT.md", "https://docs.claude.com/"}
+# Many CDNs (img.shields.io, pi.dev, etc.) reject requests from the default
+# Python-urllib User-Agent with HTTP 403 even though the same URLs work from
+# a normal browser. Send a Mozilla-like User-Agent so the link checker can
+# reach the same surfaces a human reader would. The actual URLs and content
+# are still validated as before (HEAD with 405->GET fallback on each request).
+_USER_AGENT = "Mozilla/5.0 (compatible; RalphWorkflow-route-linkcheck/1.0)"
 
 LINK_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"\[([^\]]+)\]\(([^)]+)\)"),
@@ -114,7 +120,7 @@ def _check_external_once(  # type: ignore[name-defined]
     url: str, context: "ssl.SSLContext | None"
 ) -> str | None:
     try:
-        req = urllib.request.Request(url, method="HEAD")
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": _USER_AGENT})
         with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
             req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS, context=context
         ) as resp:
@@ -124,7 +130,7 @@ def _check_external_once(  # type: ignore[name-defined]
     except urllib.error.HTTPError as exc:
         if exc.code == 405:
             try:
-                req = urllib.request.Request(url, method="GET")
+                req = urllib.request.Request(url, method="GET", headers={"User-Agent": _USER_AGENT})
                 with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
                     req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS, context=context
                 ) as resp:
@@ -146,7 +152,7 @@ def check_external(url: str) -> str | None:
     if urllib is None:
         return None
     try:
-        req = urllib.request.Request(url, method="HEAD")
+        req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": _USER_AGENT})
         with urllib.request.urlopen(  # noqa: S310 - URL is operator-supplied doc reference
             req, timeout=EXTERNAL_LINK_TIMEOUT_SECONDS
         ) as resp:

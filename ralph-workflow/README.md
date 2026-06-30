@@ -349,11 +349,12 @@ make verify
 
 ## Pro support (optional GUI layer)
 
-[Ralph-Workflow-Pro](https://codeberg.org/RalphWorkflow/Ralph-Workflow-Pro)
+[Ralph-Workflow-Pro](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/pro-support.md)
 is an optional GUI layer that runs the engine as a subprocess. The
 engine exposes a small, read-only, bounded surface so Pro can
 monitor and (in advanced uses) inject custom pipeline
-collaborators.
+collaborators. See the engine-side contract page below for the
+maintained source of truth on the Pro↔Ralph Workflow integration.
 
 ### Pipeline dependency injection
 

@@ -171,7 +171,7 @@ build-wheel: clean-dist
 	uv run --with hatchling hatch build --wheel
 
 build-sdist: clean-dist
-	uv run --with hatchling hatch build --sdist
+	uv run --with hatchling hatch build -t sdist
 
 # Publishing
 twine-upload: build
