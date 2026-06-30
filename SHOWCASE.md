@@ -1,6 +1,6 @@
 # Showcase
 
-Projects shipped with the Ralph Loop pattern. Real software, built overnight by AI coding agents running plan-build-verify cycles.
+Projects shipped with the Ralph Loop pattern. Real software built with the Ralph Loop pattern: each project self-attests plan-build-verify agent cycles.
 
 > **Built something with Ralph?** [Add your project](https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues) — 60-second task: add the badge + open an issue, and you're on the page. Full ecosystem at [USERS.md](USERS.md).
 

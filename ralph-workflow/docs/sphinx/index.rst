@@ -66,6 +66,7 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
 
    getting-started
    quickstart
+   prompts
    first-task-guide
    first-task-prompt-templates
    diagnostics
@@ -113,7 +114,10 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
 
    cli
    mcp-tools
+   mcp-architecture
+   artifacts
    recovery
+   supervising-api
    troubleshooting
    versioning
    pro-support
@@ -124,6 +128,7 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    local-web-access
    mcp-tool-restriction
    display
+   transcript
 
 .. toctree::
    :hidden:

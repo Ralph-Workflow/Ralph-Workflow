@@ -2,14 +2,15 @@
 
 Merge order (lowest to highest priority):
   1. Embedded defaults (Pydantic field defaults)
-  2. ~/.config/ralph-workflow.toml
+  2. ~/.config/ralph-workflow.toml (or $XDG_CONFIG_HOME/ralph-workflow.toml)
   3. .agent/ralph-workflow.toml (project-local)
   4. CLI flag overrides
 
-This module handles the three-layer configuration merging from the Rust implementation:
-- Global config: ~/.config/ralph-workflow.toml
-- Local config: .agent/ralph-workflow.toml
-- CLI overrides: Applied last via dict patch before Pydantic validation
+This module handles the four-layer configuration merge:
+- Embedded defaults provide the baseline for every field.
+- Global config supplies user-wide preferences.
+- Project-local config supplies repo-specific overrides.
+- CLI overrides apply last via dict patch before Pydantic validation.
 """
 
 from __future__ import annotations

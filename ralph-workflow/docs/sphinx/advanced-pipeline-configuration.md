@@ -45,6 +45,52 @@ This is the file you edit when you want to change **how the workflow behaves**, 
 
 ## The major sections
 
+### `entry_block`
+
+`entry_block` names the top-level block where the run starts. The default pipeline uses block-authored policy, so the entry point is a block name rather than a single phase name.
+
+```toml
+entry_block = "developer_iteration"
+```
+
+The loader resolves `entry_block` to the matching `[blocks.<name>]` definition and derives the initial phase from that block. If you author a custom block-authored workflow, make sure the value matches a declared block.
+
+### `[blocks.*]`
+
+Block-authored policy lets you group phases into reusable, named blocks. Each block has a `kind`:
+
+- `kind = "individual"` — the block contains a single phase (`phase_name` + `phase` table).
+- `kind = "group"` — the block contains an ordered list of child blocks (`child_blocks`), a `completion_block` that must succeed for the group to advance, optional `before_complete` cleanup blocks, and counters to increment or reset.
+
+Example group block from the default policy:
+
+```toml
+[blocks.developer_iteration]
+kind = "group"
+child_blocks = [
+  "planning",
+  "planning_analysis",
+  "development",
+  "development_commit_cleanup",
+  "development_commit",
+  "development_analysis",
+  "development_final_commit_cleanup",
+  "development_final_commit",
+  "complete",
+  "failed_terminal",
+]
+completion_block = "development_final_commit"
+before_complete = [
+  "development_commit_cleanup",
+  "development_commit",
+  "development_final_commit_cleanup",
+]
+increments_counter = "iteration"
+loop_resets = ["development_analysis_iteration", "commit_cleanup_iteration"]
+```
+
+Use `[blocks.*]` when you want to compose the workflow from reusable units rather than declaring a flat phase graph. Most operators can start with the bundled block layout and override only the `[phases.<name>]` details inside the blocks they want to change.
+
 ### `[loop_counters.*]`
 
 Loop counters bound repeated analysis loops.
@@ -176,6 +222,25 @@ Typical budget states:
 - `remaining`
 - `exhausted`
 - `no_review`
+
+### `[default_phase_retry_policy]`
+
+The default retry policy applies to every phase that does not declare its own override. It controls how many times a phase may be retried before the failure is escalated.
+
+```toml
+[default_phase_retry_policy]
+max_retries = 3
+retry_delay_ms = 1000
+retry_in_session = false
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_retries` | `3` | Maximum retry attempts per phase under this policy. |
+| `retry_delay_ms` | `1000` | Base delay before a retry. |
+| `retry_in_session` | `false` | When `true`, retries stay inside the same agent session; when `false`, each retry starts a fresh session. |
+
+Use this when you want a single global retry behavior rather than per-phase retry tables.
 
 ### `[recovery]`
 

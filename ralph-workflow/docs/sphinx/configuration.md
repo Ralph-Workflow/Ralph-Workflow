@@ -123,6 +123,37 @@ The bundled defaults live in `ralph/policy/defaults/`. When in doubt, the files 
 - `pipeline.toml` — workflow phases and routing
 - `artifacts.toml` — artifact contracts
 
+## Environment variables
+
+Ralph Workflow honours a small set of environment variables. These are inputs to the engine, not extensions of the 60-second combined test budget.
+
+### Pro integration contract
+
+The Pro↔Ralph Workflow contract uses exactly three engine-facing variables (see `ralph/pro_support/env.py`):
+
+| Variable | Purpose |
+|----------|---------|
+| `PROMPT_PATH` | Absolute or relative path to the operator-authored run spec. When set, Ralph Workflow prefers this over `<workspace>/PROMPT.md`. This is the canonical way to point the engine at a non-default prompt file. |
+| `RALPH_WORKFLOW_PRO` | Non-empty truthy marker that the engine is running as a Ralph Workflow Pro subprocess. |
+| `RALPH_WORKSPACE` | Absolute or relative path to the workspace root. When set, Ralph Workflow prefers this over the current working directory when resolving the workspace scope. |
+
+### Operator/runtime variables
+
+| Variable | Purpose |
+|----------|---------|
+| `RALPH_AGY_BINARY` | Path to a custom `agy` executable, or to the deterministic mock at `tests/_support/mock_agy.sh` for CI. See [CLI Reference](cli.md) and [Agent Compatibility](agent-compatibility.md). |
+| `RALPH_INLINE_SKILLS_DIR` | Directory whose skill files are inlined into prompts through `SKILLS_INLINE_CONTENT` instead of relying on the shipped skill bundle. See [Prompts](prompts.md). |
+| `XDG_CONFIG_HOME` | When set, Ralph Workflow places the user-global config at `$XDG_CONFIG_HOME/ralph-workflow.toml` instead of `~/.config/ralph-workflow.toml`. |
+
+### Test-only timeout variables
+
+| Variable | Purpose |
+|----------|---------|
+| `RALPH_PYTEST_TEST_TIMEOUT_SECONDS` | Per-test timeout passed by the `ralph.verify_timeout` wrapper. |
+| `RALPH_PYTEST_SUITE_TIMEOUT_SECONDS` | Per-suite invocation timeout passed by the `ralph.verify_timeout` wrapper. |
+
+These timeout variables are set by the test harness; they do **not** extend the 60-second combined budget enforced by `make verify`. See [Verification Model](verification-model.md) for the non-circumvention rule.
+
 ## Common settings in `ralph-workflow.toml`
 
 The main config file is `~/.config/ralph-workflow.toml`, with optional project-level overrides in `.agent/ralph-workflow.toml`.
@@ -143,6 +174,7 @@ Core workflow settings: verbosity, git identity, retry behavior, and liveness li
 | `max_cycles` | `3` | Maximum full fallback cycles through a drain |
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before a stalled agent is terminated |
 | `agent_idle_activity_evidence_ttl_seconds` | `30.0` | Per-channel activity TTL: while any non-stdout channel (`mcp_tool`, `subagent`, `workspace`) is fresher than this, the `NO_OUTPUT_DEADLINE` fire is deferred and the watchdog returns `CONTINUE`. Workspace evidence is collected whenever a run has a `workspace_path`, even when the progress UI is disabled. A subagent process that is alive but silent on every channel is **not** treated as activity. Set to `0.0` to opt out and restore the legacy stdout-only behaviour. See the `## Idle watchdog` section in the README for the four-channel model. |
+| `agent_workspace_change_weights` | `{ source = 1.0 }` | Per-kind workspace file-change weights used by the activity-aware watchdog. Each kind (`source`, `log`, `cache`, `artifact`, `other`) is binary: `1.0` lets the change defer `NO_OUTPUT_DEADLINE`, `0.0` drops it. The default only weights `source` (source code and documentation). Operators who previously relied on log-file activity can opt in with `agent_workspace_change_weights = { source = 1.0, log = 1.0 }`. See [Watchdogs and Timeouts](watchdogs-and-timeouts.md) for the full migration note. |
 
 ### Example: change verbosity globally
 

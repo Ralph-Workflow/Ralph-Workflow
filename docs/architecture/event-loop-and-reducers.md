@@ -29,8 +29,8 @@ Every routing decision traces back to a policy field:
 The pipeline is driven by an explicit event loop with strict separation of concerns:
 
 - **`PipelineState`** (`ralph/pipeline/state.py`): immutable snapshot of pipeline progress. The checkpoint payload. State transitions happen only by applying reducer events.
-- **`Effect`** (`ralph/pipeline/effects.py`): an intention to perform I/O (invoke an agent, write a checkpoint, run git, etc.). Effects carry no side effects themselves.
-- **`Event`** (`ralph/pipeline/events.py`): a fact about something that happened. The reducer consumes events to produce the next state.
+- **`Effect`** (`ralph/pipeline/effects/`): an intention to perform I/O (invoke an agent, write a checkpoint, run git, etc.). Effects carry no side effects themselves.
+- **`Event`** (`ralph/pipeline/events/`): a fact about something that happened. The reducer consumes events to produce the next state.
 - **`reduce()`** (`ralph/pipeline/reducer.py`): pure function `(state, event, pipeline_policy, recovery) → (new_state, effects)`. No I/O; no logging; fully deterministic. All routing dispatches through `pipeline_policy`.
 - **`Orchestrator`** (`ralph/pipeline/orchestrator.py`): pure function that derives the next effect from the current state.
 - **`EffectHandler`** (`ralph/phases/` and `ralph/agents/`): impure executor that performs the effect and reports the outcome as an event.
@@ -86,7 +86,7 @@ The reducer in `ralph/pipeline/reducer.py` dispatches all phase routing through 
 
 Events are descriptive facts about what happened, not instructions about what to do next.
 
-Current events handled by the reducer (see `ralph/pipeline/events.py`):
+Current events handled by the reducer (see `ralph/pipeline/events/`):
 
 | Event | Meaning |
 |-------|---------|
@@ -155,13 +155,13 @@ When adding or changing reducer behavior:
 | Reducer (state + event → state) | `ralph/pipeline/reducer.py` |
 | Orchestrator (state → effect) | `ralph/pipeline/orchestrator.py` |
 | Pipeline state | `ralph/pipeline/state.py` |
-| Events | `ralph/pipeline/events.py` |
-| Effects | `ralph/pipeline/effects.py` |
+| Events | `ralph/pipeline/events/` |
+| Effects | `ralph/pipeline/effects/` |
 | Runner / event loop | `ralph/pipeline/runner.py` |
 | Routing helpers | `ralph/pipeline/handoffs.py` |
 | Recovery controller | `ralph/recovery/controller.py` |
-| Policy models | `ralph/policy/models.py` |
-| Policy validation | `ralph/policy/validation.py` |
+| Policy models | `ralph/policy/models/` |
+| Policy validation | `ralph/policy/validation/` |
 
 ## See Also
 

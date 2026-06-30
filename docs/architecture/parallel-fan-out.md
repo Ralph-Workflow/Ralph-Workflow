@@ -25,7 +25,7 @@ dispatch_mode = "ralph_fan_out"   # the legacy path; the bundled default is "age
 max_parallel_workers = 8
 ```
 
-The fan-out machinery below is unchanged and re-armable: `FanOutEffect` (in `ralph/pipeline/effects.py`), `ralph/pipeline/fan_out.py`, and `ralph/pipeline/parallel/` are kept intact and are re-invoked the moment `dispatch_mode` flips back to `ralph_fan_out`.
+The fan-out machinery below is unchanged and re-armable: `FanOutEffect` (in `ralph/pipeline/effects/`), `ralph/pipeline/fan_out.py`, and `ralph/pipeline/parallel/` are kept intact and are re-invoked the moment `dispatch_mode` flips back to `ralph_fan_out`.
 
 ---
 
@@ -316,7 +316,7 @@ def schedule_next_wave(completed, all_units, currently_running, max_workers):
 `work_units` is set once during planning and stored in `PipelineState`. The `FanOutDevelopmentEffect` carries this frozen tuple:
 
 ```python
-# ralph-workflow/ralph/pipeline/effects.py
+# ralph-workflow/ralph/pipeline/effects/
 @dataclass(frozen=True)
 class FanOutDevelopmentEffect:
     work_units: tuple[WorkUnit, ...]

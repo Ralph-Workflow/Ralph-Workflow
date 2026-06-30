@@ -14,6 +14,7 @@ Ralph Workflow is invoked as `ralph` (or `python -m ralph`). Running `ralph` wit
 | `--check-config` | `-C` | `False` | Load and validate configuration, then exit |
 | `--check-mcp` | | `False` | Validate custom MCP server definitions and AGY transport compatibility, then exit. Set `RALPH_AGY_BINARY` to point at a non-PATH `agy` binary. |
 | `--check-policy` | | `False` | Validate the active pipeline policy and print a summary |
+| `--explain-policy` | | `False` | Print a human-readable explanation of the active policy and exit |
 | `--inspect-checkpoint` | | `False` | Print the current checkpoint contents |
 
 ### `--check-policy` example
@@ -37,6 +38,7 @@ See [Policy Explanation](policy-explanation.md) for the deeper inspection view.
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--init [label]` | | `None` | Scaffold `PROMPT.md` plus project-local MCP, pipeline, and artifact files. Automatically install the bundled skill bundle into `~/.claude/skills/` and symlink it into the documented supported-agents sibling roots (currently Codex `~/.codex/skills/`, OpenCode `~/.config/opencode/skills/`, AGY `~/.gemini/antigravity-cli/skills/`; OpenCode's documented `~/.claude/skills/` fallback is covered by the Claude install; Pi has no documented skill-discovery system per <https://pi.dev/docs/latest/usage> so no user-global install target is created). Adds a batteries-included `.gitignore` covering Python, Node, Rust, Go, Ruby, PHP, Java/Kotlin, .NET, Dart/Flutter, Elixir, Scala, Terraform, and common IDE/OS patterns. Idempotent — re-running on an initialized project re-checks skills (printing the full capability summary table) and refreshes missing gitignore entries. |
+| `--force-init-skills` | | `False` | Re-run baseline skill installation (user-global + project-scope) and exit. Pairs with `--init` for an explicit re-init; standalone forces the recheck path on a normal `ralph` run. |
 | `--init-local-config` | | `False` | Create `.agent/` config files as explicit project-local copies of the main Ralph Workflow config set |
 | `--regenerate-config` | | `False` | Rewrite config files from bundled defaults and keep backups as `<name>.bak` |
 
@@ -61,7 +63,10 @@ ralph -Q "do a quick change"
 ```bash
 ralph -Q "add a /healthz endpoint"
 ralph -Q --prompt "add a /healthz endpoint"
+ralph -Q -P "add a /healthz endpoint"
 ```
+
+`--prompt` also accepts the short alias `-P`.
 
 ## Prompt helper
 
@@ -82,6 +87,14 @@ ralph-prompt
 ```
 
 `ralph-prompt` ships with Ralph Workflow and is installed automatically by `pip install ralph-workflow`. No separate install is needed.
+
+`ralph-mcp` is the standalone MCP server entrypoint (declared in `pyproject.toml` as `ralph.mcp.server.runtime:main`). It starts Ralph Workflow's local MCP server outside of a full pipeline run, which is useful for debugging tool calls or connecting an agent manually:
+
+```bash
+ralph-mcp --drain development --workspace .
+```
+
+See [MCP Architecture](mcp-architecture.md) for the server internals.
 
 ## Thorough mode
 
@@ -114,6 +127,7 @@ ralph -T
 | `--resume` | `-r` | `False` | Resume from the saved checkpoint if one exists |
 | `--no-resume` | | `False` | Ignore the checkpoint and restart from the beginning |
 | `--dry-run` | | `False` | Run the pipeline structure without invoking agents |
+| `--unsafe-mode` | | `False` | Merge Ralph Workflow MCP config into the agent's existing MCP config instead of overwriting it |
 
 > **Note:** Verbosity defaults to `verbose` so the run looks visibly alive by default. Use `--quiet` in CI when you only want errors.
 

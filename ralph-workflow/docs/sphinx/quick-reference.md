@@ -73,15 +73,19 @@ ralph --version
 
 - `-a, --developer-agent` — set developer agent
 - `--developer-model` — set developer model
+- `-P, --prompt` — inline prompt text for quick runs (use with `-Q`)
 
 ### General Options
 
 - `-c, --config` — path to config file
 - `-d, --diagnose` — run diagnostics mode
+- `--explain-policy` — print human-readable explanation of active policy and exit
+- `--force-init-skills` — re-run baseline skill installation and exit
 - `-q, --quiet` — suppress output
 - `-v, --verbosity` — set verbosity level
 - `--dry-run` — dry run mode
 - `--no-resume` — disable resume
+- `--unsafe-mode` — merge Ralph Workflow MCP config into agent's existing MCP config
 - `-V, --version` — show version
 
 ## Verification

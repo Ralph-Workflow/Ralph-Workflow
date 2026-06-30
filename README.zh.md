@@ -4,9 +4,11 @@
 >
 > 主仓库：[codeberg.org/RalphWorkflow/Ralph-Workflow](https://codeberg.org/RalphWorkflow/Ralph-Workflow) — Star/Issues/Discussion 请到 Codeberg。
 
-**Ralph Workflow 是“编码代理的自动驾驶仪”（autopilot for coding agents）——**一个免费、开源的 **AI 代理编排器（AI agent orchestrator）**，把你已经在用的编码代理放到你本地机器上跑循环工程（Loop Engineering）。 把规格书交给你的编码代理，离开，回来就能看到可审查、已测试的提交。这是实现 Ralph Loop 模式的 46+ 个独立项目之一（见 [USERS.md](USERS.md) 与 [ECOSYSTEM.md](ECOSYSTEM.md)，审计日期 2026-06-30）。新概念？阅读 [什么是 Loop Engineering？](https://ralphworkflow.com/blog/what-is-loop-engineering-2026)
+Ralph Workflow 是**编码代理的自动驾驶仪**（autopilot for coding agents）——一个免费、开源的自主编码操作系统，一个建立在简单 Ralph 循环核心之上、通过组合而变得强大的 AI 代理编排器。
 
-Ralph Workflow 把简单的 Ralph 循环（plan → build → verify）扩展为可组合的 **loop framework**——每个阶段可独立循环、可失败恢复、互相交接。默认工作流足够强，开箱即可用；当你准备好再自定义。
+**把一份规格清晰的编码任务交给它，让代理去计划、构建、验证和修复，然后回来查看可审查、已测试的工作。**
+
+默认工作流已经足够强大，可以在你自定义之前原样采用。Ralph Workflow 是 46+ 个实现 Ralph Loop 模式的独立项目之一（见 [USERS.md](USERS.md) 与 [ECOSYSTEM.md](ECOSYSTEM.md)，审计日期 2026-06-30）。想了解这一模式，可阅读 [什么是 Loop Engineering？](https://ralphworkflow.com/blog/what-is-loop-engineering-2026)。
 
 围绕一个简单的 Ralph 循环核心，组合成可扩展的工作流，由你给定的 `PROMPT.md` 规格驱动。
 

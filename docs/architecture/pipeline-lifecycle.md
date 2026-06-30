@@ -53,8 +53,8 @@ state --orchestrate--> effect --handle--> event --reduce--> next_state
 ```
 
 - **`PipelineState`** (`ralph/pipeline/state.py`): immutable snapshot of pipeline progress; the checkpoint payload.
-- **`Effect`** (`ralph/pipeline/effects.py`): an intention to perform I/O. Effects carry no side effects themselves.
-- **`Event`** (`ralph/pipeline/events.py`): a fact about something that happened. The reducer consumes events.
+- **`Effect`** (`ralph/pipeline/effects/`): an intention to perform I/O. Effects carry no side effects themselves.
+- **`Event`** (`ralph/pipeline/events/`): a fact about something that happened. The reducer consumes events.
 - **`reduce()`** (`ralph/pipeline/reducer.py`): pure function `(state, event, policy) → (new_state, effects)`. No I/O; fully deterministic; dispatches through policy for all routing.
 - **`Orchestrator`** (`ralph/pipeline/orchestrator.py`): pure function that derives the next effect from the current state.
 
@@ -206,17 +206,17 @@ itself decoupled from `PipelineDeps`.
 | State machine core | `ralph/pipeline/reducer.py` |
 | Phase orchestration | `ralph/pipeline/orchestrator.py` |
 | Pipeline state | `ralph/pipeline/state.py` |
-| Events | `ralph/pipeline/events.py` |
-| Effects | `ralph/pipeline/effects.py` |
+| Events | `ralph/pipeline/events/` |
+| Effects | `ralph/pipeline/effects/` |
 | Runner / event loop | `ralph/pipeline/runner.py` |
 | Pipeline DI factory | `ralph/pipeline/factory.py` |
 | Shared session bridge | `ralph/pipeline/session_bridge.py` |
 | Main pipeline entry | `ralph/pipeline/run_loop.py` (`pipeline_deps` param) |
 | Commit plumbing | `ralph/pipeline/plumbing/commit_plumbing.py` |
 | Smoke plumbing | `ralph/pipeline/plumbing/smoke_plumbing.py` |
-| Policy models | `ralph/policy/models.py` |
-| Policy validation | `ralph/policy/validation.py` |
+| Policy models | `ralph/policy/models/` |
+| Policy validation | `ralph/policy/validation/` |
 | Policy loading | `ralph/policy/loader.py` |
-| Policy explanation | `ralph/policy/explain.py`, `ralph/policy/render.py` |
+| Policy explanation | `ralph/policy/explain/`, `ralph/policy/render.py` |
 | Phase handlers | `ralph/phases/` |
 | Recovery | `ralph/recovery/` |
