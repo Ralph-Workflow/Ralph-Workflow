@@ -54,12 +54,13 @@ if TYPE_CHECKING:
 
 
 # Default: capped ``auto`` — pytest-xdist auto-detects available CPU cores,
-# but we cap at 8 to avoid I/O contention on loaded machines. Real git and
-# subprocess fixtures dominate suite time; too many parallel workers causes
-# per-test timeouts even though each test is fast in isolation.
-# Override via PYTEST_WORKERS env var if needed.
+# but we cap at 12 to avoid I/O contention on loaded machines while still
+# using the full machine on modern hardware. ``loadfile`` scheduling keeps
+# each test file on a single worker, which preserves test isolation and
+# reduces scheduling overhead compared to ``worksteal``. Override via
+# PYTEST_WORKERS env var if needed.
 _DEFAULT_PYTEST_WORKERS = "auto"
-_MAX_PYTEST_WORKERS = 8
+_MAX_PYTEST_WORKERS = 12
 
 
 def _pytest_workers() -> str:
@@ -99,7 +100,7 @@ def _verification_command() -> tuple[str, ...]:
         "-n",
         workers,
         "--dist",
-        "worksteal",
+        "loadfile",
         "-m",
         "not subprocess_e2e and not smoke",
     )
