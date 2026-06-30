@@ -57,8 +57,47 @@ class PhaseContext:
 
     @classmethod
     def construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
+        """Construct a ``PhaseContext`` from a typed-argument mapping.
+
+        This classmethod is the sanctioned public constructor for
+        :class:`PhaseContext`; it accepts the same fields as
+        :class:`PhaseContext` itself, validates them against the
+        :data:`_PhaseContextArgs` TypedDict, and returns a frozen instance.
+
+        Args:
+            **kwargs: Field values to forward to :class:`PhaseContext`. The
+                accepted keys are documented on :data:`_PhaseContextArgs`:
+                ``workspace``, ``registry``, ``chain_manager``,
+                ``pipeline_policy``, ``agents_policy``,
+                ``artifacts_policy``, plus the optional ``config`` and
+                ``console``.
+
+        Returns:
+            PhaseContext: A new frozen :class:`PhaseContext` populated from
+            ``kwargs``.
+
+        Raises:
+            TypeError: If a key in ``kwargs`` is not a known
+                :class:`PhaseContext` field.
+        """
         return cls(**kwargs)
 
     @classmethod
     def model_construct(cls, **kwargs: Unpack[_PhaseContextArgs]) -> PhaseContext:
+        """Construct a ``PhaseContext`` mirroring pydantic's ``model_construct``.
+
+        This classmethod exists so factories that build pydantic-style
+        objects (skipping validation by design) can construct a
+        :class:`PhaseContext` through the same name pattern. It is
+        behaviorally identical to :meth:`construct`: it forwards
+        ``kwargs`` unchanged.
+
+        Args:
+            **kwargs: Field values to forward to :class:`PhaseContext`;
+                see :meth:`construct` for the accepted key list.
+
+        Returns:
+            PhaseContext: A new frozen :class:`PhaseContext` populated from
+            ``kwargs``.
+        """
         return cls.construct(**kwargs)

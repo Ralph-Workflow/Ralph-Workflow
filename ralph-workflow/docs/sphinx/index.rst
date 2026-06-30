@@ -5,10 +5,17 @@ Ralph Workflow
 
 **Hand your coding agents a spec tonight. Wake up to reviewable, tested commits.**
 
-Ralph Workflow is the **autopilot for coding agents** and a free, open-source
-composable loop framework that runs the coding agents you already use —
-Claude Code, Codex, OpenCode, Nanocoder, AGY, or Pi.dev — on your own machine.
-Simple at the center, powerful in composition.
+Ralph Workflow is **the autopilot for coding agents** —
+a free and open-source operating system for autonomous coding, an AI agent
+orchestrator built around a simple Ralph-loop core that becomes powerful
+through composition. It runs the coding agents you already use — Claude
+Code, Codex, OpenCode, Nanocoder, AGY, or Pi.dev — on your own machine.
+
+**Hand it a well-specified coding task, let the agents plan, build,
+verify, and fix, and come back to reviewable, tested work.**
+
+The default workflow is strong enough to adopt as-is before you customize
+anything.
 
 Install and run
 ---------------
@@ -20,10 +27,26 @@ Install and run
    $EDITOR PROMPT.md             # 3. edit PROMPT.md — your spec for the run
    ralph                         # 4. run the unattended workflow
 
+Where to go next
+----------------
+
+This page is the maintained operator manual home.
+
+If you are brand new, start with :doc:`getting-started`.
+If you need configuration or operator detail, start with :doc:`configuration` or :doc:`reference`.
+If you need docs grouped by real user goal, start with :doc:`user-stories`.
+
+.. note::
+
+   New here? Start with :doc:`getting-started` before you dive into the rest of the manual.
+
 What an overnight run leaves you
 --------------------------------
 
-This is the actual finish-receipt from the bundled empty-name-validation example — a real, unedited handoff you read in the morning instead of a transcript:
+For readers who already understand the product and want a concrete
+artifact to judge it by, here is the actual finish-receipt from the
+bundled empty-name-validation example — a real, unedited handoff you
+read in the morning instead of a transcript:
 
 .. code-block:: text
 
@@ -49,15 +72,6 @@ This is the actual finish-receipt from the bundled empty-name-validation example
 .. tip::
 
    **Star to bookmark before your overnight run.** It is the only signal we get that Ralph is working for you, and it sets what we build next: `star on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow>`_. ⭐
-
-This page is the maintained operator manual home.
-If you are brand new, start with :doc:`getting-started`.
-If you need configuration or operator detail, start with :doc:`configuration` or :doc:`reference`.
-If you need docs grouped by real user goal, start with :doc:`user-stories`.
-
-.. note::
-
-   New here? Start with :doc:`getting-started` before you dive into the rest of the manual.
 
 Manual paths
 ============
