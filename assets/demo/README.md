@@ -1,6 +1,6 @@
 # Ralph Workflow Demo Captures
 
-Real, unedited terminal output from Ralph Workflow v0.8.8.
+Real, unedited terminal output from Ralph Workflow v0.8.8 (older release; output shape may differ in current releases).
 
 ## Files
 
@@ -9,7 +9,6 @@ Real, unedited terminal output from Ralph Workflow v0.8.8.
 | `init-output.txt` | `ralph --init` on a fresh project |
 | `diagnose-output.txt` | `ralph --diagnose` — agent + config validation |
 | `dry-run-output.txt` | `ralph --dry-run` — full pipeline preview |
-| `ralph-demo.cast` | Asciinema recording (expired — see walkthrough link above) |
 
 ## Watch the Demo
 

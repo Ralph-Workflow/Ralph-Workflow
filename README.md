@@ -194,7 +194,7 @@ test coverage for empty and whitespace-only input.
 - confirm no unrelated flow changed
 ```
 
-Sample unedited terminal captures from a real run (Ralph Workflow v0.8.8): [`ralph --init`](assets/demo/init-output.txt) · [`ralph --diagnose`](assets/demo/diagnose-output.txt) · [`ralph --dry-run`](assets/demo/dry-run-output.txt).
+Sample unedited terminal captures from a real run (Ralph Workflow v0.8.8 — older release; output shape may differ in current releases): [`ralph --init`](assets/demo/init-output.txt) · [`ralph --diagnose`](assets/demo/diagnose-output.txt) · [`ralph --dry-run`](assets/demo/dry-run-output.txt).
 
 For the meaning of each finish-receipt block, see the
 [operator manual](ralph-workflow/docs/sphinx/index.rst).
