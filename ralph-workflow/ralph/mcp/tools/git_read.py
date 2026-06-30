@@ -2,6 +2,41 @@
 
 Ports the Rust MCP Git read tools so agents can inspect repository state
 through bounded read-only git commands from the workspace root.
+
+Exported surface:
+
+- ``handle_git_status`` — runs ``git status`` in the workspace root.
+  Capability: ``GitStatusRead``.
+- ``handle_git_diff`` — runs ``git diff [args]`` in the workspace root.
+  The handler uses the *lenient* runner so a non-zero exit (which can
+  happen when there is nothing to diff, or when a path filter matches
+  no files) is surfaced as stdout/stderr rather than an exception.
+  Capability: ``GitDiffRead``.
+- ``handle_git_log`` — runs ``git log -<count> --oneline`` (default
+  count = ``DEFAULT_LOG_COUNT`` = 10). Capability: ``GitStatusRead``.
+- ``handle_git_show`` — runs ``git show <ref>`` for a single object.
+  Capability: ``GitStatusRead``.
+- ``parse_git_diff_params`` / ``parse_git_log_params`` /
+  ``parse_git_show_params`` — the parameter parsers used by the
+  handlers above (string-only args, bounded count, ref validation).
+- ``run_git_command`` / ``run_git_command_lenient`` — the two
+  subprocess runners. Both require a successful ``git`` exit code
+  unless the lenient variant is used. They are the only call sites of
+  the internal ``_run_git_subprocess`` helper, which always carries
+  the fixed ``_GIT_READ_TIMEOUT_SECONDS = 30.0`` bound.
+
+Trust boundary: every handler is gated on a ``McpCapability`` and runs
+through a process spawned by ``ralph.process.manager``. The 30-second
+hard timeout is the bounded-subprocess contract — a hung ``git status``
+over a large ``vendor/`` submodule or a held ``.git`` lock cannot hang
+the MCP server thread.
+
+Side effects: spawns a ``git`` subprocess under the workspace root
+(registered with the global ``ProcessManager``) and reads its
+stdout/stderr. No write to the workspace, no network call. Timeouts
+are converted into a non-retryable ``is_error`` result that names the
+likely cause (vendor/ submodule or held lock) and tells the agent
+*not* to retry unchanged.
 """
 
 from __future__ import annotations
@@ -191,7 +226,25 @@ def handle_git_status(
     workspace: object,
     _params: Mapping[str, object],
 ) -> ToolResult:
-    """Read the git status of the workspace."""
+    """Read the git status of the workspace.
+
+    Args:
+        session: Agent session; must declare ``GitStatusRead``.
+        workspace: Workspace surface whose root is the cwd for ``git status``.
+        _params: Unused; kept for tool-handler signature parity.
+
+    Returns:
+        A ``ToolResult`` whose text content is the ``git status`` output.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``GitStatusRead``.
+
+    Side effects:
+        Spawns a ``git status`` subprocess registered with the global
+        ``ProcessManager``. Bounded by ``_GIT_READ_TIMEOUT_SECONDS = 30``.
+        No workspace writes, no network calls.
+    """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git status")
     return _git_read_result(lambda: run_git_command(workspace, ["status"]))
 
@@ -201,7 +254,31 @@ def handle_git_diff(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Read the git diff of the workspace."""
+    """Read the git diff of the workspace.
+
+    Args:
+        session: Agent session; must declare ``GitDiffRead``.
+        workspace: Workspace surface whose root is the cwd for ``git diff``.
+        params: Mapping with optional ``args`` (list of strings passed
+            verbatim to ``git diff``). Empty mapping returns the
+            full-tree diff.
+
+    Returns:
+        A ``ToolResult`` whose text content is the ``git diff`` output.
+        The lenient runner is used so a non-zero exit (no diff to show,
+        unmatched path filter) surfaces as stdout/stderr rather than
+        an exception.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``GitDiffRead``.
+        InvalidParamsError: When ``params`` fails ``parse_git_diff_params``.
+
+    Side effects:
+        Spawns a ``git diff`` subprocess registered with the global
+        ``ProcessManager``. Bounded by ``_GIT_READ_TIMEOUT_SECONDS = 30``.
+        No workspace writes, no network calls.
+    """
     require_capability(session, GIT_DIFF_READ_CAPABILITY, "Git diff")
     parsed = parse_git_diff_params(params)
     return _git_read_result(lambda: run_git_command_lenient(workspace, ["diff", *parsed.args]))
@@ -212,7 +289,28 @@ def handle_git_log(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Read the git commit log."""
+    """Read the git commit log.
+
+    Args:
+        session: Agent session; must declare ``GitStatusRead``.
+        workspace: Workspace surface whose root is the cwd for ``git log``.
+        params: Mapping with optional ``count`` (positive integer,
+            defaults to ``DEFAULT_LOG_COUNT = 10``).
+
+    Returns:
+        A ``ToolResult`` whose text content is the ``git log -<count>
+        --oneline`` output.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``GitStatusRead``.
+        InvalidParamsError: When ``params`` fails ``parse_git_log_params``.
+
+    Side effects:
+        Spawns a ``git log`` subprocess registered with the global
+        ``ProcessManager``. Bounded by ``_GIT_READ_TIMEOUT_SECONDS = 30``.
+        No workspace writes, no network calls.
+    """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git log")
     parsed = parse_git_log_params(params)
     return _git_read_result(
@@ -225,7 +323,28 @@ def handle_git_show(
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
-    """Show a git object by ref."""
+    """Show a git object by ref.
+
+    Args:
+        session: Agent session; must declare ``GitStatusRead``.
+        workspace: Workspace surface whose root is the cwd for ``git show``.
+        params: Mapping with required ``ref`` (string; commit-ish, tag,
+            or branch) per ``parse_git_show_params``.
+
+    Returns:
+        A ``ToolResult`` whose text content is the ``git show <ref>``
+        output.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``GitStatusRead``.
+        InvalidParamsError: When ``params`` fails ``parse_git_show_params``.
+
+    Side effects:
+        Spawns a ``git show`` subprocess registered with the global
+        ``ProcessManager``. Bounded by ``_GIT_READ_TIMEOUT_SECONDS = 30``.
+        No workspace writes, no network calls.
+    """
     require_capability(session, GIT_STATUS_READ_CAPABILITY, "Git show")
     parsed = parse_git_show_params(params)
     return _git_read_result(lambda: run_git_command(workspace, ["show", parsed.git_ref]))

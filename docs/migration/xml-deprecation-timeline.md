@@ -1,7 +1,10 @@
 # XML Deprecation Timeline
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+> **Status: Historical Rust-era reference only.** This page describes the
+> retired Rust implementation (references `json_artifact.rs`, `src/prompts/xsd/`,
+> and a never-shipped Rust deserializer). The maintained Python package in
+> `ralph-workflow/` — specifically `ralph-workflow/ralph/mcp/artifacts/`
+> (Pydantic models + JSON Schema) — is the source of truth.
 
 
 This document tracks the migration from XSD-validated XML artifacts to JSON

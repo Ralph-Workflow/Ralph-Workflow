@@ -81,7 +81,29 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class McpServerExtras:
-    """Optional DI parameters for building standalone MCP servers."""
+    """Optional DI parameters for building standalone MCP servers.
+
+    The dataclass is the dependency-injection bundle threaded through
+    ``build_standalone_http_server`` and ``run_standalone_server``.
+    Every field is optional (``None`` means "use the production
+    default") so callers can override exactly one seam (e.g. an
+    upstream registry for a test) without rebuilding the rest of the
+    composition root.
+
+    Attributes:
+        session: Pre-built ``McpSession`` (handshake, capabilities,
+            upstream mounts). When ``None`` the runtime reads
+            ``MCP_SESSION`` / ``MCP_SESSION_FILE`` from the environment
+            via ``session_from_env``.
+        upstream_registry: Pre-loaded ``UpstreamRegistry`` for
+            upstream MCP servers. When ``None`` the runtime loads the
+            registry from ``UPSTREAM_MCP_CONFIG`` /
+            ``UPSTREAM_MCP_TOOL_CATALOG_ENV`` via
+            ``load_runtime_upstream_servers``.
+        mcp_config: Pre-parsed ``McpConfig`` (mcp.toml model). When
+            ``None`` the runtime calls ``load_mcp_config`` with the
+            user-global path.
+    """
 
     session: McpSession | None = None
     upstream_registry: UpstreamRegistry | None = None
@@ -244,7 +266,34 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """CLI entrypoint for the standalone Ralph MCP HTTP server."""
+    """CLI entrypoint for the standalone Ralph MCP HTTP server.
+
+    The handler is the ``ralph-mcp`` console script entry point
+    declared in ``pyproject.toml`` (``ralph-mcp =
+    ralph.mcp.server.runtime:main``). It parses ``--workspace``,
+    ``--host``, and ``--port`` via ``parse_args`` and delegates to
+    ``run_standalone_server`` with the production
+    ``DEFAULT_TRANSPORT`` (``streamable-http``). The environment
+    handshake (``MCP_SESSION`` / ``MCP_SESSION_FILE``) is performed
+    inside ``run_standalone_server``; this entry point does not touch
+    the environment directly.
+
+    Args:
+        argv: Optional argv override. When ``None``,
+            ``argparse`` reads from ``sys.argv[1:]``; tests pass a
+            sequence of strings to avoid mutating process state.
+
+    Returns:
+        ``None``. The handler blocks until the server is shut down
+        (Ctrl-C / SIGTERM). The process exit code is whatever the
+        underlying HTTP server / signal handler produces.
+
+    Side effects:
+        Starts a long-lived HTTP server bound to ``--host:--port`` and
+        a ``/health`` endpoint; the liveness probe is polled by
+        ``ralph.process.mcp_supervisor``. Reads the MCP session
+        environment variables.
+    """
     args = parse_args(argv)
     run_standalone_server(
         cast("Path", args.workspace),

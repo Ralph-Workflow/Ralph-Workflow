@@ -1,4 +1,60 @@
-"""MCP artifact submission handlers."""
+"""MCP artifact submission handlers.
+
+The artifact surface is the single canonical entry point for agent
+artifacts (plan, development_result, review, fix_result,
+commit_message, smoke_test_result, typed artifacts). Every public
+handler routes through ``ralph.mcp.artifacts.canonical_submit`` and
+the supporting persistence / history modules, so the
+``audit_artifact_submission_canonical_path`` audit can prove the
+single-writer contract.
+
+Exported surface:
+
+- ``handle_submit_artifact`` — the public handler for fully-formed
+  artifacts. Resolves the artifact directory (per-worker for
+  parallel workers, shared ``.agent/artifacts/`` otherwise), loads
+  the policy bundle to compute the ``history_enabled`` flag, and
+  delegates to ``submit_artifact_canonical``. Capability:
+  ``artifact.submit``.
+- ``handle_submit_plan_section`` / ``handle_submit_plan_sections`` —
+  public handlers for the incremental plan draft surface. They mutate
+  the staged plan draft, validate the section shape against the
+  per-section Pydantic model, and merge entries in a single batch
+  path. Capability: ``artifact.plan_write``.
+- ``handle_finalize_plan`` — the public handler that locks a
+  finalized plan, writes the history snapshot, and emits the
+  canonical artifact file. Capability: ``artifact.plan_write``.
+- ``handle_get_plan_draft`` / ``handle_validate_plan_draft`` /
+  ``handle_discard_plan_draft`` — public handlers for the
+  resume-after-restart surface. ``get`` returns the current draft
+  (or the finalized response when the draft is older than the
+  finalized record). ``validate`` is dry-run: it returns the
+  per-section validation result without writing. ``discard`` removes
+  the staged draft. Capability: ``plan_draft.read`` / ``plan_draft.read``.
+- ``ArtifactHandlerDeps`` — the dependency-injection bundle (custom
+  ``FileBackend``, ``now_iso`` callable, ``history_enabled`` flag)
+  threaded through every handler. ``DEFAULT_ARTIFACT_HANDLER_DEPS``
+  is the production default.
+- ``_resolve_artifact_dir`` / ``_resolve_history_enabled`` —
+  helpers that resolve the per-session / per-drain artifact path and
+  the policy-declared history flag.
+
+Trust boundary: every public handler is gated on a ``McpCapability``
+declared by the agent session. The plan-draft write capability
+(``artifact.plan_write``) is intentionally narrower than the broader
+``artifact.submit`` capability so that only the planning drain can
+stage or finalize plans; the broad capability is required for the
+canonical-submit path used by every other artifact type.
+
+Side effects: writes the canonical artifact file under the resolved
+``artifact_dir`` (per-worker or shared), writes the completion receipt,
+updates the artifact history index when ``history_enabled`` is true,
+and (for the plan-draft handlers) mutates the staged plan draft file.
+The submit / finalize / draft-discard paths are all mediated by
+``submit_artifact_canonical`` / ``delete_plan_draft`` /
+``finalize_plan_draft`` so the audit can prove the single-writer
+contract. No subprocess is spawned, no network call is made.
+"""
 
 from __future__ import annotations
 
@@ -246,7 +302,47 @@ def handle_submit_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Validate and persist an artifact submitted by an MCP agent."""
+    """Validate and persist an artifact submitted by an MCP agent.
+
+    The handler is the public MCP entry point for any fully-formed
+    artifact (development_result, review / issues, fix_result,
+    commit_message, smoke_test_result, typed artifacts). It resolves the
+    artifact directory (per-worker for parallel workers, the shared
+    ``.agent/artifacts/`` otherwise), loads the policy bundle to compute
+    the ``history_enabled`` flag, and delegates the persistence side
+    effects to ``submit_artifact_canonical`` so the
+    ``audit_artifact_submission_canonical_path`` audit can prove the
+    single-writer contract.
+
+    Args:
+        session: Agent session carrying the capability set, run id, and
+            optional ``worker_artifact_dir`` override for parallel
+            workers.
+        workspace: Workspace surface that resolves the artifact root.
+        params: ``artifact_type`` (string) and ``content`` (object or
+            raw JSON text) per the artifact contract. The handler also
+            reads the optional ``draft`` / ``format`` keys used by the
+            canonical submission path.
+        deps: Optional dependency-injection bundle (custom
+            ``FileBackend``, ``now_iso`` callable, ``history_enabled``
+            override). When ``None``, ``DEFAULT_ARTIFACT_HANDLER_DEPS``
+            is used.
+
+    Returns:
+        A success ``ToolResult`` (text: ``Artifact submitted: <type>``).
+        The canonical artifact file, completion receipt, and optional
+        history snapshot are written as side effects.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``artifact.submit``. The handler enforces default-deny.
+        Pydantic ``ValidationError`` (wrapped in the artifact's typed
+            ``ValidationError`` subclass — for example,
+            ``PlanArtifactValidationError``)
+            when the payload fails the per-type schema check. The
+            canonical submit path converts these into actionable
+            per-field error messages.
+    """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Artifact submission")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
     drain = _session_drain(session)
@@ -323,7 +419,39 @@ def handle_submit_plan_section(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Stage a single plan section and report validation warnings."""
+    """Stage a single plan section and report validation warnings.
+
+    The handler is the public MCP entry point for the incremental
+    plan-draft surface. It accepts a single ``section`` name (one of
+    ``PLAN_SECTION_NAMES``), a ``mode`` (``replace`` | ``append`` |
+    ``merge``), and a JSON-serializable ``payload``, validates the
+    payload against the per-section Pydantic model, and persists the
+    merged draft under the resolved ``artifact_dir``.
+
+    Args:
+        session: Agent session carrying the capability set, run id, and
+            optional ``worker_artifact_dir`` override for parallel
+            workers.
+        workspace: Workspace surface that resolves the artifact root.
+        params: ``section`` (string), ``mode`` (string, default
+            ``"replace"``), and ``payload`` (JSON-serializable object or
+            raw JSON text).
+        deps: Optional dependency-injection bundle. When ``None``,
+            ``DEFAULT_ARTIFACT_HANDLER_DEPS`` is used.
+
+    Returns:
+        A ``ToolResult`` with the staged-section text and any
+        non-fatal validation warnings surfaced inline.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``plan_draft.write``.
+        InvalidParamsError: When ``section`` is missing, unknown, or the
+            payload fails the per-section schema check. The handler
+            formats the error so the agent sees a clear ``[section]``
+            marker and the underlying ``PlanArtifactValidationError``
+            detail.
+    """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan section submission")
 
     try:
@@ -445,7 +573,36 @@ def handle_finalize_plan(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Validate the staged draft as a whole plan and write plan.json."""
+    """Validate the staged draft as a whole plan and write plan.json.
+
+    The handler validates every staged section of the plan draft as a
+    single artifact, writes the canonical ``plan.json`` under the
+    resolved ``artifact_dir``, takes a history snapshot when
+    ``history_enabled`` is true, and returns the canonical finalize
+    response that downstream phases consume.
+
+    Args:
+        session: Agent session carrying the capability set, run id, and
+            optional ``worker_artifact_dir`` override for parallel
+            workers.
+        workspace: Workspace surface that resolves the artifact root.
+        params: Optional overrides accepted by the canonical finalize
+            path (e.g. ``timestamp``). Unknown keys are ignored.
+        deps: Optional dependency-injection bundle. When ``None``,
+            ``DEFAULT_ARTIFACT_HANDLER_DEPS`` is used.
+
+    Returns:
+        A ``ToolResult`` with the canonical finalize response JSON,
+        including the validated plan content, the final ``updated_at``
+        timestamp, and the ``source`` discriminator (``"finalized"``).
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``artifact.plan_write``.
+        PlanArtifactValidationError: When the assembled draft fails the
+            whole-plan schema check (e.g. missing required sections,
+            step number collision, cross-section reference violation).
+    """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan finalization")
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
@@ -584,7 +741,33 @@ def handle_get_plan_draft(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Return the current plan draft so an agent can resume after a restart."""
+    """Return the current plan draft so an agent can resume after a restart.
+
+    The handler is the resume-after-restart entry point. It returns the
+    current plan draft (or the finalized response when the draft is
+    older than the finalized record) so an agent that resumes after a
+    crash or restart can pick up where it left off. The ``params``
+    argument is reserved for future filters and is currently ignored.
+
+    Args:
+        session: Agent session carrying the capability set, run id, and
+            optional ``worker_artifact_dir`` override for parallel
+            workers.
+        workspace: Workspace surface that resolves the artifact root.
+        params: Reserved for future filters. Currently ignored.
+        deps: Optional dependency-injection bundle. When ``None``,
+            ``DEFAULT_ARTIFACT_HANDLER_DEPS`` is used.
+
+    Returns:
+        A ``ToolResult`` with the plan-draft response JSON
+        (``staged_sections`` list, ``started_at`` / ``updated_at``
+        timestamps, ``draft`` sections dict, and ``source``
+        discriminator — ``"draft"`` or ``"finalized"``).
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``plan_draft.read``.
+    """
     require_capability(session, PLAN_DRAFT_READ_CAPABILITY, "Plan draft read")
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
@@ -1074,7 +1257,26 @@ def handle_discard_plan_draft(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
-    """Delete the on-disk plan draft so the agent can start over."""
+    """Delete the on-disk plan draft so the agent can start over.
+
+    Args:
+        session: Agent session carrying the capability set, run id, and
+            optional ``worker_artifact_dir`` override for parallel
+            workers.
+        workspace: Workspace surface that resolves the artifact root.
+        params: Reserved for future filters. Currently ignored.
+        deps: Optional dependency-injection bundle. When ``None``,
+            ``DEFAULT_ARTIFACT_HANDLER_DEPS`` is used.
+
+    Returns:
+        A ``ToolResult`` with ``"Plan draft discarded."`` when a draft
+        existed and was deleted, or ``"No plan draft to discard."``
+        when there was no draft on disk.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``plan_draft.write``.
+    """
     require_capability(session, PLAN_DRAFT_WRITE_CAPABILITY, "Plan draft discard")
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS

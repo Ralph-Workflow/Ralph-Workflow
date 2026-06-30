@@ -2,6 +2,49 @@
 
 Executes bounded subprocesses directly in the workspace after capability checks
 and blacklist policy filtering.
+
+Exported surface:
+
+- ``handle_exec_command`` — the public MCP tool handler. Validates the
+  ``ProcessExecBounded`` capability on the session, parses and policy-checks
+  the command, runs the bounded subprocess, and returns the result or a
+  timeout-shaped error.
+- ``parse_exec_params`` / ``run_command`` / ``apply_exec_policy`` —
+  parameter parsing, subprocess execution, and blacklist enforcement helpers
+  (exposed for tests; the public tool contract is the handler above).
+- ``ExecParams`` / ``ExecRunDeps`` / ``ExecutionError`` — typed parameter
+  bundle, dependency-injection bundle, and the typed error raised on
+  timeout / launch failure.
+- ``check_command`` / ``format_exec_result`` / ``resolve_spill_dir`` —
+  lower-level helpers used by the handler.
+- ``PROCESS_EXEC_BOUNDED_CAPABILITY`` / ``DEFAULT_TIMEOUT_MS`` — the
+  capability string and the per-call default timeout (90 000 ms; the
+  hard cap is ``EXEC_MAX_TIMEOUT_MS`` in ``ralph.timeout_defaults``).
+
+Trust boundary: this tool is the only public path that lets a hosted
+agent spawn an arbitrary subprocess. It enforces:
+
+- A mandatory capability check (default-deny if the session does not
+  declare ``ProcessExecBounded``).
+- A static blacklist covering privilege escalation (``sudo``, ``su``,
+  ``doas``, ``pkexec``, ``runuser``), destructive system commands
+  (``shutdown``, ``reboot``, ``halt``, ``poweroff``, ``killall``), network
+  tunnel and remote-network tools (``nc``, ``ncat``, ``netcat``,
+  ``socat``, ``ssh``, ``scp``, ``rsync``), and container / namespace
+  escapes (``docker``, ``podman``, ``chroot``, ``nsenter``, ``unshare``).
+- A bounded per-call timeout (``timeout_ms`` capped at
+  ``EXEC_MAX_TIMEOUT_MS``); a non-positive or missing value is clamped
+  to the default so a direct caller can never produce an unbounded
+  blocking call.
+- A bounded output spill (anything above ``SPILL_OUTPUT_LIMIT_BYTES``
+  is written to ``.agent/tmp/`` rather than returned to the model).
+
+Side effects: spawns a subprocess under ``ralph.process.manager``
+(registered with the global ``ProcessManager``), executes it in the
+workspace root, captures stdout/stderr, and may write a spill file to
+``<workspace>/.agent/tmp/`` when the output exceeds the spill limit.
+The subprocess is killed on timeout. The capability check is the trust
+boundary — everything else is a hard-coded defence-in-depth layer.
 """
 
 from __future__ import annotations
@@ -606,7 +649,48 @@ def handle_exec_command(
     params: Mapping[str, object],
     deps: ExecRunDeps | None = None,
 ) -> ToolResult:
-    """Execute a bounded subprocess in the workspace after blacklist checks."""
+    """Execute a bounded subprocess in the workspace after blacklist checks.
+
+    Public MCP tool handler. Validates the ``ProcessExecBounded`` capability
+    on the session, parses and policy-checks the command, runs the bounded
+    subprocess under the workspace root, and returns the formatted result
+    or a timeout-shaped error.
+
+    Args:
+        session: Agent session carrying the capability set, run id, and
+            chunk callback used to compose output for live streaming.
+        workspace: Workspace surface whose ``workspace_root`` is the cwd
+            for the spawned subprocess. ``Path``-like is required.
+        params: Mapping with ``command`` (string) and optional ``args``
+            (list of strings), ``timeout_ms`` (int, bounded by
+            ``EXEC_MAX_TIMEOUT_MS``).
+        deps: Optional dependency-injection bundle (custom ``runner``,
+            ``cwd_provider``, ``process_manager``, ``on_output_chunk``,
+            ``spill_dir``). When ``None``, ``DEFAULT_EXEC_RUN_DEPS`` is
+            used.
+
+    Returns:
+        A ``ToolResult`` whose text content is the formatted command
+        output (``returncode`` + stdout/stderr). Output above
+        ``SPILL_OUTPUT_LIMIT_BYTES`` is written to
+        ``<workspace>/.agent/tmp/`` instead of returned to the model.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``ProcessExecBounded``. The handler enforces default-deny.
+        InvalidParamsError: When ``params`` fails the ``ExecParams``
+            parser (missing ``command``, wrong types, etc.).
+        ExecutionError: When the subprocess fails to launch (not on
+            non-zero return; non-zero return is preserved as text).
+
+    Side effects:
+        Spawns a subprocess registered with the global ``ProcessManager``
+        and executes it in the workspace root. Captures stdout/stderr,
+        kills the subprocess on timeout, and may write a spill file to
+        ``<workspace>/.agent/tmp/`` when the output exceeds the spill
+        limit. A timeout is converted into an actionable, non-retryable
+        ``is_error`` ``ToolResult`` (not a -32603 protocol error).
+    """
     require_capability(session, PROCESS_EXEC_BOUNDED_CAPABILITY, "Command execution")
     parsed = parse_exec_params(params)
     apply_exec_policy(parsed.command, parsed.args)

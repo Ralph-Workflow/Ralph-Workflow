@@ -459,6 +459,32 @@ def run_verify(*, cwd: Path, runner: VerifyRunner = _default_runner) -> int:
         elapsed time is added to cumulative_test_elapsed.
       - Splitting tests across N suites does NOT give N x 60 s — the
         combined time of EVERY budget-tracked step is summed and enforced.
+
+    Args:
+        cwd: Working directory in which the verify step subprocesses are
+            spawned. The Makefile passes the ``ralph-workflow`` package
+            root; tests inject a temporary path.
+        runner: Subprocess runner implementing the ``VerifyRunner``
+            protocol. Production code uses ``_default_runner``
+            (``ralph.executor.process.run_process``); tests inject a fake
+            runner that records invocations and bypasses the real
+            subprocess layer.
+
+    Returns:
+        ``0`` when every step exits 0, or the first non-zero exit code
+        returned by a failed step. When the cumulative budget is
+        exhausted, ``TIMEOUT_EXIT_CODE`` is returned and a
+        high-visibility failure banner is printed to ``stderr``.
+
+    Side effects:
+        Spawns subprocesses via ``runner``; prints step stdout / stderr
+        as it goes; emits a ``cumulative_test_elapsed`` summary line on
+        success. No persistent state is written.
+
+    Raises:
+        No exceptions are raised by ``run_verify`` itself; subprocess
+        failures are surfaced through the return code and the failure
+        banner.
     """
     print("Running full verification...", flush=True)
 
@@ -530,7 +556,29 @@ def main(
     runner: VerifyRunner = _default_runner,
     cwd: Path | None = None,
 ) -> int:
-    """Entry point for the ralph.verify command-line tool."""
+    """Entry point for the ``ralph.verify`` command-line tool.
+
+    The handler is the ``__main__``-style entry point for
+    ``python -m ralph.verify``. It refuses positional ``argv`` (the
+    verify runner is parameter-only), resolves the working directory
+    to ``<repo-root>/ralph-workflow`` by default, and delegates to
+    ``run_verify``.
+
+    Args:
+        argv: Reserved for future flags. Passing any value raises
+            ``SystemExit("ralph.verify does not accept positional
+            arguments")`` so the public contract is fail-closed.
+        runner: Subprocess runner override (same protocol as
+            ``run_verify``). Production code uses
+            ``_default_runner``; tests inject a fake runner.
+        cwd: Working-directory override. When ``None``, defaults to
+            ``Path(__file__).parent.parent`` (the ``ralph-workflow``
+            package root).
+
+    Returns:
+        ``run_verify``'s return code (``0`` on success, non-zero on
+        failure or budget exhaustion).
+    """
     if argv:
         raise SystemExit("ralph.verify does not accept positional arguments")
     resolved_cwd = cwd if cwd is not None else Path(__file__).parent.parent

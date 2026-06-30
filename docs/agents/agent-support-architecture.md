@@ -114,11 +114,11 @@ from ralph.config.enums import AgentTransport
 
 class _FakeParser(ParserTemplateBase):
     _STOP_EVENT_TYPES = frozenset()
-    def classify_line(self, line):  # type: ignore[override]
+    def classify_line(self, line: str):
         stripped = line.strip()
         result = self.parse_json_line(stripped)
         if result is not None:
-            yield result  # type: ignore[misc]
+            yield result
         else:
             yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
 
@@ -166,11 +166,11 @@ from ralph.config.enums import AgentTransport
 
 class _FakeParser(ParserTemplateBase):
     _STOP_EVENT_TYPES = frozenset()
-    def classify_line(self, line):  # type: ignore[override]
+    def classify_line(self, line: str):
         stripped = line.strip()
         result = self.parse_json_line(stripped)
         if result is not None:
-            yield result  # type: ignore[misc]
+            yield result
         else:
             yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
 

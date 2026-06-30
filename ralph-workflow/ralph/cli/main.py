@@ -412,6 +412,79 @@ def _handle_force_init_skills(*, workspace_root: RuntimePath) -> None:
         resolve_active_display(None, display_context).emit_skill_failure_warning(failures)
 
 
+"""Typer callback for the ``ralph`` CLI entry point.
+
+The handler is the console-script entry point declared in
+``pyproject.toml`` (``ralph = ralph.cli.main:main``). It binds the
+~33 flags exposed by the user-facing CLI and dispatches the pipeline
+subcommand (or one of the bundled support subcommands such as
+``--init``, ``--diagnose``, ``--generate-commit``, ``--init-skills``,
+``--install-skills``, ``--skill-status``, ``--version``, ``--help``).
+
+Args:
+    ctx: Typer context carrying subcommand resolution and shared state.
+    prompt: ``--prompt/-P`` inline prompt text for quick runs.
+    config: ``--config/-c`` path to the ralph configuration file.
+    developer_iters: ``--developer-iters/-D`` maximum developer agent
+        iterations per run.
+    quick: ``--quick/-Q`` single-developer-iteration shortcut.
+    thorough: ``--thorough/-T`` ten-iteration preset.
+    counter: ``--counter NAME=VALUE`` repeatable policy-counter override.
+    developer_agent: ``--developer-agent/-a`` developer agent name.
+    developer_model: ``--developer-model`` model flag for the developer
+        agent.
+    planner_agent: ``--planner-agent`` planner agent name.
+    planner_model: ``--planner-model`` model flag for the planner agent.
+    reviewer_agent: ``--reviewer-agent`` reviewer agent name.
+    reviewer_model: ``--reviewer-model`` model flag for the reviewer.
+    use_existing_pr: ``--use-existing-pr/-U`` reuse an existing PR
+        instead of opening a fresh one.
+    auto_pr: ``--auto-pr/-A`` automatically open a pull request after
+        the run finishes successfully.
+    pr_target: ``--pr-target`` target branch for the auto-PR.
+    worktree_path: ``--worktree-path`` custom worktree path override.
+    init: ``--init`` scaffold ``.agent/`` and ``PROMPT.md`` in the
+        current project.
+    init_force_skills: ``--force-init-skills`` reinstall baseline skills.
+    init_skills: ``--init-skills`` install bundled skills into the
+        supported agent roots.
+    install_skills: ``--install-skills`` install skills only (no
+        ``.agent/`` scaffold).
+    skill_status: ``--skill-status`` print installed-skill summary.
+    diagnose: ``--diagnose`` pre-flight check (agents, MCP, capabilities).
+    generate_commit: ``--generate-commit`` draft a commit message from
+        the staged change set (dogfooded per AGENTS.md).
+    base_branch: ``--base-branch`` base branch for ``--generate-commit``.
+    max_commits: ``--max-commits`` cap the number of commits returned
+        by ``--generate-commit``.
+    exclude_globs: ``--exclude-globs`` repeatable glob patterns to skip
+        when staging the commit payload.
+    pipeline: ``--pipeline/-p`` path to the policy pipeline file.
+    state: ``--state/-s`` path to the run state file.
+    workspace: ``--workspace/-w`` workspace root override.
+    target: ``--target/-t`` target repository path (defaults to ``cwd``).
+    agent_timeout: ``--agent-timeout`` agent timeout in seconds.
+    resume: ``--resume/-r`` resume from a checkpoint.
+    checkpoint: ``--checkpoint`` save a checkpoint at the end of the run.
+    no_progress: ``--no-progress`` suppress progress reporting.
+    verbose: ``--verbose/-v`` increase log verbosity.
+    version: ``--version`` print the package version and exit.
+    help: ``--help/-h`` show the Typer-generated help text and exit.
+
+Returns:
+    ``None``. The CLI exit code is whatever the underlying subcommand
+    returns (typically ``0`` on success, ``1`` on a verify-failure or
+    pipeline error). ``--version`` and ``--help`` exit before any
+    pipeline side effect.
+
+Side effects:
+    Invokes the configured pipeline (planning, development, review, fix
+    cycles) which spawns agent subprocesses and writes artifacts under
+    ``.agent/``. ``--init`` and the skill subcommands mutate the
+    workspace (``.agent/``, ``.gitignore``) and the supported agent
+    roots. ``--diagnose`` prints but does not mutate. ``--version``
+    and ``--help`` are read-only.
+"""
 def main(
     ctx: typer.Context,
     prompt: Annotated[
@@ -653,7 +726,110 @@ def main(
         ),
     ] = False,
 ) -> None:
-    """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
+    """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation.
+
+    The handler is the ``ralph`` console script entry point declared in
+    ``pyproject.toml`` (``ralph = ralph.cli.main:app``). It is the single
+    Typer callback that fans out to ~12 early-exit branches
+    (``--version``, ``--init``, ``--diagnose``, ``--check-mcp``,
+    ``--check-config``, ``--init-local-config``, ``--inspect-checkpoint``,
+    ``--list-agents``, ``--list-providers``, ``--generate-commit*``,
+    ``--explain-policy``, ``--check-policy``, ``--prompt-helper``) and
+    then to the main pipeline invocation.
+
+    Primary flags:
+
+    - ``--init [PATH]`` — scaffold ``.agent/`` + ``PROMPT.md`` in the
+      target directory.
+    - ``--diagnose`` / ``-d`` — pre-flight check of agent CLIs, MCP
+      servers, and capability bundles; never starts a real run.
+    - ``--generate-commit`` / ``--generate-commit-msg`` — build the
+      commit artifact from the latest development_result; ``--generate-commit``
+      applies the commit. Always dogfood this for the AGENTS.md commit
+      rule rather than hand-rolling ``git commit``.
+    - ``--quick`` / ``-Q`` and ``--thorough`` / ``-T`` — depth presets
+      that map to developer-iteration counts (1 and 10 respectively).
+    - ``--developer-iters`` / ``-D``, ``--reviewer-reviews`` / ``-R`` —
+      explicit iteration caps (overridden by the depth presets).
+    - ``--resume`` / ``-r`` and ``--no-resume`` — checkpoint handling.
+    - ``--counter NAME=VALUE`` (repeatable) — override a policy-declared
+      budget counter; the name must be declared in ``pipeline.toml`` or
+      the run is rejected.
+
+    Pipeline-invocation side effect: when none of the early-exit branches
+    fire, the handler builds a ``CLIOverrides`` bundle, calls
+    ``bootstrap_global_configs`` + ``configure_logging``, resolves the
+    effective developer-iteration count, and dispatches to
+    ``run_pipeline``. The run writes ``.agent/checkpoint.json`` and
+    emits a finish-receipt on success.
+
+    Args:
+        ctx: Typer context (carries the global CLI state; not
+            directly consumed by this handler).
+        prompt: ``--prompt`` / ``-P`` inline prompt text (must be used
+            with ``--quick``).
+        config: ``--config`` / ``-c`` path to an explicit configuration
+            file.
+        developer_iters: ``--developer-iters`` / ``-D`` developer-agent
+            iteration cap.
+        quick: ``--quick`` / ``-Q`` single-iteration preset.
+        thorough: ``--thorough`` / ``-T`` ten-iteration preset.
+        counter: ``--counter`` repeatable ``NAME=VALUE`` overrides.
+        developer_agent: ``--developer-agent`` / ``-a`` agent name.
+        developer_model: ``--developer-model`` model flag.
+        verbosity: ``--verbosity`` / ``-v`` output verbosity
+            (quiet / normal / verbose / full / debug).
+        quiet: ``--quiet`` / ``-q`` suppress non-error output.
+        debug: ``--debug`` enable debug output.
+        resume: ``--resume`` / ``-r`` resume from checkpoint.
+        no_resume: ``--no-resume`` ignore any existing checkpoint.
+        unsafe_mode: ``--unsafe-mode`` merge Ralph Workflow's MCP config into
+            the agent's existing config instead of overwriting.
+        inspect_checkpoint: ``--inspect-checkpoint`` print checkpoint
+            JSON and exit.
+        dry_run: ``--dry-run`` run without invoking agents.
+        list_agents: ``--list-agents`` print configured agents and exit.
+        list_providers: ``--list-providers`` print providers and exit.
+        diagnose: ``--diagnose`` / ``-d`` pre-flight check.
+        check_config: ``--check-config`` / ``-C`` validate config.
+        check_mcp: ``--check-mcp`` validate custom MCP servers.
+        init: ``--init [PATH]`` scaffold ``.agent/`` + ``PROMPT.md``.
+        regenerate_config: ``--regenerate-config`` rewrite config from
+            bundled defaults (backs up to ``<name>.bak``).
+        force_init_skills: ``--force-init-skills`` re-run baseline
+            skill install.
+        generate_local_config: ``--init-local-config`` /
+            ``--generate-local-config`` write a project-local
+            ``ralph-workflow.toml``.
+        generate_commit_msg: ``--generate-commit-msg`` build commit
+            message artifact.
+        generate_commit: ``--generate-commit`` build and apply commit.
+        show_commit_msg: ``--show-commit-mg`` show the commit message.
+        git_user_name: ``--git-user-name`` git user name for commits.
+        git_user_email: ``--git-user-email`` git user email for commits.
+        version: ``--version`` / ``-V`` print version and exit.
+        explain_policy: ``--explain-policy`` print human-readable policy
+            and exit.
+        explain_policy_dir: ``--explain-policy-dir`` (hidden) policy
+            directory to explain.
+        parallel_worker_manifest: ``--parallel-worker-manifest`` (hidden)
+            internal worker bootstrap manifest path.
+        check_policy: ``--check-policy`` validate active policy and exit.
+        prompt_helper: ``--prompt-helper`` launch the interactive
+            prompt-refinement helper.
+
+    Returns:
+        ``None``. The handler exits via ``typer.Exit`` or via the
+        underlying ``run_pipeline`` return code; it never returns
+        normally on success.
+
+    Side effects:
+        Bootstrap global config / MCP config / policy configs; write
+        ``.agent/checkpoint.json``; spawn the configured agent CLI;
+        write artifact files via the canonical MCP path; emit
+        ``declare_complete`` on success. Bounded subprocesses are
+        routed through ``ralph.process.manager``.
+    """
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
     counter_overrides = _parse_counter_overrides(list(counter) if counter else [])
 

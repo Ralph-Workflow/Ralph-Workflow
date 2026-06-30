@@ -2,6 +2,43 @@
 
 Ports the Rust coordination handlers that support progress reporting,
 completion declaration, workspace coordination, and environment reads.
+
+Exported surface:
+
+- ``handle_report_progress`` — emits a ``run.report_progress`` event to
+  the pipeline. Used by the agent to publish heartbeat / status updates
+  while it is still working. The text response is suffixed with
+  ``PROGRESS_PIPELINE_MARKER`` so the idle watchdog can key on it.
+- ``handle_declare_complete`` — finalizes the run with an
+  ``artifact.submit``-gated completion sentinel. Writes
+  ``.agent/completion_seen_<run_id>.json`` (HMAC-signed when the broker
+  secret is provided) so the failure classifier / recovery controller
+  can verify the completion signal even if the MCP JSON-RPC envelope is
+  lost.
+- ``handle_coordinate`` — ``artifact.plan_write``-gated workspace
+  coordination: planning-drain agents publish actions / work-unit
+  payloads that the parent process observes. The text response is
+  suffixed with ``[Coordination event emitted to pipeline]``.
+- ``handle_read_env`` — ``env.read``-gated environment variable read.
+  Returns ``<name>=<value>`` or ``<name>=[not found]``. The agent
+  diagnostic / orchestrator uses this to inspect the run environment.
+- ``require_capability`` — the canonical capability check used by every
+  public handler in this module (and re-exported for ``exec.py``,
+  ``git_read.py``, ``websearch.py``, and ``webvisit.py``).
+- ``format_progress_text`` / ``format_coordination_text`` /
+  ``_write_completion_sentinel`` — formatting and persistence helpers.
+
+Trust boundary: every public handler is gated on a ``McpCapability``
+declared by the agent session. The four capability strings
+(``RUN_REPORT_PROGRESS_CAPABILITY``, ``ARTIFACT_SUBMIT_CAPABILITY``,
+``ARTIFACT_PLAN_WRITE_CAPABILITY``, ``ENV_READ_CAPABILITY``) are the
+contract between the agent's session declaration and the handler-side
+default-deny check.
+
+Side effects: ``handle_declare_complete`` writes a completion sentinel
+to ``.agent/``; the other handlers are pure with respect to the
+workspace and only emit pipeline events. No subprocess is spawned, no
+network call is made.
 """
 
 from __future__ import annotations
@@ -131,7 +168,31 @@ def handle_report_progress(
     *,
     now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
-    """Report agent progress to the Ralph pipeline."""
+    """Report agent progress to the Ralph pipeline.
+
+    Args:
+        session: Agent session; must declare ``run.report_progress``.
+        _workspace: Unused; kept for tool-handler signature parity.
+        params: Mapping with required ``status`` (string) and optional
+            ``note`` (string, defaults to empty).
+        now_fn: Optional injected wall-clock provider for the
+            ``unix_ts`` suffix in the formatted text. Defaults to
+            ``_timestamp``.
+
+    Returns:
+        A ``ToolResult`` whose text content is the formatted progress
+        line (suffixed with ``PROGRESS_PIPELINE_MARKER`` so the idle
+        watchdog can key on it).
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``run.report_progress``.
+
+    Side effects:
+        Pure with respect to the workspace. Emits a
+        ``run.report_progress`` event to the pipeline. No subprocess,
+        no network call.
+    """
     require_capability(session, RUN_REPORT_PROGRESS_CAPABILITY, "Progress reporting")
     status = _parameter_as_string(params, "status")
     note_value = params.get("note", "")
@@ -149,7 +210,34 @@ def handle_declare_complete(
     *,
     now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
-    """Declare that the agent has completed its assigned task."""
+    """Declare that the agent has completed its assigned task.
+
+    Args:
+        session: Agent session; must declare ``artifact.submit`` and
+            carry a valid ``run_id`` used to name the sentinel file.
+        workspace: Workspace surface whose root resolves
+            ``.agent/completion_seen_<run_id>.json``.
+        params: Mapping with optional ``summary`` (string, defaults to
+            ``"No summary provided"``).
+        now_fn: Optional injected wall-clock provider for the timestamp
+            in the response. Defaults to ``_timestamp``.
+
+    Returns:
+        A ``ToolResult`` whose text content is the completion summary
+        line (suffixed with ``[Completion event emitted to pipeline]``).
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``artifact.submit``.
+
+    Side effects:
+        Writes ``.agent/completion_seen_<run_id>.json`` (HMAC-signed
+        when the broker secret is provided) so the failure classifier /
+        recovery controller can verify the completion signal even if
+        the MCP JSON-RPC envelope is lost. ``OSError`` from the sentinel
+        write is suppressed (best-effort) so a transient filesystem
+        issue cannot mask the completion event.
+    """
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Task completion")
     summary_value = params.get("summary", "No summary provided")
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
@@ -188,7 +276,30 @@ def handle_coordinate(
     *,
     now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
-    """Coordinate parallel worker activities."""
+    """Coordinate parallel worker activities.
+
+    Args:
+        session: Agent session; must declare ``artifact.plan_write``.
+        _workspace: Unused; kept for tool-handler signature parity.
+        params: Mapping with required ``action`` (string), optional
+            ``work_unit_id`` (string) and ``payload`` (object).
+        now_fn: Optional injected wall-clock provider for the timestamp
+            in the formatted text. Defaults to ``_timestamp``.
+
+    Returns:
+        A ``ToolResult`` whose text content is the formatted
+        coordination line (suffixed with
+        ``[Coordination event emitted to pipeline]``).
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``artifact.plan_write``.
+
+    Side effects:
+        Pure with respect to the workspace. Emits a workspace
+        coordination event for the planning drain to observe. No
+        subprocess, no network call.
+    """
     require_capability(session, ARTIFACT_PLAN_WRITE_CAPABILITY, "Workspace coordination")
     action = _parameter_as_string(params, "action")
     work_unit_value = params.get("work_unit_id")
@@ -211,7 +322,27 @@ def handle_read_env(
     *,
     env: dict[str, str] | os._Environ[str] = os.environ,
 ) -> ToolResult:
-    """Read an environment variable by name."""
+    """Read an environment variable by name.
+
+    Args:
+        session: Agent session; must declare ``env.read``.
+        _workspace: Unused; kept for tool-handler signature parity.
+        params: Mapping with required ``name`` (string).
+        env: Optional injected environment mapping. Defaults to
+            ``os.environ`` (read-only ``os._Environ[str]``).
+
+    Returns:
+        A ``ToolResult`` whose text content is ``<name>=<value>`` or
+        ``<name>=[not found]`` when the variable is absent.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``env.read``.
+
+    Side effects:
+        Pure read of the injected ``env`` mapping. No subprocess, no
+        network call, no workspace writes.
+    """
     require_capability(session, ENV_READ_CAPABILITY, "Environment variable read")
     name = _parameter_as_string(params, "name")
     value = read_env_value(env, name)

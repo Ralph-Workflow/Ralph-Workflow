@@ -38,6 +38,9 @@ These repo-root docs are a **map of the surrounding documentation system**, not 
 The maintained day-to-day operator path is the Sphinx manual above.
 Use these folders only when you know you need contributor guidance or deeper background.
 
+- [Operator manual (docs map)](operator-manual.md) — reference
+- [Claims ledger](CLAIMS_LEDGER.md) — internals (every factual claim tracked for fabrication-guard)
+- [Verification gate](VERIFICATION_GATE.md) — internals (process that prevents hallucinated claims from reaching public surfaces)
 - `docs/agents/` — contributor and verification guidance for agents, testing, type-ignore policy, and verification workflow
 - `docs/code-style/` — documentation rubric plus maintained style/process guidance
 - `docs/tooling/` — tooling setup and support notes for the Python implementation (`python-tooling.md`)

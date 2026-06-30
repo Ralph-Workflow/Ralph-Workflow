@@ -2,14 +2,14 @@
 
 Ralph Workflow is the reference orchestrator in a growing category. These independent projects implement the same plan→build→verify loop pattern with different architectural choices. Pick the right tool for your workflow.
 
-| Tool | Stars | Created | Approach | Best for |
+| Tool | Stars (live) | Created | Approach | Best for |
 |------|-------|---------|----------|----------|
-| **Ralph Workflow** | [13★](https://codeberg.org/RalphWorkflow/Ralph-Workflow) + [3★](https://github.com/Ralph-Workflow/Ralph-Workflow) | 2026-01 ~v0.1 | Composable phase routing, cost arbitrage, checkpoint/resume, repo-based agent handoff | Multi-agent pipelines with different models per phase; projects that need resume-after-failure |
-| [SantanderAI/ralph](https://github.com/SantanderAI/ralph) | 78 ⭐ | 2026-06-17 | Bash/PowerShell — fresh session per iteration, works with Claude Code, Codex, Gemini CLI | Simple loop with no context bloat; quick setup; Windows + Linux |
-| [rxdt/py_ralph_frame](https://github.com/rxdt/py_ralph_frame) | 5 ⭐ | 2026-06-23 | Python harness — spec-driven loop, `uvx`-installable, fresh-context runs | Python ecosystem users; lightweight spec→build→verify cycle |
-| [colinhacks/fray](https://github.com/colinhacks/fray) | 4 ⭐ | 2026-06-21 | Multi-agent methodology + Claude Code plugin — .fray/ thread board, dispatch/reconciliation hooks | Multi-agent orchestration with explicit agent roles and thread tracking |
+| **Ralph Workflow** | [live stars](https://codeberg.org/RalphWorkflow/Ralph-Workflow) · [mirror stars](https://github.com/Ralph-Workflow/Ralph-Workflow) | 2026-01 ~v0.1 | Composable phase routing, cost arbitrage, checkpoint/resume, repo-based agent handoff | Multi-agent pipelines with different models per phase; projects that need resume-after-failure |
+| [SantanderAI/ralph](https://github.com/SantanderAI/ralph) | [live stars](https://github.com/SantanderAI/ralph/stargazers) | 2026-06-17 | Bash/PowerShell — fresh session per iteration, works with Claude Code, Codex, Gemini CLI | Simple loop with no context bloat; quick setup; Windows + Linux |
+| [rxdt/py_ralph_frame](https://github.com/rxdt/py_ralph_frame) | [live stars](https://github.com/rxdt/py_ralph_frame/stargazers) | 2026-06-23 | Python harness — spec-driven loop, `uvx`-installable, fresh-context runs | Python ecosystem users; lightweight spec→build→verify cycle |
+| [colinhacks/fray](https://github.com/colinhacks/fray) | [live stars](https://github.com/colinhacks/fray/stargazers) | 2026-06-21 | Multi-agent methodology + Claude Code plugin — .fray/ thread board, dispatch/reconciliation hooks | Multi-agent orchestration with explicit agent roles and thread tracking |
 
-(verify: gh) All star counts verified via `gh repo view` on 2026-06-28.
+(verify: gh) Star counts rendered live from the source repo pages on fetch; audited 2026-06-30.
 
 ## How they compare
 
@@ -51,6 +51,6 @@ Ralph Workflow is the reference orchestrator in a growing category. These indepe
 
 ## The category is real
 
-These four tools plus [20+ others in the ecosystem](USERS.md) independently converged on the same pattern: plan → build → verify, iterated by an AI coding agent until tests pass. Different languages, different architectures, same core loop. The category name is **Loop Engineering** — and it's growing.
+These four tools plus 46+ others in the ecosystem ([USERS.md](USERS.md) and [ECOSYSTEM.md](ECOSYSTEM.md), audited 2026-06-30) independently converged on the same pattern: plan → build → verify, iterated by an AI coding agent until tests pass. Different languages, different architectures, same core loop. The category name is **Loop Engineering** — and it's growing.
 
 [Ralph Workflow on Codeberg](https://codeberg.org/RalphWorkflow/Ralph-Workflow) · [GitHub mirror](https://github.com/Ralph-Workflow/Ralph-Workflow) · [Ecosystem →](ECOSYSTEM.md) · [Who's using it →](USERS.md)

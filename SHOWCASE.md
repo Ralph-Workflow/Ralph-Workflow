@@ -28,4 +28,4 @@ Projects shipped with the Ralph Loop pattern. Real software, built overnight by 
 
 ---
 
-*See all 27+ projects at [USERS.md](USERS.md) — the comprehensive community directory. The Ralph Loop pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph).*
+*See all 46+ projects at [USERS.md](USERS.md) and [ECOSYSTEM.md](ECOSYSTEM.md) — the comprehensive community directory, audited 2026-06-30. The Ralph Loop pattern is attributed to [Geoffrey Huntley](https://ghuntley.com/ralph).*

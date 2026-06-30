@@ -3,6 +3,33 @@
 Exposes ``handle_web_search``, which dispatches a search query through the
 configured backend (and optional fallbacks) and returns a ``ToolResult``.
 Backends are loaded lazily; the dispatch order is taken from ``WebSearchConfig``.
+
+Exported surface:
+
+- ``handle_web_search`` — the public MCP tool handler. Requires the
+  ``WebSearch`` capability on the session, parses a string ``query``
+  (and optional bounded ``limit`` clamped to ``[MIN_LIMIT, MAX_LIMIT]``
+  = ``[1, 25]``), and dispatches through the configured backend order
+  (default backend followed by the configured fallbacks).
+- ``build_backend`` / ``_build_backend`` — the public / private factory
+  that returns a ``WebSearchBackend`` instance for a given backend name
+  and config. The factory always uses a resolved ``timeout_seconds``
+  (per-backend override falls back to the global default).
+- ``WEB_SEARCH_CAPABILITY`` / ``MIN_LIMIT`` / ``MAX_LIMIT`` — the
+  capability string and the request-size bounds.
+
+Trust boundary: every handler is gated on the ``WebSearch``
+``McpCapability``. The backend is selected from a closed allowlist
+(``ddgs``, ``searxng``, ``tavily``, ``brave``, ``exa``); an unsupported
+backend name or a missing configuration returns ``WebSearchError``.
+
+Side effects (network contract): every backend implementation uses an
+injected ``timeout_seconds`` on the network call, so a misbehaving
+upstream cannot hang the MCP server thread. The dispatch loop falls
+back through the configured backend order and only returns an
+``is_error`` result after every backend has failed. ``loguru`` warnings
+are emitted on every backend failure so an operator can correlate
+upstream outages with retries.
 """
 
 from __future__ import annotations
@@ -101,7 +128,35 @@ def handle_web_search(
     *,
     web_search_config: WebSearchConfig | None = None,
 ) -> ToolResult:
-    """Dispatch a web search query through the configured backend and return results."""
+    """Dispatch a web search query through the configured backend and return results.
+
+    Args:
+        session: Agent session; must declare ``WebSearch``.
+        _workspace: Unused; kept for tool-handler signature parity.
+        params: Mapping with required ``query`` (string) and optional
+            ``limit`` (int, clamped to ``[MIN_LIMIT, MAX_LIMIT] = [1, 25]``).
+        web_search_config: Optional injected ``WebSearchConfig`` for the
+            dispatch order and per-backend overrides. Defaults to
+            ``WebSearchConfig()``.
+
+    Returns:
+        A ``ToolResult`` whose text content is the formatted backend
+        result list (``Title / URL / Snippet`` blocks joined by blank
+        lines). Falls back through the configured backend order and
+        only returns ``is_error=True`` after every backend has failed.
+
+    Raises:
+        CapabilityDeniedError: When the session does not declare
+            ``WebSearch``. The handler enforces default-deny.
+        InvalidParamsError: When ``params`` is missing ``query``.
+
+    Side effects (network contract):
+        Every backend implementation uses an injected ``timeout_seconds``
+        on the network call so a misbehaving upstream cannot hang the
+        MCP server thread. ``loguru`` warnings are emitted on every
+        backend failure so an operator can correlate upstream outages
+        with retries. No workspace writes.
+    """
     config = web_search_config if web_search_config is not None else WebSearchConfig()
     try:
         require_capability(session, WEB_SEARCH_CAPABILITY, "Web search")

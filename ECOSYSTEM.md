@@ -1,6 +1,6 @@
 # Ralph Loop Ecosystem
 
-Ralph Workflow is the reference implementation of the [Ralph Loop](https://ghuntley.com/ralph) pattern — an iterative plan-build-verify architecture for AI coding agents, originally attributed to Geoffrey Huntley (ghuntley.com). The pattern has inspired a thriving, independent ecosystem of 30+ projects. We didn't invent the loop — we built the production-grade toolkit for it.
+Ralph Workflow is the reference implementation of the [Ralph Loop](https://ghuntley.com/ralph) pattern — an iterative plan-build-verify architecture for AI coding agents, originally attributed to Geoffrey Huntley (ghuntley.com). The pattern has inspired a thriving, independent ecosystem of 46+ projects (audited 2026-06-30). We didn't invent the loop — we built the production-grade toolkit for it.
 
 > **Star-count provenance.** Every star count in this document is paired with the
 > data source it was sampled from and the date of the sample, per the project's
@@ -82,4 +82,4 @@ Building something with the Ralph Loop pattern? [Open an issue on the primary re
 
 ---
 
-*Last refreshed: 2026-06-29 · Sources [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) (community-maintained directory) and individual GitHub repo pages for star counts.*
+*Last refreshed: 2026-06-30 · Sources [awesome-ralph](https://github.com/snwfdhmp/awesome-ralph) (community-maintained directory) and individual GitHub repo pages for star counts. Project count: 46+ distinct entries across [USERS.md](USERS.md) and this page, audited 2026-06-30.*

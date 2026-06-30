@@ -67,7 +67,7 @@ customize anything.
 [![Python](https://img.shields.io/pypi/pyversions/ralph-workflow.svg)](https://pypi.org/project/ralph-workflow/)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-*10,700+ lifetime PyPI downloads (pepy.tech, 2026-06-12).*
+*Live lifetime PyPI downloads: [pepy.tech/projects/ralph-workflow](https://pepy.tech/projects/ralph-workflow) (audited 2026-06-30; no hardcoded number — refresh the page for the current count).*
 
 ## What it is
 
@@ -98,13 +98,13 @@ A repo without guardrails will produce results that reflect that.
 
 ## Install and run
 
+The fastest PyPI install:
+
 ```bash
-pipx install ralph-workflow   # 1. install
-cd /path/to/your/project      # 2. move into the repo you want agents on
-ralph --init                  # 3. scaffold .agent/ + PROMPT.md
-$EDITOR PROMPT.md             # 4. write the task — see PROMPT.md template
-ralph                         # 5. run the unattended workflow
+pipx install ralph-workflow
 ```
+
+The full first-run path (install → init → write `PROMPT.md` → run → review) is the single source of truth in the root [`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md) — see the **"Start your first run"** section. PyPI readers should follow the root README for the 6-step walkthrough; this README intentionally leaves out the deeper operator material to avoid drift between the two surfaces.
 
 `ralph --init` also auto-symlinks the bundled skill bundle into the
 supported agent roots and seeds a batteries-included `.gitignore`
@@ -149,31 +149,7 @@ page for the canonical details.
 
 ## What a run leaves you
 
-Here is the actual finish-receipt from the bundled
-[empty-name-validation example](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle/) —
-a real, unedited handoff, not a mock-up. You read this when you come
-back instead of a transcript:
-
-```text
-# Development Result
-
-## Outcome
-Implemented empty-name validation in the CLI create flow and added
-test coverage for empty and whitespace-only input.
-
-## Changed files
-- cli/create.py
-- tests/test_create.py
-
-## Checks run
-- pytest tests/test_create.py        ✓ passed
-- project formatting / lint checks    ✓ passed
-
-## Reviewer focus
-- confirm validation happens before any file creation side effect
-- confirm the error message is clear enough for CLI users
-- confirm no unrelated flow changed
-```
+The finish-receipt handoff is documented as the single source of truth in the root [`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md) **"What a run leaves you"** section — the verbatim receipt, the bundled-example reference, and the sample unedited terminal captures all live on the root README so PyPI readers and forge readers see the same proof.
 
 Want to follow a full first run? Read the
 [real-task walkthrough](https://ralphworkflow.com/blog/real-task-walkthrough-overnight-refactoring)

@@ -1,5 +1,25 @@
 # Directive-Style Error Response Format for MCP Artifact Validation
 
+> **Status: Design proposal / deferred — NOT current behavior.** The
+> error codes (`MISSING_FIELD` / `INVALID_ENUM` / `TYPE_MISMATCH` /
+> `CONSTRAINT_VIOLATION`), the `next_actions` / `prohibition` field
+> shapes, and the Rust `enum ErrorCode` / `struct ValidationError`
+> sketches on this page describe a proposed directive-style error
+> response. None of these symbols are present in the maintained Python
+> package — a code search for `MISSING_FIELD`, `INVALID_ENUM`,
+> `TYPE_MISMATCH`, `CONSTRAINT_VIOLATION`, `next_actions`, or
+> `prohibition` across `ralph-workflow/ralph/` returns zero matches.
+> The current Python implementation raises Pydantic `ValidationError`
+> wrapped in per-artifact `*ValidationError` subclasses (e.g.
+> `PlanArtifactValidationError`, `DevelopmentResultValidationError`,
+> `SmokeTestResultValidationError`, `TypedArtifactValidationError`)
+> defined under
+> `ralph-workflow/ralph/mcp/artifacts/`. The MCP transport surfaces
+> those as `is_error=True` text payloads (not the `data.errors[]`
+> shape on this page). Do not act on this design as if it were shipped
+> behavior; treat it as a deferred proposal that may inform a future
+> iteration of the canonical-submit path.
+
 Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 

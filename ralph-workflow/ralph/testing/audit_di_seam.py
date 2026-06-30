@@ -98,9 +98,10 @@ PASS1_ALLOWLIST: tuple[str, ...] = (
     # Composition root that reads MCP_*_ENV / UPSTREAM_MCP_TOOL_CATALOG_ENV
     # to wire the factory. Justified by PROMPT.md: "Concrete IO and
     # side-effecting implementations are assembled in exactly one place —
-    # the composition root."
-    "mcp/server/runtime.py:120",
-    "mcp/server/runtime.py:162",
+    # the composition root." The line numbers shift with docstring edits;
+    # the audit must be re-pointed whenever the docstring changes.
+    "mcp/server/runtime.py:142",
+    "mcp/server/runtime.py:184",
     # mcp/server/_fallback_standalone_server.py — startup banner reads
     # ``MCP_AUTH_TOKEN`` (auth posture) and ``RALPH_MCP_PROBE_TIMEOUT_MS``
     # (probe ceiling) so the operator-visible banner matches the live

@@ -2,6 +2,53 @@
 
 This directory contains the maintained Python package.
 
+## First patch — the shortest path
+
+If this is your first contribution, the shortest path is:
+
+```bash
+git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
+cd Ralph-Workflow/ralph-workflow
+make dev              # sync the uv environment (editable install + dev extras)
+# ...make your change...
+make verify           # runs the full layered gate: docs build, ruff, mypy,
+                      # the 18 audit steps, and the test suites within the
+                      # immutable 60-second combined test budget
+ralph --generate-commit   # dogfood the AGENTS.md commit rule
+```
+
+A few practical notes for a first patch:
+
+- **Pick something small.** A typo, a missing docstring, a clearer
+  example, a one-line bug fix — the maintainers review small PRs
+  faster and the verification loop is shorter.
+- **Run `make verify` before you push.** A red `make verify` is the
+  fastest way to get unstuck; the gate is the contract and the
+  high-visibility failure banner cites `AGENTS.md` so you know exactly
+  which contract was violated.
+- **Dogfood `ralph --generate-commit`** rather than hand-rolling
+  `git commit`. The generated message follows the repo's
+  conventional-commit style and the canonical-submit / artifact
+  contract.
+- **Link the relevant docs page** in the PR description — the
+  architecture orientation is at
+  [`../docs/architecture/overview.md`](../docs/architecture/overview.md)
+  and the developer-reference pages live at
+  [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md)
+  and
+  [`docs/sphinx/developer-internals.md`](docs/sphinx/developer-internals.md).
+  The contract-heavy sections below this one (dev/stable build,
+  policy-driven pipeline, typing suppression policy, the guardrails
+  and the agent hardening contract) are required reading once you
+  start touching production code, but they are deliberately *not* the
+  on-ramp.
+
+When you're ready to ship the patch, push your branch and open a PR
+on the primary repo at
+<https://codeberg.org/RalphWorkflow/Ralph-Workflow>. The full
+verification contract, the guardrails, and the contribution policy
+follow below.
+
 ## Development setup
 
 ```bash

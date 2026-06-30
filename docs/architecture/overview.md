@@ -163,7 +163,7 @@ post-exit cleanup.
 
 **Must never:** call `time.sleep` for backoff (use the watchdog);
 authenticate the agent (the trust boundary is documented in
-`docs/sphinx/agents.md`).
+`ralph-workflow/docs/sphinx/agents.md`).
 
 **Protected by:** `tests/test_agents_*.py`,
 `tests/test_idle_watchdog_*.py`, `audit_mcp_timeout.py`.
