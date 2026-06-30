@@ -74,9 +74,9 @@ These practitioners installed, starred, forked, or watched the Ralph Workflow pr
 | pierodibello | Codeberg | ⭐ Star + 👁 Watch | Multi-signal adopter |
 | RoxanneA | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
 | TusharKarsan | Codeberg | ⭐ Star + 🍴 Fork | Multi-signal adopter |
-| awoehrl | GitHub | 👁 Watch | Data/analytics engineer |
-| swstegall | GitHub | ⭐ Star | Multi-signal adopter |
-| labumbu | GitHub | ⭐ Star | Author of everything-claude-code — agent harness optimizer for Claude Code/Codex/OpenCode/Cursor |
+| awoehrl | GitHub | 👁 Watch | — |
+| swstegall | GitHub | ⭐ Star | — |
+| labumbu | GitHub | ⭐ Star | — |
 | andrei_legram | Codeberg | ⭐ Star | — |
 | bort | Codeberg | ⭐ Star | — |
 | brianr | Codeberg | ⭐ Star | — |
