@@ -102,9 +102,8 @@ A repo without guardrails will produce results that reflect that.
 pipx install ralph-workflow   # 1. install
 cd /path/to/your/project      # 2. move into the repo you want agents on
 ralph --init                  # 3. scaffold .agent/ + PROMPT.md
-ralph --diagnose              # 4. pre-flight: agents, MCP, capabilities
-$EDITOR PROMPT.md             # 5. write the task — see PROMPT.md template
-ralph                         # 6. run the unattended workflow
+$EDITOR PROMPT.md             # 4. write the task — see PROMPT.md template
+ralph                         # 5. run the unattended workflow
 ```
 
 `ralph --init` also auto-symlinks the bundled skill bundle into the
@@ -116,6 +115,11 @@ agent session.
 
 Before your first run: install the agent CLIs you want Ralph Workflow to
 call, authenticate them normally, and pick one small concrete task.
+`ralph --diagnose` is the optional **pre-flight check** — it verifies
+your agent CLIs, MCP servers, and capability bundles are healthy before
+you spend a real run on them. See the
+[diagnostics page](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/diagnostics.md)
+for what each check proves.
 
 Depth presets:
 
@@ -243,14 +247,7 @@ and safety boundaries (agent authentication, branch/worktree
 expectations, unattended approval implications, cost, and human
 validation responsibility), see the root
 [`README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/README.md)
-"Trust and safety" section. The watchdog that decides whether an
-agent session is stuck uses four evidence channels (stdout, MCP tool
-calls, subagent activity, workspace file changes) instead of stdout
-alone; the full configuration lives in
-[Watchdogs and timeouts](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/watchdogs-and-timeouts.md).
-The standalone `ralph-mcp` server binds to `127.0.0.1` and exposes the
-exec surface only over loopback; optional bearer-token auth uses
-`hmac.compare_digest` to prevent timing-side-channel attacks.
+"Trust and safety" section.
 
 ## Development and verification
 

@@ -25,22 +25,6 @@ If you need runtime internals or Python implementation details, use [Developer R
 - **I need advanced docs for `mcp.toml`** → [Advanced MCP Configuration](advanced-mcp-configuration.md)
 - **I want the shortest docs path for my use case** → [End-User Stories](user-stories.md)
 
-```{toctree}
-:maxdepth: 1
-
-cli
-configuration
-advanced-pipeline-configuration
-advanced-artifact-configuration
-advanced-mcp-configuration
-user-stories
-mcp-tools
-local-web-access
-concepts
-recovery
-developer-reference
-```
-
 ## Related pages
 
 - [Getting Started](getting-started.md) — first-run walkthrough

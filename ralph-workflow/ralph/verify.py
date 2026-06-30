@@ -85,35 +85,36 @@ if TYPE_CHECKING:
 
 
 _VERIFY_STEP_TIMEOUT_SECONDS: Final = 30.0
-"""Per-step wall-clock timeout for non-test verification steps (ruff, mypy,
-and the policy/lifecycle audits). Independent of the combined test budget.
-Pinned to a minimum of 5 seconds by an import-time invariant so a step
-cannot be silently disabled by lowering this constant."""
+#: Per-step wall-clock timeout for non-test verification steps (ruff, mypy,
+#: and the policy/lifecycle audits). Independent of the combined test
+#: budget. Pinned to a minimum of 5 seconds by an import-time invariant
+#: so a step cannot be silently disabled by lowering this constant.
 
 _TOTAL_TEST_BUDGET_SECONDS: Final = 60.0
-"""ABSOLUTE and IMMUTABLE combined wall-clock budget for **all** test suites
-running sequentially under ``make verify``. Enforced by ``run_verify()`` via
-cumulative ``time.monotonic()`` tracking across every step whose index is in
-``_BUDGET_TRACKED_STEPS``. Pinned to 60.0 by an import-time epsilon check;
-raising this constant is detected as a RuntimeError on import."""
+#: ABSOLUTE and IMMUTABLE combined wall-clock budget for **all** test
+#: suites running sequentially under ``make verify``. Enforced by
+#: ``run_verify()`` via cumulative ``time.monotonic()`` tracking across
+#: every step whose index is in ``_BUDGET_TRACKED_STEPS``. Pinned to
+#: 60.0 by an import-time epsilon check; raising this constant is
+#: detected as a RuntimeError on import.
 
 _INTEGRATION_PER_TEST_TIMEOUT_SECONDS: Final = 1.0
-"""ABSOLUTE and IMMUTABLE per-test timeout for integration tests under
-``tests/integration/``. Enforced by SIGALRM in ``tests/conftest.py``. Any
-integration test that exceeds this cap is a design defect — fix the
-production coupling, not the timeout. Pinned to 1.0 by an import-time
-epsilon check."""
+#: ABSOLUTE and IMMUTABLE per-test timeout for integration tests under
+#: ``tests/integration/``. Enforced by SIGALRM in ``tests/conftest.py``.
+#: Any integration test that exceeds this cap is a design defect —
+#: fix the production coupling, not the timeout. Pinned to 1.0 by an
+#: import-time epsilon check.
 
 _BUDGET_EPSILON: Final = 1e-9
-"""Equality tolerance used by the import-time ``abs(x - target) < eps``
-checks that pin ``_TOTAL_TEST_BUDGET_SECONDS = 60.0`` and
-``_INTEGRATION_PER_TEST_TIMEOUT_SECONDS = 1.0``."""
+#: Equality tolerance used by the import-time ``abs(x - target) < eps``
+#: checks that pin ``_TOTAL_TEST_BUDGET_SECONDS = 60.0`` and
+#: ``_INTEGRATION_PER_TEST_TIMEOUT_SECONDS = 1.0``.
 
 _MIN_VERIFY_STEP_TIMEOUT_SECONDS: Final = 5.0
-"""Minimum allowed value of ``_VERIFY_STEP_TIMEOUT_SECONDS``. Lowering
-the per-step timeout below this threshold trips an import-time
-RuntimeError — a non-trivial timeout prevents the per-step caps from
-being silently neutered."""
+#: Minimum allowed value of ``_VERIFY_STEP_TIMEOUT_SECONDS``. Lowering
+#: the per-step timeout below this threshold trips an import-time
+#: RuntimeError — a non-trivial timeout prevents the per-step caps from
+#: being silently neutered.
 
 # --- Verification step definitions ---
 #

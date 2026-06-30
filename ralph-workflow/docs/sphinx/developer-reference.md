@@ -12,15 +12,6 @@ If your job is simply to install, configure, and run Ralph Workflow, start with 
 - [Python API Reference](modules.rst) documents the public `ralph.*` package surface
 - [Release & Versioning](versioning.md) covers release, tagging, and publishing workflow
 
-```{toctree}
-:maxdepth: 1
-
-developer-internals
-policy-driven-overhaul-migration
-modules
-versioning
-```
-
 ## Dev build vs stable build
 
 Contributors keep two parallel installs side by side. They never

@@ -3245,11 +3245,3 @@ ralph.pro_support.state_query
 .. automodule:: ralph.pro_support.state_query
    :members:
    :show-inheritance:
-
-Pro support
-~~~~~~~~~~~
-
-.. toctree::
-   :maxdepth: 1
-
-   Pro support <pro-support>

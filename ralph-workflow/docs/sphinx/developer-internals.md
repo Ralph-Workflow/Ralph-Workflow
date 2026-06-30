@@ -33,6 +33,7 @@ If you only need to run Ralph Workflow, start with [Operator Reference](referenc
 
 ```{toctree}
 :maxdepth: 1
+:hidden:
 
 mcp-architecture
 artifacts

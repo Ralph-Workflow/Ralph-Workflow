@@ -21,6 +21,7 @@ from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
     DEFAULT_TEST_TIMEOUT_SECONDS,
     TEST_TIMEOUT_ENV,
+    SuiteTimeoutError,
     build_timeout_env,
     run_command_with_timeout,
     timeout_seconds_from_env,
@@ -144,12 +145,16 @@ def run_test_suites(
         ),
         suite_timeout_seconds=suite_timeout_seconds,
     )
-    result = runner(
-        _verification_command(),
-        cwd=cwd,
-        env=env,
-        suite_timeout_seconds=suite_timeout_seconds,
-    )
+    try:
+        result = runner(
+            _verification_command(),
+            cwd=cwd,
+            env=env,
+            suite_timeout_seconds=suite_timeout_seconds,
+        )
+    except SuiteTimeoutError as exc:
+        print(str(exc), file=sys.stderr)
+        return 124
     return result.returncode
 
 

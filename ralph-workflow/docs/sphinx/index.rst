@@ -81,7 +81,6 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    advanced-pipeline-configuration
    advanced-artifact-configuration
    advanced-mcp-configuration
-   parallel-mode
    policy-explanation
 
 .. toctree::
@@ -114,7 +113,6 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
 
    cli
    mcp-tools
-   artifacts
    recovery
    troubleshooting
    versioning
@@ -124,11 +122,7 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    developer-reference
    developer-internals
    local-web-access
-   prompts
-   supervising-api
-   transcript
    mcp-tool-restriction
-   mcp-architecture
    display
 
 .. toctree::
@@ -184,3 +178,4 @@ If you need docs grouped by real user goal, start with :doc:`user-stories`.
    :maxdepth: 1
 
    policy-driven-overhaul-migration
+   parallel-mode

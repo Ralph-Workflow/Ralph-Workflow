@@ -159,6 +159,31 @@ def _parse_catalog_payload(payload: object) -> list[dict[str, object]]:
 
 
 fetch_catalog = _CatalogFetcher()
+fetch_catalog.__doc__ = """Fetch the OpenCode model catalog as a ``list[ModelEntry]``.
+
+Issues a single ``GET`` to ``https://models.dev/api.json`` (see
+:data:`CATALOG_URL`) and normalizes each entry into a
+:class:`ModelEntry`. The fetched snapshot is cached for the
+lifetime of the calling process with a 5-minute TTL (:data:`_TTL_SECONDS`).
+The TTL is rechecked on every call, so a long-running orchestrator
+will pick up a refreshed catalog on the next call after the 5-minute
+window elapses. ``fetch_catalog.cache_clear()`` invalidates the
+cache and forces the next call to refetch.
+
+Returns:
+    ``list[ModelEntry]`` parsed from the catalog payload.
+
+Raises:
+    httpx.HTTPError: When the underlying ``httpx.Client.get`` call
+        fails (network error, non-2xx status, or any other transport
+        error from the ``httpx`` library).
+    ValueError: When the JSON payload is neither a list nor a
+        provider map, or when a provider/model entry is missing
+        required fields.
+
+See :class:`_CatalogFetcher` for the underlying implementation and
+:meth:`_CatalogFetcher.cache_clear` for the invalidation API.
+"""
 
 
 def get_model_by_id(model_id: str) -> ModelEntry | None:
