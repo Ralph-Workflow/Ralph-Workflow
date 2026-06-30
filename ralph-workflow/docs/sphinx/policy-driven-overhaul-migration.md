@@ -1,8 +1,23 @@
+<!--
+  Review note (docs rubric §"Required review note for meaningful docs changes"):
+  - What changed: rewrote the opening paragraph so the page leads with the
+    canonical autopilot positioning language instead of the older "AI agent
+    orchestrator built around a simple ... Ralph-loop core" lead category.
+  - Why it belongs here: this page is part of the maintained Sphinx manual;
+    it must agree with the README and the manual home so the product story
+    is coherent across surfaces (rubric hard failure: surfaces fight each
+    other).
+  - What was pruned: nothing material; the page's page-specific argument is
+    preserved.
+  - How the route is clearer: the lead now matches the canonical autopilot
+    framing used by the README and the manual home.
+-->
+
 # Policy-Driven Overhaul Migration Guide
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
-
+Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
+**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
+The default workflow is strong enough to adopt as-is, before you customize anything.
 
 This guide is for users upgrading from an earlier Ralph Workflow release to the current policy-driven model. It focuses on the assumptions that changed, the config updates you may need to make, and the commands to run before you trust the migrated workflow.
 

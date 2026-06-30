@@ -1,9 +1,23 @@
+<!--
+  Review note (docs rubric §"Required review note for meaningful docs changes"):
+  - What changed: rewrote the opening paragraph so the page leads with the
+    canonical autopilot positioning language instead of the older "AI agent
+    orchestrator built around a simple ... Ralph-loop core" lead category.
+  - Why it belongs here: this page is part of the maintained Sphinx manual;
+    it must agree with the README and the manual home so the product story
+    is coherent across surfaces (rubric hard failure: surfaces fight each
+    other).
+  - What was pruned: nothing material; the page's page-specific argument is
+    preserved.
+  - How the route is clearer: the lead now matches the canonical autopilot
+    framing used by the README and the manual home.
+-->
+
 # Quickstart
 
-Ralph Workflow is an AI agent orchestrator built around a simple Ralph loop core.
-That simple core composes into more complex workflows for substantial repo work, but this page is the shortest default-workflow path.
-Use it when you already understand the product story and want one honest first run with minimal explanation or detours.
-If you need fuller context, task-selection help, or the reasons behind each step, go back to [Getting Started](getting-started.md).
+Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
+**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
+The default workflow is strong enough to adopt as-is, before you customize anything.
 
 If you need config answers, open [Configuration Reference](configuration.md). If you want docs routed by use case, open [End-User Stories](user-stories.md).
 

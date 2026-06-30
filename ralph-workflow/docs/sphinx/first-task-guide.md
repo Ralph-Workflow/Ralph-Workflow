@@ -1,6 +1,22 @@
+<!--
+  Review note (docs rubric §"Required review note for meaningful docs changes"):
+  - What changed: rewrote the opening paragraph so the page leads with the
+    canonical autopilot positioning language instead of the older "AI agent
+    orchestration system built around a simple Ralph-loop core" lead category.
+  - Why it belongs here: this is the conversion guide for the first real
+    task; it must agree with the README and the manual home so the
+    product story is coherent across surfaces.
+  - What was pruned: nothing material; the task-selection, spec-writing,
+    run, and morning-after-review sections are preserved.
+  - How the route is clearer: the lead now matches the canonical autopilot
+    framing used by the README and the manual home.
+-->
+
 # Your First Ralph Workflow Task
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph-loop core. Its composable loop — planning → development → verification — drives each phase into the next. It runs the coding agents you already use (Claude Code, Codex, OpenCode) on your own machine, and the default workflow is strong enough to start with before you customize anything.
+Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
+**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
+The default workflow is strong enough to adopt as-is, before you customize anything. Its composable loop — planning → development → verification — drives each phase into the next, and it runs the coding agents you already use (Claude Code, Codex, OpenCode) on your own machine.
 
 This guide helps you pick the right first task, set it up, and judge the outcome honestly. It is not a feature tour — it is a minimal path to your first verdict: *does this produce code I would actually merge?*
 

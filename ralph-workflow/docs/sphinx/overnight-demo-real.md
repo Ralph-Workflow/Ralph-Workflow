@@ -2,7 +2,10 @@
 
 > **This is not a toy example.** This page shows what Ralph Workflow actually produced when handed a real product specification and left to run unattended overnight.
 
-Ralph Workflow is a **free and open-source** AI agent orchestrator that runs the coding agents you already use on your own machine. The question that matters after reading about it is simple: **does it actually work on real tasks?**
+Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
+**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
+The default workflow is strong enough to adopt as-is, before you customize anything.
+The question that matters after reading about it is simple: **does it actually work on real tasks?**
 
 This page answers that question with a single real overnight run.
 

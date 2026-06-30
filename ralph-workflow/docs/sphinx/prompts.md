@@ -1,7 +1,27 @@
+<!--
+  Review note (docs rubric §"Required review note for meaningful docs changes"):
+  - What changed: rewrote the opening paragraph so the page leads with the
+    canonical autopilot positioning language instead of the older "AI agent
+    orchestrator built around a simple core loop" lead category, and corrected
+    the "PROMPT.md as the run specification" section so the user-authored run
+    spec is described as `<workspace>/PROMPT.md` (the workspace root, not
+    `.agent/`). The engine-owned materialised `.agent/CURRENT_PROMPT.md` is
+    now clearly distinguished from the user-authored run spec.
+  - Why it belongs here: this is a reference page on the agent-side prompt
+    machinery; both surfaces (positioning and run-spec location) must agree
+    with the rest of the manual and with the code that resolves the path.
+  - What was pruned: nothing material; the agent-side assembly content is
+    preserved.
+  - How the route is clearer: the lead now matches the canonical autopilot
+    framing used by the README and the manual home, and the run-spec section
+    now points readers to the workspace-root path the engine actually reads.
+-->
+
 # Prompts
 
-Ralph Workflow is a free and open-source AI agent orchestrator built around a simple core loop inspired by the original Ralph loop.
-That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
+Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
+**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
+The default workflow is strong enough to adopt as-is, before you customize anything.
 
 
 > **Most operators do not need this page.** Start with [Getting Started](getting-started.md) unless you are customizing how Ralph Workflow builds prompts.
@@ -107,17 +127,30 @@ separate, distinct surface.
 
 ### What `PROMPT.md` is
 
-`PROMPT.md` (in the active workspace's `.agent/` directory) is the
-**run specification** the user authors before each `ralph` run. It
-is the prose contract that says what the agents should accomplish,
-with what acceptance criteria, under what constraints. The run
-spec is what you edit between runs; everything else in this docs
-page is machinery that consumes or renders the run spec.
+`<workspace>/PROMPT.md` — that is, the `PROMPT.md` file at the **root
+of the active workspace** — is the **run specification** the user
+authors before each `ralph` run. It is the prose contract that says
+what the agents should accomplish, with what acceptance criteria,
+under what constraints. `ralph --init` creates this file at the
+workspace root (see `ralph/cli/commands/init.py`), and the engine
+resolves it through `ralph.pro_support.prompt.resolve_effective_prompt_path`,
+which returns `<workspace>/PROMPT.md` by default and honours the
+`PROMPT_PATH` environment variable for operators who want a
+non-default location.
 
-The run spec is what the user reads back when they come back to a
+The run spec is what you edit between runs; everything else on this
+docs page is machinery that consumes or renders the run spec. The run
+spec is also what the user reads back when they come back to a
 finished run — the morning-after review is about whether the run
 satisfied the run spec, not whether the agents stayed inside their
 prompt templates.
+
+`PROMPT.md` is **not** the engine-owned materialised file at
+`.agent/CURRENT_PROMPT.md`. The materialised file is what the
+engine writes for its own consumption; the user never authors or
+edits it. Operators who need to override the path go through
+`PROMPT_PATH`; everyone else writes the run spec at
+`<workspace>/PROMPT.md`.
 
 ### How the run spec differs from the agent-side prompts
 
@@ -131,8 +164,8 @@ phase. Those prompts include:
 - phase-specific payload materialization (plan handoffs, analysis
   feedback, artifact-history references)
 - references back to the run spec — Ralph Workflow routes the agent
-  back to `PROMPT.md` for the user's intent and acceptance
-  criteria
+  back to the user-authored `PROMPT.md` for the user's intent and
+  acceptance criteria
 
 The **run spec** is the user's intent. The **agent-side prompts**
 are how Ralph Workflow translates that intent into agent input.
@@ -153,8 +186,10 @@ they are the maintainer-contributed details this page documents.
 ### Review note
 
 This page is intentionally scoped to the agent-side prompt
-machinery. The user-facing run-spec role of `PROMPT.md` was
-previously explained only in `concepts.md` and `first-task-guide.md`;
-the cross-reference above is the maintained path between the two
+machinery. The user-facing run-spec role of `PROMPT.md` is the
+workspace-root file resolved through
+`ralph.pro_support.prompt.resolve_effective_prompt_path`, distinct
+from the engine-owned materialised `.agent/CURRENT_PROMPT.md`; the
+cross-reference above is the maintained path between the two
 surfaces.
 

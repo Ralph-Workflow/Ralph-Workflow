@@ -1,11 +1,25 @@
+<!--
+  Review note (docs rubric §"Required review note for meaningful docs changes"):
+  - What changed: rewrote the opening paragraph so the page leads with the
+    canonical autopilot positioning language instead of the older "AI agent
+    orchestration system built around a simple Ralph loop core" lead category.
+  - Why it belongs here: this is the manual's first-run entry page; when the
+    lead category differed, it fought the README and the manual home (rubric
+    hard failure: surfaces fight each other).
+  - What was pruned: nothing material; the install/diagnose/init/first-run
+    flow is preserved.
+  - How the route is clearer: the lead now matches the canonical autopilot
+    framing used by the README and the manual home.
+-->
+
 # Getting Started with Ralph Workflow
 
 New to Ralph Workflow? This page takes you from install to one honest unattended run in a repository you already care about.
 If you already know the shape of the product and just want the shortest checklist, use [Quickstart](quickstart.md).
 
-Ralph Workflow is a free and open-source AI agent orchestration system built around a simple Ralph loop core.
-It turns that simple structure into a stronger composable workflow for substantial, well-specified repo work by moving through planning, implementation, and verification instead of stopping at one long agent session.
-The default workflow is already strong for writing software; start there first, then extend later only when you know why.
+Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
+**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
+The default workflow is strong enough to adopt as-is, before you customize anything.
 
 ## What this page gives you
 

@@ -1,6 +1,8 @@
 # Unattended Coding Agent: What It Should Actually Mean
 
-Ralph Workflow is a free and open-source AI agent orchestrator that runs unattended coding sessions on your own machine with the agents you already use. Its simple Ralph-loop core — plan, implement, review — is what makes unattended work accountable: each phase has a concrete handoff, the workflow loops when the review says "not yet," and the result arrives with a trail you can actually inspect. The shipped default is strong enough to start with, and the composable architecture lets you extend it when your tasks outgrow the defaults.
+Ralph Workflow is **the autopilot for coding agents** — a free and open-source operating system for autonomous coding, an AI agent orchestrator built around a simple Ralph-loop core that becomes powerful through composition.
+**Hand it a well-specified coding task, let the agents plan, build, verify, and fix, and come back to reviewable, tested work.**
+The default workflow is strong enough to adopt as-is, before you customize anything.
 
 If you are looking for an unattended coding agent, the important question is not just whether a model can keep typing while you are away.
 The important question is whether you can come back to software you can judge honestly.
