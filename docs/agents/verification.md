@@ -21,7 +21,7 @@ make verify
 7. Bounded-subprocess audit (`ralph/testing/audit_mcp_timeout.py`) — enforces the bounded-subprocess contract (below)
 8. DI seam audit (`ralph/testing/audit_di_seam.py`) — enforces the Foundations dependency-injection contract: every component below the composition root must receive collaborators through its constructor or call signature, and must not reach into ambient process state (`os.environ`, `open()`) or launder the session contract through `typing.cast()` at the session factory boundary
 9. Activity-aware watchdog audit (`ralph/testing/audit_activity_aware_watchdog.py`) — enforces the subagent/tool-visibility contract on `IdleWatchdog` (constructor must accept `process_monitor=`, `set_active_sink` / `set_subagent_sink` must be wired after construction, `WorkspaceMonitor.set_on_event` must be bound to a 2-arg forwarding callable, `teardown_subtree` must run on every fire and error path, `DefaultProcessMonitor` must be constructed with injected `role_classifier=` / `discovery_strategy=` / `subagent_pid_source=`)
-10. Watchdog drift audit (`ralph/testing/audit_watchdog_drift.py`) — enforces the watchdog consolidation: forbids the legacy root watchdog sentinel (the dead 1389-line module that previously sat at the ralph-workflow root) at the package root, forbids duplicate `IdleWatchdog` / `PostExitWatchdog` class definitions outside their canonical owner files, and forbids `WatchdogFireReason` construction outside the same owners. The audit's forbidden-filename sentinel is constructed at import time from two private string fragments so the literal forbidden token never appears as a contiguous substring in source. See `docs/agents/watchdog-architecture.md` for the full invariant list
+10. Watchdog drift audit (`ralph/testing/audit_watchdog_drift.py`) — enforces the watchdog consolidation: forbids the legacy root watchdog sentinel (the dead 1389-line module that previously sat at the ralph-workflow root) at the package root, forbids duplicate `IdleWatchdog` / `PostExitWatchdog` class definitions outside their canonical owner files, and forbids `WatchdogFireReason` construction outside the same owners. The audit's forbidden-filename sentinel is constructed at import time from two private string fragments so the literal forbidden token never appears as a contiguous substring in source. See `ralph-workflow/docs/agents/watchdog-architecture.md` for the full invariant list
 11. Parallelization dormant audit (`ralph/testing/audit_parallelization_dormant.py`) — enforces that Ralph-managed fan-out is dormant and the agent-driven parallel model is wired (checks 9 invariants across `planning.jinja`, `developer_iteration_continuation.jinja`, `format_docs/plan.md`, `effect_router.py`, `pipeline.toml`, `planning_analysis.jinja`, `docs/sphinx/configuration.md`, and `docs/sphinx/advanced-pipeline-configuration.md`)
 12. Artifact-submission canonical-path audit (`ralph/testing/audit_artifact_submission_canonical_path.py`) — enforces the single-writer contract for artifact submission (see `docs/agents/artifact-submission-contract.md`)
 13. Agent registry sync audit (`ralph/testing/audit_agent_registry_sync.py`) — enforces that built-in agent declarations, registry seeding, docs, parser exports, and dispatch tables stay synchronized
@@ -93,6 +93,10 @@ or malicious weakening of budget enforcement:
 - An epsilon check (`abs(_TOTAL_TEST_BUDGET_SECONDS - 60.0) < 1e-9`)
   confirms the constant has not been altered from its ABSOLUTE and
   IMMUTABLE value of 60.0 seconds.
+- `_VERIFY_STEP_TIMEOUT_SECONDS > 0` — the per-step timeout must be positive.
+- `_VERIFY_STEP_TIMEOUT_SECONDS >= 5.0` — the per-step timeout must be non-trivial
+  (at least 5 seconds, enforced via the `_MIN_VERIFY_STEP_TIMEOUT_SECONDS`
+  constant in `ralph/verify.py`).
 - `_KNOWN_TEST_STEP_LABELS` must not be empty — prevents silently
   hiding all test steps from budget tracking.
 - `_BUDGET_TRACKED_STEPS` must not be empty — prevents disabling
@@ -135,6 +139,45 @@ The `make verify` pipeline includes automated bypass audits that scan the entire
 **Both audits** scan both `ralph/` and `tests/` directories. Each uses an allowlist of known-legitimate suppressions. Any new suppression that does not match the allowlist IS a violation. To add a legitimate suppression, the code must be added to the allowlist with a documented justification.
 
 Reference: `AGENTS.md` §'Non-negotiables' for the full non-circumvention rules.
+
+### Resource-accumulator non-circumvention rules
+
+`make verify` step 17 (`ralph/testing/audit_resource_lifecycle.py`) enforces the
+resource-accumulator contract that complements the bounded-subprocess audit.
+A long-lived mutable collection assigned module-level OR to `self.X` inside
+`__init__` MUST carry a FIFO / size cap or a justified escape-hatch marker:
+
+- Use `collections.deque(maxlen=N)` for FIFO-bounded logs / record buffers
+  (e.g. `RalphAuditSinkAdapter._records` uses `deque(maxlen=4096)`).
+- Use `OrderedDict` / `defaultdict` paired with an explicit count cap and
+  manual `popitem(last=False)` / `len(...) > cap` eviction (these have NO
+  `maxlen=` kwarg).
+- For genuinely unbounded-by-design collections, attach the inline marker
+  `# bounded-accumulator-ok: <reason>` on the same line, naming the cap or
+  the drain that keeps the collection bounded in practice.
+
+A `deque()` / `collections.deque()` constructor call WITHOUT `maxlen=` is
+treated as unbounded and flagged by the audit. Mutable collection literals
+(`[]`, `{}`, `set()`) assigned to a module-level name or `self.X` in
+`__init__` are flagged for the same reason — they have no cap and grow
+monotonically across a long unattended run, exactly the leak class that
+produced `BudgetState.failures` (unbounded `tuple[ClassifiedFailure, ...]`
+accumulator never read for any decision) and `RalphAuditSinkAdapter._records`
+(unbounded `list` flushed only by `drain_records()`, never by `flush()`).
+Both leak classes are now closed by dropping the field / capping the deque,
+not by weakening the audit.
+
+Exclusions (intentional, documented to avoid false positives):
+- `__all__` (Python re-export convention).
+- Single-element list literals `[X]` (mutable-closure idiom).
+- Dict / set literals whose keys / elements are all static (dispatch tables).
+- Dataclass field defaults (`field(default_factory=...)`).
+- Local variables inside non-`__init__` functions.
+
+The ONLY bypass for the accumulator contract is the inline
+`# bounded-accumulator-ok: <reason>` marker naming the cap constant or drain.
+Like the lint/typecheck bypass audits above, this audit is part of `make
+verify` and any new unbounded accumulator fails the gate.
 
 If the change touches README, docs, START_HERE, the manual, or any public-doc route, read `docs/code-style/documentation-rubric.md` first and check the edited surface against it before calling the docs work done.
 

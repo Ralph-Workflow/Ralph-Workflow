@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ralph-workflow"
 dynamic = ["version"]
-description = "Autonomous coding workflow for Claude Code, Codex & OpenCode — run agents unattended overnight. Composable loop framework with built-in verification, recovery, and multi-agent orchestration. Free, open-source, local-first."
+description = "Autopilot for coding agents — run Claude Code, Codex & OpenCode unattended with verification, recovery, orchestration."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
@@ -15,7 +15,7 @@ keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent", "loop-eng
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -81,6 +81,7 @@ Documentation = "https://ralphworkflow.com/docs"
 Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
 Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues/new"
 Community = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/USERS.md"
+"GitHub Mirror" = "https://github.com/Ralph-Workflow/Ralph-Workflow"
 
 [tool.hatch.version]
 source = "code"

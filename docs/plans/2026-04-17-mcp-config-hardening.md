@@ -366,7 +366,7 @@ git commit -m "refactor: make MCP tool alias policy explicit"
 - Modify: `ralph-workflow/ralph/agents/invoke.py`
 - Modify: `ralph-workflow/ralph/mcp/tool_names.py`
 - Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
-- Modify: `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`
+- Modify: `docs/legacy-rust/RFC/RFC-011-mcp-tool-availability-postmortem.md`
 
 **Step 1: Write the failing documentation checklist**
 
@@ -394,7 +394,7 @@ These comments should answer “why is this policy correct?” and “what must 
 Revise:
 
 - `ralph-workflow/docs/mcp-tool-restriction.md` so it precisely states preservation vs usability vs enforcement for each transport.
-- `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md` so the postmortem references the final transport policy and test seam once complete.
+- `docs/legacy-rust/RFC/RFC-011-mcp-tool-availability-postmortem.md` so the postmortem references the final transport policy and test seam once complete.
 
 **Step 4: Verify docs and comments against tests**
 
@@ -412,7 +412,7 @@ Expected: comments/docs match observed behavior and no new drift is introduced.
 **Step 5: Commit**
 
 ```bash
-git add ralph/agents/invoke.py ralph/mcp/tool_names.py docs/mcp-tool-restriction.md docs/RFC/RFC-011-mcp-tool-availability-postmortem.md tests/test_agents_invoke.py tests/test_mcp_policy_outcomes.py
+git add ralph/agents/invoke.py ralph/mcp/tool_names.py docs/mcp-tool-restriction.md docs/legacy-rust/RFC/RFC-011-mcp-tool-availability-postmortem.md tests/test_agents_invoke.py tests/test_mcp_policy_outcomes.py
 git commit -m "docs: anchor MCP transport intent in code and docs"
 ```
 
@@ -447,7 +447,7 @@ Read these files after verification and confirm they agree:
 - `ralph/agents/invoke.py`
 - `ralph/mcp/tool_names.py`
 - `docs/mcp-tool-restriction.md`
-- `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`
+- `docs/legacy-rust/RFC/RFC-011-mcp-tool-availability-postmortem.md`
 
 Expected: no remaining contradiction like “custom MCPs are preserved” paired with “only Ralph tools are allowlisted.”
 

@@ -39,7 +39,7 @@ Examples:
 
 **Files:**
 - Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
-- Modify: `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`
+- Modify: `docs/legacy-rust/RFC/RFC-011-mcp-tool-availability-postmortem.md`
 - Create: `docs/architecture/mcp-upstream-proxy.md`
 
 **Step 1: Write the failing docs expectation as a test note in the plan**
@@ -72,7 +72,7 @@ Include sections for:
 **Step 4: Commit**
 
 ```bash
-git add ralph-workflow/docs/mcp-tool-restriction.md docs/RFC/RFC-011-mcp-tool-availability-postmortem.md docs/architecture/mcp-upstream-proxy.md
+git add ralph-workflow/docs/mcp-tool-restriction.md docs/legacy-rust/RFC/RFC-011-mcp-tool-availability-postmortem.md docs/architecture/mcp-upstream-proxy.md
 git commit -m "docs(mcp): define Ralph upstream proxy contract"
 ```
 

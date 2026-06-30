@@ -50,15 +50,13 @@ cd ralph-workflow
 make verify
 ```
 
-Canonical verification is the `make verify` command run from the `ralph-workflow/` directory. It runs clean only when **all** of the following checks pass without unresolved errors:
+Canonical verification is the `make verify` command run from the `ralph-workflow/` directory. It runs the **18-step pipeline** documented as the single source of truth in [`docs/agents/verification.md`](docs/agents/verification.md) (ruff, mypy, the pytest run tracked against the 60-second combined test budget, plus 15 audits and the social-proof gate). Per the Makefile help text, `make verify` explicitly **excludes** the docs build, coverage, and subprocess E2E — those are separate opt-in targets:
 
-- `ruff check ralph/ tests/` — lint and format
-- `mypy ralph/` — type checking
-- `pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html` — unit and integration tests with coverage
-- `make docs` — Sphinx HTML build completes warning-free
-- subprocess E2E smoke tests via the `test-subprocess-e2e` target
+- `make docs` — Sphinx HTML build (warnings-as-errors); not part of `make verify`.
+- `make test-cov` — coverage gate; not part of `make verify`.
+- `make test-subprocess-e2e` — subprocess E2E suite; not part of `make verify`.
 
-Use focused sub-commands (e.g. `uv run ruff check ralph/`) only when narrowing a specific failure. The authoritative gate is always `make verify`.
+Use focused sub-commands (e.g. `uv run ruff check ralph/`) only when narrowing a specific failure. The authoritative gate is always `make verify`; refer to `docs/agents/verification.md` for the full ordered step list, the 60-second combined test budget, the non-circumvention rules, and the per-step timeout invariants.
 
 ## Documentation expectations
 

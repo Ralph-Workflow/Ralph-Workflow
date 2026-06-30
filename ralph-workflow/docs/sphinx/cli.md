@@ -147,19 +147,48 @@ Commits created through this generated-commit path keep the active git author id
 
 ### `ralph cleanup`
 
-Remove Ralph Workflow-generated working files from the current project, such as checkpoints, MCP sockets, and temporary artifacts. It does not remove `.agent/` config files or `PROMPT.md`.
+Remove stale per-worker namespaces under `.agent/workers/` left behind after a hard-kill in same-workspace parallel mode. Each parallel worker normally writes to `.agent/workers/<unit_id>/` and cleans up automatically, but a hard-kill may leave those directories behind. `cleanup` enumerates them and (after confirmation) removes them. It does not remove `.agent/` config files, `PROMPT.md`, checkpoints, MCP sockets, or other temporary artifacts.
 
 ```bash
 ralph cleanup
+ralph cleanup --dry-run     # list stale namespaces without removing them
+ralph cleanup --force       # remove without prompting for confirmation
+```
+
+### `ralph contribute`
+
+Open the canonical Ralph Workflow repository in your default browser so you can star, watch, or fork the project. Codeberg is the primary repo (default); the GitHub mirror is available via `--source github`. No git repository, configuration, or authentication is required.
+
+```bash
+ralph contribute                         # open Codeberg (default)
+ralph contribute --source github         # open the GitHub mirror instead
+ralph contribute --source codeberg       # explicit form of the default
+```
+
+### `ralph star`
+
+Open the Codeberg repository in your default browser so you can star Ralph Workflow. Use `--no-browser` to print the link without launching a browser.
+
+```bash
+ralph star                # open Codeberg in your browser
+ralph star --no-browser   # print the link instead
+```
+
+### `ralph smoke-interactive-claude`
+
+Run the manual PTY/TUI smoke test for interactive Claude using `claude/haiku`. This is an ad-hoc manual verification command: it writes a smoke prompt under `tmp/interactive-claude-smoke/`, asks Claude to create a JavaScript todo list, and prints a parity report of session capture, tool activity, completion signal, and parser events. It consumes live agent tokens and is **not** part of `make verify`; keep it for diagnosing real interactive-Claude regressions only.
+
+```bash
+python -m ralph smoke-interactive-claude
 ```
 
 ### `ralph smoke-interactive-agy`
 
-Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the canonical verification command for the AGY transport: it drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports a parity table with file creation, session capture, parser events, tool activity, and artifact submission. The default model is `agy/Claude Sonnet 4.6 (Thinking)`; override it with `--agent agy/<model>`.
+Run the manual end-to-end smoke test for Google Anti Gravity (AGY). This is the canonical verification command for the AGY transport: it drives the live `agy` binary through the PTY contract, asks it to create `tmp/interactive-agy-smoke/todo-list.js`, and reports a parity table with file creation, session capture, parser events, tool activity, and artifact submission. The default model is `agy/Gemini 3.5 Flash (Medium)`; override it with `--agent agy/<model>`.
 
 ```bash
-python -m ralph smoke-interactive-agy
-python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'
+python -m ralph smoke-interactive-agy                                  # default model
+python -m ralph smoke-interactive-agy --agent 'agy/Claude Sonnet 4.6 (Thinking)'   # explicit override
 ```
 
 Exit code 0 indicates a passing run. A non-zero exit with an `AGY --print returned empty stdout: ...` break means the upstream `agy` binary returned no stdout; the message is derived from `~/.gemini/antigravity-cli/cli.log` and usually points to an exhausted individual API quota (`429 RESOURCE_EXHAUSTED`) or an unrecognized model ID. These are upstream AGY conditions, not Ralph Workflow regressions.

@@ -80,7 +80,7 @@ Parallel plan execution is delegated to the executing AI agent. Plans declare `w
 
 ## What a run leaves you
 
-Here is the actual finish-receipt from the bundled [empty-name-validation example](examples/first-review-bundle/) — a real, unedited handoff, not a mock-up. You read this when you come back instead of a transcript:
+Here is the actual finish-receipt from the bundled [empty-name-validation example](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/examples/first-review-bundle/) — a real, unedited handoff, not a mock-up. You read this when you come back instead of a transcript:
 
 ```text
 # Development Result
@@ -268,14 +268,14 @@ That may be a finished small task, or it may be a substantial first pass toward 
 
 This README intentionally leaves out deeper implementation details and defers to the `docs/sphinx/` pages for those.
 
-- **Quickstart:** [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md) — shorter repeat-use reference with commands and flags
-- **Getting Started:** [`docs/sphinx/getting-started.md`](docs/sphinx/getting-started.md) — fuller first-run walkthrough with task guidance
-- **Concepts:** [`docs/sphinx/concepts.md`](docs/sphinx/concepts.md) — terminology and mental model
-- **CLI Reference:** [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all flags and sub-commands
-- **Configuration:** [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files and precedence
-- **Developer Reference:** [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — maintained contributor and architecture reference
-- **Modules Index:** [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — API/module entry points for deeper internals
-- **Adding and managing agent support:** [`docs/agents/README.md`](docs/agents/README.md) — entry point for adding, updating, or removing a built-in or custom agent
+- **Quickstart:** [`docs/sphinx/quickstart.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/quickstart.md) — shorter repeat-use reference with commands and flags
+- **Getting Started:** [`docs/sphinx/getting-started.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/getting-started.md) — fuller first-run walkthrough with task guidance
+- **Concepts:** [`docs/sphinx/concepts.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/concepts.md) — terminology and mental model
+- **CLI Reference:** [`docs/sphinx/cli.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/cli.md) — all flags and sub-commands
+- **Configuration:** [`docs/sphinx/configuration.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/configuration.md) — config files and precedence
+- **Developer Reference:** [`docs/sphinx/developer-reference.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/developer-reference.md) — maintained contributor and architecture reference
+- **Modules Index:** [`docs/sphinx/modules.rst`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/modules.rst) — API/module entry points for deeper internals
+- **Adding and managing agent support:** [`docs/agents/README.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/agents/README.md) — entry point for adding, updating, or removing a built-in or custom agent
 
 ## Idle watchdog
 
@@ -322,7 +322,7 @@ ceilings are checked BEFORE the deferral and remain absolute — no activity
 can extend the maximum session duration or the cumulative waiting-on-child
 ceiling.
 
-For more details on watchdog configuration, per-reason backoff, and the forever-wait recovery state, see the [Timeout Policy documentation](docs/agents/timeout-policy.md).
+For more details on watchdog configuration, per-reason backoff, and the forever-wait recovery state, see the [Timeout Policy documentation](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/agents/timeout-policy.md).
 
 
 ## Privacy & Error Reporting
@@ -341,7 +341,7 @@ Stars are the only signal we get that Ralph Workflow is working for you, and the
 
 ## Development and verification
 
-If you are changing Ralph Workflow itself, start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and run the canonical verification command before you finish:
+If you are changing Ralph Workflow itself, start with [`CONTRIBUTING.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/CONTRIBUTING.md) and run the canonical verification command before you finish:
 
 ```bash
 make verify
@@ -406,6 +406,6 @@ shared execution core. Existing tests exercise this contract:
 - `tests/test_run_loop_pro_integration.py` proves `PipelineDeps`
   composed with `ProPipelineHooks` reaches the inner pipeline loop.
 
-- Engine-side contract page: [`docs/sphinx/pro-support.md`](docs/sphinx/pro-support.md).
-- Engine-side engine-capability traceability: [`docs/agents/pro-contract.md`](docs/agents/pro-contract.md).
+- Engine-side contract page: [`docs/sphinx/pro-support.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/sphinx/pro-support.md).
+- Engine-side engine-capability traceability: [`docs/agents/pro-contract.md`](https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/docs/agents/pro-contract.md).
 - Upstream contract (authoritative source of truth): `Ralph-Workflow-Pro/docs/product-spec/CONTRACT_RALPH_INTEGRATION.md`.

@@ -29,7 +29,7 @@ That simple core composes into a stronger workflow system for serious repo work,
 
 **Files:**
 - Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
-- Modify: `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`
+- Modify: `docs/legacy-rust/RFC/RFC-011-mcp-tool-availability-postmortem.md`
 - Modify: `docs/architecture/mcp-upstream-proxy.md`
 
 **Step 1: Write the failing docs note into the plan**
