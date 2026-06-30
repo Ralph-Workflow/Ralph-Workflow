@@ -29,9 +29,13 @@ if TYPE_CHECKING:
     class AuditSink(Protocol):
         """Protocol defining the MCP audit sink contract."""
 
-        def emit(self, record: McpAuditRecord) -> None: ...
+        def emit(self, record: McpAuditRecord) -> None:
+            """Record a single MCP audit event for downstream consumers."""
+            ...
 
-        def flush(self) -> None: ...
+        def flush(self) -> None:
+            """Release any buffered state; implementations must return None."""
+            ...
 
 
 def outcome_from_decision(decision: AccessDecision) -> PolicyOutcome:

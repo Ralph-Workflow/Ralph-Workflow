@@ -78,6 +78,15 @@ Have these ready before you start:
 Run these commands from a human-operated shell outside any Ralph-managed
 agent session:
 
+<!--
+  Canonical-source marker for the install block:
+  README.md is the single source for this verbatim 6-step first-run block.
+  The same block is intentionally duplicated in README.md#start-your-first-run
+  so the first-run path on each page is self-contained. Future editors MUST
+  keep both blocks in sync; this comment is the marker. The finish-receipt
+  block defers to README.md#what-a-run-leaves-you as the single source.
+-->
+
 ```bash
 pipx install ralph-workflow        # 1. install the autopilot
 cd /path/to/your/project           # 2. pick a real repo

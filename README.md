@@ -37,7 +37,11 @@
 Ralph Workflow is **the autopilot for coding agents** — a free and
 open-source operating system for autonomous coding, an AI agent orchestrator
 built around a simple Ralph-loop core that becomes powerful through
-composition.
+composition. The product category behind it is **Loop Engineering**: a
+pattern where a coding agent iterates plan → build → verify → fix in a loop
+until checks pass, with the human reviewing outcomes rather than reading
+every step. See [ECOSYSTEM.md](ECOSYSTEM.md) and
+[COMPARISONS.md](COMPARISONS.md) for the broader category.
 
 **Hand it a well-specified coding task, let the agents plan, build,
 verify, and fix, and come back to reviewable, tested work.**
@@ -68,6 +72,16 @@ trust a capable colleague to do unattended. A repo without guardrails
 will produce results that reflect that.
 
 ## Start your first run
+
+<!--
+  Canonical-source marker for the install block:
+  README.md is the single source for this verbatim 6-step first-run block.
+  The same block is intentionally duplicated in START_HERE.md (its page role
+  is a guided first-run surface that needs self-contained exact steps).
+  Future editors MUST keep both blocks in sync; this comment is the marker.
+  The finish-receipt block lower on this page uses README.md as its single
+  source; START_HERE.md defers to README.md#what-a-run-leaves-you for it.
+-->
 
 ```bash
 pipx install ralph-workflow        # 1. install
@@ -194,7 +208,10 @@ test coverage for empty and whitespace-only input.
 - confirm no unrelated flow changed
 ```
 
-Sample unedited terminal captures from a real run (Ralph Workflow v0.8.8 — older release; output shape may differ in current releases): [`ralph --init`](assets/demo/init-output.txt) · [`ralph --diagnose`](assets/demo/diagnose-output.txt) · [`ralph --dry-run`](assets/demo/dry-run-output.txt).
+The inline finish-receipt block above is the current proof of what a
+successful run leaves you. Historical terminal captures from an older
+release are archived under [assets/demo/](assets/demo/README.md) for
+reference; the current output shape may differ.
 
 For the meaning of each finish-receipt block, see the
 [operator manual](ralph-workflow/docs/sphinx/index.rst).

@@ -67,6 +67,7 @@ class SessionCapabilities:
         *,
         tool_name_prefix: str = "",
     ) -> SessionCapabilities:
+        """Build a SessionCapabilities from explicit capability and policy-flag sets."""
         return cls(
             capabilities=capabilities,
             policy_flags=policy_flags,
@@ -77,6 +78,7 @@ class SessionCapabilities:
     def defaults_for_drain(
         cls, drain: SessionDrain, *, tool_name_prefix: str = ""
     ) -> SessionCapabilities:
+        """Build a SessionCapabilities using the bundled defaults for the given drain."""
         capabilities, policy_flags = default_caps_and_flags_for_drain(drain)
         return cls.new(
             capabilities,
@@ -86,6 +88,7 @@ class SessionCapabilities:
 
     @classmethod
     def from_session(cls, session: AgentSession) -> SessionCapabilities:
+        """Build a SessionCapabilities from the live session's identifiers."""
         raw_caps = _resolve_session_iterable(session, "capabilities")
         raw_flags = _resolve_session_iterable(session, "policy_flags")
         caps = CapabilitySet.from_identifiers(raw_caps)
@@ -94,19 +97,23 @@ class SessionCapabilities:
 
     @classmethod
     def from_drain(cls, drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:
+        """Return the bundled default (CapabilitySet, PolicyFlagSet) pair for the given drain."""
         return default_caps_and_flags_for_drain(drain)
 
     def as_parts(self) -> tuple[CapabilitySet, PolicyFlagSet]:
+        """Return the (capabilities, policy_flags) tuple this bundle holds."""
         return self.capabilities, self.policy_flags
 
 
 def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet, PolicyFlagSet]:
+    """Return the bundled default (CapabilitySet, PolicyFlagSet) pair for the given drain."""
     return (CapabilitySet.defaults_for_drain(drain), PolicyFlagSet.defaults_for_drain(drain))
 
 
 def capability_template_variables(
     capabilities: CapabilitySet, policy_flags: PolicyFlagSet, *, tool_name_prefix: str = ""
 ) -> dict[str, str]:
+    """Render prompt template variables for the given capabilities, flags, and tool-name prefix."""
     capability_vars: Sequence[tuple[str, str]] = [
         (
             "HAS_WORKSPACE_WRITE",
@@ -439,22 +446,26 @@ def capability_template_variables(
 def capability_template_variables_from_session(
     session: AgentSession, *, tool_name_prefix: str = ""
 ) -> dict[str, str]:
+    """Render capability template variables from the live session's identifiers."""
     caps = CapabilitySet.from_identifiers(_resolve_session_iterable(session, "capabilities"))
     flags = PolicyFlagSet.from_identifiers(_resolve_session_iterable(session, "policy_flags"))
     return capability_template_variables(caps, flags, tool_name_prefix=tool_name_prefix)
 
 
 def bool_to_string(value: bool) -> str:
+    """Render a boolean as the template convention 'true' or the empty string."""
     return "true" if value else ""
 
 
 def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
+    """Return canonical MCP tool names a session with the given capabilities may call."""
     capability_ids = [capability.value for capability in capabilities.to_vec()]
     drain = "planning" if RalphCapability.ARTIFACT_PLAN_WRITE in capabilities.to_vec() else "prompt"
     return visible_tool_names_for_capabilities(capability_ids, drain=drain)
 
 
 def format_mcp_tools_list(tool_names: Sequence[str]) -> str:
+    """Render a sequence of MCP tool names as a single comma-separated string for prompts."""
     return ", ".join(tool_names)
 
 
@@ -465,6 +476,7 @@ def tool_name_var(
     *,
     tool_name_prefix: str = "",
 ) -> tuple[str, str]:
+    """Return (variable_name, prefixed_tool_name) when visible, else (variable_name, '')."""
     canonical_name = tool_name.value if isinstance(tool_name, RalphToolName) else tool_name
     if canonical_name not in visible_tools:
         return (variable_name, "")
@@ -478,6 +490,7 @@ def tool_name_reference_var(
     *,
     tool_name_prefix: str = "",
 ) -> tuple[str, str]:
+    """Return (variable_name, prompt_reference) when visible, else (variable_name, '')."""
     if tool_name.value not in visible_tools:
         return (variable_name, "")
     return (variable_name, tool_name.prompt_reference(tool_name_prefix=tool_name_prefix))
@@ -490,6 +503,7 @@ def bare_tool_hint_var(
     *,
     tool_name_prefix: str = "",
 ) -> tuple[str, str]:
+    """Return (variable_name, hint) for the bare-name fallback when visible."""
     if tool_name.value not in visible_tools or not tool_name_prefix:
         return (variable_name, "")
     return (
@@ -499,6 +513,7 @@ def bare_tool_hint_var(
 
 
 def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyFlagSet) -> str:
+    """Render a multi-line summary of granted capabilities and active policy flags for prompts."""
     cap_list = sorted(capabilities.to_vec(), key=_capability_value)
     flag_list = sorted(policy_flags.to_vec(), key=_policy_flag_value)
 

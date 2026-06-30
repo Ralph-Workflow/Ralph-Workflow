@@ -9,7 +9,11 @@ If your job is simply to install, configure, and run Ralph Workflow, start with 
 - [Operator Reference](reference.md) stays focused on commands, config, and day-to-day lookup
 - [Developer Internals](developer-internals.md) groups the maintainer-facing runtime and architecture pages, including Agents, MCP, Artifacts, Prompts, and Transcript
 - [Policy-Driven Overhaul Migration](policy-driven-overhaul-migration.md) covers migration details and deeper policy-model background
-- [Python API Reference](modules.rst) documents the public `ralph.*` package surface
+- [Python API Reference](modules.rst) documents the public `ralph.*` package surface. The reference is integrated with hand-written bridge paragraphs under each top-level group (Top-Level, CLI, Config, Policy, Pipeline, Skills, Git, Phases, Agents, MCP, Pro Support) — see these anchor entries for the most-edited surfaces:
+  - [`ralph.pipeline.runner`](modules.html#ralph.pipeline.runner) — the Ralph-loop run loop, the effect router, and the per-iteration state transitions
+  - [`ralph.mcp.server`](modules.html#ralph.mcp.server) — the in-process MCP server, factory / lifecycle / runtime, and the `RestartAwareMcpBridge` contract
+  - [`ralph.mcp.tools`](modules.html#ralph.mcp.tools) — the tool surface an agent sees (read_file / write_file / exec / git_read / websearch / webvisit / artifact submit / plan draft edit)
+  - [`ralph.recovery.controller`](modules.html#ralph.recovery.controller) — the two-state recovery invariant (exponential backoff to the next agent, same-agent retry) and the never-exit-on-unavailability guarantee
 - [Release & Versioning](versioning.md) covers release, tagging, and publishing workflow
 
 ## Dev build vs stable build
@@ -37,7 +41,7 @@ under a different launcher name.
   To pin a specific version:
 
   ```bash
-  python -m ralph.install --version 0.8.14   # or: uv tool install ralph-workflow==0.8.14
+  python -m ralph.install --version 0.8.18   # or: uv tool install ralph-workflow==0.8.18
   ```
 
 - **Switching** — type `rdev` for the dev build and `ralph` for the

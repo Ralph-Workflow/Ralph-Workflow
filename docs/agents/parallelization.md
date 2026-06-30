@@ -3,26 +3,45 @@
 Ralph Workflow is a free and open-source AI agent orchestrator built around a simple Ralph-loop core.
 That simple core composes into a stronger workflow system for serious repo work, and the default workflow is already strong enough to start with before you customize anything.
 
+## Default: agent-driven parallel plan execution
 
-Ralph supports parallel development fan-out: when planning produces multiple work units, Ralph develops them simultaneously in the **same workspace** (same-workspace v1).
+The bundled default sets `parallelism.dispatch_mode = "agent_subagents"` on the development phase (see `ralph/policy/defaults/pipeline.toml`). When planning produces a plan with `work_units` or `parallel_plan`, the executing **AI agent itself dispatches its own sub-agents** per the plan; Ralph Workflow does **not** run parallel workers in the bundled default. The declared `work_units` are informational and are read by the executing agent as parallelization intent.
 
-Only the **development** phase fans out in parallel. Review, fix, and commit phases always run serially afterward.
+The effect router (`ralph/pipeline/effect_router.py`) reads the `agent_subagents` flag and falls through to `InvokeAgentEffect` for the development phase. A WARNING is logged:
+
+> Ralph-managed fan-out is dormant in this build; the executing AI agent is expected to dispatch its own sub-agents per the plan. The declared work_units are informational; the agent will read them as parallelization intent.
+
+If you are authoring a planning prompt for parallel plan execution, write it to explicitly request a `work_units` or `parallel_plan` payload and let the executing agent decompose and dispatch.
+
+## Dormant: Ralph-managed same-workspace fan-out
+
+The Ralph-managed same-workspace fan-out machinery is **dormant** in this build. It is retained intact for future re-arming but is not the path that runs in the bundled default.
+
+To re-arm Ralph-managed fan-out on a phase, set:
+
+```toml
+[blocks.development.phase.parallelization]
+mode = "same_workspace"
+dispatch_mode = "ralph_fan_out"   # the legacy path; the bundled default is "agent_subagents"
+max_parallel_workers = 8
+max_work_units = 50
+```
+
+When `dispatch_mode = "ralph_fan_out"`, the dormant machinery described below is re-invoked: `FanOutEffect` (in `ralph/pipeline/effects/`), `ralph/pipeline/fan_out.py`, and `ralph/pipeline/parallel/` are kept intact and will run as soon as the flag flips back.
+
+The dormant marker is enforced by an audit at `ralph/testing/audit_parallelization_dormant.py` that runs under `make verify` and checks for the new wording in `planning.jinja`, the format doc, the effect-router WARNING, the bundled `pipeline.toml`, and the rubric dimension in `planning_analysis.jinja`.
+
+For architectural detail on the dormant machinery, see `docs/architecture/parallel-fan-out.md`. The rest of this page covers the dormant-fan-out operator surface so it remains accurate if the flag is re-armed.
 
 ---
 
-## How It Works
+## Dormant Ralph-managed fan-out — operator surface
 
-Workers share one repository checkout. Isolation comes from:
+The operator-facing sections below describe the dormant Ralph-managed same-workspace fan-out path. They are kept verbatim so they remain accurate if `dispatch_mode` is re-armed; the bundled default does not exercise them.
 
-- **Path restrictions**: each worker is restricted to the directories it declared in `allowed_directories`
-- **Per-worker namespaces**: scratch files, logs, and artifacts go under `.agent/workers/<unit_id>/`
-- **Policy validation**: overlapping or missing edit areas are rejected at policy load time, before any worker launches
+### Activation (dormant path)
 
-There are no per-worker git branches. When all workers finish, Ralph advances directly to the analysis phase.
-
-## Activation
-
-Parallelization activates automatically when the planning phase produces a `work_units` array with **more than one entry**.
+When `dispatch_mode = "ralph_fan_out"`, parallelization activates automatically when the planning phase produces a `work_units` array with **more than one entry**.
 
 | Work units | Behavior |
 |------------|----------|
@@ -51,13 +70,11 @@ The planning artifact must include a `work_units` array:
 }
 ```
 
----
-
-## Authoring PROMPT.md for Parallel Mode
+### Authoring PROMPT.md for parallel mode (dormant path)
 
 Write your planning prompt to explicitly request a `work_units` array in the final artifact. The key is to make the work decomposition concrete and independent.
 
-### What to Ask For
+#### What to Ask For
 
 ```
 After analyzing the requirements, produce a plan that:
@@ -70,7 +87,7 @@ After analyzing the requirements, produce a plan that:
 Return your plan as a JSON artifact with a `work_units` array.
 ```
 
-### Work Unit Requirements
+#### Work Unit Requirements
 
 Each `unit_id` must:
 - Be 1-64 characters from `[a-zA-Z0-9_-]`
@@ -78,7 +95,7 @@ Each `unit_id` must:
 - List `allowed_directories` to scope the agent's file access
 - Declare any `dependencies` (other unit_ids that must complete first)
 
-### Unit Dependency Rules
+#### Unit Dependency Rules
 
 Units can declare dependencies. Ralph respects the dependency graph when scheduling:
 
@@ -93,44 +110,42 @@ Units can declare dependencies. Ralph respects the dependency graph when schedul
 
 Units without dependencies run as soon as a worker is available. Units with dependencies wait until their prerequisites complete.
 
-### What to Avoid
+#### What to Avoid
 
 - **Overlapping file scopes**: Two units touching the same files will be rejected at policy load time
 - **Missing boundaries**: Vague descriptions lead to coordination problems
 - **Circular dependencies**: Unit A depending on Unit B and B depending on A causes pipeline failure
 - **Reserved paths**: Units must not declare `.agent`, `.git`, or `.` as allowed directories
 
----
+### Policy Configuration (dormant path)
 
-## Policy Configuration
-
-Parallelization is configured **per phase** under `[phases.<phase>.parallelization]` in `.agent/pipeline.toml`. A phase without this block **fails closed**: if planning declares 2+ work units, the pipeline exits with an error before any worker launches.
+Parallelization is configured **per phase** under `[blocks.<phase>.phase.parallelization]` in the bundled `ralph/policy/defaults/pipeline.toml`. A phase without this block **fails closed**: if planning declares 2+ work units and the dormant flag is on, the pipeline exits with an error before any worker launches.
 
 ```toml
-[phases.development.parallelization]
+[blocks.development.phase.parallelization]
 mode = "same_workspace"
-max_parallel_workers = 4
-max_work_units = 25
+dispatch_mode = "ralph_fan_out"   # the legacy path; the bundled default is "agent_subagents"
+max_parallel_workers = 8
+max_work_units = 50
 require_allowed_directories = true
 post_fanout_verification = false
 ```
 
-### Settings
+#### Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `mode` | — | Only `"same_workspace"` is supported |
-| `max_parallel_workers` | 8 | Maximum concurrent work units |
-| `max_work_units` | 50 | Maximum work units accepted from planning artifact |
+| `dispatch_mode` | `"agent_subagents"` | `"agent_subagents"` (default, bundled) or `"ralph_fan_out"` (dormant) |
+| `max_parallel_workers` | 8 | Maximum concurrent work units (dormant path only) |
+| `max_work_units` | 50 | Maximum work units accepted from planning artifact (dormant path only) |
 | `require_allowed_directories` | true | Whether each work unit must declare allowed directories |
 
----
-
-## Dashboard Interpretation
+### Dashboard Interpretation (dormant path)
 
 In TTY mode, Ralph shows a live dashboard with worker progress.
 
-### Status Labels
+#### Status Labels
 
 | Internal Status | Dashboard | Meaning |
 |----------------|----------|---------|
@@ -140,7 +155,7 @@ In TTY mode, Ralph shows a live dashboard with worker progress.
 | FAILED | FAIL | Exited with an error |
 | CANCELLED | CANCELLED | Killed by hard-kill or user interrupt |
 
-### Dashboard Regions
+#### Dashboard Regions
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -157,13 +172,11 @@ In TTY mode, Ralph shows a live dashboard with worker progress.
 
 The `Dropped` counter appears when output lines are discarded due to buffer limits in CI environments. It is informational only.
 
-### Reading Worker Output
+#### Reading Worker Output
 
 Worker output streams in real time. In dashboard mode, output renders in a scrollable region associated with that worker. In lines mode (non-TTY), output is prefixed with the unit_id.
 
----
-
-## Non-TTY Fallback Behavior
+### Non-TTY Fallback Behavior (dormant path)
 
 Ralph falls back to lines mode when:
 
@@ -173,7 +186,7 @@ Ralph falls back to lines mode when:
 - Console reports it is not a terminal
 - Console width is 60 characters or fewer
 
-### Lines Mode Output
+#### Lines Mode Output
 
 ```
 [api-endpoints] status=RUN
@@ -185,13 +198,11 @@ Ralph falls back to lines mode when:
 
 Lines mode strips ANSI escape sequences automatically.
 
----
-
-## Hard-Kill Semantics
+### Hard-Kill Semantics (dormant path)
 
 When you press Ctrl-C during a parallel run, Ralph performs a hard-kill rather than graceful shutdown.
 
-### First Ctrl-C
+#### First Ctrl-C
 
 1. Kills all tracked subprocess groups via `SIGKILL`
 2. Cancels the root task in the asyncio event loop
@@ -200,17 +211,15 @@ When you press Ctrl-C during a parallel run, Ralph performs a hard-kill rather t
 
 Per-worker namespaces under `.agent/workers/` are preserved for post-mortem inspection.
 
-### Second Ctrl-C
+#### Second Ctrl-C
 
 Calls `os._exit(130)` immediately with no cleanup.
 
-### After Hard-Kill
+#### After Hard-Kill
 
 The pipeline saves a checkpoint, so you can resume from where workers left off. Workers that had already completed will not be re-invoked on resume. Run `ralph cleanup` to remove stale per-worker namespaces.
 
----
-
-## ralph cleanup Command
+### ralph cleanup Command
 
 Removes stale per-worker namespaces after a hard-kill or failed parallel run.
 
@@ -227,9 +236,7 @@ ralph cleanup --force
 
 Exit codes: `0` = cleaned successfully or nothing to clean; `1` = error (not in a git repository, etc.)
 
----
-
-## Edit Area Safety
+### Edit Area Safety
 
 Same-workspace parallelism is **soft isolation**, not hard isolation. Safety comes from:
 
@@ -237,7 +244,7 @@ Same-workspace parallelism is **soft isolation**, not hard isolation. Safety com
 2. **Runtime fencing**: each worker can only write to its declared directories and its own namespace
 3. **Artifact namespacing**: per-worker evidence lives under `.agent/workers/<unit_id>/artifacts/`
 
-### Rejected Plans
+#### Rejected Plans
 
 Ralph rejects a plan before execution if:
 - Two or more work units have overlapping `allowed_directories`
@@ -246,14 +253,14 @@ Ralph rejects a plan before execution if:
 
 The rejection message names the conflicting units and explains what a safe plan would look like.
 
-### What Happens When Workers Are Done
+#### What Happens When Workers Are Done
 
 When all workers complete successfully:
 1. Ralph collects per-worker artifact evidence from `.agent/workers/<unit_id>/artifacts/`
 2. Pipeline advances directly to the analysis phase — no merge step required
-3. If `run_post_fanout_verification=True`, workspace-wide verification runs once serially
+3. If `post_fanout_verification=True`, workspace-wide verification runs once serially
 
-### Partial Failure
+#### Partial Failure
 
 If some workers succeed and others fail:
 - Pipeline transitions to `PHASE_FAILED`
@@ -261,11 +268,9 @@ If some workers succeed and others fail:
 - Successful worker outputs remain in the shared workspace
 - Ralph does not roll back partial edits — same-workspace mode does not support automatic rollback
 
----
+### Troubleshooting (dormant path)
 
-## Troubleshooting
-
-### "MCP port bind failed" Error
+#### "MCP port bind failed" Error
 
 Each worker launches its own MCP server. If you see this error, another process is using the MCP port:
 
@@ -277,7 +282,7 @@ ps aux | grep mcp
 
 Kill stale processes and retry.
 
-### "worker FAILED" Interpretation
+#### "worker FAILED" Interpretation
 
 1. Check the worker's output for the error message
 2. Look at `.agent/workers/<unit_id>/logs/` for context
@@ -286,7 +291,7 @@ Kill stale processes and retry.
    - Agent produced invalid output that Ralph could not parse
    - Worker attempted to write outside its declared edit area
 
-### Pipeline Hangs After All Workers Complete
+#### Pipeline Hangs After All Workers Complete
 
 1. Press Ctrl-C to trigger hard-kill
 2. Run `ralph cleanup --dry-run` to see remaining worker namespaces
@@ -298,12 +303,15 @@ Kill stale processes and retry.
 
 | Concern | Behavior |
 |---------|----------|
-| Parallelization trigger | Planning artifact contains 2+ work units |
-| Isolation model | Same workspace, path-restricted per worker |
-| Max concurrent workers | `max_parallel_workers` (default: 8) |
-| Dashboard status labels | WAIT, RUN, DONE, FAIL, CANCELLED |
-| Non-TTY mode | Lines with `[unit_id]` prefix |
-| Hard-kill | First Ctrl-C: SIGKILL all workers, save checkpoint, exit 130 |
+| Default dispatch mode | `agent_subagents` (executing AI agent dispatches its own sub-agents) |
+| Dormant dispatch mode | `ralph_fan_out` (same-workspace fan-out via Ralph workers) |
+| Parallelization trigger | Planning artifact contains 2+ work units (dormant path) |
+| Isolation model (dormant path) | Same workspace, path-restricted per worker |
+| Max concurrent workers (dormant path) | `max_parallel_workers` (default: 8) |
+| Max work units (dormant path) | `max_work_units` (default: 50) |
+| Dashboard status labels (dormant path) | WAIT, RUN, DONE, FAIL, CANCELLED |
+| Non-TTY mode (dormant path) | Lines with `[unit_id]` prefix |
+| Hard-kill (dormant path) | First Ctrl-C: SIGKILL all workers, save checkpoint, exit 130 |
 | Cleanup | `ralph cleanup [--dry-run] [--force]` |
-| Overlapping edit areas | Rejected at policy load time, before launch |
-| Partial failure | Pipeline fails, all failed unit_ids named, no automatic rollback |
+| Overlapping edit areas (dormant path) | Rejected at policy load time, before launch |
+| Partial failure (dormant path) | Pipeline fails, all failed unit_ids named, no automatic rollback |

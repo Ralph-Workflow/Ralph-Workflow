@@ -83,7 +83,7 @@ side by side. They never collide because the dev build registers no global comma
   version instead of the latest release:
 
   ```bash
-  python -m ralph.install --version 0.8.14   # or: uv tool install ralph-workflow==0.8.14
+  python -m ralph.install --version 0.8.18   # or: uv tool install ralph-workflow==0.8.18
   ```
 
 - **Switching** — type `rdev` for the dev build and `ralph` for the stable

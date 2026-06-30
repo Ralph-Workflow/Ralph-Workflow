@@ -72,45 +72,97 @@ class McpSession(Protocol):
     tool_output_sink_entry: ToolOutputSinkEntry | None
 
     @property
-    def session_id(self) -> str: ...
-    @property
-    def run_id(self) -> str: ...
-    @property
-    def drain(self) -> str: ...
-    @property
-    def capabilities(self) -> set[str]: ...
-    @property
-    def policy_flags(self) -> set[str] | None: ...
-    @property
-    def created_at(self) -> float: ...
-    @property
-    def parallel_worker(self) -> bool: ...
-    @property
-    def edit_area_result(self) -> object: ...
-    @property
-    def worker_artifact_dir(self) -> Path | None: ...
-    @property
-    def worker_namespace(self) -> Path | None: ...
-    @property
-    def allowed_roots(self) -> tuple[Path, ...]: ...
-    @property
-    def media_manifest(self) -> MediaManifest: ...
-    @property
-    def model_identity(self) -> MultimodalModelIdentity: ...
-    @property
-    def stored_capability_profile(self) -> ResolvedCapabilityProfile | None: ...
-    @property
-    def capability_profile(self) -> ResolvedCapabilityProfile | None: ...
+    def session_id(self) -> str:
+        """Stable identifier for the session, unique per logical MCP server invocation."""
+        ...
 
-    def check_capability(self, capability: str, /) -> object: ...
+    @property
+    def run_id(self) -> str:
+        """Run identifier that owns this session, used for cross-record correlation."""
+        ...
 
-    def is_parallel_worker(self) -> bool: ...
+    @property
+    def drain(self) -> str:
+        """Logical phase drain the session is bound to (e.g. ``planning``, ``development``)."""
+        ...
 
-    def check_edit_area(self, path: str, /) -> object: ...
+    @property
+    def capabilities(self) -> set[str]:
+        """Set of capability identifiers granted to the session by the agent's auth contract."""
+        ...
+
+    @property
+    def policy_flags(self) -> set[str] | None:
+        """Optional set of policy-flag identifiers that further restrict the session's surface."""
+        ...
+
+    @property
+    def created_at(self) -> float:
+        """Unix timestamp (seconds) at which the session was first instantiated."""
+        ...
+
+    @property
+    def parallel_worker(self) -> bool:
+        """True if the session is a parallel-worker subprocess rather than the main agent."""
+        ...
+
+    @property
+    def edit_area_result(self) -> object:
+        """Cached result of the edit-area validation for this session's worker, if any."""
+        ...
+
+    @property
+    def worker_artifact_dir(self) -> Path | None:
+        """Directory the worker writes its per-worker artifact evidence under, or None."""
+        ...
+
+    @property
+    def worker_namespace(self) -> Path | None:
+        """Per-worker scratch namespace, isolated from sibling workers and the main checkout."""
+        ...
+
+    @property
+    def allowed_roots(self) -> tuple[Path, ...]:
+        """Tuple of filesystem roots the session is permitted to read or write."""
+        ...
+
+    @property
+    def media_manifest(self) -> MediaManifest:
+        """Per-session manifest tracking media references for upstream / proxy responses."""
+        ...
+
+    @property
+    def model_identity(self) -> MultimodalModelIdentity:
+        """Identity of the active multimodal model used to resolve capability profiles."""
+        ...
+
+    @property
+    def stored_capability_profile(self) -> ResolvedCapabilityProfile | None:
+        """Cached resolved capability profile for the active model, or None to re-resolve."""
+        ...
+
+    @property
+    def capability_profile(self) -> ResolvedCapabilityProfile | None:
+        """Effective capability profile, falling back to ``model_identity`` when uncached."""
+        ...
+
+    def check_capability(self, capability: str, /) -> object:
+        """Return whether the session may use `capability` (approved/denied or structured)."""
+        ...
+
+    def is_parallel_worker(self) -> bool:
+        """Return True if the session is a parallel-worker subprocess rather than the main agent."""
+        ...
+
+    def check_edit_area(self, path: str, /) -> object:
+        """Return whether `path` is inside the session's allowed edit area."""
+        ...
 
     def current_thread_tool_output_sink(
         self,
-    ) -> Callable[[dict[str, object]], None] | None: ...
+    ) -> Callable[[dict[str, object]], None] | None:
+        """Return the tool-output sink only when the calling thread owns it."""
+        ...
 
 
 @dataclass

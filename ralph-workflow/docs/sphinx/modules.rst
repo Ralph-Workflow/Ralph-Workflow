@@ -8,6 +8,14 @@ This section documents every public Ralph Workflow subpackage. All modules liste
 Top-Level
 ---------
 
+The top-level package exposes version metadata, the CLI entrypoint
+(`ralph.main`), platform detection helpers, and the runtime verification
+primitives used by ``make verify``. The package docstring lists the major
+subpackages a contributor will touch most often. See
+:doc:`developer-reference` for the contributor map and
+:doc:`configuration` for how layered config and policy defaults are wired
+together.
+
 ralph
 ~~~~~
 
@@ -192,6 +200,13 @@ ralph.test_suites
 CLI
 ---
 
+The CLI is a Typer application built on :doc:`cli`. It exposes every
+subcommand a user runs day to day: ``init``, ``diagnose``, ``run``,
+``commit``, ``cleanup``, ``explain``, ``prompt-helper``, ``smoke``, and
+``star`` — plus policy helpers (``check-policy``, ``contribute``).
+Each command lives in its own submodule so the CLI surface stays
+discoverable and individual commands can be tested in isolation.
+
 ralph.cli
 ~~~~~~~~~
 
@@ -299,6 +314,13 @@ ralph.cli.commands.prompt_helper_prompt
 
 Config
 ------
+
+This group holds the Pydantic models, loaders, and bootstrap helpers
+that back Ralph Workflow's layered config (CLI flag → project-local
+→ user-global → bundled defaults). The merged ``UnifiedConfig`` is what
+the runtime sees on every run. See :doc:`configuration` for the
+operator-facing reference and :doc:`policy-driven-overhaul-migration`
+for the migration background.
 
 ralph.config
 ~~~~~~~~~~~~
@@ -445,6 +467,15 @@ ralph.config.web_service_configs
 Policy
 ------
 
+The policy group is the heart of Ralph Workflow's policy-driven
+pipeline: it loads, validates, explains, and renders the TOML policy
+tables (``pipeline.toml``, ``agents.toml``, ``artifacts.toml``,
+``mcp.toml``). The runtime is a generic policy interpreter; behavior
+changes land in ``ralph/policy/defaults/`` rather than in code. See
+:doc:`policy-driven-pipeline` for the model and
+:doc:`policy-explanation` for the explain surface used by ``ralph
+explain``.
+
 ralph.policy
 ~~~~~~~~~~~~
 
@@ -574,6 +605,14 @@ ralph.policy.render
 
 Pipeline
 --------
+
+The pipeline group owns the Ralph-loop runtime: state model, reducer,
+effect router, phase agent handlers, and the run loop. Effects are
+declared in TOML and routed through ``ralph/pipeline/effect_router.py``
+to handlers under ``ralph/pipeline/parallel/``, ``ralph/pipeline/effects/``,
+and ``ralph/pipeline/recovery/`` (covered by their own groups). See
+:doc:`ralph-loop` for the loop model and :doc:`phase-routing` for how
+phases route between planning, development, commit, and analysis.
 
 ralph.pipeline
 ~~~~~~~~~~~~~~
@@ -1015,6 +1054,13 @@ ralph.pipeline.worker_status
 Skills
 ------
 
+This group owns the shipped skill bundle and the helpers that sync it
+with each agent's skill tree. The mirrored baseline skill content lives
+under ``ralph/skills/content/`` and is listed in ``BASELINE_SKILL_NAMES``
+in ``ralph/skills/_content.py``. The manager (``ralph/skills/manager.py``)
+handles install, adoption, and the deterministic auto-commit contract
+enforced by ``ralph/testing/audit_skill_auto_commit.py`` (verify step 18).
+
 ralph.skills
 ~~~~~~~~~~~~
 
@@ -1032,6 +1078,14 @@ ralph.skills.manager
 Git
 ---
 
+The Git group bundles the GitPython-backed repository operations used by
+the runtime: status, diff, log, show, rebase, hooks, subprocess runner,
+and the commit-cleanup helpers that ship under ``ralph/git/commit_cleanup.py``.
+Every blocking call in this group uses a bounded timeout via
+``ralph/git/subprocess_runner.run_git``; see the bounded-subprocess
+contract in `docs/agents/verification.md
+<https://github.com/Ralph-Workflow/Ralph-Workflow/blob/main/docs/agents/verification.md>`__.
+
 ralph.git.commit_cleanup
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1043,6 +1097,14 @@ ralph.git.commit_cleanup
 
 Phases
 ------
+
+This group holds the per-phase logic: analysis (``ralph/phases/analysis.py``),
+artifact-required checks (``required_artifacts``), commit / commit-cleanup
+/ commit-logging, execution, integrity, review, verification, and timing.
+Each phase maps to a TOML block under ``[blocks.*]`` in the bundled
+``ralph/policy/defaults/pipeline.toml``. See :doc:`phase-routing` for how
+phase transitions are wired and :doc:`advanced-pipeline-configuration`
+for extending the phase graph.
 
 ralph.phases
 ~~~~~~~~~~~~
@@ -1133,6 +1195,14 @@ ralph.phases.timing
 
 Agents
 ------
+
+This is the largest group: it owns the built-in agent catalog, the
+executor protocol and subprocess adapter, the parsers for every
+supported agent (Claude, Codex, OpenCode, Nanocoder, AGY, Pi), the
+execution strategies, and the activity-aware idle watchdog with its
+post-exit sibling. See :doc:`agents` for the selection and trust story,
+:doc:`watchdogs-and-timeouts` for the timeout model, and
+:doc:`agent-compatibility` for the supported-agent matrix.
 
 ralph.agents
 ~~~~~~~~~~~~
@@ -1498,6 +1568,15 @@ ralph.agents.timeout_clock
 
 MCP
 ---
+
+The MCP group is the bridge between the agent and the workspace: it
+exposes the in-process ``ralph-workflow`` MCP server, the upstream
+proxy for third-party MCP servers, the tool surface
+(read_file / write_file / exec / git_read / websearch / webvisit /
+artifact submit / plan draft edit), the canonical artifact-submission
+contract, and the multimodal (image / audio / video / PDF) capability
+detection. See :doc:`mcp-architecture` for the runtime topology and
+:doc:`artifacts` for the artifact-submission contract.
 
 ralph.mcp
 ~~~~~~~~~
@@ -3165,6 +3244,15 @@ ralph.telemetry
 
 Integrations
 ------------
+
+This group is the engine-side half of the Ralph-Workflow-Pro contract.
+It exposes the package and its public API for sphinx cross-references,
+the workspace and prompt hooks, the heartbeat / watcher / marker
+helpers, and the state-query surface used by an attached Pro Support
+session. The detailed contract lives at :doc:`pro-support`; this entry
+keeps the module surface discoverable so contributors can land
+changes against the Pro Support boundary without reading the full
+contract page.
 
 ralph.pro_support
 ~~~~~~~~~~~~~~~~~

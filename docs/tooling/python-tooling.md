@@ -262,17 +262,14 @@ See the `Makefile` `dist-binary` target for current build configuration.
 
 ## make verify (Canonical Verification)
 
-The `make verify` target runs the complete verification suite:
+The `make verify` target runs the complete verification suite — the docs build prerequisite plus the 18 ordered verify steps enumerated in [`docs/agents/verification.md`](../agents/verification.md). `make verify` is the authoritative gate; do **not** duplicate the step list here.
 
 ```bash
 cd ralph-workflow
 make verify
 ```
 
-This executes:
-1. `make lint` — ruff check (zero violations required)
-2. `make typecheck` — mypy strict mode (zero type errors required)
-3. `make test` — `python -m ralph.test_suites` through the managed project environment, which runs one maintained parallel pytest invocation over `tests/` with `-m "not subprocess_e2e"` under the 60-second suite timeout. `ralph.verify` also caps the full `make test` step at 60 s via `_TOTAL_TEST_BUDGET_SECONDS`.
+`docs/agents/verification.md` is the single source of truth for what `make verify` runs: the docs build (Sphinx `-W`, wired in as a Make prerequisite and not counted against the immutable 60-second combined test budget), the per-step labels 1–18, the bypass audits, the social-proof gate, and the per-step / combined-total timeouts (including the 60-second `_TOTAL_TEST_BUDGET_SECONDS`). When in doubt, read that page first.
 
 `make test-unit`, `make test-integration`, `make test-cov`, and `make test-subprocess-e2e` remain available as focused commands, but they are **not** part of `make verify`.
 
@@ -281,6 +278,10 @@ This executes:
 - Test files must have zero `# type: ignore` or `# pyright:` suppressions
 - Runtime suppressions must follow `docs/agents/type-ignore-policy.md`
 - The enforcement test `test_zero_test_file_suppressions` in `test_type_ignore_policy.py` validates these rules
+
+## Development setup
+
+For a first-patch contributor path (`make dev` env sync, the dev-build vs stable-build `rdev` / `ralph` split, and the editable-install workflow), see [`ralph-workflow/CONTRIBUTING.md`](../../ralph-workflow/CONTRIBUTING.md). The contributor onboarding doc is the single source for local development setup; this tooling page stays focused on lint, typecheck, test, build, and distribution.
 
 If any step fails, `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and instructs the active AI agent to fix the failure immediately.
 
