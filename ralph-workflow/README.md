@@ -199,11 +199,12 @@ collected, and nothing about the project you are working on ever leaves
 your machine.
 
 Each installation generates a random 32-character identifier stored in
-`~/.config/ralph-workflow-user.ini`. This identifier is not tied to
-your name, email address, IP address, or any other personal data —
-it is a random string used only to distinguish different installations
-in crash reports. A fresh random session identifier is generated on
-every run.
+`$XDG_CONFIG_HOME/ralph-workflow-user.ini` when `XDG_CONFIG_HOME` is
+set, falling back to `~/.config/ralph-workflow-user.ini` otherwise.
+This identifier is not tied to your name, email address, IP address,
+or any other personal data — it is a random string used only to
+distinguish different installations in crash reports. A fresh random
+session identifier is generated on every run.
 
 What we collect (anonymous metadata only):
 
@@ -231,9 +232,12 @@ How to opt out (any one of these disables telemetry entirely):
 
 - Set the environment variable `RALPH_DISABLE_TELEMETRY=1` (any of
   `1`, `true`, `yes`, `on`, case-insensitive).
-- Delete or rename `~/.config/ralph-workflow-user.ini`. Ralph Workflow
-  will create a new random ID on the next run only if telemetry is
-  enabled.
+- Delete or rename your identity file. The path follows the
+  `XDG_CONFIG_HOME` convention: when `XDG_CONFIG_HOME` is set, the
+  file lives at `$XDG_CONFIG_HOME/ralph-workflow-user.ini`; otherwise
+  it falls back to `~/.config/ralph-workflow-user.ini`. On the next
+  run, Ralph Workflow will create a new random ID only if telemetry
+  is enabled.
 
 ## Community
 
