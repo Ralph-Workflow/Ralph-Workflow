@@ -38,7 +38,7 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
-_OUTPUT_BATCH = 400
+_OUTPUT_BATCH = 300
 
 
 class _FakePipelineFactory:

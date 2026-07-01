@@ -452,7 +452,7 @@ def test_run_verify_single_step_within_budget(
         }
     )
 
-    # Eighteen steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
+    # Nineteen steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
     # 5=test_policy audit, 6=mcp_timeout audit, 7=di_seam audit,
     # 8=activity_aware_watchdog audit, 9=watchdog_drift audit,
     # 10=parallelization_dormant audit, 11=artifact_submission_canonical_path audit,
@@ -461,7 +461,7 @@ def test_run_verify_single_step_within_budget(
     # 16=resource_lifecycle audit, 17=skill_auto_commit audit,
     # 18=public_docstrings audit).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
-    # all other steps take 0s.
+    # all other steps take 0s. Total: 19 steps x 2 monotonic calls = 38 entries.
     times = [
         0.0,
         0.0,
@@ -769,7 +769,7 @@ def test_run_verify_non_test_steps_not_counted(
     )
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Eighteen steps (ruff, mypy, make test, thirteen audits, social-proof gate,
+    # Nineteen steps (ruff, mypy, make test, fourteen audits, social-proof gate,
     # resource_lifecycle audit, skill_auto_commit audit, public_docstrings
     # audit) x 2 monotonic calls per step = 38 entries.
     times = [
