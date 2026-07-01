@@ -339,7 +339,16 @@ def test_scrub_event_basenames_absolute_filename() -> None:
     assert frame["filename"] == "foo.py"
 
 
-def test_scrub_event_preserves_relative_filename() -> None:
+def test_scrub_event_basenames_relative_filename() -> None:
+    """Relative path-like filenames MUST collapse to their basename.
+
+    Regression: a relative frame filename such as ``ralph/foo.py`` reveals
+    codebase structure (module hierarchy, package layout) and must be
+    redacted to its basename. The earlier behavior preserved relative
+    filenames verbatim, which leaked codebase identity — contradicting
+    AC-06 ("no project file paths leave the process") and the README
+    privacy claim that telemetry never identifies the codebase.
+    """
     event: dict[str, object] = {
         "exception": {
             "values": [
@@ -365,7 +374,72 @@ def test_scrub_event_preserves_relative_filename() -> None:
     assert isinstance(frames, list)
     frame = frames[0]
     assert isinstance(frame, dict)
-    assert frame["filename"] == "ralph/foo.py"
+    assert frame["filename"] == "foo.py"
+
+
+def test_scrub_event_basenames_windows_relative_filename() -> None:
+    """Windows-style relative filenames (``src\\foo.py``) collapse to basename."""
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "stacktrace": {
+                        "frames": [
+                            {"filename": "src\\foo.py"},
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+    result = _scrub_event(event, {})
+    assert isinstance(result, dict)
+    exc = result["exception"]
+    assert isinstance(exc, dict)
+    values = exc["values"]
+    assert isinstance(values, list)
+    first = values[0]
+    assert isinstance(first, dict)
+    frames = first["stacktrace"]["frames"]
+    assert isinstance(frames, list)
+    frame = frames[0]
+    assert isinstance(frame, dict)
+    assert frame["filename"] == "foo.py"
+
+
+def test_scrub_event_preserves_bare_module_name() -> None:
+    """Bare module names without a path separator are too generic to leak identity.
+
+    ``foo.py`` (no ``/`` or ``\\``) does not identify a codebase, so the
+    scrubber leaves it intact. This bounds the redaction to filenames
+    that actually carry path information.
+    """
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "stacktrace": {
+                        "frames": [
+                            {"filename": "foo.py"},
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+    result = _scrub_event(event, {})
+    assert isinstance(result, dict)
+    exc = result["exception"]
+    assert isinstance(exc, dict)
+    values = exc["values"]
+    assert isinstance(values, list)
+    first = values[0]
+    assert isinstance(first, dict)
+    frames = first["stacktrace"]["frames"]
+    assert isinstance(frames, list)
+    frame = frames[0]
+    assert isinstance(frame, dict)
+    assert frame["filename"] == "foo.py"
 
 
 def test_scrub_event_drops_server_name_alongside_frame_scrubbing() -> None:

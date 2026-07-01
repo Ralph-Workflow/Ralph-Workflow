@@ -109,17 +109,29 @@ def _is_absolute_filename(value: object) -> bool:
     return value.startswith("\\\\")
 
 
-def _basename_of_absolute_path(filename: str) -> str:
-    """Return the basename of an absolute POSIX or Windows path.
+def _is_path_like_filename(value: object) -> bool:
+    """Return True if ``value`` looks like a filename carrying a path separator.
 
-    POSIX (``/Users/jane/foo.py``) and Windows (``C:\\Users\\jane\\foo.py``,
-    ``C:/Users/jane/foo.py``, ``\\\\server\\share\\foo.py``) absolute paths
-    are all supported. The split uses ``\\`` first when present so UNC
-    ``\\\\server\\share\\foo.py`` collapses correctly.
+    Relative paths like ``ralph/foo.py`` or ``src\\foo.py`` reveal codebase
+    structure (module hierarchy, package layout) even without an absolute
+    prefix, so the scrubber collapses them to their basename. Bare module
+    names like ``foo.py`` (no separator) are NOT considered path-like and are
+    left intact — they are too generic to identify a codebase.
+    """
+    if not isinstance(value, str) or not value:
+        return False
+    return "/" in value or "\\" in value
+
+
+def _basename_of_path_like(filename: str) -> str:
+    """Return the basename of a path-like filename (relative or absolute).
+
+    Prefers ``\\`` as the separator when present so mixed Windows-style
+    strings like ``a\\b/c.py`` collapse correctly to ``c.py``.
     """
     if "\\" in filename:
         return filename.rsplit("\\", 1)[-1]
-    return Path(filename).name
+    return filename.rsplit("/", 1)[-1]
 
 
 def _scrub_frames(frames: object) -> None:
@@ -131,8 +143,9 @@ def _scrub_frames(frames: object) -> None:
         d_frame = cast("dict[str, object]", frame)
         d_frame.pop("abs_path", None)
         filename = d_frame.get("filename")
-        if _is_absolute_filename(filename):
-            d_frame["filename"] = _basename_of_absolute_path(cast("str", filename))
+        if not _is_path_like_filename(filename):
+            continue
+        d_frame["filename"] = _basename_of_path_like(cast("str", filename))
 
 
 def _scrub_event(event: object, _hint: object) -> object:
