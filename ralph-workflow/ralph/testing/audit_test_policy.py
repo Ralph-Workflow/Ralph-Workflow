@@ -114,6 +114,11 @@ _IO_ALLOWLIST: set[str] = {
     # The audit tool's AST heuristic cannot distinguish these.
     "test_tool_artifact_1_helper_failingartifactbackend",
     "test_tool_artifact_2_helper_failingartifactbackend",
+    # Docs<->pin-list parity guard: reads docs/agents/watchdog-spec.md
+    # to enforce that every RALPH_PIN_TEST_PATHS entry is cited in the
+    # traceability doc. The assertion is the contract under test;
+    # mocking the file read would test nothing.
+    "test_watchdog_spec_docs_pin_parity",
 }
 
 # Files that legitimately use time.monotonic()/time.perf_counter() for

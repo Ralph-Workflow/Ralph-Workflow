@@ -562,6 +562,19 @@ level 1 rejects unsupported claims per AGENTS.md.
       form `OpenCodeResumableExitError(agent_name, session_id=...)`
       constructs cleanly with all NEW attributes defaulting to
       `None` / `()`.
+- `tests/recovery/test_opencode_resumable_exit_producer_path.py`
+  (7 tests) — proves the R7 PRODUCER-side root-cause contract:
+  `ralph.agents.invoke._completion._check_process_result` raises
+  `OpenCodeResumableExitError` carrying the captured `session_id`
+  when the agent subprocess exits `rc=0` without completion evidence
+  (no artifact, no `declare_complete`). A regression at
+  `_completion.py:368` (the `raise` statement) would silently break
+  the R4 watchdog-driven resume contract — the recovery controller
+  would lose its typed exception to lift `resumable_session_id` from
+  and a clean rc=0-no-evidence exit would fall back to the
+  ambiguous-warning path. Together with the classifier and
+  classification pin files above, this third pin closes the
+  producer→classifier→recovery chain end-to-end (20 R7 tests).
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r7`
 
 ---
