@@ -494,7 +494,7 @@ Verify cited line numbers after touching the cited files.
   `@dataclass(frozen=True) class _CompletionCheckOptions`; the
   in-process dataclass that threads the four R7 diagnostic
   fields from the line-reader layer to the
-  `OpenCodeResumableExitError` raise site at line 368. The
+  `OpenCodeResumableExitError` raise site at line 389. The
   four R7 diagnostic fields are enforced keyword-only via a
   Python `dataclasses.KW_ONLY` sentinel (Python 3.10+): a
   positional constructor call that targets the R7 surface

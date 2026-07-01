@@ -33,7 +33,7 @@ COMMIT_CLEANUP_ARTIFACT_PATH = ".agent/artifacts/commit_cleanup.json"
 # machines, so the default 1-second per-test ceiling is unsafe. A few
 # tests that do not touch the fixture complete in < 1 s and tolerate
 # the elevated ceiling as a no-op.
-pytestmark = pytest.mark.timeout_seconds(5)
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
 def _write_commit_cleanup_artifact(

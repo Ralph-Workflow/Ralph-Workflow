@@ -102,6 +102,7 @@ def test_pipeline_phase_stamps_canonical_receipt(
 
 
 @pytest.mark.timeout_seconds(3)
+@pytest.mark.subprocess_e2e
 def test_pipeline_audit_finds_no_bypasses_in_isolation() -> None:
     """The pipeline layer has zero canonical-path bypasses when audited in isolation.
 
