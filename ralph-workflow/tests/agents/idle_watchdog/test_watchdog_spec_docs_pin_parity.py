@@ -25,7 +25,7 @@ Test isolation guarantees:
     the file stem in ``_IO_ALLOWLIST``).
   * No ``time.sleep`` (no wall-clock waits).
   * No module-level mutable accumulators (all locals).
-  * No ``# type: ignore`` (tests must be fully typed per AGENTS.md).
+  * No ``type: ignore`` directives (tests must be fully typed per AGENTS.md).
   * The ``RALPH_PIN_TEST_PATHS`` tuple is loaded via ``importlib`` with
     ``sys.modules`` registration BEFORE ``exec_module`` -- the source
     module defines a module-level ``@dataclass`` (``_HelpersOnlyMonitor``)

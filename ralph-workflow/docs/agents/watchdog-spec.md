@@ -365,7 +365,11 @@ parametrized per-transport pin test at
   `watchdog.evaluate(classify_quiet=...)` only (NO `setattr` on
   `_classify_stuck_now`, NO direct call to `_gate_fire`, NO read
   of `_last_*_log_at`). Captures `WaitingStatusEvent` instances via
-  `register_waiting_status_listener` (the public listener API) and
+  `register_default_subagent_activity_listener` (the public listener
+  registration API at
+  `ralph/agents/idle_watchdog/idle_watchdog.py:620`, alias of the
+  `IdleWatchdog.__init__(listener=...)` constructor parameter at
+  line 487) and
   counts both PROGRESS-kind emissions and loguru StringIO records
   filtered on `component='idle_watchdog'`. The 1000-call cycle
   MUST emit `<= 2` PROGRESS events (the R6 spam-invariant).
