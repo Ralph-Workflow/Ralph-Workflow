@@ -347,6 +347,7 @@ def test_sync_user_global_hint_text_mentions_force_init_skills(
 
 
 @pytest.mark.timeout_seconds(10)
+@pytest.mark.subprocess_e2e
 def test_sync_shipped_skills_creates_auto_commit_on_dirty_skill_tree(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -445,6 +446,7 @@ def test_sync_shipped_skills_creates_auto_commit_on_dirty_skill_tree(
 
 
 @pytest.mark.timeout_seconds(15)
+@pytest.mark.subprocess_e2e
 def test_install_then_auto_commit_replaces_stale_bundled_skill(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -615,6 +617,7 @@ def test_install_then_auto_commit_replaces_stale_bundled_skill(
 
 
 @pytest.mark.timeout_seconds(15)
+@pytest.mark.subprocess_e2e
 def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -624,6 +627,8 @@ def test_skill_sync_autocommits_before_agent_sees_skill_tree_drift(
 
     Pins the implied pre-pipeline sync + agent-clean-worktree invariant
     from PROMPT.md. The development agent MUST NOT see the skill-tree
+
+
     drift at runtime; ``_sync_shipped_skills_on_pipeline_run`` runs as
     Phase 2b BEFORE the agent's commit_cleanup phase and MUST land an
     auto-commit that resolves the drift.

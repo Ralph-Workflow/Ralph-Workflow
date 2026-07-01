@@ -20,6 +20,7 @@ from ralph.cli.commands.init import init_command
 from ralph.config.bootstrap import BootstrapResult
 from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
+from ralph.skills._capability_state import CapabilityState
 
 
 def _make_recording_console() -> Console:
@@ -107,6 +108,10 @@ class TestInjectedDisplayContextIsHonored:
                 ),
                 patch("ralph.cli.commands.init.ensure_local_support_configs", return_value=[]),
                 patch("ralph.cli.commands.init._print_fallback_next_steps"),
+                patch(
+                    "ralph.cli.commands.init._ensure_baseline_capabilities",
+                    return_value=(CapabilityState(), []),
+                ),
             ):
                 init_command(template="legacy", display_context=ctx)
 

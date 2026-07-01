@@ -1,6 +1,8 @@
 """Tests for ralph.cli.commands.init baseline capability integration."""
 
 from __future__ import annotations
+import pytest
+
 
 from io import StringIO
 from typing import TYPE_CHECKING
@@ -19,6 +21,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+
+pytestmark = pytest.mark.subprocess_e2e
 
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO:

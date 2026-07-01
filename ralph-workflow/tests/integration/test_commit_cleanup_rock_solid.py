@@ -47,7 +47,7 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.workspace.fs import FsWorkspace
 
-pytestmark = pytest.mark.timeout_seconds(10)
+pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
 # Five originally-failing TRACKED files (PA-005: distinct from the
 # preserved-symlink path). These were the exact paths that the legacy

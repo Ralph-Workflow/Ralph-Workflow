@@ -33,6 +33,9 @@ if TYPE_CHECKING:
     from ralph.workspace import FsWorkspace
 
 
+pytestmark = pytest.mark.subprocess_e2e
+
+
 def _legacy_display() -> runner_module.ParallelDisplay:
     return runner_module.ParallelDisplay(make_display_context())
 

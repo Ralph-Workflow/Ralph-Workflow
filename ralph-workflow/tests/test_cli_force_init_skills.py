@@ -11,13 +11,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
 import typer.testing
 
 from ralph.cli import main as main_module
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.skills._capability_state import CapabilityState
 
 _RUNNER = typer.testing.CliRunner()
@@ -27,6 +26,7 @@ def _invoke(args: list[str], tmp_path: Path) -> typer.testing.Result:
     return _RUNNER.invoke(main_module.app, args, catch_exceptions=False)
 
 
+@pytest.mark.subprocess_e2e
 def test_force_init_skills_flag_invokes_reinstall(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -106,6 +106,7 @@ def test_force_init_skills_flag_early_exit_reached_in_standalone(
     assert captured.get("called") is True, "Early-exit branch was not reached"
 
 
+@pytest.mark.subprocess_e2e
 def test_force_init_skills_surfaces_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

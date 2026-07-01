@@ -32,6 +32,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+pytestmark = pytest.mark.subprocess_e2e
+
+
 def _fake_user_global_home(tmp_path: Path) -> Path:
     home = tmp_path / "fake-home"
     home.mkdir(parents=True, exist_ok=True)

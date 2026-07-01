@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.policy.models import (
@@ -79,6 +81,7 @@ def _policy_bundle_for_testing() -> PolicyBundle:
 class TestInlinePromptPersistence:
     """Tests for inline prompt persistence and quick-mode preflight bypass."""
 
+    @pytest.mark.subprocess_e2e
     def test_inline_prompt_is_written_to_current_prompt_md(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -95,6 +98,7 @@ class TestInlinePromptPersistence:
         assert current_prompt.exists(), "CURRENT_PROMPT.md must be created for inline prompts"
         assert current_prompt.read_text(encoding="utf-8") == "do a quick change"
 
+    @pytest.mark.subprocess_e2e
     def test_inline_prompt_bypasses_prompt_md_preflight(
         self,
         monkeypatch: pytest.MonkeyPatch,

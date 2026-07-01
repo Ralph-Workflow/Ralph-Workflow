@@ -39,6 +39,9 @@ from ralph.recovery.classified_failure import ClassifiedFailure
 from ralph.recovery.failure_budget import FailureBudget
 from ralph.recovery.failure_category import FailureCategory
 
+
+pytestmark = pytest.mark.subprocess_e2e
+
 _ITERATION_COUNT = 64
 _BLOB_SIZE_BYTES = 8 * 1024
 _RETAINED_DELTA_LIMIT = 256 * 1024

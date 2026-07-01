@@ -97,7 +97,7 @@ if TYPE_CHECKING:
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
-pytestmark = pytest.mark.timeout_seconds(15)
+pytestmark = [pytest.mark.timeout_seconds(15), pytest.mark.subprocess_e2e]
 
 ORIGINALLY_FAILING_PATHS: tuple[str, ...] = (
     "checkpoint.json",

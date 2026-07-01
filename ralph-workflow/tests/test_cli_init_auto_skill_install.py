@@ -6,6 +6,8 @@ bootstrap result is `skipped`). These tests pin that contract.
 """
 
 from __future__ import annotations
+import pytest
+
 
 from io import StringIO
 from typing import TYPE_CHECKING
@@ -28,6 +30,9 @@ if TYPE_CHECKING:
     import pytest
 
     from ralph.skills.manager import SkillManager
+
+
+pytestmark = pytest.mark.subprocess_e2e
 
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:

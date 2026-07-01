@@ -38,6 +38,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+pytestmark = pytest.mark.subprocess_e2e
+
+
 @pytest.fixture
 def fake_create_commit() -> MagicMock:
     """A stub create_commit that records its arguments and returns a fake SHA."""

@@ -515,6 +515,7 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
     ]
 
 
+@pytest.mark.subprocess_e2e
 def test_invoke_agent_claude_interactive_default_settings_include_permission_request_hook(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -567,6 +568,7 @@ def test_invoke_agent_claude_interactive_default_settings_include_permission_req
     assert "allow" in cast("str", permission_hook["command"])
 
 
+@pytest.mark.subprocess_e2e
 def test_invoke_agent_claude_interactive_passes_permission_prompt_listener_to_pty_runtime(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -610,6 +612,7 @@ def test_invoke_agent_claude_interactive_passes_permission_prompt_listener_to_pt
     assert callable(captured_listener[0])
 
 
+@pytest.mark.subprocess_e2e
 def test_invoke_agent_claude_interactive_merges_custom_settings_with_required_hooks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

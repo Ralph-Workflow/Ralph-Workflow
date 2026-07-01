@@ -58,7 +58,7 @@ MAX_PLANNING_ANALYSIS_ITERATIONS = 3
 # the default 1-second per-test ceiling under parallel xdist load.
 # A 5-second ceiling reflects the realistic wall-clock cost without
 # changing the test design.
-pytestmark = pytest.mark.timeout_seconds(5)
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:

@@ -552,6 +552,7 @@ def test_get_parser_default_kwargs_keep_registry_none() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.subprocess_e2e
 def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

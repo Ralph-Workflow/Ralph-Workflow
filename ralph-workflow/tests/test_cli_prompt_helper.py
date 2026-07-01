@@ -21,6 +21,7 @@ class TestPromptHelperDispatch:
     """Tests for --prompt-helper flag dispatch."""
 
     @pytest.mark.timeout_seconds(3)
+    @pytest.mark.subprocess_e2e
     def test_prompt_helper_flag_calls_run_prompt_helper(
         self,
         cli_runner: typer.testing.CliRunner,

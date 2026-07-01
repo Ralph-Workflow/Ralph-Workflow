@@ -1,6 +1,8 @@
 """Black-box tests for the 'Skill root coverage' table in init_command output."""
 
 from __future__ import annotations
+import pytest
+
 
 import io
 from typing import TYPE_CHECKING
@@ -21,6 +23,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+
+pytestmark = pytest.mark.subprocess_e2e
 
 
 def _attach_console_with_buffer(monkeypatch: pytest.MonkeyPatch) -> io.StringIO:
