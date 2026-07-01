@@ -184,6 +184,12 @@ def test_main_runs_all_verify_steps_when_successful(
                 returncode=0,
                 stdout="skill auto-commit audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_public_docstrings"),
+                returncode=0,
+                stdout="public docstring audit ok\n",
+            ),
         }
     )
 
@@ -210,6 +216,7 @@ def test_main_runs_all_verify_steps_when_successful(
         ("python3", _SOCIAL_PROOF_ARGS),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_resource_lifecycle")),
         ("uv", ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit")),
+        ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")),
     ]
     assert runner.calls[0][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[1][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
@@ -229,6 +236,7 @@ def test_main_runs_all_verify_steps_when_successful(
     assert runner.calls[15][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[16][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert runner.calls[17][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
+    assert runner.calls[18][3] == verify_module._VERIFY_STEP_TIMEOUT_SECONDS
     assert all(call[4] is False for call in runner.calls)
     assert "Running full verification..." in captured.out
     assert "ACTION REQUIRED FOR AI AGENTS" not in captured.err
@@ -435,16 +443,23 @@ def test_run_verify_single_step_within_budget(
                 returncode=0,
                 stdout="skill auto-commit audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_public_docstrings"),
+                returncode=0,
+                stdout="public docstring audit ok\n",
+            ),
         }
     )
 
-    # Seventeen steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
+    # Eighteen steps (0=ruff, 1=mypy, 2=make test, 3=lint_bypass, 4=typecheck_bypass,
     # 5=test_policy audit, 6=mcp_timeout audit, 7=di_seam audit,
     # 8=activity_aware_watchdog audit, 9=watchdog_drift audit,
     # 10=parallelization_dormant audit, 11=artifact_submission_canonical_path audit,
     # 12=agent_registry_sync audit, 13=agent_module_state audit,
     # 14=agent_internal_paths audit, 15=social-proof gate,
-    # 16=resource_lifecycle audit, 17=skill_auto_commit audit).
+    # 16=resource_lifecycle audit, 17=skill_auto_commit audit,
+    # 18=public_docstrings audit).
     # Each step calls time.monotonic() twice (start + end). make test takes 1s;
     # all other steps take 0s.
     times = [
@@ -453,6 +468,8 @@ def test_run_verify_single_step_within_budget(
         0.0,
         0.0,
         0.0,
+        1.0,
+        1.0,
         1.0,
         1.0,
         1.0,
@@ -742,13 +759,19 @@ def test_run_verify_non_test_steps_not_counted(
                 returncode=0,
                 stdout="skill auto-commit audit ok\n",
             ),
+            ("uv", ("run", "python", "-m", "ralph.testing.audit_public_docstrings")): _result(
+                command="uv",
+                args=("run", "python", "-m", "ralph.testing.audit_public_docstrings"),
+                returncode=0,
+                stdout="public docstring audit ok\n",
+            ),
         }
     )
 
     # Each non-test step takes 100s — all pass because nothing is tracked.
-    # Seventeen steps (ruff, mypy, make test, twelve audits, social-proof gate,
-    # resource_lifecycle audit, skill_auto_commit audit) x 2 monotonic calls per
-    # step = 36 entries.
+    # Eighteen steps (ruff, mypy, make test, thirteen audits, social-proof gate,
+    # resource_lifecycle audit, skill_auto_commit audit, public_docstrings
+    # audit) x 2 monotonic calls per step = 38 entries.
     times = [
         0.0,
         100.0,
@@ -786,7 +809,10 @@ def test_run_verify_non_test_steps_not_counted(
         1700.0,
         1700.0,
         1800.0,
-        1800.0,
+        1900.0,
+        1900.0,
+        2000.0,
+        2000.0,
     ]
     monkeypatch.setattr(time, "monotonic", lambda: times.pop(0))
 
