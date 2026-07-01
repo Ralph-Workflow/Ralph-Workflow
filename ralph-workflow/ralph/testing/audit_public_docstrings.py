@@ -115,6 +115,56 @@ class DocstringViolation:
         return f"{self.file_path}:{self.line}: [PUBLIC-DOCSTRING] {self.category}: {self.detail}"
 
 
+def _extract_first_line(tree: ast.Module) -> tuple[bool, str]:
+    """Return ``(has_docstring, first_line)`` for the module docstring.
+
+    AC-05 contract: a public module's docstring must exist AND its
+    first PHYSICAL line (the literal first line of the triple-quoted
+    string) must be non-empty. We deliberately do NOT use
+    ``ast.get_docstring`` here because it applies ``inspect.cleandoc``
+    normalization, which strips leading blank lines from the docstring
+    body — that would let a module whose docstring is
+    ``\"\"\"\\nReal text on line 2.\\n\"\"\"`` pass the floor even
+    though its first line is blank.
+
+    Instead, we read the raw string literal from
+    ``tree.body[0].value`` (an ``ast.Constant`` whose ``.value`` is
+    the original string, including leading blank lines and any
+    common-indentation prefix), then split on newlines and inspect
+    line 0.
+
+    Returns:
+        - ``(False, "")`` when the module has no docstring at all
+          (``ast.get_docstring(tree) is None``).
+        - ``(True, "<raw line 0>")`` when the module has a docstring
+          literal (including the empty-literal case, where the first
+          line is ``""``).
+
+    Notes:
+        - ``ast.Constant`` covers both single and triple-quoted
+          docstrings in modern Python (3.8+); earlier AST shapes
+          (``ast.Str``) were unified into ``ast.Constant`` and are
+          not produced by Python 3.8+.
+        - f-strings and other expression docstrings (extremely rare,
+          and not a Python convention) yield ``(True, "<raw line 0>")``
+          with the raw text of the expression — the audit enforces
+          the same first-line rule.
+    """
+    if not tree.body:
+        return False, ""
+    first = tree.body[0]
+    if not isinstance(first, ast.Expr):
+        return False, ""
+    value = first.value
+    if not isinstance(value, ast.Constant):
+        return False, ""
+    if not isinstance(value.value, str):
+        return False, ""
+    raw: str = value.value
+    first_line = raw.splitlines()[0] if raw else ""
+    return True, first_line
+
+
 def _has_allow_marker(source: str) -> bool:
     """Return True if the module body contains a ``# docstring-audit-ok:`` marker.
 
@@ -182,17 +232,39 @@ def audit_public_docstrings_file(file_path: Path, *, root: Path) -> list[Docstri
             )
         ]
 
-    docstring = ast.get_docstring(tree)
-    if not docstring or not docstring.strip():
+    has_docstring, first_line = _extract_first_line(tree)
+    if not has_docstring:
         return [
             DocstringViolation(
                 file_path=str(file_path.relative_to(root)),
                 line=1,
                 category="missing_docstring",
                 detail=(
-                    f"public module {file_path.name!r} is missing a non-empty "
-                    f"module docstring; add a top-level triple-quoted string "
-                    f"or an inline '# {_ALLOW_MARKER}: <reason>' marker"
+                    f"public module {file_path.name!r} is missing a module "
+                    f"docstring; add a top-level triple-quoted string or an "
+                    f"inline '# {_ALLOW_MARKER}: <reason>' marker"
+                ),
+            )
+        ]
+
+    # AC-05 contract: the FIRST LINE of the docstring literal must be
+    # non-empty. We use the raw first line (no ``inspect.cleandoc``
+    # normalization) so a docstring whose only content sits on line 2
+    # or later is still rejected — that is the literal contract from
+    # the plan. A whitespace-only first line is also rejected: the
+    # summary line must carry actual content.
+    if not first_line.strip():
+        return [
+            DocstringViolation(
+                file_path=str(file_path.relative_to(root)),
+                line=1,
+                category="empty_first_line",
+                detail=(
+                    f"public module {file_path.name!r} has a module docstring "
+                    f"whose first line is empty; the docstring-floor contract "
+                    f"requires the FIRST LINE to carry a non-empty summary "
+                    f"(Python convention for one-line summaries in pydoc, "
+                    f"Sphinx autodoc, and IDE tooltips)"
                 ),
             )
         ]

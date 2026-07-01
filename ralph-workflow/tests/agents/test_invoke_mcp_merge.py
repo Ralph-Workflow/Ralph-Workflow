@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal, cast
 from unittest.mock import patch
 
+import pytest
 from loguru import logger
 
 from ralph.agents.invoke import (
@@ -26,8 +27,6 @@ from ralph.mcp.upstream.config import (
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
@@ -231,6 +230,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     assert any(s.name == "toml-injected" for s in upstreams)
 
 
+@pytest.mark.timeout_seconds(3)
 def test_claude_interactive_upstream_env_var_includes_mcp_toml_server(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -377,6 +377,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     assert winning.url == "http://toml.example/mcp"
 
 
+@pytest.mark.timeout_seconds(3)
 def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -431,6 +432,7 @@ def test_agy_invoke_writes_mcp_config_before_launch_and_restores_after(
     assert not config_path.exists()
 
 
+@pytest.mark.timeout_seconds(3)
 def test_agy_upstream_env_var_includes_mcp_toml_server(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

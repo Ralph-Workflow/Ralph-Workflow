@@ -123,6 +123,73 @@ def test_empty_leaf_module_docstring_is_flagged(tmp_path: Path) -> None:
     assert "empty_doc.py" in violations[0].file_path
 
 
+def test_blank_first_line_docstring_is_flagged(tmp_path: Path) -> None:
+    """AC-05 contract: the FIRST LINE of the module docstring literal
+    must be non-empty. A docstring whose only content sits on the
+    second line (i.e. the literal starts with ``"\"\"\"\\n`` and the
+    first physical line is blank) is a violation, even though
+    ``ast.get_docstring(tree)`` would return the non-empty second
+    line as the cleaned string.
+
+    This is the regression test for the AC-05 contract gap: a previous
+    version of the audit used ``ast.get_docstring(tree).strip()``
+    which (via ``inspect.cleandoc`` normalization) accepted this case
+    and silently let a non-conforming docstring pass. The current
+    audit extracts the raw literal from ``tree.body[0].value`` and
+    inspects the literal first line, so this case is flagged.
+    """
+    _write(
+        tmp_path,
+        "blank_first_line.py",
+        '"""\nReal text on second line.\n"""\nimport os\n',
+    )
+    violations, _ = audit_module.audit_public_docstrings_directory(tmp_path)
+    assert len(violations) == 1, (
+        f"docstring with blank first line MUST be flagged under AC-05, "
+        f"got {len(violations)} violations"
+    )
+    violation = violations[0]
+    assert "blank_first_line.py" in violation.file_path
+    assert violation.category == "empty_first_line", (
+        f"expected category=empty_first_line, got {violation.category}"
+    )
+
+
+def test_whitespace_only_first_line_is_flagged(tmp_path: Path) -> None:
+    """AC-05 contract: the first line must carry actual content, not just
+    whitespace. A docstring whose first line is whitespace-only (e.g.
+    ``\"\"\"   \\nReal text on second line.\\n\"\"\"``) is still a
+    violation because the summary line is empty after ``strip()``.
+    """
+    _write(
+        tmp_path,
+        "whitespace_first_line.py",
+        '"""   \nReal text on second line.\n"""\nimport os\n',
+    )
+    violations, _ = audit_module.audit_public_docstrings_directory(tmp_path)
+    assert len(violations) == 1, (
+        f"docstring with whitespace-only first line MUST be flagged, "
+        f"got {len(violations)} violations"
+    )
+    assert violations[0].category == "empty_first_line"
+
+
+def test_package_init_blank_first_line_is_flagged(tmp_path: Path) -> None:
+    """The AC-05 first-line rule applies to package __init__.py too —
+    PA-004 also requires package coverage. A package whose
+    ``__init__.py`` docstring has a blank first line is flagged.
+    """
+    _write(
+        tmp_path,
+        "blankpkg/__init__.py",
+        '"""\nReal package summary on line 2.\n"""\n',
+    )
+    violations, _ = audit_module.audit_public_docstrings_directory(tmp_path)
+    assert len(violations) == 1
+    assert "__init__.py" in violations[0].file_path
+    assert violations[0].category == "empty_first_line"
+
+
 def test_present_leaf_module_docstring_is_not_flagged(tmp_path: Path) -> None:
     """Sanity check: a public leaf module with a real docstring produces
     zero violations.
@@ -273,7 +340,7 @@ def test_inline_allowlist_marker_suppresses_violation(tmp_path: Path) -> None:
         tmp_path,
         "shim.py",
         "# docstring-audit-ok: import-only re-export shim, no public surface\n"
-        "from somewhere import *  # noqa: F401,F403\n",
+        "from somewhere import *\n",
     )
     violations, _ = audit_module.audit_public_docstrings_directory(tmp_path)
     assert violations == []

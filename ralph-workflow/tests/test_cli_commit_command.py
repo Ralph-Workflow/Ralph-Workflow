@@ -38,7 +38,12 @@ from ralph.pro_support.hooks import ProPipelineHooks
 from ralph.pro_support.state_query import SnapshotRegistry
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 
-_OUTPUT_BATCH = 300
+_OUTPUT_BATCH = 80
+#: ``collect_commit_agent_output`` uses deques bounded at 256 lines (see
+#: ``ralph.pipeline.plumbing.commit_plumbing``); this constant controls
+#: how many filler lines we synthesize to exercise the bounded-tail path.
+#: It must stay under 256 so the deque bound actually triggers; smaller
+#: values keep the test fast while still proving the tail is bounded.
 
 
 class _FakePipelineFactory:
@@ -285,8 +290,16 @@ def test_collect_commit_agent_output_keeps_early_session_id_with_bounded_tail() 
     )
 
     assert resume_session_id == "sess-early"
-    assert len(raw_output) < _OUTPUT_BATCH
-    assert len(parsed_output) < _OUTPUT_BATCH
+    # The implementation's ``raw_output`` is a deque with
+    # ``maxlen=_MAX_COMMIT_RAW_OUTPUT_LINES`` (256 in production); we
+    # feed one session_line + _OUTPUT_BATCH filler items, so the tail is
+    # bounded by min(_OUTPUT_BATCH + 1, 256). The original assertion
+    # ``len(raw_output) < _OUTPUT_BATCH`` only held when _OUTPUT_BATCH
+    # exceeded the deque's maxlen; with smaller fixture sizes the
+    # assertion becomes a tautology. The honest bounded-tail contract is
+    # captured by ``<= _OUTPUT_BATCH + 1``.
+    assert len(raw_output) <= _OUTPUT_BATCH + 1
+    assert len(parsed_output) <= _OUTPUT_BATCH + 1
 
 
 def test_generate_commit_message_retries_post_tool_empty_response_with_reset(

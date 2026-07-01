@@ -10,6 +10,7 @@ from __future__ import annotations
 from io import StringIO
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import init as init_module
@@ -24,8 +25,6 @@ from ralph.skills._content import BASELINE_SKILL_NAMES
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
     from ralph.skills.manager import SkillManager
 
@@ -369,6 +368,7 @@ def test_init_command_surfaces_skill_install_failure_codes_on_rerun(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_surfaces_force_init_skills_hint_in_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

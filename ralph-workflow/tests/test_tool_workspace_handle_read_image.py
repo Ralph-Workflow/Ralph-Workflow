@@ -75,11 +75,18 @@ class TestHandleReadImage:
         This tests that handle_read_image (as a compatibility alias over
         _handle_workspace_media) properly routes oversized images through the
         resource-reference path when inline delivery is not possible.
+
+        The contract under test is "file larger than ``max_inline_bytes`` is
+        routed to the resource-reference path"; we use a tiny local cap so
+        the temp file stays small (a few hundred bytes) and the test runs
+        in microseconds without touching the disk with a 5 MB+ payload that
+        would otherwise dominate xdist worker wall-clock budgets.
         """
         ws = MagicMock()
+        small_inline_limit = 128
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(b"\x00" * (DEFAULT_MAX_INLINE_BYTES + 1))
+            f.write(b"\x00" * (small_inline_limit + 1))
             temp_path = f.name
 
         try:
@@ -93,7 +100,7 @@ class TestHandleReadImage:
                 ),
                 ws,
                 {"path": "large.png"},
-                max_inline_bytes=DEFAULT_MAX_INLINE_BYTES,
+                max_inline_bytes=small_inline_limit,
             )
             # With INLINE_IMAGE support but oversized file, falls back to resource-reference
             assert result.is_error is False

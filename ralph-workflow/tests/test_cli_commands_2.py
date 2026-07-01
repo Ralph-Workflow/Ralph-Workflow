@@ -9,8 +9,8 @@ import tomllib
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import commit as commit_module
@@ -31,10 +31,6 @@ from ralph.mcp.multimodal.capabilities import (
 from ralph.mcp.protocol.session import AgentSession
 from ralph.policy.loader import default_dir as _policy_default_dir
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
-
-if TYPE_CHECKING:
-    import pytest
-
 
 _SUMMARY_RETRY_FAILURES = 2
 _POLICY_VALIDATION_EXIT_CODE = 2
@@ -887,6 +883,7 @@ def test_display_tables_render() -> None:
     assert "opencode" in rendered
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_writes_support_and_global_configs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
