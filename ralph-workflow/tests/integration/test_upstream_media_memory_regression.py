@@ -32,6 +32,9 @@ from ralph.workspace.fs import FsWorkspace
 if TYPE_CHECKING:
     from ralph.mcp.multimodal._manifest_entry import ManifestEntry
 
+
+pytestmark = pytest.mark.subprocess_e2e
+
 _ITERATION_COUNT = 5
 _ARTIFACT_SIZE_BYTES = 256 * 1024
 _RETAINED_DELTA_LIMIT = 2_000_000

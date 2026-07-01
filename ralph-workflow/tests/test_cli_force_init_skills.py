@@ -28,6 +28,7 @@ def _invoke(args: list[str], tmp_path: Path) -> typer.testing.Result:
     return _RUNNER.invoke(main_module.app, args, catch_exceptions=False)
 
 
+@pytest.mark.subprocess_e2e
 def test_force_init_skills_flag_invokes_reinstall(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -55,6 +56,7 @@ def test_force_init_skills_flag_invokes_reinstall(
     )
 
 
+@pytest.mark.subprocess_e2e
 def test_force_init_skills_flag_does_not_run_pipeline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -82,6 +84,7 @@ def test_force_init_skills_flag_does_not_run_pipeline(
     )
 
 
+@pytest.mark.subprocess_e2e
 def test_force_init_skills_flag_early_exit_reached_in_standalone(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -107,6 +110,7 @@ def test_force_init_skills_flag_early_exit_reached_in_standalone(
     assert captured.get("called") is True, "Early-exit branch was not reached"
 
 
+@pytest.mark.subprocess_e2e
 def test_force_init_skills_surfaces_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -145,6 +149,7 @@ def test_force_init_skills_imports_public_capability_summary() -> None:
     assert found, "main.py must import print_capability_summary from ralph.cli._capability_summary"
 
 
+@pytest.mark.subprocess_e2e
 def test_force_init_skills_branch_surfaces_force_init_skills_hint_when_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

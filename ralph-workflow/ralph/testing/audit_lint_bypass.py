@@ -102,6 +102,13 @@ _NOQA_ALLOWLIST: set[tuple[str, str]] = {
     ("claude_interactive_transcript_parser", "PLR0911"),
     ("claude_interactive_transcript_parser", "PLR0912"),
     ("_metrics", "PLW0603"),
+    # _sentry.py: scalar module-level state (_SESSION_STARTED_AT,
+    # _SESSION_OUTCOME, _INITIALIZED, _EXTRA_SCRUB_PREFIXES) is the
+    # only honest shape for the session lifecycle + scrubber (the
+    # audit_resource_lifecycle contract forbids list/dict/set/deque
+    # at module level). The setters therefore MUST update those
+    # scalars in-place via `global`, which ruff flags as PLW0603.
+    ("_sentry", "PLW0603"),
     ("_renderers", "PLR0912"),
     ("parallel_display", "PLR0912"),
     ("pydantic_validation_errors", "PLR0911"),

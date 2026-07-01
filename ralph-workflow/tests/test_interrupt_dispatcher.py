@@ -482,6 +482,9 @@ def test_early_escalation_poll_does_not_kill_when_cpu_progresses(
 def test_early_escalation_poll_exits_when_process_dies(monkeypatch: pytest.MonkeyPatch) -> None:
     """When the matched process is no longer alive at the OS level
     from the first poll, the function must return without blocking
+
+
+pytestmark = pytest.mark.subprocess_e2e
     for the full budget. Pins the early-return path on liveness check
     failure (no SIGKILL sent).
 
@@ -1103,6 +1106,7 @@ class _HandlerCapturingLoop(asyncio.AbstractEventLoop):
         raise NotImplementedError
 
 
+@pytest.mark.subprocess_e2e
 def test_async_first_sigint_propagates_kill_label_to_controller(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1262,6 +1266,7 @@ def test_async_dispatcher_synthesis_threads_kill_process_group_and_hard_exit(
     assert os_exit_calls == []
 
 
+@pytest.mark.subprocess_e2e
 def test_async_install_signal_handlers_3arg_call_path_controller_none_branch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -80,6 +80,7 @@ class TestInlinePromptPersistence:
     """Tests for inline prompt persistence and quick-mode preflight bypass."""
 
     @pytest.mark.timeout_seconds(3)
+    @pytest.mark.subprocess_e2e
     def test_inline_prompt_is_written_to_current_prompt_md(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -97,6 +98,7 @@ class TestInlinePromptPersistence:
         assert current_prompt.read_text(encoding="utf-8") == "do a quick change"
 
     @pytest.mark.timeout_seconds(3)
+    @pytest.mark.subprocess_e2e
     def test_inline_prompt_bypasses_prompt_md_preflight(
         self,
         monkeypatch: pytest.MonkeyPatch,

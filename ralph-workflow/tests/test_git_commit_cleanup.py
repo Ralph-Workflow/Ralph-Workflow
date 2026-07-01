@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+pytestmark = pytest.mark.subprocess_e2e
+
+
 def test_delete_file_from_repo_removes_untracked_file(tmp_git_repo: Path) -> None:
     """Test that delete_file_from_repo removes an untracked file."""
     binary = tmp_git_repo / "binary.exe"

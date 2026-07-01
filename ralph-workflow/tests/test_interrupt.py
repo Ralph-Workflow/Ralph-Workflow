@@ -169,6 +169,7 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
 
 
 @pytest.mark.timeout_seconds(3)
+@pytest.mark.subprocess_e2e
 def test_run_pipeline_saves_interrupted_resume_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

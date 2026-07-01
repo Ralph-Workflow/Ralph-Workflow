@@ -57,13 +57,26 @@ if TYPE_CHECKING:
 _GOLDEN_PARSERS: dict[str, object] = dict(_PARSER_REGISTRY)
 _GOLDEN_CUSTOM: dict[str, object] = dict(_CUSTOM_COMMAND_REGISTRY)
 _GOLDEN_STRATEGIES: dict[AgentTransport, object] = dict(_STRATEGY_DISPATCH)
+_GOLDEN_ENTRIES: dict[str, object] = dict(default_catalog()._entries)
+_GOLDEN_BY_COMMAND: dict[str, object] = dict(default_catalog()._by_command)
 
 
 @pytest.fixture(autouse=True)
-def _reset_catalog() -> None:
+def _reset_catalog() -> object:
     cat = default_catalog()
     cat._entries.clear()
     cat._by_command.clear()
+    cat._state.parsers.clear()
+    cat._state.parsers.update(_GOLDEN_PARSERS)
+    cat._state.commands.clear()
+    cat._state.commands.update(_GOLDEN_CUSTOM)
+    cat._state.strategies.clear()
+    cat._state.strategies.update(cast("dict", _GOLDEN_STRATEGIES))
+    yield
+    cat._entries.clear()
+    cat._entries.update(_GOLDEN_ENTRIES)
+    cat._by_command.clear()
+    cat._by_command.update(_GOLDEN_BY_COMMAND)
     cat._state.parsers.clear()
     cat._state.parsers.update(_GOLDEN_PARSERS)
     cat._state.commands.clear()

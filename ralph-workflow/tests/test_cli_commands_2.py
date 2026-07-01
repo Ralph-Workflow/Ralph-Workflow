@@ -36,6 +36,29 @@ from ralph.mcp.multimodal.capabilities import (
 from ralph.mcp.protocol.session import AgentSession
 from ralph.policy.loader import default_dir as _policy_default_dir
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
+from ralph.skills._capability_state import CapabilityState
+
+
+def _stub_baseline_capabilities(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace init_command's baseline-skill-install path with a fast no-op.
+
+    The default branch of ``init_command`` invokes
+    ``_ensure_baseline_capabilities`` which constructs a real
+    ``SkillManager``, walks every registered agent root, copies bundled
+    skill files into the user-global directory, and prints the full
+    capability summary. For unit tests that only assert on file creation
+    or pre-existing-file preservation this is overkill — the public
+    behaviour covered here is the bootstrap files (``PROMPT.md`` and the
+    per-support-config toml files), not the skill installer. Replacing
+    the private helper with a no-op returning ``(CapabilityState(), [])``
+    skips the slow real-IO work without changing what these tests pin.
+    """
+    monkeypatch.setattr(
+        init_module,
+        "_ensure_baseline_capabilities",
+        lambda *, display_context: (CapabilityState(), []),
+    )
+
 
 pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
@@ -771,6 +794,7 @@ def test_diagnose_command_displays_capability_state_table(
 
 def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
     init_module.init_command(template="default")
     assert (tmp_path / "PROMPT.md").exists()
@@ -798,6 +822,7 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
     (xdg_dir / "ralph-workflow-mcp.toml").write_text("# mcp", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     stream = _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
     prompt = tmp_path / "PROMPT.md"
     prompt.write_text("existing")
@@ -818,6 +843,7 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
 
 def test_init_command_custom_config_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
     custom = tmp_path / "custom" / "custom.toml"
     custom.parent.mkdir()
@@ -831,6 +857,7 @@ def test_init_command_creates_prompt_in_cwd_not_template_subdir(
     tmp_path: Path,
 ) -> None:
     _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
     init_module.init_command(template="default")
     assert (tmp_path / "PROMPT.md").exists()
@@ -842,6 +869,7 @@ def test_init_command_creates_agent_dir_in_cwd(
     tmp_path: Path,
 ) -> None:
     _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
     init_module.init_command(template="default")
     assert (tmp_path / ".agent").is_dir()
@@ -861,6 +889,7 @@ def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
     (xdg_dir / "ralph-workflow-mcp.toml").write_text("# mcp", encoding="utf-8")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     stream = _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "PROMPT.md").write_text("existing")
     agent_dir = tmp_path / ".agent"
@@ -906,6 +935,7 @@ def test_init_command_writes_support_and_global_configs(
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
 
     init_module.init_command(None, None)
@@ -930,6 +960,7 @@ def test_init_command_respects_explicit_config_path(
     xdg_dir = tmp_path / "xdg"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     _attach_console(monkeypatch, init_module)
+    _stub_baseline_capabilities(monkeypatch)
     monkeypatch.chdir(tmp_path)
     custom = tmp_path / "custom.toml"
 

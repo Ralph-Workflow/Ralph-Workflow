@@ -28,6 +28,8 @@ from ralph.workspace.fs import FsWorkspace
 from tests.mock_session import MockSession
 from tests.mock_session_with_manifest import MockSessionWithManifest
 
+pytestmark = pytest.mark.subprocess_e2e
+
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
 

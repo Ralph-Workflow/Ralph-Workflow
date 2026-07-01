@@ -39,7 +39,7 @@ from tests.mock_session_with_manifest import MockSessionWithManifest
 MEDIA_READ_CAPABILITY = "media.read"
 DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
-pytestmark = pytest.mark.timeout_seconds(5)
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
 class TestHandleReadMedia:

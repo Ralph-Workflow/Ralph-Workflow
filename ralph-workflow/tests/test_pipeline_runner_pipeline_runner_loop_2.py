@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -193,6 +194,12 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(
         runner_module, "load_policy_or_die", lambda _path: _load_default_policy_bundle()
+    )
+    run_loop_module = importlib.import_module("ralph.pipeline.run_loop")
+    monkeypatch.setattr(
+        run_loop_module,
+        "_apply_connectivity_check",
+        lambda current_state, _monitor: current_state,
     )
 
 

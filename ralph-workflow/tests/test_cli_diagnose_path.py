@@ -53,7 +53,6 @@ class BootstrapResultStub:
         self.path = path if path is not None else Path("/dev/null")
         self.backup = backup
 
-
 KNOWN_DEFAULT_AGENTS = ("claude", "opencode")
 
 

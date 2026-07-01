@@ -193,18 +193,57 @@ Contributor material:
 
 ## Privacy & Error Reporting
 
-Ralph Workflow sends anonymous crash reports and performance metrics to
-help fix bugs and improve reliability. No personal data is collected.
+Ralph Workflow sends **anonymous, metalevel** crash reports and performance
+metrics to help fix bugs and improve reliability. No personal data is
+collected, and nothing about the project you are working on ever leaves
+your machine.
 
 Each installation generates a random 32-character identifier stored in
-`~/.config/ralph-workflow-user.ini`. This identifier is not tied to
-your name, email address, IP address, or any other personal data —
-it is a random string used only to distinguish different installations
-in crash reports. A fresh random session identifier is generated on
-every run.
+`$XDG_CONFIG_HOME/ralph-workflow-user.ini` when `XDG_CONFIG_HOME` is
+set, falling back to `~/.config/ralph-workflow-user.ini` otherwise.
+This identifier is not tied to your name, email address, IP address,
+or any other personal data — it is a random string used only to
+distinguish different installations in crash reports. A fresh random
+session identifier is generated on every run.
 
-To opt out: delete or rename `~/.config/ralph-workflow-user.ini`.
-Ralph Workflow creates a new random ID on the next run.
+What we collect (anonymous metadata only):
+
+- **Operating system, architecture, and environment markers** (CI,
+  container, WSL, Codespaces, SSH session, package manager).
+- **Python and Ralph Workflow versions** (e.g. Python `3.12.5`, Ralph Workflow `0.8.18`).
+- **Whether you are running inside a virtualenv** (boolean only — the
+  virtualenv path is never sent).
+- **Session timing** (start, duration) and a **coarse exit outcome**
+  (`success` / `failure` / `interrupted` / `unknown` for utility
+  invocations).
+
+What we never collect:
+
+- Your **prompts**, **inline arguments**, or any other user input.
+- The **current working directory**, **argv**, **config path**, or any
+  other filesystem location tied to your codebase.
+- **Stack-frame absolute paths** — these are stripped to basenames
+  before being sent, so the codebase you are working on is never
+  identified.
+- **Hostnames**, **usernames**, **environment-variable values**, or any
+  other personally identifying detail.
+
+How to opt out (set the environment variable before invocation):
+
+- Set `RALPH_DISABLE_TELEMETRY=1` (any of `1`, `true`, `yes`, `on`,
+  case-insensitive). When this variable is set, the CLI skips every
+  sentry call — initialization, the atexit finalize, the session
+  outcome setter, and the user-id lookup — so no telemetry data
+  leaves the process. This is the only supported opt-out.
+
+Note: the identity file at
+`$XDG_CONFIG_HOME/ralph-workflow-user.ini` (or
+`~/.config/ralph-workflow-user.ini`) only holds a random, anonymous
+installation identifier used to distinguish sessions. It is **not**
+itself an opt-out — if the file is missing, Ralph Workflow will
+create a new random ID on the next run only when telemetry is
+enabled. To disable telemetry permanently, set
+`RALPH_DISABLE_TELEMETRY` in your shell profile or CI environment.
 
 ## Community
 
