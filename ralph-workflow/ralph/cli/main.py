@@ -340,13 +340,31 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
 
 
 def _init_telemetry() -> None:
+    # Opt-out guard: RALPH_DISABLE_TELEMETRY=1 skips Sentry entirely.
+    # Runs as the first statement so no sentry call, ID generation, or
+    # config-file write happens when the user has opted out.
+    from ralph.telemetry._sentry import is_telemetry_disabled
+
+    if is_telemetry_disabled():
+        return
+
     try:
-        from ralph.telemetry._sentry import init_sentry
+        import atexit
+
+        from ralph.telemetry._sentry import (
+            finalize_session,
+            init_sentry,
+            record_session_start,
+            set_environment_context,
+        )
         from ralph.telemetry._user_identity import generate_session_id, get_or_create_user_id
 
         user_id = get_or_create_user_id()
         session_id = generate_session_id()
         init_sentry(user_id, session_id)
+        set_environment_context()
+        record_session_start()
+        atexit.register(finalize_session)
     except Exception as exc:
         logger.warning("Telemetry unavailable: {}", exc)
 
@@ -1132,6 +1150,8 @@ def _run_pipeline(
     display_context: DisplayContext,
 ) -> int:
     """Run the main pipeline."""
+    from ralph.telemetry._sentry import set_session_outcome
+
     display = resolve_active_display(None, display_context)
     try:
         request = RunPipelineRequest(
@@ -1145,6 +1165,7 @@ def _run_pipeline(
             parallel_worker_manifest=opts.parallel_worker_manifest,
         )
         exit_code = run_pipeline(request, display_context=display_context)
+        set_session_outcome("success" if exit_code == 0 else "failure")
         return exit_code
     except KeyboardInterrupt:
         display.emit_warning("\nInterrupted by user")
@@ -1154,10 +1175,12 @@ def _run_pipeline(
             handle_keyboard_interrupt_at_cli()
         except Exception:
             logger.warning("Interrupt dispatcher failed during outer CLI catch", exc_info=True)
+        set_session_outcome("interrupted")
         return 130
     except Exception as e:
         logger.exception("Pipeline failed: {}")
         display.emit_warning(f"Error: {e}")
+        set_session_outcome("failure")
         return 1
 
 
