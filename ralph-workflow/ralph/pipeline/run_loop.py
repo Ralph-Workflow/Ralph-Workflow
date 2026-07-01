@@ -31,6 +31,7 @@ from ralph.recovery.connectivity import ConnectivityEvent, ConnectivityMonitor, 
 from ralph.recovery.controller import RecoveryController, RecoveryControllerOptions
 from ralph.recovery.events import FailureEvent as _FailureEvent
 from ralph.recovery.events import FalloverEvent as _FalloverEvent
+from ralph.timeout_defaults import WAITING_STATUS_INTERVAL_SECONDS
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -594,6 +595,106 @@ def _subscribe_recovery_logger(controller: RecoveryController) -> Callable[[], N
     return controller.event_bus.subscribe(_log_recovery_event)
 
 
+def _subscribe_recovery_display(
+    controller: RecoveryController,
+    display: ParallelDisplay,
+    interval_seconds: float,
+    now: Callable[[], float],
+) -> Callable[[], None]:
+    """Subscribe a cadenced recovery/stopping display emitter to the bus.
+
+    Returns the unsubscribe callable. The subscriber is read-only and
+    defensive:
+
+    * ``isinstance`` checks reuse the module-imported ``_FailureEvent``
+      and ``_FalloverEvent`` aliases (do NOT add a new event-class import).
+    * The callback body is fully wrapped in ``try/except`` so a display
+      rendering exception (a buggy renderer, a closed Rich console, etc.)
+      is swallowed to a debug log and never escapes the
+      ``FailureEventBus.publish`` dispatch. This mirrors the existing
+      ``_log_recovery_event`` precedent at ``_subscribe_recovery_logger``.
+    * The cadence gate reads time via the injected ``now`` callable so
+      tests drive it with ``FakeClock.monotonic``. Production passes
+      ``time.monotonic``. Hardcoded ``time.monotonic()`` inside the
+      callback would make the AC-03 cadence test non-deterministic and
+      is therefore forbidden.
+    * The cadence map is a closure-local dict keyed by event-kind tag,
+      not a module-level or ``self.X`` accumulator, so it falls outside
+      the ``audit_resource_lifecycle`` 4th-contract scope.
+
+    The caller (``run()``) MUST register this subscriber AFTER
+    ``active_display`` is built (so a non-``None`` display is available)
+    and MUST call the returned unsubscribe in ``_cleanup_pipeline`` so a
+    long-running daemon mode does not accumulate listeners across runs.
+
+    Args:
+        controller: ``RecoveryController`` whose ``event_bus`` is
+            subscribed. Must expose a public ``event_bus`` property.
+        display: ``ParallelDisplay`` to route through ``emit_activity_line``.
+        interval_seconds: Cadence window per event-kind tag in seconds.
+        now: Callable returning a monotonic float. Production passes
+            ``time.monotonic``; tests inject ``FakeClock.monotonic``.
+    """
+    cadence_map: dict[str, float] = {}
+
+    def _maybe_emit(tag: str, now_ts: float, *, build: Callable[[], str]) -> None:
+        last = cadence_map.get(tag, now_ts - interval_seconds)
+        if now_ts - last < interval_seconds:
+            return
+        cadence_map[tag] = now_ts
+        emit_activity_line(display, None, build())
+
+    def _display_recovery_event(evt: object) -> None:
+        try:
+            now_ts = now()
+            if isinstance(evt, _FalloverEvent):
+                _maybe_emit(
+                    "fallover",
+                    now_ts,
+                    build=lambda: status_text(
+                        "RECOVERING",
+                        f"falling over from {evt.from_agent} to "
+                        f"{evt.to_agent} ({evt.reason})",
+                        "yellow",
+                    ),
+                )
+            elif isinstance(evt, _FailureEvent):
+                if evt.chain_capacity_remaining <= 0:
+                    label = "STOPPING"
+                    if evt.watchdog_reason is not None:
+                        value = (
+                            f"agent stalled: {evt.watchdog_reason}; "
+                            f"chain exhausted ({evt.category}: "
+                            f"{evt.reason or 'no detail'})"
+                        )
+                    else:
+                        value = (
+                            f"chain exhausted ({evt.category}: "
+                            f"{evt.reason or 'no detail'})"
+                        )
+                    style = "red"
+                    tag = "terminal"
+                elif evt.watchdog_reason is not None:
+                    label = "RECOVERING"
+                    value = f"agent stalled: {evt.watchdog_reason}; resuming"
+                    style = "yellow"
+                    tag = "watchdog_recoverable"
+                else:
+                    return
+                _maybe_emit(
+                    tag,
+                    now_ts,
+                    build=lambda: status_text(label, value, style),
+                )
+        except Exception:
+            logger.bind(recovery=True).debug(
+                "Recovery display subscriber raised; swallowing",
+                exc_info=True,
+            )
+
+    return controller.event_bus.subscribe(_display_recovery_event)
+
+
 def _resolve_effective_subscriber(
     dashboard_subscriber: _PipelineSubscriberProtocol | None,
     pipeline_subscriber: _PipelineSubscriberProtocol | None,
@@ -638,6 +739,7 @@ def _handle_keyboard_interrupt(
 def _cleanup_pipeline(
     loop_ctx: _LoopContext,
     unsubscribe_bus: Callable[[], None],
+    unsubscribe_display: Callable[[], None],
     display_stop: Callable[[], None],
     state: PipelineState,
 ) -> None:
@@ -651,6 +753,8 @@ def _cleanup_pipeline(
     """
     with suppress(Exception):
         unsubscribe_bus()
+    with suppress(Exception):
+        unsubscribe_display()
     with suppress(Exception):
         display_stop()
     if loop_ctx.monitor_stop is not None:
@@ -690,6 +794,7 @@ def _execute_with_cleanup(
     loop_ctx: _LoopContext,
     prev_phase: str,
     unsubscribe_bus: Callable[[], None],
+    unsubscribe_display: Callable[[], None],
     display_stop: Callable[[], None],
 ) -> int:
     """Run the display block and guarantee cleanup; return exit_code."""
@@ -723,7 +828,7 @@ def _execute_with_cleanup(
                 state, loop_ctx.active_display, loop_ctx.is_quiet, exit_code, loop_ctx.policy_bundle
             )
     finally:
-        _cleanup_pipeline(loop_ctx, unsubscribe_bus, display_stop, state)
+        _cleanup_pipeline(loop_ctx, unsubscribe_bus, unsubscribe_display, display_stop, state)
     return exit_code
 
 
@@ -994,7 +1099,32 @@ def run(  # noqa: PLR0912, PLR0915 - DI-seam run loop with many factory branches
         pipeline_deps=pipeline_deps,
         process_teardown=pipeline_deps.process_teardown if pipeline_deps is not None else None,
     )
-    return _execute_with_cleanup(state, loop_ctx, state.phase, _unsubscribe_bus, _display_stop)
+    _recovery_display_interval: float
+    _recovery_display_interval_raw: object = getattr(
+        config.general, "agent_waiting_status_interval_seconds", WAITING_STATUS_INTERVAL_SECONDS
+    )
+    if (
+        isinstance(_recovery_display_interval_raw, (int, float))
+        and not isinstance(_recovery_display_interval_raw, bool)
+        and float(_recovery_display_interval_raw) > 0.0
+    ):
+        _recovery_display_interval = float(_recovery_display_interval_raw)
+    else:
+        _recovery_display_interval = WAITING_STATUS_INTERVAL_SECONDS
+    _unsubscribe_display = _subscribe_recovery_display(
+        _controller,
+        active_display,
+        _recovery_display_interval,
+        now=time.monotonic,
+    )
+    return _execute_with_cleanup(
+        state,
+        loop_ctx,
+        state.phase,
+        _unsubscribe_bus,
+        _unsubscribe_display,
+        _display_stop,
+    )
 
 
 def _start_pro_marker_watcher(
