@@ -6,6 +6,7 @@ for argument parsing and rich-click for enhanced help output.
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from importlib import import_module
@@ -1150,7 +1151,24 @@ def _run_pipeline(
     display_context: DisplayContext,
 ) -> int:
     """Run the main pipeline."""
-    from ralph.telemetry._sentry import set_session_outcome
+    # Direct env-var check (no ralph.telemetry._sentry import needed).
+    # When ``RALPH_DISABLE_TELEMETRY`` is truthy, never import _sentry so the
+    # hot path executes without paying the sentry_sdk import cost.
+    _raw_disable = os.environ.get("RALPH_DISABLE_TELEMETRY", "")
+    _telemetry_enabled = _raw_disable.strip().lower() not in {"1", "true", "yes", "on"}
+
+    def _set_outcome(outcome: str) -> None:
+        if not _telemetry_enabled:
+            return
+        try:
+            from ralph.telemetry._sentry import set_session_outcome
+        except Exception:
+            logger.warning("Telemetry outcome update unavailable", exc_info=True)
+            return
+        try:
+            set_session_outcome(outcome)
+        except Exception:
+            logger.warning("Telemetry outcome update failed", exc_info=True)
 
     display = resolve_active_display(None, display_context)
     try:
@@ -1165,7 +1183,7 @@ def _run_pipeline(
             parallel_worker_manifest=opts.parallel_worker_manifest,
         )
         exit_code = run_pipeline(request, display_context=display_context)
-        set_session_outcome("success" if exit_code == 0 else "failure")
+        _set_outcome("success" if exit_code == 0 else "failure")
         return exit_code
     except KeyboardInterrupt:
         display.emit_warning("\nInterrupted by user")
@@ -1175,12 +1193,12 @@ def _run_pipeline(
             handle_keyboard_interrupt_at_cli()
         except Exception:
             logger.warning("Interrupt dispatcher failed during outer CLI catch", exc_info=True)
-        set_session_outcome("interrupted")
+        _set_outcome("interrupted")
         return 130
     except Exception as e:
         logger.exception("Pipeline failed: {}")
         display.emit_warning(f"Error: {e}")
-        set_session_outcome("failure")
+        _set_outcome("failure")
         return 1
 
 

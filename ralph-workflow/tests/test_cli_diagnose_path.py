@@ -21,7 +21,6 @@ from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 
-
 pytestmark = pytest.mark.subprocess_e2e
 
 KNOWN_DEFAULT_AGENTS = ("claude", "opencode")

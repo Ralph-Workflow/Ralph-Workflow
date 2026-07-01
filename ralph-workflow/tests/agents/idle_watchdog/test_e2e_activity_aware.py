@@ -172,6 +172,7 @@ def test_subagent_output_first_party_deferral(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
+@pytest.mark.timeout_seconds(5)
 def test_process_monitor_discovers_and_classifies_subagent() -> None:
     """AC-06/AC-10/AC-11: DefaultProcessMonitor classifies a live descendant subagent.
 
@@ -225,6 +226,7 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")
+@pytest.mark.timeout_seconds(5)
 def test_teardown_reaps_nested_subagents() -> None:
     """AC-08: DefaultProcessTeardown kills the host and all descendants."""
     script = (

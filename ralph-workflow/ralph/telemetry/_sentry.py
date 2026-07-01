@@ -30,6 +30,10 @@ if TYPE_CHECKING:
 _DSN: str = "https://418c4f0099a0db0987b420c3cd1d5bb0@o4511480216158208.ingest.de.sentry.io/4511480219959376"
 _HOME_PREFIX: str = str(Path.home())
 
+# Minimum length to qualify as a Windows drive-letter path: ``X:\``.
+# Avoids matching ``C:foo`` (no separator after the colon).
+_WINDOWS_DRIVE_LETTER_PREFIX_LEN: int = 3
+
 _TRUE_DISABLE_VALUES: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 
 # Module-level mutable accumulator compliant: tuple (immutable). Populated by
@@ -87,7 +91,35 @@ def _scrub_obj(obj: object) -> None:
 
 
 def _is_absolute_filename(value: object) -> bool:
-    return isinstance(value, str) and value.startswith("/")
+    """Return True if ``value`` looks like an absolute filename on POSIX or Windows.
+
+    POSIX: any path beginning with ``/``.
+    Windows: drive-letter paths (``C:\\...`` or ``C:/...``) and UNC paths
+    (starting with ``\\\\``). The cross-platform check is required so the
+    scrubber redacts stack-frame basenames and argv prefixes on
+    non-POSIX platforms too (AC-04 / AC-06).
+    """
+    if not isinstance(value, str) or not value:
+        return False
+    if value.startswith("/"):
+        return True
+    if len(value) >= _WINDOWS_DRIVE_LETTER_PREFIX_LEN and value[1] == ":" and value[0].isalpha():
+        rest = value[2]
+        return rest in ("\\", "/")
+    return value.startswith("\\\\")
+
+
+def _basename_of_absolute_path(filename: str) -> str:
+    """Return the basename of an absolute POSIX or Windows path.
+
+    POSIX (``/Users/jane/foo.py``) and Windows (``C:\\Users\\jane\\foo.py``,
+    ``C:/Users/jane/foo.py``, ``\\\\server\\share\\foo.py``) absolute paths
+    are all supported. The split uses ``\\`` first when present so UNC
+    ``\\\\server\\share\\foo.py`` collapses correctly.
+    """
+    if "\\" in filename:
+        return filename.rsplit("\\", 1)[-1]
+    return Path(filename).name
 
 
 def _scrub_frames(frames: object) -> None:
@@ -100,7 +132,7 @@ def _scrub_frames(frames: object) -> None:
         d_frame.pop("abs_path", None)
         filename = d_frame.get("filename")
         if _is_absolute_filename(filename):
-            d_frame["filename"] = Path(cast("str", filename)).name
+            d_frame["filename"] = _basename_of_absolute_path(cast("str", filename))
 
 
 def _scrub_event(event: object, _hint: object) -> object:
@@ -127,19 +159,21 @@ def _build_extra_scrub_prefixes() -> tuple[str, ...]:
     Non-path strings (e.g. flag values, prompts, inline arguments) are filtered
     out by requiring an absolute-path prefix and a non-empty value. Empty
     strings are dropped. Order is preserved (cwd first, then argv) for
-    deterministic scrubber output.
+    deterministic scrubber output. The check is cross-platform: POSIX
+    absolute (``/...``) and Windows absolute (``C:\\...``, ``C:/...``,
+    ``\\\\server\\share\\...``) prefixes are all eligible.
     """
     prefixes: list[str] = []
     try:
         cwd = str(Path.cwd())
     except OSError:
         cwd = ""
-    if cwd:
+    if cwd and cwd not in prefixes:
         prefixes.append(cwd)
     for entry in sys.argv:
         if not isinstance(entry, str) or not entry:
             continue
-        if not entry.startswith("/"):
+        if not _is_absolute_filename(entry):
             continue
         if entry not in prefixes:
             prefixes.append(entry)
@@ -232,6 +266,12 @@ def finalize_session(
     No-op (returns ``None``) when Sentry was never initialized or no session
     start was recorded — so tests that monkeypatch ``_init_telemetry`` to a
     no-op or skip the lifecycle do not flush real network I/O.
+
+    The session context includes explicit start/end monotonic timing
+    markers so the session timing payload is observable (matches the
+    README's "Session timing (start, duration)" claim). These monotonic
+    values are process-local: they are meaningful only inside this
+    process instance and leak no real-world clock information.
     """
     if not _INITIALIZED or _SESSION_STARTED_AT is None:
         return None
@@ -243,6 +283,8 @@ def finalize_session(
     try:
         session_payload: dict[str, object] = {
             "duration_s": duration,
+            "started_monotonic_s": started,
+            "ended_monotonic_s": end_clock,
             "outcome": _SESSION_OUTCOME,
         }
         sentry_sdk.set_context("session", session_payload)

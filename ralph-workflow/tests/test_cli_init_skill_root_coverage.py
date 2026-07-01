@@ -1,12 +1,11 @@
 """Black-box tests for the 'Skill root coverage' table in init_command output."""
 
 from __future__ import annotations
-import pytest
-
 
 import io
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import init as init_module
@@ -21,8 +20,6 @@ from ralph.skills._content import BASELINE_SKILL_NAMES
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 pytestmark = pytest.mark.subprocess_e2e

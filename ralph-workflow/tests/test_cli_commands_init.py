@@ -1,12 +1,11 @@
 """Tests for ralph.cli.commands.init baseline capability integration."""
 
 from __future__ import annotations
-import pytest
-
 
 from io import StringIO
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import init as init_module
@@ -19,8 +18,6 @@ from ralph.skills._capability_status import CapabilityStatus
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 pytestmark = pytest.mark.subprocess_e2e

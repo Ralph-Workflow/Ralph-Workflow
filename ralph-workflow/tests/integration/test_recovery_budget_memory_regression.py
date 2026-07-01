@@ -39,7 +39,6 @@ from ralph.recovery.classified_failure import ClassifiedFailure
 from ralph.recovery.failure_budget import FailureBudget
 from ralph.recovery.failure_category import FailureCategory
 
-
 pytestmark = pytest.mark.subprocess_e2e
 
 _ITERATION_COUNT = 64

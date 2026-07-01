@@ -27,7 +27,6 @@ from ralph.mcp.tools.workspace import (
 from tests.mock_session import MockSession
 from tests.mock_session_with_manifest import MockSessionWithManifest
 
-
 pytestmark = pytest.mark.subprocess_e2e
 
 MEDIA_READ_CAPABILITY = "media.read"

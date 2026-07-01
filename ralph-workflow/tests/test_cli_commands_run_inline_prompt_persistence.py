@@ -23,8 +23,6 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
 
 _EXIT_PREFLIGHT = 2
 

@@ -27,11 +27,10 @@ if TYPE_CHECKING:
 from tests._pipeline_deps_factory import make_test_pipeline_deps
 from tests.integration.test_pipeline_memory_regression_helper__configstub import _ConfigStub
 from tests.integration.test_pipeline_memory_regression_helper__registryfactory import (
-
-
-pytestmark = pytest.mark.subprocess_e2e
     _RegistryFactory,
 )
+
+pytestmark = pytest.mark.subprocess_e2e
 
 _LINE_COUNT = 32
 _LINE_SIZE = 2048

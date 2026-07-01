@@ -5,13 +5,9 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol, cast
 
 import pytest
-
-if TYPE_CHECKING:
-    pass
-
 
 INTERRUPTED_EXIT_CODE = 130
 

@@ -428,6 +428,167 @@ def test_init_sentry_initializes_extra_scrub_prefixes(
 
 
 # ---------------------------------------------------------------------------
+# Cross-platform absolute-path recognition (POSIX + Windows) — regression
+# tests for the cross-platform scrubber (AC-04 / AC-06).
+# ---------------------------------------------------------------------------
+
+
+def test_is_absolute_filename_posix() -> None:
+    assert _sentry._is_absolute_filename("/Users/jane/foo.py") is True
+    assert _sentry._is_absolute_filename("/") is True
+
+
+def test_is_absolute_filename_windows_drive_letter_backslash() -> None:
+    assert _sentry._is_absolute_filename("C:\\Users\\jane\\foo.py") is True
+
+
+def test_is_absolute_filename_windows_drive_letter_forward_slash() -> None:
+    assert _sentry._is_absolute_filename("C:/Users/jane/foo.py") is True
+
+
+def test_is_absolute_filename_windows_unc() -> None:
+    assert _sentry._is_absolute_filename("\\\\server\\share\\foo.py") is True
+
+
+def test_is_absolute_filename_rejects_relative_paths() -> None:
+    assert _sentry._is_absolute_filename("ralph/foo.py") is False
+    assert _sentry._is_absolute_filename("foo.py") is False
+    assert _sentry._is_absolute_filename("foo:bar") is False
+    assert _sentry._is_absolute_filename("") is False
+    assert _sentry._is_absolute_filename("C:foo.py") is False
+
+
+def test_is_absolute_filename_rejects_non_string() -> None:
+    assert _sentry._is_absolute_filename(None) is False
+    assert _sentry._is_absolute_filename(42) is False
+
+
+def test_scrub_event_basenames_windows_absolute_filename() -> None:
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "filename": "C:\\Users\\jane\\secret\\foo.py",
+                                "abs_path": "C:\\Users\\jane\\secret\\foo.py",
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+    result = _scrub_event(event, {})
+    assert isinstance(result, dict)
+    exc = result["exception"]
+    assert isinstance(exc, dict)
+    values = exc["values"]
+    assert isinstance(values, list)
+    first = values[0]
+    assert isinstance(first, dict)
+    frames = first["stacktrace"]["frames"]
+    assert isinstance(frames, list)
+    frame = frames[0]
+    assert isinstance(frame, dict)
+    assert "abs_path" not in frame
+    assert frame["filename"] == "foo.py"
+
+
+def test_scrub_event_basenames_windows_unc_filename() -> None:
+    event: dict[str, object] = {
+        "exception": {
+            "values": [
+                {
+                    "stacktrace": {
+                        "frames": [
+                            {
+                                "filename": "\\\\nas\\share\\project\\bar.py",
+                                "abs_path": "\\\\nas\\share\\project\\bar.py",
+                            }
+                        ]
+                    }
+                }
+            ]
+        }
+    }
+    result = _scrub_event(event, {})
+    assert isinstance(result, dict)
+    exc = result["exception"]
+    assert isinstance(exc, dict)
+    values = exc["values"]
+    assert isinstance(values, list)
+    first = values[0]
+    assert isinstance(first, dict)
+    frames = first["stacktrace"]["frames"]
+    assert isinstance(frames, list)
+    frame = frames[0]
+    assert isinstance(frame, dict)
+    assert "abs_path" not in frame
+    assert frame["filename"] == "bar.py"
+
+
+def test_init_sentry_initializes_extra_scrub_prefixes_with_windows_argv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows-style absolute argv entries must end up in ``_EXTRA_SCRUB_PREFIXES``."""
+    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ())
+
+    monkeypatch.setattr("sentry_sdk.init", lambda **kwargs: None)
+    monkeypatch.setattr("sentry_sdk.set_user", lambda arg: None)
+    monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: None)
+
+    fake_cwd = "C:\\Projects\\ralph-workflow"
+    win_argv0 = "C:\\Users\\jane\\repo\\run.py"
+    monkeypatch.setattr("os.getcwd", lambda: fake_cwd)
+    monkeypatch.setattr(
+        "sys.argv",
+        [win_argv0, "--prompt", "secret prompt"],
+    )
+
+    init_sentry("a" * 32, "b" * 64)
+
+    prefixes = _sentry._EXTRA_SCRUB_PREFIXES
+    assert fake_cwd in prefixes
+    assert win_argv0 in prefixes
+    assert "secret prompt" not in prefixes
+
+
+def test_build_extra_scrub_prefixes_filters_non_absolute_argv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Argv entries that are not absolute paths MUST NOT be scrub prefixes.
+
+    Regression: flag values, prompts, and inline arguments would otherwise leak
+    into the scrub-prefix list and cause unrelated strings to be redacted.
+    """
+    monkeypatch.setattr(_sentry, "_EXTRA_SCRUB_PREFIXES", ())
+    monkeypatch.setattr("os.getcwd", lambda: "/tmp/fake-cwd")
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "/tmp/fake-argv0",
+            "--prompt",
+            "a totally benign prompt",
+            "C:\\Users\\jane\\repo\\run.py",
+            "ralph/cli/main.py",  # not absolute
+            "",  # empty
+            "42",  # not a path
+        ],
+    )
+    prefixes = _sentry._build_extra_scrub_prefixes()
+    assert "/tmp/fake-cwd" in prefixes
+    assert "/tmp/fake-argv0" in prefixes
+    assert "C:\\Users\\jane\\repo\\run.py" in prefixes
+    assert "--prompt" not in prefixes
+    assert "a totally benign prompt" not in prefixes
+    assert "ralph/cli/main.py" not in prefixes
+    assert "" not in prefixes
+    assert "42" not in prefixes
+
+
+# ---------------------------------------------------------------------------
 # set_environment_context — red-phase tests for step 3.
 # ---------------------------------------------------------------------------
 
@@ -666,6 +827,9 @@ def test_record_session_start_and_finalize_session(
     assert duration == pytest.approx(60.0)
     session_context = next(c for c in context_calls if c[0] == "session")
     assert session_context[1]["duration_s"] == pytest.approx(60.0)
+    # Explicit timing markers — process-local monotonic values, no wall-clock leak.
+    assert session_context[1]["started_monotonic_s"] == pytest.approx(100.0)
+    assert session_context[1]["ended_monotonic_s"] == pytest.approx(160.0)
     assert session_context[1]["outcome"] == "success"
     assert len(message_calls) == 1
     assert message_calls[0][0] == "session end"
@@ -680,6 +844,75 @@ def test_finalize_session_returns_none_when_not_initialized(
     monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
 
     assert _sentry.finalize_session(now=100.0) is None
+
+
+def test_finalize_session_emits_explicit_start_end_timing_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: the session context MUST include start AND end timing markers.
+
+    Privacy-safe monotonic floats (process-local, no wall-clock leak). The
+    README claims "Session timing (start, duration)" is collected; this test
+    pins that contract so the analyzer's "no session-start field sent" defect
+    cannot silently regress.
+    """
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+
+    context_calls: list[tuple[str, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: context_calls.append((name, dict(data))),
+    )
+    monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    _sentry.record_session_start(now=200.0)
+    _sentry.finalize_session(now=275.5, flush_timeout=2.0)
+
+    session_context = next(c for c in context_calls if c[0] == "session")
+    assert session_context[1]["started_monotonic_s"] == pytest.approx(200.0)
+    assert session_context[1]["ended_monotonic_s"] == pytest.approx(275.5)
+    assert session_context[1]["duration_s"] == pytest.approx(75.5)
+
+
+def test_finalize_session_timing_markers_are_process_local_not_wallclock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sanity check: timing markers are monotonic floats, not Unix timestamps.
+
+    A Unix timestamp is a 10-digit absolute value; a process-local monotonic
+    float is the actual duration of the test execution. We assert the raw
+    value remains inside the injected range so a future regression that
+    switches to ``time.time()`` would immediately fail this guard.
+    """
+    monkeypatch.setattr(_sentry, "_INITIALIZED", True)
+    monkeypatch.setattr(_sentry, "_SESSION_STARTED_AT", None)
+    monkeypatch.setattr(_sentry, "_SESSION_OUTCOME", "unknown")
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "sentry_sdk.set_context",
+        lambda name, data: captured.setdefault(name, dict(data)),
+    )
+    monkeypatch.setattr("sentry_sdk.capture_message", lambda *a, **kw: None)
+    monkeypatch.setattr("sentry_sdk.flush", lambda timeout=None: None)
+
+    _sentry.record_session_start(now=500.0)
+    _sentry.finalize_session(now=600.0, flush_timeout=2.0)
+
+    session = captured.get("session")
+    assert isinstance(session, dict)
+    started = session["started_monotonic_s"]
+    ended = session["ended_monotonic_s"]
+    assert isinstance(started, float)
+    assert isinstance(ended, float)
+    # Unix timestamps are billions; process-local monotonic stays tiny.
+    assert started < 1_000_000.0
+    assert ended < 1_000_000.0
+    assert ended > started
 
 
 def test_finalize_session_returns_none_when_no_start(

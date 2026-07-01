@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 import dataclasses
 import json
 import shutil
@@ -11,8 +9,8 @@ import tomllib
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import commit as commit_module
