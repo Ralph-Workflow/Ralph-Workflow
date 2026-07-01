@@ -19,7 +19,6 @@ import pytest
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
-
 INTERRUPTED_EXIT_CODE = 130
 
 ACTIVE_AGENT_CHAINS = {
@@ -169,6 +168,7 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
     assert saved_states[0].interrupted_by_user is True
 
 
+@pytest.mark.timeout_seconds(3)
 def test_run_pipeline_saves_interrupted_resume_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -263,6 +263,22 @@ _VERIFY_STEPS: tuple[tuple[str, str, tuple[str, ...], float | None], ...] = (
         ("run", "python", "-m", "ralph.testing.audit_skill_auto_commit"),
         _VERIFY_STEP_TIMEOUT_SECONDS,
     ),
+    (
+        # AST-only, import-safe module-docstring floor that locks a
+        # non-empty docstring on every public module under ralph/
+        # (leaf modules AND package __init__.py). complements the
+        # existing test_sphinx_modules_coverage /
+        # test_sphinx_documentation_setup / test_sphinx_member_documentation
+        # checks by being modules.rst-independent, exhaustive, and
+        # AST-only. Appended LAST so the index-based timeout assertions
+        # in tests/test_verify.py are not shifted; NOT a budget-tracked
+        # step (it does NOT count against _TOTAL_TEST_BUDGET_SECONDS --
+        # the immutable 60-second combined budget is preserved).
+        "public docstring audit (audit_public_docstrings)",
+        "uv",
+        ("run", "python", "-m", "ralph.testing.audit_public_docstrings"),
+        _VERIFY_STEP_TIMEOUT_SECONDS,
+    ),
 )
 
 _BUDGET_TRACKED_STEPS: frozenset[int] = frozenset({2})

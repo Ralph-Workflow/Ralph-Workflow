@@ -46,9 +46,15 @@ def _fake_user_global_home(tmp_path: Path) -> Path:
     return home
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(3)
 def test_install_project_baseline_skills_materializes_canonical_root(tmp_path: Path) -> None:
-    """Canonical .opencode/skills/<name>/SKILL.md exists for every baseline skill after install."""
+    """Canonical .opencode/skills/<name>/SKILL.md exists for every baseline skill after install.
+
+    The test installs the full baseline bundle (30 skill directories) which is a
+    lot of real disk I/O. On a loaded worker the install run can take ~1.5 s, so
+    a 3 s per-test cap is required to keep this from tripping the 1 s default
+    and stalling the xdist scheduler.
+    """
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         result = install_project_baseline_skills(tmp_path)
@@ -133,7 +139,7 @@ def test_install_project_baseline_skills_preserves_user_edited_sibling_skill(
     )
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(3)
 def test_install_project_baseline_skills_is_idempotent(tmp_path: Path) -> None:
     """Calling install twice must return INSTALLED_HEALTHY on the second call with no failures."""
     home = _fake_user_global_home(tmp_path)
@@ -162,9 +168,17 @@ def test_install_project_baseline_skills_does_not_touch_user_global_root(
     assert sentinel.read_text(encoding="utf-8") == "# untouched\n"
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(3)
 def test_project_skills_need_install_predicate(tmp_path: Path) -> None:
-    """Predicate: True on fresh, False after install, True after a stale non-symlink sibling."""
+    """Predicate: True on fresh, False after install, True after a stale non-symlink sibling.
+
+    The test installs the full baseline bundle (30 skill directories) plus
+    three sibling symlink trees, which is a lot of real disk I/O. On a loaded
+    worker the install + predicate run can take ~2 s, so a 3 s per-test cap
+    is required to keep this from tripping the 1 s default and stalling the
+    xdist scheduler. The baseline install is the actual surface under test,
+    so this is not a candidate for deeper mocking.
+    """
     home = _fake_user_global_home(tmp_path)
     with patch("pathlib.Path.home", return_value=home):
         assert _project_skills_need_install(tmp_path) is True
@@ -180,7 +194,7 @@ def test_project_skills_need_install_predicate(tmp_path: Path) -> None:
     assert _project_skills_need_install(tmp_path) is True
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(3)
 def test_project_skills_need_install_detects_stale_managed_canonical_content(
     tmp_path: Path,
 ) -> None:

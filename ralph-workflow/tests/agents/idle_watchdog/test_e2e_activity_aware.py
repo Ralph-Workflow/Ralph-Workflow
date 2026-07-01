@@ -8,6 +8,7 @@ components.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -195,7 +196,11 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    time.sleep(0.3)
+    # 100ms is the minimum sleep needed for the spawned child subprocess to
+    # be reliably visible via psutil on macOS; the previous 300ms value left
+    # no headroom under the 1.0s per-test timeout once psutil's tree walk and
+    # the teardown were accounted for.
+    time.sleep(0.1)
     try:
         host_proc = psutil.Process(host.pid)
         children = host_proc.children(recursive=False)
@@ -221,7 +226,19 @@ def test_process_monitor_discovers_and_classifies_subagent() -> None:
         assert roles[host.pid] == ProcessRole.HOST
         assert roles[child_pid] == ProcessRole.SPAWNED_SUBAGENT
     finally:
-        DefaultProcessTeardown(kill_escalation_ms=300.0).teardown_subtree(host.pid)
+        # Direct kill of the known host + child, bypassing the recursive
+        # psutil ``host.children(recursive=True)`` enumeration inside
+        # ``DefaultProcessTeardown`` (which alone costs several hundred
+        # milliseconds on macOS and would push the test past the 1.0s
+        # per-test budget). The teardown's SIGTERM-then-SIGKILL escalation
+        # semantics are exercised by the dedicated
+        # ``test_teardown_reaps_nested_subagents`` test in this file; this
+        # test only verifies monitor classification, so the cleanup just
+        # needs to reap the processes it spawned.
+        for proc in [host_proc, children[0]]:
+            with contextlib.suppress(psutil.Error):
+                proc.kill()
+        host.wait(timeout=0.5)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals only")

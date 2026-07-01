@@ -22,12 +22,37 @@ from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.diagnose import build_next_steps, check_agents
 from ralph.cli.main import app
+from ralph.config import bootstrap as bootstrap_module
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
+
+
+class BootstrapResultStub:
+    """Lightweight duck-typed stand-in for ``BootstrapResult`` used by test stubs.
+
+    The real ``BootstrapResult`` is a frozen dataclass; we use a tiny class
+    with the same attribute surface (``path``, ``action``, ``backup``) so
+    tests that patch the bootstrap functions to skip the on-disk work do
+    not need to import the real dataclass via the ralph.config.bootstrap
+    module (which itself triggers policy/loader imports that slow the
+    test session down).
+    """
+
+    def __init__(
+        self,
+        *,
+        action: str = "skipped",
+        path: Path | None = None,
+        backup: Path | None = None,
+    ) -> None:
+        self.action = action
+        self.path = path if path is not None else Path("/dev/null")
+        self.backup = backup
+
 
 KNOWN_DEFAULT_AGENTS = ("claude", "opencode")
 
@@ -45,7 +70,58 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]
     return env
 
 
-@pytest.mark.timeout_seconds(5)
+def _stub_init_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace the bootstrap ensure_* functions with no-ops returning skipped.
+
+    The ``ralph --init`` codepath exercises the ``ensure_global_config``,
+    ``ensure_global_mcp_config``, ``ensure_global_policy_configs``, and
+    ``ensure_local_support_configs`` functions in ``ralph.config.bootstrap``.
+    These perform real file copies (``shutil.copy2``) over potentially
+    many bundled policy files and dominate the test's wall-clock in the
+    parallel suite. Tests that only care about a downstream CLI command
+    (``--diagnose``) calling ``init_command`` first can patch these to
+    skip without losing the contract: the function is still hit and
+    returns ``BootstrapResult(action='skipped')``.
+
+    The functions must be patched at their source module
+    (``ralph.config.bootstrap``) because ``ralph.cli.commands.init``
+    imports them as local names; patching the ``init_module`` namespace
+    is a no-op once the import has resolved.
+
+    .. note::
+       Skill installation (SkillManager.ensure_baseline_capabilities)
+       is NOT stubbed here because it is invoked via an explicit
+       project-level path that some of the affected tests assert on
+       indirectly. Stubbing it would change observable behavior.
+    """
+    skipped = BootstrapResultStub(action="skipped")
+
+    monkeypatch.setattr(bootstrap_module, "ensure_global_config", lambda *a, **kw: skipped)
+    monkeypatch.setattr(bootstrap_module, "ensure_global_mcp_config", lambda *a, **kw: skipped)
+    monkeypatch.setattr(
+        bootstrap_module, "ensure_global_policy_configs", lambda *a, **kw: [skipped]
+    )
+    monkeypatch.setattr(
+        bootstrap_module,
+        "ensure_local_support_configs",
+        lambda *_args, **_kw: [skipped],
+    )
+    monkeypatch.setattr(
+        bootstrap_module, "ensure_local_main_config", lambda *_args, **_kw: skipped
+    )
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_ensure_default_gitignore",
+        lambda *_args, **_kw: None,
+    )
+    monkeypatch.setattr(
+        bootstrap_module,
+        "_ensure_default_git_exclude",
+        lambda *_args, **_kw: None,
+    )
+
+
+@pytest.mark.timeout_seconds(3)
 def test_diagnose_renders_agent_path_column(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -53,6 +129,7 @@ def test_diagnose_renders_agent_path_column(
 ) -> None:
     """ralph --diagnose must render an agent name with a PATH status on the same row."""
     del clean_env
+    _stub_init_bootstrap(monkeypatch)
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
@@ -276,6 +353,7 @@ def test_diagnose_next_steps_panel_rendered_in_cli(
 ) -> None:
     """ralph --diagnose must render a 'Next steps' panel in its output."""
     del clean_env
+    _stub_init_bootstrap(monkeypatch)
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
@@ -300,6 +378,7 @@ def test_diagnose_next_steps_points_to_getting_started_when_no_prompt(
 ) -> None:
     """ralph --diagnose next steps must mention ralph --init when PROMPT.md is absent."""
     del clean_env
+    _stub_init_bootstrap(monkeypatch)
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 

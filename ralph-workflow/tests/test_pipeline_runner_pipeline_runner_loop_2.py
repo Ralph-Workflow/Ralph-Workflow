@@ -86,6 +86,27 @@ def _install_runner_display_context(
     return console
 
 
+def _unknown_connectivity_monitor() -> MagicMock:
+    """Return a mock connectivity monitor stuck in the ``unknown`` state.
+
+    The real :class:`ralph.recovery.connectivity.ConnectivityMonitor` runs
+    a background probe loop. Under heavy parallel load that probe can
+    transition to ``online`` between the call to ``run()`` and the first
+    ``_apply_connectivity_check`` iteration, which mutates the pipeline
+    state via ``copy_with(last_connectivity_state='online')`` and breaks
+    tests that assert the original state object is passed untouched to
+    ``reducer_reduce`` (e.g. ``is planning_state``) or that count a
+    specific number of ``copy_with`` calls.
+
+    Returning a monitor that reports ``unknown`` makes
+    ``_apply_connectivity_check`` a no-op, so the tests stay deterministic
+    regardless of parallel scheduling.
+    """
+    monitor = MagicMock()
+    monitor.current_state = "unknown"
+    return monitor
+
+
 def _config_with_agents(
     *,
     agent_chains: dict[str, list[str]],
@@ -320,7 +341,12 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer_with_policy)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.NORMAL)
+        result = runner_module.run(
+            MagicMock(),
+            initial_state=state,
+            verbosity=Verbosity.NORMAL,
+            connectivity_monitor=_unknown_connectivity_monitor(),
+        )
 
         assert result == 0
         ckpt_save.assert_called_once_with(state, ANY)
@@ -362,7 +388,12 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "determine_effect_from_policy", raise_interrupt)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = runner_module.run(
+            MagicMock(),
+            initial_state=state,
+            verbosity=Verbosity.QUIET,
+            connectivity_monitor=_unknown_connectivity_monitor(),
+        )
 
         assert result == INTERRUPT_EXIT_CODE
         state.copy_with.assert_called_once_with(interrupted_by_user=True)
@@ -704,7 +735,12 @@ class TestPipelineRunnerLoop:
         )
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
-        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+        result = runner_module.run(
+            MagicMock(),
+            initial_state=state,
+            verbosity=Verbosity.QUIET,
+            connectivity_monitor=_unknown_connectivity_monitor(),
+        )
 
         assert result == 0
         # Advancing to a different phase must also clear the next-attempt session
@@ -853,7 +889,10 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
         result = runner_module.run(
-            MagicMock(), initial_state=planning_state, verbosity=Verbosity.QUIET
+            MagicMock(),
+            initial_state=planning_state,
+            verbosity=Verbosity.QUIET,
+            connectivity_monitor=_unknown_connectivity_monitor(),
         )
 
         assert result == 0

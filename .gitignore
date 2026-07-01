@@ -372,3 +372,8 @@ $RECYCLE.BIN/
 /checkpoint.json
 .ralph/run.json
 .ralph/
+ralph-workflow/.agents/
+ralph-workflow/.claude/
+ralph-workflow/.codex/
+ralph-workflow/.gemini/
+ralph-workflow/.opencode/

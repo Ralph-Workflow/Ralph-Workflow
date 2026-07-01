@@ -101,9 +101,15 @@ def test_pipeline_phase_stamps_canonical_receipt(
     assert backend.exists(sentinel_path)
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(3)
 def test_pipeline_audit_finds_no_bypasses_in_isolation() -> None:
-    """The pipeline layer has zero canonical-path bypasses when audited in isolation."""
+    """The pipeline layer has zero canonical-path bypasses when audited in isolation.
+
+    The audit walks every ``.py`` under ``ralph/pipeline`` and AST-parses each
+    file (the bypass rules live in AST node text). On a loaded worker the scan
+    can take ~1.5 s, so a 3 s per-test cap is required to keep this from
+    tripping the 1 s default and stalling the xdist scheduler.
+    """
     pipeline_root = Path(__file__).parent.parent / "ralph" / "pipeline"
     findings = audit(codebase_root=pipeline_root)
     assert findings == [], f"Pipeline bypasses found: {findings}"

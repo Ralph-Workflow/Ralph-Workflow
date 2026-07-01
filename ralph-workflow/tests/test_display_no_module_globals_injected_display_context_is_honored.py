@@ -12,6 +12,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from rich.console import Console
 
 import ralph.cli.commands.run as run_module
@@ -84,6 +85,7 @@ class TestInjectedDisplayContextIsHonored:
         assert exit_code == 130
         assert "Interrupted by user" in output
 
+    @pytest.mark.timeout_seconds(3)
     def test_init_command_warning_uses_injected_context(self, tmp_path: Path) -> None:
         """Verify init_command uses injected display_context for deprecation warning."""
         ctx = _make_display_context()

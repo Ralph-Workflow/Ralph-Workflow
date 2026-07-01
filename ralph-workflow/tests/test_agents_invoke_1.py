@@ -515,10 +515,17 @@ def test_build_command_injects_claude_interactive_session_id_and_settings() -> N
     ]
 
 
+@pytest.mark.timeout_seconds(3)
 def test_invoke_agent_claude_interactive_default_settings_include_permission_request_hook(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Builds and inspects the ``claude --resume`` command.
+
+    On a loaded worker the mock setup + command build can take ~1.1 s, so a 3 s
+    per-test cap is required to keep this from tripping the 1 s default and
+    stalling the xdist scheduler.
+    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(
@@ -567,11 +574,17 @@ def test_invoke_agent_claude_interactive_default_settings_include_permission_req
     assert "allow" in cast("str", permission_hook["command"])
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(3)
 def test_invoke_agent_claude_interactive_passes_permission_prompt_listener_to_pty_runtime(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Exercises the full ``invoke_agent`` path through a mock PTY runtime.
+
+    On a loaded worker the mock PTY setup + invoke pipeline can take ~1.1 s,
+    so a 3 s per-test cap is required to keep this from tripping the 1 s
+    default and stalling the xdist scheduler.
+    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(
@@ -611,11 +624,17 @@ def test_invoke_agent_claude_interactive_passes_permission_prompt_listener_to_pt
     assert callable(captured_listener[0])
 
 
-@pytest.mark.timeout_seconds(5)
+@pytest.mark.timeout_seconds(3)
 def test_invoke_agent_claude_interactive_merges_custom_settings_with_required_hooks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    """Builds and inspects the merged ``claude`` settings payload.
+
+    On a loaded worker the deep-copy + JSON-encoded settings build can take
+    ~1.1 s, so a 3 s per-test cap is required to keep this from tripping the
+    1 s default and stalling the xdist scheduler.
+    """
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
     config = AgentConfig(

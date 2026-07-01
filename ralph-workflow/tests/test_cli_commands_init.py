@@ -63,6 +63,7 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
     return stream
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_calls_ensure_baseline_capabilities(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -88,6 +89,7 @@ def test_init_command_calls_ensure_baseline_capabilities(
     assert called, "ensure_baseline_capabilities was not called"
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_prints_capability_summary(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -150,6 +152,7 @@ def test_init_command_skill_failure_does_not_block_init(
     assert "Created" in output
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_runs_capability_refresh_on_every_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

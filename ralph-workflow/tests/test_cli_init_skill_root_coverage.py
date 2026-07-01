@@ -126,6 +126,7 @@ def _install_fake_roots(
     return canonical_dir, codex_dir, opencode_dir, agy_dir
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_skill_summary_mentions_canonical_root(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -160,6 +161,7 @@ def test_init_command_skill_summary_mentions_canonical_root(
     assert "Skill root coverage" in output
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_skill_summary_reports_missing_sibling(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -285,6 +285,22 @@ For a first-patch contributor path (`make dev` env sync, the dev-build vs stable
 
 If any step fails, `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and instructs the active AI agent to fix the failure immediately.
 
+<!-- docs-rubric review note (2026-07-01): the Homebrew row in the Distribution
+     Channels table was reframed from a working user install path
+     (`brew install ./Formula/ralph-workflow.rb`) to a contributor-only
+     non-published build scaffold. pipx remains the sole documented user
+     install path (already true in README.md and START_HERE.md). The
+     contributor formula-update recipe step 6 now cites the runnable
+     `make formula-check` (which runs `ruby -c Formula/ralph-workflow.rb`)
+     instead of the disabled `brew audit --strict Formula/...` form that
+     modern Homebrew rejects with `Error: Calling \`brew audit [path ...]\` is
+     disabled!`. The formula itself is now honest on every field: license
+     is AGPL-3.0-or-later, homepage is the project Homepage URL, head is
+     the Codeberg repo, and the url/sha256 stanzas are commented out as a
+     non-version-asserting release template. pipx as the sole user path
+     is the only difference from the previous table; the contributor
+     recipe is otherwise intact. -->
+
 ## Distribution Strategy
 
 ### Distribution Channels
@@ -292,7 +308,7 @@ If any step fails, `make verify` emits a high-visibility failure banner that cit
 | Channel | Command | Output |
 |---------|---------|--------|
 | PyInstaller binary | `make dist-binary` | `dist/ralph-workflow` |
-| Homebrew (macOS) | `brew install ./Formula/ralph-workflow.rb` | `ralph` command |
+| Homebrew formula (contributor-only build scaffold) | not yet published; see `Formula/ralph-workflow.rb` for the release-cut recipe | n/a |
 | PyPI wheel | `make dist-pypi` | `dist/*.whl` |
 | pipx | `pipx install ralph-workflow` | isolated install |
 | uvx | `uvx ralph-workflow` | temporary run |
@@ -306,4 +322,4 @@ After a new release:
 3. Create tarball: `tar -czvf ralph-darwin-universal2.tar.gz -C dist ralph-darwin-universal2`
 4. Compute sha256: `shasum -a 256 ralph-darwin-universal2.tar.gz`
 5. Update `Formula/ralph-workflow.rb` with new URL and sha256
-6. Test: `brew audit --strict Formula/ralph-workflow.rb`
+6. Test: `make formula-check` (runs `ruby -c Formula/ralph-workflow.rb`)

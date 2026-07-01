@@ -76,6 +76,12 @@ class TestHandleReadImage:
         This tests that handle_read_image (as a compatibility alias over
         _handle_workspace_media) properly routes oversized images through the
         resource-reference path when inline delivery is not possible.
+
+        The contract under test is "file larger than ``max_inline_bytes`` is
+        routed to the resource-reference path"; we use a tiny local cap so
+        the temp file stays small (a few hundred bytes) and the test runs
+        in microseconds without touching the disk with a 5 MB+ payload that
+        would otherwise dominate xdist worker wall-clock budgets.
         """
         media_file = tmp_path / "large.png"
         media_file.write_bytes(b"\x89PNG" + b"\x00" * 16)

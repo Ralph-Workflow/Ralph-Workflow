@@ -343,10 +343,10 @@ dist-all: dist-binary dist-pypi
 
 formula-check:
 	@echo "Validating Homebrew formula..."
-	@if command -v brew >/dev/null 2>&1; then \
-		brew audit --strict Formula/ralph-workflow.rb; \
+	@if command -v ruby >/dev/null 2>&1; then \
+		ruby -c Formula/ralph-workflow.rb; \
 	else \
-		echo "Homebrew not installed, skipping formula check"; \
+		echo "Ruby not installed, skipping formula check (install Ruby to enable)"; \
 	fi
 
 dead-code:
