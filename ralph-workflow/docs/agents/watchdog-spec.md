@@ -455,6 +455,127 @@ Verify cited line numbers after touching the cited files.
 
 ---
 
+## AC-5 (product-brief) — Recovery & stopping visibility
+
+> The R1–R8 watchdog spec covers product-brief acceptance criteria
+> 1, 2, 3, 4, and 6. Acceptance criterion 5 — *Users can understand
+> why Ralph is waiting, recovering, or stopping* — is the only one
+> the watchdog pin tests do not cover. The 'waiting' half is well
+> covered by the existing ``WAITING`` / ``RESUMED`` lines in
+> ``_run_inner_loop`` (R6) and the structured waiting-status
+> heartbeat. The 'recovering' and 'stopping' halves are NOT
+> watchdog-internal: they originate from ``RecoveryController``
+> publishing ``FalloverEvent`` (fallover) and ``FailureEvent``
+> (watchdog-kill / terminal) onto the ``FailureEventBus`` at
+> ``ralph/recovery/events.py``. Before this section's surface was
+> added, the bus's only subscriber was a loguru logger, so a
+> fallover or a watchdog-driven kill was silent at the kill moment
+> and an operator could not see *why* Ralph was recovering or
+> stopping.
+
+### Display surface (new)
+
+A second subscriber on the same ``FailureEventBus``,
+``_subscribe_recovery_display`` at
+``ralph/pipeline/run_loop.py:598``, mirrors the existing
+``_subscribe_recovery_logger`` (line 555) and the ``WAITING`` /
+``RESUMED`` direct-emit pattern. It routes every fallover /
+failure-event through ``emit_activity_line(active_display, None,
+status_text(...))`` directly — no new ``PipelineSubscriber``
+method, no ``snapshot.py`` / ``parallel_display.py`` subscriber
+plumbing. The emitted lines are:
+
+| Event | Tag | Label | Style | Value |
+|-------|-----|-------|-------|-------|
+| ``FalloverEvent`` | ``fallover`` | ``RECOVERING`` | yellow | ``falling over from <from_agent> to <to_agent> (<reason>)`` |
+| ``FailureEvent`` with ``watchdog_reason`` and ``chain_capacity_remaining > 0`` | ``watchdog_recoverable`` | ``RECOVERING`` | yellow | ``agent stalled: <watchdog_reason>; resuming`` |
+| ``FailureEvent`` with ``chain_capacity_remaining <= 0`` | ``terminal`` | ``STOPPING`` | red | ``agent stalled: <watchdog_reason>; chain exhausted (<category>: <reason>)`` (or, when ``watchdog_reason is None``, ``chain exhausted (<category>: <reason>)``) |
+
+The third row matches the product-brief 'or stopping' half:
+the run-loop's terminal-phase ``state.last_error or 'Unknown
+error'`` fallback now sits BEHIND a separate user-facing line
+that names the actual root cause (cycle cap, exhausted chain,
+category, reason) so an operator is never left with 'Unknown
+error' alone.
+
+### Cadence (low-noise)
+
+The display subscriber applies a per-event-kind-tag throttle
+keyed by an injected ``now`` callable (production
+``time.monotonic``; tests inject ``FakeClock.monotonic``). The
+throttle window is ``agent_waiting_status_interval_seconds``,
+defaulting to the constant ``WAITING_STATUS_INTERVAL_SECONDS``
+(30.0) at ``ralph/timeout_defaults.py:205``. No new noise knob
+was introduced; the cadence reuses the existing config field
+(``GeneralConfig.agent_waiting_status_interval_seconds`` at
+``ralph/config/general_config.py:174``). Repeated same-kind
+events within the window emit at most one line; an event AFTER
+the window elapses emits a fresh line.
+
+The cadence gate reads time via the injected ``now`` callable so
+the AC-03 cadence test in
+``tests/pipeline/test_run_loop_recovery_surface.py`` is
+deterministic (the test freezes a ``FakeClock`` at t=0, publishes
+five fallover events, asserts exactly one captured line, advances
+the FakeClock past the interval, and asserts a second line on
+the next publish).
+
+### Wiring seam
+
+The display subscriber is registered AFTER ``active_display`` is
+assigned (the LOCAL variable at
+``ralph/pipeline/run_loop.py:934``, just after
+``_setup_active_display`` at line 934) and AFTER
+``loop_ctx = _LoopContext(...)`` is built
+(``ralph/pipeline/run_loop.py:983``). The registration site is
+the assignment ``_unsubscribe_display = _subscribe_recovery_display(...)``
+at ``ralph/pipeline/run_loop.py:1114``. Registration must NOT
+occur before ``active_display`` exists — the prior plan's
+registration alongside ``_unsubscribe_bus = _subscribe_recovery_logger``
+at line 930 was impossible because the LOCAL ``active_display``
+variable is only assigned at line 934.
+
+The unsubscribe is threaded through a new required param
+``unsubscribe_display`` on BOTH ``_execute_with_cleanup``
+(``ralph/pipeline/run_loop.py:792``) and ``_cleanup_pipeline``
+(``ralph/pipeline/run_loop.py:739``). ``_cleanup_pipeline``
+calls it inside the existing ``with suppress(Exception):`` block
+right next to ``unsubscribe_bus()`` (line 749), so a long
+unattended daemon-mode run does not accumulate listeners on the
+bus. Both functions have exactly one caller (the return at line
+1131 and the finally at line 824 respectively), so the signature
+change cannot silently diverge.
+
+### Defensive contract (AC-04)
+
+The display callback body is fully wrapped in ``try/except
+Exception`` that fails silent to a debug log, mirroring the
+existing ``_log_recovery_event`` at
+``ralph/pipeline/run_loop.py:555``. A display rendering
+exception (a buggy renderer, a closed Rich console, an I/O
+hiccup) cannot break recovery propagation. The AC-04 black-box
+test in ``tests/pipeline/test_run_loop_recovery_surface.py``
+exercises this contract: a display fake whose
+``emit_activity_line`` raises ``RuntimeError("display boom")`` is
+registered; the bus still returns normally from ``publish``; the
+controller's ``snapshot()`` reports a non-error state.
+
+### Pin test (black-box capture, not a watchdog pin)
+
+- ``tests/pipeline/test_run_loop_recovery_surface.py`` — the
+  BLACK-BOX CAPTURE test that asserts on captured
+  ``emit_activity_line`` output strings. NOT enrolled in
+  ``RALPH_PIN_TEST_PATHS`` and NOT listed in the R1–R8 pin-test
+  inventory: that inventory is for watchdog criteria R1–R8 and is
+  enforced bidirectionally by the
+  ``watchdog-spec.md``/``RALPH_PIN_TEST_PATHS`` contract; this
+  AC-5 surface is a pipeline display concern enforced by its own
+  pytest run + ``make verify``. The test does not depend on any
+  watchdog internal state — it drives a real ``RecoveryController``
+  with a ``FakeClock`` and asserts on observable output only.
+
+---
+
 ## R7 — Explain and handle the "mysterious" rc=0 exits
 
 > Ambiguous rc=0 exits are root-caused, deterministically classified,

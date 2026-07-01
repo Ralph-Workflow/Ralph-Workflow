@@ -73,6 +73,10 @@ def _noop_unsubscribe() -> None:
     return None
 
 
+def _noop_unsubscribe_display() -> None:
+    return None
+
+
 def _noop_display_stop() -> None:
     return None
 
@@ -86,7 +90,9 @@ def test_cleanup_pipeline_invokes_process_teardown_on_normal_exit() -> None:
 
     state = PipelineState(phase="development")
     loop_ctx = _make_loop_ctx(process_teardown=_record_teardown)
-    _cleanup_pipeline(loop_ctx, _noop_unsubscribe, _noop_display_stop, state)
+    _cleanup_pipeline(
+        loop_ctx, _noop_unsubscribe, _noop_unsubscribe_display, _noop_display_stop, state
+    )
     assert len(teardown_calls) == 1
 
 
@@ -102,7 +108,9 @@ def test_cleanup_pipeline_invokes_process_teardown_even_when_other_steps_fail() 
 
     state = PipelineState(phase="development")
     loop_ctx = _make_loop_ctx(process_teardown=_record_teardown)
-    _cleanup_pipeline(loop_ctx, _bad_unsubscribe, _noop_display_stop, state)
+    _cleanup_pipeline(
+        loop_ctx, _bad_unsubscribe, _noop_unsubscribe_display, _noop_display_stop, state
+    )
     assert len(teardown_calls) == 1
 
 
@@ -115,7 +123,9 @@ def test_cleanup_pipeline_swallows_teardown_exceptions() -> None:
     state = PipelineState(phase="development")
     loop_ctx = _make_loop_ctx(process_teardown=_bad_teardown)
     # Must not raise
-    _cleanup_pipeline(loop_ctx, _noop_unsubscribe, _noop_display_stop, state)
+    _cleanup_pipeline(
+        loop_ctx, _noop_unsubscribe, _noop_unsubscribe_display, _noop_display_stop, state
+    )
 
 
 def test_cleanup_pipeline_skips_teardown_when_none_injected() -> None:
@@ -124,7 +134,9 @@ def test_cleanup_pipeline_skips_teardown_when_none_injected() -> None:
     state = PipelineState(phase="development")
     loop_ctx = _make_loop_ctx(process_teardown=None)
     # Must not raise
-    _cleanup_pipeline(loop_ctx, _noop_unsubscribe, _noop_display_stop, state)
+    _cleanup_pipeline(
+        loop_ctx, _noop_unsubscribe, _noop_unsubscribe_display, _noop_display_stop, state
+    )
 
 
 class _RegistryLike(Protocol):
