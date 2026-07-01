@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import init as init_module
@@ -19,8 +20,6 @@ from ralph.skills._content import BASELINE_SKILL_NAMES
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def _attach_console_with_buffer(monkeypatch: pytest.MonkeyPatch) -> io.StringIO:
@@ -119,6 +118,7 @@ def _install_fake_roots(
     return canonical_dir, codex_dir, opencode_dir, agy_dir
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_skill_summary_mentions_canonical_root(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -153,6 +153,7 @@ def test_init_command_skill_summary_mentions_canonical_root(
     assert "Skill root coverage" in output
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_skill_summary_reports_missing_sibling(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

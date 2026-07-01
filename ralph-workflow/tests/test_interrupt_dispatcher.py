@@ -415,6 +415,20 @@ def test_early_escalation_poll_kills_when_no_cpu_progress_within_budget(
     _patch_psutil(monkeypatch, lambda _call_n: 1.0)
     _patch_pid_alive(monkeypatch, alive=True)
 
+    # Inject a fake clock + sleep so the poll loop is deterministic
+    # under heavy parallel load. The real ``time.sleep`` plus the real
+    # 0.05 s budget can starve one of the two iterations the test
+    # needs when the OS scheduler is saturated by sibling workers, in
+    # which case the second poll never fires and the no-progress
+    # branch never triggers the SIGKILL.
+    clock_state: dict[str, float] = {"now": 0.0}
+
+    def _fake_clock() -> float:
+        return clock_state["now"]
+
+    def _fake_sleep(_seconds: float) -> None:
+        clock_state["now"] += _seconds
+
     dispatcher = InterruptDispatcher(
         controller=InterruptController(
             shutdown_all=lambda _g: None,
@@ -424,6 +438,8 @@ def test_early_escalation_poll_kills_when_no_cpu_progress_within_budget(
         hard_exit=cast("Callable[[int], None]", lambda _c: None),
         poll_interval_s=_POLL_INTERVAL,
         hard_kill_budget_s=_QUICK_BUDGET,
+        clock=_fake_clock,
+        sleep=_fake_sleep,
     )
     dispatcher.run_early_escalation_poll(max_wait_s=_QUICK_BUDGET)
     assert manager.kill_process_group_calls == [(_PGID, signal.SIGKILL)]

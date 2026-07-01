@@ -141,6 +141,7 @@ def test_init_command_always_runs_ensure_baseline_capabilities_on_first_run(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_runs_ensure_baseline_capabilities_when_configs_already_exist(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -223,6 +224,7 @@ def test_init_command_runs_capability_refresh_on_every_run(
     assert calls == 2
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_runs_ensure_baseline_capabilities_when_global_config_path_passed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -287,6 +289,7 @@ def test_init_command_skill_install_failure_does_not_raise(
     assert "Created" in output
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_surfaces_skill_install_failure_codes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -328,6 +331,7 @@ def test_init_command_surfaces_skill_install_failure_codes(
     )
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_surfaces_skill_install_failure_codes_on_rerun(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

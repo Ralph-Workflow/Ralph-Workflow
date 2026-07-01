@@ -17,6 +17,8 @@ from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.config.prompt_helper_config import PromptHelperConfig
 from ralph.mcp.artifacts.format_docs import materialize_all_format_docs
+from ralph.pipeline import effect_executor
+from ralph.pipeline._runner_session import set_last_captured_session_id
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -94,6 +96,32 @@ def _isolate_process_home(
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_xdg))
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_pipeline_thread_locals() -> None:
+    """Reset the pipeline runner's thread-local session/retry-intent slots.
+
+    ``ralph.pipeline._runner_session`` and ``ralph.pipeline.effect_executor``
+    keep a per-thread ``threading.local`` for the captured session id and
+    the captured retry intent. pytest-xdist reuses one worker process for
+    many tests, so the thread-local from a prior test can leak into the
+    next one and break the ``state.copy_with`` assertions in
+    ``test_pipeline_runner_pipeline_runner_loop_2``. Clearing both slots
+    before every test keeps the per-test assertions isolated without
+    forcing a process fork per test.
+
+    The fixture is intentionally cheap: two attribute writes, no I/O.
+    """
+    set_last_captured_session_id(None)
+    effect_executor._set_last_captured_retry_intent(
+        effect_executor.cleared_agent_retry_intent()
+    )
+    yield
+    set_last_captured_session_id(None)
+    effect_executor._set_last_captured_retry_intent(
+        effect_executor.cleared_agent_retry_intent()
+    )
 
 
 @pytest.fixture(scope="session", autouse=True)

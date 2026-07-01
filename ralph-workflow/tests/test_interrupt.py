@@ -5,11 +5,9 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol, cast
 
-if TYPE_CHECKING:
-    import pytest
-
+import pytest
 
 INTERRUPTED_EXIT_CODE = 130
 
@@ -160,6 +158,7 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
     assert saved_states[0].interrupted_by_user is True
 
 
+@pytest.mark.timeout_seconds(3)
 def test_run_pipeline_saves_interrupted_resume_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

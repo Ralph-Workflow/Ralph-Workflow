@@ -775,7 +775,15 @@ def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     assert "Created" in output
 
 
+@pytest.mark.timeout_seconds(3)
 def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``init`` short-circuits when every config file already exists.
+
+    On a loaded worker the ``init`` short-circuit checks can take ~1.1 s (the
+    capability refresh and skill installer both touch disk), so a 3 s per-test
+    cap is required to keep this from tripping the 1 s default and stalling
+    the xdist scheduler.
+    """
     xdg_dir = tmp_path / "xdg"
     xdg_dir.mkdir()
     (xdg_dir / "ralph-workflow.toml").write_text("# global", encoding="utf-8")
