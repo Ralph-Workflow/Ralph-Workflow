@@ -49,6 +49,10 @@ def test_init_sentry_calls_sentry_init(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "before_send_transaction" in kwargs
     assert kwargs.get("traces_sample_rate") == 1.0
     assert kwargs.get("profiles_sample_rate") == 1.0
+    # Defense in depth: locals like ``inline_prompt`` must NEVER be forwarded
+    # even if the scrubber misses a prefix. Disabling local-variable capture
+    # at the SDK level removes the surface entirely.
+    assert kwargs.get("include_local_variables") is False
 
 
 def test_init_sentry_sets_user_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -982,3 +986,74 @@ def test_set_session_outcome_records_value(
     assert _sentry._SESSION_OUTCOME == "success"
     _sentry.set_session_outcome("interrupted")
     assert _sentry._SESSION_OUTCOME == "interrupted"
+
+
+# ---------------------------------------------------------------------------
+# Local-variable scrubber guard (defense in depth vs. inline_prompt leak).
+# ---------------------------------------------------------------------------
+
+
+def test_scrub_event_redacts_prompt_like_string_anywhere_in_event() -> None:
+    """Regression: prompt-shaped strings must not survive the scrubber.
+
+    ``_scrub_event`` must scrub the entire event payload via ``_scrub_obj``
+    so any string field (request bodies, exception values, breadcrumbs,
+    extra/context blobs) carrying prompt-like text is redacted regardless
+    of which key it lives under. The scrubber cannot enumerate every key,
+    so this test asserts the recursive walk + prefix-match contract: any
+    nested string that contains a ``_HOME_PREFIX`` substring collapses to
+    ``~``.
+    """
+    fake_home = "/Users/jane"
+    _sentry._HOME_PREFIX = fake_home
+    _sentry._EXTRA_SCRUB_PREFIXES = ()
+
+    event: dict[str, object] = {
+        "extra": {
+            "request_body": f"{fake_home}/secret/prompt.txt",
+            "context": {
+                "prompt": f"{fake_home}/projects/secret/prompt.py",
+            },
+        },
+        "breadcrumbs": {
+            "values": [
+                {"message": f"{fake_home}/data/input.txt"},
+            ],
+        },
+    }
+    result = _scrub_event(event, {})
+    assert isinstance(result, dict)
+    extra = result["extra"]
+    assert isinstance(extra, dict)
+    assert extra["request_body"] == "~/secret/prompt.txt"
+    ctx = extra["context"]
+    assert isinstance(ctx, dict)
+    assert ctx["prompt"] == "~/projects/secret/prompt.py"
+    breadcrumbs = result["breadcrumbs"]
+    assert isinstance(breadcrumbs, dict)
+    values = breadcrumbs["values"]
+    assert isinstance(values, list)
+    assert values[0]["message"] == "~/data/input.txt"
+
+
+def test_init_sentry_disables_local_variables_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: ``include_local_variables=False`` is set on ``sentry_sdk.init``.
+
+    If the SDK ever silently drops this kwarg (e.g. via a stub that ignores
+    unknown kwargs), frame locals could leak ``inline_prompt`` and other
+    request parameters verbatim. The test pins the kwarg at the call site.
+    """
+    captured: dict[str, object] = {}
+
+    def capture_init(**kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr("sentry_sdk.init", capture_init)
+    monkeypatch.setattr("sentry_sdk.set_user", lambda arg: None)
+    monkeypatch.setattr("sentry_sdk.set_tag", lambda k, v: None)
+
+    init_sentry("a" * 32, "b" * 64)
+
+    assert captured.get("include_local_variables") is False

@@ -228,16 +228,22 @@ What we never collect:
 - **Hostnames**, **usernames**, **environment-variable values**, or any
   other personally identifying detail.
 
-How to opt out (any one of these disables telemetry entirely):
+How to opt out (set the environment variable before invocation):
 
-- Set the environment variable `RALPH_DISABLE_TELEMETRY=1` (any of
-  `1`, `true`, `yes`, `on`, case-insensitive).
-- Delete or rename your identity file. The path follows the
-  `XDG_CONFIG_HOME` convention: when `XDG_CONFIG_HOME` is set, the
-  file lives at `$XDG_CONFIG_HOME/ralph-workflow-user.ini`; otherwise
-  it falls back to `~/.config/ralph-workflow-user.ini`. On the next
-  run, Ralph Workflow will create a new random ID only if telemetry
-  is enabled.
+- Set `RALPH_DISABLE_TELEMETRY=1` (any of `1`, `true`, `yes`, `on`,
+  case-insensitive). When this variable is set, the CLI skips every
+  sentry call — initialization, the atexit finalize, the session
+  outcome setter, and the user-id lookup — so no telemetry data
+  leaves the process. This is the only supported opt-out.
+
+Note: the identity file at
+`$XDG_CONFIG_HOME/ralph-workflow-user.ini` (or
+`~/.config/ralph-workflow-user.ini`) only holds a random, anonymous
+installation identifier used to distinguish sessions. It is **not**
+itself an opt-out — if the file is missing, Ralph Workflow will
+create a new random ID on the next run only when telemetry is
+enabled. To disable telemetry permanently, set
+`RALPH_DISABLE_TELEMETRY` in your shell profile or CI environment.
 
 ## Community
 

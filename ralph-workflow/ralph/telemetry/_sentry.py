@@ -190,6 +190,11 @@ def init_sentry(user_id: str, session_id: str) -> None:
         send_default_pii=False,
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0,
+        # Disable local-variable capture on stack frames: the scrubber can
+        # only redact known prefixes (home/cwd/argv) so a local like
+        # ``inline_prompt`` could otherwise be forwarded verbatim. We want
+        # stack frames (file/line/function) but never their locals.
+        include_local_variables=False,
         before_send=_scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         before_send_transaction=_scrub_event,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     )
