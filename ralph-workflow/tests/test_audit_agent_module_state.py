@@ -6,6 +6,8 @@ import textwrap
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from ralph.testing import audit_agent_module_state as audit_mod
 from ralph.testing.audit_agent_module_state import (
     _FORBIDDEN_NAME_PREFIXES,
@@ -170,6 +172,7 @@ def test_agent_registry_class_not_flagged() -> None:
     assert violations == []
 
 
+@pytest.mark.subprocess_e2e
 def test_run_audit_against_repo_finds_no_violations() -> None:
     """Running the audit against the current repo must find zero violations.
 

@@ -287,6 +287,7 @@ def test_audit_flags_reader_missing_teardown_subtree_on_fire_path(tmp_path: Path
     assert "teardown_subtree" in categories, f"got {categories}"
 
 
+@pytest.mark.subprocess_e2e
 def test_audit_does_not_flag_production_call_sites() -> None:
     """Running the audit against the real ``ralph/`` package produces zero
     violations; the production readers satisfy all six invariants."""

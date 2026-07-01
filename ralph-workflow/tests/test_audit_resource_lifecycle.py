@@ -277,6 +277,7 @@ def test_default_roots_cover_required_packages() -> None:
 
 
 @pytest.mark.timeout_seconds(10)
+@pytest.mark.subprocess_e2e
 def test_real_production_tree_has_zero_violations() -> None:
     """The real production ``ralph/`` tree MUST be clean (zero violations).
 

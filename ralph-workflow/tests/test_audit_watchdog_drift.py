@@ -350,6 +350,7 @@ def test_audit_does_not_flag_canonical_owner_subagent_counting() -> None:
         )
 
 
+@pytest.mark.subprocess_e2e
 def test_audit_clean_tree_passes() -> None:
     """Run the audit against the actual ralph-workflow tree and assert zero violations.
 
@@ -424,6 +425,7 @@ def test_audit_module_imports_clean() -> None:
     assert not all_violations, f"audit module uses forbidden I/O primitives: {all_violations}"
 
 
+@pytest.mark.subprocess_e2e
 def test_audit_module_main_function_returns_zero_on_clean_tree() -> None:
     """Run the audit's main() in-process and assert exit 0 on the real tree.
 
