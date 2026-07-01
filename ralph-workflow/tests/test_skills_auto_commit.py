@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from git import Actor, Repo
@@ -33,6 +33,7 @@ from ralph.skills._auto_commit import (
     SKILL_AUTO_COMMIT_SUBJECT,
     commit_skill_updates,
 )
+from ralph.skills._installer import install_project_baseline_skills
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -58,6 +59,12 @@ def _track_initial_commit(repo_root: Path) -> None:
         repo.index.commit("initial", author=actor, committer=actor)
     finally:
         repo.close()
+
+
+def _fake_user_global_home(tmp_path: Path) -> Path:
+    home = tmp_path / "fake-home"
+    home.mkdir(parents=True, exist_ok=True)
+    return home
 
 
 @pytest.mark.timeout_seconds(5)
@@ -748,4 +755,44 @@ def test_auto_commit_preserves_partial_staging_of_non_skill_file(
     assert ".opencode/skills/brainstorming/SKILL.md" in committed_paths, (
         "PA-fix-2: chore(skills) commit MUST include the skill path; "
         f"got committed paths: {committed_paths!r}"
+    )
+
+
+# --- wt-025 / AC-03: relative symlink install eliminates spurious chore commit --
+
+
+@pytest.mark.timeout_seconds(10)
+def test_auto_commit_noop_after_relative_symlink_install(tmp_path: Path) -> None:
+    """wt-025 / AC-03: relative symlinks produce a NO-OP on the second commit_skill_updates run.
+
+    After a clean install of the project-scope baseline bundle (which now
+    creates RELATIVE sibling symlinks instead of absolute ones), the first
+    ``commit_skill_updates`` run commits the initial install tree. The
+    SECOND run MUST return ``None`` (no spurious chore commit) because the
+    relative symlinks are stable across workspace relocations, so the
+    index/working tree are byte-identical after the first commit and
+    ``commit_skill_updates`` correctly reports no diff.
+
+    Uses the REAL ``create_commit`` + ``stage_files`` from
+    ``ralph.git.operations`` (NOT a MagicMock) so the second run actually
+    observes a committed tree. A MagicMock would not commit, leaving the
+    tree dirty and making the no-op claim meaningless.
+    """
+    Repo.init(tmp_path)
+    _track_initial_commit(tmp_path)
+
+    home = _fake_user_global_home(tmp_path)
+    with patch("pathlib.Path.home", return_value=home):
+        install_project_baseline_skills(tmp_path)
+
+    first_sha = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
+    assert first_sha is not None, (
+        "First run MUST commit the initial relative-symlink install"
+    )
+
+    second_result = commit_skill_updates(tmp_path, create_commit, stage_fn=stage_files)
+    assert second_result is None, (
+        "Second run MUST return None (no spurious chore commit on a clean "
+        "relative-symlink install); got: "
+        f"{second_result!r}"
     )

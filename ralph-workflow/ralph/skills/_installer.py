@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
@@ -211,7 +212,10 @@ def _materialize_project_sibling_dir(
 
     canonical_target = canonical_root / skill_name
     try:
-        sibling_dir.symlink_to(canonical_target, target_is_directory=True)
+        resolved_target = canonical_target.resolve()
+        resolved_parent = sibling_dir.parent.resolve()
+        relative_target = os.path.relpath(resolved_target, start=resolved_parent)
+        sibling_dir.symlink_to(relative_target, target_is_directory=True)
     except OSError:
         try:
             shutil.copytree(canonical_target, sibling_dir)

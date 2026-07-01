@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -32,10 +32,6 @@ from ralph.skills._installer import (
     install_project_baseline_skills,
     self_improving_skills_hook,
 )
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
@@ -79,6 +75,7 @@ def test_install_project_baseline_skills_creates_sibling_symlinks(tmp_path: Path
         ("claude", tmp_path / ".claude" / "skills"),
         ("codex", tmp_path / ".codex" / "skills"),
         ("agy", tmp_path / ".gemini" / "antigravity-cli" / "skills"),
+        ("pi", tmp_path / ".agents" / "skills"),
     )
     for agent, sibling_root in sibling_specs:
         for name in BASELINE_SKILL_NAMES:
@@ -89,6 +86,14 @@ def test_install_project_baseline_skills_creates_sibling_symlinks(tmp_path: Path
             # before equality check (PA-007).
             assert sibling_dir.resolve() == canonical_target, (
                 f"{agent}: symlink target {sibling_dir.resolve()} != canonical {canonical_target}"
+            )
+            link_target = str(sibling_dir.readlink())
+            assert not Path(link_target).is_absolute(), (
+                f"{agent}: sibling symlink must use a RELATIVE path, got absolute: {link_target}"
+            )
+            assert link_target.endswith(f".opencode/skills/{name}"), (
+                f"{agent}: relative symlink must target canonical "
+                f".opencode/skills/{name}, got: {link_target}"
             )
 
 
@@ -654,3 +659,74 @@ def test_install_overwrites_user_edited_canonical_skill(tmp_path: Path) -> None:
     )
     bundled_sha = hashlib.sha256(get_skill_content(name).encode("utf-8")).hexdigest()
     assert post_marker.get("installed_content_sha256") == bundled_sha
+
+
+# --- wt-025 relative symlink regression coverage ------------------------------
+#
+# AC-02 closure: relative symlinks must survive workspace relocation
+# (simulating a worktree switch) without producing git churn. The
+# pre-fix absolute-path symlinks encoded the full worktree path, so a
+# worktree rename dirtied ALL ~120 sibling symlinks. The post-fix
+# relative-path symlinks only encode the relative offset to
+# ``.opencode/skills/<name>``, so renaming the workspace parent dir
+# leaves every symlink's link-text unchanged AND every symlink's
+# resolved target pointing at the correct canonical under the new
+# location.
+
+
+@pytest.mark.timeout_seconds(5)
+def test_project_sibling_symlinks_survive_workspace_relocation(tmp_path: Path) -> None:
+    """wt-025 / AC-02: relative symlinks remain valid after workspace parent rename.
+
+    After renaming ``tmp_path/original_ws`` to ``tmp_path/relocated_ws``
+    (simulating a worktree switch), every project-scope sibling symlink
+    MUST still resolve to the correct canonical skill entry under the
+    new location, AND ``_project_skills_need_install`` MUST return
+    ``False`` so the pre-pipeline sync does NOT re-install. This proves
+    the relative-path fix eliminates the worktree-switch churn that
+    previously dirtied all ~120 sibling symlinks.
+    """
+    original_ws = tmp_path / "original_ws"
+    original_ws.mkdir(parents=True, exist_ok=True)
+    home = _fake_user_global_home(tmp_path)
+    with patch("pathlib.Path.home", return_value=home):
+        install_project_baseline_skills(original_ws)
+
+    # Phase 1: every sibling is a RELATIVE symlink in the original workspace.
+    for sibling in project_sibling_skill_roots_top(original_ws):
+        sibling_root = sibling.resolve(original_ws)
+        for name in BASELINE_SKILL_NAMES:
+            sibling_dir = sibling_root / name
+            assert sibling_dir.is_symlink(), (
+                f"{sibling.agent}: expected {sibling_dir} to be a symlink after install"
+            )
+            link_target = str(sibling_dir.readlink())
+            assert not Path(link_target).is_absolute(), (
+                f"{sibling.agent}: sibling symlink must be RELATIVE; got absolute: {link_target}"
+            )
+
+    # Phase 2: rename the workspace parent directory (simulate worktree switch).
+    relocated_ws = tmp_path / "relocated_ws"
+    original_ws.rename(relocated_ws)
+
+    # Phase 3: every sibling MUST still resolve to the canonical skill entry
+    # under the relocated workspace.
+    canonical_relocated = relocated_ws / ".opencode" / "skills"
+    for sibling in project_sibling_skill_roots_top(relocated_ws):
+        sibling_root = sibling.resolve(relocated_ws)
+        for name in BASELINE_SKILL_NAMES:
+            sibling_dir = sibling_root / name
+            assert sibling_dir.is_symlink(), (
+                f"{sibling.agent}: symlink missing after rename: {sibling_dir}"
+            )
+            resolved = sibling_dir.resolve()
+            expected = (canonical_relocated / name).resolve()
+            assert resolved == expected, (
+                f"{sibling.agent}: relocated symlink {resolved} != canonical {expected}"
+            )
+
+    # Phase 4: predicate returns False — no re-install triggered.
+    assert _project_skills_need_install(relocated_ws) is False, (
+        "Relative symlinks MUST keep _project_skills_need_install=False after "
+        "workspace relocation (no worktree-switch churn)"
+    )
