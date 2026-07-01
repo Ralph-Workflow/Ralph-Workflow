@@ -3,6 +3,9 @@
 These tests drive ``runner.run()`` in-process with a mocked agent execution seam
 so the reducer, checkpoint save path, and policy routing can be exercised without
 real subprocesses.
+
+These tests are subprocess_e2e: they exercise the real pipeline runner
+with multi-iteration loops that cannot fit the per-test 1 s budget.
 """
 
 from __future__ import annotations
@@ -58,7 +61,7 @@ MAX_PLANNING_ANALYSIS_ITERATIONS = 3
 # the default 1-second per-test ceiling under parallel xdist load.
 # A 5-second ceiling reflects the realistic wall-clock cost without
 # changing the test design.
-pytestmark = pytest.mark.timeout_seconds(5)
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:

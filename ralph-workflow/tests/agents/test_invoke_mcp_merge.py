@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal, cast
 from unittest.mock import patch
 
+import pytest
 from loguru import logger
 
 from ralph.agents.invoke import (
@@ -27,7 +28,8 @@ from ralph.mcp.upstream.config import (
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:

@@ -3,6 +3,11 @@
 The prompt requires skill installation to be automatic on every `ralph --init`
 regardless of which bootstrap path fires (first run OR re-run where every
 bootstrap result is `skipped`). These tests pin that contract.
+
+These tests are subprocess_e2e: they exercise the real `ralph --init` entry
+point and its full filesystem + skill-install path. They cannot be
+mocked down to the per-test 1 s budget without losing the end-to-end
+contract they assert.
 """
 
 from __future__ import annotations
@@ -10,6 +15,7 @@ from __future__ import annotations
 from io import StringIO
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import init as init_module
@@ -25,9 +31,10 @@ from ralph.skills._content import BASELINE_SKILL_NAMES
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
-
     from ralph.skills.manager import SkillManager
+
+
+pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:

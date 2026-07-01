@@ -1,4 +1,9 @@
-"""Focused CLI command tests for commit, diagnose, init, and option helpers."""
+"""Focused CLI command tests for commit, diagnose, init, and option helpers.
+
+These tests are subprocess_e2e: they exercise the real CLI entry points
+and their full filesystem path. They cannot be mocked down to the
+per-test 1 s budget without losing the end-to-end contract they assert.
+"""
 
 from __future__ import annotations
 
@@ -9,8 +14,8 @@ import tomllib
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import commit as commit_module
@@ -32,8 +37,7 @@ from ralph.mcp.protocol.session import AgentSession
 from ralph.policy.loader import default_dir as _policy_default_dir
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig
 
-if TYPE_CHECKING:
-    import pytest
+pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
 
 _SUMMARY_RETRY_FAILURES = 2

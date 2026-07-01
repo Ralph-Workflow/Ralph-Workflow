@@ -2,17 +2,18 @@
 
 # pytest-xdist worker count for parallel test execution.
 #
-# Default: ``4`` — pinned to a count that keeps the full suite reliably
-# under the 60s combined budget on the current development environment
-# without starving individual tests past the 1s per-test limit. The
-# earlier default of 2 was safe on the legacy ~10k test corpus but is
-# borderline once a feature branch adds a few hundred tests (per-tick
-# wall-clock with 2 workers is ~56-58s pytest + ~4s Python startup
-# overhead, which intermittently exceeds 60s). With 4 workers the
-# pytest run drops to ~34-42s with the same per-test 1s timeout, leaving
-# ample headroom under the 60s combined budget. On systems with 12+ fast
-# cores, ``auto`` (capped at 8 by ralph.test_suites) is also acceptable,
-# but may starve some tests at the 1s per-test cap; override as needed:
+# Default: ``auto`` — uses all available CPU cores up to the cap in
+# ralph/test_suites.py (_MAX_PYTEST_WORKERS = 12). On a 12-core machine
+# this is 12 workers; on smaller hosts fewer. The earlier default of 4
+# was safe on the legacy ~10k test corpus but is borderline once a
+# feature branch adds a few hundred tests (per-tick wall-clock with 4
+# workers is ~49-55s pytest + ~4s Python startup overhead, which
+# intermittently exceeds 60s). With auto (12) workers the pytest run
+# drops to ~42-49s with the same per-test 1s timeout, leaving ample
+# headroom under the 60s combined budget. On systems with 12+ fast
+# cores, ``auto`` (capped at 12 by ralph.test_suites) is also
+# acceptable, but may starve some tests at the 1s per-test cap;
+# override as needed:
 #   PYTEST_WORKERS=auto make test
 #   PYTEST_WORKERS=8 make test
 #   PYTEST_WORKERS=2  make test   # legacy default — may exceed budget
@@ -21,7 +22,7 @@
 # by ralph/verify.py:_TOTAL_TEST_BUDGET_SECONDS. This per-suite timeout
 # is a SECONDARY cap only. PYTEST_WORKERS is parallelism, not a budget
 # extension — increasing parallelism keeps wall-clock under the budget.
-PYTEST_WORKERS ?= 4
+PYTEST_WORKERS ?= auto
 export PYTEST_WORKERS
 export PYTHONPATH := $(shell realpath .)
 # NOTE: PYTEST_SUITE_TIMEOUT_SECONDS is a PER-SUITE timeout only.

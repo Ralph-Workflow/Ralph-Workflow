@@ -114,124 +114,95 @@ class TestHandleReadMedia:
         finally:
             Path(temp_path).unlink()
 
-    def test_pdf_returns_resource_reference_block(self) -> None:
+    def test_pdf_returns_resource_reference_block(self, tmp_path: Path) -> None:
         pdf_bytes = b"%PDF-1.4 fake pdf content"
+        media_file = tmp_path / "report.pdf"
+        media_file.write_bytes(pdf_bytes)
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-            f.write(pdf_bytes)
-            temp_path = f.name
+        ws = FsWorkspace(tmp_path)
+        session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+        result = handle_read_media(session, ws, {"path": "report.pdf"})
 
-            result = handle_read_media(session, ws, {"path": "report.pdf"})
+        assert result.is_error is False
+        assert len(result.content) == 1
+        content = result.content[0]
+        assert isinstance(content, ResourceReferenceContent)
+        assert content.type == "resource_reference"
+        assert content.modality == "pdf"
+        assert content.mime_type == "application/pdf"
+        assert content.title == "report.pdf"
+        assert content.delivery == "resource_reference_replay"
+        assert content.uri.startswith("ralph://media/")
 
-            assert result.is_error is False
-            assert len(result.content) == 1
-            content = result.content[0]
-            assert isinstance(content, ResourceReferenceContent)
-            assert content.type == "resource_reference"
-            assert content.modality == "pdf"
-            assert content.mime_type == "application/pdf"
-            assert content.title == "report.pdf"
-            assert content.delivery == "resource_reference_replay"
-            assert content.uri.startswith("ralph://media/")
-        finally:
-            Path(temp_path).unlink()
-
-    def test_pdf_stored_in_manifest(self) -> None:
+    def test_pdf_stored_in_manifest(self, tmp_path: Path) -> None:
         pdf_bytes = b"%PDF-1.4 fake pdf content"
+        media_file = tmp_path / "report.pdf"
+        media_file.write_bytes(pdf_bytes)
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-            f.write(pdf_bytes)
-            temp_path = f.name
+        ws = FsWorkspace(tmp_path)
+        session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+        result = handle_read_media(session, ws, {"path": "report.pdf"})
+        content = cast("ResourceReferenceContent", result.content[0])
 
-            result = handle_read_media(session, ws, {"path": "report.pdf"})
-            content = cast("ResourceReferenceContent", result.content[0])
+        # The artifact must be stored in the manifest
+        assert not session.media_manifest.is_empty()
+        entries = session.media_manifest.list_entries()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry.uri == content.uri
+        assert entry.mime_type == "application/pdf"
+        assert entry.modality == "pdf"
+        assert entry.raw_bytes == pdf_bytes
 
-            # The artifact must be stored in the manifest
-            assert not session.media_manifest.is_empty()
-            entries = session.media_manifest.list_entries()
-            assert len(entries) == 1
-            entry = entries[0]
-            assert entry.uri == content.uri
-            assert entry.mime_type == "application/pdf"
-            assert entry.modality == "pdf"
-            assert entry.raw_bytes == pdf_bytes
-        finally:
-            Path(temp_path).unlink()
-
-    def test_audio_returns_resource_reference_block(self) -> None:
+    def test_audio_returns_resource_reference_block(self, tmp_path: Path) -> None:
         mp3_bytes = b"ID3" + b"\x00" * 50  # Minimal fake MP3
+        media_file = tmp_path / "clip.mp3"
+        media_file.write_bytes(mp3_bytes)
 
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            f.write(mp3_bytes)
-            temp_path = f.name
+        ws = FsWorkspace(tmp_path)
+        session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+        result = handle_read_media(session, ws, {"path": "clip.mp3"})
 
-            result = handle_read_media(session, ws, {"path": "clip.mp3"})
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, ResourceReferenceContent)
+        assert content.modality == "audio"
+        assert content.mime_type == "audio/mpeg"
+        assert content.uri.startswith("ralph://media/")
 
-            assert result.is_error is False
-            content = result.content[0]
-            assert isinstance(content, ResourceReferenceContent)
-            assert content.modality == "audio"
-            assert content.mime_type == "audio/mpeg"
-            assert content.uri.startswith("ralph://media/")
-        finally:
-            Path(temp_path).unlink()
-
-    def test_video_returns_resource_reference_block(self) -> None:
+    def test_video_returns_resource_reference_block(self, tmp_path: Path) -> None:
         mp4_bytes = b"\x00" * 100  # Fake video bytes
+        media_file = tmp_path / "video.mp4"
+        media_file.write_bytes(mp4_bytes)
 
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-            f.write(mp4_bytes)
-            temp_path = f.name
+        ws = FsWorkspace(tmp_path)
+        session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+        result = handle_read_media(session, ws, {"path": "video.mp4"})
 
-            result = handle_read_media(session, ws, {"path": "video.mp4"})
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, ResourceReferenceContent)
+        assert content.modality == "video"
+        assert content.mime_type == "video/mp4"
 
-            assert result.is_error is False
-            content = result.content[0]
-            assert isinstance(content, ResourceReferenceContent)
-            assert content.modality == "video"
-            assert content.mime_type == "video/mp4"
-        finally:
-            Path(temp_path).unlink()
+    def test_oversized_image_returns_resource_reference_block(self, tmp_path: Path) -> None:
+        media_file = tmp_path / "large.png"
+        media_file.write_bytes(b"\x89PNG" + b"\x00" * 100)  # Fake PNG
 
-    def test_oversized_image_returns_resource_reference_block(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(b"\x89PNG" + b"\x00" * 100)  # Fake PNG
-            temp_path = f.name
+        ws = FsWorkspace(tmp_path)
+        session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
 
-        try:
-            ws = MagicMock()
-            ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+        result = handle_read_media(session, ws, {"path": "large.png"}, max_inline_bytes=10)
 
-            result = handle_read_media(session, ws, {"path": "large.png"}, max_inline_bytes=10)
-
-            assert result.is_error is False
-            content = result.content[0]
-            assert isinstance(content, ResourceReferenceContent)
-            assert content.modality == "image"
-            assert content.mime_type == "image/png"
-        finally:
-            Path(temp_path).unlink()
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, ResourceReferenceContent)
+        assert content.modality == "image"
+        assert content.mime_type == "image/png"
 
     def test_resource_reference_to_dict_shape(self) -> None:
         ref = ResourceReferenceContent(

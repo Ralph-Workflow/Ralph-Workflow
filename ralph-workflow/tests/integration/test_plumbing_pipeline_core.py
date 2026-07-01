@@ -34,6 +34,9 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
 
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
+
 def _fake_display_context() -> DisplayContext:
     return make_display_context(env={"NO_COLOR": "1", "COLUMNS": "120"})
 

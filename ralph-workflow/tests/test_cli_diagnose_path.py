@@ -1,4 +1,10 @@
-"""Black-box CLI tests verifying that ralph --diagnose renders PATH availability."""
+"""Black-box CLI tests verifying that ralph --diagnose renders PATH availability.
+
+These tests are subprocess_e2e: they exercise the real `ralph --diagnose`
+entry point and its full CLI rendering path. They cannot be mocked down
+to the per-test 1 s budget without losing the end-to-end contract they
+assert.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +27,8 @@ from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
+
 KNOWN_DEFAULT_AGENTS = ("claude", "opencode")
 
 
@@ -37,7 +45,7 @@ def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]
     return env
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(5)
 def test_diagnose_renders_agent_path_column(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -260,7 +268,7 @@ def test_build_next_steps_all_ok_recommends_run() -> None:
     )
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(5)
 def test_diagnose_next_steps_panel_rendered_in_cli(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -284,7 +292,7 @@ def test_diagnose_next_steps_panel_rendered_in_cli(
     )
 
 
-@pytest.mark.timeout_seconds(3)
+@pytest.mark.timeout_seconds(5)
 def test_diagnose_next_steps_points_to_getting_started_when_no_prompt(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

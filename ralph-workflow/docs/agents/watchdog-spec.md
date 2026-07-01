@@ -332,11 +332,11 @@ parametrized per-transport pin test at
 
 ### Implementing modules
 
-- `ralph/agents/idle_watchdog/_gate.py:193` —
+- `ralph/agents/idle_watchdog/_gate.py:200` —
   `def maybe_log_deferred`; the per-tuple
   `(fire_reason, deferred_kind)` throttle keyed on
   `watchdog_log_throttle_seconds`.
-- `ralph/agents/idle_watchdog/_gate.py:230` —
+- `ralph/agents/idle_watchdog/_gate.py:237` —
   `def maybe_log_any_deferred`; the coarse per-`fire_reason`
   throttle that caps emissions to one DEBUG record per throttle
   window regardless of `deferred_kind` cycles.
@@ -418,7 +418,7 @@ human-readable template naming:
   * **the hard ceiling seconds** (rounded).
 
 The exact loguru INFO message template, emitted at
-`ralph/agents/idle_watchdog/_waiting_branch.py:337-343`, is:
+`ralph/agents/idle_watchdog/_waiting_branch.py:338-344`, is:
 
 ```
 idle watchdog: agent waiting on subagent ({} alive) for {}s - hard ceiling at {}s
@@ -502,18 +502,18 @@ Verify cited line numbers after touching the cited files.
   backward compatibility for the original nine positional
   fields. The dataclass is otherwise frozen; field types and
   defaults are stable.
-- `ralph/agents/invoke/_completion.py:368` — the
+- `ralph/agents/invoke/_completion.py:389` — the
   `raise OpenCodeResumableExitError(agent_name, session_id=..., ...)`
   site that forwards the four diagnostic fields from `opts` to
   the exception constructor. Callers that did not populate
   `opts` (e.g. non-watchdog paths) construct cleanly because
   every field defaults to `None` / `()`.
-- `ralph/agents/invoke/_process_reader.py:945` — the subprocess
+- `ralph/agents/invoke/_process_reader.py:973` — the subprocess
   transport `_CompletionCheckOptions` construction site that
   populates the four diagnostic fields from the watchdog
   instance held on the line reader (`reader._watchdog`, set at
   the start of `read_lines()`).
-- `ralph/agents/invoke/_pty_runner.py:154` — the PTY transport
+- `ralph/agents/invoke/_pty_runner.py:174` — the PTY transport
   `_CompletionCheckOptions` construction site that mirrors the
   subprocess wiring with the PTY-side watchdog instance
   (`pty_reader._watchdog`, set at the start of `read_lines()`).
@@ -593,7 +593,7 @@ level 1 rejects unsupported claims per AGENTS.md.
   `OpenCodeResumableExitError` carrying the captured `session_id`
   when the agent subprocess exits `rc=0` without completion evidence
   (no artifact, no `declare_complete`). A regression at
-  `_completion.py:368` (the `raise` statement) would silently break
+  `_completion.py:389` (the `raise` statement) would silently break
   the R4 watchdog-driven resume contract — the recovery controller
   would lose its typed exception to lift `resumable_session_id` from
   and a clean rc=0-no-evidence exit would fall back to the
@@ -627,12 +627,12 @@ level 1 rejects unsupported claims per AGENTS.md.
 - `ralph/agents/timeout_clock.py:16` — `class FakeClock`; the
   deterministic clock every watchdog test drives instead of
   wall-clock waits.
-- `ralph/testing/audit_test_policy.py:211` —
+- `ralph/testing/audit_test_policy.py:216` —
   `class TestPolicyAuditor(ast.NodeVisitor)`; the AST-level audit
   module that enforces no real `time.sleep`, no `subprocess.run`
   without `timeout=`, and no real file I/O in non-`subprocess_e2e`
-  tests (entrypoints at `audit_test_file` line 563 and
-  `audit_tests_directory` line 625).
+  tests (entrypoints at `audit_test_file` line 568 and
+  `audit_tests_directory` line 630).
 
 ### Pin tests
 

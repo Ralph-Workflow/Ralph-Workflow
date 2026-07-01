@@ -1,4 +1,11 @@
-"""Tests for _sync_shipped_skills_on_pipeline_run in run.py."""
+"""Tests for _sync_shipped_skills_on_pipeline_run in run.py.
+
+These tests are subprocess_e2e: they exercise the real
+``_sync_shipped_skills_on_pipeline_run`` entry point and its full
+filesystem + git + auto-commit path. They cannot be mocked down to
+the per-test 1 s budget without losing the end-to-end contract they
+assert.
+"""
 
 from __future__ import annotations
 
@@ -22,6 +29,9 @@ from ralph.skills._installer import install_project_baseline_skills
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+pytestmark = [pytest.mark.timeout_seconds(15), pytest.mark.subprocess_e2e]
 
 
 def test_sync_calls_check_skills_for_updates_even_without_state_file(

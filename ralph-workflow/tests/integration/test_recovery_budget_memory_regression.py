@@ -24,6 +24,11 @@ Fails today: the final ``AgentBudgetRegistry`` / ``FailureBudget`` retains
 ``_ITERATION_COUNT`` ClassifiedFailures; each carries a traceback frame
 holding the test's 8 KiB ``blob``. Worst-case retained bytes is
 ``_ITERATION_COUNT * _BLOB_SIZE_BYTES`` (well past the 256 KiB cap).
+
+These tests are subprocess_e2e: they exercise the real
+``AgentBudgetRegistry`` / ``FailureBudget`` accumulator path with
+tracemalloc snapshots across thousands of iterations that cannot
+fit the per-test 1 s budget.
 """
 
 from __future__ import annotations
@@ -38,6 +43,8 @@ from ralph.recovery.budget_state import BudgetState
 from ralph.recovery.classified_failure import ClassifiedFailure
 from ralph.recovery.failure_budget import FailureBudget
 from ralph.recovery.failure_category import FailureCategory
+
+pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
 _ITERATION_COUNT = 64
 _BLOB_SIZE_BYTES = 8 * 1024

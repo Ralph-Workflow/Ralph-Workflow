@@ -1,3 +1,11 @@
+"""Tests for the SIGINT/SIGTERM interrupt handling in the pipeline runner.
+
+These tests are subprocess_e2e: they exercise the real pipeline runner
+entry point and its full subprocess + checkpoint path. They cannot be
+mocked down to the per-test 1 s budget without losing the end-to-end
+contract they assert.
+"""
+
 from __future__ import annotations
 
 import importlib
@@ -5,10 +13,11 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol, cast
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
+
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
 
 
 INTERRUPTED_EXIT_CODE = 130

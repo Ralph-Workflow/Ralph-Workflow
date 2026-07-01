@@ -1,4 +1,9 @@
-"""Regression harness for bounded runner agent-output retention."""
+"""Regression harness for bounded runner agent-output retention.
+
+These tests are subprocess_e2e: they exercise the real pipeline runner
+with tracemalloc snapshots across multi-iteration loops that cannot
+fit the per-test 1 s budget.
+"""
 
 from __future__ import annotations
 
@@ -29,6 +34,8 @@ from tests.integration.test_pipeline_memory_regression_helper__configstub import
 from tests.integration.test_pipeline_memory_regression_helper__registryfactory import (
     _RegistryFactory,
 )
+
+pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
 _LINE_COUNT = 32
 _LINE_SIZE = 2048

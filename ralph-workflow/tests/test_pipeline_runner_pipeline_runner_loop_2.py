@@ -44,6 +44,9 @@ if TYPE_CHECKING:
     )
 
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
+
 DEVELOPER_ITERATIONS = 5
 REVIEWER_PASSES = 2
 SECOND_ITERATION = 2

@@ -4,6 +4,11 @@ All tests use ``tmp_path`` (or a per-test monkeypatched ``Path.home()``) so
 the real user-global root is never touched. Symlink verifications use
 ``Path.resolve()`` on BOTH sides to handle the macOS ``/tmp`` -> ``/private/tmp``
 indirection safely (PA-007).
+
+These tests are subprocess_e2e: they exercise the real
+``install_project_baseline_skills`` entry point and its full filesystem +
+symlink + git path. They cannot be mocked down to the per-test 1 s
+budget without losing the end-to-end contract they assert.
 """
 
 from __future__ import annotations
@@ -32,12 +37,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+pytestmark = [pytest.mark.timeout_seconds(5), pytest.mark.subprocess_e2e]
+
+
 def _fake_user_global_home(tmp_path: Path) -> Path:
     home = tmp_path / "fake-home"
     home.mkdir(parents=True, exist_ok=True)
     return home
 
 
+@pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_materializes_canonical_root(tmp_path: Path) -> None:
     """Canonical .opencode/skills/<name>/SKILL.md exists for every baseline skill after install."""
     home = _fake_user_global_home(tmp_path)
@@ -52,6 +61,7 @@ def test_install_project_baseline_skills_materializes_canonical_root(tmp_path: P
         assert marker.exists(), f"Missing managed marker: {marker}"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_creates_sibling_symlinks(tmp_path: Path) -> None:
     """After install, every project-scope sibling is a symlink to the canonical."""
     home = _fake_user_global_home(tmp_path)
@@ -76,6 +86,7 @@ def test_install_project_baseline_skills_creates_sibling_symlinks(tmp_path: Path
             )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_preserves_user_edited_canonical_skill(
     tmp_path: Path,
 ) -> None:
@@ -99,6 +110,7 @@ def test_install_project_baseline_skills_preserves_user_edited_canonical_skill(
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_preserves_user_edited_sibling_skill(
     tmp_path: Path,
 ) -> None:
@@ -121,6 +133,7 @@ def test_install_project_baseline_skills_preserves_user_edited_sibling_skill(
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_is_idempotent(tmp_path: Path) -> None:
     """Calling install twice must return INSTALLED_HEALTHY on the second call with no failures."""
     home = _fake_user_global_home(tmp_path)
@@ -131,6 +144,7 @@ def test_install_project_baseline_skills_is_idempotent(tmp_path: Path) -> None:
     assert not second[1], f"Second install must succeed, got {second[1]}"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_does_not_touch_user_global_root(
     tmp_path: Path,
 ) -> None:
@@ -148,6 +162,7 @@ def test_install_project_baseline_skills_does_not_touch_user_global_root(
     assert sentinel.read_text(encoding="utf-8") == "# untouched\n"
 
 
+@pytest.mark.timeout_seconds(5)
 def test_project_skills_need_install_predicate(tmp_path: Path) -> None:
     """Predicate: True on fresh, False after install, True after a stale non-symlink sibling."""
     home = _fake_user_global_home(tmp_path)
@@ -165,6 +180,7 @@ def test_project_skills_need_install_predicate(tmp_path: Path) -> None:
     assert _project_skills_need_install(tmp_path) is True
 
 
+@pytest.mark.timeout_seconds(5)
 def test_project_skills_need_install_detects_stale_managed_canonical_content(
     tmp_path: Path,
 ) -> None:
@@ -180,6 +196,7 @@ def test_project_skills_need_install_detects_stale_managed_canonical_content(
     assert _project_skills_need_install(tmp_path) is True
 
 
+@pytest.mark.timeout_seconds(5)
 def test_project_skills_need_install_noop_when_canonical_and_all_siblings_have_symlinks(
     tmp_path: Path,
 ) -> None:
@@ -190,6 +207,7 @@ def test_project_skills_need_install_noop_when_canonical_and_all_siblings_have_s
         assert _project_skills_need_install(tmp_path) is False
 
 
+@pytest.mark.timeout_seconds(5)
 def test_project_skills_need_install_when_canonical_is_file(tmp_path: Path) -> None:
     """PA-005 regression: a regular file at the canonical path must trigger an install."""
     canonical_path = tmp_path / ".opencode" / "skills"
@@ -200,6 +218,7 @@ def test_project_skills_need_install_when_canonical_is_file(tmp_path: Path) -> N
         assert _project_skills_need_install(tmp_path) is True
 
 
+@pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_invokes_self_improving_hook(tmp_path: Path) -> None:
     """install_project_baseline_skills calls self_improving_skills_hook once on the success path."""
     home = _fake_user_global_home(tmp_path)
@@ -218,6 +237,7 @@ def test_install_project_baseline_skills_invokes_self_improving_hook(tmp_path: P
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_self_improving_skills_hook_is_no_op_by_default(tmp_path: Path) -> None:
     """The default self_improving_skills_hook body is a no-op and returns None."""
     result = self_improving_skills_hook(
@@ -230,6 +250,7 @@ def test_self_improving_skills_hook_is_no_op_by_default(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_install_project_baseline_skills_does_not_call_self_improving_hook_on_conflict(
     tmp_path: Path,
 ) -> None:

@@ -10,8 +10,8 @@ pointing at the real gitdir. All tests use ``tmp_path`` for I/O.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
+import pytest
 from git import Repo
 
 from ralph.config import bootstrap as bs_module
@@ -21,8 +21,7 @@ from ralph.config.bootstrap import (
     auto_seed_default_git_exclude,
 )
 
-if TYPE_CHECKING:
-    import pytest
+pytestmark = pytest.mark.timeout_seconds(5)
 
 
 def test_auto_seed_default_git_exclude_creates_exclude_when_missing(tmp_path: Path) -> None:

@@ -24,6 +24,7 @@ from ralph.mcp.tools.workspace import (
     handle_read_file,
     handle_read_image,
 )
+from ralph.workspace.fs import FsWorkspace
 from tests.mock_session import MockSession
 from tests.mock_session_with_manifest import MockSessionWithManifest
 
@@ -69,44 +70,37 @@ class TestHandleReadImage:
         assert result.is_error is True
         assert "Failed to read" in cast("ToolContent", result.content[0]).text
 
-    def test_delivers_via_resource_reference_when_inline_too_large(self) -> None:
+    def test_delivers_via_resource_reference_when_inline_too_large(self, tmp_path: Path) -> None:
         """When inline image is too large, falls back to resource-reference delivery.
 
         This tests that handle_read_image (as a compatibility alias over
         _handle_workspace_media) properly routes oversized images through the
         resource-reference path when inline delivery is not possible.
         """
-        ws = MagicMock()
+        media_file = tmp_path / "large.png"
+        media_file.write_bytes(b"\x89PNG" + b"\x00" * 16)
+        ws = FsWorkspace(tmp_path)
 
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            f.write(b"\x00" * (DEFAULT_MAX_INLINE_BYTES + 1))
-            temp_path = f.name
-
-        try:
-            ws.absolute_path.return_value = temp_path
-
-            # MockSessionWithManifest with INLINE_IMAGE support but file exceeds limit
-            result = handle_read_image(
-                MockSessionWithManifest(
-                    MEDIA_READ_CAPABILITY,
-                    model_identity=MultimodalModelIdentity(provider="claude"),
-                ),
-                ws,
-                {"path": "large.png"},
-                max_inline_bytes=DEFAULT_MAX_INLINE_BYTES,
-            )
-            # With INLINE_IMAGE support but oversized file, falls back to resource-reference
-            assert result.is_error is False
-            content = result.content[0]
-            # Should be a resource reference, not an inline image
-            assert isinstance(content, ResourceReferenceContent), (
-                f"Expected resource-reference block, got {type(content).__name__}"
-            )
-            assert content.uri.startswith("ralph://media/"), (
-                f"Expected ralph://media/ URI, got: {content.uri}"
-            )
-        finally:
-            Path(temp_path).unlink()
+        # MockSessionWithManifest with INLINE_IMAGE support but file exceeds limit
+        result = handle_read_image(
+            MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="claude"),
+            ),
+            ws,
+            {"path": "large.png"},
+            max_inline_bytes=10,
+        )
+        # With INLINE_IMAGE support but oversized file, falls back to resource-reference
+        assert result.is_error is False
+        content = result.content[0]
+        # Should be a resource reference, not an inline image
+        assert isinstance(content, ResourceReferenceContent), (
+            f"Expected resource-reference block, got {type(content).__name__}"
+        )
+        assert content.uri.startswith("ralph://media/"), (
+            f"Expected ralph://media/ URI, got: {content.uri}"
+        )
 
     def test_returns_image_content_block_on_success(self) -> None:
         png_bytes = base64.b64decode(

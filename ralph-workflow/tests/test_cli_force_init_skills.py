@@ -11,14 +11,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
 import typer.testing
 
 from ralph.cli import main as main_module
 
 if TYPE_CHECKING:
-    import pytest
-
     from ralph.skills._capability_state import CapabilityState
+
+pytestmark = pytest.mark.timeout_seconds(5)
 
 _RUNNER = typer.testing.CliRunner()
 

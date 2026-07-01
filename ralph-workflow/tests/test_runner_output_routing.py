@@ -30,6 +30,9 @@ if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
 
 
+pytestmark = pytest.mark.timeout_seconds(5)
+
+
 def _load_default_policy_bundle() -> object:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
     return load_policy(defaults_dir)

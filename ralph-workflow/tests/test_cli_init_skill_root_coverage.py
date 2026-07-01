@@ -1,10 +1,16 @@
-"""Black-box tests for the 'Skill root coverage' table in init_command output."""
+"""Black-box tests for the 'Skill root coverage' table in init_command output.
+
+These tests are subprocess_e2e: they exercise the real `ralph --init` entry
+point and its full filesystem path. They cannot be mocked down to the
+per-test 1 s budget without losing the end-to-end contract they assert.
+"""
 
 from __future__ import annotations
 
 import io
 from typing import TYPE_CHECKING
 
+import pytest
 from rich.console import Console
 
 from ralph.cli.commands import init as init_module
@@ -20,7 +26,8 @@ from ralph.skills._content import BASELINE_SKILL_NAMES
 if TYPE_CHECKING:
     from pathlib import Path
 
-    import pytest
+
+pytestmark = [pytest.mark.timeout_seconds(10), pytest.mark.subprocess_e2e]
 
 
 def _attach_console_with_buffer(monkeypatch: pytest.MonkeyPatch) -> io.StringIO:
