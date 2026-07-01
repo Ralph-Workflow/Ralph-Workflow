@@ -365,16 +365,37 @@ parametrized per-transport pin test at
   `watchdog.evaluate(classify_quiet=...)` only (NO `setattr` on
   `_classify_stuck_now`, NO direct call to `_gate_fire`, NO read
   of `_last_*_log_at`). Captures `WaitingStatusEvent` instances via
-  `register_default_subagent_activity_listener` (the public listener
-  registration API at
-  `ralph/agents/idle_watchdog/idle_watchdog.py:620`, alias of the
-  `IdleWatchdog.__init__(listener=...)` constructor parameter at
-  line 487) and
-  counts both PROGRESS-kind emissions and loguru StringIO records
-  filtered on `component='idle_watchdog'`. The 1000-call cycle
-  MUST emit `<= 2` PROGRESS events (the R6 spam-invariant).
-  Pinned in wt-021 to lock the R6 throttle contract via
-  public-surface observables only.
+  the `IdleWatchdog.__init__(listener=...)` constructor seam at
+  `ralph/agents/idle_watchdog/idle_watchdog.py:487` (the main
+  waiting-status listener, stored on `_listener` at line 495 and
+  invoked by `_active_branch.emit` at
+  `ralph/agents/idle_watchdog/_active_branch.py:147-150` for every
+  emitted event regardless of payload) and counts both
+  PROGRESS-kind emissions and loguru StringIO records filtered on
+  `component='idle_watchdog'`. The 1000-call cycle MUST emit
+  `<= 2` PROGRESS events (the R6 spam-invariant). Pinned in wt-021
+  to lock the R6 throttle contract via public-surface observables
+  only.
+
+  **Note on the listener API (R6 pin test):** the watchdog exposes
+  TWO distinct listener slots, NOT aliases of one another:
+  (a) `IdleWatchdog.__init__(listener=...)` — the main
+  waiting-status listener declared at
+  `ralph/agents/idle_watchdog/idle_watchdog.py:487` and stored on
+  `_listener` (set at line 495); `_active_branch.emit` invokes it
+  for every `WaitingStatusEvent` it builds.
+  (b) `register_default_subagent_activity_listener(listener)`
+  declared at `ralph/agents/idle_watchdog/idle_watchdog.py:620` — a
+  SEPARATE convenience listener stored on
+  `_default_subagent_activity_listener` (set at line 636);
+  `_active_branch.emit` invokes it ONLY when the built
+  `WaitingStatusEvent.subagent_activity` field is non-`None`
+  (see `_active_branch.py:152-162`). The two slots are independent
+  — registering one does not replace the other — and they receive
+  disjoint event subsets. The R6 public-surface pin test exercises
+  (a) only; tests that exercise (b) are listed in the R5
+  cross-transport visibility pins (R5 owns the subagent-activity
+  surface).
 - `tests/agents/idle_watchdog/test_evidence_deferral_throttle.py`
 - `tests/agents/idle_watchdog/test_invocation_start_full_reset.py`
 - `tests/agents/idle_watchdog/test_trustworthy_idle_watchdog_spec.py::TestTrustworthyIdleWatchdogSpec::test_r6`
