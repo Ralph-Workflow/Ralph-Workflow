@@ -73,6 +73,8 @@ from ralph.process.liveness import FakeLivenessProbe
 from ralph.process.monitor import SubagentPidSource
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from ralph.agents.parsers.base import AgentParser
 
 
@@ -570,6 +572,16 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
     kwargs passed in and the test asserts ``subagent_pid_source`` is a
     non-``None`` ``SubagentPidSource`` instance -- proving the wiring
     is live end-to-end.
+
+    The subprocess/PTY runners are ALSO monkeypatched to a no-op
+    generator so the post-strategy-for_command code path (which would
+    otherwise spawn the real ``claude -p`` binary and wait for it to
+    exit non-zero because no login session is available) does not
+    contribute to wall-clock cost. The test's contract is the wiring
+    UP TO and INCLUDING the ``strategy_for_command`` call; the
+    subprocess execution path is covered by the dedicated
+    ``tests/test_subprocess_agent_executor*.py`` tests under the
+    ``subprocess_e2e`` marker.
     """
     captured: dict[str, object] = {}
 
@@ -583,6 +595,16 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
             ),
         )
 
+    def _empty_generator(*_args: object, **_kwargs: object) -> Iterator[str]:
+        # The subprocess/PTY runners are typed as ``Iterator[str]``
+        # generators; an empty generator returns immediately so the
+        # post-strategy_for_command code path executes in microseconds
+        # rather than spawning ``claude -p`` and waiting for the
+        # login-required exit. ``if False`` keeps this a generator
+        # function under mypy and ruff.
+        if False:
+            yield ""
+
     # ``strategy_for_command`` is imported into ``invoke`` at module
     # load via ``from ralph.agents.execution_state import strategy_for_command``,
     # so the canonical patch target is the ``invoke`` module's own
@@ -591,6 +613,17 @@ def test_invoke_agent_threads_subagent_pid_source_into_strategy_for_command(
     # fixture handles the cleanup automatically on teardown so this
     # test file remains free of any suppression markers.
     monkeypatch.setattr(ralph_invoke, "strategy_for_command", _spy)
+    # Block the real subprocess/PTY execution so the test verifies the
+    # wiring contract in <1ms rather than waiting for ``claude -p`` to
+    # fail with a login-required exit. The ``invoke`` module imports
+    # both runners at module load (``from ralph.agents.invoke._pty ...
+    # import run_pty_and_read_lines`` etc.) so the canonical patch
+    # target is the ``invoke`` module's own reference, mirroring the
+    # ``strategy_for_command`` patch above.
+    monkeypatch.setattr(
+        ralph_invoke, "run_subprocess_and_read_lines", _empty_generator
+    )
+    monkeypatch.setattr(ralph_invoke, "run_pty_and_read_lines", _empty_generator)
 
     # Build a minimal AgentConfig and InvokeOptions so the
     # ``invoke_agent`` flow reaches the ``strategy_for_command``
