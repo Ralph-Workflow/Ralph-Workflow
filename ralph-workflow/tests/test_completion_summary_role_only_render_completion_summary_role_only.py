@@ -112,8 +112,8 @@ class TestRenderCompletionSummaryRoleOnly:
         assert "Pipeline Complete" in output
         assert "Design phase plan" in output
 
-    def test_compact_group_threads_pipeline_policy(self) -> None:
-        """Compact mode also resolves styles via policy."""
+    def test_default_mode_group_threads_pipeline_policy(self) -> None:
+        """Default mode also resolves styles via policy."""
         policy = _make_custom_policy()
         snapshot = _minimal_snapshot()
         console = _console()
